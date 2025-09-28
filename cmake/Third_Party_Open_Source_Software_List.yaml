@@ -1,0 +1,36 @@
+observability:
+   googletest:
+     cpeName: googletest
+     groupId:
+     url: https://github.com/google/googletest.git
+     version: v1.14.0
+   eigen:
+     cpeName: eigen
+     groupId:
+     url: https://github.com/libeigen/eigen.git
+     version: 3.4.0
+  makeself:
+     cpeName: makeself
+     groupId:
+     url: https://github.com/megastep/makeself.git
+     version: release-2.5.0-patch1
+  protobuf:
+     cpeName: protobuf
+     groupId:
+     url: https://github.com/protocolbuffers/protobuf.git
+     version: v3.13.0
+  json:
+     cpeName: json
+     groupId:
+     url: https://github.com/nlohmann/json.git
+     version: v3.11.3
+  benchmark:
+     cpeName: benchmark
+     groupId:
+     url: https://github.com/google/benchmark.git
+     version: v1.5.5
+  libboundscheck:
+     cpeName: libboundscheck
+     groupId:
+     url: https://github.com/openeuler/libboundscheck.git
+     version: v1.1.10

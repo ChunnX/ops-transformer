@@ -1,0 +1,235 @@
+# DequantRopeQuantKvcache
+
+## 产品支持情况
+
+|产品             |  是否支持  |
+|:-------------------------|:----------:|
+|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
+
+## 功能说明
+
+- 算子功能：对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。
+
+- 计算公式：
+  
+  $$
+  dequantX = Dequant(x,weightScaleOptional,activationScaleOptional,biasOptional)
+  $$
+  
+  $$
+  q,k,vOut = SplitTensor(dequantX,dim=-1,`sizeSplits`)
+  $$
+  
+  $$
+  qOut,kOut = ApplyRotaryPosEmb(q,k,cos,sin)
+  $$
+  
+  $$
+  quantK = Quant(kOut,scaleK,offsetKOptional)
+  $$
+  
+  $$
+  quantV = Quant(vOut,scaleV,offsetVOptional)
+  $$
+  
+  如果cacheModeOptional为contiguous则：
+  
+  $$
+  kCacheRef[i][indice[i]]=quantK[i]
+  $$
+  
+  $$
+  vCacheRef[i][indice[i]]=quantV[i]
+  $$
+  
+  如果cacheModeOptional为page则：
+  
+  $$
+  kCacheRefView=kCacheRef.view(-1,kCacheRef[-2],kCacheRef[-1])
+  $$
+  
+  $$
+  vCacheRefView=vCacheRef.view(-1,vCacheRef[-2],vCacheRef[-1])
+  $$
+  
+  $$
+  kCacheRefView[indices[i]]=quantK[i]
+  $$
+  
+  $$
+  vCacheRefView[indices[i]]=quantV[i]
+  $$
+## 参数说明
+
+<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 170px">
+  <col style="width: 312px">
+  <col style="width: 213px">
+  <col style="width: 100px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出/属性</th>
+      <th>描述</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>x</td>
+      <td>输入</td>
+      <td>公式中的用于切分的输入`x`，Device侧的aclTensor。</td>
+      <td>FLOAT16、INT32、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cos</td>
+      <td>输入</td>
+      <td>公式中的用于位置编码的输入`cos`，Device侧的aclTensor。</td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sin</td>
+      <td>输入</td>
+      <td>公式中的用于位置编码的输入`sin`，Device侧的aclTensor。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>kCacheRef</td>
+      <td>输入</td>
+      <td>公式中用于缓存k的输入`kCacheRef`，Device侧的aclTensor。</td>
+      <td>INT8</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>vCacheRef</td>
+      <td>输入</td>
+      <td>公式中用于缓存v的输入`vCacheRef`，Device侧的aclTensor。</td>
+      <td>INT8</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>indices</td>
+      <td>输入</td>
+      <td>公式中表示Kvcache的token位置信息的输入`indices`。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>scaleK</td>
+      <td>输入</td>
+      <td>公式中的输入`scaleK`用于量化`k`的scale因子，Device侧的aclTensor。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>scaleV</td>
+      <td>输入</td>
+      <td>公式中的输入`scaleV`用于量化`v`的scale因子，Device侧的aclTensor。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>offsetKOptional</td>
+      <td>可选输入</td>
+      <td>公式中的输入`offsetKoptional`用于量化k的offset因子，Device侧的aclTensor。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>offsetVOptional</td>
+      <td>可选输入</td>
+      <td>公式中的输入`offsetVoptional`用于量化的offset因子，Device侧的aclTensor。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>weightScaleOptional</td>
+      <td>可选输入</td>
+      <td>公式中的输入`weightScaleoptional`用于反量化的权重scale因子，Device侧的aclTensor。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>activationScaleOptional</td>
+      <td>可选输入</td>
+      <td>公式中的输入`activationScaleOptional`用于反量化的激活scale因子，Device侧的aclTensor。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>biasOptional</td>
+      <td>可选输入</td>
+      <td>公式中的输入用于反量化的偏置`biasOptional`，Device侧的aclTensor。</td>
+      <td>FLOAT、FLOAT16(HALF)、INT32、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sizeSplits</td>
+      <td>输入</td>
+      <td>表示输入的qkv进行切分的长度。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>quantModeOptional</td>
+      <td>可选输入</td>
+      <td>Host侧表达式字符串。表示支持的量化类型，目前仅支持static。</td>
+      <td>String</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>layoutOptional</td>
+      <td>可选输入</td>
+      <td>Host侧表达式字符串。表示支持的数据格式，目前仅支持BSND。</td>
+      <td>String</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>kvOutput</td>
+      <td>输入</td>
+      <td>Host侧表达式布尔值。表示是否输出kOut和vOut。</td>
+      <td>BOOL</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>cacheModeOptional</td>
+      <td>输入</td>
+      <td>Host侧表达式字符串。表示kCacheRef的更新方式，目前仅支持page和contiguous，默认为contiguous。</td>
+      <td>String</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>qOut</td>
+      <td>输出</td>
+      <td>表示经过处理的q，Device侧的aclTensor。</td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>kOut</td>
+      <td>输出</td>
+      <td>表示输入的qkv进行切分的长度。</td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>vOut</td>
+      <td>输出</td>
+      <td>表示经过处理的v，Device侧的aclTensor。</td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+  </tbody></table>
+
+## 约束说明
+
+- cacheModeOptional为contiguous时：kCacheRef的第0维大于x的第0维，indices数据值大于等于0且小于等于vCacheRef的第1维([b，s，n，d]格式中的s)减x的第1维；cacheModeOptional为page时：indices 数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
+- x的尾轴小于等于4096，且按64对齐
+- 输入x不为int32时，x、cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时activationScaleOptional，weightScaleOptional、biasOptional不生效；x为int32时，cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时weightScaleOptional必选，activationScaleOptional、biasOptional可选（biasOptional不需要与其他输入类型一致）。
+
