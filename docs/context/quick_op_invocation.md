@@ -23,6 +23,7 @@
    ```
 
 2. **安装驱动与固件（运行态依赖）**
+
    运行算子时必须安装驱动与固件，若仅编译算子，可跳过本操作，安装指导详见《[CANN 软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstSoftware)》
 
 ## 环境准备
