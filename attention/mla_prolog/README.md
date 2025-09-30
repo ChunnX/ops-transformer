@@ -342,7 +342,7 @@
   <tr>
     <td class="tg-9wq8" rowspan="6">aclnn接口</td>
     <td class="tg-0pky">
-    <a href="./examples//test_mla_prolog_nq_bsh.cpp">MlaProlog非量化（BSH）接口测试用例代码
+    <a href="./examples//test_aclnn_mla_prolog.cpp">MlaProlog接口测试用例代码
     </a>
     </td>
     <td class="tg-lboi" rowspan="6">
@@ -352,36 +352,8 @@
     接口方式调用算子
     </td>
   </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_mla_prolog_nq_tnd.cpp">MlaProlog非量化（TND）接口测试用例代码
-    </a>
-  </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_mla_prolog_pqkvnq_bsh.cpp">MlaProlog半量化KV非量化（BSH）接口测试用例代码
-    </a>
-</td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_mla_prolog_pqkvnq_tnd.cpp">MlaProlog半量化KV非量化（TND）接口测试用例代码
-    </a>
-  </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_mla_prolog_pqkvq_bsh.cpp">MlaProlog半量化KV量化（BSH）接口测试用例代码
-    </a>
-  </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_mla_prolog_pqkvq_tnd.cpp">MlaProlog半量化KV量化（TND）接口测试用例代码
-    </a>
-  </td>
-  </tr>
+
+
 </tbody></table>
 
 <!-- ## 参考资源

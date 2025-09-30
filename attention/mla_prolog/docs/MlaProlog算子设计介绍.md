@@ -35,7 +35,7 @@ c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AI
 
 MlaProlog算子有多个Matmul运算：
 
-1、MatmulCq:将BS合轴，做为M轴，HeadSizeCq为N轴，HeadSizeX为K轴，核间对HeadSizeCq按照cube核数进行切分，每个核分配一定的子块
+1、MatmulCq：将BS合轴，做为M轴，HeadSizeCq为N轴，HeadSizeX为K轴，核间对HeadSizeCq按照cube核数进行切分，每个核分配一定的子块
 
 2、MatmulCkvKr：将BS合轴，做为M轴，HeadSizeCkvKr为N轴，HeadSizeX为K轴，核间对HeadSizeCkvKr进行切分，分为64块
 
@@ -65,17 +65,18 @@ MlaProlog融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的
 5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖与MatmulQcQrde shuchu ,因此需要做cube的全核同步（SYNC_ALL_CUBE)
 
 6、Vector核运算前，需要做vector的全核同步（SYNC_ALL_VECTOR)，确保数据流水搬运
-## tillingkey划分
-- 个位代表 CACHE_MOD，是KVCACHE的存储格式
-  - 0-CACHE_MODE_BNSD(预留)，1-PA_BSND，2-PA_NZ
-- 十位代表输入场景    
-  - 0-FP16(预留)     1-BF16      2-量化场景
-- 百位代表量化场景     
-  - 0-MMQcQr量化    1-MMQcQr量化+KVcache量化
-- 万位代表量化的算力分组优化场景
-  - 0 关闭  1 开启
-- 十万位代表空tensor场景用于输入TENSOR维度为0的情况 
-  - 0 无空tensor 1 kv_cache为空和kr_cache为空， 2 query为空
+
+## TilingKey划分
+TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个二进制位，具体实现如下：
+|二进制位|变量名|说明|参数列表|
+|-------|------|----|-------|
+|0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
+|4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
+|6-9|QUANT_MODE|量化场景|0-MMQcQr量化，1-MMQcQr量化+KVcache量化|
+|10|ENABLE_DEQUANT_OPTIONAL|反量化使能，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
+|11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
+|12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
+
 
 ## 主流程
 
@@ -207,7 +208,7 @@ $$
 $$
 c_{norm}^{KV} = RmsNorm(c^{KV}) \tag{8}
 $$
-RmsNorm的计算参考公式3-4.
+RmsNorm的计算参考公式（3）-（4）。
 
 ### PostQuant/Dequant
 - 基本概念
