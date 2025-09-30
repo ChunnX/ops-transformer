@@ -8,14 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_moe_init_routing_v3.h"
-#include "moe_init_routing_v3.h"
-#include "moe_init_routing_v2.h"
-
 #include <algorithm>
 #include <tuple>
 #include <cstddef>
-
 #include "opdev/make_op_executor.h"
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/tensor_view_utils.h"
@@ -23,7 +18,8 @@
 #include "opdev/op_log.h"
 #include "aclnn_kernels/cast.h"
 #include "opdev/common_types.h"
-
+#include "moe_init_routing_v3.h"
+#include "aclnn_moe_init_routing_v3.h"
 
 using namespace op;
 
@@ -32,10 +28,6 @@ extern "C" {
 #endif
 
 namespace {
-    static constexpr int64_t EXPERT_NUM_V2 = 128;
-    static constexpr int64_t EXPERT_NUM_MIN_V2 = 0;
-    static constexpr int64_t EXPERT_NUM_MAX_V2 = 128;
-    static constexpr int64_t HIDDEN_DIM_VAL_V2 = 2048;
     static const int64_t MOE_DIM_2 = 2;
     static const int64_t MOE_DIM_1 = 1;
 }
@@ -48,17 +40,6 @@ static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_X_OUT =
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_ROW_IDX_OUT = {DataType::DT_INT32};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKENS_COUNT_OR_CUMSUMOUT = {DataType::DT_INT64};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT = {DataType::DT_FLOAT};
-
-static bool CheckSpecialCase(const aclTensor *x, int64_t expertNum, const aclIntArray *activeExpertRangeOptional, int64_t expertTokensNumType, int64_t quantMode) {
-    // 判断当前用例是否需要回退到V2版本的alcnn接口
-    int64_t hidden_dim = x->GetViewShape().GetDim(1);
-    if(expertNum == EXPERT_NUM_V2 && (*activeExpertRangeOptional)[0] >= EXPERT_NUM_MIN_V2 && (*activeExpertRangeOptional)[1] <= EXPERT_NUM_MAX_V2 && hidden_dim == HIDDEN_DIM_VAL_V2){
-        if(quantMode == -1 && expertTokensNumType == 1){
-            return true;
-        } 
-    }
-    return false; 
-}
 
 static inline bool CheckNotNull(const aclTensor *x, 
                                 const aclTensor *expertIdx,
@@ -116,6 +97,7 @@ static inline bool CheckShape(  const aclTensor *x,
                                 int64_t quantMode,
                                 const aclIntArray *activeExpertRangeOptional) {
     
+    (void)offsetOptional;
     int64_t expertRangeNum = (*activeExpertRangeOptional)[1] - (*activeExpertRangeOptional)[0];
     OP_CHECK_WRONG_DIMENSION(x, MOE_DIM_2, return false);
     OP_CHECK_WRONG_DIMENSION(expertIdx, MOE_DIM_2, return false);
@@ -177,6 +159,7 @@ static inline bool CheckShape(  const aclTensor *x,
                  return false);
     }
 
+    (void)offsetOptional;
     return true;
 }
 
@@ -236,7 +219,12 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
                                                             const aclTensor *expandedScaleOut, 
                                                             uint64_t *workspaceSize, 
                                                             aclOpExecutor **executor)                                                                                 
-{
+{   
+    L2_DFX_PHASE_1(aclnnMoeInitRoutingV3, 
+                    DFX_IN(x, expertIdx, scaleOptional, offsetOptional, 
+                            activeNum, expertCapacity, expertNum, dropPadMode, 
+                            expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional, rowIdxType), 
+                    DFX_OUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut));
     // 参数检查
     auto ret = CheckParams( x, expertIdx, scaleOptional, offsetOptional, 
                             activeNum, expertCapacity, expertNum, dropPadMode, 
@@ -268,31 +256,14 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
         CHECK_RET(offsetContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     }
 
-    const aclTensor* expertTokensBeforeCapacityOut = nullptr;
     auto routingResult = std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr);
-    bool using_v2 = CheckSpecialCase(x, expertNum, activeExpertRangeOptional, expertTokensNumType, quantMode);
-    if (using_v2) {
-        // 调用v2版本的l0接口进行计算
-        expertTokensBeforeCapacityOut = expertTokensCountOrCumsumOut; 
-        routingResult = l0op::MoeInitRoutingV2(xContiguous, expertIdxContiguous, activeNum, 0, expertNum, 0, 2, 
-                                               false, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expertTokensBeforeCapacityOut, uniqueExecutor.get());
-    }
-    else {
-        // 调用v3版本的l0接口进行计算
-        routingResult = l0op::MoeInitRoutingV3(xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous, 
-                                               activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
-                                               quantMode, activeExpertRangeOptional, rowIdxType, expandedXOut, expandedRowIdxOut, 
-                                               expertTokensCountOrCumsumOut, expandedScaleOut, uniqueExecutor.get());
-    }
-
-    auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, lastOutput_] = routingResult;
-    const aclTensor* expertTokensCountOrCumsumOut_int64 = nullptr;
-    if (using_v2) {
-        // expertTokensCountOrCumsumOut cast to int64
-        expertTokensCountOrCumsumOut_int64 = l0op::Cast(expertTokensCountOrCumsumOut_, op::DataType::DT_INT64, uniqueExecutor.get());
-    }
-
-    bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr) || (expertTokensCountOrCumsumOut_ == nullptr) || (lastOutput_ == nullptr);
+    // 调用v3版本的l0接口进行计算
+    routingResult = l0op::MoeInitRoutingV3(xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous, 
+                                        activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
+                                        quantMode, activeExpertRangeOptional, rowIdxType, expandedXOut, expandedRowIdxOut, 
+                                        expertTokensCountOrCumsumOut, expandedScaleOut, uniqueExecutor.get());
+    auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, expandedScaleOut_] = routingResult;
+    bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr) || (expertTokensCountOrCumsumOut_ == nullptr) || (expandedScaleOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
@@ -301,17 +272,11 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
     auto viewCopyExpandedRowIdxOutResult = l0op::ViewCopy(expandedRowIdxOut_, expandedRowIdxOut, uniqueExecutor.get());
     CHECK_RET(viewCopyExpandedRowIdxOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    if (!using_v2) {
-        auto viewCopyExpertTokensCountOrCumsumOutResult = l0op::ViewCopy(expertTokensCountOrCumsumOut_, expertTokensCountOrCumsumOut, uniqueExecutor.get());
-        CHECK_RET(viewCopyExpertTokensCountOrCumsumOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto viewCopyExpertTokensCountOrCumsumOutResult = l0op::ViewCopy(expertTokensCountOrCumsumOut_, expertTokensCountOrCumsumOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyExpertTokensCountOrCumsumOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-        auto viewCopyExpandedScaleOutResult = l0op::ViewCopy(lastOutput_, expandedScaleOut, uniqueExecutor.get());
-        CHECK_RET(viewCopyExpandedScaleOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    else {
-        auto viewCopyExpertTokensCountOrCumsumOutResult = l0op::ViewCopy(expertTokensCountOrCumsumOut_int64, expertTokensCountOrCumsumOut, uniqueExecutor.get());
-        CHECK_RET(viewCopyExpertTokensCountOrCumsumOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
+    auto viewCopyExpandedScaleOutResult = l0op::ViewCopy(expandedScaleOut_, expandedScaleOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyExpandedScaleOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

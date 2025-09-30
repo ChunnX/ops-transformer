@@ -119,7 +119,7 @@ private:
     int64_t normType_ = NORM_TYPE_SOFTMAX;
     int64_t outFlag_ = OUT_FLAG_FALSE;
     float routedScalingFactor_ = 1.0;
-    float eps_ = 1e-20;
+    float eps_ = 1e-20f;
 
     int64_t inputDtypeSize_;
     const char *opName_ = "";
@@ -151,7 +151,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckInputShape()
                     OP_LOGE(context_, "The number of bias dim is: %zu, but should be %zu.", biasDimNnum, BIAS_INPUT_DIMS),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(biasShape_->GetDim(0) != expertCount_,
-                    OP_LOGE(context_, "The first dim of bias is: %zu, but should be expert num: %ld.",
+                    OP_LOGE(context_, "The first dim of bias is: %ld, but should be expert num: %ld.",
                          biasShape_->GetDim(0), expertCount_),
                     return ge::GRAPH_FAILED);
     }
@@ -182,7 +182,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
     moeGatingTopKTilingData_.set_perGroupExpertCount(expertCount_ / groupCount_);
     moeGatingTopKTilingData_.set_perGroupExpertCountAlign(groupExpertCountAlign);
     OP_CHECK_IF(groupCount_ * groupExpertCountAlign > MAX_EXPERT_COUNT,
-                OP_LOGE(context_, "group count * group expert count align is: %ld, but should not greater than %zu.",
+                OP_LOGE(context_, "group count * group expert count align is: %ld, but should not greater than %ld.",
                      groupCount_ * groupExpertCountAlign, MAX_EXPERT_COUNT),
                 return ge::GRAPH_FAILED);
 
@@ -366,16 +366,16 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetPlatformInfo()
 ge::graphStatus MoeGatingTopKTilingRegbase::CheckOutShape()
 {
     OP_CHECK_IF((yShape_->GetDimNum() != xShape_->GetDimNum()),
-                OP_LOGE(context_, "y out shape num %ld and x shape num %ld not equal, please check.", yShape_->GetDimNum(),
+                OP_LOGE(context_, "y out shape num %zu and x shape num %zu not equal, please check.", yShape_->GetDimNum(),
                      xShape_->GetDimNum()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((expertIdxShape_->GetDimNum() != xShape_->GetDimNum()),
-                OP_LOGE(context_, "expertId out shape num %ld and x shape num %ld not equal, please check.",
+                OP_LOGE(context_, "expertId out shape num %zu and x shape num %zu not equal, please check.",
                      expertIdxShape_->GetDimNum(), xShape_->GetDimNum()),
                 return ge::GRAPH_FAILED);
     if (outShape_ != nullptr) {
         OP_CHECK_IF((outShape_->GetDimNum() != xShape_->GetDimNum()),
-                    OP_LOGE(context_, "norm out shape num %ld and x shape num %ld not equal, please check.",
+                    OP_LOGE(context_, "norm out shape num %zu and x shape num %zu not equal, please check.",
                          outShape_->GetDimNum(), xShape_->GetDimNum()),
                     return ge::GRAPH_FAILED);
     }

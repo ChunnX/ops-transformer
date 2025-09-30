@@ -101,6 +101,10 @@ TILING_DATA_FIELD_DEF_STRUCT(MoeV3ExpertTokensCountTilingData, expertTokensCount
 TILING_DATA_FIELD_DEF_STRUCT(MoeV3GatherOutComputeTilingData, gatherOutComputeParamsOp);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV3, MoeInitRoutingV3TilingData)
-struct MoeInitRoutingV3CompileInfo {};
+struct MoeInitRoutingV3CompileInfo {
+        int32_t aivNum = 0;
+        uint64_t ubSize = 0;
+        platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+  };
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_INIT_ROUTING_V3_H

@@ -18,7 +18,6 @@
 
 #include "experiment_ops.h"
 #include "nn_other.h"
-#include<unistd.h>
 
 #define FAILED -1
 #define SUCCESS 0
@@ -311,5 +310,5 @@ int main(int argc, char *argv[])
         return FAILED;
     }
     printf("%s - INFO - [XIR]: Finalize ir graph session success\n", GetTime().c_str());
-    _exit(0);
+    return SUCCESS;
 }

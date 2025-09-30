@@ -67,7 +67,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetPlatformInfo()
         socVersion_ = ascendcPlatform.GetSocVersion();
     }
     OP_CHECK_IF((coreNum_ <= 0),
-        OP_LOGE(context_->GetNodeName(), "GetHardwareInfo Failed, coreNum:%zu", coreNum_),
+        OP_LOGE(context_->GetNodeName(), "GetHardwareInfo Failed, coreNum:%ld", coreNum_),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(ubSize_ <= 0,
         OP_LOGE(context_->GetNodeName(), "GetHardwareInfo Failed, ubSize:%ld.", ubSize_),

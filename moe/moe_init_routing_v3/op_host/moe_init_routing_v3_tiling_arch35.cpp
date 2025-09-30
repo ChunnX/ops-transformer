@@ -265,17 +265,15 @@ void MoeInitRountingV3RegbaseTiling::Reset()
 }
 
 ge::graphStatus MoeInitRountingV3RegbaseTiling::GetPlatformInfo()
-{
-    auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    aivNum = ascendcPlatform.GetCoreNumAiv();
+{   
+    auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV3CompileInfo*>(context_->GetCompileInfo());
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
+    aivNum = compileInfoPtr->aivNum;
     aicoreParams_.blockDim = aivNum;
-    uint64_t ubSizePlatForm;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
-    aicoreParams_.ubSize = ubSizePlatForm;
+    aicoreParams_.ubSize = compileInfoPtr->ubSize;
+    socVersion_ = compileInfoPtr->socVersion;
     moeInitRoutingV3TilingData.set_coreNum(aivNum);
+    OP_LOGI(context_, "---PlatformInfo--- aivNum is: %ld, ubSizePlatForm is: %ld ", aivNum, aicoreParams_.ubSize);
     return ge::GRAPH_SUCCESS;
 }
 

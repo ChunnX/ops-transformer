@@ -63,7 +63,7 @@ struct InterleaveRopeCompileInfo {
 
 class InterleaveRopeTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit InterleaveRopeTiling(gert::TilingContext* context_) : TilingBaseClass(context_)
+    explicit InterleaveRopeTiling(gert::TilingContext* p_context_) : TilingBaseClass(p_context_)
     {}
     ~InterleaveRopeTiling() override = default;
 

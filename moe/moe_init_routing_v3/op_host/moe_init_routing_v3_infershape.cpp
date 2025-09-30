@@ -501,7 +501,13 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     int64_t quantMode = static_cast<int64_t>(-1);
-
+    const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
+    if (nullptr == quantModePtr) {
+        OP_LOGE(context, "The quant_mode should be %d, %d or %d. But it is none.", QuantMode::NON_QUANT,
+                QuantMode::STATIC_QUANT, QuantMode::DYNAMIC_QUANT);
+        return ge::GRAPH_FAILED;
+    }
+    quantMode = *quantModePtr;
     // Infer output dtype according quant_mode
     auto xDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_X);
     if (QuantMode::NON_QUANT == quantMode) {

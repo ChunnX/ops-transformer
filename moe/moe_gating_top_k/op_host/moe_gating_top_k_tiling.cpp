@@ -157,7 +157,7 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             biasShape_->GetDim(0) != expertCount_,
-            OP_LOGE(context_, "The first dim of bias is: %lu, but should be %ld.", biasShape_->GetDim(0), expertCount_),
+            OP_LOGE(context_, "The first dim of bias is: %ld, but should be %ld.", biasShape_->GetDim(0), expertCount_),
             return ge::GRAPH_FAILED);
     }
     moeGatingTopKTilingData_.set_addBias(addBias_);
