@@ -477,14 +477,14 @@ using ResetCacheThreadLocal = void (*)();
                        executor]() -> int {                                                                          \
         using OpApiFunc = int (*)(void*, uint64_t, aclOpExecutor*, const aclrtStream);                               \
         OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);                                            \
-        auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream);                              \
+        auto api_ret_inner = opApiFunc(workspace_addr, workspace_size, executor, acl_stream);                              \
         ReleaseConvertTypes(converted_params);                                                                       \
         host_api_ctx->FreeWorkspace();                                                                               \
-        if (api_ret != 0) {                                                                                          \
-          OP_LOGE("aclnnfallback", "call %s allocate workspace failed api_ret: %d", #aclnn_api, api_ret);            \
+        if (api_ret_inner != 0) {                                                                                          \
+          OP_LOGE("aclnnfallback", "call %s allocate workspace failed api_ret_inner: %d", #aclnn_api, api_ret_inner);            \
           return GRAPH_FAILED;                                                                                       \
         }                                                                                                            \
-        return api_ret;                                                                                              \
+        return api_ret_inner;                                                                                              \
       };                                                                                                             \
                                                                                                                      \
       ret = acl_call();                                                                                              \
