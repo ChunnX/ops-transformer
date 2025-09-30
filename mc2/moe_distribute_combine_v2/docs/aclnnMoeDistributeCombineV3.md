@@ -509,7 +509,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
 
 <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> ：类似下文<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>调用示例，其中V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
 
-<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：示例代码如下，仅供参考，调起aclnnMoeDistributeCombineV3和aclnnMoeDistributeDispatchV3接口。
+<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：示例代码如下，仅供参考，调起aclnnMoeDistributeCombineV3和aclnnMoeDistributeDispatchV3接口。本示例代码仅支持Atlas A3。
 
 
 

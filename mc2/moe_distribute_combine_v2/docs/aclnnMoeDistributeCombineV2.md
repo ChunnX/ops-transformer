@@ -434,7 +434,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeDistributeCombineV2和MoeDistributeDispatchV2算子。
+以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeDistributeCombineV2和MoeDistributeDispatchV2算子。本示例代码仅支持Atlas A3。
 
 - 文件准备：
   1.新建combineDemo目录，按照下方指导在combineDemo下新建aclnnCombineDemo.cpp，buildCombine.sh，文件并参考如下代码修改。

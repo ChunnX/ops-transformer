@@ -284,7 +284,7 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
+以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。本示例代码仅支持Atlas A3。
 
 - 文件准备：    
   1.新建eplbDemo目录，按照下方指导在eplbDemo下新建aclnnEPLBDemo.cpp，buildEPLB.sh，文件并修改。

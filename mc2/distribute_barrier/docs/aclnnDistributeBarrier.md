@@ -172,6 +172,8 @@ aclnnStatus aclnnDistributeBarrier(
 
 ## 调用示例
 
+- 本示例代码仅支持Atlas A3。
+
 - 文件准备：    
   1.新建barrierDemo目录，按照下方指导在barrierDemo下新建aclnnBarrierDemo.cpp，buildBarrier.sh文件并按照如下代码修改。
 
