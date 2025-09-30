@@ -41,6 +41,7 @@ const std::tuple<aclTensor*, aclTensor*> RoepWithSinCosCacheAICore(
     auto retAicore = ADD_TO_LAUNCHER_LIST_AICORE(
         RopeWithSinCosCache, OP_INPUT(positions, queryIn, keyIn, cosSinCache), OP_OUTPUT(queryOut, keyOut),
         OP_ATTR(numQHeads, numKHeads, headSize, mropeSection, qStride, kStride, isNeoxStyle));
+    (void)retAicore;
     return std::tie(queryOut, keyOut);
 }
 

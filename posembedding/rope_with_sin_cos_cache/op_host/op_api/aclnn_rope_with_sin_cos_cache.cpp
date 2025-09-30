@@ -95,16 +95,6 @@ static bool CheckDtypeValid(
     return true;
 }
 
-static int64_t GetTensorNumel(const aclTensor* x, size_t startIdx)
-{
-    size_t xShapeDim = x->GetViewShape().GetDimNum();
-    int64_t xShapeSize = 1;
-    for (size_t i = startIdx; i < xShapeDim; i++) {
-        xShapeSize *= x->GetViewShape().GetDim(i);
-    }
-    return xShapeSize;
-}
-
 static bool CheckShape(
     const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
     const aclTensor* queryOut, const aclTensor* keyOut)
@@ -152,7 +142,7 @@ static bool CheckShape(
 
 static aclnnStatus CheckParams(
     const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
-    const aclIntArray* mropeSection, aclTensor* queryOut, aclTensor* keyOut)
+    aclTensor* queryOut, aclTensor* keyOut)
 {
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(positions, queryIn, keyIn, cosSinCache, queryOut, keyOut), ACLNN_ERR_PARAM_NULLPTR);
@@ -184,7 +174,7 @@ aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSize(
 
     // 固定写法，参数检查
     auto ret =
-        CheckParams(positions, queryIn, keyIn, cosSinCache, mropeSection, queryOut, keyOut);
+        CheckParams(positions, queryIn, keyIn, cosSinCache, queryOut, keyOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     CHECK_RET(headSize != 0, ACLNN_ERR_PARAM_INVALID);
     int64_t numQheads = queryIn->GetViewShape()[1] / headSize;
