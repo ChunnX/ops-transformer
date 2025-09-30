@@ -156,7 +156,7 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
             "the isTransA should be false, but real value is 1"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK((valueTwo < KVALUE_MIN || valueTwo >= KVALUE_MAX),
             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "The k-axis should be in range[256, 65535), but it is: %ld.", valueTwo), return ge::GRAPH_FAILED);
+            "The k-axis should be in range[256, 65535), but it is: %lu.", valueTwo), return ge::GRAPH_FAILED);
     }
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     OP_TILING_CHECK(group == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "group is nullptr. "),
@@ -532,7 +532,7 @@ static ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext *context) {
 
   auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
   OP_TILING_CHECK(comm_turn != 0, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-      "comm_turn should be 0, but the actual value is %u.", comm_turn), return ge::GRAPH_FAILED);
+      "comm_turn should be 0, but the actual value is %d.", comm_turn), return ge::GRAPH_FAILED);
 
   OP_LOGD("AllGatherMatmul"," group is %s, rankSize is %u, is_trans_a is %d, is_trans_b is %d, gather_index is %d,"
           "comm_turn is %d.", group, rankSize, *is_trans_a, *is_trans_b, *gather_index, comm_turn);
@@ -576,7 +576,7 @@ static ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext *context) {
 }
 
 struct AllGatherMatmulCompileInfo {};
-static ge::graphStatus TilingParseForAllGatherMatmul(gert::TilingParseContext *context) { return ge::GRAPH_SUCCESS; }
+static ge::graphStatus TilingParseForAllGatherMatmul([[maybe_unused]] gert::TilingParseContext *context) { return ge::GRAPH_SUCCESS; }
 
 IMPL_OP_OPTILING(AllGatherMatmul)
     .Tiling(AllGatherMatmulTilingFunc)

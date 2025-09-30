@@ -139,7 +139,7 @@ public:
         this->Attr("is_trans_b").AttrType(OPTIONAL).Bool(false);
         this->Attr("comm_turn").AttrType(OPTIONAL).Int(0);
         this->Attr("antiquant_group_size").AttrType(OPTIONAL).Int(0);
-        this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6);
+        this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         OpAICoreConfig aicore_config_910b;
         aicore_config_910b.DynamicCompileStaticFlag(true)

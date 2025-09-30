@@ -684,7 +684,7 @@ static ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext* contex
     auto comm_turn = *comm_turn_ptr;
     OP_TILING_CHECK(comm_turn != 0,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "comm_turn should be 0, but the actual value is %u.", comm_turn),
+                                                    "comm_turn should be 0, but the actual value is %d.", comm_turn),
                     return ge::GRAPH_FAILED);
 
     OP_LOGD("MatmulReduceScatter",

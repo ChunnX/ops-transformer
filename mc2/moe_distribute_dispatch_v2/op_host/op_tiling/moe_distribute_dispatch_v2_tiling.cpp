@@ -196,7 +196,7 @@ static bool CheckTensorDim(const gert::TilingContext *context, const char *nodeN
             return false);
         const int64_t xActiveMaskDimNum = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(((xActiveMaskDimNum != ONE_DIM) && (xActiveMaskDimNum != TWO_DIMS)),
-            OP_LOGE(nodeName, "xActiveMask shape dim must be 1 or 2, but current dim num is %lu.",
+            OP_LOGE(nodeName, "xActiveMask shape dim must be 1 or 2, but current dim num is %ld.",
             xActiveMaskDimNum), return false);
         OP_TILING_CHECK((xActiveMaskStorageShape->GetStorageShape().GetDim(0) != xDim0), OP_LOGE(nodeName,
             "The input of xActiveMask dim0 = %ld is not equal to x dim0 = %ld.",

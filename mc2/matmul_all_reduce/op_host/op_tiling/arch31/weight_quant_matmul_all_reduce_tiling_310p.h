@@ -96,7 +96,7 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
             PrintMatMulTiling(logLevel);
         }
 
-        void PrintMatMulTiling(int32_t logLevel)
+        void PrintMatMulTiling([[maybe_unused]] int32_t logLevel)
         {
             std::stringstream ss;
             auto& matmulTiling = tilingData_->matmulTiling;

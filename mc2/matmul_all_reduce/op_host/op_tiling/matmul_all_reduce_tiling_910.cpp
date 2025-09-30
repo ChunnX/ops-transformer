@@ -12,8 +12,6 @@
  * \file matmul_all_reduce_tiling_910.cc
  * \brief
  */
-#ifndef MATMUL_ALL_REDUCE_TILING_910_CC
-#define MATMUL_ALL_REDUCE_TILING_910_CC
 #include "matmul_all_reduce_tiling_910.h"
 #include "op_mc2.h"
 
@@ -297,4 +295,3 @@ TilingTransferHelper::TilingTransferHelper(MatmulAllReduceTiling910& matmulAllRe
     : MatmulV3BaseTiling(matmulAllReduceTiling910.context_, &data), tilingProcesser_(matmulAllReduceTiling910)
 {}
 } // namespace optiling
-#endif // MATMUL_ALL_REDUCE_TILING_910_CC

@@ -42,7 +42,6 @@ ge::Status MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(
     int64_t aicore_idx = AICORE_IDX;
     // get main/attach stream ids
     const int64_t attach_stream_id = Mc2GenTaskOpsUtils::GetAttachStreamIdByContext(context);
-    const int64_t stream_id = context->GetStreamId();
     //aicpu task
     ge::KernelLaunchInfo aicpu_task =
     ge::KernelLaunchInfo::CreateAicpuKfcTask(context, SO_NAME.c_str(), KERNEL_NAME_V1.c_str());

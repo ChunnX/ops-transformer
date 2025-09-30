@@ -124,7 +124,6 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
     return false;
   });
 
-  auto mVal1 = x1->GetViewShape().GetDim(0);
   if (IsGatherOut(gatherOut)) {
     auto kVal3 = gatherOut->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 != kVal3), {

@@ -162,7 +162,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckAxisSize()
         VECTOR_INNER_ERR_REPORT_TILING(
             context_->GetNodeName(),
             "The size of x2 first-axis=%lu exceeds the upper limit=%d or last-axis=%lu"
-            " exceeds the upper limit=%u.",
+            " exceeds the upper limit=%d.",
             x2FirstDim, INT32_MAX, x2LastDim, UINT16_MAX),
         return ge::GRAPH_FAILED);
 

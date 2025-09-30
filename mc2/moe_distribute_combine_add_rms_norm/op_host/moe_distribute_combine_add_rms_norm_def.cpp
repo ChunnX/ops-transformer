@@ -164,7 +164,7 @@ public:
     this->Attr("comm_quant_mode").AttrType(OPTIONAL).Int(0);
     this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
-    this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6);
+    this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
     this->Attr("zero_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);

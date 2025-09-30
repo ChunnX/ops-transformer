@@ -163,7 +163,7 @@ static bool IsGatherOut(const aclTensor *gatherOut)
   return true;
 }
 
-static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
+static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, [[maybe_unused]] const aclTensor *gatherOut,
                        bool isTransA)
 {
   OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);

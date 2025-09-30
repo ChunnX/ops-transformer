@@ -12,8 +12,6 @@
  * \file common_add_rms_norm_tiling.cc
  * \brief
  */
-#ifndef COMMON_ADD_RMS_NORM_CC_
-#define COMMON_ADD_RMS_NORM_CC_
 #include "common_add_rms_norm_tiling.h"
 
 namespace optiling {
@@ -304,5 +302,3 @@ ge::graphStatus CommonAddResNormTiling::Tiling4AddRmsNorm(
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
-
-#endif // COMMON_ADD_RMS_NORM_CC_

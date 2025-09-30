@@ -32,14 +32,14 @@ static ge::graphStatus InferShapeCheck(gert::InferShapeContext* context) {
  
     for (uint32_t i = 0; i < IDX_THREE; ++i) {
         if (context->GetOutputShape(i) == nullptr) {
-            OP_LOGE(context->GetNodeName(), "infer shape check output %d is nullptr", i);
+            OP_LOGE(context->GetNodeName(), "infer shape check output %u is nullptr", i);
             return GRAPH_FAILED;
         }
     }
  
     for (uint32_t i = 0; i < IDX_EIGHT; ++i) {
         if (context->GetInputShape(i) == nullptr) {
-            OP_LOGE(context->GetNodeName(), "infer shape check input %d is nullptr", i);
+            OP_LOGE(context->GetNodeName(), "infer shape check input %u is nullptr", i);
             return GRAPH_FAILED;
         }
     }

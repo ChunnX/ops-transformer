@@ -645,7 +645,7 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckInput()
             VECTOR_INNER_ERR_REPORT_TILING(
                 context_->GetNodeName(),
                 "Expect nValue of bias and output(or residual) to be same,"
-                " but got bias_n:[%lu], output_n:[%lu]",
+                " but got bias_n:[%ld], output_n:[%lu]",
                 biasNValue, nValue),
             return ge::GRAPH_FAILED);
     }
@@ -1115,7 +1115,7 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
             VECTOR_INNER_ERR_REPORT_TILING(
                 opName_, 
                 "scale K dim must be match ceil(k, 32) must be even for MXfp4,"
-                "but got scale K: %ld",
+                "but got scale K: %lu",
                 kValue),
             return false);
     }
@@ -1123,7 +1123,7 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
         kOverMaxGroupsize != Ops::Base::CeilDiv(kValue, MX_GROUP_SIZE),
         VECTOR_INNER_ERR_REPORT_TILING(
             opName_,
-            "scale K dim must be match ceil(k:%ld, 64) for MXfp8/MXfp4, got scale K: %lu",
+            "scale K dim must be match ceil(k:%lu, 64) for MXfp8/MXfp4, got scale K: %lu",
             kValue, kOverMaxGroupsize),
         return false);
     return true;

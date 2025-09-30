@@ -277,7 +277,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
             OP_LOGE(
                 context_->GetNodeName(),
                 "In the per-group scenario,"
-                " antiquantGroupSize should be in range [32, min(%ld, INT_MAX)], Actual is %ld.",
+                " antiquantGroupSize should be in range [32, min(%lu, INT_MAX)], Actual is %ld.",
                 (kValue - 1), groupSize),
             return ge::GRAPH_FAILED);
     }

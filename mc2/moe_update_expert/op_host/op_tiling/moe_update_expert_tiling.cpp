@@ -298,7 +298,7 @@ ge::graphStatus MoeUpdateExpertTiling::CheckExpertScalesShape(const gert::Tiling
         OP_TILING_CHECK(((expertScalesShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
             (expertScalesShape->GetStorageShape().GetDim(1) != tilingData->k)),
             OP_LOGE(MOE_UPDATE_EXPERT_DEBUG,
-                "expert_scales dim(bs, k) should be equals to dim[%d, %d], but got [%lu, %lu]!",
+                "expert_scales dim(bs, k) should be equals to dim[%d, %d], but got [%ld, %ld]!",
                 tilingData->bs, tilingData->k, expertScalesShape->GetStorageShape().GetDim(0),
                 expertScalesShape->GetStorageShape().GetDim(1)),
             return ge::GRAPH_FAILED);
@@ -316,14 +316,14 @@ ge::graphStatus MoeUpdateExpertTiling::CheckPruningThresholdShape(const gert::Ti
         if (pruningThresholdShape->GetStorageShape().GetDimNum() == NUM_ONE) {
             OP_TILING_CHECK((pruningThresholdShape->GetStorageShape().GetDim(0) != tilingData->k),
                 OP_LOGE(MOE_UPDATE_EXPERT_DEBUG,
-                    "pruning_threshold dim(k,) should be equals to dim[%d,], but got [%lu,]!", tilingData->k,
+                    "pruning_threshold dim(k,) should be equals to dim[%d,], but got [%ld,]!", tilingData->k,
                     pruningThresholdShape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
         } else if (pruningThresholdShape->GetStorageShape().GetDimNum() == NUM_TWO) {
             OP_TILING_CHECK(((pruningThresholdShape->GetStorageShape().GetDim(0) != 1) ||
                 (pruningThresholdShape->GetStorageShape().GetDim(1) != tilingData->k)),
                 OP_LOGE(MOE_UPDATE_EXPERT_DEBUG,
-                    "pruning_threshold dim(1, k) should be equals to dim[1, %d], but got [%lu, %lu]!",
+                    "pruning_threshold dim(1, k) should be equals to dim[1, %d], but got [%ld, %ld]!",
                     tilingData->k, pruningThresholdShape->GetStorageShape().GetDim(0),
                     pruningThresholdShape->GetStorageShape().GetDim(1)),
                 return ge::GRAPH_FAILED);
@@ -350,7 +350,7 @@ ge::graphStatus MoeUpdateExpertTiling::CheckActiveMaskShape(const gert::TilingCo
                 activeMaskShape->GetStorageShape().GetDimNum()),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK((activeMaskShape->GetStorageShape().GetDim(0) != tilingData->bs),
-            OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "active_mask dim(bs,) should be equals to [%d,], but got [%lu,]!",
+            OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "active_mask dim(bs,) should be equals to [%d,], but got [%ld,]!",
                 tilingData->bs, activeMaskShape->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
         tailorCfg_ += (1U << ACTIVE_MASK_INDEX);

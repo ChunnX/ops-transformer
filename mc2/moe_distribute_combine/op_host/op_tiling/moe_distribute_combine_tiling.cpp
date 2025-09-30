@@ -549,8 +549,8 @@ static bool CheckAttrs(gert::TilingContext *context, MoeDistributeCombineTilingD
     // 校验ep能均分共享
     OP_TILING_CHECK((sharedExpertRankNum != 0) && (epWorldSize % sharedExpertRankNum != 0),
                     OP_LOGE(nodeName,
-                            "epWorldSize should be divisible by sharedExpertRankNum, but epWorldSize=%d, "
-                            "sharedExpertRankNum=%d.",
+                            "epWorldSize should be divisible by sharedExpertRankNum, but epWorldSize=%u, "
+                            "sharedExpertRankNum=%u.",
                             epWorldSize, sharedExpertRankNum),
                     return false);
 
@@ -558,15 +558,15 @@ static bool CheckAttrs(gert::TilingContext *context, MoeDistributeCombineTilingD
     OP_TILING_CHECK(moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0,
                     OP_LOGE(nodeName,
                             "moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), "
-                            "but got moeExpertNum=%d, epWorldSize=%d, sharedExpertRankNum=%d.",
+                            "but got moeExpertNum=%u, epWorldSize=%u, sharedExpertRankNum=%u.",
                             moeExpertNum, epWorldSize, sharedExpertRankNum),
                     return false);
     localMoeExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum);
     OP_TILING_CHECK(localMoeExpertNum <= 0,
-                    OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %d", localMoeExpertNum),
+                    OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %u", localMoeExpertNum),
                     return false);
     OP_TILING_CHECK((localMoeExpertNum > 1) && (tpWorldSize > 1),
-                    OP_LOGE(nodeName, "Cannot support multi-moeExpert %d in a rank when tpWorldSize = %d > 1",
+                    OP_LOGE(nodeName, "Cannot support multi-moeExpert %u in a rank when tpWorldSize = %u > 1",
                             localMoeExpertNum, tpWorldSize),
                     return false);
     tilingData.moeDistributeCombineInfo.moeExpertPerRankNum = localMoeExpertNum;

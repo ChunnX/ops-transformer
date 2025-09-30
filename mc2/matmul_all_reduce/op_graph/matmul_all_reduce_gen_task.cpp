@@ -13,12 +13,7 @@
  * \brief
  */
 #include <vector>
-#include <map>
-#include <set>
-#include <string>
 
-#include "runtime/rt_model.h"
-#include "runtime/kernel.h"
 #include "op_mc2.h"
 #include "platform/platform_info.h"
 

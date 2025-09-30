@@ -388,7 +388,7 @@ static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, cons
         OP_TILING_CHECK(xActiveMaskStorageShape == nullptr, OP_LOGE(nodeName, "xActiveMask is null."), return false);
         const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(((xActiveMaskDimNums != ONE_DIM) && (xActiveMaskDimNums != TWO_DIMS)),
-            OP_LOGE(nodeName, "xActiveMask must be 1-dimension or 2-dimension, but got %lu dim",
+            OP_LOGE(nodeName, "xActiveMask must be 1-dimension or 2-dimension, but got %ld dim",
             xActiveMaskDimNums), return false);
     }
     if (hasElasticInfo) {
@@ -885,14 +885,14 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
     // 校验moe专家数量能否均分给多机
     OP_TILING_CHECK(moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0,
         OP_LOGE(nodeName, "moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), "
-        "but got moeExpertNum=%d, epWorldSize=%d, sharedExpertRankNum=%d.", moeExpertNum, epWorldSize,
+        "but got moeExpertNum=%u, epWorldSize=%u, sharedExpertRankNum=%u.", moeExpertNum, epWorldSize,
         sharedExpertRankNum), return false);
     localMoeExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum);
     OP_TILING_CHECK(localMoeExpertNum <= 0,
-        OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %d", localMoeExpertNum), return false);
+        OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %u", localMoeExpertNum), return false);
     // 校验tp=2时单个moe卡上专家数是否等于1
     OP_TILING_CHECK((localMoeExpertNum > 1) && (tpWorldSize > 1),
-        OP_LOGE(nodeName, "Cannot support multi-moeExpert %d in a rank when tpWorldSize = %d > 1",
+        OP_LOGE(nodeName, "Cannot support multi-moeExpert %u in a rank when tpWorldSize = %u > 1",
         localMoeExpertNum, tpWorldSize), return false);
     // 校验tp=2时是否没有动态缩容参数
     OP_TILING_CHECK((tpWorldSize > 1) && (tilingData.moeDistributeCombineV2Info.hasElasticInfo), OP_LOGE(nodeName, "Cannot support elasticInfo "

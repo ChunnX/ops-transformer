@@ -73,12 +73,6 @@ extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-static aclTensor* CreateWinTensor(const int64_t* dims, uint64_t dimNum, aclDataType dataType, aclFormat format,
-                                  void* dataAddr) 
-{
-    return aclCreateTensor(dims, dimNum, dataType, nullptr, 0, format, dims, dimNum, dataAddr);
-}
-
 static inline bool IsAscend910D(void)
 {
     return op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910_95;
@@ -215,10 +209,10 @@ static enum CaseOption CheckHighAccuracyCase(const aclTensor* x1, const aclTenso
     return CaseOption::HIGH_ACCURACY;
 }
 
-static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
-                                            const aclTensor* y, const aclTensor* amax,
+static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor* x2, [[maybe_unused]] const aclTensor* bias,
+                                            [[maybe_unused]] const aclTensor* y, [[maybe_unused]] const aclTensor* amax,
                                             const aclTensor* x1Scale, const aclTensor* x2Scale,
-                                            const aclTensor* quantScale)
+                                            [[maybe_unused]] const aclTensor* quantScale)
 {
     //先x1 x2指针判空
     if(!CheckEmptyTensor(x1, "x1")||!CheckEmptyTensor(x2, "x2")){

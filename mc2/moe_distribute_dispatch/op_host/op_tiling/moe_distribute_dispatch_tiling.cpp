@@ -234,10 +234,10 @@ static ge::graphStatus CheckAttrs(gert::TilingContext *context, const char *node
         OP_LOGE(nodeName, "moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), "
         "but moeExpertNum=%u, epWorldSize=%u, sharedExpertRankNum=%u.", moeExpertNum, epWorldSize, sharedExpertRankNum),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(localMoeExpertNum <= 0, OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %d",
+    OP_TILING_CHECK(localMoeExpertNum <= 0, OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %u",
         localMoeExpertNum), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((tpWorldSize > 1) && (localMoeExpertNum > 1), OP_LOGE(nodeName, "Cannot support multi-moeExpert %d "
-        "in a rank when tpWorldSize = %d > 1", localMoeExpertNum, tpWorldSize), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((tpWorldSize > 1) && (localMoeExpertNum > 1), OP_LOGE(nodeName, "Cannot support multi-moeExpert %u "
+        "in a rank when tpWorldSize = %u > 1", localMoeExpertNum, tpWorldSize), return ge::GRAPH_FAILED);
 
     // 检验epWorldSize是否是8的倍数
     OP_TILING_CHECK(epWorldSize % 8 != 0, OP_LOGE(nodeName,

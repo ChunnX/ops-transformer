@@ -207,7 +207,7 @@ protected:
     }
     ge::graphStatus AnalyzeShapeAttr();
     void PrintTilingData();
-    virtual void PrintExtendMatmulTiling(bool isTail){};
+    virtual void PrintExtendMatmulTiling([[maybe_unused]] bool isTail){};
     // tiling
     void DoAllReduceTiling(bool useHcclApi = false);
     void DoRCSTiling();
