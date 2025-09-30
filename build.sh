@@ -782,9 +782,21 @@ while [[ $# -gt 0 ]]; do
     --noexec)
         ENABLE_UT_EXEC=FALSE
         ;;
-    -j)
-        INPUT_JOB_NUM=$2
-        shift 2
+    -j*)
+        OPTARG=$1
+        if [[ "$OPTARG" =~ ^-j[0-9]+$ ]]; then
+            INPUT_JOB_NUM="${OPTARG#*-j}"
+            # 可选：添加范围检查
+            if [ "$INPUT_JOB_NUM" -le 0 ]; then
+                echo "Error: Job number must be positive: $OPTARG" >&2
+                exit 1
+            fi
+        else
+            echo "Error: Invalid job number format: $OPTARG" >&2
+            echo "Expected: -j[n]" >&2
+            exit 1
+        fi
+        shift 1
         ;;
     --debug)
         CMAKE_BUILD_MODE="${CMAKE_BUILD_MODE} -g"
