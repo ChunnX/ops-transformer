@@ -116,7 +116,7 @@ __attribute__((always_inline)) inline uint64_t GetTilingKey(uint64_t tilingMode,
 namespace optiling {
 class RotateHalfTiling {
 public:
-    explicit RotateHalfTiling(gert::TilingContext *context) : context(context) {};
+    explicit RotateHalfTiling(gert::TilingContext *tilingContext) : context(tilingContext) {};
     uint64_t coreNum = 0;
     uint64_t tilingDtype = TILING_DTYPE_UNKNOWN;
     uint64_t tilingKey = TILING_KEY_PREFIX;

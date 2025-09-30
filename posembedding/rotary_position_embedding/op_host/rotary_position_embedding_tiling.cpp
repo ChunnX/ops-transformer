@@ -61,6 +61,7 @@ ge::graphStatus Tiling4RotaryPositionEmbedding(gert::TilingContext *context)
 
 ge::graphStatus TilingPrepareForRotaryPositionEmbedding(gert::TilingParseContext *context)
 {
+    OP_LOGE(context, "TilingPrepareForRotaryPositionEmbedding context success");
     return ge::GRAPH_SUCCESS;
 }
 
