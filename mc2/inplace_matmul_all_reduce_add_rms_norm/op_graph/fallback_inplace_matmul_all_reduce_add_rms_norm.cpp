@@ -166,22 +166,22 @@ ge::graphStatus InplaceMatmulAllreduceExecuteFuncAddRmsNorm(gert::OpExecuteConte
     OPS_CHECK(host_api_ctx == nullptr, OP_LOGE(kInnerDebug, "host_api_ctx is null"), return ge::GRAPH_FAILED);
 
     MatmulParas mm_para;
-    ge::graphStatus ret = GetMatmulPara(
+    ge::graphStatus retPara = GetMatmulPara(
         host_api_ctx, static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_X1),
         static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_X2), static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_BIAS),
         mm_para);
     OPS_CHECK(
-        ret != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get matmul paras."),
+        retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get matmul paras."),
         return ge::GRAPH_FAILED);
 
     QuantParas quant_para;
-    ret = GetQuantPara(
+    retPara = GetQuantPara(
         host_api_ctx, static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_SCALE),
         static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_OFFSET),
         static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_DEQUANT), static_cast<size_t>(-1), static_cast<size_t>(-1),
         static_cast<size_t>(-1), quant_para);
     OPS_CHECK(
-        ret != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get quant paras."),
+        retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get quant paras."),
         return ge::GRAPH_FAILED);
 
     CommParas comm_para;
