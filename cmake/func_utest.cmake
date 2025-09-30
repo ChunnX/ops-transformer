@@ -903,7 +903,7 @@ function(OpsTest_RunLaunch)
             ""
             ${ARGN}
     )
-    if (NOT UT_NO_EXEC)
+    if (ENABLE_UT_EXEC)
         set(LD_LIBRARY_PATH_ "LD_LIBRARY_PATH=$ENV{LD_LIBRARY_PATH}:${ASCEND_CANN_PACKAGE_PATH}/compiler/lib64:${ASCEND_CANN_PACKAGE_PATH}/toolkit/tools/simulator/Ascend910B1/lib")
         if (ENABLE_ASAN OR ENABLE_UBSAN)
             if (ENABLE_ASAN)
@@ -970,7 +970,7 @@ function(OpsTest_GenerateCoverage)
             ""
             ${ARGN}
     )
-    if (NOT UT_NO_EXEC)
+    if (ENABLE_UT_EXEC)
         if (ENABLE_GCOV)
             find_program(LCOV lcov REQUIRED)
             get_filename_component(GEN_COV_PY ${OPS_ADV_CMAKE_DIR}/scripts/utest/gen_coverage.py REALPATH)

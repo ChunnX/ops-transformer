@@ -781,6 +781,7 @@ while [[ $# -gt 0 ]]; do
         ;;
     --noexec)
         ENABLE_UT_EXEC=FALSE
+        shift
         ;;
     -j*)
         OPTARG=$1
