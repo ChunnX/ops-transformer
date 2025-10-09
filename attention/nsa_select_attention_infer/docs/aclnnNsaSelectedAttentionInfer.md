@@ -16,6 +16,7 @@
   </thead>
   <tbody>
     <tr>
+      <td style="border: 1px solid #ccc; padding: 12px;"><term>昇腾910_95 AI处理器</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
@@ -27,15 +28,19 @@
       <td style="border: 1px solid #ccc; text-align: center;">√</td>
     </tr>
     <tr>
+      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 200I/500 A2 推理产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
+      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 推理系列产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
+      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 训练系列产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
+      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 200I/300/500 推理产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
   </tbody>
@@ -68,19 +73,19 @@ aclnnStatus aclnnNsaSelectedAttentionInferGetWorkspaceSize(
     const aclTensor		*topkIndices, 
     const aclTensor		*attenMaskOptional,
     const aclTensor		*blockTableOptional,
-    const aclIntArray 	*actualQSeqLenOptional,
+    const aclIntArray *actualQSeqLenOptional,
     const aclIntArray	*actualKvSeqLenOptional,
-    char 			    *layoutOptional,
-    int64_t 		     numHeads,
-    int64_t 		     numKeyValueHeads,
-    int64_t 		     selectBlockSize,
-    int64_t              selectBlockCount,
-    int64_t              pageBlockSize,
-    double               scaleValue,
-    int64_t              sparseMode,
-    aclTensor           *output,
-    uint64_t            *workspaceSize,
-    aclOpExecutor      **executor)
+    char 			        *layoutOptional,
+    int64_t 		       numHeads,
+    int64_t 		       numKeyValueHeads,
+    int64_t 		       selectBlockSize,
+    int64_t            selectBlockCount,
+    int64_t            pageBlockSize,
+    double             scaleValue,
+    int64_t            sparseMode,
+    aclTensor         *output,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor)
 ```
 
 ```c++

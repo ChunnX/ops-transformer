@@ -9,6 +9,7 @@
   </tr></thead>
 <tbody>
   <tr>
+    <td class="tg-0lax"><term>昇腾910_95 AI处理器</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
@@ -20,15 +21,19 @@
     <td class="tg-0lax">√</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 200I/500 A2 推理产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 推理系列产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 训练系列产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 200/300/500 推理产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
 </tbody>
@@ -36,7 +41,7 @@
 
 ## 功能说明
 
-- 接口功能：Native Sparse Attention推理过程中，Compress Attention的计算。
+- 算子功能：Native Sparse Attention推理过程中，Compress Attention的计算。
 - 计算公式：
 
 <center>
@@ -55,7 +60,7 @@
 
 每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnNsaCompressAttentionInferGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompressAttentionInfer”接口执行计算。
 
-```c++
+```cpp
 aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
     const aclTensor    *query,
     const aclTensor    *key,
@@ -83,7 +88,7 @@ aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
 )
 ```
 
-```c++
+```cpp
 aclnnStatus aclnnNsaCompressAttentionInfer(
     void          *workspace,
     uint64_t       workspaceSize,

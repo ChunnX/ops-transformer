@@ -1,4 +1,4 @@
-# NsaSelectedAttentionGrad
+# aclnnNsaSelectedAttentionGrad
 
 ## 产品支持情况
 
@@ -44,35 +44,35 @@
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionGradGetWorkspaceSize(
-  const aclTensor *query,
-  const aclTensor *key,
-  const aclTensor *value,
-  const aclTensor *attentionOut,
-  const aclTensor *attentionOutGrad,
-  const aclTensor *softmaxMax,
-  const aclTensor *softmaxSum,
-  const aclTensor *topkIndices,
+  const aclTensor   *query,
+  const aclTensor   *key,
+  const aclTensor   *value,
+  const aclTensor   *attentionOut,
+  const aclTensor   *attentionOutGrad,
+  const aclTensor   *softmaxMax,
+  const aclTensor   *softmaxSum,
+  const aclTensor   *topkIndices,
   const aclIntArray *actualSeqQLenOptional,
   const aclIntArray *actualSeqKvLenOptional,
-  const aclTensor *attenMaskOptional,
-  double scaleValue,
-  int64_t selectedBlockSize,
-  int64_t selectedBlockCount,
-  int64_t headNum,
-  char *inputLayout,
-  int64_t sparseMode,
-  aclTensor *dqOut,
-  aclTensor *dkOut,
-  aclTensor *dvOut,
-  uint64_t *workspaceSize,
-  aclOpExecutor **executor)
+  const aclTensor   *attenMaskOptional,
+  double             scaleValue,
+  int64_t            selectedBlockSize,
+  int64_t            selectedBlockCount,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            sparseMode,
+  aclTensor         *dqOut,
+  aclTensor         *dkOut,
+  aclTensor         *dvOut,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionGrad(
-  void *workspace,
-  uint64_t workspaceSize,
+  void          *workspace,
+  uint64_t       workspaceSize,
   aclOpExecutor *executor,
-  aclrtStream stream);
+  aclrtStream    stream);
 ```
 **说明**：
 

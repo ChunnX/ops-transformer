@@ -1,4 +1,4 @@
-# NsaSelectedAttention
+# aclnnNsaSelectedAttention
 
 ## 产品支持情况
 
@@ -32,30 +32,30 @@
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
-  const aclTensor *query,
-  const aclTensor *key,
-  const aclTensor *value,
-  const aclTensor *topkIndices,
-  const aclTensor *attenMaskOptional,
+  const aclTensor   *query,
+  const aclTensor   *key,
+  const aclTensor   *value,
+  const aclTensor   *topkIndices,
+  const aclTensor   *attenMaskOptional,
   const aclIntArray *actualSeqQLenOptional,
   const aclIntArray *actualSeqKvLenOptional,
-  double scaleValue,
-  int64_t headNum,
-  char *inputLayout,
-  int64_t sparseMode,
-  int64_t selectedBlockSize,
-  int64_t selectedBlockCount,
-  const aclTensor *softmaxMaxOut,
-  const aclTensor *softmaxSumOut,
-  const aclTensor *attentionOut,
-  uint64_t *workspaceSize,
-  aclOpExecutor **executor)
+  double             scaleValue,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            sparseMode,
+  int64_t            selectedBlockSize,
+  int64_t            selectedBlockCount,
+  const aclTensor   *softmaxMaxOut,
+  const aclTensor   *softmaxSumOut,
+  const aclTensor   *attentionOut,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 ```c++
 aclnnStatus aclnnNsaSelectedAttention(
-  void *workspace,
-  uint64_t workspaceSize,
-  aclOpExecutor *executor,
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 ### aclnnNsaSelectedAttentionGetWorkspaceSize

@@ -3,8 +3,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -19,10 +24,29 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnMatmulAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAllReduce”接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnMatmulAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAllReduce”接口执行计算。
 
-* `aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const char* group, const char *reduceOp, int64_t commTurn, int64_t streamMode, const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnMatmulAllReduce(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)`
+```cpp
+aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
+    const aclTensor *x1, 
+    const aclTensor *x2, 
+    const aclTensor *bias, 
+    const char*     group, 
+    const char      *reduceOp, 
+    int64_t         commTurn, 
+    int64_t         streamMode, 
+    const aclTensor *output, 
+    uint64_t        *workspaceSize, 
+    aclOpExecutor   **executor)
+```
+
+```cpp
+aclnnStatus aclnnMatmulAllReduce(
+    void              *workspace, 
+    uint64_t          workspaceSize, 
+    aclOpExecutor     *executor, 
+    const aclrtStream stream)
+```
 
 ## aclnnMatmulAllReduceGetWorkspaceSize
 
@@ -221,7 +245,7 @@
     </tbody></table>
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
@@ -232,18 +256,19 @@
 - x1、x2、bias计算输入的数据类型要和output计算输出的数据类型一致。
 - 仅支持hccs链路all mesh组网。
     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持1、2、4、8卡。
+    - <term>昇腾910_95 AI处理器</term>：支持1、2、4、8、16、32、64卡。
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](common/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     ```Cpp
     #include <iostream>
     #include <vector>
     #include <thread>
-    #include "aclnnop/aclnn_matmul_all_reduce.h"
+    #include "../op_host/op_api/aclnn_matmul_all_reduce.h"
 
     int ndev = 8;
 
@@ -437,11 +462,12 @@
     }
     ```
 
+- <term>昇腾910_95 AI处理器</term>：
     ```Cpp
     #include <iostream>
     #include <vector>
     #include <getopt.h>
-    #include "aclnnop/aclnn_matmul_all_reduce.h"
+    #include "../op_host/op_api/aclnn_matmul_all_reduce.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \
@@ -619,6 +645,7 @@
 
     int main(int argc, char *argv[])
     {
+        // 本样例基于Atlas A2实现，必须在Atlas A2上运行
         GetOption(argc, argv);
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);

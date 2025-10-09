@@ -3,8 +3,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -32,14 +37,36 @@
  - aclnnMatmulAllReduceAddRmsNorm：需新建两个输出张量normOut和张量y对象存储计算结果。
   - aclnnInplaceMatmulAllReduceAddRmsNorm：需新建一个输出张量normOut，原非Inplace场景中新建的输出张量y存储的结果直接存储到输入张量residual的内存中。
 
-每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceMatmulAllReduceAddRmsNorm”接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceMatmulAllReduceAddRmsNorm”接口执行计算。
 
-* `aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *residual, const aclTensor *gamma, double epsilon, const char* group, const char *reduceOp, int64_t commTurn, int64_t streamMode, const aclTensor *normOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)`
+```cpp
+aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize(
+    const aclTensor *x1, 
+    const aclTensor *x2, 
+    const aclTensor *bias, 
+    const aclTensor *residual, 
+    const aclTensor *gamma, 
+    double          epsilon, 
+    const char*     group, 
+    const char      *reduceOp, 
+    int64_t         commTurn, 
+    int64_t         streamMode, 
+    const aclTensor *normOut, 
+    uint64_t        *workspaceSize, 
+    aclOpExecutor   **executor)
+```
+
+```cpp
+aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
+    void                *workspace, 
+    uint64_t            workspaceSize, 
+    aclOpExecutor       *executor, 
+    const aclrtStream   stream)
+```
 
 ## aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize
 
-- **参数说明：**。
+- **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
@@ -198,7 +225,7 @@
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见aclnn返回码。
     第一段接口完成入参校验，出现以下场景时报错：
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
@@ -264,11 +291,11 @@
     </tbody></table>
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
-- 使用场景同融合算子[aclnnMatmulAllReduce](../context/aclnnMatmulAllReduce.md)一致：增量场景不使能MC2，全量场景使能MC2。
+- 使用场景同融合算子aclnnMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，bias为一维，其shape为(n)。
 - b*s、m、k、n的值均不得超过2147483647(INT32_MAX)。
 - 输入residual必须是三维，其shape为(b, s, n)，当x1为二维时，residual的(b*s)等于x1的m。输入gamma必须是一维，其shape为(n)。
@@ -280,13 +307,15 @@
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](common/编译与运行样例.md)。
 
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 ```Cpp
 #include <iostream>
 #include <vector>
 #include <thread>
-#include "aclnnop/aclnn_inplace_matmul_all_reduce_add_rms_norm.h"
+#include "../op_host/op_api/aclnn_inplace_matmul_all_reduce_add_rms_norm.h"
 
 int ndev = 8;
 
@@ -480,6 +509,7 @@ int launchOneThreadMatmulAllReduceAddRmsNorm(Args &args) {
 }
 
 int main(int argc, char *argv[]) {
+    // 本样例基于Atlas A2实现，必须在Atlas A2上运行
     int ret;
     int32_t devices[ndev];
     for (int i = 0; i < ndev; i++) {

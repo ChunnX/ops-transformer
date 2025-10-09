@@ -1,4 +1,4 @@
-# FlashAttentionVarLenScore
+# aclnnFlashAttentionVarLenScore
 
 ## 产品支持情况
 
@@ -28,36 +28,36 @@
 
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
-  const aclTensor *query,
-  const aclTensor *key,
-  const aclTensor *value,
-  const aclTensor *realShiftOptional,
-  const aclTensor *dropMaskOptional,
-  const aclTensor *paddingMaskOptional,
-  const aclTensor *attenMaskOptional,
+  const aclTensor   *query,
+  const aclTensor   *key,
+  const aclTensor   *value,
+  const aclTensor   *realShiftOptional,
+  const aclTensor   *dropMaskOptional,
+  const aclTensor   *paddingMaskOptional,
+  const aclTensor   *attenMaskOptional,
   const aclIntArray *prefixOptional,
   const aclIntArray *actualSeqQLenOptional,
   const aclIntArray *actualSeqKvLenOptional,
-  double scaleValue,
-  double keepProb,
-  int64_t preTokens,
-  int64_t nextTokens,
-  int64_t headNum,
-  char *inputLayout,
-  int64_t innerPrecise,
-  int64_t sparseMode,
-  const aclTensor *softmaxMaxOut,
-  const aclTensor *softmaxSumOut,
-  const aclTensor *softmaxOutOut,
-  const aclTensor *attentionOutOut,
-  uint64_t *workspaceSize,
-  aclOpExecutor **executor)
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  const aclTensor   *softmaxMaxOut,
+  const aclTensor   *softmaxSumOut,
+  const aclTensor   *softmaxOutOut,
+  const aclTensor   *attentionOutOut,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScore(
-  void *workspace,
-  uint64_t workspaceSize,
-  aclOpExecutor *executor,
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 

@@ -1,4 +1,4 @@
-# NsaCompressAttention
+# aclnnNsaCompressAttention
 
 ## 产品支持情况
 
@@ -53,34 +53,34 @@ NsaCompressAttention输入query、key、value的数据排布格式支持从多�
 每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnNsaCompressAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompressAttention”接口执行计算。
 ```c++
 aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
-  const aclTensor *query,
-  const aclTensor *key,
-  const aclTensor *value,
-  const aclTensor *attenMaskOptional,
-  const aclTensor *topkMaskOptional,
+  const aclTensor   *query,
+  const aclTensor   *key,
+  const aclTensor   *value,
+  const aclTensor   *attenMaskOptional,
+  const aclTensor   *topkMaskOptional,
   const aclIntArray *actualSeqQLenOptional,
   const aclIntArray *actualCmpSeqKvLenOptional,
   const aclIntArray *actualSelSeqKvLenOptional,
-  double scaleValue,
-  int64_t headNum,
-  char *inputLayout,
-  int64_t sparseMode,
-  int64_t compressBlockSize,
-  int64_t compressStride,
-  int64_t selectBlockSize,
-  int64_t selectBlockCount,
-  const aclTensor *softmaxMaxOut,
-  const aclTensor *softmaxSumOut,
-  const aclTensor *attentionOutOut,
-  const aclTensor *topkIndicesOut,
-  uint64_t *workspaceSize,
-  aclOpExecutor **executor)
+  double             scaleValue,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            sparseMode,
+  int64_t            compressBlockSize,
+  int64_t            compressStride,
+  int64_t            selectBlockSize,
+  int64_t            selectBlockCount,
+  const aclTensor   *softmaxMaxOut,
+  const aclTensor   *softmaxSumOut,
+  const aclTensor   *attentionOutOut,
+  const aclTensor   *topkIndicesOut,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 ```c++
 aclnnStatus aclnnNsaCompressAttention(
-  void *workspace,
-  uint64_t workspaceSize,
-  aclOpExecutor *executor,
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 

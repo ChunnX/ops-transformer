@@ -4,23 +4,27 @@
 
 | 产品                                                                | 是否支持 |
 |:------------------------------------------------------------------|:----:|
+| <term>昇腾910_95 AI处理器</term>                                       |  ×   |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                      |  √   |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |  √   |
+| <term>Atlas 200I/500 A2 推理产品</term>                               |  ×   |
+| <term>Atlas 推理系列产品 </term>                                        |  ×   |
+| <term>Atlas 训练系列产品</term>                                         |  ×   |
+| <term>Atlas 200/300/500 推理产品</term>                               |  ×   |
 
 ## 功能说明
 
-算子功能：
-GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。
+- 接口功能：GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。
 本接口相较于[aclnnGroupedMatmulFinalizeRouting](aclnnGroupedMatmulFinalizeRouting.md)，新增入参offset，新增支持非对称量化场景，请根据实际情况选择合适的接口。新增入参antiquantScale和antiquantOffset（暂未使用）。
 
 ## 函数原型
 
-每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
-    const aclTensor *x,
-    aclTensor *w,
+    const aclTensor *x1,
+    aclTensor       *x2,
     const aclTensor *scaleOptional,
     const aclTensor *biasOptional,
     const aclTensor *offsetOptional,
@@ -31,22 +35,27 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor *sharedInputOptional,
     const aclTensor *logitOptional,
     const aclTensor *rowIndexOptional,
-    int64_t dtype, float sharedInputWeight,
-    int64_t sharedInputOffset,
-    bool transposeX,
-    bool transposeW,
-    int64_t groupListType,
-    aclTensor *y,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    int64_t          dtype, 
+    float            sharedInputWeight,
+    int64_t          sharedInputOffset,
+    bool             transposeX1,
+    bool             transposeX2,
+    int64_t          groupListType,
+    aclTensor       *out,
+    uint64_t        *workspaceSize,
+    aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream)
+    void*          workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream    stream)
+    void*          workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream    stream)
 ```
 
 
@@ -54,14 +63,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
 
 - **参数说明：**
   <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 110px">
-  <col style="width: 301px">
-  <col style="width: 219px">
-  <col style="width: 328px">
-  <col style="width: 101px">
-  <col style="width: 143px">
-  <col style="width: 146px">
+  <col style="width: 170px">
+  <col style="width: 120px">
+  <col style="width: 400px">
+  <col style="width: 230px">
+  <col style="width: 212px">
+  <col style="width: 100px">
+  <col style="width: 190px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -76,7 +85,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x1</td>
       <td>输入</td>
       <td>输入x(左矩阵)。</td>
       <td>无</td>
@@ -86,11 +95,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>w</td>
+      <td>x2</td>
       <td>输入</td>
       <td>输入weight(右矩阵)</td>
       <td>无</td>
-      <td>INT8</td>
+      <td>INT4</td>
       <td>ND</td>
       <td>shape支持三维，当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168</td>
       <td>×</td>
@@ -170,7 +179,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>输入</td>
       <td>moe计算中共享专家的输出，需要与moe专家的输出进行combine操作</td>
       <td></td>
-      <td>INT64</td>
+      <td>BF16</td>
       <td>ND</td>
       <td>shape支持一维，维度为(e)，e和w的e一致</td>
       <td>×</td>
@@ -190,7 +199,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>输入</td>
       <td>moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引</td>
       <td></td>
-      <td>FLOAT32</td>
+      <td>INT64</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)，m和x的m一致</td>
       <td>×</td>
@@ -198,9 +207,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
     <tr>
       <td>dtype</td>
       <td>输入</td>
-      <td>计算的输出类型: 0：FLOAT32；1：FLOAT16；2：BFLOAT16。目前仅支持0。</td>
+      <td>计算的输出类型：0：FLOAT32；1：FLOAT16；2：BFLOAT16。目前仅支持0。</td>
       <td></td>
-      <td>int64_t</td>
+      <td>INT64</td>
       <td></td>
       <td></td>
       <td>×</td>
@@ -210,7 +219,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>输入</td>
       <td>共享专家与moe专家进行combine的系数，sharedInput先与该参数乘，然后在和moe专家结果累加。</td>
       <td></td>
-      <td>float</td>
+      <td>FLOAT32</td>
       <td></td>
       <td></td>
       <td>×</td>
@@ -220,27 +229,27 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>输入</td>
       <td>共享专家输出的在总输出中的偏移。</td>
       <td></td>
-      <td>int64_t</td>
+      <td>INT64</td>
       <td></td>
       <td></td>
       <td>×</td>
     </tr>
     <tr>
-      <td>transposeX</td>
+      <td>transposeX1</td>
       <td>输入</td>
       <td>左矩阵是否转置，仅支持false。</td>
       <td></td>
-      <td>bool</td>
+      <td>BOOL</td>
       <td></td>
       <td></td>
       <td>×</td>
     </tr>
     <tr>
-      <td>transposeW</td>
+      <td>transposeX2</td>
       <td>输入</td>
       <td>右矩阵是否转置，仅支持false。</td>
       <td></td>
-      <td>bool</td>
+      <td>BOOL</td>
       <td></td>
       <td></td>
       <td>×</td>
@@ -250,15 +259,15 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>输入</td>
       <td>分组模式：配置为0：cumsum模式，即为前缀和；配置为1：count模式。</td>
       <td></td>
-      <td>bool</td>
+      <td>INT64</td>
       <td></td>
       <td></td>
       <td>×</td>
     </tr>
     <tr>
-      <td>y</td>
+      <td>out</td>
       <td>输出</td>
-      <td>待进行abs计算的出参，公式中的out_i。</td>
+      <td>输出结果。</td>
       <td>shape与self相同。</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -290,11 +299,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  
+  第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <col style="width: 250px">
+  <col style="width: 130px">
+  <col style="width: 700px">
   </colgroup>
   <thead>
     <tr>
@@ -307,71 +318,71 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>传入的x、w、scaleOptional、biasOptional或y是空指针。</td>
+      <td>传入的x1、x2、scaleOptional、biasOptional或out是空指针。</td>
     </tr>
     <tr>
       <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="8">161002</td>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional、shareInputWeight、shareInputOffest、transposeX、transposeW、或y的数据类型或数据格式不在支持的范围内。</td>
+      <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional、shareInputWeight、shareInputOffest、transposeX1、transposeX2、或out的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional或y的shape不满足校验条件。</td>
+      <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional或out的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional或y的shape是空tensor。</td>
+      <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional或out的shape是空tensor。</td>
     </tr>
     <tr>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional或y的shape是空tensor。</td>
+      <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、shareInputOptional、logitOptional、rowIndexOptional或out的shape是空tensor。</td>
     </tr>
   </tbody></table>
 
 ## aclnnGroupedMatmulFinalizeRoutingV2
 
 - **参数说明：**
-<table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-  <col style="width: 173px">
-  <col style="width: 112px">
-  <col style="width: 668px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnAbsGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
+  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
+    <col style="width: 173px">
+    <col style="width: 112px">
+    <col style="width: 668px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>workspace</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace内存地址。</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize获取。</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
+      </tr>
+      <tr>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的Stream。</td>
+      </tr>
+    </tbody>
+    </table>
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
 ## 约束说明
 **伪量化场景支持类型**
 输入和输出支持以下数据类型组合：
 
-| x    | w    | scale | bias    | offset  | antiquantScale | antiquantOffset | pertokenScale | groupList | sharedInput | logit   | rowIndex | y       |
+| x1    | x2    | scaleOptional | biasOptional    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupListOptional | sharedInputOptional | logitOptional   | rowIndexOptional | out       |
 |------|------|-------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|---------|
 | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32 | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
 | INT8 | INT4 | INT64 | FLOAT32 | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
@@ -381,7 +392,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
   - 在该场景中，antiquantScaleOptional、antiquantOffsetOptional必须设置为空。
 
 ## 调用示例
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](common/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/context/编译与运行样例.md)。
 
   ```Cpp
   #include <iostream>

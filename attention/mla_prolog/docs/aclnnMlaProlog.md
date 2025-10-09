@@ -81,20 +81,20 @@ aclnnStatus aclnnMlaPrologGetWorkspaceSize(
   const aclTensor *quantScaleCkvOptional, 
   const aclTensor *quantScaleCkrOptional, 
   const aclTensor *smoothScalesCqOptional, 
-  double rmsnormEpsilonCq, 
-  double rmsnormEpsilonCkv, 
-  char *cacheModeOptional, 
+  double           rmsnormEpsilonCq, 
+  double           rmsnormEpsilonCkv, 
+  char            *cacheModeOptional, 
   const aclTensor *queryOut, 
   const aclTensor *queryRopeOut, 
-  uint64_t *workspaceSize, 
-  aclOpExecutor **executor)
+  uint64_t        *workspaceSize, 
+  aclOpExecutor  **executor)
 ```
 ``` cpp
 aclnnStatus aclnnMlaProlog(
-  void *workspace, 
-  uint64_t workspaceSize, 
+  void          *workspace, 
+  uint64_t       workspaceSize, 
   aclOpExecutor *executor, 
-  aclrtStream stream)
+  aclrtStream    stream)
 ```
 
 

@@ -90,7 +90,7 @@ aclnnStatus aclnnPromptFlashAttentionV3GetWorkspaceSize(
 
 ```cpp
 aclnnStatus aclnnPromptFlashAttentionV3(
-	void               *workspace,
+	void                 *workspace,
     uint64_t            workspaceSize,
     aclOpExecutor      *executor,
     const aclrtStream   stream)

@@ -1,4 +1,4 @@
-# FlashAttentionVarLenScoreV3
+# aclnnFlashAttentionVarLenScoreV3
 
 ## 产品支持情况
 
@@ -27,43 +27,43 @@
 
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
-  const aclTensor *query,
-  const aclTensor *queryRope,
-  const aclTensor *key,
-  const aclTensor *keyRope,
-  const aclTensor *value,
-  const aclTensor *realShiftOptional,
-  const aclTensor *dropMaskOptional,
-  const aclTensor *paddingMaskOptional,
-  const aclTensor *attenMaskOptional,
+  const aclTensor   *query,
+  const aclTensor   *queryRope,
+  const aclTensor   *key,
+  const aclTensor   *keyRope,
+  const aclTensor   *value,
+  const aclTensor   *realShiftOptional,
+  const aclTensor   *dropMaskOptional,
+  const aclTensor   *paddingMaskOptional,
+  const aclTensor   *attenMaskOptional,
   const aclIntArray *prefixOptional,
   const aclIntArray *actualSeqQLenOptional,
   const aclIntArray *actualSeqKvLenOptional,
   const aclIntArray *qStartIdxOptional,
   const aclIntArray *kvStartIdxOptional,
-  double scaleValue,
-  double keepProb,
-  int64_t preTokens,
-  int64_t nextTokens,
-  int64_t headNum,
-  char *inputLayout,
-  int64_t innerPrecise,
-  int64_t sparseMode,
-  int64_t pseType,
-  const aclTensor *softmaxMaxOut,
-  const aclTensor *softmaxSumOut,
-  const aclTensor *softmaxOutOut,
-  const aclTensor *attentionOutOut,
-  uint64_t *workspaceSize,
-  aclOpExecutor **executor)
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  int64_t            pseType,
+  const aclTensor   *softmaxMaxOut,
+  const aclTensor   *softmaxSumOut,
+  const aclTensor   *softmaxOutOut,
+  const aclTensor   *attentionOutOut,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 ```c++
 
 aclnnStatus aclnnFlashAttentionVarLenScoreV3(
-  void *workspace,
-  uint64_t workspaceSize,
-  aclOpExecutor *executor,
-  const aclrtStream stream)
+  void              *workspace,
+  uint64_t           workspaceSize,
+  aclOpExecutor     *executor,
+  const aclrtStream  stream)
 ```
 
 

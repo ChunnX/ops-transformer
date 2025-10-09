@@ -3,11 +3,17 @@
 
 | 产品                                                                                     | 是否支持 |
 | :--------------------------------------------------------------------------------------- | :------: |
+| 昇腾910_95 AI处理器                                                                      |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品 </term>                        |    ×    |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件 </term> |    ×    |
+| <term>Atlas 200I/500 A2 推理产品 </term>                                         |    ×    |
+| <term>Atlas 推理系列产品 </term>                                                 |    ×    |
+| <term>Atlas 训练系列产品 </term>                                                 |    ×    |
+| <term>Atlas 200/300/500 推理产品 </term>                                         |    ×    |
+
 ## 功能说明
 
-- **算子功能**：兼容aclnnQuantMatmulAllReduce、aclnnQuantMatmulAllReduceV2、aclnnQuantMatmulAllReduceV3支持的功能，在此基础上新增perblock[量化方式](common/量化介绍.md)的支持。新增x1，x2输入支持dtype为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2。
+- **算子功能**：兼容aclnnQuantMatmulAllReduce、aclnnQuantMatmulAllReduceV2、aclnnQuantMatmulAllReduceV3支持的功能，在此基础上新增perblock量化方式的支持。新增x1，x2输入支持dtype为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2。
 - **计算公式**：
 
   - commQuantScale1Optional, commQuantScale2Optional不为空时:
@@ -55,10 +61,35 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnQuantMatmulAllReduceV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAllReduceV4”接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnQuantMatmulAllReduceV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAllReduceV4”接口执行计算。
 
-* `aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x3Optional, const aclTensor *x1ScaleOptional, const aclTensor *x2Scale, const aclTensor *commQuantScale1Optional, const aclTensor *commQuantScale2Optional, const char* group, const char *reduceOp, int64_t commTurn, int64_t streamMode, int64_t groupSize, int64_t commQuantMode,const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnQuantMatmulAllReduceV4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
+```cpp
+aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
+    const aclTensor *x1,
+    const aclTensor *x2, 
+    const aclTensor *biasOptional, 
+    const aclTensor *x3Optional, 
+    const aclTensor *x1ScaleOptional, 
+    const aclTensor *x2Scale, 
+    const aclTensor *commQuantScale1Optional, 
+    const aclTensor *commQuantScale2Optional, 
+    const char      *group, 
+    const char      *reduceOp, 
+    int64_t          commTurn, 
+    int64_t          streamMode, 
+    int64_t          groupSize, 
+    int64_t          commQuantMode,
+    const aclTensor *output, 
+    uint64_t        *workspaceSize, 
+    aclOpExecutor  **executor)
+```
+```cpp
+aclnnStatus aclnnQuantMatmulAllReduceV4(
+    void          *workspace, 
+    uint64_t       workspaceSize, 
+    aclOpExecutor *executor, 
+    aclrtStream    stream)
+```
 
 ## aclnnQuantMatmulAllReduceV4GetWorkspaceSize
 
@@ -326,7 +357,7 @@
   </tr>
   </tbody></table>
 - **返回值：**
-  返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
@@ -344,14 +375,14 @@
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](common/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
 ```Cpp
 #include <iostream>
 #include <vector>
 #include <getopt.h>
 #include "aclnnop/aclnn_trans_matmul_weight.h"
-#include "aclnnop/aclnn_quant_matmul_all_reduce_v4.h"
+#include "../op_host/op_api/aclnn_quant_matmul_all_reduce_v4.h"
 
 #define ACL_CHECK(ret)                                                                                     \
     do {                                                                                                   \

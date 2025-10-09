@@ -1,4 +1,4 @@
-# FlashAttentionScore
+# aclnnFlashAttentionScore
 
 ## 产品支持情况
 
@@ -29,13 +29,13 @@
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
-  const aclTensor *query, 
-  const aclTensor *key, 
-  const aclTensor *value, 
-  const aclTensor *realShiftOptional, 
-  const aclTensor *dropMaskOptional, 
-  const aclTensor *paddingMaskOptional, 
-  const aclTensor *attenMaskOptional, 
+  const aclTensor   *query, 
+  const aclTensor   *key, 
+  const aclTensor   *value, 
+  const aclTensor   *realShiftOptional, 
+  const aclTensor   *dropMaskOptional, 
+  const aclTensor   *paddingMaskOptional, 
+  const aclTensor   *attenMaskOptional, 
   const aclIntArray *prefixOptional, 
   double scaleValue, 
   double keepProb, 
@@ -45,18 +45,18 @@ aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
   char *inputLayout, 
   int64_t innerPrecise, 
   int64_t sparseMode, 
-  const aclTensor *softmaxMaxOut, 
-  const aclTensor *softmaxSumOut, 
-  const aclTensor *softmaxOutOut, 
-  const aclTensor *attentionOutOut, 
-  uint64_t *workspaceSize, 
-  aclOpExecutor **executor)
+  const aclTensor   *softmaxMaxOut, 
+  const aclTensor   *softmaxSumOut, 
+  const aclTensor   *softmaxOutOut, 
+  const aclTensor   *attentionOutOut, 
+  uint64_t          *workspaceSize, 
+  aclOpExecutor     **executor)
 ```
 ```c++
 aclnnStatus aclnnFlashAttentionScore(
-  void *workspace, 
-  uint64_t workspaceSize, 
-  aclOpExecutor *executor, 
+  void              *workspace, 
+  uint64_t          workspaceSize, 
+  aclOpExecutor     *executor, 
   const aclrtStream stream)
 ```
 

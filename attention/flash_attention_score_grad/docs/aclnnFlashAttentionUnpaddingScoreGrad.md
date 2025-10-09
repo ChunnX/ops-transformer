@@ -1,4 +1,4 @@
-# FlashAttentionUnpaddingScoreGrad
+# aclnnFlashAttentionUnpaddingScoreGrad
 
 
 ## 产品支持情况
@@ -57,41 +57,41 @@
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradGetWorkspaceSize(
-  const aclTensor* query,
-  const aclTensor* keyIn,
-  const aclTensor* value,
-  const aclTensor* dy,
-  const aclTensor* pseShiftOptional,
-  const aclTensor* dropMaskOptional,
-  const aclTensor* paddingMaskOptional,
-  const aclTensor* attenMaskOptional,
-  const aclTensor* softmaxMaxOptional,
-  const aclTensor* softmaxSumOptional,
-  const aclTensor* softmaxInOptional,
-  const aclTensor* attentionInOptional,
+  const aclTensor*   query,
+  const aclTensor*   keyIn,
+  const aclTensor*   value,
+  const aclTensor*   dy,
+  const aclTensor*   pseShiftOptional,
+  const aclTensor*   dropMaskOptional,
+  const aclTensor*   paddingMaskOptional,
+  const aclTensor*   attenMaskOptional,
+  const aclTensor*   softmaxMaxOptional,
+  const aclTensor*   softmaxSumOptional,
+  const aclTensor*   softmaxInOptional,
+  const aclTensor*   attentionInOptional,
   const aclIntArray* prefixOptional,
   const aclIntArray* actualSeqQLenOptional,
   const aclIntArray* actualSeqKvLenOptional,
-  double scaleValue,
-  double keepProb,
-  int64_t preTokens,
-  int64_t nextTokens,
-  int64_t headNum,
-  char* inputLayout,
-  int64_t innerPrecise,
-  int64_t sparseMode,
-  const aclTensor* dqOut,
-  const aclTensor* dkOut,
-  const aclTensor* dvOut,
-  const aclTensor* dpseOut,
-  uint64_t* workspaceSize,
-  aclOpExecutor** executor)
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char*              inputLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  const aclTensor*   dqOut,
+  const aclTensor*   dkOut,
+  const aclTensor*   dvOut,
+  const aclTensor*   dpseOut,
+  uint64_t*          workspaceSize,
+  aclOpExecutor**    executor)
 ```
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGrad(
-  void *workspace,
-  uint64_t workspaceSize,
-  aclOpExecutor *executor,
+  void*             workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor*    executor,
   const aclrtStream stream)
 ```
 

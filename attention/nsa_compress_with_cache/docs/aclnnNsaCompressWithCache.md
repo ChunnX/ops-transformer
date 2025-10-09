@@ -9,6 +9,7 @@
   </tr></thead>
 <tbody>
   <tr>
+    <td class="tg-0lax"><term>昇腾910_95 AI处理器</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
@@ -20,15 +21,19 @@
     <td class="tg-0lax">√</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 200I/500 A2 推理产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 推理系列产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 训练系列产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
   <tr>
+    <td class="tg-0lax"><term>Atlas 200/300/500 推理产品</term></td>
     <td class="tg-0lax">x</td>
   </tr>
 </tbody>

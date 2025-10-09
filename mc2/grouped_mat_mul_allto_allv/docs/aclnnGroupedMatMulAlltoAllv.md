@@ -4,8 +4,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -28,30 +33,30 @@
 每个算子分为两段式接口，必须先调用“aclnnGroupedMatMulAlltoAllvGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAlltoAllv”接口执行计算。
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
-    const aclTensor* gmmX,
-    const aclTensor* gmmWeight,
-    const aclTensor* sendCountsTensorOptional,
-    const aclTensor* recvCountsTensorOptional,
-    const aclTensor* mmXOptional,
-    const aclTensor* mmWeightOptional,
-    const char* group,
-    int64_t epWorldSize,
+    const aclTensor*   gmmX,
+    const aclTensor*   gmmWeight,
+    const aclTensor*   sendCountsTensorOptional,
+    const aclTensor*   recvCountsTensorOptional,
+    const aclTensor*   mmXOptional,            
+    const aclTensor*   mmWeightOptional,
+    const char*        group,
+    int64_t            epWorldSize,
     const aclIntArray* sendCounts,
     const aclIntArray* recvCounts,
-    bool transGmmWeight,
-    bool transMmWeight,
-    aclTensor* y,
-    aclTensor* mmYOptional,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    bool               transGmmWeight,
+    bool               transMmWeight,
+    aclTensor*         y,
+    aclTensor*         mmYOptional,
+    uint64_t*          workspaceSize,
+    aclOpExecutor**       executor)
 ```
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllv(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream)
+    void*           workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor*  executor,
+    aclrtStream     stream)
 ```
 
 ## aclnnGroupedMatMulAlltoAllvGetWorkspaceSize
@@ -126,6 +131,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
   <tr>
    <td>epWorldSize</td>
    <td>输入</td>
+   <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64；<br><term>昇腾910_95 AI处理器</term>支持4、8、16、32、64。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -284,7 +290,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_grouped_mat_mul_allto_allv.h"
+    #include "../op_host/op_api/aclnn_grouped_mat_mul_allto_allv.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \
@@ -515,6 +521,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
     int main(int argc, char *argv[]) 
     {
+        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[EP_WORLD_SIZE];
@@ -550,301 +557,6 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         for (uint32_t rankId = 0; rankId < EP_WORLD_SIZE; rankId++) {
             threads[rankId]->join();
         }
-        aclFinalize();
-        return 0;
-    }
-    ```
-
-    ```Cpp
-    #include <thread>
-    #include <iostream>
-    #include <string>
-    #include <vector>
-    #include "acl/acl.h"
-    #include <getopt.h>
-    #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_grouped_mat_mul_allto_allv.h"
-
-    #define CHECK_RET(cond, return_expr) \
-        do {                             \
-            if (!(cond)) {               \
-                return_expr;             \
-            }                            \
-        } while (0)
-
-    #define LOG_PRINT(message, ...)          \
-        do {                                 \
-            printf(message, ##__VA_ARGS__);  \
-        } while (0)
-
-    constexpr int DEV_NUM = 4;
-    constexpr int INTERNAL_LEN = 10;
-    int g_rankId = 0;
-
-    int64_t GetShapeSize(const std::vector<int64_t> &shape)
-    {
-        int64_t shape_size = 1;
-        for (auto i : shape) {
-            shape_size *= i;
-        }
-        return shape_size;
-    }
-
-    void GetOption(int argc, char **argv)
-    {
-        while (1) {
-            int optionIndex = 0;
-            struct option longOptions[] = {
-                {"rank_id", 1, 0, 'a'},
-                {0, 0, 0, 0}
-            };
-            int c = getopt_long(argc, argv, "a:", longOptions, &optionIndex);
-            if (c == -1) {
-                break;
-            }
-
-            switch (c) {
-                case 'a':
-                    g_rankId = atoi(optarg);
-                    LOG_PRINT("[INFO] rankId = %d\n", g_rankId);
-                default:
-                    break;
-            }
-        }
-    }
-
-    template <typename T>
-    int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-        aclDataType dataType, aclTensor **tensor)
-    {
-        auto size = GetShapeSize(shape) * sizeof(T);
-        auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-        ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
-        std::vector<int64_t> strides(shape.size(), 1);
-        for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i + 1] * strides[i + 1];
-        }
-        *tensor = aclCreateTensor(shape.data(),
-            shape.size(),
-            dataType,
-            strides.data(),
-            0,
-            aclFormat::ACL_FORMAT_ND,
-            shape.data(),
-            shape.size(),
-            *deviceAddr);
-        return 0;
-    }
-
-    struct Args {
-        int rankId;
-        HcclComm hcclComm;
-        aclrtStream stream;
-        aclrtContext context;
-    };
-
-    // shape 基本信息
-    constexpr int64_t EP_WORLD_SIZE = 4;
-    constexpr int64_t BS = 4096;
-    constexpr int64_t K = 2;
-    constexpr int64_t H = 7168;
-    constexpr int64_t e = 4;
-    constexpr int64_t N1 = 4096;
-    constexpr int64_t N2 = 4096;
-    constexpr int64_t A = BS * K;
-
-    std::vector<int16_t> pGmmyData(BS *K *N1, 0);
-    std::vector<int16_t> pmmYData(BS *N2, 0);
-
-    int LaunchOneThreadAlltoAllvGmm(Args &args)
-    {
-        int ret = aclrtSetCurrentContext(args.context);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
-        char hcomName[128] = {0};
-        ret = HcclGetCommName(args.hcclComm, hcomName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
-
-        std::vector<int64_t> gmmXShape = {A, H};
-        std::vector<int64_t> gmmWShape = {e, H, N1};
-        std::vector<int64_t> gmmYShape = {BS * K, N1};
-        std::vector<int64_t> permuteShape = {A, H};
-        std::vector<int64_t> mmXShape = {BS, H};
-        std::vector<int64_t> mmWShape = {H, N2};
-        std::vector<int64_t> mmYShape = {BS, N2};
-
-        std::vector<int64_t> sendCountsShape = {EP_WORLD_SIZE * e};
-        std::vector<int64_t> recvCountsShape = {EP_WORLD_SIZE * e};
-
-        std::vector<int64_t> sendCountsList(EP_WORLD_SIZE * e, A / (EP_WORLD_SIZE * e));
-        std::vector<int64_t> recvCountsList(EP_WORLD_SIZE * e, A / (EP_WORLD_SIZE * e));
-
-        void *gmmXDeviceAddr = nullptr;
-        void *gmmWDeviceAddr = nullptr;
-        void *gmmYDeviceAddr = nullptr;
-        void *permuteDeviceAddr = nullptr;
-        void *mmXDeviceAddr = nullptr;
-        void *mmWDeviceAddr = nullptr;
-        void *mmYDeviceAddr = nullptr;
-
-        aclTensor *gmmX = nullptr;
-        aclTensor *gmmW = nullptr;
-        aclTensor *gmmY = nullptr;
-
-        aclTensor *mmX = nullptr;
-        aclTensor *mmW = nullptr;
-        aclTensor *mmY = nullptr;
-
-        aclTensor *sendCountsTensor = nullptr;
-        aclTensor *recvCountsTensor = nullptr;
-
-        uint64_t workspaceSize = 0;
-        aclOpExecutor *executor = nullptr;
-        void *workspaceAddr = nullptr;
-
-        long long gmmXShapeSize = GetShapeSize(gmmXShape);
-        long long gmmWShapeSize = GetShapeSize(gmmWShape);
-        long long gmmYShapeSize = GetShapeSize(gmmYShape);
-
-        long long mmXShapeSize = GetShapeSize(mmXShape);
-        long long mmWShapeSize = GetShapeSize(mmWShape);
-        long long mmYShapeSize = GetShapeSize(mmYShape);
-
-        std::vector<uint16_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 1024);  // BF16, FP16
-        std::vector<uint16_t> gmmWHostData(gmmWShapeSize, (args.rankId + 1) * 512);
-        std::vector<uint16_t> gmmYHostData(gmmYShapeSize, 65535);
-
-        std::vector<uint16_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 1024);  // BF16, FP16
-        std::vector<uint16_t> mmWHostData(mmWShapeSize, (args.rankId + 1) * 512);
-        std::vector<uint16_t> mmYHostData(mmYShapeSize, 0);
-
-        ret = CreateAclTensor(gmmXHostData, gmmXShape, &gmmXDeviceAddr, aclDataType::ACL_FLOAT16, &gmmX);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(gmmWHostData, gmmWShape, &gmmWDeviceAddr, aclDataType::ACL_FLOAT16, &gmmW);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(gmmYHostData, gmmYShape, &gmmYDeviceAddr, aclDataType::ACL_FLOAT16, &gmmY);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-        aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
-        aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-
-        // 调用第一阶段接口
-        ret = aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(gmmX,
-            gmmW,
-            sendCountsTensor,
-            recvCountsTensor,
-            mmX,
-            mmW,
-            hcomName,
-            EP_WORLD_SIZE,
-            sendCounts,
-            recvCounts,
-            false,
-            false,
-            gmmY,
-            mmY,
-            &workspaceSize,
-            &executor);
-        CHECK_RET(
-            ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnGroupedMatMulAlltoAllvGetWorkspaceSize failed. ret = %d \n", ret);
-            return ret);
-
-        if (workspaceSize > 0) {
-            ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
-        }
-        // 调用第二阶段接口
-        ret = aclnnGroupedMatMulAlltoAllv(workspaceAddr, workspaceSize, executor, args.stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnGroupedMatMulAlltoAllv failed. ret = %d \n", ret);
-                return ret);
-        // （固定写法）同步等待任务执行结束
-        ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
-                return ret);
-        // 释放device资源，需要根据具体API的接口定义修改
-        if (args.rankId == 0) {
-            size_t size = A * N1 * sizeof(int16_t);
-            aclrtMemcpy(pGmmyData.data(), size, gmmYDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
-        }
-        if (gmmX != nullptr) {
-            aclDestroyTensor(gmmX);
-        }
-        if (gmmW != nullptr) {
-            aclDestroyTensor(gmmW);
-        }
-        if (gmmY != nullptr) {
-            aclDestroyTensor(gmmY);
-        }
-        if (mmX != nullptr) {
-            aclDestroyTensor(mmX);
-        }
-        if (mmW != nullptr) {
-            aclDestroyTensor(mmW);
-        }
-        if (mmY != nullptr) {
-            aclDestroyTensor(mmY);
-        }
-        if (gmmXDeviceAddr != nullptr) {
-            aclrtFree(gmmXDeviceAddr);
-        }
-        if (gmmWDeviceAddr != nullptr) {
-            aclrtFree(gmmWDeviceAddr);
-        }
-        if (gmmYDeviceAddr != nullptr) {
-            aclrtFree(gmmYDeviceAddr);
-        }
-        if (mmXDeviceAddr != nullptr) {
-            aclrtFree(mmXDeviceAddr);
-        }
-        if (mmWDeviceAddr != nullptr) {
-            aclrtFree(mmWDeviceAddr);
-        }
-        if (mmYDeviceAddr != nullptr) {
-            aclrtFree(mmYDeviceAddr);
-        }
-        if (workspaceSize > 0) {
-            aclrtFree(workspaceAddr);
-        }
-        ret = aclrtDestroyStream(args.stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyStream failed. ret = %d \n", ret); return ret);
-        ret = aclrtResetDevice(args.rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtResetDevice failed. ret = %d \n", ret); return ret);
-        return 0;
-    }
-
-    int main(int argc, char *argv[]) 
-    {
-        GetOption(argc, argv);
-        int ret = aclInit(nullptr);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
-        aclrtStream stream;
-        aclrtContext context;
-
-        ret = aclrtSetDevice(g_rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateContext(&context, g_rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateStream(&stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
-
-        // 初始化集合通信域
-        HcclComm comms;
-        HcclRootInfo hcclRootInfo;
-        for (uint32_t i = 0; i < INTERNAL_LEN; i++) {
-            hcclRootInfo.internal[i] = 'a';
-        }
-        hcclRootInfo.internal[INTERNAL_LEN] = '\0';
-        ret = HcclCommInitRootInfo(DEV_NUM, &hcclRootInfo, g_rankId, &comms);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitRootInfo failed. ret = %d \n", ret); return ret);
-
-        Args args;
-        args.rankId = g_rankId;
-        args.hcclComm = comms;
-        args.stream = stream;
-        args.context = context;
-        ret = LaunchOneThreadAlltoAllvGmm(args);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] LaunchOneThreadAlltoAllvGmm failed. ret = %d \n", ret); return ret);
         aclFinalize();
         return 0;
     }

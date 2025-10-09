@@ -4,8 +4,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -27,21 +32,21 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(
     const aclTensor* x1,
     const aclTensor* x2,
     const aclTensor* bias,
-    const char* group,
-    const char* reduceOp,
-    int64_t commTurn,
-    int64_t streamMode,
+    const char*      group,
+    const char*      reduceOp,
+    int64_t          commTurn,
+    int64_t          streamMode,
     const aclTensor* output,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    uint64_t*        workspaceSize,
+    aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatter(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream)
+    void*           workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor*  executor,
+    aclrtStream     stream)
 ```
 
 ## aclnnMatmulReduceScatterGetWorkspaceSize
@@ -220,18 +225,19 @@ aclnnStatus aclnnMatmulReduceScatter(
 - 输出为2维，其shape为\(m/rank\_size, n\), rank_size为卡数。
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持2、4、8卡，并且仅支持hccs链路all mesh组网。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16、32卡，并且仅支持hccs链路double ring组网。
+- <term>昇腾910_95 AI处理器</term>：支持2、4、8、16、32、64卡，并且仅支持hccs链路all mesh组网。
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
 
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
     #include <vector>
-    #include "aclnnop/aclnn_matmul_reduce_scatter.h"
+    #include "../op_host/op_api/aclnn_matmul_reduce_scatter.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \
@@ -380,6 +386,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
     int main(int argc, char *argv[])
     {
+        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[DEV_NUM];
@@ -414,219 +421,6 @@ aclnnStatus aclnnMatmulReduceScatter(
             auto hcclRet = HcclCommDestroy(comms[i]);
             CHECK_RET(hcclRet == HCCL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return -1);
         }
-        aclFinalize();
-        return 0;
-    }
-    ```
-
-    ```c++
-    #include <iostream>
-    #include <vector>
-    #include <getopt.h>
-    #include "aclnnop/aclnn_matmul_reduce_scatter.h"
-
-    #define CHECK_RET(cond, return_expr) \
-        do {                             \
-            if (!(cond)) {               \
-                return_expr;             \
-            }                            \
-        } while (0)
-
-    #define LOG_PRINT(message, ...)         \
-        do {                                \
-            printf(message, ##__VA_ARGS__); \
-        } while(0)
-
-    constexpr int DEV_NUM = 4;
-    constexpr int INTERNAL_LEN = 10;
-    int g_rankId = 0;
-
-    void GetOption(int argc, char **argv)
-    {
-        while (1) {
-            int optionIndex = 0;
-            struct option longOptions[] = {
-                {"rank_id", 1, 0, 'a'},
-                {0, 0, 0, 0}
-            };
-            int c = getopt_long(argc, argv, "a:", longOptions, &optionIndex);
-            if (c == -1) {
-                break;
-            }
-
-            switch (c) {
-                case 'a':
-                    g_rankId = atoi(optarg);
-                    LOG_PRINT("[INFO] rankId = %d\n", g_rankId);
-                default:
-                    break;
-            }
-        }
-    }
-
-    int64_t GetShapeSize(const std::vector<int64_t> &shape)
-    {
-        int64_t shape_size = 1;
-        for (auto i : shape) {
-            shape_size *= i;
-        }
-        return shape_size;
-    }
-
-    template<typename T>
-    int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-        aclDataType dataType, aclTensor **tensor)
-    {
-        auto size = GetShapeSize(shape) * sizeof(T);
-        auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-        ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
-        std::vector<int64_t> strides(shape.size(), 1);
-        for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i +1] * strides[i + 1];
-        }
-        *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-            shape.data(), shape.size(), *deviceAddr);
-        return 0;
-    }
-
-    struct Args {
-        int rankId;
-        HcclComm hcclComm;
-        aclrtStream stream;
-        aclrtContext context;
-    };
-
-    int LaunchOneThreadMmReduceScatter(Args &args)
-    {
-        int ret = aclrtSetCurrentContext(args.context);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
-        char hcomName[128] = {0};
-        ret = HcclGetCommName(args.hcclComm, hcomName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ERROR: %d\n", ret); return -1);
-        LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p, context = %p\n", args.rankId, hcomName,
-            args.stream, args.context);
-        std::vector<int64_t> x1Shape = {32, 256};
-        std::vector<int64_t> x2Shape = {256, 128};
-        std::vector<int64_t> biasShape = {128};
-        std::vector<int64_t> outShape = {32 / DEV_NUM, 128};
-        void *x1DeviceAddr = nullptr;
-        void *x2DeviceAddr = nullptr;
-        void *biasDeviceAddr = nullptr;
-        void *outDeviceAddr = nullptr;
-        aclTensor *x1 = nullptr;
-        aclTensor *x2 = nullptr;
-        aclTensor *bias = nullptr;
-        aclTensor *out = nullptr;
-
-        int64_t commTurn = 0;
-        int64_t stream_mode = 1;
-        uint64_t workspaceSize = 0;
-        aclOpExecutor *executor = nullptr;
-        void *workspaceAddr = nullptr;
-
-        long long x1ShapeSize = GetShapeSize(x1Shape);
-        long long x2ShapeSize = GetShapeSize(x2Shape);
-        long long biasShapeSize = GetShapeSize(biasShape);
-        long long outShapeSize = GetShapeSize(outShape);
-
-        std::vector<int16_t> x1HostData(x1ShapeSize, 0);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 0);
-        std::vector<int16_t> biasHostData(biasShapeSize, 0);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
-        // 创建tensor
-        ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT16, &x2);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-        // 调用第一阶段接口
-        ret = aclnnMatmulReduceScatterGetWorkspaceSize(
-            x1, x2, bias, hcomName, "sum", commTurn, stream_mode, out, &workspaceSize, &executor);
-        CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnMatmulReduceScatterGetWorkspaceSize failed. ret = %d \n", ret); return ret);
-        // 根据第一阶段接口计算出的workspaceSize申请device内存
-        if (workspaceSize > 0) {
-            ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
-        }
-        // 调用第二阶段接口
-        ret = aclnnMatmulReduceScatter(workspaceAddr, workspaceSize, executor, args.stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMatmulReduceScatter failed. ret = %d \n", ret); return ret);
-        // （固定写法）同步等待任务执行结束
-        ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-            return ret);
-        LOG_PRINT("[INFO] device_%d aclnnMatmulReduceScatter execute successfully.\n", args.rankId);
-        // 释放device资源，需要根据具体API的接口定义修改
-        if (x1 != nullptr) {
-            aclDestroyTensor(x1);
-        }
-        if (x2 != nullptr) {
-            aclDestroyTensor(x2);
-        }
-        if (bias != nullptr) {
-            aclDestroyTensor(bias);
-        }
-        if (out != nullptr) {
-            aclDestroyTensor(out);
-        }
-        if (x1DeviceAddr != nullptr) {
-            aclrtFree(x1DeviceAddr);
-        }
-        if (x2DeviceAddr != nullptr) {
-            aclrtFree(x2DeviceAddr);
-        }
-        if (biasDeviceAddr != nullptr) {
-            aclrtFree(biasDeviceAddr);
-        }
-        if (outDeviceAddr != nullptr) {
-            aclrtFree(outDeviceAddr);
-        }
-        if (workspaceSize > 0) {
-            aclrtFree(workspaceAddr);
-        }
-        aclrtDestroyStream(args.stream);
-        aclrtDestroyContext(args.context);
-        HcclCommDestroy(args.hcclComm);
-        aclrtResetDevice(args.rankId);
-        return 0;
-    }
-
-    int main(int argc, char *argv[])
-    {
-        GetOption(argc, argv);
-        int ret = aclInit(nullptr);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
-        aclrtStream stream;
-        aclrtContext context;
-        ret = aclrtSetDevice(g_rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateContext(&context, g_rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateStream(&stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
-
-        // 初始化集合通信域
-        HcclComm comms;
-        HcclRootInfo hcclRootInfo;
-        for (uint32_t i = 0; i < INTERNAL_LEN; i++) {
-            hcclRootInfo.internal[i] = 'a';
-        }
-        hcclRootInfo.internal[INTERNAL_LEN] = '\0';
-        ret = HcclCommInitRootInfo(DEV_NUM, &hcclRootInfo, g_rankId, &comms);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitRootInfo failed. ret = %d \n", ret); return ret);
-
-        Args args;
-        args.rankId = g_rankId;
-        args.hcclComm = comms;
-        args.stream = stream;
-        args.context = context;
-        ret = LaunchOneThreadMmReduceScatter(args);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] LaunchOneThreadMmReduceScatter failed. ret = %d \n", ret); return ret);
         aclFinalize();
         return 0;
     }

@@ -4,14 +4,19 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
-算子功能：BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
+- **算子功能**：BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
 
-计算公式：大体计算流程为：BatchMatMul计算-->转置（yShardType等于0时需要）-->ReduceScatter集合通信-->Add-->AllToAll集合通信。计算逻辑如下，其中y为输出
+- **计算公式**：大体计算流程为：BatchMatMul计算-->转置（yShardType等于0时需要）-->ReduceScatter集合通信-->Add-->AllToAll集合通信。计算逻辑如下，其中y为输出
 $$
 temp1 = BatchMatMul(x，weight)
 $$
@@ -34,22 +39,22 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(
     const aclTensor* x,
     const aclTensor* weight,
     const aclTensor* biasOptional,
-    const char* groupEp,
-    const char* groupTp,
-    int64_t epWorldSize,
-    int64_t tpWorldSize,
-    int64_t yShardType,
-    aclTensor* out,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const char*      groupEp,
+    const char*      groupTp,
+    int64_t          epWorldSize,
+    int64_t          tpWorldSize,
+    int64_t          yShardType,
+    aclTensor*       out,
+    uint64_t*        workspaceSize,
+    aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream)
+    void*           workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor*  executor,
+    aclrtStream     stream)
 ```
 
 ## aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize
@@ -252,6 +257,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
 
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 ```Cpp
 #include <thread>
 #include <iostream>
@@ -259,7 +265,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
-#include "aclnnop/aclnn_batch_matmul_reduce_scatter_all_to_all.h"
+#include "../op_host/op_api/aclnn_batch_matmul_reduce_scatter_all_to_all.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -444,6 +450,7 @@ int LaunchOneThreadBatchMMRSAlltoAll(Args &args)
 
 int main(int argc, char *argv[])
 {
+    // 本样例基于Atlas A3实现，必须在Atlas A3上运行
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     aclrtStream stream[DEV_NUM];

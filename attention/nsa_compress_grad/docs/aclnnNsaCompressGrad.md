@@ -1,4 +1,4 @@
-# NsaCompressGrad
+# aclnnNsaCompressGrad
 
 ## 产品支持情况
 
@@ -32,25 +32,25 @@
 
 ```c++
 aclnnStatus aclnnNsaCompressGradGetWorkspaceSize(
-  const aclTensor *outputGrad,
-  const aclTensor *input,
-  const aclTensor *weight,
+  const aclTensor   *outputGrad,
+  const aclTensor   *input,
+  const aclTensor   *weight,
   const aclIntArray *actSeqLenOptionalOptional,
-  int64_t compressBlockSize,
-  int64_t compressStride,
-  int64_t actSeqLenType,
-  char *layoutOptionalOptional,
-  const aclTensor *inputGradOut,
-  const aclTensor *weightGradOut,
-  uint64_t *workspaceSize,
-  aclOpExecutor **executor)
+  int64_t            compressBlockSize,
+  int64_t            compressStride,
+  int64_t            actSeqLenType,
+  char              *layoutOptionalOptional,
+  const aclTensor   *inputGradOut,
+  const aclTensor   *weightGradOut,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 ```c++
 aclnnStatus aclnnNsaCompressGrad(
-  void *workspace,
-  uint64_t workspaceSize,
+  void          *workspace,
+  uint64_t       workspaceSize,
   aclOpExecutor *executor,
-  aclrtStream stream)
+  aclrtStream    stream)
 ```
 ### aclnnNsaCompressGradGetWorkspaceSize
 

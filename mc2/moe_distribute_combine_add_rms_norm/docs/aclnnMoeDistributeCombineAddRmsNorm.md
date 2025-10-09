@@ -4,15 +4,19 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
-### 算子功能
-当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加），之后完成Add + RmsNorm融合。
+- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加），之后完成Add + RmsNorm融合。
 
-### 计算公式
+- 计算公式：
 $$
 rsOut = ReduceScatterV(expandX)\\
 ataOut = AllToAllV(rsOut)\\
@@ -21,7 +25,7 @@ x = combineOut + residualX\\
 y = \frac{x}{RMS(x)} * gamma,\quad\text{where}\ RMS(x) = \sqrt{\frac{1}{H}\sum_{i=1}^{H}x_{i}^{2}+normEps}
 $$
 
-注意该接口必须与`aclnnMoeDistributeDispatchV2`配套使用，相当于按`MoeDistributeDispatchV2`算子收集数据的路径原路返还。
+> 注意该接口必须与`aclnnMoeDistributeDispatchV2`配套使用，相当于按`MoeDistributeDispatchV2`算子收集数据的路径原路返还。
 
 ## 函数原型
 
@@ -43,35 +47,35 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize(
     const aclTensor* groupListOptional,
     const aclTensor* expandScalesOptional,
     const aclTensor* sharedExpertXOptional,
-    const char* groupEp,
-    int64_t epWorldSize,
-    int64_t epRankId,
-    int64_t moeExpertNum,
-    const char* groupTp,
-    int64_t tpWorldSize,
-    int64_t tpRankId,
-    int64_t expertShardType,
-    int64_t sharedExpertNum,
-    int64_t sharedExpertRankNum,
-    int64_t globalBs,
-    int64_t outDtype,
-    int64_t commQuantMode,
-    int64_t groupListType,
-    const char* commAlg,
-    float normEps,
-    aclTensor* yOut,
-    aclTensor* rstdOut,
-    aclTensor* xOut,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const char*      groupEp,
+    int64_t          epWorldSize,
+    int64_t          epRankId,
+    int64_t          moeExpertNum,
+    const char*      groupTp,
+    int64_t          tpWorldSize,
+    int64_t          tpRankId,
+    int64_t          expertShardType,
+    int64_t          sharedExpertNum,
+    int64_t          sharedExpertRankNum,
+    int64_t          globalBs,
+    int64_t          outDtype,
+    int64_t          commQuantMode,
+    int64_t          groupListType,
+    const char*      commAlg,
+    float            normEps,
+    aclTensor*       yOut,
+    aclTensor*       rstdOut,
+    aclTensor*       xOut,
+    uint64_t*        workspaceSize,
+    aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream)
+    void            *workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor   *executor,
+    aclrtStream     stream)
 ```
 
 ## aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize
@@ -427,7 +431,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 
 ## 约束说明
 
-1. `aclnnMoeDistributeDispatchV2`接口与`aclnnMoeDistributeCombineAddRmsNorm`接口必须配套使用，具体参考[调用示例](#调用示例)。
+1. `aclnnMoeDistributeDispatchV2`接口与`aclnnMoeDistributeCombineAddRmsNorm`接口必须配套使用，具体参考调用示例。
 
 2. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchV2`对应参数也保持一致。
 
@@ -455,31 +459,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 
 以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。本示例代码仅支持Atlas A3。
 
-- 文件准备：    
-  1.新建combineAddRmsNormDemo目录，按照下方指导在combineAddRmsNormDemo下新建aclnnCombineAddRmsNormDemo.cpp，buildCombineAddRmsNorm.sh，文件并修改。
-  2.将combineAddRmsNormDemo项目拷贝到服务器中。
-  3.安装cann包，并根据下方指导编译运行combineAddRmsNormDemo。
-
--  编译脚本
-    ```bash
-    #!/bin/bash
-    cann_path="/path/to/cann_env" # 更改cann包环境的路径
-    g++ "aclnnCombineAddRmsNormDemo.cpp" -o combineAddRmsNormDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
-        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
-    ```
-- 编译与运行：
-
-    ```bash
-    # source cann环境
-    source /path/to/cann_env/latest/bin/setenv.bash
-
-    # 编译aclnnCombineAddRmsNormDemo.cpp
-    bash buildCombineAddRmsNorm.sh
-
-    ./combineAddRmsNormDemo
-    ```
-
-- 示例代码如下，仅供参考
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -487,8 +467,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
-    #include "aclnnop/aclnn_moe_distribute_combine_add_rms_norm.h"
+    #include "../../moe_distribute_dispatch_v2/op_host/op_api/aclnn_moe_distribute_dispatch_v2.h"
+    #include "../op_host/op_api/aclnn_moe_distribute_combine_add_rms_norm.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \
@@ -901,6 +881,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 
     int main(int argc, char *argv[])
     {
+        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed, ret = %d\n", ret); return ret);
 

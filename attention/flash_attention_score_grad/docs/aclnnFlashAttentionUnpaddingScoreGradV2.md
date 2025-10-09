@@ -1,4 +1,4 @@
-# FlashAttentionUnpaddingScoreGradV2
+# aclnnFlashAttentionUnpaddingScoreGradV2
 
 
 ## 产品支持情况
@@ -59,44 +59,44 @@
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV2GetWorkspaceSize(
-  const aclTensor *query,
-  const aclTensor *keyIn,
-  const aclTensor *value,
-  const aclTensor *dy,
-  const aclTensor *pseShiftOptional,
-  const aclTensor *dropMaskOptional,
-  const aclTensor *paddingMaskOptional,
-  const aclTensor *attenMaskOptional,
-  const aclTensor *softmaxMaxOptional,
-  const aclTensor *softmaxSumOptional,
-  const aclTensor *softmaxInOptional,
-  const aclTensor *attentionInOptional,
+  const aclTensor   *query,
+  const aclTensor   *keyIn,
+  const aclTensor   *value,
+  const aclTensor   *dy,
+  const aclTensor   *pseShiftOptional,
+  const aclTensor   *dropMaskOptional,
+  const aclTensor   *paddingMaskOptional,
+  const aclTensor   *attenMaskOptional,
+  const aclTensor   *softmaxMaxOptional,
+  const aclTensor   *softmaxSumOptional,
+  const aclTensor   *softmaxInOptional,
+  const aclTensor   *attentionInOptional,
   const aclIntArray *prefixOptional,
   const aclIntArray *actualSeqQLenOptional,
   const aclIntArray *actualSeqKvLenOptional,
   const aclIntArray *qStartIdxOptional,
   const aclIntArray *kvStartIdxOptional,
-  double scaleValue,
-  double keepProb,
-  int64_t preTokens,
-  int64_t nextTokens,
-  int64_t headNum,
-  char *inputLayout,
-  int64_t innerPrecise,
-  int64_t sparseMode,
-  int64_t pseType,
-  const aclTensor *dqOut,
-  const aclTensor *dkOut,
-  const aclTensor *dvOut,
-  const aclTensor *dpseOut,
-  uint64_t *workspaceSize,
-  aclOpExecutor **executor)
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  int64_t            pseType,
+  const aclTensor   *dqOut,
+  const aclTensor   *dkOut,
+  const aclTensor   *dvOut,
+  const aclTensor   *dpseOut,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV2(
-  void *workspace,
-  uint64_t workspaceSize,
-  aclOpExecutor *executor,
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 

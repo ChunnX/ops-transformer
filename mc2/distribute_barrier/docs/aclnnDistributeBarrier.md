@@ -4,8 +4,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品 </term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -17,19 +22,19 @@
 
 ```cpp
 aclnnStatus aclnnDistributeBarrierGetWorkspaceSize(
-    aclTensor* xRef, 
-    const char* group, 
-    int64_t worldSize, 
-    uint64_t* workspaceSize, 
+    aclTensor*      xRef, 
+    const char*     group, 
+    int64_t         worldSize, 
+    uint64_t*       workspaceSize, 
     aclOpExecutor** executor)
 ```
 
 ```cpp
 aclnnStatus aclnnDistributeBarrier(
-    void *workspace, 
-    uint64_t workspaceSize, 
-    aclOpExecutor *executor, 
-    aclrtStream stream)
+    void            *workspace, 
+    uint64_t        workspaceSize, 
+    aclOpExecutor   *executor, 
+    aclrtStream     stream)
 ```
 
 ## aclnnDistributeBarrierGetWorkspaceSize
@@ -177,28 +182,7 @@ aclnnStatus aclnnDistributeBarrier(
 - 文件准备：    
   1.新建barrierDemo目录，按照下方指导在barrierDemo下新建aclnnBarrierDemo.cpp，buildBarrier.sh文件并按照如下代码修改。
 
-  2.安装cann包，并根据下方指导编译运行barrierDemo。
-
--  编译脚本
-    ```bash
-    #!/bin/bash
-    cann_path="/path/to/cann_env" # 更改cann包环境的路径
-    g++ "aclnnBarrierDemo.cpp" -o barrierDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
-                        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
-    ```
-- 编译与运行：
-
-    ```bash
-    # source cann环境
-    source /path/to/cann_env/latest/bin/setenv.bash
-
-    # 编译aclnnBarrierDemo.cpp
-    bash buildBarrier.sh
-
-    ./barrierDemo
-    ```
-
-- 示例代码如下，仅供参考
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -206,9 +190,9 @@ aclnnStatus aclnnDistributeBarrier(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
-    #include "aclnnop/aclnn_distribute_barrier.h"
-    #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
+    #include "../../moe_distribute_dispatch_v2/op_host/op_api/aclnn_moe_distribute_dispatch_v2.h"
+    #include "../op_host/op_api/aclnn_distribute_barrier.h"
+    #include "../../moe_distribute_combine_v2/op_host/op_api/aclnn_moe_distribute_combine_v2.h"
     
     #define CHECK_RET(cond, return_expr) \
         do {                             \
@@ -571,6 +555,7 @@ aclnnStatus aclnnDistributeBarrier(
     
     int main(int argc, char *argv[])
     {
+        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtInit failed, ret = %d\n", ret); return ret);
     

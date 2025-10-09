@@ -1,4 +1,4 @@
-# NsaCompress
+# aclnnNsaCompress
 
 ## 产品支持情况
 
@@ -27,22 +27,23 @@ $$
 每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnNsaCompressGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompress”接口执行计算。
 ```c++
 aclnnStatus aclnnNsaCompressGetWorkspaceSize(
-  const aclTensor *input, 
-  const aclTensor *weight, 
+  const aclTensor   *input, 
+  const aclTensor   *weight, 
   const aclIntArray *actSeqLenOptional, 
-  char *layoutOptional, 
-  int64_t compressBlockSize, 
-  int64_t compressStride, 
-  int64_t actSeqLenType, 
-  aclTensor *output, 
-  uint64_t *workspaceSize aclOpExecutor **executor)
+  char              *layoutOptional, 
+  int64_t            compressBlockSize, 
+  int64_t            compressStride, 
+  int64_t            actSeqLenType, 
+  aclTensor         *output, 
+  uint64_t          *workspaceSize, 
+  aclOpExecutor    **executor)
 ```
 ```c++
 aclnnStatus aclnnNsaCompress(
-  void *workspace, 
-  uint64_t workspaceSize, 
+  void          *workspace, 
+  uint64_t       workspaceSize, 
   aclOpExecutor *executor, 
-  aclrtStream stream)
+  aclrtStream    stream)
 ```
 
 ## aclnnNsaCompressGetWorkspaceSize
