@@ -152,19 +152,22 @@ function(pack_built_in)
   message(STATUS "current compute_unit is: ${compute_unit}")
   ExternalProject_Get_Property(tiling_sink_task BINARY_DIR)
   set(310P_OPMASTER_SO ${BINARY_DIR}/Ascend310P-v${SYS_VERSION}-libopmaster.so)
-  
-  if(EXISTS ${310P_OPMASTER_SO})
-    install(FILES
-        310P_OPMASTER_SO
-        DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/op_master_device/lib/)
-  endif()
+  install(CODE "
+    if(EXISTS \"${310P_OPMASTER_SO}\")
+      file(
+        INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/ops_transformer/built-in/op_impl/ai_core/tbe/op_master_device/lib\"
+        TYPE FILE FILES \"${310P_OPMASTER_SO}\")
+    endif()
+  ")
 
   set(OTHER_OPMASTER_SO ${BINARY_DIR}/Ascend-v${SYS_VERSION}-libopmaster.so)
-  if(EXISTS ${OTHER_OPMASTER_SO})
-    install(FILES
-        OTHER_OPMASTER_SO
-        DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/op_master_device/lib/)
-  endif()
+  install(CODE "
+    if(EXISTS \"${OTHER_OPMASTER_SO}\")
+      file(
+        INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/ops_transformer/built-in/op_impl/ai_core/tbe/op_master_device/lib\"
+        TYPE FILE FILES \"${OTHER_OPMASTER_SO}\")
+    endif()
+  ")
 
   # ============= CPack =============
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
