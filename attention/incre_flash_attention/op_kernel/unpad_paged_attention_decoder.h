@@ -30,7 +30,6 @@
 #include "l0c_to_l1_iterator.h"
 #include "l0c_to_ub_iterator.h"
 #include "l1_to_bt_iterator.h"
-#include "l1_to_fb_iterator.h"
 #include "l1_to_l0_iterator.h"
 #include "l1_to_ub_iterator.h"
 

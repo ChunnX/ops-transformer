@@ -6064,7 +6064,7 @@ void PromptFlashAttentionTiling::InferTilingMod(const ContextParamsForPFATiling&
         if (minActualSeqLengths >= MATMUL_NORM_MIN_SEQ && minActualSeqLengthsKV >= MATMUL_NORM_MIN_SEQ && hDivN == MATMUL_NORM_MIN_HEADSIZE &&
             inputType == ge::DT_FLOAT16 && contextKeyParams.kDataType == ge::DT_FLOAT16 &&
             contextKeyParams.maskDataType == ge::DT_BOOL && outputType == ge::DT_FLOAT16 && usePseShift == 0 &&
-            inputLayout == InputLayout::BNSD && sparseModeVal == SPARSE_MODE_BAND && (!enablePA)) {     // Currently, only the matmul norm template is open for the X1 scenario
+            inputLayout == InputLayout::BNSD && sparseModeVal == SPARSE_MODE_BAND && (!enablePA)) {     // Currently, only the matmul norm template is open for special scenario
             enableMatmulNorm = true;
         }
     }

@@ -14,6 +14,7 @@
  */
 
 #include "kernel_operator.h"
+#include "prompt_flash_attention_tilingkey.h"
 #if (__CCE_AICORE__ > 200)
 #include "prompt_flash_attention_base.h"
 #include "prompt_flash_attention_bnstilling_n_s_no_tail.h"
@@ -199,15 +200,15 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
         __gm__ uint8_t* user = GetUserWorkspace(workspace);
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         #if (ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_KEY != DT_INT4)
-            TILING_KEY_IS(1000000000000000010);
-            TILING_KEY_IS(1000000000000000011);
-            TILING_KEY_IS(1000000000000000015);
-            TILING_KEY_IS(1000000000000000016);
-            TILING_KEY_IS(1000000000000101012);
-            TILING_KEY_IS(1000000000000001012);
-            TILING_KEY_IS(2000000002004000012);
-            TILING_KEY_IS(2000000000004001012);
-            #if TILING_KEY_VAR == 1000000000000000010
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_BASICAPI_BASE_API_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_BASICAPI_CUBEVECTORDIFF_NEWTILING);
+            #if TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING
                 // Non-BNSD layout, split NS no tail
                 if (maskByteNum == FLOAT16BYTENUM) {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSNoTail, half, half, CubeFormat::ND, half);
@@ -215,7 +216,7 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
                 else {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSNoTail, half, bool, CubeFormat::ND, half);
                 }
-            #elif TILING_KEY_VAR == 1000000000000000011
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING
                 // Non-BNSD layout, split NS with tail
                 if (maskByteNum == FLOAT16BYTENUM) {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSTail, half, half, CubeFormat::ND, half);
@@ -223,7 +224,7 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
                 else {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSTail, half, bool, CubeFormat::ND, half);
                 }
-            #elif TILING_KEY_VAR == 1000000000000000015
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING
                 // BNSD layout, split NS no tail
                 if (maskByteNum == FLOAT16BYTENUM) {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDNoTail, half, half, CubeFormat::ND,
@@ -233,7 +234,7 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDNoTail, half, bool, CubeFormat::ND,
                                             half);
                 }
-            #elif TILING_KEY_VAR == 1000000000000000016
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING
                 // BNSD layout, split NS with tail
                 if (maskByteNum == FLOAT16BYTENUM) {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDTail, half, half, CubeFormat::ND, half);
@@ -241,413 +242,411 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
                 else {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDTail, half, bool, CubeFormat::ND, half);
                 }
-            #elif TILING_KEY_VAR == 1000000000000101012
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                 // no anti-quant path for CVDIFF-BSH, half in half out
                 if (maskByteNum == FLOAT16BYTENUM) {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, half>);
                 } else {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool>);
                 }
-            #elif TILING_KEY_VAR == 1000000000000001012
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                 // no anti-quant path for CVDIFF-BNSD, half in half out
                 if (maskByteNum == FLOAT16BYTENUM) {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, half>);
                 } else {
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, uint8_t>);
                 }
-            #elif TILING_KEY_VAR == 2000000002004000012
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_BASICAPI_BASE_API_CUBEVECTORDIFF_NEWTILING
                 INVOKE_PFA_GENERAL_OP_IMPL_BASE_API(PromptFlashAttentionBaseApiHighPrecisionNoMask, PFAHighPrecisionBaseType<PromptFlashAttentionBaseApiTilingData, float, half, half, half, half, float>);
-            #elif TILING_KEY_VAR == 2000000000004001012
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_BASICAPI_CUBEVECTORDIFF_NEWTILING
                 INVOKE_PFA_GENERAL_OP_IMPL_BASE_API(PromptFlashAttentionBaseApiHighPerformance, PFATypeNew<PromptFlashAttentionBaseApiTilingData, half, half, half, half, half, float, half>);
-            #elif TILING_KEY_VAR == 2000000010004001012
-                INVOKE_PFA_GENERAL_OP_IMPL_MLA(PromptFlashAttentionBaseMLA, PFAMLAType<PromptFlashAttentionBaseApiTilingData>);
             #endif
     
             #if (ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_KEY != DT_INT4) && (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-                TILING_KEY_IS(1000000000000101612);
-                TILING_KEY_IS(1000000000010101612);
-                TILING_KEY_IS(1000000000100101612);
-                TILING_KEY_IS(1000000000002101612);
-                TILING_KEY_IS(1000000000000001612);
-                TILING_KEY_IS(1000000000010001612);
-                TILING_KEY_IS(1000000000100001612);
-                TILING_KEY_IS(1000000800000101612);
-                TILING_KEY_IS(1000000800100101612);
-                TILING_KEY_IS(1000000800000001612);
-                TILING_KEY_IS(1000000800100001612);
-                TILING_KEY_IS(1000000000001001612);
-                TILING_KEY_IS(1000000000101001612);
-                TILING_KEY_IS(1000000000002001612);
-                TILING_KEY_IS(1000000000010101012);
-                TILING_KEY_IS(1000000000002101012);
-                TILING_KEY_IS(1000000000100101012);
-                TILING_KEY_IS(1000000800000101012);
-                TILING_KEY_IS(1000000800100101012);
-                TILING_KEY_IS(1000000000100001012);
-                TILING_KEY_IS(1000000000001001012);
-                TILING_KEY_IS(1000000000010001012);
-                TILING_KEY_IS(1000000000101001012);
-                TILING_KEY_IS(1000000000002001012);
-                TILING_KEY_IS(1000000800000001012);
-                TILING_KEY_IS(1000000800100001012);
-                TILING_KEY_IS(1000000400300101612);
-                TILING_KEY_IS(1000000400300001612);
-                TILING_KEY_IS(1000000400200101612);
-                TILING_KEY_IS(1000000400200001612);
-                TILING_KEY_IS(2000000000004000012);
-                TILING_KEY_IS(2000000010004000012);
-                TILING_KEY_IS(1000000800010101012);
-                TILING_KEY_IS(1000000800010001012);
-                #if TILING_KEY_VAR == 1000000000000101612
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_NORMAL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_NORMAL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_NORMAL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_NORMAL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_BASICAPI_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_BASICAPI_MLA_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                #if TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout HighPrecision
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, half, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000000010101612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout HighPrecision, enable PA
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100101612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix BSH layout HighPrecision
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000002101612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING
                     // BSH layout HighPrecision, enable L1 reuse
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_IBSHARE_NORM>);
-                #elif TILING_KEY_VAR == 1000000000000001612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout HighPrecision
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, half, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000000010001612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout HighPrecision, enable PA
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100001612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix BNSD layout HighPrecision
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000800000101612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout HighPrecision
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, int8_t, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000800100101612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix BSH layout HighPrecision
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000800000001612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout HighPrecision
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, int8_t, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000800100001612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix BNSD layout HighPrecision
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000001001612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_NORMAL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout HighPrecision
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_NORM>);
-                #elif TILING_KEY_VAR == 1000000000101001612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_NORMAL_CUBEVECTORDIFF_NEWTILING
                     // Prefix BNSD layout HighPrecision
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_NORM, true>);
-                #elif TILING_KEY_VAR == 1000000000002001612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout HighPrecision
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, half, OptimizationMode::HighPrecision, MatMulType::MM_IBSHARE_NORM>);
-                #elif TILING_KEY_VAR == 1000000000010101012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BSH, half in half out, enable PA
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, half, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000002101012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BSH, half in half out, enable L1 reuse
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, uint8_t, half, half, OptimizationMode::HighPerformance, MatMulType::MM_IBSHARE_NORM>);
-                #elif TILING_KEY_VAR == 1000000000100101012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix no anti-quant path for CVDIFF-BSH, half in half out
                     if (maskByteNum == FLOAT16BYTENUM) {
                         INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, half, half, half, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
                     } else {
                         INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, half, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
                     }
-                #elif TILING_KEY_VAR == 1000000800000101012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // anti-quant path for CVDIFF-BSH, half in half out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, int8_t>);
-                #elif TILING_KEY_VAR == 1000000800100101012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix anti-quant path for CVDIFF-BSH, half in half out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000100001012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix no anti-quant path for CVDIFF-BNSD, half in half out
                     if (maskByteNum == FLOAT16BYTENUM) {
                         INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, half, half, half, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
                     } else {
                         INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, uint8_t, half, half, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
                     }
-                #elif TILING_KEY_VAR == 1000000000001001012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_NORMAL_CUBEVECTORDIFF_NEWTILING
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, uint8_t, half, half, OptimizationMode::HighPerformance, MatMulType::MM_NORM>);
-                #elif TILING_KEY_VAR == 1000000000010001012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BNSD, half in half out, enable PA
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, uint8_t, half, half, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000101001012  // enable prefix
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_NORMAL_CUBEVECTORDIFF_NEWTILING  // enable prefix
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, uint8_t, half, half, OptimizationMode::HighPerformance, MatMulType::MM_NORM, true>);
-                #elif TILING_KEY_VAR == 1000000000002001012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, uint8_t, half, half, OptimizationMode::HighPerformance, MatMulType::MM_IBSHARE_NORM>);
-                #elif TILING_KEY_VAR == 1000000800000001012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // anti-quant path for CVDIFF-BNSD, half in half out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, int8_t>);
-                #elif TILING_KEY_VAR == 1000000800100001012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix anti-quant path for CVDIFF-BNSD, half in half out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000400300101612  // enable prefix, enable MSD
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix, enable MSD
                     // BSH layout fp16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400300001612
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout fp16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200101612
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTFP16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout fp16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200001612
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout fp16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 2000000000004000012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_BASICAPI_CUBEVECTORDIFF_NEWTILING
                     INVOKE_PFA_GENERAL_OP_IMPL_BASE_API(PromptFlashAttentionBaseApiHighPrecisionV, PFATypeNew<PromptFlashAttentionBaseApiTilingData, half, half, half, float, half, float, half, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 2000000010004000012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPRECISION_BASICAPI_MLA_CUBEVECTORDIFF_NEWTILING
                     INVOKE_PFA_GENERAL_OP_IMPL_MLA(PromptFlashAttentionBaseMLAHighPrecision, PFAHighPrecisionMLAType<PromptFlashAttentionBaseApiTilingData, half, false>);
-                #elif TILING_KEY_VAR == 1000000800010101012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, half, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_PA_ANTIQUANT>);
-                #elif TILING_KEY_VAR == 1000000800010001012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, half, int8_t>);
                 #endif
             #endif
     
             #if (ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_KEY != DT_INT4) && (ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
-                TILING_KEY_IS(1000000000000121012);
-                TILING_KEY_IS(1000000000010121012);
-                TILING_KEY_IS(1000000000100121012);
-                TILING_KEY_IS(1000000800000121012);
-                TILING_KEY_IS(1000000800100121012);
-                TILING_KEY_IS(1000000000000021012);
-                TILING_KEY_IS(1000000000010021012);
-                TILING_KEY_IS(1000000000100021012);
-                TILING_KEY_IS(1000000800000021012);
-                TILING_KEY_IS(1000000800100021012);
-                TILING_KEY_IS(1000000000000121612);
-                TILING_KEY_IS(1000000000010121612);
-                TILING_KEY_IS(1000000000100121612);
-                TILING_KEY_IS(1000000800000121612);
-                TILING_KEY_IS(1000000800100121612);
-                TILING_KEY_IS(1000000000000021612);
-                TILING_KEY_IS(1000000000010021612);
-                TILING_KEY_IS(1000000000100021612);
-                TILING_KEY_IS(1000000800000021612);
-                TILING_KEY_IS(1000000800100021612);
-                TILING_KEY_IS(1000000400300121612);
-                TILING_KEY_IS(1000000400300021612);
-                TILING_KEY_IS(1000000400200121612);
-                TILING_KEY_IS(1000000400200021612);
-                #if TILING_KEY_VAR == 1000000000000121012
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVINT8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QFP16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                #if TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t>);
-                #elif TILING_KEY_VAR == 1000000000010121012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BSH, half in int8 out, enable PA
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, half, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100121012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix no anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, half, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000800000121012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, int8_t>);
-                #elif TILING_KEY_VAR == 1000000800100121012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BSH_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000000021012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t>);
-                #elif TILING_KEY_VAR == 1000000000010021012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BNSD, half in int8 out, enable PA
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, half, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100021012
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix no anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, half, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000800000021012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, int8_t>);
-                #elif TILING_KEY_VAR == 1000000800100021012
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000000121612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, half, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000000010121612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BSH, half in int8 out, enable PA
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, half, OptimizationMode::HighPrecision, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100121612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix no anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, half, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000800000121612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000800100121612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix anti-quant path for CVDIFF-BSH, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000000021612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, half, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000000010021612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // no anti-quant path for CVDIFF-BNSD, half in int8 out, enable PA
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, half, OptimizationMode::HighPrecision, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100021612
+                #elif TILING_KEY_VAR == QFP16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix no anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, half, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000800000021612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision>);
-                #elif TILING_KEY_VAR == 1000000800100021612
+                #elif TILING_KEY_VAR == QFP16_KVINT8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING
                     // Prefix anti-quant path for CVDIFF-BNSD, half in int8 out
                     INVOKE_PFA_KVANTIQUANT_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000400300121612  // enable prefix, enable MSD
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix, enable MSD
                     // BSH layout fp16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400300021612
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout fp16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200121612
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout fp16 in int8 out cvdiff, enable MSD
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200021612
+                #elif TILING_KEY_VAR == QFP16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout fp16 in int8 out cvdiff, enable MSD
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, half, bool, int8_t, int8_t, OptimizationMode::HighPrecision, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
                 #endif
             #endif
         #endif
         #if (ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_KEY != DT_INT4)
-            TILING_KEY_IS(1000000000000000110);
-            TILING_KEY_IS(1000000000000000111);
-            TILING_KEY_IS(1000000000000000115);
-            TILING_KEY_IS(1000000000000000116);
-            TILING_KEY_IS(2000000002004010112);
-            TILING_KEY_IS(2000000000004010112);
-            TILING_KEY_IS(2000000010004010112);
-            TILING_KEY_IS(4000000000000000000);
-            TILING_KEY_IS(4000000000000000001);
-            TILING_KEY_IS(4000000000000000002);
-            TILING_KEY_IS(4000000000000000003);
-            TILING_KEY_IS(4000000000000100002);
-            TILING_KEY_IS(4000000000000100003);
-            TILING_KEY_IS(4000000000010000002);
-            TILING_KEY_IS(4000000000010000003);
-            TILING_KEY_IS(4000000000010100002);
-            TILING_KEY_IS(4000000000010100003);
-            TILING_KEY_IS(4000000000020000002);
-            TILING_KEY_IS(4000000000020000003);
-            TILING_KEY_IS(4000000000020100002);
-            TILING_KEY_IS(4000000000020100003);
-            #if TILING_KEY_VAR == 1000000000000000110
+            TILING_KEY_IS(QBF16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING);
+            TILING_KEY_IS(QBF16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING);
+            TILING_KEY_IS(QBF16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING);
+            TILING_KEY_IS(QBF16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING);
+            TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BNSD_HIGHPERFORMANCE_BASICAPI_BASE_API_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BNSD_HIGHPERFORMANCE_BASICAPI_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BNSD_HIGHPERFORMANCE_BASICAPI_MLA_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_MDL_TAIL_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_VALUED192_HIGHPERFORMANCE_MDL_NOTAIL_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_MDL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_NTD_TND_HIGHPERFORMANCE_MDL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_NTD_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_PA_ND_MDL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_ND_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_NTD_TND_HIGHPERFORMANCE_PA_ND_MDL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_NTD_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_ND_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_PA_NZ_MDL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_NZ_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_NTD_TND_HIGHPERFORMANCE_PA_NZ_MDL_CUBEVECTORDIFF_OLDTILING);
+            TILING_KEY_IS(QFP16_KVFP16_OUTFP16_NTD_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_NZ_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING);
+            #if TILING_KEY_VAR == QBF16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING
                 // Non-BNSD layout, split NS no tail
                 INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSNoTail, bfloat16_t, bool, CubeFormat::ND, bfloat16_t);
-            #elif TILING_KEY_VAR == 1000000000000000111
+            #elif TILING_KEY_VAR == QBF16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING
                 // Non-BNSD layout, split NS with tail
                 INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSTail, bfloat16_t, bool, CubeFormat::ND, bfloat16_t);
-            #elif TILING_KEY_VAR == 1000000000000000115
+            #elif TILING_KEY_VAR == QBF16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING
                 // BNSD layout, split NS no tail
                 INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDNoTail, bfloat16_t, bool, CubeFormat::ND, bfloat16_t);
-            #elif TILING_KEY_VAR == 1000000000000000116
+            #elif TILING_KEY_VAR == QBF16_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING
                 // BNSD layout, split NS with tail
                 INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDTail, bfloat16_t, bool, CubeFormat::ND, bfloat16_t);
-            #elif TILING_KEY_VAR == 2000000002004010112
+            #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BNSD_HIGHPERFORMANCE_BASICAPI_BASE_API_CUBEVECTORDIFF_NEWTILING
                 INVOKE_PFA_GENERAL_OP_IMPL_BASE_API(PromptFlashAttentionBaseApiHighPrecisionNoMask, PFAHighPrecisionBaseType<PromptFlashAttentionBaseApiTilingData, float, bfloat16_t, bfloat16_t, bfloat16_t, bfloat16_t, float>);
-            #elif TILING_KEY_VAR == 2000000000004010112
+            #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BNSD_HIGHPERFORMANCE_BASICAPI_CUBEVECTORDIFF_NEWTILING
                 INVOKE_PFA_GENERAL_OP_IMPL_BASE_API(PromptFlashAttentionBaseApiHighPrecisionV,
                                                     PFATypeNew<PromptFlashAttentionBaseApiTilingData, bfloat16_t, bfloat16_t, bfloat16_t, float, bfloat16_t, float, bfloat16_t, OptimizationMode::HighPrecision>);
-            #elif TILING_KEY_VAR == 2000000010004010112
+            #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BNSD_HIGHPERFORMANCE_BASICAPI_MLA_CUBEVECTORDIFF_NEWTILING
                 INVOKE_PFA_GENERAL_OP_IMPL_MLA(PromptFlashAttentionBaseMLAHighPrecision, PFAHighPrecisionMLAType<PromptFlashAttentionBaseApiTilingData, bfloat16_t, true>);
-            #elif TILING_KEY_VAR == 4000000000000000000
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_MDL_TAIL_OLDTILING
                 INVOKE_PFA_GENERAL_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameAB, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, true, bfloat16_t, float);
-            #elif TILING_KEY_VAR == 4000000000000000001
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_VALUED192_HIGHPERFORMANCE_MDL_NOTAIL_OLDTILING
                 INVOKE_PFA_GENERAL_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameAB, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, false, bfloat16_t, float);
-            #elif TILING_KEY_VAR == 4000000000000000002
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_MDL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, true, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::NORMAL, false);
-            #elif TILING_KEY_VAR == 4000000000000000003
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, false, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::NORMAL, false);
-            #elif TILING_KEY_VAR == 4000000000000100002
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_NTD_TND_HIGHPERFORMANCE_MDL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_NTD_TND, true, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::NORMAL, false);
-            #elif TILING_KEY_VAR == 4000000000000100003
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_NTD_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_NTD_TND, false, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::NORMAL, false);
-            #elif TILING_KEY_VAR == 4000000000010000002
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_PA_ND_MDL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, true, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_ND, true);
-            #elif TILING_KEY_VAR == 4000000000010000003
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_ND_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, false, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_ND, true);
-            #elif TILING_KEY_VAR == 4000000000010100002
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_NTD_TND_HIGHPERFORMANCE_PA_ND_MDL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_NTD_TND, true, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_ND, true);
-            #elif TILING_KEY_VAR == 4000000000010100003
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_NTD_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_ND_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_NTD_TND, false, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_ND, true);
-            #elif TILING_KEY_VAR == 4000000000020000002
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_HIGHPERFORMANCE_PA_NZ_MDL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, true, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_NZ, true);
-            #elif TILING_KEY_VAR == 4000000000020000003
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_NZ_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_TND, false, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_NZ, true);
-            #elif TILING_KEY_VAR == 4000000000020100002
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_NTD_TND_HIGHPERFORMANCE_PA_NZ_MDL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_NTD_TND, true, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_NZ, true);
-            #elif TILING_KEY_VAR == 4000000000020100003
+            #elif TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_NTD_TND_ENABLEATTNETIONMASK_HIGHPERFORMANCE_PA_NZ_MDL_NOTAIL_CUBEVECTORDIFF_OLDTILING
                 INVOKE_PFA_NO_KFC_MLA_OP_IMPL_VAR_LEN(PromptFlashAttentionVarLenScoreSameABBaseApi, MLAGeneralTilingData, ImplModeEnum::AA_HIGH_PRECISION,
                                                         LayOutTypeEnum::LAYOUT_NTD_TND, false, bfloat16_t, float, CubeFormat::NZ,
                                                         MmPolicyType::PA_NZ, true);
             #endif
     
             #if (ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_KEY != DT_INT4) && (ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-                TILING_KEY_IS(1000000000000111112);
-                TILING_KEY_IS(1000000000010111112);
-                TILING_KEY_IS(1000000000002111112);
-                TILING_KEY_IS(1000000000100111112);
-                TILING_KEY_IS(1000000000000011112);
-                TILING_KEY_IS(1000000000010011112);
-                TILING_KEY_IS(1000000000002011112);
-                TILING_KEY_IS(1000000000100011112);
-                TILING_KEY_IS(1000000400300111112);
-                TILING_KEY_IS(1000000400300011112);
-                TILING_KEY_IS(1000000400200111112);
-                TILING_KEY_IS(1000000400200011112);
-                #if TILING_KEY_VAR == 1000000000000111112
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                #if TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, bfloat16_t>);
-                #elif TILING_KEY_VAR == 1000000000010111112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout bf16 cvdiff, enable PA
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, bfloat16_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000002111112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING
                     // BSH layout bf16 cvdiff, enable L1 reuse
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, bfloat16_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_IBSHARE_NORM>);
-                #elif TILING_KEY_VAR == 1000000000100111112  // enable prefix
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix
                     // BSH layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, bfloat16_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000000011112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, bfloat16_t>);
-                #elif TILING_KEY_VAR == 1000000000010011112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout bf16 cvdiff, enable PA
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, bfloat16_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000002011112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout bf16 cvdiff, enable L1 reuse
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, bfloat16_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_IBSHARE_NORM>);
-                #elif TILING_KEY_VAR == 1000000000100011112  // enable prefix
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix
                     // BNSD layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, bfloat16_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000400300111112  // enable prefix, enable MSD
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix, enable MSD
                     // BSH layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, bfloat16_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400300011112  // enable prefix, enable MSD
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix, enable MSD
                     // BNSD layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, bfloat16_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200111112
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTBF16_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, bfloat16_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200011112
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTBF16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout bf16 cvdiff
                     INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, bfloat16_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
                 #endif
@@ -655,117 +654,117 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
             #endif
     
             #if (ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_KEY != DT_INT4) && (ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
-                TILING_KEY_IS(1000000000000121112);
-                TILING_KEY_IS(1000000000010121112);
-                TILING_KEY_IS(1000000000100121112);
-                TILING_KEY_IS(1000000000000021112);
-                TILING_KEY_IS(1000000000010021112);
-                TILING_KEY_IS(1000000000100021112);
-                TILING_KEY_IS(1000000400300121112);
-                TILING_KEY_IS(1000000400300021112);
-                TILING_KEY_IS(1000000400200121112);
-                TILING_KEY_IS(1000000400200021112);
-                #if TILING_KEY_VAR == 1000000000000121112
+                TILING_KEY_IS(QBF16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                TILING_KEY_IS(QBF16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+                #if TILING_KEY_VAR == QBF16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout bf16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, int8_t>);
-                #elif TILING_KEY_VAR == 1000000000010121112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout bf16 in int8 out cvdiff, enable PA
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, int8_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100121112  // enable prefix
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix
                     // BSH layout bf16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, int8_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000000000021112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout bf16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, int8_t>);
-                #elif TILING_KEY_VAR == 1000000000010021112
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout bf16 in int8 out cvdiff, enable PA
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, int8_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-                #elif TILING_KEY_VAR == 1000000000100021112  // enable prefix
+                #elif TILING_KEY_VAR == QBF16_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix
                     // BNSD layout bf16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, int8_t, bfloat16_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-                #elif TILING_KEY_VAR == 1000000400300121112  // enable prefix, enable MSD, enable MSD
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix, enable MSD, enable MSD
                     // BSH layout bf16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400300021112  // enable prefix, enable MSD
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MSD_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix, enable MSD
                     // BNSD layout bf16 in int8 out cvdiff
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200121112
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTINT8_BSH_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BSH layout bf16 in int8 out cvdiff, enable MSD
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, bfloat16_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
-                #elif TILING_KEY_VAR == 1000000400200021112
+                #elif TILING_KEY_VAR == QBF16_KVFP8_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                     // BNSD layout bf16 in int8 out cvdiff, enable MSD
                     INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, bfloat16_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, false, MsdMode::MSD_ON>);
                 #endif
             #endif
         #endif
         #if (ORIG_DTYPE_QUERY == DT_INT8) && (ORIG_DTYPE_ATTENTION_OUT == DT_INT8) && (ORIG_DTYPE_KEY != DT_INT4)
-            TILING_KEY_IS(1000000000000020210);
-            TILING_KEY_IS(1000000000000020211);
-            TILING_KEY_IS(1000000000000020215);
-            TILING_KEY_IS(1000000000000020216);
-            TILING_KEY_IS(1000000000000021212);
-            TILING_KEY_IS(1000000000010021212);
-            TILING_KEY_IS(1000000000100021212);
-            TILING_KEY_IS(1000000000000021217);
-            TILING_KEY_IS(1000000000010021217);
-            TILING_KEY_IS(1000000000100021217);
-            #if TILING_KEY_VAR == 1000000000000020210
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTINT8_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_BNSD_NEWTILING);
+            #if TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSNoTail, int8_t, bool, CubeFormat::ND, int8_t);
-            #elif TILING_KEY_VAR == 1000000000000020211
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSTail, int8_t, bool, CubeFormat::ND, int8_t);
-            #elif TILING_KEY_VAR == 1000000000000020215
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDNoTail, int8_t, bool, CubeFormat::ND, int8_t);
-            #elif TILING_KEY_VAR == 1000000000000020216
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDTail, int8_t, bool, CubeFormat::ND, int8_t);
-            #elif TILING_KEY_VAR == 1000000000000021212
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, int8_t, bool, int8_t>);
-            #elif TILING_KEY_VAR == 1000000000010021212  // enable PA
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING  // enable PA
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, int8_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-            #elif TILING_KEY_VAR == 1000000000100021212  // enable prefix
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, int8_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-            #elif TILING_KEY_VAR == 1000000000000021217
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_BNSD_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, int8_t, bool, int8_t>);
-            #elif TILING_KEY_VAR == 1000000000010021217  // enable PA
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_BNSD_NEWTILING  // enable PA
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, int8_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-            #elif TILING_KEY_VAR == 1000000000100021217  // enable prefix
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_BNSD_NEWTILING  // enable prefix
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, int8_t, bool, int8_t, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
             #endif
         #endif
         #if (ORIG_DTYPE_QUERY == DT_INT8) && (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) && (ORIG_DTYPE_KEY != DT_INT4)
-            TILING_KEY_IS(1000000000000000210);
-            TILING_KEY_IS(1000000000000000211);
-            TILING_KEY_IS(1000000000000000215);
-            TILING_KEY_IS(1000000000000000216);
-            TILING_KEY_IS(1000000000000001212);
-            TILING_KEY_IS(1000000000010001212);
-            TILING_KEY_IS(1000000000000001217);
-            TILING_KEY_IS(1000000000010001217);
-            TILING_KEY_IS(1000000000100001212);
-            TILING_KEY_IS(1000000000100001217);
-            #if TILING_KEY_VAR == 1000000000000000210
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_BNSD_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING);
+            TILING_KEY_IS(QINT8_KVFP16_OUTFP16_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_BNSD_NEWTILING);
+            #if TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSNoTail, int8_t, bool, CubeFormat::ND, half);
-            #elif TILING_KEY_VAR == 1000000000000000211
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSTail, int8_t, bool, CubeFormat::ND, half);
-            #elif TILING_KEY_VAR == 1000000000000000215
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_BNSD_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDNoTail, int8_t, bool, CubeFormat::ND, half);
-            #elif TILING_KEY_VAR == 1000000000000000216
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_NOTAIL_BNSD_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionBNSTillingNSWithBNSDTail, int8_t, bool, CubeFormat::ND, half);
-            #elif TILING_KEY_VAR == 1000000000000001212
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, int8_t, bool, half>);
-            #elif TILING_KEY_VAR == 1000000000010001212  // enable PA
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_NEWTILING  // enable PA
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, int8_t, bool, half, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-            #elif TILING_KEY_VAR == 1000000000000001217
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_HIGHPRECISION_HIGHLEVELAPI_MDL_CUBEVECTORDIFF_BNSD_NEWTILING
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, int8_t, bool, half>);
-            #elif TILING_KEY_VAR == 1000000000010001217  // enable PA
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_HIGHPRECISION_HIGHLEVELAPI_PA_ND_MDL_CUBEVECTORDIFF_BNSD_NEWTILING  // enable PA
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, int8_t, bool, half, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_PA>);
-            #elif TILING_KEY_VAR == 1000000000100001212  // enable prefix
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_BNSD_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_NEWTILING  // enable prefix
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BSH, int8_t, bool, half, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
-            #elif TILING_KEY_VAR == 1000000000100001217  // enable prefix
+            #elif TILING_KEY_VAR == QINT8_KVFP16_OUTFP16_HIGHPRECISION_HIGHLEVELAPI_PREFIX_MDL_CUBEVECTORDIFF_BNSD_NEWTILING  // enable prefix
                 INVOKE_PFA_INT8_OP_IMPL(PromptFlashAttentionS1s2Bns1X910, PFAType<PFALayout::BNSD, int8_t, bool, half, int8_t, OptimizationMode::HighPerformance, MatMulType::MM_MDL, true>);
             #endif
         #endif
-        TILING_KEY_IS(1000000000000000020);
-        #if TILING_KEY_VAR == 1000000000000000020
+        TILING_KEY_IS(QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_EMPTYKVTILINGKEY);
+        #if TILING_KEY_VAR == QFP16_KVFP16_OUTFP16_BNSD_HIGHPERFORMANCE_HIGHLEVELAPI_MDL_TAIL_EMPTYKVTILINGKEY
             // kv is empty tensor, return zero output
             TPipe tPipe;
             INVOKE_PFA_TILING_DATA(tiling);
@@ -780,23 +779,23 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
     
         __gm__ uint8_t* user = GetUserWorkspace(workspace);
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-        TILING_KEY_IS(1000000000000112288);
-        TILING_KEY_IS(1000000000000122288);
-        TILING_KEY_IS(1000000000000012288);
-        TILING_KEY_IS(1000000000000022288);
-        TILING_KEY_IS(1000000000000012888);
-        TILING_KEY_IS(1000000000000022888);
-        #if TILING_KEY_VAR == 1000000000000112288
+        TILING_KEY_IS(QINT8_KVFP16_OUTBF16_BSH_HIGHLEVELAPI_MDL_310TILING);
+        TILING_KEY_IS(QINT8_KVFP16_OUTINT8_BSH_HIGHLEVELAPI_MDL_310TILING);
+        TILING_KEY_IS(QINT8_KVFP16_OUTBF16_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING);
+        TILING_KEY_IS(QINT8_KVFP16_OUTINT8_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING);
+        TILING_KEY_IS(QFP4E1M2_KVFP16_OUTBF16_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING);
+        TILING_KEY_IS(QFP4E1M2_KVFP16_OUTINT8_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING);
+        #if TILING_KEY_VAR == QINT8_KVFP16_OUTBF16_BSH_HIGHLEVELAPI_MDL_310TILING
             INVOKE_PFA_NEW_GQA_OP_IMPL(PromptAttentionPrefill, PFATypeNZ<PFALayoutNZ::BNSD, half, int8_t>, PrecType::BMM1_FP16_EXP_FP32);//高性能
-        #elif TILING_KEY_VAR == 1000000000000122288
+        #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_BSH_HIGHLEVELAPI_MDL_310TILING
             INVOKE_PFA_NEW_GQA_OP_IMPL(PromptAttentionPrefill, PFATypeNZ<PFALayoutNZ::BSH, half, int8_t>, PrecType::BMM1_FP16_EXP_FP32);//高性能
-        #elif TILING_KEY_VAR == 1000000000000012288
+        #elif TILING_KEY_VAR == QINT8_KVFP16_OUTBF16_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
             INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X310, PFATypeNZ<PFALayoutNZ::BNSD, half, int8_t, half>);
-        #elif TILING_KEY_VAR == 1000000000000022288
+        #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
             INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X310, PFATypeNZ<PFALayoutNZ::BSH, half, int8_t, half>);
-        #elif TILING_KEY_VAR == 1000000000000012888
+        #elif TILING_KEY_VAR == QFP4E1M2_KVFP16_OUTBF16_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
             INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X310, PFATypeNZ<PFALayoutNZ::BNSD, half, int8_t, half, half, ModeNZ::HighPrecisionNZ>);
-        #elif TILING_KEY_VAR == 1000000000000022888
+        #elif TILING_KEY_VAR == QFP4E1M2_KVFP16_OUTINT8_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
             INVOKE_PFA_GENERAL_OP_IMPL(PromptFlashAttentionS1s2Bns1X310, PFATypeNZ<PFALayoutNZ::BSH, half, int8_t, half, half, ModeNZ::HighPrecisionNZ>);
         #endif
     #endif

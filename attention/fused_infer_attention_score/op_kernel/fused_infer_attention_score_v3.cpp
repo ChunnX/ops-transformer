@@ -1,6 +1,6 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  */
 
 #include "kernel_operator.h"
+#include "fused_infer_attention_score_tilingkey.h"
 
 #ifdef FIA_ENABLE_MLA
 // mla模板使用私有tiling结构，框架编译时根据一组DType预编译获取keylist，根据keylist找到对应的tiling结构
@@ -54,7 +55,9 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-#if (__CCE_AICORE__ == 200)
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+
+#elif (__CCE_AICORE__ == 200)
 
 #else
     TPipe tPipe;
@@ -67,71 +70,71 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) && (ORIG_DTYPE_KEY == DT_FLOAT16)
     // fp16 7buf_nz
-    TILING_KEY_IS(105000000020200001);
-    TILING_KEY_IS(105000000020300001);
-    TILING_KEY_IS(105000000020200002);
-    TILING_KEY_IS(105000000020300002);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BSH_KVNZ_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BSH_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_TND_KVNZ_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_TND_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING);
     // fp16 7buf_nd
-    TILING_KEY_IS(105000000010200000);
-    TILING_KEY_IS(105000000010300000);
-    TILING_KEY_IS(105000000000200000);
-    TILING_KEY_IS(105000000000300000);
-    TILING_KEY_IS(105000000010000001);
-    TILING_KEY_IS(105000000010100001);
-    TILING_KEY_IS(105000000010200001);
-    TILING_KEY_IS(105000000010300001);
-    TILING_KEY_IS(105000000010200002);
-    TILING_KEY_IS(105000000010300002);
-    TILING_KEY_IS(105000000000200002);
-    TILING_KEY_IS(105000000000300002);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BNSD_KVBSH_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BNSD_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BNSD_KVBNSD_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BNSD_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BSH_KVBSH_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_BSH_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_TND_KVBSH_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_TND_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_TND_KVBNSD_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QF16_KVF16_OUTF16_TND_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING);
 // fp16 7buf_nz
-#if TILING_KEY_VAR == 105000000020200001 // 7buf
+#if TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVNZ_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, false,
                                   FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 105000000020300001 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, true,
                                   FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 105000000020200002 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_TND_KVNZ_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, false,
                                   FIA_LAYOUT::TND, false, false, FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 105000000020300002 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_TND_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, true,
                                   FIA_LAYOUT::TND, false, false, FIA_LAYOUT::NZ);
 // fp16 7buf_nd
-#elif TILING_KEY_VAR == 105000000010200000 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBSH_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, false,
                                   FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010300000 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, true,
                                   FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000000200000 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBNSD_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, false,
                                   FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 105000000000300000 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BNSD_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, true,
                                   FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 105000000010000001 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, false, false,
                                   FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010100001 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, false, true,
                                   FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010200001 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, false,
                                   FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010300001 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_BSH_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, true,
                                   FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010200002 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_TND_KVBSH_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, false,
                                   FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010300002 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_TND_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, true,
                                   FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000000200002 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_TND_KVBNSD_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, false,
                                   FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 105000000000300002 // 7buf
+#elif TILING_KEY_VAR == QF16_KVF16_OUTF16_TND_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, half, half, half, half, true, true,
                                   FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BNSD);
 #endif
@@ -139,73 +142,73 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 
 #if (ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_ATTENTION_OUT == DT_BF16) && (ORIG_DTYPE_KEY == DT_BF16)
     // bfl6 7buf_nz
-    TILING_KEY_IS(105000000020222221);
-    TILING_KEY_IS(105000000020322221);
-    TILING_KEY_IS(105000000020222222);
-    TILING_KEY_IS(105000000020322222);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BSH_KVNZ_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BSH_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_TND_KVNZ_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_TND_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING);
     // 7buf_nd
-    TILING_KEY_IS(105000000010222220);
-    TILING_KEY_IS(105000000010322220);
-    TILING_KEY_IS(105000000000222220);
-    TILING_KEY_IS(105000000000322220);
-    TILING_KEY_IS(105000000010022221);
-    TILING_KEY_IS(105000000010122221);
-    TILING_KEY_IS(105000000010222221);
-    TILING_KEY_IS(105000000010322221);
-    TILING_KEY_IS(105000000010222222);
-    TILING_KEY_IS(105000000010322222);
-    TILING_KEY_IS(105000000000222222);
-    TILING_KEY_IS(105000000000322222);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BNSD_KVBSH_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BNSD_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BSH_KVBSH_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_BSH_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_TND_KVBSH_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_TND_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_TND_KVBNSD_PAGEDCACHE_MLA_TILING);
+    TILING_KEY_IS(QBF16_KVBF16_OUTBF16_TND_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING);
 
 // bf16 7buf_nz
-#if TILING_KEY_VAR == 105000000020222221 // 7buf
+#if TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVNZ_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, false, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 105000000020322221 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, true, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 105000000020222222 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_TND_KVNZ_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, false, FIA_LAYOUT::TND, false, false, FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 105000000020322222 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_TND_KVNZ_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, true, FIA_LAYOUT::TND, false, false, FIA_LAYOUT::NZ);
 // #ifdef ND_7BUFFER
 // 7buf_nd
-#elif TILING_KEY_VAR == 105000000010222220 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBSH_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, false, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010322220 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, true, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000000222220 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, false, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 105000000000322220 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BNSD_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, true, FIA_LAYOUT::BNSD, false, false, FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 105000000010022221 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, false, false, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010122221 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                    bfloat16_t, false, true, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010222221 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, false, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010322221 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_BSH_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, true, FIA_LAYOUT::BSH, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010222222 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_TND_KVBSH_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, false, FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000010322222 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_TND_KVBSH_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, true, FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 105000000000222222 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_TND_KVBNSD_PAGEDCACHE_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, false, FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 105000000000322222 // 7buf
+#elif TILING_KEY_VAR == QBF16_KVBF16_OUTBF16_TND_KVBNSD_PAGEDCACHE_FLASHDECODING_MLA_TILING // 7buf
     INVOKE_FIA_NO_KFC_MLA_OP_IMPL(FiaKernelNonQuantMla, bfloat16_t, bfloat16_t, bfloat16_t,
                                   bfloat16_t, true, true, FIA_LAYOUT::TND, false, false, FIA_LAYOUT::BNSD);
 #endif
