@@ -160,7 +160,6 @@
       * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
       * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于2，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
       * renorm仅支持0，表示先进行norm操作，再计算topk。
-  * 其他限制：
 
 ## 调用说明
 

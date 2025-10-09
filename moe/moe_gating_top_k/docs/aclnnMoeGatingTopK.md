@@ -147,7 +147,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <tr>
         <td>groupSelectMode</td>
         <td>输入</td>
-        <td>分组排序方式。</td>
+        <td>分组排序方式。0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。</td>
         <td>无</td>
         <td>INT64</td>
         <td>-</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <tr>
         <td>normType</td>
         <td>输入</td>
-        <td>norm函数类型。</td>
+        <td>norm函数类型。0表示使用Softmax函数，1表示使用Sigmoid函数。</td>
         <td>无</td>
         <td>INT64</td>
         <td>-</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <tr>
         <td>outFlag</td>
         <td>输入</td>
-        <td>表示是否输出norm操作结果。</td>
+        <td>表示是否输出norm操作结果。true表示输出，false表示不输出。</td>
         <td>无</td>
         <td>BOOL</td>
         <td>-</td>
@@ -348,10 +348,6 @@ aclnnStatus aclnnMoeGatingTopK(
       * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
       * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于2，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
       * renorm仅支持0，表示先进行norm操作，再计算topk。
-  * 其他限制：
-      * groupSelectMode取值0和1，对于<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。对于<term>昇腾910_95 AI处理器</term>，当前仅支持1，表示使用topk2的sum值对group进行排序。
-      * normType取值0和1，对于<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，0表示使用Softmax函数，1表示使用Sigmoid函数。对于<term>昇腾910_95 AI处理器</term>，当前仅支持1，表示使用Sigmoid函数。
-      * outFlag取值true和false，对于<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，true表示输出，false表示不输出。对于<term>昇腾910_95 AI处理器</term>，当前仅支持false，表示不输出。
 
 ## 调用示例
 
