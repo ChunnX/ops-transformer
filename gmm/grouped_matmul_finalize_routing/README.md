@@ -1,23 +1,28 @@
-# GroupedMatmulFinalizeRouting简介
+# GroupedMatmulFinalizeRouting
 
 ##  产品支持情况
 
-| 产品 | 是否支持 |
-| ---- | :----:|
-|Atlas A3 训练系列产品/Atlas A3 推理系列产品|√|
-|Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件|√|
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
-- 算子功能：roupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作
+- 算子功能：GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作
 
 
 
-## 算子规格
+## 参数说明
 
   <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
   <col style="width: 146px">
-  <col style="width: 110px">
+  <col style="width: 120px">
   <col style="width: 301px">
   <col style="width: 219px">
   <col style="width: 328px">
@@ -28,7 +33,7 @@
   <thead>
     <tr>
       <th>参数名</th>
-      <th>输入/输出</th>
+      <th>输入/输出/属性</th>
       <th>描述</th>
       <th>数据类型</th>
       <th>数据格式</th>
@@ -45,21 +50,21 @@
       <td>w</td>
       <td>输入</td>
       <td>输入weight(右矩阵)</td>
-      <td>INT32</td>
-      <td>ND</td>
+      <td>INT4、INT8</td>
+      <td>ND、NZ</td>
     </tr>
     <tr>
       <td>scaleOptional</td>
       <td>输入</td>
       <td>量化参数中的缩放因子，perchannel量化参数</td>
-      <td>INT64</td>
+      <td>INT64、BF16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>biasOptional</td>
       <td>输入</td>
       <td>矩阵的偏移</td>
-      <td>FLOAT32</td>
+      <td>BF16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -101,7 +106,7 @@
       <td>sharedInputOptional</td>
       <td>输入</td>
       <td>moe计算中共享专家的输出，需要与moe专家的输出进行combine操作</td>
-      <td>INT64</td>
+      <td>BF16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -115,62 +120,62 @@
       <td>rowIndexOptional</td>
       <td>输入</td>
       <td>moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引</td>
-      <td>FLOAT32</td>
+      <td>INT32、INT64</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>dtype</td>
-      <td>输入</td>
-      <td>计算的输出类型: 0：FLOAT32；1：FLOAT16；2：BFLOAT16。目前仅支持0。</td>
-      <td>int64_t</td>
+      <td>属性</td>
+      <td>计算的输出类型：0：FLOAT32；1：FLOAT16；2：BFLOAT16。目前仅支持0。</td>
+      <td>INT64</td>
       <td></td>
     </tr>
     <tr>
       <td>sharedInputWeight</td>
-      <td>输入</td>
+      <td>属性</td>
       <td>共享专家与moe专家进行combine的系数，sharedInput先与该参数乘，然后在和moe专家结果累加。</td>
-      <td>float</td>
+      <td>FLOAT</td>
       <td></td>
     </tr>
     <tr>
       <td>sharedInputOffset</td>
-      <td>输入</td>
+      <td>属性</td>
       <td>共享专家输出的在总输出中的偏移。</td>
-      <td>int64_t</td>
+      <td>INT64</td>
       <td></td>
     </tr>
     <tr>
       <td>transposeX</td>
-      <td>输入</td>
+      <td>属性</td>
       <td>左矩阵是否转置，仅支持false。</td>
-      <td>bool</td>
+      <td>BOOL</td>
       <td></td>
     </tr>
     <tr>
       <td>transposeW</td>
-      <td>输入</td>
+      <td>属性</td>
       <td>右矩阵是否转置，仅支持false。</td>
-      <td>bool</td>
+      <td>BOOL</td>
       <td></td>
     </tr>
     <tr>
       <td>groupListType</td>
-      <td>输入</td>
+      <td>属性</td>
       <td>分组模式：配置为0：cumsum模式，即为前缀和；配置为1：count模式。</td>
-      <td>bool</td>
+      <td>INT64</td>
       <td></td>
     </tr>
     <tr>
       <td>tuningConfigOptional</td>
-      <td>输入</td>
+      <td>属性</td>
       <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。从第二个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入(即为nullptr)即可。</td>
-      <td>bool</td>
+      <td>INT64</td>
       <td></td>
     </tr>
     <tr>
       <td>y</td>
       <td>输出</td>
-      <td>待进行abs计算的出参，公式中的out_i。</td>
+      <td>输出结果。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
@@ -191,12 +196,15 @@
   </tbody>
   </table>
 
+- Atlas 训练系列产品：不支持BFLOAT16。
+
 ## 约束说明
 
-如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error）,场景为最后2轴合轴小于16，前面的轴合轴超大。
+如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），场景为最后2轴合轴小于16，前面的轴合轴超大。
 
 ## 调用说明
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing](examples/test_aclnn_GroupedMatmulFinalizeRouting.cpp) | 通过接口方式调用[GroupedMatmulFinalizeRouting](docs/aclnnGroupedMatmulFinalizeRouting.md)算子。 |
+| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing](examples/test_aclnn_grouped_matmul_finalize_routing.cpp) | 通过[aclnnGroupedMatmulFinalizeRoutingV3](docs/aclnnGroupedMatmulFinalizeRoutingV3.md)接口方式调用GroupedMatmulFinalizeRouting算子。 |
+| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing_weight_nz](examples/test_aclnn_grouped_matmul_finalize_routing_weight_nz.cpp) | 通过[aclnnGroupedMatmulFinalizeRoutingWeightNzV2](docs/aclnnGroupedMatmulFinalizeRoutingWeightNzV2.md)接口方式调用GroupedMatmulFinalizeRoutingWeightNz算子。 |

@@ -39,7 +39,7 @@ extern "C" {
  * @param [in] sharedInputOffset: 共享专家输出的在总输出中的偏移，数据类型支持：int64。
  * @param [in] transposeX: 左矩阵是否转置，默认值：false。
  * @param [in] transposeW: 右矩阵是否转置，默认值：false。
- * @param [in] groupListType: GroupedMatmul分组类型，默认值：1，count模式，数据类型支持：int32。
+ * @param [in] groupListType: GroupedMatmul分组类型，默认值：1，count模式，数据类型支持：int64。
  * @param [out] y: 计算结果，数据类型：float32。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
