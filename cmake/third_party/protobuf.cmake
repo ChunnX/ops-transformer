@@ -14,7 +14,7 @@ endif()
 include(ExternalProject)
 ExternalProject_Add(external_protobuf
   URL               ${_protobuf_url}
-                    https://github.com/protocolbuffers/protobuf/archive/v3.13.0.tar.gz
+                    https://gitcode.com/cann-src-third-party/protobuf/releases/download/v3.13.0/protobuf-3.13.0.tar.gz
   URL_MD5           1a6274bc4a65b55a6fa70e264d796490
   DOWNLOAD_DIR      download/protobuf
   PREFIX            third_party
