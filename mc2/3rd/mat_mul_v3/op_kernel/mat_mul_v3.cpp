@@ -25,6 +25,7 @@
 #include "mat_mul_unaligned_sc_splitk_kernel_gm_to_l1.h"
 #include "mat_mul_optimized_fixpipe_algorithm.h"
 #include "mat_mul_l1_full_load.h"
+#include "mat_mul_v3_tiling_key.h"
 
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
@@ -162,79 +163,163 @@ constexpr CubeFormat format_y = CubeFormat::ND;
         op.Process();                                                                                                \
     } while (0)
 
-extern "C" __global__ __aicore__ void mat_mul_v3(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
-                                                 GM_ADDR offsetWGM, GM_ADDR cGM, 
-                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM)
+template <int LOADMODE, int SPLITCOREMODE, int FIXOPTI, int MIXND2NZ>
+__global__ __aicore__ void mat_mul_v3(
+    GM_ADDR aGM,
+    GM_ADDR bGM,
+    GM_ADDR biasGM,
+    GM_ADDR offsetWGM,
+    GM_ADDR cGM,
+    GM_ADDR workspaceGM,
+    GM_ADDR tilingGM)
 {
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
     GET_TILING_DATA(tilingData, tilingGM);
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ < 220
     // 第一个模板使用mix类型的，使得整个算子的coreType在dyn场景都为mix，静态则根据选择的tilingkey决定coreType
-    if (TILING_KEY_IS(10000000000000000000UL)) {
-        MMV3_IMPL_CLASS(MatmulBaseUnAlignedKernel, format_x1, MatmulBaseBlock, MM_CFG_VEC_ND2NZ);
-    } else if (TILING_KEY_IS(10000000000000000001UL)) {
-        MMV3_IMPL_CLASS(MatmulBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_VEC_ND2NZ);
+    if (LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseUnAlignedKernel, format_x1, MatmulBaseBlock, MM_CFG_VEC_ND2NZ
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_VEC_ND2NZ
+        );
+    }
+#elif defined(FORMAT_X2) && FORMAT_X2 == FORMAT_FRACTAL_NZ
+    if (LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseUnAlignedKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD
+        );
     }
 #else
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-#if defined(FORMAT_X2) && FORMAT_X2 == FORMAT_FRACTAL_NZ
-    if (TILING_KEY_IS(10000000000000000000UL)) {
-        MMV3_IMPL_CLASS(MatmulBaseUnAlignedKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000000000000000001UL)) {
-        KERNEL_TASK_TYPE(10000000000000000001UL, KERNEL_TYPE_AIC_ONLY);
-        MMV3_IMPL_CLASS(MatmulBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD);
+    if (LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseUnAlignedKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_SINGLE_CORE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatMulSingleCoreSplitKKernel, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_MK
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_SINGLE_CORE_NKM_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatMulSingleCoreSplitKKernel, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_NK, true
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_SINGLE_CORE_SPLIT_K_GM_TO_L1 &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatMulSingleCoreSplitKKernelGmToL1, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_MK
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_SINGLE_CORE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL_CLASS(
+            MatMulUnAlignedSingleCoreSplitKKernel, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_MK
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_SINGLE_CORE_SPLIT_K_GM_TO_L1 &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL_CLASS(
+            MatMulUnAlignedSingleCoreSplitKKernelGmToL1, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_MK
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_DETERMINISTIC_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL(
+            MatMulKernelDeterministicSplitK, format_x1, FIXPIPE_OPT_SELECT::BASE
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_DETERMINISTIC_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL(
+            MatMulUnAlignedKernelDeterministicSplitK, format_x1, FIXPIPE_OPT_SELECT::BASE
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_MULTI_CORE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL(
+            MatMulMultiCoreSplitK, format_x1, FIXPIPE_OPT_SELECT::BASE
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_AL1_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseKernelAL1FullLoad, format_x1, MatmulBaseBlock, MM_CFG_MDL
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BL1_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseKernelBL1FullLoad, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BL1_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_ENABLE_ALIGNOUT && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseUnalignedNKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
+            MatmulCallBackFunc<nullptr, nullptr, CopyBL1>
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BL1_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseUnAlignedKernelBL1FullLoad, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
+            MatmulCallBackFunc<nullptr, nullptr, CopyBL1>
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BL1_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_FIXOPTI && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE_PARALLEL) {
+        MMV3_IMPL_CLASS(
+            MatmulCvpBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BL1_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_BASE_ENABLE_ALIGNOUT && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL_CLASS(
+            MatmulBaseAToNZWithBL1FixpipeKernel, CubeFormat::NZ, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
+            MatmulCallBackFunc<nullptr, nullptr, CopyBL1>
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BL1_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_BASE_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_VEC_NZ2ND_UNALIGNOUT && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL_C_CLASS(
+            MatmulBaseUnalignedNKernel, format_x1, CubeFormat::NZ, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
+            MatmulCallBackFunc<nullptr, nullptr, CopyBL1>, FIXPIPE_OPT_SELECT::VEC_NZ2ND_UNALIGNOUT
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_DETERMINISTIC_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_VEC_NZ2ND_UNALIGNOUT && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        MMV3_IMPL(
+            MatMulKernelDeterministicSplitK, CubeFormat::NZ, FIXPIPE_OPT_SELECT::VEC_NZ2ND_UNALIGNOUT
+        );
+    } else if (
+        LOADMODE == MAT_MUL_V3_BASE_FULLLOAD && SPLITCOREMODE == MAT_MUL_V3_DETERMINISTIC_SPLIT_K &&
+        FIXOPTI == MAT_MUL_V3_VEC_NZ2ND_UNALIGNOUT && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        MMV3_IMPL(
+            MatMulUnAlignedKernelDeterministicSplitK, CubeFormat::NZ, FIXPIPE_OPT_SELECT::VEC_NZ2ND_UNALIGNOUT
+        );
     }
-#else
-    if (TILING_KEY_IS(10000000000000000000UL)) {
-        MMV3_IMPL_CLASS(MatmulBaseUnAlignedKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000000000000000021UL)) {
-        MMV3_IMPL_CLASS(MatMulSingleCoreSplitKKernel, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_MK);
-    } else if (TILING_KEY_IS(10000000000000000051UL)) {
-        MMV3_IMPL_CLASS(MatMulSingleCoreSplitKKernel, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_NK, true);
-    } else if (TILING_KEY_IS(10000000000000000061UL)) {
-        MMV3_IMPL_CLASS(MatMulSingleCoreSplitKKernelGmToL1, format_x1, MatmulSingleCoreSplitKBaseBlock, MM_CFG_PRELOAD_MK);
-    } else if (TILING_KEY_IS(10000000000000000020UL)) {
-        MMV3_IMPL_CLASS(MatMulUnAlignedSingleCoreSplitKKernel, format_x1, MatmulSingleCoreSplitKBaseBlock,
-                        MM_CFG_PRELOAD_MK);
-    } else if (TILING_KEY_IS(10000000000000000060UL)) {
-        MMV3_IMPL_CLASS(MatMulUnAlignedSingleCoreSplitKKernelGmToL1, format_x1, MatmulSingleCoreSplitKBaseBlock,
-                        MM_CFG_PRELOAD_MK);
-    } else if (TILING_KEY_IS(10000000000000000031UL)) {
-        MMV3_IMPL(MatMulKernelDeterministicSplitK, format_x1, FIXPIPE_OPT_SELECT::BASE);
-    } else if (TILING_KEY_IS(10000000000000000030UL)) {
-        MMV3_IMPL(MatMulUnAlignedKernelDeterministicSplitK, format_x1, FIXPIPE_OPT_SELECT::BASE);
-    } else if (TILING_KEY_IS(10000000000000000041UL)) {
-        KERNEL_TASK_TYPE(10000000000000000041UL, KERNEL_TYPE_MIX_AIC_1_0);
-        MMV3_IMPL(MatMulMultiCoreSplitK, format_x1, FIXPIPE_OPT_SELECT::BASE);
-    } else if (TILING_KEY_IS(10000000000000000001UL)) {
-        KERNEL_TASK_TYPE(10000000000000000001UL, KERNEL_TYPE_AIC_ONLY);
-        MMV3_IMPL_CLASS(MatmulBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000000000000000101UL)) {
-        KERNEL_TASK_TYPE(10000000000000000101UL, KERNEL_TYPE_AIC_ONLY);
-        MMV3_IMPL_CLASS(MatmulBaseKernelAL1FullLoad, format_x1, MatmulBaseBlock, MM_CFG_MDL);
-    } else if (TILING_KEY_IS(10000000000000000201UL)) {
-        KERNEL_TASK_TYPE(10000000000000000201UL, KERNEL_TYPE_AIC_ONLY);
-        MMV3_IMPL_CLASS(MatmulBaseKernelBL1FullLoad, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
-                        MatmulCallBackFunc<nullptr, nullptr, CopyBL1>);
-    } else if (TILING_KEY_IS(10000000000000010201UL)) {
-        MMV3_IMPL_CLASS(MatmulBaseUnalignedNKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
-                        MatmulCallBackFunc<nullptr, nullptr, CopyBL1>);
-    } else if (TILING_KEY_IS(10000000000000000200UL)) {
-        MMV3_IMPL_CLASS(MatmulBaseUnAlignedKernelBL1FullLoad, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
-                        MatmulCallBackFunc<nullptr, nullptr, CopyBL1>);
-    } else if (TILING_KEY_IS(10000000000000000202UL)) {
-        MMV3_IMPL_CLASS(MatmulCvpBaseKernel, format_x1, MatmulBaseBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000000000000010200UL)) {
-        MMV3_IMPL_CLASS(MatmulBaseAToNZWithBL1FixpipeKernel, CubeFormat::NZ, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
-                        MatmulCallBackFunc<nullptr, nullptr, CopyBL1>);
-    } else if (TILING_KEY_IS(10000000000000020201UL)) {
-        MMV3_IMPL_C_CLASS(MatmulBaseUnalignedNKernel, format_x1, CubeFormat::NZ, MatmulBaseBlock, MM_CFG_NO_PRELOAD,
-                        MatmulCallBackFunc<nullptr, nullptr, CopyBL1>, FIXPIPE_OPT_SELECT::VEC_NZ2ND_UNALIGNOUT);
-    } else if (TILING_KEY_IS(10000000000000020031UL)) {
-        MMV3_IMPL(MatMulKernelDeterministicSplitK, CubeFormat::NZ, FIXPIPE_OPT_SELECT::VEC_NZ2ND_UNALIGNOUT);
-    } else if (TILING_KEY_IS(10000000000000020030UL)) {
-        MMV3_IMPL(MatMulUnAlignedKernelDeterministicSplitK, CubeFormat::NZ, FIXPIPE_OPT_SELECT::VEC_NZ2ND_UNALIGNOUT);
-    }
-#endif
 #endif
 }

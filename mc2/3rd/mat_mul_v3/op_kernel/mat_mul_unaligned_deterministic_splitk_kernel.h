@@ -128,7 +128,7 @@ __aicore__ inline void MatMulUnAlignedKernelDeterministicSplitK(GM_ADDR aGM, GM_
                 ReduceKNzInUb<C_TYPE>(cGM, mmGM, coreSize, singleSize, totalSize, outSize, cnt, tiling.singleCoreN, tiling.N, tmpBuf, orderFlag, tiling, mCnt, nCnt, originM);
             } else {
                 ReduceKInUb<C_TYPE>(cGM, mmGM, coreSize, singleSize, totalSize, outSize, cnt, tiling.singleCoreN, tiling.N, tmpBuf, orderFlag, tiling);
-            }            
+            }
         }
         PipeBarrier<PIPE_ALL>();
         return;
@@ -179,7 +179,7 @@ __aicore__ inline void MatMulUnAlignedKernelDeterministicSplitK(GM_ADDR aGM, GM_
             } else if (matmulTilingData.matmulRunInfo.nd2nzA && matmulTilingData.matmulRunInfo.nd2nzB) {
                 using aType = MatmulType<A_TYPE::pos, CubeFormat::NZ, typename A_TYPE::T, A_TYPE::isTrans>;
                 using bType = MatmulType<B_TYPE::pos, CubeFormat::NZ, typename B_TYPE::T, B_TYPE::isTrans>;
-                
+
                 MatMulMultiCoreSplitKDivideL2cache<aType, bType, cType, BIAS_TYPE>(alignedworkspaceGM, alignedworkspaceGM +
                                                                         alignedOriM * alignedKaSize * sizeof(A_T),
                                                                         biasGM, mmOffsetGM, singleSize,

@@ -14,7 +14,7 @@
  */
 #include "weight_quant_batch_matmul_v2_weight_nz_tiling.h"
 
-#include "op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "common/op_host/math_util.h"
 #include "common/op_host/op_tiling/debug_tiling.h"
 #include "tiling_base/tiling_key.h"
@@ -653,7 +653,7 @@ ge::graphStatus WeightQuantBatchMatmulV2WeightNz::GetShapeAttrsInfo()
     OPS_LOG_I(inputParams_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
     auto compileInfoPtr = compileInfoPtr_ ?
                               compileInfoPtr_.get() :
-                              reinterpret_cast<const WeightQuantBatchMatmulV2CompileInfo*>(context_->GetCompileInfo());
+                              context_->GetCompileInfo<WeightQuantBatchMatmulV2CompileInfo>();
     OP_LOGE_IF(compileInfoPtr == nullptr, ge::GRAPH_FAILED, context_->GetNodeName(), "compileInfoPtr is null");
     // OP_LOG_FULL
     OPS_LOG_D(inputParams_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
@@ -830,6 +830,7 @@ void WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfoPtr_->l0bSize);
     compileInfoPtr_->workspaceNum = ascendcPlatform.GetLibApiWorkSpaceSize();
     compileInfoPtr_->socVersion = ascendcPlatform.GetSocVersion();
+
     TilingPrepareForOpCache(context_);
     OP_LOGD(context_->GetNodeName(), "MatmulAllReduce Init Quant Tiling Compile Info Success");
 }

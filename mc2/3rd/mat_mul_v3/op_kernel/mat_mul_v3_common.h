@@ -51,11 +51,6 @@ const uint64_t AIC_SYNC_AIV_FLAG = 6;
 
 constexpr uint64_t BLOCK_BYTE_SIZE = 32;
 
-#if defined(__DAV_C310__)
-const uint8_t AIC_SYNC_AIV_MODE_4 = 4;
-const uint64_t VEC0_FLAG_ID_OFFSET = 0;
-const uint64_t VEC1_FLAG_ID_OFFSET = 16;
-#endif
 // common MDL config
 constexpr MatmulConfig MM_CFG_MDL = GetMDLConfig();
 // set isVecND2Nz

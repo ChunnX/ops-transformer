@@ -19,16 +19,25 @@
 #include <array>
 #include "exe_graph/runtime/tiling_context.h"
 #include "exe_graph/runtime/tiling_parse_context.h"
-#include "op_cache_def_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_def_tiling.h"
 
 namespace optiling {
+const std::string WQBMM_MSD = "wqbmm_msd";
+const std::string WQBMM_CUSTOM = "wqbmm_custom";
 
-bool TilingPrepareForOpCache(gert::TilingContext* context);
-bool TilingPrepareForOpCache(gert::TilingParseContext* context);
+bool TilingPrepareForOpCache(gert::TilingContext* context) __attribute__((weak));
+bool TilingPrepareForOpCache(gert::TilingParseContext* context) __attribute__((weak));
 
 bool GenTiling(
     const std::string& op_type, const BatchmatmulCompileParas& compile_params, BatchmatmulRunParas& run_params,
     CacheTilingData& tiling, gert::TilingContext* context);
+
+bool CheckSupportConditionQbmm(QbmmType type, QuantBatchMatmulRunParas& inputParams, uint64_t aicNum, bool supportL0c2Out) __attribute__((weak));
+
+bool GenWqbmmTiling(
+    const std::string& op_type, const WeightQuantBatchMatmulCacheTilingParas& compile_params,
+    WeightQuantBatchMatmulCacheTilingData& cacheTiling) __attribute__((weak));
+
 } // namespace optiling
 
 #endif

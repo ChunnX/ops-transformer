@@ -136,11 +136,6 @@ macro(add_mc2_modules_sources)
   get_filename_component(PARENT_DIR ${SOURCE_DIR} DIRECTORY)
   get_filename_component(OP_NAME ${PARENT_DIR} NAME)
   list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
-  if((NOT "${ASCEND_OP_NAME}" STREQUAL "ALL") AND
-      (INDEX EQUAL -1))
-    #ASCEND_OP_NAME 为"ALL"表示全部编译
-    return()
-  endif()
   # 记录全局的COMPILED_OPS和COMPILED_OP_DIRS，其中COMPILED_OP_DIRS只记录到算子名，例如moe/moe_token_permute_with_routing_map_grad
   set(COMPILED_OPS ${COMPILED_OPS} ${OP_NAME} CACHE STRING "Compiled Ops" FORCE)
   set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
@@ -152,8 +147,8 @@ macro(add_mc2_modules_sources)
     target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
   endif()
 
-  file(GLOB OPTILING_SRCS
-      ${SOURCE_DIR}/op_tiling/*_tiling*.cpp
+  file(GLOB_RECURSE OPTILING_SRCS
+      ${SOURCE_DIR}/op_tiling/*.cpp
       ${SOURCE_DIR}/op_tiling/arch35/*.cpp
       ${SOURCE_DIR}/../op_graph/fallback*.cpp
   )

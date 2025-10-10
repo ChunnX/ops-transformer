@@ -89,6 +89,7 @@ QuantBatchMatmulV3TilingBase::QuantBatchMatmulV3TilingBase(gert::TilingContext *
 
 ge::graphStatus QuantBatchMatmulV3TilingBase::GetShapeAttrsInfo()
 {
+    OP_LOGE_IF(!SetPlatformInfoForTiling(), ge::GRAPH_FAILED, inputParams_.opName, "Set PlatformInfoFortiling fail");
     if (inputParams_.initFlag) {
         OP_LOGD(inputParams_.opName, "No need to get shape and attrs from tiling context again");
         return ge::GRAPH_SUCCESS;
@@ -659,6 +660,8 @@ void QuantBatchMatmulV3TilingBase::InitCompileInfo()
     compileInfo_.workspaceNum = ascendcPlatform.GetLibApiWorkSpaceSize();
     compileInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
     compileInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
+    platformInfoPtr->GetPlatformRes("version", "Soc_version", compileInfo_.socVersionStr);
+    compileInfo_.socVersion = ascendcPlatform.GetSocVersion();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo_.ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfo_.l2Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfo_.l1Size);
@@ -671,6 +674,7 @@ void QuantBatchMatmulV3TilingBase::InitCompileInfo()
     compileInfo_.supportL0c2Out = !platformRes.empty();
     platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_data_move_l12bt", platformRes);
     compileInfo_.supportL12BtBf16 = (platformRes.find("bf16") != std::string::npos);
+    TilingPrepareForOpCache(context_);
     compileInfoInit_ = true;
 }
 
@@ -678,7 +682,7 @@ bool QuantBatchMatmulV3TilingBase::SetPlatformInfoForTiling()
 {
     // mc2和qbmm把compileInfo都赋值给compileInfo_，后续硬件信息可以直接从compileInfo_中获取
     if (!compileInfoInit_) {
-        auto mmCompileInfo =  reinterpret_cast<const QuantBatchMatmulV3CompileInfo *>(context_->GetCompileInfo());
+        auto mmCompileInfo =  reinterpret_cast<const QuantBatchMatmulV3CompileInfo*>(context_->GetCompileInfo());
         OP_TILING_CHECK(mmCompileInfo == nullptr,
                         CUBE_INNER_ERR_REPORT(inputParams_.opName, "quant_batch_matmul_v3_tiling GetCompileInfo is null"),
                         return false);

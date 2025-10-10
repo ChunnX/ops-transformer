@@ -32,4 +32,15 @@ bool GenTiling(
     return true;
 }
 
+bool CheckSupportConditionQbmm(QbmmType /*type*/, QuantBatchMatmulRunParas& /*inputParams*/, uint64_t /*aicNum*/, bool /*supportL0c2Out*/)
+{
+    return true;
+}
+
+bool GenWqbmmTiling(
+    const std::string& /*op_type*/, const WeightQuantBatchMatmulCacheTilingParas& /*compile_params*/,
+    WeightQuantBatchMatmulCacheTilingData& /*cacheTiling*/)
+{
+    return true;
+}
 } // namespace optiling

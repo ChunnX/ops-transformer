@@ -142,7 +142,7 @@ __aicore__ inline void CopyA(const LocalTensor<int8_t> &aMatrix, const __gm__ vo
         }
         return;
     }
-    
+
     if (tilingDataPtr == nullptr || !ctx.isFirst) {
         return;
     }
@@ -230,7 +230,7 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
         static_cast<uint64_t>(this->block_.matmulTilingData_->matmulTiling.Kb) * this->block_.matmulTilingData_->matmulTiling.N);
     this->cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(cGM),
         static_cast<uint64_t>(this->block_.matmulTilingData_->matmulTiling.M) * this->block_.matmulTilingData_->matmulTiling.N);
-    
+
     uint64_t singleCoreM = this->block_.matmulTilingData_->matmulTiling.singleCoreM;
     uint64_t singleCoreN = this->block_.matmulTilingData_->matmulTiling.singleCoreN;
     uint64_t singleCoreK = this->block_.matmulTilingData_->matmulTiling.singleCoreK;
@@ -315,7 +315,7 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
         singleCoreTile = this->block_.params_.singleCoreN;
     }
     this->mm_.SetSelfDefineData(static_cast<uint64_t>((singleCoreTile << 32) + pingpong_gm));
-    
+
     if (this->block_.matmulTilingData_->matmulTiling.isBias) {
         this->mm_.SetBias(this->biasGlobal_[this->block_.offset_.offsetBias]);
     }
@@ -334,7 +334,7 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
     GlobalTensor<A_T> curGlobal;
     uint64_t curOffset;
     uint32_t nCalcLen, dCalcLen;
-    
+
     if (aNz) {
         curGlobal = this->aGlobal_;
         curOffset = this->block_.offset_.offsetA;

@@ -28,71 +28,12 @@ constexpr uint64_t MSD_M_LIMIT = 64UL;
 constexpr uint64_t MSD_PERCHANNEL_MAX_K = 13696UL;
 constexpr uint64_t MSD_PERCHANNEL_MAX_N = 32000UL;
 constexpr uint64_t INT4_BLK_SIZE = 64UL;
+constexpr uint64_t DB_BUFFER = 2UL;
 
 const std::map<WhiteListShape, uint32_t> MM_PRELOAD_TIME_MAP = {
     {{1, 5568, 6656, false, false, true, 1}, 1},  {{1, 8192, 3072, false, false, true, 1}, 3},
     {{1, 8192, 6144, false, false, true, 1}, 3},  {{1, 1024, 8192, false, false, true, 1}, 3},
     {{16, 8192, 5504, false, false, true, 1}, 3}, {{16, 8192, 7168, false, false, true, 1}, 2}};
-
-const std::map<WhiteListShape, MatMulTilingCache> MSD_NZ_MM_TILING_CACHE = {
-    {{1, 3584, 8192, false, false, false, 24},
-     {24, 1, 8, 8192, 3584, 3584, 8, 352, 3584, 16, 64, 512, 7, 8, 1, 1, 7, 4, 32768, 1, 319488, 4096, 2, 2, 1}},
-    {{1, 8192, 3584, false, false, false, 24},
-     {23, 1, 8, 3584, 8192, 8192, 8, 160, 8192, 16, 96, 256, 32, 16, 1, 1, 32, 8, 24576, 1, 524288, 6144, 2, 2, 1}},
-};
-
-const std::map<WhiteListShape, MatMulTilingCache> MSD_MM_TILING_CACHE = {
-    {{1, 3584, 8192, false, false, true, 20},
-     {20, 1, 8, 8192, 3584, 3584, 8, 416, 3584, 16, 64, 512, 7, 4, 1, 1, 7, 2, 32768, 1, 122880, 4096, 2, 2, 1}},
-    // precision
-    {{2, 1408, 11264, false, false, true, 24},
-     {24, 1, 16, 11264, 1408, 1408, 32, 480, 1408, 32, 256, 128, 11, 8, 1, 1, 11, 4, 32768, 1, 110592, 32768, 2, 2, 1}},
-    {{3, 1408, 11264, false, false, true, 24},
-     {24, 1, 24, 11264, 1408, 1408, 48, 480, 1408, 48, 256, 128, 11, 8, 1, 1, 11, 4, 49152, 1, 133120, 49152, 2, 2, 1}},
-    {{3, 11264, 6912, true, false, true, 24},
-     {24, 1, 48, 6912, 11264, 11264, 48, 288, 11264, 48, 96, 256, 8, 8, 1, 1, 4, 4, 24576, 1, 294912, 18432, 2, 2, 2}},
-    {{2, 11264, 6912, true, false, true, 24},
-     {24, 1, 32, 6912, 11264, 11264, 32, 288, 11264, 32, 96, 256, 8, 4, 1, 1, 4, 2, 24576, 1, 262144, 12288, 2, 2, 2}},
-    {{2, 11264, 1664, true, false, true, 24},
-     {21, 1, 32, 1664, 11264, 11264, 32, 80, 11264, 32, 80, 256, 44, 4, 1, 1, 44, 2, 32768, 1, 110592, 32768, 2, 2, 1}},
-    {{2, 6912, 11264, false, false, true, 24},
-     {24, 1, 32, 11264, 6912, 6912, 32, 480, 6912, 32, 128, 256, 8, 8, 1, 1, 4, 4, 32768, 1, 110592, 32768, 2, 2, 2}},
-    {{3, 6912, 11264, false, false, true, 24},
-     {24, 1, 48, 11264, 6912, 6912, 48, 480, 6912, 48, 128, 256, 8, 8, 1, 1, 4, 4, 32768, 1, 110592, 32768, 2, 2, 2}},
-    {{1, 5568, 6656, false, false, true, 20},
-     {20, 1, 1, 6656, 5568, 5568, 16, 336, 5568, 16, 32, 1024, 6, 12, 1, 1, 6, 6, 32768, 1, 110592, 32768, 2, 2, 1}},
-    {{1, 1664, 6656, false, false, true, 20},
-     {20, 1, 1, 6656, 1664, 1664, 16, 336, 1664, 16, 112, 128, 13, 16, 1, 1, 13, 8, 32768, 1, 110592, 32768, 2, 2, 1}},
-    {{1, 2752, 8192, false, false, true, 20},
-     {19, 1, 2, 8192, 2752, 2752, 2, 432, 2752, 16, 256, 128, 22, 12, 1, 1, 22, 6, 32768, 0, 438272, 16384, 2, 2, 2}},
-    {{1, 8192, 3072, false, false, true, 20},
-     {12, 1, 2, 3072, 8192, 8192, 2, 256, 8192, 16, 256, 128, 64, 8, 1, 1, 64, 4, 32768, 1, 393216, 16384, 2, 2, 2}},
-    {{1, 3072, 8192, false, false, true, 20},
-     {19, 1, 2, 8192, 3072, 3072, 2, 432, 3072, 16, 256, 128, 24, 8, 1, 1, 24, 4, 32768, 0, 311296, 16384, 2, 2, 2}},
-    {{1, 10240, 8640, false, false, true, 20},
-     {20, 1, 1, 8640, 10240, 10240, 2, 432, 10240, 16, 256, 128, 80, 8, 1, 1, 80, 4, 32768, 0, 311296, 16384, 2, 2, 1}},
-    {{1, 4320, 10240, false, false, true, 20},
-     {20, 1, 1, 10240, 4320, 4320, 2, 512, 4320, 16, 256, 128, 34, 8, 1, 1, 34, 4, 32768, 0, 311296, 16384, 2, 2, 1}},
-    {{1, 8192, 3072, true, false, true, 20},
-     {12, 1, 2, 3072, 8192, 8192, 2, 256, 8192, 16, 256, 128, 64, 8, 1, 1, 64, 4, 32768, 1, 393216, 16384, 2, 2, 2}},
-    {{2, 8192, 5504, false, false, true, 20},
-     {20, 1, 32, 5504, 8192, 8192, 32, 288, 8192, 32, 288, 64, 64, 16, 1, 1, 32, 8, 36864, 0, 425984, 36864, 2, 2, 2}},
-    {{2, 2752, 8192, false, false, true, 20},
-     {19, 1, 32, 8192, 2752, 2752, 32, 432, 2752, 32, 256, 128, 22, 12, 1, 1, 22, 6, 32768, 0, 483328, 32768, 2, 2, 2}},
-    {{2, 8192, 6144, false, false, true, 20},
-     {20, 1, 32, 6144, 8192, 8192, 32, 320, 8192, 32, 320, 64, 64, 16, 1, 1, 32, 8, 40960, 0, 458752, 40960, 2, 2, 2}},
-    {{2, 8192, 7168, false, false, true, 20},
-     {20, 1, 32, 7168, 8192, 8192, 32, 368, 8192, 32, 368, 64, 64, 16, 1, 1, 32, 8, 47104, 0, 507904, 47104, 2, 2, 2}},
-    {{3, 8192, 5504, false, false, true, 20},
-     {20, 1, 48, 5504, 8192, 8192, 48, 288, 8192, 48, 288, 64, 64, 16, 1, 1, 32, 8, 55296, 0, 491520, 55296, 2, 2, 2}},
-    {{3, 8192, 6144, false, false, true, 20},
-     {20, 1, 48, 6144, 8192, 8192, 48, 320, 8192, 48, 320, 64, 64, 16, 1, 1, 32, 8, 61440, 0, 524288, 61440, 2, 2, 2}},
-    {{1, 6272, 8192, false, false, true, 20},
-     {20, 1, 16, 8192, 6272, 6272, 16, 416, 6272, 16, 208, 128, 49, 12, 1, 1, 49, 6, 26624, 0, 419840, 13312, 2, 2, 2}},
-    {{1, 11264, 5120, false, false, true, 20},
-     {20, 1, 2, 5120, 11264, 11264, 2, 256, 11264, 16, 128, 256, 16, 8, 1, 1, 8, 4, 327648, 0, 0, 8192, 2, 2, 2}},
-    {{1, 11264, 6144, false, false, true, 24},
-     {24, 1, 2, 6144, 11264, 11264, 2, 256, 11264, 16, 128, 256, 16, 8, 1, 1, 8, 4, 327648, 0, 0, 8192, 2, 2, 2}}};
 
 const std::set<WhiteListShape> MSD_HIGH_PRECISION_LIST = {
     // llama3-70B
@@ -394,9 +335,8 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::DoMSDGroupSplitKOpTiling()
             matmulInfoPtr_->kSize),
         return ge::GRAPH_FAILED);
     // cube开db，需要乘以2
-    constexpr int32_t FACTOR = 2;
     tilingData_->matmulTiling.set_depthB1(
-        FACTOR * tilingData_->matmulTiling.get_stepKb() * tilingData_->matmulTiling.get_stepN());
+        DB_BUFFER * tilingData_->matmulTiling.get_stepKb() * tilingData_->matmulTiling.get_stepN());
     blkDim_ = std::max(
         std::min(
             kBlockNum * ops::CeilDiv(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->get_v1BaseM())),
@@ -721,40 +661,6 @@ void WeightQuantBatchMatmulV2Msd::ReviseMMTiling() const
 
 bool WeightQuantBatchMatmulV2Msd::GetTilingFromCache()
 {
-    if (matmulInfoPtr_->bDtype == ge::DT_INT4) {
-        return false;
-    }
-    std::map<WhiteListShape, MatMulTilingCache>::const_iterator it;
-    uint64_t mMatchSize = ops::CeilDiv(matmulInfoPtr_->mSize * order_, static_cast<uint64_t>(BLOCK_CUBE));
-    uint64_t nSize = matmulInfoPtr_->nSize;
-    uint64_t kSize = matmulInfoPtr_->kSize;
-    if (splitKFlag_) {
-        nSize = tilingData_->get_taskNSize();
-        kSize = tilingData_->get_v1BaseK();
-    }
-
-    WhiteListShape shape(
-        {mMatchSize, kSize, nSize, matmulInfoPtr_->hasBias, matmulInfoPtr_->transA, matmulInfoPtr_->transB,
-         compileInfoPtr_->aicNum});
-    if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
-        it = MSD_NZ_MM_TILING_CACHE.find(shape);
-        if (it == MSD_NZ_MM_TILING_CACHE.end()) {
-            OP_LOGD(opName_, "the Msd template not find mm tiling NZ from cache");
-            return false;
-        }
-    } else {
-        it = MSD_MM_TILING_CACHE.find(shape);
-        if (it == MSD_MM_TILING_CACHE.end()) {
-            OP_LOGD(opName_, "the Msd template not find mm tiling from cache");
-            return false;
-        }
-    }
-
-    OP_LOGD(opName_, "the Msd template get mm tiling from cache");
-    auto& matmulTilingCache = it->second;
-    matmulTilingCache.SetMatmulTilingFromCacheData(tilingData_->matmulTiling, matmulInfoPtr_->mSize * order_, nSize, 0);
-    tilingData_->set_cubeBlockDimM(matmulTilingCache.mDim_);
-    tilingData_->set_cubeBlockDimN(matmulTilingCache.nDim_);
-    return true;
+    return false;
 }
 } // namespace optiling

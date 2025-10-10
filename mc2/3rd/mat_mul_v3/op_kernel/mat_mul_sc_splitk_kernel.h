@@ -282,10 +282,10 @@ MatMulBaseKernelSingleCoreSplitK<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYP
     if ASCEND_IS_AIC {
         mm_.SetHF32(block_.params_.isHf32, 1); // 1: round mode is round to the nearest tie away from zero
         //  SetL2CacheHint 的逻辑: 左、右矩阵仅搬运一次的情形
-        if (IS_NKM && (block_.matmulTilingData_->matmulTiling.stepN * 
+        if (IS_NKM && (block_.matmulTilingData_->matmulTiling.stepN *
             block_.matmulTilingData_->matmulTiling.baseN == block_.matmulTilingData_->matmulTiling.N)) {
             aGlobal_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-        } else if (!IS_NKM && (block_.matmulTilingData_->matmulTiling.stepM * 
+        } else if (!IS_NKM && (block_.matmulTilingData_->matmulTiling.stepM *
             block_.matmulTilingData_->matmulTiling.baseM == block_.matmulTilingData_->matmulTiling.M)) {
             bGlobal_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         }

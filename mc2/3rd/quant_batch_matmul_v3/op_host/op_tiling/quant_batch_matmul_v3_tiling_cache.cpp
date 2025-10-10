@@ -16,7 +16,7 @@
 
 namespace optiling {
 QuantBatchMatmulV3HashInput::QuantBatchMatmulV3HashInput(const QuantBatchMatmulInfo &params,
-                                                         const AiCoreParams &aicoreParams)
+                                                         const Ops::Transformer::OpTiling::AiCoreParams &aicoreParams)
 {
     mSize = params.mSize;
     mSizePerNpu = params.mSizePerNpu;

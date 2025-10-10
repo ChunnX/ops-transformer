@@ -23,7 +23,7 @@
 #include "op_cache_tiling.h"
 namespace optiling {
 namespace matmul_v3 {
-class MatmulV3BaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MatmulV3BaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass::TilingBaseClass {
 public:
  public:
     explicit MatmulV3BaseTiling(gert::TilingContext* context)

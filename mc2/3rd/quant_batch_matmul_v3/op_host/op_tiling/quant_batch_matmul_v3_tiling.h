@@ -124,7 +124,6 @@ protected:
     bool CheckDtypeOnOnlyL0c2outForPertoken() const;
     bool CheckDtypeOnOnlyL0c2outForX1NZ() const;
     bool CheckDtypeOnOnlyL0c2outForUnclassified() const;
-
     uint64_t GetTilingKey(bool isBasicTiling) const;
     bool GetUbDequantExtreSpace() override;
     ge::graphStatus CalcUbTiling() override;
@@ -163,10 +162,9 @@ protected:
     uint64_t GetTotalSize(uint64_t m, uint64_t k, uint64_t n) const;
     
     uint32_t GetABankConflictSize();
-    bool IsInQbmmPertokenWhiteListDSV3(const optiling::QuantBatchMatmulInfo &inputParams, uint64_t aicNum) const;
     void UpdateSmallMTbeTiling();
     void UpdateSmallMTbeTiling(uint64_t baseM, uint64_t baseN, uint64_t baseK);
-
+    void SetQuantBatchMatmulRunParas(QuantBatchMatmulRunParas& runParams, const optiling::QuantBatchMatmulInfo& inputParams);
     // 新增数据成员请注意：如果是在GetShapeAttrsInfo函数过程中获取的，请放到QuantBatchMatmulInfo结构体中，或者保证在DoOpTiling赋值
     QuantBatchMatmulV3TilingData tilingDataSelf_;
     QuantBatchMatmulV3TilingData &tilingData_;

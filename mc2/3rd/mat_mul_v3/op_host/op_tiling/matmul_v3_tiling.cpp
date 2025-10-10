@@ -16,6 +16,11 @@
 
 #include <type_traits>
 
+#include "runtime/tiling_context.h"
+#include "platform/platform_infos_def.h"
+#include "tiling/platform/platform_ascendc.h"
+#include "exe_graph/runtime/tiling_context.h"
+#include "exe_graph/runtime/tiling_parse_context.h"
 #include "op_cache_tiling.h"
 #include "matmul_v3_base_tiling.h"
 #include "matmul_v3_compile_info.h"
@@ -23,7 +28,7 @@
 #include "matmul_v3_platform_common.h"
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "platform/platform_infos_def.h"
+
 using namespace optiling::matmul_v3;
 using Ops::Transformer::OpTiling::TilingRegistry;
 

@@ -190,27 +190,8 @@ __aicore__ inline uint64_t CalcAL1Size(uint64_t mL1, uint64_t kL1)
  */
 __aicore__ inline constexpr uint32_t GetTaskRation()
 {
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-    return 2U; // aiv corenum is 2 in C310 platform
-#else
     return 1U;
-#endif
 }
-
-
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-template <typename T>
-__aicore__ inline constexpr bool IsMxType()
-{
-    return AscendC::IsSameType<T, AscendC::fp8_e8m0_t>::value;
-}
-
-template <typename T>
-__aicore__ inline constexpr bool IsFp4()
-{
-    return (AscendC::IsSameType<T, fp4x2_e2m1_t>::value || AscendC::IsSameType<T, fp4x2_e1m2_t>::value);
-}
-#endif
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
 __aicore__ inline void CalcDequantParams(uint32_t curAivM, uint32_t curAivN, AscendC::DequantParams &dequantParams,

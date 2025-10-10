@@ -20,7 +20,7 @@
 #include "weight_quant_batch_matmul_v2_tiling_msd_group.h"
 #include "weight_quant_batch_matmul_v2_tiling_splitk.h"
 #include "weight_quant_batch_matmul_v2_weight_nz_tiling.h"
-#include "op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
 
 using Ops::Transformer::OpTiling::TilingRegistry;
 
@@ -98,6 +98,7 @@ static ge::graphStatus TilingParseForWeightQuantBatchMatmulV2(gert::TilingParseC
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfoPtr->l0bSize);
     compileInfoPtr->workspaceNum = ascendcPlatform.GetLibApiWorkSpaceSize();
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
+
     TilingPrepareForOpCache(context);
     return ge::GRAPH_SUCCESS;
 }

@@ -37,7 +37,7 @@ constexpr uint64_t BASIC_BLOCK_SIZE_64 = 64;
 constexpr uint64_t BASIC_BLOCK_SIZE_128 = 128;
 constexpr uint64_t BASIC_BLOCK_SIZE_256 = 256;
 constexpr uint64_t BASIC_BLOCK_SIZE_512 = 512;
-constexpr uint64_t BASIC_BLOCK_SIZE = 256U * 128U;
+constexpr uint64_t BASIC_BLOCK_SIZE = 256UL * 128UL;
 constexpr uint64_t BASIC_BLOCK_K_128_BYTE = 128;
 constexpr uint64_t L0C_SIZE_256_KB = 262144;
 constexpr uint64_t HALF_FACTOR = 2;
@@ -77,7 +77,6 @@ constexpr uint64_t BENEFITS_MIN_N = 1500;
 constexpr uint32_t INDEX_0 = 0;
 constexpr uint32_t INDEX_1 = 1;
 constexpr uint32_t INDEX_2 = 2;
-const std::vector<uint64_t> MANUAL_CASE_SHAPE = {64, 14336, 9536};
 
 const std::vector<uint64_t> ALL_BASE = {64, 80, 96, 128, 192, 256, 320, 384, 512};
 const std::vector<uint64_t> INNER_AXIS_ND_BASE = {128, 256, 512, 1024};
@@ -87,21 +86,6 @@ const std::vector<uint64_t> INNER_AXIS_ALIGN_NZ_BASE = {64, 96, 128, 160, 192, 2
 // baseM/N from small to large, so baseK from large to small
 const std::vector<uint64_t> K_BASE = {1024, 512, 256, 128, 64, 32};
 
-// 对{K,N}满足以下组合不走basic模板
-const std::vector<std::pair<uint64_t, uint64_t>> BLACK_LIST_IN_BASIC{{8192, 5472}};
-const std::vector<std::pair<uint64_t, uint64_t>> BLACK_LIST_M_LIMIT{
-    {8192, 7168}, {8192, 7392}, {3584, 8192}, {3696, 8192}};
-
-// 隐含的条件：仅支持没有batch轴的情况和int8类型，知识库模板对应的shape(m,k,n)且不带bias的不走basic Tiling
-const std::set<std::tuple<uint64_t, uint64_t, uint64_t>> BANK_NO_BIAS_SHAPE_SET{
-    {16, 4480, 6656}, {32, 4480, 6656}, {16, 1664, 6656}, {32, 1664, 6656}};
-
-const std::set<std::tuple<uint64_t, uint64_t, uint64_t>> BANK_SPLITK_SET{
-    {256, 29568, 8192}, {512, 29568, 8192}, {768, 29568, 8192}, {1024, 29568, 8192}};
-
-// 隐含的条件：仅支持没有batch轴的情况和int8类型，对应的shape(m,k,n)且不带bias的不走basic Tiling
-const std::set<std::tuple<uint64_t, uint64_t, uint64_t>> BANK_NOBIAS_PERTOKEN_SHAPE_SET{
-    {576, 1024, 7168}, {1152, 1024, 7168}};
 }  // namespace
 
 namespace optiling {
@@ -124,7 +108,6 @@ ge::graphStatus QuantBatchMatmulV3BasicTiling::DoOpTiling()
     matmul_tiling::MultiCoreMatmulTiling mm;
     mm.SetDim(aicoreParams_.aicNum);
     GetSocVersion();
-    CheckInManualWhiteList(inputParams_.mSize, inputParams_.nSize, inputParams_.kSize);
     if (CheckUseBasicTiling() && InitTilingData(mm) == ge::GRAPH_SUCCESS) {
         OP_LOGE_IF(!DoBasicTiling(), ge::GRAPH_FAILED, inputParams_.opName, "DoBasicTiling failed.");
     } else {
@@ -194,7 +177,7 @@ bool QuantBatchMatmulV3BasicTiling::IsPertokenBasicSwitchCondition() const
     uint32_t  N_LOWER_1_2 = 1280;
     uint32_t  K_LOWER_1_2 = 1152;
     uint32_t  K_UPPER_1_2 = 1536;
-    uint32_t  BASE_BLOCK_1_2 = 682; 
+    uint32_t  BASE_BLOCK_1_2 = 682;
     int baseM = tilingData_.matmulTiling.get_baseM();
     int baseN = tilingData_.matmulTiling.get_baseN();
     uint32_t baseBlock = 0;
@@ -206,7 +189,7 @@ bool QuantBatchMatmulV3BasicTiling::IsPertokenBasicSwitchCondition() const
     bool pertokenBasicSwitch = (((inputParams_.kSize <= K_LOWER_1_2 && baseBlock >= BASE_BLOCK_1_2) ||
                                  (inputParams_.kSize > K_LOWER_1_2 && inputParams_.kSize <= K_UPPER_1_2 &&
                                   inputParams_.mSize >= M_LOWER_1_2 && inputParams_.nSize >= N_LOWER_1_2))) &&
-                               (inputParams_.aFormat == ge::FORMAT_ND) && (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) && 
+                               (inputParams_.aFormat == ge::FORMAT_ND) && (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) &&
                                inputParams_.isPertoken && (!inputParams_.transA) && (!inputParams_.transB);
     isAicAiv1_2 = pertokenBasicSwitch;
     return pertokenBasicSwitch;
@@ -295,70 +278,17 @@ bool QuantBatchMatmulV3BasicTiling::CheckInBasicBenefitsRange(uint64_t m, uint64
     return ret;
 }
 
-void QuantBatchMatmulV3BasicTiling::CheckInManualWhiteList(uint64_t m, uint64_t n, uint64_t k)
-{
-    // 手动调参白名单
-    isInBasicWhiteList = false;
-    //  match M,K,N
-    if ((m == MANUAL_CASE_SHAPE[INDEX_0]) && (k == MANUAL_CASE_SHAPE[INDEX_1]) && (n == MANUAL_CASE_SHAPE[INDEX_2])) {
-        isInBasicWhiteList = true;
-    }
-    if ((inputParams_.aDtype != ge::DT_INT8) || (inputParams_.bDtype != ge::DT_INT8)) {
-        isInBasicWhiteList = false;
-    }
-    if ((inputParams_.cDtype != ge::DT_FLOAT16) && (inputParams_.cDtype != ge::DT_BF16)) {
-        isInBasicWhiteList = false;
-    }
-    if (socVersion != platform_ascendc::SocVersion::ASCEND910B) {
-        isInBasicWhiteList = false;
-    }
-}
-
 // 小shape进basic模板无收益点，暂不进
 bool QuantBatchMatmulV3BasicTiling::CheckMNSmallShape(uint64_t m, uint64_t n) const
 {
     return std::min(m, n) <= BASIC_BLOCK_SIZE_512 && std::max(m, n) <= KB_SIZE;
 }
 
-// basic tiling黑名单，暂时无法解决劣化问题
-bool QuantBatchMatmulV3BasicTiling::CheckInBasicBlackList(uint64_t m, uint64_t n, uint64_t k) const
+bool QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
 {
-    std::tuple<uint64_t, uint64_t, uint64_t> shape{m, k, n};
-    std::pair<uint64_t, uint64_t> shapeKN{k, n};
-    bool isWeightNz = inputParams_.aFormat == ge::FORMAT_ND && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
-    bool isNoTrans = !inputParams_.transA && !inputParams_.transB;
-    if (isWeightNz && !inputParams_.hasBias && BANK_NO_BIAS_SHAPE_SET.find(shape) != BANK_NO_BIAS_SHAPE_SET.end()) {
-        return true;
-    }
-
-    if (isWeightNz && isNoTrans) {
-        bool isMatchPertokenNoBias = BANK_NOBIAS_PERTOKEN_SHAPE_SET.find(shape) != BANK_NOBIAS_PERTOKEN_SHAPE_SET.end();
-        if (!inputParams_.hasBias && isMatchPertokenNoBias && inputParams_.isPertoken) {
-            return true;
-        }
-        // 只在20核平台具备性能收益
-        bool hitBankSplitKFlag = aicoreParams_.aicNum == 20 && inputParams_.cDtype == ge::DT_INT32 &&
-                                 !inputParams_.hasBias && (BANK_SPLITK_SET.find(shape) != BANK_SPLITK_SET.end());
-        if (hitBankSplitKFlag) {
-            return true;
-        }
-
-        // 只在M<=512, 20核平台场景具备性能收益
-        bool hitMLimitListFlag =
-            m <= 512 && aicoreParams_.aicNum == 20 &&
-            (std::find(BLACK_LIST_M_LIMIT.begin(), BLACK_LIST_M_LIMIT.end(), shapeKN) != BLACK_LIST_M_LIMIT.end());
-        if (hitMLimitListFlag) {
-            return true;
-        }
-    }
-
-    auto it = std::find(BLACK_LIST_IN_BASIC.begin(), BLACK_LIST_IN_BASIC.end(), shapeKN);
-    return it != BLACK_LIST_IN_BASIC.end() && m > BLOCK_CUBE;
-}
-
-bool QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling() const
-{
-    if (IsInQbmmPertokenWhiteListDSV3(inputParams_, aicoreParams_.aicNum)) {
+    QuantBatchMatmulRunParas runParams_;
+    SetQuantBatchMatmulRunParas(runParams_, inputParams_);
+    if (CheckSupportConditionQbmm(QbmmType::Pertoken, runParams_, aicoreParams_.aicNum, compileInfo_.supportL0c2Out)) {
         return false;
     }
     if (inputParams_.aFormat == ge::FORMAT_FRACTAL_NZ) {
@@ -393,13 +323,13 @@ bool QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling() const
         return true;
     }
 
-    // 黑名单shape不进基本块模板
-    if (CheckInBasicBlackList(inputParams_.mSize, inputParams_.nSize, inputParams_.kSize)) {
+    // 不进基本块模板
+    if (CheckSupportConditionQbmm(QbmmType::BasicLimit, runParams_, aicoreParams_.aicNum, compileInfo_.supportL0c2Out)) {
         return false;
     }
-
     // 若shape不在已知基本块收益范围内
-    if (!CheckInBasicBenefitsRange(inputParams_.mSize, inputParams_.nSize, inputParams_.kSize) && !isInBasicWhiteList) {
+    if (!CheckInBasicBenefitsRange(inputParams_.mSize, inputParams_.nSize, inputParams_.kSize) && 
+        !CheckSupportConditionQbmm(QbmmType::Basic, runParams_, aicoreParams_.aicNum, compileInfo_.supportL0c2Out)) {
         // mix场景增量应走增量优化模板（tbe tiling），mix暂不支持L2cache切分，因此当前mix增量和超大shape都不能走基本块模板
         if (!CheckIfUseBasicInMix(inputParams_.mSize, inputParams_.nSize, inputParams_.kSize)) {
             return false;
@@ -466,14 +396,14 @@ std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> QuantBatchMatmulV3BasicTiling
         for (uint64_t i = 0; i < usedCoreNum; ++i) {
             mCoreDist[preTotalBlock / nCnt] += 1;
             nCoreDist[preTotalBlock % nCnt] += 1;
-            uint64_t increment = (i >= preCoreNum ? round - 1 : round);
+            uint64_t increment = (i >= preCoreNum ? round - 1UL : round);
             preTotalBlock += increment;
         }
     } else {
         for (uint64_t i = 0; i < usedCoreNum; ++i) {
             mCoreDist[preTotalBlock % mCnt] += 1;
             nCoreDist[preTotalBlock / mCnt] += 1;
-            uint64_t increment = (i >= preCoreNum ? round - 1 : round);
+            uint64_t increment = (i >= preCoreNum ? round - 1UL : round);
             preTotalBlock += increment;
         }
     }
@@ -803,7 +733,9 @@ bool QuantBatchMatmulV3BasicTiling::ProcessBNZDecode()
     basicTiling_.baseM = ops::CeilAlign(inputParams_.mSize, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t coreNum = aicoreParams_.aicNum;
     // 手动调参白名单
-    if (isInBasicWhiteList) {
+    QuantBatchMatmulRunParas runParams_;
+    SetQuantBatchMatmulRunParas(runParams_, inputParams_);
+    if (CheckSupportConditionQbmm(QbmmType::Basic, runParams_, aicoreParams_.aicNum, compileInfo_.supportL0c2Out)) {
         basicTiling_.baseK = BASIC_BLOCK_SIZE_128;
         basicTiling_.baseN = BASIC_BLOCK_SIZE_256;
         basicTiling_.usedCoreNum = std::min(coreNum, ops::CeilDiv(inputParams_.nSize, basicTiling_.baseN));
@@ -876,7 +808,7 @@ bool QuantBatchMatmulV3BasicTiling::SetBase(const std::vector<uint64_t> &mBases,
             baseN = nBases[j];
             //k小于2048时，baseN是160,192,320时强制128对齐
             if (inputParams_.kSize <= kAlignedLimit && (baseN == 160 || baseN == 192 || baseN == 320)) {
-                continue; 
+                continue;
             }
             // 为小shape场景更新base组合, 以及int4场景保证低轴64对齐
             ModifyBase(baseM, baseN);
@@ -1428,10 +1360,10 @@ uint64_t QuantBatchMatmulV3BasicTiling::GetTilingKey() const
 {
     if (inputParams_.cDtype == ge::DT_BF16 && IsPertokenBasicSwitchCondition()) {
         return RecursiveSum(
-            inputParams_.transB, inputParams_.transA, true, isBf16Opt_,  
+            inputParams_.transB, inputParams_.transA, true, isBf16Opt_,
             inputParams_.isPertoken, false, isAicAiv1_2);
     }
-    return QuantBatchMatmulV3Tiling::GetTilingKey(true); 
+    return QuantBatchMatmulV3Tiling::GetTilingKey(true);
 }
 
 void QuantBatchMatmulV3BasicTiling::PrintBasicTiling() const

@@ -216,7 +216,7 @@ __aicore__ inline void MatmulBaseBlock::InitBlockIndex(uint64_t index)
     uint64_t indexStart = params_.blockIdxStart;
     uint64_t indexEnd = params_.blockIdxEnd;
 
-    // 利用roundCnt来解决尾块负载均衡问题
+    // 利用roudCnt来解决尾块负载均衡问题
     if (indexStart < indexEnd) {
         // 正常排序, preCore在整个Cores的中间
         if (GetCurrentBlockIdx() < indexStart) {

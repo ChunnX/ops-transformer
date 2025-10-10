@@ -37,8 +37,9 @@
 #include "arch31/weight_quant_matmul_all_reduce_tiling_310p.h"
 #include "arch31/unquant_matmul_all_reduce_tiling_310.h"
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "platform/platform_info.h"
 #include "tiling_base/tiling_type.h"
+#include "tiling_base/tiling_templates_registry.h"
 
 using namespace AscendC;
 using namespace ge;

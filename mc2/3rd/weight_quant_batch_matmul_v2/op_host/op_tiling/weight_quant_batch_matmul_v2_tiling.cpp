@@ -15,7 +15,7 @@
 
 #include "weight_quant_batch_matmul_v2_tiling.h"
 
-#include "op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "common/op_host/math_util.h"
 #include "common/op_host/op_tiling/debug_tiling.h"
 
@@ -183,6 +183,7 @@ void WeightQuantBatchMatmulV2Tiling::InitCompileInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr_->ubSize);
     compileInfoPtr_->workspaceNum = ascendcPlatform.GetLibApiWorkSpaceSize();
     compileInfoPtr_->socVersion = ascendcPlatform.GetSocVersion();
+
     TilingPrepareForOpCache(context_);
     OP_LOGD(context_->GetNodeName(), "MatmulAllReduce Init Quant Tiling Compile Info Success");
 }

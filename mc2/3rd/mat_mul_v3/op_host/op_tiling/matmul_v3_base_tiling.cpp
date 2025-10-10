@@ -13,6 +13,7 @@
  * \brief
  */
 #include "matmul_v3_base_tiling.h"
+#include "../../op_kernel/mat_mul_v3_tiling_key.h"
 
 #include "matmul_v3_l2_cache.h"
 #include "util/math_util.h"
@@ -27,7 +28,6 @@
 #include "platform/platform_infos_def.h"
 
 using namespace optiling::matmul_v3;
-using Ops::Transformer::OpTiling::GET_TILINGKEY;
 using Ops::Transformer::MathUtil;
 namespace tuningtiling {
 REGISTER_TUNING_TILING_CLASS(MatMulV3, MatMulV3TunnerTiling);
@@ -308,14 +308,14 @@ static ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const
     std::vector<ge::DataType> dtype = {args.aType, args.bType, args.cType};
     if (args.hasBias) { dtype.push_back(args.biasType); }
     auto isValidDtype = [&args](const std::vector<ge::DataType> &dtypeList) -> ge::graphStatus {
-        const std::vector<std::vector<ge::DataType> > dtypeSupportList = {
+        const std::vector<std::vector<ge::DataType> > dtypeSuportList = {
             // x1,              x2,             y,              bias
             {ge::DT_FLOAT16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
             {ge::DT_FLOAT16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT},
             {ge::DT_FLOAT,      ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT},
             {ge::DT_BF16,       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT}
         };
-        for (auto &supported : dtypeSupportList) {
+        for (auto &supported : dtypeSuportList) {
             if (std::equal(dtypeList.begin(), dtypeList.end(), supported.begin())) {
                 return ge::GRAPH_SUCCESS;
             }
@@ -398,7 +398,7 @@ ge::graphStatus MatmulV3BaseTiling::GetArgs()
     return OpSpecificCheck(*context_, args_);
 }
 
-inline bool GetNd2nzA(MatmulV3Args& args_, MatmulV3CompileInfo& compileInfo_)
+inline bool GetNd2nzA(const MatmulV3Args& args_, const MatmulV3CompileInfo& compileInfo_)
 {
     constexpr uint64_t nMataThread = 16384;
     constexpr uint64_t mMataThread = 4096;
@@ -410,7 +410,7 @@ inline bool GetNd2nzA(MatmulV3Args& args_, MatmulV3CompileInfo& compileInfo_)
            (args_.aType == ge::DT_FLOAT16 || args_.aType == ge::DT_BF16);
 }
 
-inline bool GetNd2nzB(MatmulV3Args& args_, MatmulV3CompileInfo& compileInfo_)
+inline bool GetNd2nzB(const MatmulV3Args& args_, const MatmulV3CompileInfo& compileInfo_)
 {
     constexpr uint64_t kMataCond = 16384;
     constexpr uint64_t nMataCond = 7168;
@@ -606,9 +606,11 @@ void MatmulV3BaseTiling::OptimizeLoadBalanceBasicKernel()
     uint64_t baseKCheck = BASIC_BLOCK_SIZE_128 / aDtypeSize_;
     constexpr uint64_t aicNumCheck = 24;
     bool baseMNKFlag = runInfo_.baseM * runInfo_.baseN == baseMNCheck && runInfo_.baseK == baseKCheck;
-    tilingKey_ = GET_TILINGKEY(GetMixNd2nzType(), tilingEnable_.tilingEnableSplitCore,
-                                tilingEnable_.tilingEnableFullLoad, 0, tilingEnable_.tilingEnableFixOpti);
-    bool tilingKeyCheckFlag = tilingKey_ == 10000000000000000001UL || tilingKey_ == 10000000000000000000UL;
+    MixNd2NzType mixNd2nzType = GetMixNd2nzType();
+    bool tilingKeyCheckFlag = tilingEnable_.tilingEnableFullLoad == TilingEnableFullLoad::BASE &&
+                              tilingEnable_.tilingEnableSplitCore == TilingEnableSplitCore::BASE &&
+                              tilingEnable_.tilingEnableFixOpti == TilingEnableFixOpti::BASE &&
+                              (mixNd2nzType == MixNd2NzType::NO_ND2NZ || mixNd2nzType == MixNd2NzType::V_HEAD_ND2NZ);
     bool aicNumCheckFlag = compileInfo_.aicNum == aicNumCheck;
     uint64_t mCore = ops::CeilDiv(args_.mValue, runInfo_.baseM);
     uint64_t nCore = ops::CeilDiv(args_.nValue, runInfo_.baseN);
@@ -651,8 +653,6 @@ void MatmulV3BaseTiling::OptimizeBasicKernelStepK()
     constexpr uint64_t MNCheck = 768;
     constexpr uint64_t mataCheck = 16384;
     constexpr uint64_t aicNumCheck = 24;
-    tilingKey_ = GET_TILINGKEY(GetMixNd2nzType(), tilingEnable_.tilingEnableSplitCore,
-                                tilingEnable_.tilingEnableFullLoad, 0, tilingEnable_.tilingEnableFixOpti); // tilingKey reverse:  01->10
     bool baseMNKFlag = runInfo_.baseM * runInfo_.baseN == baseMNCheck && runInfo_.baseK == baseKCheck;
     bool alignFlag = args_.mValue % alignCheck == 0 && args_.nValue % alignCheck == 0 && args_.kValue % alignCheck == 0 &&
                     args_.mValue >= MNCheck && args_.nValue >= MNCheck && !IsPowerOfTwo(args_.kValue);
@@ -668,28 +668,43 @@ void MatmulV3BaseTiling::OptimizeBasicKernelStepK()
     bool dtypeFlag = (args_.aType == ge::DT_FLOAT16 || args_.aType == ge::DT_BF16) &&
                     (args_.bType == ge::DT_FLOAT16 || args_.bType == ge::DT_BF16) &&
                     (args_.cType == ge::DT_FLOAT16 || args_.cType == ge::DT_BF16);
-    if (tilingKey_ == 10000000000000000001UL && baseMNKFlag && notMataFlag && dtypeFlag &&
-        (alignFlag || middleMShapeFlag || middleKShapeFlag || BigMShapeFlag) && globalMNFlag && aicNumCheckFlag){
+    uint64_t disableMixNd2nz = static_cast<uint64_t>(GetMixNd2nzType());
+    tilingKey_ = GET_TPL_TILING_KEY(
+        static_cast<uint64_t>(tilingEnable_.tilingEnableFullLoad),
+        static_cast<uint64_t>(tilingEnable_.tilingEnableSplitCore),
+        static_cast<uint64_t>(tilingEnable_.tilingEnableFixOpti), disableMixNd2nz);
+    if (tilingEnable_.tilingEnableFullLoad == TilingEnableFullLoad::BASE &&
+        tilingEnable_.tilingEnableSplitCore == TilingEnableSplitCore::BASE &&
+        tilingEnable_.tilingEnableFixOpti == TilingEnableFixOpti::BASE && GetMixNd2nzType() == MixNd2NzType::NO_ND2NZ &&
+        baseMNKFlag && notMataFlag && dtypeFlag &&
+        (alignFlag || middleMShapeFlag || middleKShapeFlag || BigMShapeFlag) && globalMNFlag && aicNumCheckFlag) {
         OP_LOGI(args_.opName, "Fit optimization condition, tilingKey_: %lu", tilingKey_);
-        OP_LOGI(args_.opName, "Fit optimization condition, M N K: %lu %lu %lu", args_.mValue, args_.nValue, args_.kValue);
-        OP_LOGI(args_.opName, "Fit optimization condition, baseM baseN baseK: %lu %lu %lu", runInfo_.baseM, runInfo_.baseN, runInfo_.baseK);
+        OP_LOGI(
+            args_.opName, "Fit optimization condition, M N K: %lu %lu %lu", args_.mValue, args_.nValue, args_.kValue);
+        OP_LOGI(
+            args_.opName, "Fit optimization condition, baseM baseN baseK: %lu %lu %lu", runInfo_.baseM, runInfo_.baseN,
+            runInfo_.baseK);
         constexpr uint64_t oriStepKValue = 8;
         constexpr uint64_t optStepKValue = 4;
-        if(runInfo_.stepKa == oriStepKValue) {
+        if (runInfo_.stepKa == oriStepKValue) {
             runInfo_.depthA1 = runInfo_.depthA1 / runInfo_.stepKa * optStepKValue;
             runInfo_.stepKa = optStepKValue;
         }
-        if(runInfo_.stepKb == oriStepKValue) {
+        if (runInfo_.stepKb == oriStepKValue) {
             runInfo_.depthB1 = runInfo_.depthB1 / runInfo_.stepKb * optStepKValue;
             runInfo_.stepKb = optStepKValue;
         }
-        OP_LOGI(args_.opName, "stepKa: %lu, stepKb: %lu, depthA1: %lu, depthB1: %lu", 
-        runInfo_.stepKa, runInfo_.stepKb, runInfo_.depthA1, runInfo_.depthB1);
-    }
-    else {
+        OP_LOGI(
+            args_.opName, "stepKa: %lu, stepKb: %lu, depthA1: %lu, depthB1: %lu", runInfo_.stepKa, runInfo_.stepKb,
+            runInfo_.depthA1, runInfo_.depthB1);
+    } else {
         OP_LOGI(args_.opName, "Doesn't fit optimization condition, tilingKey_: %lu", tilingKey_);
-        OP_LOGI(args_.opName, "Doesn't fit optimization condition, M N K: %lu %lu %lu", args_.mValue, args_.nValue, args_.kValue);
-        OP_LOGI(args_.opName, "Doesn't fit optimization condition, baseM baseN baseK: %lu %lu %lu", runInfo_.baseM, runInfo_.baseN, runInfo_.baseK);
+        OP_LOGI(
+            args_.opName, "Doesn't fit optimization condition, M N K: %lu %lu %lu", args_.mValue, args_.nValue,
+            args_.kValue);
+        OP_LOGI(
+            args_.opName, "Doesn't fit optimization condition, baseM baseN baseK: %lu %lu %lu", runInfo_.baseM,
+            runInfo_.baseN, runInfo_.baseK);
         OP_LOGI(args_.opName, "Doesn't fit optimization condition, aicNum: %lu", compileInfo_.aicNum);
     }
 }
@@ -1581,9 +1596,9 @@ void MatmulV3BaseTiling::CalL1Tiling()
     uint64_t depthBSize = runInfo_.depthB1 * runInfo_.baseN * runInfo_.baseK * bDtypeSize_;
     if (depthASize + depthBSize > totalL1Size - reserveBTSize) {
         if (runInfo_.baseM <= runInfo_.baseN) {
-            runInfo_.depthA1 = runInfo_.depthA1 / NUM_HALF; // 2: adjust depth for l1 buffer
+            runInfo_.depthA1 = runInfo_.depthA1 / NUM_HALF; // 2: adjust deptch for l1 buffer
         } else {
-            runInfo_.depthB1 = runInfo_.depthB1 / NUM_HALF; // 2: adjust depth for l1 buffer
+            runInfo_.depthB1 = runInfo_.depthB1 / NUM_HALF; // 2: adjust deptch for l1 buffer
         }
     }
     runInfo_.stepKa = runInfo_.depthA1 / DB_SIZE;
@@ -1773,7 +1788,7 @@ bool MatmulV3BaseTiling::DoBL1FullloadWithFixpipeTiling() {
 
 bool MatmulV3BaseTiling::DoAL1FullLoadTiling()
 {
-    // only support fp32, and restrict transpose attrs as network cases
+    // only support fp32, and resreict transpose attrs as network cases
     if (!compileInfo_.supportL0c2out || args_.aType != ge::DT_FLOAT || args_.isATrans || !args_.isBTrans) {
         return false;
     }
@@ -1850,7 +1865,7 @@ bool MatmulV3BaseTiling::DoBL1FullLoadTiling()
          (args_.aType == ge::DT_FLOAT16 && args_.bType == ge::DT_FLOAT16)) &&
         (args_.mValue >= mLowerLimit) && (args_.mValue <= mUpperLimit) && (args_.nValue == 512) && // N is 512
         (args_.kValue == 512) && mTailBlockCheck && !args_.isATrans && args_.isBTrans && // K is 512
-        (args_.aFormat == ge::FORMAT_ND) && (args_.bFormat == ge::FORMAT_ND);
+        (args_.aFormat == ge::FORMAT_ND) && (args_.bFormat == ge::FORMAT_ND) && args_.hasBias == 0;
     if (!bl1FullLoadCheck) {
         return DoBL1FullLoadTilingBase();
     } else if (bL1CoreSplitFullLoadCheck) {
@@ -2292,7 +2307,7 @@ bool MatmulV3BaseTiling::CheckSingleTilingOk(MatmulV3RunInfo &tmpRunInfo)
         return false;
     }
     // singleM切分在256到384之间，使用33算法，但若时fp32的输出非对齐场景，singleK小容易fixpipe_bound
-    if (isMKNsmallK || (tmpRunInfo.singleCoreM > SINGLE_CORE_M_24 && 
+    if (isMKNsmallK || (tmpRunInfo.singleCoreM > SINGLE_CORE_M_24 &&
         tmpRunInfo.singleCoreM <= MULTI_CORE_SINGLE_K && !(args_.aType == ge::DT_FLOAT && !n256Align_))) {
         SetBasicBlockOfMK33(tmpRunInfo);
     } else if (isNKMsmallK) {
@@ -2300,7 +2315,7 @@ bool MatmulV3BaseTiling::CheckSingleTilingOk(MatmulV3RunInfo &tmpRunInfo)
     }
     tmpRunInfo.singleCoreK = tmpRunInfo.stepKa * tmpRunInfo.baseK;
     tmpRunInfo.dbL0c = DB_SIZE;
-    tilingEnable_.tilingEnableSplitCore = TilingEnableSplitCore::SINGLE_CORE_SPLIT_K; 
+    tilingEnable_.tilingEnableSplitCore = TilingEnableSplitCore::SINGLE_CORE_SPLIT_K;
     if (isNKM || isNKMsmallK) { // 走51：NKM模板
         tilingEnable_.tilingEnableSplitCore = TilingEnableSplitCore::SINGLE_CORE_NKM_SPLIT_K;
     } else if (args_.aType != ge::DT_FLOAT && args_.nValue % ALIGN_128 == 0 && !isMKNsmallK) {
@@ -2662,9 +2677,11 @@ void MatmulV3BaseTiling::DoTilingKey()
 {
     // 1: disable mix nd2nz 0: enable mix nd2nz
     uint64_t disableMixNd2nz = static_cast<uint64_t>(GetMixNd2nzType());
-    tilingKey_ = GET_TILINGKEY(disableMixNd2nz, tilingEnable_.tilingEnableSplitCore,
-                               tilingEnable_.tilingEnableFullLoad, 0, tilingEnable_.tilingEnableFixOpti); // tilingKey reverse:  01->10
-    OP_LOGI(args_.opName, "DoTilingKey: %lu", tilingKey_);
+    tilingKey_ = GET_TPL_TILING_KEY(
+        static_cast<uint64_t>(tilingEnable_.tilingEnableFullLoad),
+        static_cast<uint64_t>(tilingEnable_.tilingEnableSplitCore),
+        static_cast<uint64_t>(tilingEnable_.tilingEnableFixOpti), disableMixNd2nz);
+    OP_LOGI(args_.opName, "Tiling Key is 0x%x", tilingKey_);
 }
 
 ge::graphStatus MatmulV3BaseTiling::GetWorkspaceSize()

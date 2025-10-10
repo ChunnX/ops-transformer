@@ -47,8 +47,8 @@
 #endif
 
 #undef ORIG_DTYPE_PERTOKEN_SCALE
+#undef DTYPE_PERTOKEN_SCALE
 #define ORIG_DTYPE_PERTOKEN_SCALE DT_FLOAT
-using DTYPE_PERTOKEN_SCALE = float
 
 using namespace AscendC;
 using namespace matmul;

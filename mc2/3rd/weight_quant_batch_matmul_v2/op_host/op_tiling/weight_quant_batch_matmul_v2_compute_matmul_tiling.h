@@ -17,7 +17,7 @@
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_COMPUTE_MATMUL_TILING_H
 
 #include "weight_quant_batch_matmul_v2_tiling.h"
-#include "op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
 
 using Ops::Transformer::OpTiling::AiCoreParams;
 

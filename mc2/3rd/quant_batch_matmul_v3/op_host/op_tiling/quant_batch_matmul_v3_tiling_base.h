@@ -20,7 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "quant_batch_matmul_v3_compile_info.h"
 #include "tiling_base/tiling_base.h"
-#include "op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "common/op_host/math_util.h"
 
 namespace optiling {
@@ -135,7 +135,7 @@ protected:
     virtual bool CheckDtype() const;
     virtual bool CheckShape(const std::vector<gert::Shape *> &mandtoryShape, const gert::StorageShape* biasShape,
                             const gert::StorageShape* pertokenShape, const std::vector<int64_t> &dimValueOfMKN) const;
-    
+
     virtual ge::graphStatus CheckContext();
     virtual bool AnalyzeDtype();
     virtual bool AnalyzeAttrs();
@@ -158,6 +158,12 @@ protected:
     bool CheckShapeInRangeForMandtoryInputs(size_t x1ShapeLen, size_t x2ShapeLen) const;
     void SetTransAttr(QuantBatchMatmulV3Trans &trans) const;
     bool SetPlatformInfoForTiling();
+
+    virtual bool CheckSupportConditionQbmm(
+        QbmmType /*type*/, QuantBatchMatmulRunParas& /*inputParams*/, uint64_t /*aicNum*/, bool /*supportL0c2Out*/)
+    {
+        return false;
+    }
 
     template<typename T>
     inline bool CheckNumberIsValid(const T &num, const std::string &opName, const std::string &description) const {

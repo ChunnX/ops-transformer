@@ -262,7 +262,7 @@ protected:
         }
         mm_.SetTensorA(xGm_[offsetA_], aTrans);
         mm_.SetTensorB(weightGm_[offsetB_], bTrans);
-        if (hasBias_ != 0 && kCoreIndx == 0) {
+        if (hasBias_ != 0UL && kCoreIndx == 0UL) {
             mm_.SetBias(biasGm_[offsetBias_]);
         }
         mm_.IterateAll(yGm_[offsetC_], enAtomic);

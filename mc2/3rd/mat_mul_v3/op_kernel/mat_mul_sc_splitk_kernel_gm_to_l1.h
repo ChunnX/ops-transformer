@@ -21,16 +21,16 @@ using namespace AscendC;
 using namespace matmul;
 
 namespace MatMulBaseKernelSingleCoreSplitKGmToL1Constant {
-    constexpr uint32_t L1_MAX_SIZE_910B_NO_BIAS = 512 * 1024; 
-    constexpr uint32_t L1_MAX_SIZE_910B_HAS_BIAS = 511 * 1024; 
+    constexpr uint32_t L1_MAX_SIZE_910B_NO_BIAS = 512 * 1024;
+    constexpr uint32_t L1_MAX_SIZE_910B_HAS_BIAS = 511 * 1024;
     constexpr uint32_t L1_CUT_BLOCK_NUM_24 = 64 * 1024;
     constexpr uint32_t L1_CUT_BLOCK_NUM_33 = 48 * 1024;
-    constexpr uint32_t LOC_MAX_SIZE_910B = 128 * 1024; 
-    constexpr uint32_t M_0 = 0; 
-    constexpr uint32_t M_1 = 1; 
-    constexpr uint32_t M_2 = 2; 
-    constexpr uint32_t M0 = 128;         
-    constexpr uint32_t N0 = 128; 
+    constexpr uint32_t LOC_MAX_SIZE_910B = 128 * 1024;
+    constexpr uint32_t M_0 = 0;
+    constexpr uint32_t M_1 = 1;
+    constexpr uint32_t M_2 = 2;
+    constexpr uint32_t M0 = 128;
+    constexpr uint32_t N0 = 128;
     constexpr uint32_t K_INDEX_0 = 0;
     constexpr uint32_t N_INDEX_0 = 0;
 }
@@ -62,9 +62,9 @@ public:
 
 protected:
     BLOCK_TYPE block_;
-    using AL1 = MatmulType<AscendC::TPosition::A1, CubeFormat::NZ, DTYPE_X1, A_TYPE::isTrans>;  
-    using BL1 = MatmulType<AscendC::TPosition::B1, CubeFormat::NZ, DTYPE_X1, B_TYPE::isTrans>; 
-    using CL0 = MatmulType<AscendC::TPosition::CO1, CubeFormat::NZ, float>; 
+    using AL1 = MatmulType<AscendC::TPosition::A1, CubeFormat::NZ, DTYPE_X1, A_TYPE::isTrans>;
+    using BL1 = MatmulType<AscendC::TPosition::B1, CubeFormat::NZ, DTYPE_X1, B_TYPE::isTrans>;
+    using CL0 = MatmulType<AscendC::TPosition::CO1, CubeFormat::NZ, float>;
     MatmulImpl<AL1, BL1, CL0, BIAS_TYPE, MM_CFG_MDL> mm_;
     using A_T = typename A_TYPE::T;
     using B_T = typename B_TYPE::T;
@@ -80,15 +80,15 @@ protected:
     TQue<TPosition::CO1,1> C01Pong_;
     LocalTensor<float> L0cPing_;
     LocalTensor<float> L0cPong_;
-    TBuf<TPosition::A1> l1TBuf_; 
-    LocalTensor<A_T> aL1Ping; 
-    LocalTensor<A_T> aL1Pong; 
-    LocalTensor<A_T> aL1Peng; 
-    LocalTensor<B_T> bL1Ping; 
-    LocalTensor<B_T> bL1Pong; 
-    LocalTensor<B_T> bL1; 
-    LocalTensor<B_T> bL2; 
-    LocalTensor<float> l0c_; 
+    TBuf<TPosition::A1> l1TBuf_;
+    LocalTensor<A_T> aL1Ping;
+    LocalTensor<A_T> aL1Pong;
+    LocalTensor<A_T> aL1Peng;
+    LocalTensor<B_T> bL1Ping;
+    LocalTensor<B_T> bL1Pong;
+    LocalTensor<B_T> bL1;
+    LocalTensor<B_T> bL2;
+    LocalTensor<float> l0c_;
     event_t eventIdBPingMte1Mte2;
     event_t eventIdBPongMte1Mte2;
     event_t eventIdBPingMte2Mte1;
@@ -98,7 +98,7 @@ protected:
     event_t eventIdAPingMte2Mte1;
     event_t eventIdAPongMte2Mte1;
     event_t eventIdAPengMte1Mte2;
-    event_t eventIdAPengMte2Mte1; 
+    event_t eventIdAPengMte2Mte1;
     int32_t pingMReal;
     int32_t pongMReal;
     int32_t pengMReal;
@@ -233,23 +233,23 @@ __aicore__ inline void
 MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::InitL1Buffer()
 {
     if (block_.matmulTilingData_->matmulTiling.isBias) {
-        pipe_->InitBuffer(l1TBuf_, L1_MAX_SIZE_910B_HAS_BIAS); 
+        pipe_->InitBuffer(l1TBuf_, L1_MAX_SIZE_910B_HAS_BIAS);
     } else {
         pipe_->InitBuffer(l1TBuf_, L1_MAX_SIZE_910B_NO_BIAS);
     }
     if (block_.matmulTilingData_->matmulTiling.stepM == 2 || block_.matmulTilingData_->matmulTiling.stepM == 1) {
         // 2*4算法
-        bL1Ping = l1TBuf_.Get<B_T>()[0]; 
-        bL1Pong = l1TBuf_.Get<B_T>()[1 * L1_CUT_BLOCK_NUM_24]; 
-        aL1Ping = l1TBuf_.Get<A_T>()[2 * L1_CUT_BLOCK_NUM_24]; 
-        aL1Pong = l1TBuf_.Get<A_T>()[3 * L1_CUT_BLOCK_NUM_24]; 
+        bL1Ping = l1TBuf_.Get<B_T>()[0];
+        bL1Pong = l1TBuf_.Get<B_T>()[1 * L1_CUT_BLOCK_NUM_24];
+        aL1Ping = l1TBuf_.Get<A_T>()[2 * L1_CUT_BLOCK_NUM_24];
+        aL1Pong = l1TBuf_.Get<A_T>()[3 * L1_CUT_BLOCK_NUM_24];
     } else {
         //3*3算法
-        bL1Ping = l1TBuf_.Get<B_T>()[0]; 
-        bL1Pong = l1TBuf_.Get<B_T>()[1 * L1_CUT_BLOCK_NUM_33]; 
-        aL1Ping = l1TBuf_.Get<A_T>()[2 * L1_CUT_BLOCK_NUM_33]; 
-        aL1Pong = l1TBuf_.Get<A_T>()[3 * L1_CUT_BLOCK_NUM_33]; 
-        aL1Peng = l1TBuf_.Get<A_T>()[4 * L1_CUT_BLOCK_NUM_33]; 
+        bL1Ping = l1TBuf_.Get<B_T>()[0];
+        bL1Pong = l1TBuf_.Get<B_T>()[1 * L1_CUT_BLOCK_NUM_33];
+        aL1Ping = l1TBuf_.Get<A_T>()[2 * L1_CUT_BLOCK_NUM_33];
+        aL1Pong = l1TBuf_.Get<A_T>()[3 * L1_CUT_BLOCK_NUM_33];
+        aL1Peng = l1TBuf_.Get<A_T>()[4 * L1_CUT_BLOCK_NUM_33];
     }
     pipe_->InitBuffer(C01Ping_, 1, LOC_MAX_SIZE_910B / 2);
     pipe_->InitBuffer(C01Pong_, 1, LOC_MAX_SIZE_910B / 2);
@@ -302,8 +302,8 @@ MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BI
                 CopyInBl1ND(bpingflag, k0, K_INDEX_0, nPingReal, N_INDEX_0);
                 for (uint64_t kIndex = 0; kIndex < block_.params_.loopK; ++kIndex) {
                     bool lastK = kIndex == block_.params_.loopK - 1;
-                    int32_t realK = lastK ? block_.matmulTilingData_->matmulTiling.Ka - kIndex * k0 : k0; 
-                    int32_t nextRealK =  kIndex ==  block_.params_.loopK - 2 ? block_.matmulTilingData_->matmulTiling.Ka - (kIndex + 1) * k0 : k0; 
+                    int32_t realK = lastK ? block_.matmulTilingData_->matmulTiling.Ka - kIndex * k0 : k0;
+                    int32_t nextRealK =  kIndex ==  block_.params_.loopK - 2 ? block_.matmulTilingData_->matmulTiling.Ka - (kIndex + 1) * k0 : k0;
                     block_.UpdateBlockParamsMk(innerMIndex, kIndex);
                     if (kIndex != 0) {
                         SetAtomicAdd<float>();
@@ -376,11 +376,11 @@ template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class B
 __aicore__ inline void
 MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::SetEventFlag()
 {
-    SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdBPingMte1Mte2)); 
+    SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdBPingMte1Mte2));
     SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPingMte1Mte2));
     if (block_.matmulTilingData_->matmulTiling.stepM != 1) {
         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPongMte1Mte2));
-    } 
+    }
     SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdBPongMte1Mte2));
     if (block_.matmulTilingData_->matmulTiling.stepM == 3) {
         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPengMte1Mte2));
@@ -396,7 +396,7 @@ __aicore__ inline void
 MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::WaitEventFlag()
 {
     WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdBPingMte1Mte2));
-    WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPingMte1Mte2)); 
+    WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPingMte1Mte2));
     if (block_.matmulTilingData_->matmulTiling.stepM != 1) {
         WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPongMte1Mte2));
     }
@@ -465,7 +465,7 @@ MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BI
         WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPengMte1Mte2));
         DataCopy(aL1Peng, aGlobal_[aOffset], nd2nzParams);
         SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(eventIdAPengMte2Mte1));
-    }  
+    }
 
     return;
 }
@@ -508,7 +508,7 @@ MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BI
         WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(eventIdAPengMte1Mte2));
         DataCopy(aL1Peng, aGlobal_[aOffset], aNzParams);
         SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(eventIdAPengMte2Mte1));
-    }  
+    }
     return;
 }
 
@@ -611,8 +611,8 @@ MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BI
     eventIdAPongMte2Mte1 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>());
     if (block_.matmulTilingData_->matmulTiling.stepM == 3) {
         eventIdAPengMte1Mte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>());
-        eventIdAPengMte2Mte1 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>()); 
-    } 
+        eventIdAPengMte2Mte1 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>());
+    }
 }
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
@@ -631,7 +631,7 @@ MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BI
     if (block_.matmulTilingData_->matmulTiling.stepM == 3) {
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(eventIdAPengMte1Mte2);
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdAPengMte2Mte1);
-    } 
+    }
 }
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
@@ -728,7 +728,7 @@ MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BI
     SetFlag<HardEvent::FIX_M>(static_cast<event_t>(l0cFixMAndMFIX));
     mm_.ClearBias();
     mm_.End();
-    l0cpingflag = !l0cpingflag;  
+    l0cpingflag = !l0cpingflag;
 }
 
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
@@ -768,7 +768,7 @@ MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BI
                 if (B_TYPE::format == CubeFormat::ND && lastK) {
                     realKb = block_.matmulTilingData_->matmulTiling.Ka - kIndex * k0;
                 }
-                int32_t nextRealK =  kIndex ==  block_.params_.loopK - 2 ? MMV3CeilAlign(block_.matmulTilingData_->matmulTiling.Ka - (kIndex + 1) * k0, block_.params_.c0Size) : k0; 
+                int32_t nextRealK =  kIndex ==  block_.params_.loopK - 2 ? MMV3CeilAlign(block_.matmulTilingData_->matmulTiling.Ka - (kIndex + 1) * k0, block_.params_.c0Size) : k0;
                 block_.UpdateBlockParamsMk(innerMIndex, kIndex);
                 if (kIndex != 0) {
                     SetAtomicAdd<float>();

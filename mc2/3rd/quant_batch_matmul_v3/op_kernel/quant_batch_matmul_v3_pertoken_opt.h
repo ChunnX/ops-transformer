@@ -278,7 +278,7 @@ protected:
                            DequantBmm::Align(mOffset, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
             } else {
                 // k1, m1, m0, k0
-                offsetA_ = batchAOffset * DequantBmm::Align(m_, BMM_BLOCK_NUM) * DequantBmm::Align(k_, K0_INT8) + 
+                offsetA_ = batchAOffset * DequantBmm::Align(m_, BMM_BLOCK_NUM) * DequantBmm::Align(k_, K0_INT8) +
                            DequantBmm::Align(mOffset, BMM_BLOCK_NUM) * K0_INT8;
             }
         }

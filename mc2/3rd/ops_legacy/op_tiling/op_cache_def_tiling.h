@@ -193,6 +193,109 @@ public:
     uint64_t deq_scale_var = 0x3F800000;
     uint32_t l2_cache_flag = 0;
 };
+struct QuantBatchMatmulRunParas {
+    bool initFlag = false;  // 避免重复解析flag
+    bool transA = false;
+    bool transB = false;
+    bool hasBias = false;
+    uint64_t mSize = 0UL;
+    uint64_t mSizePerNpu = 0UL;
+    uint64_t kSize = 0UL;
+    uint64_t nSize = 0UL;
+    uint64_t batchA = 0UL;
+    uint64_t batchA1 = 0UL;
+    uint64_t batchA2 = 0UL;
+    uint64_t batchA3 = 0UL;
+    uint64_t batchA4 = 0UL;
+    uint64_t batchB = 0UL;
+    uint64_t batchB1 = 0UL;
+    uint64_t batchB2 = 0UL;
+    uint64_t batchB3 = 0UL;
+    uint64_t batchB4 = 0UL;
+    uint64_t batchC = 0UL;
+    uint64_t batchC1 = 0UL;
+    uint64_t batchC2 = 0UL;
+    uint64_t batchC3 = 0UL;
+    uint64_t batchC4 = 0UL;
+    uint64_t batchBias = 0UL;
+    ge::DataType aDtype = ge::DT_INT8;
+    ge::DataType bDtype = ge::DT_INT8;
+    ge::DataType cDtype = ge::DT_FLOAT16;
+    ge::DataType biasDtype = ge::DT_INT32;
+    ge::DataType scaleDtype = ge::DT_UINT64;
+    ge::DataType perTokenScaleDtype = ge::DT_FLOAT;
+    bool isPerTensor = false;
+    bool isPerChannel = false;
+    bool isPertoken = false;
+    bool isDoubleScale = false;
+    bool isMxPerGroup = false;
+    bool isPerBlock = false;
+    bool isPerBlockPerToken = false;
+    int64_t outDtype = 0L;
+    uint32_t libApiWorkSpaceSize = 0U;
+    uint64_t bf16ExtreWorkSpaceSize = 0UL;
+    uint64_t groupSize = 0UL;
+    uint64_t groupSizeM = 0UL;
+    uint64_t groupSizeK = 0UL;
+    uint64_t groupSizeN = 0UL;
+    const char *opName = nullptr;
+    ge::Format aFormat = ge::FORMAT_ND;
+    ge::Format bFormat = ge::FORMAT_ND;
+    ge::Format cFormat = ge::FORMAT_ND;
+};
+
+enum class QbmmType : uint32_t
+{
+    Perchannel = 0,   
+    Pertoken = 1,
+    KN = 2,
+    Basic = 3,
+    BasicLimit =4
+};
+
+struct WeightQuantBatchMatmulCacheTilingParas {
+    uint64_t mSize = 0;
+    uint64_t kSize = 0;
+    uint64_t nSize = 0;
+    bool hasBias = false;
+    bool transA = false;
+    bool transB = false;
+    bool nz = false;
+    uint64_t aicNum = 0;
+    
+    bool operator<(const WeightQuantBatchMatmulCacheTilingParas& right) const
+    {
+        return memcmp(this, &right, sizeof(WeightQuantBatchMatmulCacheTilingParas)) < 0;
+    }
+};
+
+struct WeightQuantBatchMatmulCacheTilingData {
+    int32_t nDim_ = 0;
+    int32_t mDim_ = 0;
+    int32_t m_ = 0;
+    int32_t n_ = 0;
+    int32_t ka_ = 0;
+    int32_t kb_ = 0;
+    int32_t singleCoreM_ = 0;
+    int32_t singleCoreN_ = 0;
+    int32_t singleCoreK_ = 0;
+    int32_t baseM_ = 0;
+    int32_t baseN_ = 0;
+    int32_t baseK_ = 0;
+    int32_t depthA1_ = 0;
+    int32_t depthB1_ = 0;
+    int32_t stepM_ = 0;
+    int32_t stepN_ = 0;
+    int32_t stepKa_ = 0;
+    int32_t stepKb_ = 0;
+    int32_t transLength_ = 0;
+    int32_t iterateOrder_ = 0;
+    int32_t shareL1Size_ = 0;
+    int32_t shareL0CSize_ = 0;
+    int32_t dbL0A_ = 0;
+    int32_t dbL0B_ = 0;
+    int32_t dbL0C_ = 0;
+};
 } // namespace optiling
 
 #endif

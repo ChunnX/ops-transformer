@@ -89,7 +89,7 @@ enum class MixNd2NzType : int32_t
 };
 
 enum class TilingCalcSelect : int32_t //选择不同的计算Tiling的方法
-{  
+{
     ALL = 0,
     BASE = 1,
     SINGLE_CORE_SPLIT_K = 2,
@@ -108,7 +108,7 @@ enum class TilingEnableSplitCore : int32_t // 互斥flag, 对应不同切K模板
 };
 
 enum class TilingEnableFullLoad : int32_t // 互斥flag, 对应不同全载模板选择
-{ 
+{
     BASE = 0,
     AL1_FULL_LOAD = 1,
     BL1_FULL_LOAD = 2,

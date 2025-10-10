@@ -49,10 +49,10 @@ enum class BasicTilingMode : uint32_t{
 
 class QuantBatchMatmulV3BasicTiling : public QuantBatchMatmulV3Tiling {
 public:
-    explicit QuantBatchMatmulV3BasicTiling(gert::TilingContext *context)
-     : QuantBatchMatmulV3Tiling(context), context(context) { }
-    QuantBatchMatmulV3BasicTiling(gert::TilingContext *context, QuantBatchMatmulV3TilingData *out)
-     : QuantBatchMatmulV3Tiling(context, out), context(context)
+    explicit QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn)
+     : QuantBatchMatmulV3Tiling(contextIn), context(contextIn) { }
+    QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn, QuantBatchMatmulV3TilingData *out)
+     : QuantBatchMatmulV3Tiling(contextIn, out), context(contextIn)
     {
     }
     ~QuantBatchMatmulV3BasicTiling() override = default;
@@ -77,14 +77,12 @@ protected:
     void PrintBasicTiling() const;
     // // basic tiling
     bool CheckIfUseBasicInMix(uint64_t m, uint64_t n, uint64_t k) const;
-    bool CheckInBasicBlackList(uint64_t m, uint64_t n, uint64_t k) const;
     bool CheckNotFullLoadForMutliIterate(uint64_t m, uint64_t n, uint64_t k) const;
     void GetSocVersion();
     bool IsPertokenBasicSwitchCondition() const;
     bool CheckInBasicBenefitsRange(uint64_t m, uint64_t n, uint64_t k) const;
-    void CheckInManualWhiteList(uint64_t m, uint64_t n, uint64_t k);
     bool CheckMNSmallShape(uint64_t m, uint64_t n) const;
-    bool CheckUseBasicTiling() const;
+    bool CheckUseBasicTiling();
     bool DoBasicTiling();
     bool CalcL0Tiling();
     bool CalcL1Tiling();
@@ -142,7 +140,6 @@ protected:
     void SetCalcOrderinMNClashCase(uint64_t mTotalCnt, uint64_t nTotalCnt);
 
 private:
-    bool isInBasicWhiteList = false;
     gert::TilingContext *context;
     platform_ascendc::SocVersion socVersion;
     mutable bool isAicAiv1_2 = false;

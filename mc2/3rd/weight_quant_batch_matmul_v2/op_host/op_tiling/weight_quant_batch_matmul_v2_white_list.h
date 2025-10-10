@@ -16,6 +16,7 @@
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_WHITE_LIST_H
 
 #include "common/op_host/math_util.h"
+#include "ops_legacy/op_tiling/op_cache_def_tiling.h"
 
 namespace optiling {
 
@@ -36,68 +37,40 @@ public:
     uint64_t aicNum_ : 40;
 };
 
-class MatMulTilingCache
+inline void SetMatmulTilingFromCacheData(
+    WeightQuantBatchMatmulCacheTilingData& cacheTilingData, optiling::TCubeTiling& matmulTiling, uint64_t m, uint64_t n,
+    int32_t isBias)
 {
-public:
-    int32_t nDim_;
-    int32_t mDim_;
-    int32_t m_;
-    int32_t n_;
-    int32_t ka_;
-    int32_t kb_;
-    int32_t singleCoreM_;
-    int32_t singleCoreN_;
-    int32_t singleCoreK_;
-    int32_t baseM_;
-    int32_t baseN_;
-    int32_t baseK_;
-    int32_t depthA1_;
-    int32_t depthB1_;
-    int32_t stepM_;
-    int32_t stepN_;
-    int32_t stepKa_;
-    int32_t stepKb_;
-    int32_t transLength_;
-    int32_t iterateOrder_;
-    int32_t shareL1Size_;
-    int32_t shareL0CSize_;
-    int32_t dbL0A_;
-    int32_t dbL0B_;
-    int32_t dbL0C_;
-
-    void SetMatmulTilingFromCacheData(optiling::TCubeTiling& matmulTiling, uint64_t m, uint64_t n, int32_t isBias) const
-    {
-        matmulTiling.set_M(m);
-        matmulTiling.set_N(n);
-        matmulTiling.set_Ka(this->ka_);
-        matmulTiling.set_Kb(this->kb_);
-        matmulTiling.set_singleCoreM(ops::CeilDiv(m, static_cast<uint64_t>(this->mDim_)));
-        matmulTiling.set_singleCoreN(this->singleCoreN_);
-        matmulTiling.set_singleCoreK(this->singleCoreK_);
-        matmulTiling.set_baseM(this->baseM_);
-        matmulTiling.set_baseN(this->baseN_);
-        matmulTiling.set_baseK(this->baseK_);
-        matmulTiling.set_depthA1(this->depthA1_);
-        matmulTiling.set_depthB1(this->depthB1_);
-        matmulTiling.set_stepM(this->stepM_);
-        matmulTiling.set_stepN(this->stepN_);
-        matmulTiling.set_stepKa(this->stepKa_);
-        matmulTiling.set_stepKb(this->stepKb_);
-        matmulTiling.set_isBias(isBias);
-        matmulTiling.set_transLength(this->transLength_);
-        matmulTiling.set_iterateOrder(this->iterateOrder_);
-        matmulTiling.set_shareL1Size(this->shareL1Size_);
-        matmulTiling.set_shareL0CSize(this->shareL0CSize_);
-        matmulTiling.set_dbL0A(this->dbL0A_);
-        matmulTiling.set_dbL0B(this->dbL0B_);
-        matmulTiling.set_dbL0C(this->dbL0C_);
-        matmulTiling.set_usedCoreNum(1);
-        matmulTiling.set_batchM(1);
-        matmulTiling.set_batchN(1);
-        matmulTiling.set_singleBatchM(1);
-        matmulTiling.set_singleBatchN(1);
-    }
-};
+    matmulTiling.set_M(m);
+    matmulTiling.set_N(n);
+    matmulTiling.set_Ka(cacheTilingData.ka_);
+    matmulTiling.set_Kb(cacheTilingData.kb_);
+    matmulTiling.set_singleCoreM(ops::CeilDiv(m, static_cast<uint64_t>(cacheTilingData.mDim_)));
+    matmulTiling.set_singleCoreN(cacheTilingData.singleCoreN_);
+    matmulTiling.set_singleCoreK(cacheTilingData.singleCoreK_);
+    matmulTiling.set_baseM(cacheTilingData.baseM_);
+    matmulTiling.set_baseN(cacheTilingData.baseN_);
+    matmulTiling.set_baseK(cacheTilingData.baseK_);
+    matmulTiling.set_depthA1(cacheTilingData.depthA1_);
+    matmulTiling.set_depthB1(cacheTilingData.depthB1_);
+    matmulTiling.set_stepM(cacheTilingData.stepM_);
+    matmulTiling.set_stepN(cacheTilingData.stepN_);
+    matmulTiling.set_stepKa(cacheTilingData.stepKa_);
+    matmulTiling.set_stepKb(cacheTilingData.stepKb_);
+    matmulTiling.set_isBias(isBias);
+    matmulTiling.set_transLength(cacheTilingData.transLength_);
+    matmulTiling.set_iterateOrder(cacheTilingData.iterateOrder_);
+    matmulTiling.set_shareL1Size(cacheTilingData.shareL1Size_);
+    matmulTiling.set_shareL0CSize(cacheTilingData.shareL0CSize_);
+    matmulTiling.set_dbL0A(cacheTilingData.dbL0A_);
+    matmulTiling.set_dbL0B(cacheTilingData.dbL0B_);
+    matmulTiling.set_dbL0C(cacheTilingData.dbL0C_);
+    matmulTiling.set_usedCoreNum(1);
+    matmulTiling.set_batchM(1);
+    matmulTiling.set_batchN(1);
+    matmulTiling.set_singleBatchM(1);
+    matmulTiling.set_singleBatchN(1);
+}
 
 } // namespace optiling
 #endif // WEIGHT_QUANT_BATCH_MATMUL_V2_WHITE_LIST_H

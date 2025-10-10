@@ -19,12 +19,15 @@ if(BUILD_OPEN_PROJECT)
         ${CMAKE_CURRENT_SOURCE_DIR}/batch_mat_mul_v3/op_host/batch_mat_mul_v3_def.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.cpp
         # qbmm
-        # ${CMAKE_CURRENT_SOURCE_DIR}/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.cpp
-        # ${CMAKE_CURRENT_SOURCE_DIR}/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.cpp
-        # # wqbmm
-        # ${CMAKE_CURRENT_SOURCE_DIR}/weight_quant_batch_matmul_v2/op_host/op_tiling/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/quant_batch_matmul_v3/op_host/op_tiling/adaptive_sliding_window_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_checker.cpp
+        # wqbmm
+        ${CMAKE_CURRENT_SOURCE_DIR}/weight_quant_batch_matmul_v2/op_host/op_tiling/*.cpp
         # mm common
         ${CMAKE_CURRENT_SOURCE_DIR}/common/op_host/op_tiling/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/ops_legacy/op_tiling/op_cache_tiling.cpp
      )
 
      if(MC2_3RD_SRCS)
