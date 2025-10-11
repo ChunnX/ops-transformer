@@ -24,9 +24,9 @@ extern "C" {
  * @brief aclnnGroupedMatMulAlltoAllv的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * @param [in] gmmX: 计算输入，Tensor，数据类型支持float16，bfloat16。该输入进行AllToAll通信，仅支持二维,
- * 数据格式支持ND，通信后结果作为GrouedMatMul计算的左矩阵
+ * 数据格式支持ND，通信后结果作为GroupedMatMul计算的左矩阵
  * @param [in] gmmWeight: 计算输入，Tensor，数据类型支持float16, bfloat16，类型需与x保持一致，仅支持三维,
- * 数据格式支持ND，GrouedMatMul计算的右矩阵
+ * 数据格式支持ND，GroupedMatMul计算的右矩阵
  * @param [in] sendCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32,
  * int64，类型需与x保持一致，数据格式支持ND
  * @param [in] recvCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32,
@@ -71,7 +71,7 @@ ACLNN_API aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
  * @param [in] workspace_size: 在npu
  * device侧申请的workspace大小，由第一段接口aclnnGroupedMatMulAlltoAllvGetWorkspaceSize获取。
- * @param [in] exector: op执行器，包含了算子计算流程。
+ * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */

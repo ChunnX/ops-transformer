@@ -55,21 +55,21 @@ bool YShardCheckTensorShape(const char *nodeName, const gert::Shape *xShape, con
   // value E should = [2, 2048], x[DIM_E] = E / Ep
   if ((xShape->GetDim(DIM_E) * epSize < VALUE_E_MIN || xShape->GetDim(DIM_E) * epSize > VALUE_E_MAX) &&
     xShape->GetDim(DIM_E) != -1) {
-    OPS_LOG_E(nodeName, "Value E shuold in [%ld, %ld], but got %ld", VALUE_E_MIN, VALUE_E_MAX,
+    OPS_LOG_E(nodeName, "Value E should in [%ld, %ld], but got %ld", VALUE_E_MIN, VALUE_E_MAX,
       xShape->GetDim(DIM_E) * epSize);
     return false;
   }
   // w[wDimH] = H, value H should = [1, 65535]
   if (((weightShape->GetDim(wDimH) < VALUE_H_MIN) || (weightShape->GetDim(wDimH) > VALUE_H_MAX)) &&
     weightShape->GetDim(wDimH) != -1) {
-    OPS_LOG_E(nodeName, "Value H shuold in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
+    OPS_LOG_E(nodeName, "Value H should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
       weightShape->GetDim(wDimH));
     return false;
   }
   // w[wDimM] = M / Tp, its range should same with H, so it meets M / Tp * H <= 65535 * 65535
   if (((weightShape->GetDim(wDimM) < VALUE_H_MIN) || (weightShape->GetDim(wDimM) > VALUE_H_MAX)) &&
     weightShape->GetDim(wDimM) != -1) {
-    OPS_LOG_E(nodeName, "Value M / tp shuold in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
+    OPS_LOG_E(nodeName, "Value M / tp should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
       weightShape->GetDim(wDimM));
     return false;
   }

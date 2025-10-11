@@ -68,7 +68,7 @@ __aicore__ inline void MatmulReduceScatterBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE
     TBuf<TPosition::VECCALC> totalUbBuf;
     tPipe_->InitBuffer(totalUbBuf, TOTAL_UB_SIZE);
 
-    // worspace 空间划分:
+    // workspace 空间划分:
     GM_ADDR gmNd2NzAddr = workspaceGM_ + (uint64_t)tilingData_->param.cToFloatLen; // step2, ND2NZ 后的地址
     GM_ADDR biasToFloat = gmNd2NzAddr + (uint64_t)tilingData_->param.nd2NzWorkLen; // step3, bias 后的地址
     if constexpr (Bias2Float) {

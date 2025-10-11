@@ -57,7 +57,7 @@ void AllGatherPlusMM::EstimateKernelTime()
         tilingM_.SetMinLenByMin(tilingM_.GetAlignLength());
     }
     noCutFlag_ = totalTpTime < frontMMTime_ && clusterInfo_.mValue <= tilingM_.tileArgs.maxTileLen;
-    if (clusterInfo_.kValue > HUGE_K_BOUNDARY) { // 特大shpae切分后matmul性能好一点
+    if (clusterInfo_.kValue > HUGE_K_BOUNDARY) { // 特大shape切分后matmul性能好一点
         noCutFlag_ = false;
     }
     PrintEstimateKernelTimeResult(totalMatmulTime, totalTpTime);

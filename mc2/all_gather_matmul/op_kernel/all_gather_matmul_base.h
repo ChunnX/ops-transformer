@@ -74,7 +74,7 @@ __aicore__ inline void AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BN
     TBuf<TPosition::VECCALC> totalUbBuf;
     tPipe_->InitBuffer(totalUbBuf, TOTAL_UB_SIZE);
 
-    // worspace 空间划分:
+    // workspace 空间划分:
     GM_ADDR gmNd2NzAddr = workspaceGM_;                                         // step1, ND2NZ 后的地址
     GM_ADDR cToFloat = gmNd2NzAddr + (uint64_t)tilingData_->param.nd2NzWorkLen; // step2, C矩阵float
     GM_ADDR biasToFloat =

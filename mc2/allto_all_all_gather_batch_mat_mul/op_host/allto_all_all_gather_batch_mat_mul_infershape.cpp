@@ -134,7 +134,7 @@ bool XShardCheckTensorShape(
     if (((xShape->GetDim(DIM_E) < VALUE_E_MIN) || (xShape->GetDim(DIM_E) > VALUE_E_MAX)) &&
         xShape->GetDim(DIM_E) != -1) {
         OPS_LOG_E(
-            nodeName, "Value E shuold in [%ld, %ld], but got %ld", VALUE_E_MIN, VALUE_E_MAX, xShape->GetDim(DIM_E));
+            nodeName, "Value E should in [%ld, %ld], but got %ld", VALUE_E_MIN, VALUE_E_MAX, xShape->GetDim(DIM_E));
         return false;
     }
 
@@ -142,7 +142,7 @@ bool XShardCheckTensorShape(
     if (((weightShape->GetDim(wDimM) < VALUE_H_MIN) || (weightShape->GetDim(wDimM) > VALUE_H_MAX)) &&
         weightShape->GetDim(wDimM) != -1) {
         OPS_LOG_E(
-            nodeName, "Value M / Tp shuold in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
+            nodeName, "Value M / Tp should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
             weightShape->GetDim(wDimM));
         return false;
     }
@@ -164,7 +164,7 @@ bool XShardCheckTensorShape(
         if (((xShape->GetDim(X_DIM_H) * tpSize < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) * tpSize > VALUE_H_MAX)) &&
             (xShape->GetDim(X_DIM_H) != -1)) {
             OPS_LOG_E(
-                nodeName, "Value H shuold in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
+                nodeName, "Value H should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
                 xShape->GetDim(X_DIM_H) * tpSize);
             return false;
         }
@@ -183,7 +183,7 @@ bool XShardCheckTensorShape(
         if (((xShape->GetDim(X_DIM_H) < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) > VALUE_H_MAX)) &&
             xShape->GetDim(X_DIM_H) != -1) {
             OPS_LOG_E(
-                nodeName, "Value H shuold in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
+                nodeName, "Value H should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
                 xShape->GetDim(X_DIM_H));
             return false;
         }

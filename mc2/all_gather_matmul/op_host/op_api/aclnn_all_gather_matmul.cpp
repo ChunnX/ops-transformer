@@ -102,7 +102,7 @@ static bool CheckAttr(int64_t streamMode) {
 static bool IsGatherOut(const aclTensor *gatherOut) {
   OP_CHECK_NULL(gatherOut, return false);
   if (gatherOut->IsEmpty()) {
-    OP_LOGD("AllGahterMatmul, get gather out is false.");
+    OP_LOGD("AllGatherMatmul, get gather out is false.");
     return false;
   }
   return true;

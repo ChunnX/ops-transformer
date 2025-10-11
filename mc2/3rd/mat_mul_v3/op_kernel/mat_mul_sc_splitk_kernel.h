@@ -45,7 +45,7 @@ public:
 
     __aicore__ inline void SetParamAndExec(int kIndex);
 
-    __aicore__ inline void Exector();
+    __aicore__ inline void Executor();
 
     __aicore__ inline void End()
     {
@@ -311,7 +311,7 @@ MatMulBaseKernelSingleCoreSplitK<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYP
 template <class A_TYPE, class B_TYPE, class L0C_TYPE, class OUTPUT_TYPE, class BIAS_TYPE, class BLOCK_TYPE,
     const MatmulConfig &MM_CFG, const bool IS_NKM>
 __aicore__ inline void
-MatMulBaseKernelSingleCoreSplitK<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, IS_NKM>::Exector()
+MatMulBaseKernelSingleCoreSplitK<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, IS_NKM>::Executor()
 {
     if constexpr (!IS_NKM) {
         for (uint64_t innerMIndex = 0; innerMIndex < block_.params_.innerLoopM; ++innerMIndex) {
@@ -377,7 +377,7 @@ MatMulBaseKernelSingleCoreSplitK<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_TYP
     block_.InitBlockIndex();
     for (uint64_t j = 0; j < block_.params_.realRound; ++j) {
         block_.UpdateBlockCnt();
-        Exector();
+        Executor();
         block_.UpdateBlockIndex();
     }
     PipeBarrier<PIPE_ALL>();

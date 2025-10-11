@@ -77,8 +77,8 @@ private:
     __aicore__ inline void ResetStatus();
     __aicore__ inline void QuantInit(GM_ADDR scales);
     __aicore__ inline void AllgatherProcessOut();
-    __aicore__ inline void UpdataMultiMoeTokenNumsOut();
-    __aicore__ inline void UpdataTokenNumsOut();
+    __aicore__ inline void UpdateMultiMoeTokenNumsOut();
+    __aicore__ inline void UpdateTokenNumsOut();
     __aicore__ inline void InitBufferWait();
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
@@ -951,7 +951,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::AllgatherProc
 
 // 更新多专家卡上的tokenNumsOut tensor
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::UpdataMultiMoeTokenNumsOut()
+__aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::UpdateMultiMoeTokenNumsOut()
 {
     uint32_t tokenSums = 0;
     GlobalTensor<int32_t> sendCountsGlobal;
@@ -1004,7 +1004,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::InitBufferWai
 
 // 更新tokenNumsOut tensor
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::UpdataTokenNumsOut()
+__aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::UpdateTokenNumsOut()
 {
     // 最后一个核做更新，Moe专家只有最后一个核有计算出所有 sendCountsGlobal
     if (!isShareExpertRank_ && moeExpertNumPerRank_ > 1) {
@@ -1012,7 +1012,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::UpdataTokenNu
         if (aivId_ != lastCore_) return;
 
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        UpdataMultiMoeTokenNumsOut();
+        UpdateMultiMoeTokenNumsOut();
     } else {
         if (aivId_ != lastCore_) return;
 
@@ -1058,7 +1058,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::Process()
             AllGatherSetStatusAndWait();
             AllgatherProcessOut();
         }
-        UpdataTokenNumsOut();
+        UpdateTokenNumsOut();
     }
 }
 

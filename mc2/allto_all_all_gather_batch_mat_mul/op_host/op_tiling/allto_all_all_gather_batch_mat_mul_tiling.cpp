@@ -585,11 +585,11 @@ static ge::graphStatus SetMatmulTilingAlltoAllAllGatherBatchMatMul(gert::TilingC
     }
 
     OP_TILING_CHECK(HandleLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Hanle local bmm tiling data failed."),
+                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Handle local bmm tiling data failed."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(HandleNoneLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) !=
                         ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Hanle none local bmm tiling data failed."),
+                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Handle none local bmm tiling data failed."),
                     return ge::GRAPH_FAILED);
 
     // shard-0 Non_local tail E slice BMM tiling

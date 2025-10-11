@@ -157,7 +157,7 @@ static bool IsGatherOut(const aclTensor *gatherOut)
 {
   OP_CHECK_NULL(gatherOut, return false);
   if (gatherOut->IsEmpty()) {
-    OP_LOGD("AllGahterMatmulV2, get gather out is false.");
+    OP_LOGD("AllGatherMatmulV2, get gather out is false.");
     return false;
   }
   return true;
@@ -228,8 +228,8 @@ static aclnnStatus CheckScale(const aclTensor* x1Scale, const aclTensor* x2Scale
   // 如果scaleInV1 和 scaleInV2都不为空指针则为scalar类型数据
   auto x1ScaleLen = x1Scale->GetViewShape().GetDim(0);
   auto x2ScaleLen = x2Scale->GetViewShape().GetDim(0);
-  OP_LOGD("AllGahterMatmulV2, x1ScaleLen is %ld.", x1ScaleLen);
-  OP_LOGD("AllGahterMatmulV2, x2ScaleLen is %ld.", x2ScaleLen);
+  OP_LOGD("AllGatherMatmulV2, x1ScaleLen is %ld.", x1ScaleLen);
+  OP_LOGD("AllGatherMatmulV2, x2ScaleLen is %ld.", x2ScaleLen);
   CHECK_RET(CheckParamDtypeFP8Vaild(x1Scale), ACLNN_ERR_PARAM_INVALID);
   CHECK_RET(CheckParamDtypeFP8Vaild(x2Scale), ACLNN_ERR_PARAM_INVALID);
 
@@ -237,7 +237,7 @@ static aclnnStatus CheckScale(const aclTensor* x1Scale, const aclTensor* x2Scale
   if (quantScale != nullptr) {
     OP_CHECK_WRONG_DIMENSION(quantScale, ONE_DIMS, return ACLNN_ERR_PARAM_INVALID);
     auto scaleLen = quantScale->GetViewShape().GetDim(0);
-    OP_LOGD("AllGahterMatmulV2, scaleLen is %ld.", scaleLen);
+    OP_LOGD("AllGatherMatmulV2, scaleLen is %ld.", scaleLen);
     if (scaleLen != SCALAR) {
       OP_LOGE(ACLNN_ERR_PARAM_INVALID, "quantScale len should be 1, but actual is %ld.", scaleLen);
       return ACLNN_ERR_PARAM_INVALID;
@@ -253,7 +253,7 @@ static bool IsAMaxOut(const aclTensor *amaxOut)
     return false;
   }
   if (amaxOut->IsEmpty()) {
-    OP_LOGD("AllGahterMatmulV2, get amax out is false.");
+    OP_LOGD("AllGatherMatmulV2, get amax out is false.");
     return false;
   }
   return true;
@@ -284,13 +284,13 @@ static bool DealEmptyTensor(const aclTensor* x1, const aclTensor* x2)
 {
   if (x1->IsEmpty()) {
     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "AllGahterMatmulV2 not support empty tensor x1 when input datatype is fp8/hif8.");
+            "AllGatherMatmulV2 not support empty tensor x1 when input datatype is fp8/hif8.");
     return false;
   }
 
   if (x2->IsEmpty()) {
     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "AllGahterMatmulV2 not support empty tensor x2 when input datatype is fp8/hif8.");
+            "AllGatherMatmulV2 not support empty tensor x2 when input datatype is fp8/hif8.");
     return false;
   }
   return true;

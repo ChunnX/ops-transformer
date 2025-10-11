@@ -45,7 +45,7 @@ constexpr uint8_t SHARE_RANK_NUM_IDX = 2;
 constexpr uint8_t MOE_NUM_IDX = 3;
 constexpr int32_t  BITS_PER_BYTE = 8;
 constexpr int32_t  MAX_UB_SIZE = 192 * 1024;
-constexpr uint32_t FALG_AFTER_WAIT = 10;
+constexpr uint32_t FLAG_AFTER_WAIT = 10;
 
 template<AscendC::HardEvent event>
 __aicore__ inline void SyncFunc()
@@ -91,7 +91,7 @@ private:
     __aicore__ inline void AllGatherSetStatusAndWait();
     __aicore__ inline void QuantInit(GM_ADDR scales);
     __aicore__ inline void AllgatherProcessOut();
-    __aicore__ inline void UpdataTokenNumsOut();
+    __aicore__ inline void UpdateTokenNumsOut();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
     __aicore__ inline void FillTriple(LocalTensor<ExpandXOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k);
@@ -1207,7 +1207,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::LocalWindow
 {
     DataCopyParams dataCopyParams{1U, sizeof(uint32_t), 0U, 0U};
     datastateLocalTensor_ = gatherMaskOutBuf_.Get<uint32_t>();
-    datastateLocalTensor_.SetValue(0, FALG_AFTER_WAIT);
+    datastateLocalTensor_.SetValue(0, FLAG_AFTER_WAIT);
     selfDataStatusTensor_.SetGlobalBuffer(
         (__gm__ uint32_t*)(statusDataSpaceGm_ + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN + sizeof(uint32_t)));
     SyncFunc<AscendC::HardEvent::S_MTE3>();
@@ -1371,7 +1371,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::AllgatherPr
 
 // 更新tokenNumsOut tensor
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::UpdataTokenNumsOut()
+__aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::UpdateTokenNumsOut()
 {
     // 最后一个核做更新，Moe专家只有最后一个核有计算出所有 sendCountsGlobal
     if (!isShareExpertRankFlag_) {
@@ -1446,7 +1446,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Process()
             AllGatherSetStatusAndWait();
             AllgatherProcessOut();
         }
-        UpdataTokenNumsOut();
+        UpdateTokenNumsOut();
     }
 }
 
