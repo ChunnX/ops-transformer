@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  *
  * The code snippet comes from Huawei's open-source Ascend project.
- * Copyright 2019-2020 Huawei Technologies Co., Ltd
+ * Copyright (C) 2020. Huawei Technologies Co., Ltd. All rights reserved.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * You may obtain a copy of the License at
  *
