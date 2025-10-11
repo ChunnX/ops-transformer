@@ -42,11 +42,6 @@ public:
      */
     typedef bool (*KernelRunCbf)(void *func, uint64_t tilingKey, int64_t blockDim, std::vector<TensorIntf *> &inputs,
                                  std::vector<TensorIntf *> &outputs, uint8_t *workspace, uint8_t *tilingData);
-    typedef bool (*KernelRunTemplateCbf)(std::function<void(uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                                    uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                                    uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *)> func,
-                                    uint64_t tilingKey, int64_t blockDim, std::vector<TensorIntf *> &inputs,
-                                    std::vector<TensorIntf *> &outputs, uint8_t *workspace, uint8_t *tilingData);
 
     Context() = default;
     ~Context() override;
@@ -89,23 +84,9 @@ public:
 
     /**
      * 属性设置
-     * 设置算子 Kernel 处理回调函数(带模板参数)
-     */
-    [[maybe_unused]] [[nodiscard]] bool SetKernelRunTemplateCbf(KernelRunTemplateCbf cbf);
-
-    /**
-     * 属性设置
      * 设置算子 Kernel 总入口回调函数
      */
     [[maybe_unused]] [[nodiscard]] bool SetKernelMainFunc(void *func);
-
-    /**
-     * 属性设置
-     * 设置算子 Kernel 总入口回调函数(带模板参数)
-     */
-    [[maybe_unused]] [[nodiscard]] bool SetKernelTemplateMainFunc(std::function<void(uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                                    uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                                    uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *)> func);
 
     /**
      * 属性获取
@@ -144,11 +125,7 @@ protected:
     std::vector<std::pair<std::string, std::any>> attrs_;
     uint32_t tilingDataMaxLen_ = kDefaultTilingDataMaxSize;
     KernelRunCbf kernelRunCbf_ = nullptr;
-    KernelRunTemplateCbf kernelRunTemplateCbf_ = nullptr;
     void *kernelMainFunc_ = nullptr;
-    std::function<void(uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                       uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                       uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *)> templateKernelFunc_;
     int64_t deterministic_ = 0; /**< 默认不开启确定性计算 */
 
     /* Tiling */

@@ -20,6 +20,7 @@
 #include "tests/utils/case_with_socversion.h"
 #include "tests/utils/op_info_with_socversion.h"
 #include "tests/utils/context.h"
+#include "tests/utils/context_with_template_tilingkey.h"
 #include "fa_param.h"
 #include <exe_graph/runtime/tiling_context.h>
 #include <register/op_impl_registry.h>
@@ -35,24 +36,24 @@
      uint8_t * softmaxMax, uint8_t * softmaxSum, uint8_t * softmaxOut, uint8_t * attentionOut, uint8_t * workspace,    \
      uint8_t * tiling)
 
-#define FAS_KERNEL_PARAM_                                                                                               \
-     uint8_t * query, uint8_t * key, uint8_t * value, uint8_t * pse, uint8_t * dropMask, uint8_t * paddingMask,        \
-     uint8_t * attenMask, uint8_t * prefix, uint8_t * actualSeqLengths, uint8_t * actualSeqLengthsKv,                  \
-     uint8_t * qStartIdx, uint8_t * kvStartIdx, uint8_t * deqScaleQ, uint8_t * deqScaleK, uint8_t * deqScaleV,         \
-     uint8_t * queryRope, uint8_t * keyRope,                                                                           \
-     uint8_t * softmaxMax, uint8_t * softmaxSum, uint8_t * softmaxOut, uint8_t * attentionOut, uint8_t * workspace,    \
-     uint8_t * tiling
+#define FAS_KERNEL_PARAM_                                                                                              \
+    uint8_t * query, uint8_t * key, uint8_t * value, uint8_t * pse, uint8_t * dropMask, uint8_t * paddingMask,         \
+    uint8_t * attenMask, uint8_t * prefix, uint8_t * actualSeqLengths, uint8_t * actualSeqLengthsKv,                   \
+    uint8_t * qStartIdx, uint8_t * kvStartIdx, uint8_t * deqScaleQ, uint8_t * deqScaleK, uint8_t * deqScaleV,          \
+    uint8_t * queryRope, uint8_t * keyRope,                                                                            \
+    uint8_t * softmaxMax, uint8_t * softmaxSum, uint8_t * softmaxOut, uint8_t * attentionOut, uint8_t * workspace,     \
+    uint8_t * tiling
 
-#define FAS_INPUT_DTYPE                                                                                               \
-     uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,    \
-     uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,    \
-     uint8_t *, uint8_t *, uint8_t *
+#define FAS_INPUT_DTYPE                                                                                                \
+    uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,      \
+    uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,      \
+    uint8_t *, uint8_t *, uint8_t *
 
-#define FAS_INPUT_PARAMS                                             \                                  
-     query, key, value, pse, dropMask, paddingMask,                  \
-     attenMask, prefix, actualSeqLengths, actualSeqLengthsKv,        \
-     qStartIdx, kvStartIdx, deqScaleQ, deqScaleK, deqScaleV,         \
-     queryRope, keyRope, softmaxMax,  softmaxSum,  softmaxOut,  attentionOut,  workspace, tiling
+#define FAS_INPUT_PARAMS                                                                                               \                                  
+    query, key, value, pse, dropMask, paddingMask,                                                                     \
+    attenMask, prefix, actualSeqLengths, actualSeqLengthsKv,                                                           \
+    qStartIdx, kvStartIdx, deqScaleQ, deqScaleK, deqScaleV,                                                            \
+    queryRope, keyRope, softmaxMax,  softmaxSum,  softmaxOut,  attentionOut,  workspace, tiling
 
 #define FAG_KERNEL_PARAM                                                                                               \
     (uint8_t * query, uint8_t * key, uint8_t * value, uint8_t * dy, uint8_t * pse_shift, uint8_t * drop_mask,          \
@@ -73,6 +74,7 @@ class FaCase : public ops::adv::tests::utils::CaseWithSocversion {
 public:
     using OpInfoWithSocversion = ops::adv::tests::utils::OpInfoWithSocversion;
     using Context = ops::adv::tests::utils::Context;
+    using ContextWithTemplateTilingKey = ops::adv::tests::utils::ContextWithTemplateTilingKey<FAS_INPUT_DTYPE>;
     using FaParam = ops::adv::tests::fa::FaParam;
 
     typedef void(*FasKernelFunc) FAS_KERNEL_PARAM;
@@ -100,7 +102,7 @@ public:
     /* 算子控制信息 */
     OpInfoWithSocversion mForward;
     OpInfoWithSocversion mReverse;
-    Context mForwardCtx;
+    ContextWithTemplateTilingKey mForwardCtx;
     Context mReverseCtx;
 
     /* 输入/输出 参数 */

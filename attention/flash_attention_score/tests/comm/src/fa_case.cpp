@@ -218,8 +218,8 @@ FaCase::FaCase() : FaCase("Undefined", true, "", OpInfoWithSocversion(), OpInfoW
 
 FaCase::FaCase(const char *name, bool enable, const char *dbgInfo, OpInfoWithSocversion forward, OpInfoWithSocversion reverse, FaParam param,
                int32_t tilingTemplatePriority)
-    : CaseWithSocversion(name, enable, dbgInfo, tilingTemplatePriority), mForward(std::move(forward)), mReverse(std::move(reverse)),
-      mParam(std::move(param))
+        : CaseWithSocversion(name, enable, dbgInfo, tilingTemplatePriority), mForward(std::move(forward)), mReverse(std::move(reverse))
+        , mParam(std::move(param))
 {
     mForward.mName = "FlashAttentionScore";
     mReverse.mName = "FlashAttentionScoreGrad";
@@ -239,8 +239,8 @@ FaCase::FaCase(const char *name, bool enable, const char *dbgInfo, OpInfoWithSoc
 
 FaCase::FaCase(const char *name, bool enable, const char *dbgInfo, const std::function<void(FAS_INPUT_DTYPE)>& templatekeyKernelFunc,
         OpInfoWithSocversion forward, OpInfoWithSocversion reverse, FaParam param, int32_t tilingTemplatePriority)
-    : CaseWithSocversion(name, enable, dbgInfo, tilingTemplatePriority), mForward(std::move(forward)), mReverse(std::move(reverse)),
-      mParam(std::move(param))
+        : CaseWithSocversion(name, enable, dbgInfo, tilingTemplatePriority), mForward(std::move(forward)), mReverse(std::move(reverse))
+        , mParam(std::move(param))
 {
     mForward.mName = "FlashAttentionScore";
     mReverse.mName = "FlashAttentionScoreGrad";

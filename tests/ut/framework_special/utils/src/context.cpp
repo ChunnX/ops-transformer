@@ -76,26 +76,9 @@ bool Context::SetKernelRunCbf(KernelRunCbf cbf)
     return true;
 }
 
-bool Context::SetKernelRunTemplateCbf(KernelRunTemplateCbf cbf)
-{
-    if (cbf == nullptr) {
-        return false;
-    }
-    kernelRunTemplateCbf_ = cbf;
-    return true;
-}
-
 bool Context::SetKernelMainFunc(void *funcName)
 {
     kernelMainFunc_ = funcName;
-    return true;
-}
-
-bool Context::SetKernelTemplateMainFunc(std::function<void(uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                        uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *,
-                        uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *, uint8_t *)> func)
-{
-    templateKernelFunc_ = func;
     return true;
 }
 
@@ -177,14 +160,8 @@ bool Context::RunKernelProcess(std::string &caseName)
 #endif
     /* 调用回调函数, 触发具体算子 Kernel 执行 */
     ICPU_SET_TILING_KEY(tilingKey_);
-    bool ret = false;
-    if (kernelRunTemplateCbf_) {
-        ret = kernelRunTemplateCbf_(templateKernelFunc_, tilingKey_, tilingBlockDim_, inputs_, outputs_, workspacePtr_,
-                                tilingData_.data());
-    } else {
-        ret = kernelRunCbf_(kernelMainFunc_, tilingKey_, tilingBlockDim_, inputs_, outputs_, workspacePtr_,
+    bool ret = kernelRunCbf_(kernelMainFunc_, tilingKey_, tilingBlockDim_, inputs_, outputs_, workspacePtr_,
                         tilingData_.data());
-    }
 
 #ifdef TESTS_UT_OPS_TEST_CI_PR // 为便于定位, 仅在PR场景进行重定向
     /* 恢复重定向 */
