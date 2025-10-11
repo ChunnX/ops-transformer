@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
+{
 set -e
 RELEASE_TARGETS=("ophost" "opapi" "opgraph")
 UT_TARGETS=("ophost_test" "opapi_test" "opgraph_test" "opkernel_test")
@@ -95,13 +96,14 @@ function help_info() {
             test)
                 echo "Test Options:"
                 echo $dotted_line
-                echo "    -u|--test                     Executes a unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
+                echo "    -u|--test              Build and run all unit tests"
                 echo "    --noexec               Only compile ut, do not execute"
-                echo "    --cov                  Compiles with cov."
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer), only supported in UTest."
-                echo "    --ophost_test          Executes a host unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
-                echo "    --opapi_test           Executes a api unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
-                echo "    --opgraph_test         Executes a graph unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
+                echo "    --cov                  Enable code coverage for unit tests"
+                echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"         
+                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
+                echo "    --ophost_test          Build and run ophost unit tests"
+                echo "    --opapi_test           Build and run opapi unit tests"
+                echo "    --opgraph_test         Build and run opgraph unit tests"
                 echo "    --ophost -u            Same as --ophost_test"
                 echo "    --opapi -u             Same as --opapi_test"
                 echo "    --opgraph -u           Same as --opgraph_test"
@@ -112,49 +114,71 @@ function help_info() {
                 echo "    bash build.sh --ophost --opapi --opgraph -u --cov"
                 return
                 ;;
+            clean)
+                echo "Clean Options:"
+                echo $dotted_line
+                echo "    --make_clean           Clean build artifacts"
+                echo $dotted_line
+                return
+                ;;
             ophost)
                 echo "Ophost Build Options:"
                 echo $dotted_line
                 echo "    --ophost               Build ophost library"
+                echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
+                echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
+                echo "    --debug                Build with debug mode"
                 echo $dotted_line
                 echo "Examples:"
-                echo "    bash build.sh --ophost"
+                echo "    bash build.sh --ophost -j16 -O3"
+                echo "    bash build.sh --ophost --debug"
                 return
                 ;;
             opapi)
                 echo "Opapi Build Options:"
                 echo $dotted_line
                 echo "    --opapi                Build opapi library"
+                echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
+                echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
+                echo "    --debug                Build with debug mode"
                 echo $dotted_line
                 echo "Examples:"
-                echo "    bash build.sh --opapi"
+                echo "    bash build.sh --opapi -j16 -O3"
+                echo "    bash build.sh --opapi --debug"
                 return
                 ;;
             opgraph)
                 echo "Opgraph Build Options:"
                 echo $dotted_line
                 echo "    --opgraph              Build opgraph library"
+                echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
+                echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
+                echo "    --debug                Build with debug mode"
                 echo $dotted_line
                 echo "Examples:"
-                echo "    bash build.sh --opgraph"
+                echo "    bash build.sh --opgraph -j16 -O3"
+                echo "    bash build.sh --opgraph --debug"
                 return
                 ;;
             opkernel)
                 echo "Opkernel Build Options:"
                 echo $dotted_line
                 echo "    --opkernel             Build binary kernel"
+                echo "    --soc=soc_version      Compile for specified Ascend SoC (comma-separated for multiple)"
+                echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
                 echo $dotted_line
                 echo "Examples:"
-                echo "    bash build.sh --opkernel"
+                echo "    bash build.sh --opkernel --soc=ascend310p --ops=add,sub"
                 return
                 ;;
             ophost_test)
                 echo "Ophost Test Options:"
                 echo $dotted_line
-                echo "    --ophost_test          Executes a host unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
+                echo "    --ophost_test          Build and run ophost unit tests"
                 echo "    --noexec               Only compile ut, do not execute"
-                echo "    --cov                  Compiles with cov."
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer), only supported in UTest."
+                echo "    --cov                  Enable code coverage for unit tests"
+                echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
+                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --ophost_test --noexec --cov"
@@ -163,10 +187,11 @@ function help_info() {
             opapi_test)
                 echo "Opapi Test Options:"
                 echo $dotted_line
-                echo "    --opapi_test           Executes a api unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
+                echo "    --opapi_test           Build and run opapi unit tests"
                 echo "    --noexec               Only compile ut, do not execute"
-                echo "    --cov                  Compiles with cov."
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer), only supported in UTest."
+                echo "    --cov                  Enable code coverage for unit tests"
+                echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
+                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --opapi_test --noexec --cov"
@@ -175,17 +200,18 @@ function help_info() {
             opgraph_test)
                 echo "Opgraph Test Options:"
                 echo $dotted_line
-                echo "    --opgraph_test         Executes a graph unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
+                echo "    --opgraph_test         Build and run opgraph unit tests"
                 echo "    --noexec               Only compile ut, do not execute"
-                echo "    --cov                  Compiles with cov."
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer), only supported in UTest."
+                echo "    --cov                  Enable code coverage for unit tests"
+                echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
+                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --opgraph_test --noexec --cov"
                 return
                 ;;
             run_example)
-                echo "Run example Options:"
+                echo "Run examples Options:"
                 echo $dotted_line
                 echo "    --run_example op_type  mode[eager:graph] [pkg_mode --vendor_name=name]     Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
                 echo $dotted_line
@@ -207,58 +233,47 @@ function help_info() {
                 ;;
         esac
     fi
-    echo "Usage: $0 [options]"
+    echo "build script for ops-transformer repository"
+    echo "Usage:"
+    echo "    bash build.sh [-h] [-j[n]] [-v] [-O[n]] [-u] "
+    echo ""
+    echo ""
     echo "Options:"
     echo $dotted_line
     echo "    Build parameters "
     echo $dotted_line
-    echo "    -h|--help            Displays help message."
-    echo
-    echo "    --pkg build run package with kernel bin"
-    echo
-    echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
-    echo
-    echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
-    echo
-    echo "    --jit                  Build run package without kernel bin"
-    echo
-    echo "    --ophost_test        Executes a host unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
-    echo "                         For example: bash build.sh -ophost_test -n \"distribute_barrier\" -c \"ascend910_93\" or bash build.sh -ophost_test -c \"ascend910_93\" or bash build.sh -ophost_test"
-    echo
-    echo "    --opapi_test         Executes a api unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
-    echo "                         For example: bash build.sh -opapi_test -n \"distribute_barrier\" -c \"ascend910_93\" or bash build.sh -opapi_test -c \"ascend910_93\" or bash build.sh -opapi_test"
-    echo
-    echo "    --opgraph_test       Executes a graph unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
-    echo "                         For example: bash build.sh -opgraph_test -n \"distribute_barrier\" -c \"ascend910_93\" or bash build.sh -opgraph_test -c \"ascend910_93\" or bash build.sh -opgraph_test"
-    echo
-    echo "    --opkernel_test      Executes a kernel unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
-    echo "                         For example: bash build.sh -opkernel_test -n \"distribute_barrier\" -c \"ascend910_93\" or bash build.sh -opkernel_test -c \"ascend910_93\" or bash build.sh -opkernel_test"
-    echo "    -u|--test            Executes a unit test (UT). If there are multiple values, separate them with semicolons and use quotation marks."
-    echo "                         For example: -t \"flash_attention_score\" or -t \"flash_attention_score;flash_attention_score_grad\" or -t \"all\""
-    echo "    --run_example Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
+    echo "    -h Print usage"
+    echo "    -j[n] Compile thread nums, default is 8, eg: -j8"
+    echo "    -v Cmake compile verbose"
+    echo "    -O[n] Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
+    echo "    -u Compile all ut"
+    echo $dotted_line
+    echo "    examples, Build ophost_test with O3 level compilation optimization and do not execute."
+    echo "    ./build.sh --ophost_test --noexec -O3"
     echo $dotted_line
     echo "    The following are all supported arguments:"
     echo $dotted_line
-    echo "    --ophost             Build ophost_transformer.so"
-    echo
-    echo "    --opapi              Build opapi_transformer.so"
-    echo
-    echo "    --opgraph            Build graph_plugin_transformer.so"
-    echo
-    echo "    --opkernel           Build binary kernel"
-    echo
-    echo "    --noexec             Only compile ut, do not execute."
-    echo
-    echo "    --make_clean         make clean"
-    echo
-    echo "    -v            Displays more compilation information."
-    echo
-    echo "    -j[n] Compile thread nums, default is 8, eg: -j8"
-    echo
+    echo "    --debug build with debug mode"
+    echo "    --cov When building uTest locally, count the coverage."
+    echo "    --noexec Only compile ut, do not execute the compiled executable file"
+    echo "    --make_clean Clean build artifacts"
+    echo "    --disable_asan Disable ASAN (Address Sanitizer)"
+    echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend310p,ascend910b, use ',' to separate different SoC"
-    echo
+    echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
+    echo "    --opgraph build graph_plugin_transformer.so"
+    echo "    --opapi build opapi_transformer.so"
+    echo "    --ophost build ophost_transformer.so"
+    echo "    --opkernel build binary kernel"
+    echo "    --jit build run package without kernel bin"
+    echo "    --pkg build run package with kernel bin"
+    echo "    --opapi_test build and run opapi unit tests"
+    echo "    --ophost_test build and run ophost unit tests"
+    echo "    --opgraph_test build and run opgraph unit tests"
+    echo "    --opkernel_test build and run opkernel unit tests"
+    echo "    --run_example Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
     echo "    --genop Create the initial directory for op"
-    echo
+    echo "to be continued ..."
 }
 
 
@@ -581,6 +596,7 @@ for arg in "$@"; do
             --pkg) SHOW_HELP="package" ;;
             --opkernel) SHOW_HELP="opkernel" ;;
             -u|--test) SHOW_HELP="test" ;;
+            --make_clean) SHOW_HELP="clean" ;;
             --ophost) SHOW_HELP="ophost" ;;
             --opapi) SHOW_HELP="opapi" ;;
             --opgraph) SHOW_HELP="opgraph" ;;
@@ -1141,3 +1157,4 @@ else
         build ${BUILD}
     fi
 fi
+} 2>&1 | gawk '{print strftime("[%Y-%m-%d %H:%M:%S]"), $0}'
