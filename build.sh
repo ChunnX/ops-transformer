@@ -451,7 +451,7 @@ build_lib() {
 
   for lib in "${BUILD_LIBS[@]}"; do
     echo "Building target ${lib}"
-    cmake --build . --target ${lib} -j $THREAD_NUM
+    cmake --build . --target ${lib} ${JOB_NUM}
   done
 
   echo $dotted_line
@@ -1067,11 +1067,11 @@ function build_pkg_for_single_soc() {
     local single_soc_option="$1"
     local original_option="${CUSTOM_OPTION}"
     if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
-        CUSTOM_OPTION="${CUSTOM_OPTION}  -DENABLE_OPS_HOST=ON -DENABLE_BUILT_IN=ON -DENABLE_OPS_KERNEL=OFF"
+        CUSTOM_OPTION="${CUSTOM_OPTION}  -DENABLE_BUILT_IN=ON -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=OFF"
         cmake_config ${single_soc_option}
         build_package
         CUSTOM_OPTION="${original_option}"
-    elif [[ "$ENABLE_BUILT_IN" == "TRUE" ]]; then   
+    elif [[ "$ENABLE_BUILT_IN" == "TRUE" ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION}  -DENABLE_BUILT_IN=ON -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON"
         cmake_config ${single_soc_option}
         build_package
@@ -1094,7 +1094,12 @@ elif [[ "$ENABLE_OPKERNEL" == "TRUE" ]]; then
     build_kernel
 elif [[ "$ENABLE_BUILT_CUSTOM" == "TRUE" ]]; then      # --ops, --vendor 新命令新使用
     set_compute_unit_option
-    CUSTOM_OPTION="${CUSTOM_OPTION}  -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILT_IN=OFF"
+    if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
+        ops_kernel_value="OFF"
+    else
+        ops_kernel_value="ON"
+    fi
+    CUSTOM_OPTION="${CUSTOM_OPTION}  -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=${ops_kernel_value}"
     if [[ "$ENABLE_BUILD_PKG" == "TRUE" ]]; then      # --pkg 新命令新使用
         cmake_config " -DENABLE_BUILD_PKG=ON"
     else
