@@ -131,7 +131,7 @@ protected:
         return oss.str();
     }
 
-    [[nodiscard]] std::string GetTilingContextDebugStr()
+    [[nodiscard]] std::string GetTilingContextDebugStr() const
     {
         std::ostringstream oss;
         for (size_t i = 0; i < context_->GetComputeNodeInfo()->GetInputsNum(); ++i) {
