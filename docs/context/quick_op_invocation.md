@@ -194,11 +194,11 @@
         - \$\{op\}：表示待执行算子，算子名小写下划线形式，如flash_attention_score。
         - \$\{mode\}：表示执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
         - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。         
-        - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。
+        - \$\{vendor\_name\}（名称可自定义）：与构建的自定义算子包设置一致，默认名为custom。
 
         说明：\$\{mode\}为graph时，不指定\$\{pkg_mode\}和\$\{vendor\_name\}
 
-         执行算子样例后会打印执行结果，以FlashAttentionScore算子为例，结果如下：
+        如需执行算子样例，需将自定义算子包安装在默认路径下。执行算子样例后会打印执行结果，以FlashAttentionScore算子为例，结果如下：
     
         ```
         mean result[0] is: 256.000000
@@ -232,7 +232,7 @@
   # bash build.sh -u --noexec --[opapi|ophost|opkernel]
     ```
   
-    假设验证ophost功能是否正常，执行如下命令：
+    如需验证ophost功能是否正常，执行如下命令：
     ```bash
   bash build.sh -u --ophost
     ```
