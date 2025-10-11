@@ -242,7 +242,7 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ScaleProcess() {
         #if ORIG_DTYPE_Y == DT_FLOAT16
             DataCopy(scaleOutGm[start_element_u64+start_loc],scaleF32 , loop_size_u64);
         #else
-            DataCopy(scaleOutGm[start_element_u64+start_loc], scaleBF16 , loop_size_u64);
+            DataCopy(scaleOutGm[start_element_u64+start_loc], scaleBF16, (loop_size_u64 + 16 - 1) / 16 * 16);
         #endif
         PipeBarrier<PIPE_ALL>();
     }

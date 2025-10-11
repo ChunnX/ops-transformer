@@ -1608,8 +1608,8 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           calc_m = m / groupNum;
         }
         const uint32_t avg_m = tuningConfig != 0L ? static_cast<uint32_t>(tuningConfig) : calc_m;
-        const bool isMSD = avg_m == 0U || n / avg_m > 4U || withOffset == true;
         const bool isPerchannel = quantGroupNum == 1U;
+        const bool isMSD = isPerchannel == false || avg_m == 0U || n / avg_m > 4U || withOffset == true;
         if (!isMSD) {
             constexpr uint32_t A8W4_BASE_M = 128;
             constexpr uint32_t A8W4_BASE_K = 64;
