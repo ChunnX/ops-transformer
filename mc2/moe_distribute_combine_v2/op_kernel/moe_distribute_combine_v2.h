@@ -161,6 +161,7 @@ private:
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<bool> maskGenerateTensor_;
     LocalTensor<uint32_t> datastateLocalTensor_;
+    LocalTensor<float> stateResetTensor_;
 
     // tiling侧已确保数据上限， 相乘不会越界，因此统一采用uin32_t进行处理
     uint32_t axisBS_{0};
@@ -232,6 +233,7 @@ private:
     TBuf<> validBsIndexTBuf_;
     TBuf<> xActMaskSumTBuf_;
     TBuf<> stateBuf_;
+    TBuf<> stateResetBuf_;
     TBuf<> expertMaskBuf_;
     TBuf<> elasticInfoBuf_;
     bool isInputTokenMaskFlag_ = false;
@@ -406,12 +408,10 @@ __aicore__ inline void MoeDistributeCombineV2<TemplateMC2TypeFunc>::InitAttrs(co
     epRankId_ = tilingData->moeDistributeCombineV2Info.epRankId;
     epRankIdOriginal_ = tilingData->moeDistributeCombineV2Info.epRankId;
     uint32_t sharedExpertRankNum = tilingData->moeDistributeCombineV2Info.sharedExpertRankNum;
-
+    epWorldSize_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
+    moeExpertPerRankNum_ = tilingData->moeDistributeCombineV2Info.moeExpertPerRankNum;
     if (hasElasticInfoFlag_) {
         InitElasticInfo(sharedExpertRankNum);
-    } else {
-        epWorldSize_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
-        moeExpertPerRankNum_ = tilingData->moeDistributeCombineV2Info.moeExpertPerRankNum;
     }
     sharedExpertNum_ = tilingData->moeDistributeCombineV2Info.sharedExpertNum;
     moeSendNum_ = epWorldSize_ * moeExpertPerRankNum_;
@@ -623,7 +623,7 @@ __aicore__ inline void MoeDistributeCombineV2<TemplateMC2TypeFunc>::MaskSpecialE
     LocalTensor<uint8_t> maskTensor = expertScalesBuf_.Get<uint8_t>();
     LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
     LocalTensor<half> maskCalcSelectedTensor = rowTmpFloatBuf_.Get<half>();
-    maskStrideTensor_ = expertScalesBuf_.Get<bool>();
+    maskStrideTensor_ = tokenBuf_.Get<bool>();
     LocalTensor<half> tempTensor = rowTmpFloatBuf_.Get<half>();
     LocalTensor<int32_t> bsIndexTensor = mulBuf_.Get<int32_t>();
     LocalTensor<uint32_t> maskTensorInt32 = expertScalesBuf_.Get<uint32_t>();
@@ -685,12 +685,16 @@ __aicore__ inline void MoeDistributeCombineV2<TemplateMC2TypeFunc>::AlltoAllBuff
         maxSizeRowTmpFloatBuf = (activeMaskAlignHalfSize > hFloatAlign32Size_ ? activeMaskAlignHalfSize : hFloatAlign32Size_);
     }
     tpipe_->InitBuffer(expertScalesBuf_, axisBS_ * axisK_ * sizeof(float));  // BS * K * 4 = 32K
-    tpipe_->InitBuffer(tokenBuf_, maxSizeTokenBuf);                          // 16K 用于搬入输入token
+    tpipe_->InitBuffer(tokenBuf_, maxSizeRowTmpFloatBuf);                          // 16K 用于搬入输入token
     tpipe_->InitBuffer(rowTmpFloatBuf_, maxSizeRowTmpFloatBuf);              // 32K 用于存储cast之后的fp32 token数据
     tpipe_->InitBuffer(mulBuf_, hFloatAlign256Size_);                        // 32K buffer复用， 最大用于存储Brcb之后的token，需要256对齐
     tpipe_->InitBuffer(sumFloatBuf_, hFloatAlign32Size_);                    // 32K add
     tpipe_->InitBuffer(moeSumQueue_, BUFFER_NUM, hExpandXAlign32Size_);      // 32K 搬入
     tpipe_->InitBuffer(stateBuf_, (flagRcvCount_) * STATE_OFFSET);
+    tpipe_->InitBuffer(stateResetBuf_, (flagRcvCount_) * STATE_OFFSET);      // 清理状态区
+    stateResetTensor_ = stateResetBuf_.Get<float>();
+    Duplicate<float>(stateResetTensor_, (float)0.0, static_cast<uint32_t>(flagRcvCount_ * FLOAT_PER_UB_ALIGN));
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
     if constexpr (IsInt8Quant) {
         scaleNumAlignSize_ = Ceil(scaleNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(xAbsBuf_, scaleNumAlignSize_);
@@ -717,6 +721,7 @@ __aicore__ inline void MoeDistributeCombineV2<TemplateMC2TypeFunc>::AlltoAllBuff
         DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
         DataCopyExtParams maskParams{1U, static_cast<uint32_t>(axisBS_ * axisK_ * sizeof(bool)), 0U, 0U, 0U};
         DataCopyPad(expertMaskTensor_, xActiveMaskGM_, maskParams, maskCopyPadParams);
+        SyncFunc<AscendC::HardEvent::V_S>();
     }
     if (enableSpecialExpert_) {
         maskGenerateTensor_ = sumFloatBuf_.Get<bool>();
@@ -987,10 +992,8 @@ __aicore__ inline void MoeDistributeCombineV2<TemplateMC2TypeFunc>::WaitDispatch
         SyncFunc<AscendC::HardEvent::V_S>();
         localState = stateTensor(0);
     }
-    SyncFunc<AscendC::HardEvent::S_V>();
-    Duplicate<float>(stateTensor, (float)0.0, copyCount);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy<float>(stateGMTensor, stateTensor, copyCount);
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopy<float>(stateGMTensor, stateResetTensor_, copyCount);
 }
 
 template <TemplateMC2TypeClass>

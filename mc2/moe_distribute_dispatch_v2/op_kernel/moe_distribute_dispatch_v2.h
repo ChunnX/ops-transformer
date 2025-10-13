@@ -44,7 +44,7 @@ constexpr uint8_t EP_WORLD_SIZE_IDX = 1;
 constexpr uint8_t SHARE_RANK_NUM_IDX = 2;
 constexpr uint8_t MOE_NUM_IDX = 3;
 constexpr int32_t  BITS_PER_BYTE = 8;
-constexpr int32_t  MAX_UB_SIZE = 192 * 1024;
+constexpr int32_t  MAX_UB_SIZE = 170 * 1024;
 constexpr uint32_t FLAG_AFTER_WAIT = 10;
 
 template<AscendC::HardEvent event>
@@ -318,20 +318,19 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
     axisH_ = tilingData->moeDistributeDispatchV2Info.h;
     epWorldSizeOriginal_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
     hasElasticInfoFlag_ = tilingData->moeDistributeDispatchV2Info.hasElasticInfo;
+    epWorldSize_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
+    sharedExpertRankNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum;
+    moeExpertNum_ = tilingData->moeDistributeDispatchV2Info.moeExpertNum;
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
     if (hasElasticInfoFlag_) {
         InitElasticInfo(elasticInfo, tilingData);
-    } else {
-        epWorldSize_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
-        sharedExpertRankNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum;
-        moeExpertNum_ = tilingData->moeDistributeDispatchV2Info.moeExpertNum;
     }
 
     if (epRankId_ < sharedExpertRankNum_) {
         isShareExpertRankFlag_ = true;
     }
 
-    axisMaxBS_ = tilingData->moeDistributeDispatchV2Info.globalBs / epWorldSize_;
+    axisMaxBS_ = tilingData->moeDistributeDispatchV2Info.globalBs / epWorldSizeOriginal_;
     sharedExpertNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertNum;
     if (sharedExpertNum_ > 0) {
         rankNumPerSharedExpert_ = sharedExpertRankNum_ / sharedExpertNum_;
@@ -476,10 +475,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
     uint32_t hFp32Size = axisH_ * sizeof(float);
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
+    uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+    uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+    uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
     expertIdsSize = Ceil(expertIdsSize, UB_ALIGN) * UB_ALIGN;
     maxSize_ = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
     maxSize_ = maxSize_ > xActivateMaskSize ? maxSize_ : xActivateMaskSize;
-    tpipe_->InitBuffer(expertIdsBuf_, expertIdsSize); // BS * K * 4 = 32K
+    maxSize_ = maxSize_ > bsKAlign256 ? maxSize_ : bsKAlign256;
+    tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize); // BS * K * 4 = 32K
     totalUsedUB_ += expertIdsSize;
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
     tpipe_->InitBuffer(gatherMaskTBuf_, maxSize_);
@@ -490,7 +493,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
         uint32_t axisBSAlign = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(validBsIndexTBuf_, axisBSAlign);
         totalUsedUB_ += axisBSAlign;
-        tpipe_->InitBuffer(validExpertIndexBuf_, expertIdsSize);
+        uint32_t validBufferSize = expertIdsSize > xActivateMaskSize ? expertIdsSize : xActivateMaskSize;
+        tpipe_->InitBuffer(validExpertIndexBuf_, validBufferSize);
         totalUsedUB_ += expertIdsSize;
         validExpertIndexTensor_ = validExpertIndexBuf_.Get<int32_t>();
         validBsIndexTensor_ = validBsIndexTBuf_.Get<int32_t>();
