@@ -42,6 +42,19 @@ enum class CACHE_MODE : std::uint8_t {
     PA_BS = static_cast<std::uint8_t>(3)
 };
 
+enum class SCENARIO : std::uint8_t {
+    RESERVED = static_cast<std::uint8_t>(0),
+    NO_QUANT = static_cast<std::uint8_t>(1),
+    QUANT    = static_cast<std::uint8_t>(2)
+};
+
+enum class QUANT_MODE : std::uint8_t {
+    PARTIAL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(0),
+    PARTIAL_QUANT_KV_QUANT    = static_cast<std::uint8_t>(1),
+    FULL_QUANT_KV_NO_QUANT    = static_cast<std::uint8_t>(2),
+    FULL_QUANT_KV_QUANT       = static_cast<std::uint8_t>(3)
+};
+
 enum class EMPTY_TENSOR_MODE : std::uint8_t {
     NON_EMPTY = static_cast<std::uint8_t>(0),
     EMPTY_CACHE = static_cast<std::uint8_t>(1),

@@ -21,7 +21,7 @@
 #include "err/ops_err.h"
 #include "register/op_def_registry.h"
 #include "mla_prolog_tiling_check.h"
-
+#include "mla_prolog_tiling.h"
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
@@ -174,36 +174,10 @@ uint32_t MlaPrologTiling::CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t
 // mm1.baseK = 256
 ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
 {
-    uint32_t M = stepBatchSize_;
     auto dataType = context_->weightDq.desc->GetDataType();
     singlecoreHeadSizeCq_ =
         CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
     mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
-
-    matmul_tiling::DataType bmm1DataType;
-
-    if (!GetMatmulType(mmDateType_, &bmm1DataType)) {
-        OP_LOGE(context_->opName, "get matmul type error");
-        return false;
-    }
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
-    matmul_tiling::MatmulApiTiling bmm1(ascendcPlatform);
-
-    bmm1.SetShape(M, singlecoreHeadSizeCq_, baseShapeInfo_.heSize);
-    bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1DataType, false);
-    bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::NZ, bmm1DataType, false);
-
-    bmm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1DataType);
-
-    bmm1.SetOrgShape(M, singlecoreHeadSizeCq_, baseShapeInfo_.heSize, baseShapeInfo_.heSize);
-    bmm1.SetBias(false);
-
-    if (bmm1.GetTiling(*bmm1TilingData_) == -1) {
-        OP_LOGE(context_->opName, "bmm1 get tiling fail");
-        return false;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -218,7 +192,6 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_CACHE) {
         return ge::GRAPH_SUCCESS;
     }
-    uint32_t M = stepBatchSize_;
     // 9是经验值
     if (aicNum_ >= 9U) {
         uint32_t baseN = 64U;
@@ -229,30 +202,6 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
         singlecoreHeadSizeCkvKr_ = CalcSingleCoreN(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, aicNum_,
                                                    BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
-    }
-
-    matmul_tiling::DataType bmm2DataType;
-    
-    if (!GetMatmulType(mmDateType_, &bmm2DataType)) {
-        OP_LOGE(context_->opName, "get matmul type error");
-        return false;
-    }
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
-    matmul_tiling::MatmulApiTiling bmm2(ascendcPlatform);
-
-    bmm2.SetShape(M, singlecoreHeadSizeCkvKr_, baseShapeInfo_.heSize);
-    bmm2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm2DataType, false);
-    bmm2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::NZ, bmm2DataType, false);
-
-    bmm2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm2DataType);
-
-    bmm2.SetOrgShape(M, singlecoreHeadSizeCkvKr_, baseShapeInfo_.heSize, baseShapeInfo_.heSize);
-    bmm2.SetBias(false);
-
-    if (bmm2.GetTiling(*bmm2TilingData_) == -1) {
-        OP_LOGE(context_->opName, "bmm2 get tiling fail");
-        return false;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -265,7 +214,6 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
 // mm3.baseK = 256 //
 ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
 {
-    uint32_t M = stepBatchSize_;
     auto dataType = context_->weightUqQr.desc->GetDataType();
     auto oriM = baseShapeInfo_.nSize * (baseShapeInfo_.dSize + baseShapeInfo_.drSize);
     if (enableGroupComputeOpt_) {
@@ -281,38 +229,6 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
         singlecoreHeadSizeQcQr_ = CalcSingleCoreN(oriM, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
     }
     mm3BlockNum_ = CeilDiv(oriM, singlecoreHeadSizeQcQr_);
-
-    matmul_tiling::DataType bmm3DataType;
-    auto weightUqQrType = context_->weightUqQr.desc->GetDataType();
-    if (!GetMatmulType(weightUqQrType, &bmm3DataType)) {
-        OP_LOGE(context_->opName, "get matmul type error");
-        return false;
-    }
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
-    matmul_tiling::MatmulApiTiling bmm3(ascendcPlatform);
-
-    bmm3.SetShape(M, singlecoreHeadSizeQcQr_, baseShapeInfo_.heSize);
-    bmm3.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm3DataType, false);
-    bmm3.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::NZ, bmm3DataType, false);
-
-    if (bmm3DataType == matmul_tiling::DataType::DT_BF16) {
-        bmm3.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm3DataType);
-    } else if (bmm3DataType == matmul_tiling::DataType::DT_INT8) {
-        bmm3.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_INT32);
-    } else {
-        OP_LOGE(context_->opName, "bmm3DataType only support (DT_BF16, DT_INT8)");
-        return ge::GRAPH_FAILED;
-    }
-
-    bmm3.SetOrgShape(M, singlecoreHeadSizeQcQr_, baseShapeInfo_.hcqSize, baseShapeInfo_.hcqSize);
-    bmm3.SetBias(false);
-
-    if (bmm3.GetTiling(*bmm3TilingData_) == -1) {
-        OP_LOGE(context_->opName, "bmm3 get tiling fail");
-        return false;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -324,34 +240,8 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
 // mm4.Kstride = dimHeadSizeQc + dimHeadRope
 ge::graphStatus MlaPrologTiling::FillMatmul4Tiling()
 {
-    uint32_t M = stepBatchSize_;
     singlecoreNumHeadSize_ = CeilDiv(baseShapeInfo_.nSize, aicNum_);
     mm4BlockNum_ = CeilDiv(baseShapeInfo_.nSize, singlecoreNumHeadSize_);
-
-    matmul_tiling::DataType bmm4DataType;
-    auto weightUkType = context_->weightUk.desc->GetDataType();
-    if (!GetMatmulType(weightUkType, &bmm4DataType)) {
-        OP_LOGE(context_->opName, "get matmul type error");
-        return false;
-    }
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
-    matmul_tiling::MatmulApiTiling bmm4(ascendcPlatform);
-
-    bmm4.SetShape(M, baseShapeInfo_.hckvSize, baseShapeInfo_.dSize);
-    bmm4.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm4DataType, false);
-    bmm4.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm4DataType, false);
-
-    bmm4.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm4DataType);
-
-    bmm4.SetOrgShape(M, baseShapeInfo_.hckvSize, baseShapeInfo_.dSize, baseShapeInfo_.dSize);
-    bmm4.SetBias(false);
-
-    if (bmm4.GetTiling(*bmm4TilingData_) == -1) {
-        OP_LOGE(context_->opName, "bmm4 get tiling fail");
-        return false;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -390,37 +280,37 @@ ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
 
 ge::graphStatus MlaPrologTiling::FillTiling()
 {
-    baseParams_->set_batchSize(baseShapeInfo_.bSize);
-    baseParams_->set_stepBatchSize(stepBatchSize_);
-    baseParams_->set_stepNumHeadDequant(stepNumHeadDequant_);
-    baseParams_->set_tokenSize(baseShapeInfo_.tSize);
-    baseParams_->set_seq1Size(baseShapeInfo_.s1Size);
-    baseParams_->set_seq2Size(baseShapeInfo_.s2Size);
-    baseParams_->set_headSizeX(baseShapeInfo_.heSize);
-    baseParams_->set_headSizeCq(baseShapeInfo_.hcqSize);
-    baseParams_->set_headSizeCkv(baseShapeInfo_.hckvSize);
-    baseParams_->set_headSizeQc(baseShapeInfo_.headSizeQc);
-    baseParams_->set_headSizeQr(baseShapeInfo_.headSizeQr);
-    baseParams_->set_headSizeKr(baseShapeInfo_.drSize);
-    baseParams_->set_numHeadSize(baseShapeInfo_.nSize);
-    baseParams_->set_numHeadKvSize(baseShapeInfo_.nkvSize);
-    baseParams_->set_dimHeadSizeQc(baseShapeInfo_.dSize);
-    baseParams_->set_dimHeadRope(baseShapeInfo_.drSize);
-    baseParams_->set_blockNum(baseShapeInfo_.blockNum);
-    baseParams_->set_blockSize(baseShapeInfo_.blockSize);
-    baseParams_->set_mm1BlockNum(mm1BlockNum_);
-    baseParams_->set_mm2BlockNum(mm2BlockNum_);
-    baseParams_->set_mm3BlockNum(mm3BlockNum_);
-    baseParams_->set_mm4BlockNum(mm4BlockNum_);
-    baseParams_->set_mm1SingleCoreN(singlecoreHeadSizeCq_);
-    baseParams_->set_mm2SingleCoreN(singlecoreHeadSizeCkvKr_);
-    baseParams_->set_mm3SingleCoreN(singlecoreHeadSizeQcQr_);
-    baseParams_->set_mm4SingleCoreBatch(singlecoreNumHeadSize_);
-    baseParams_->set_vectorBlockNum(vectorBlockNum_);
-    baseParams_->set_reciprocalCq(reciprocalCq_);
-    baseParams_->set_epsilonCq(epsilonCq_);
-    baseParams_->set_reciprocalCkv(reciprocalCkv_);
-    baseParams_->set_epsilonCkv(epsilonCkv_);
+    baseParams_->batchSize = baseShapeInfo_.bSize;
+    baseParams_->stepBatchSize = stepBatchSize_;
+    baseParams_->stepNumHeadDequant = stepNumHeadDequant_;
+    baseParams_->tokenSize = baseShapeInfo_.tSize;
+    baseParams_->seq1Size = baseShapeInfo_.s1Size;
+    baseParams_->seq2Size = baseShapeInfo_.s2Size;
+    baseParams_->headSizeX = baseShapeInfo_.heSize;
+    baseParams_->headSizeCq = baseShapeInfo_.hcqSize;
+    baseParams_->headSizeCkv = baseShapeInfo_.hckvSize;
+    baseParams_->headSizeQc = baseShapeInfo_.headSizeQc;
+    baseParams_->headSizeQr = baseShapeInfo_.headSizeQr;
+    baseParams_->headSizeKr = baseShapeInfo_.drSize;
+    baseParams_->numHeadSize = baseShapeInfo_.nSize;
+    baseParams_->numHeadKvSize = baseShapeInfo_.nkvSize;
+    baseParams_->dimHeadSizeQc = baseShapeInfo_.dSize;
+    baseParams_->dimHeadRope = baseShapeInfo_.drSize;
+    baseParams_->blockNum = baseShapeInfo_.blockNum;
+    baseParams_->blockSize = baseShapeInfo_.blockSize;
+    baseParams_->mm1BlockNum = mm1BlockNum_;
+    baseParams_->mm2BlockNum = mm2BlockNum_;
+    baseParams_->mm3BlockNum = mm3BlockNum_;
+    baseParams_->mm4BlockNum = mm4BlockNum_;
+    baseParams_->mm1SingleCoreN = singlecoreHeadSizeCq_;
+    baseParams_->mm2SingleCoreN = singlecoreHeadSizeCkvKr_;
+    baseParams_->mm3SingleCoreN = singlecoreHeadSizeQcQr_;
+    baseParams_->mm4SingleCoreBatch = singlecoreNumHeadSize_;
+    baseParams_->vectorBlockNum = vectorBlockNum_;
+    baseParams_->reciprocalCq = reciprocalCq_;
+    baseParams_->epsilonCq = epsilonCq_;
+    baseParams_->reciprocalCkv = reciprocalCkv_;
+    baseParams_->epsilonCkv = epsilonCkv_;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -467,8 +357,8 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
 
 ge::graphStatus MlaPrologTiling::GenTilingKey() const
 {
-    uint32_t typeValue = 0;
-    uint32_t quantType = 0;
+    uint8_t typeValue = 0;
+    uint8_t quantType = 0;
     if (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT) {
         typeValue = 1U;
     } else {
@@ -476,34 +366,37 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
         // kvCache量化场景，对应tiling key为1(半量化:0 + kv量化:1)或3(全量化:2 + kv量化:1)
         // 全量化场景，对应tiling key为2+0(全量化:2)或2+1（全量化:2+ kv量化:1）
         // 非量化和半量化场景，对应tiling key为0
-        quantType = static_cast<uint32_t>(scenarioInfo_.quantMode_);
+        quantType = static_cast<uint8_t>(scenarioInfo_.quantMode_);
     }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
-        context_->tilingKey = MLA_PROLOG_TILINGKEY_BASE_OFFSET + static_cast<uint64_t>(scenarioInfo_.emptyTensorMode_) *
-                                                                     MLA_PROLOG_EMPTY_TENSOR_MODE_OFFSET;
+        context_->tilingKey = GET_TPL_TILING_KEY(
+            0,
+            0,
+            0,
+            false,
+            false,
+            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_)
+        );
     } else {
-        context_->tilingKey = MLA_PROLOG_TILINGKEY_BASE_OFFSET +
-                              static_cast<uint64_t>(scenarioInfo_.cacheMode_) +
-                              typeValue * MLA_PROLOG_TYPE_OFFSET +
-                              quantType * MLA_PROLOG_QUANT_TYPE_OFFSET +
-                              static_cast<uint64_t>(enableDequantOpt_) * MLA_PROLOG_ENABLE_DEQUANT_OPT_OFFSET +
-                              static_cast<uint64_t>(enableGroupComputeOpt_) * MLA_PROLOG_ENABLE_GROUP_COMPUTE_OPT_OFFSET +
-                              static_cast<uint64_t>(scenarioInfo_.emptyTensorMode_) * MLA_PROLOG_EMPTY_TENSOR_MODE_OFFSET;
+        context_->tilingKey = GET_TPL_TILING_KEY(
+            static_cast<uint8_t>(scenarioInfo_.cacheMode_),
+            typeValue, 
+            quantType,
+            enableDequantOpt_,
+            enableGroupComputeOpt_,
+            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_)
+        );
     }
     OP_LOGI(context_->opName, "MlaProlog tilingKey:%lu", context_->tilingKey);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, MlaPrologTilingData &tilingData)
+ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, MlaPrologTilingData* tilingData)
 {
     this->context_ = &context;
-    this->bmm1TilingData_ = &tilingData.bmm1TilingData;
-    this->bmm2TilingData_ = &tilingData.bmm2TilingData;
-    this->bmm3TilingData_ = &tilingData.bmm3TilingData;
-    this->bmm4TilingData_ = &tilingData.bmm4TilingData;
-    this->baseParams_ = &tilingData.baseParams;
+    this->baseParams_ = &tilingData->baseParams;
     MlaPrologTilingCheck tilingCheck_ {*context_, baseShapeInfo_, scenarioInfo_};
 
     using StatusFunction = std::function<ge::graphStatus()>;
@@ -645,16 +538,6 @@ void MlaPrologTiling::ConvertOptionalParams(gert::TilingContext &context, MlaPro
     }
 }
 
-ge::graphStatus MlaPrologTiling::MlaPrologSetTilingData(gert::TilingContext &context, MlaPrologTilingData &tilingData)
-{
-    OP_CHECK_IF(context.GetRawTilingData() == nullptr,
-               OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "RawTilingData got from ge context is nullptr."),
-               return ge::GRAPH_FAILED);
-    tilingData.SaveToBuffer(context.GetRawTilingData()->GetData(), context.GetRawTilingData()->GetCapacity());
-    context.GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
-
-    return ge::GRAPH_SUCCESS;
-}
 
 MLA_EXTERN_C ge::graphStatus TilingMlaProlog(gert::TilingContext *context)
 {
@@ -667,12 +550,14 @@ MLA_EXTERN_C ge::graphStatus TilingMlaProlog(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    MlaPrologTilingData tilingData;
     MlaPrologTiling mlaPrologTiling;
+    MlaPrologTilingData* tilingData = context->GetTilingData<MlaPrologTilingData>();
+    OP_CHECK_IF(tilingData == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "TilingData is nullptr."),
+            return ge::GRAPH_FAILED);
     if (mlaPrologTiling.RunBigKernelTiling(mlaPrologContext, tilingData) == ge::SUCCESS) {
         context->SetTilingKey(mlaPrologContext.tilingKey);
         context->SetBlockDim(mlaPrologContext.blockDim);
-        mlaPrologTiling.MlaPrologSetTilingData(*context, tilingData);
         return ge::GRAPH_SUCCESS;
     }
     return ge::GRAPH_FAILED;
