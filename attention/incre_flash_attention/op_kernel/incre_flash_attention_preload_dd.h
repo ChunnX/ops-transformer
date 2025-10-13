@@ -447,7 +447,7 @@ protected:
     __aicore__ inline void LoadDataMm1A(ExtraInfo& info, LocalTensor<KV_T>& aL0Tensor, LocalTensor<KV_T>& aL1Tensor);
     __aicore__ inline void LoadDataMm1B(LocalTensor<KV_T>& bL0Tensor, LocalTensor<KV_T>& bL1Tensor);
 
-    __aicore__ inline void CopyInMm2AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info, uint32_t mIter, uint32_t mCopyIdx, uint32_t mCopyRowCount, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount);
+    __aicore__ inline void CopyInMm2AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info, uint32_t mCopyIdx, uint32_t mCopyRowCount, uint32_t mActCopyRowCount, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount);
     __aicore__ inline void CopyInMm2BToL1(LocalTensor<KV_T>& bL1Tensor, ExtraInfo& info, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount);
     __aicore__ inline void CopyInMm2BToL1ForPA(LocalTensor<KV_T>& bL1Tensor, uint64_t valueGmBaseOffset, uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt, uint32_t kActCopyRowCount);
     __aicore__ inline void LoadDataMm2A(LocalTensor<KV_T> aL0Tensor, LocalTensor<KV_T> aL1Tensor, uint32_t kSize);
@@ -2798,35 +2798,33 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1L(Ext
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info) {
-    for (uint32_t mIter = 0; mIter < msdIterNum; mIter++) {
-        uint32_t mmRowCount = info.mSize;
-        uint32_t copyStride = 16 * headDimAlign;
-        uint32_t copyIterNum = (mmRowCount + 15) / 16;
-        for(int i = 0; i < copyIterNum; i++) {
-            Nd2NzParams mm1Nd2NzParamsForA;
-            mm1Nd2NzParamsForA.ndNum = 1; // ND矩阵的个数
-            if(i == copyIterNum - 1) {
-                mm1Nd2NzParamsForA.nValue = info.mSize - i * 16;
-            }
-            else {
-                mm1Nd2NzParamsForA.nValue = 16; // 单个ND矩阵的行数, 单位为元素个数  16
-            }
-            if constexpr (KVINT4) {
-                mm1Nd2NzParamsForA.dValue = headDimAlign / 2;
-                mm1Nd2NzParamsForA.srcDValue = headDimAlign / 2; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
-            } else {
-                mm1Nd2NzParamsForA.dValue = headDimAlign; // 单个ND矩阵的列数, 单位为元素个数   128
-                mm1Nd2NzParamsForA.srcDValue = headDimAlign; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  128
-            }
-            mm1Nd2NzParamsForA.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
-            mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数  16
-            mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
-            mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移   
-            if constexpr (ANTIQUANT) {
-                DataCopy(aL1Tensor[(mIter * copyIterNum + i) * copyStride], queryPreProcessResGm[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize + mIter * info.mSize * headDimAlign + i * copyStride], mm1Nd2NzParamsForA);
-            } else {
-                DataCopy(aL1Tensor, queryGm[info.tensorAOffset], mm1Nd2NzParamsForA);
-            }
+    uint32_t mmRowCount = msdIterNum * info.mSize;
+    uint32_t copyStride = 16 * headDimAlign;
+    uint32_t copyIterNum = (mmRowCount + 15) / 16;
+    for(int i = 0; i < copyIterNum; i++) {
+        Nd2NzParams mm1Nd2NzParamsForA;
+        mm1Nd2NzParamsForA.ndNum = 1; // ND矩阵的个数
+        if(i == copyIterNum - 1) {
+            mm1Nd2NzParamsForA.nValue = msdIterNum * info.mSize - i * 16;
+        }
+        else {
+            mm1Nd2NzParamsForA.nValue = 16; // 单个ND矩阵的行数, 单位为元素个数  16
+        }
+        if constexpr (KVINT4) {
+            mm1Nd2NzParamsForA.dValue = headDimAlign / 2;
+            mm1Nd2NzParamsForA.srcDValue = headDimAlign / 2; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
+        } else {
+            mm1Nd2NzParamsForA.dValue = headDimAlign; // 单个ND矩阵的列数, 单位为元素个数   128
+            mm1Nd2NzParamsForA.srcDValue = headDimAlign; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  128
+        }
+        mm1Nd2NzParamsForA.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
+        mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数  16
+        mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
+        mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移   
+        if constexpr (ANTIQUANT) {
+            DataCopy(aL1Tensor[i * copyStride], queryPreProcessResGm[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize + i * copyStride], mm1Nd2NzParamsForA);
+        } else {
+            DataCopy(aL1Tensor, queryGm[info.tensorAOffset], mm1Nd2NzParamsForA);
         }
     }
     auto b = queryPreProcessResGm[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize];
@@ -2924,7 +2922,7 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1ForPA(
     LocalTensor<KV_T>& bL1Tensor, uint64_t keyGmBaseOffset, uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt, uint32_t nActCopyRowCount)
 {
-    uint32_t baseN = 128 / sizeof(KV_T);
+    uint32_t baseN = 256 / sizeof(KV_T);
     uint32_t blockElementCnt = 32 / sizeof(KV_T);
     if constexpr (KVINT4) {
         blockElementCnt = 64;
@@ -3143,87 +3141,115 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
         SetFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
         WaitFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
 
-        // A:256*128，M方向按照128循环
-        constexpr uint32_t baseM = 128 / sizeof(KV_T);
-        uint32_t mActCopyRowCount = info.mSize;
-        uint32_t mActCopyRowCountAlign = (info.mSize+15)/16 * 16;
-        uint32_t mLoopTimes = (mActCopyRowCountAlign + baseM - 1) / baseM;
+        // A:256*128，M方向按照64循环
+        constexpr uint32_t baseM = 64 / sizeof(KV_T);
+        uint32_t mActCopyRowCount = msdIterNum * info.mSize;
+        uint32_t mLoopTimes = (mActCopyRowCount + baseM - 1) / baseM;
         uint32_t mTail = mActCopyRowCount - (mLoopTimes - 1) * baseM;
-        for (uint32_t mIter = 0; mIter < msdIterNum; mIter++) {
-            float tmp = quantScaleC1S1;
-            if (mIter == 1) {
-                tmp = quantScaleC1S2;
+        bool isHead = false;
+        bool isMid = false;
+        bool isTail = false;
+        bool isOdd = (mLoopTimes % 2) != 0 ? true : false;
+        bool hasTail = (mTail == baseM) ? false : true;
+        for (uint32_t i = 0, actualBaseM = baseM; i < mLoopTimes; i++) {
+            if (i + 1 == mLoopTimes) {
+                actualBaseM = mTail;
             }
-            for (uint32_t i = 0, actualBaseM = baseM; i < mLoopTimes; i++) {
-                if (i + 1 == mLoopTimes) {
-                    actualBaseM = mTail;
+            isHead = (!isOdd && ((!hasTail && (i < (mLoopTimes / 2))) || (i < (mLoopTimes / 2 - 1)))) || (isOdd && (i < (mLoopTimes / 2)));
+            isMid = (!isOdd && hasTail && (i == (mLoopTimes / 2 - 1))) || (isOdd && (i == (mLoopTimes / 2)));
+            isTail = (!isOdd && (!hasTail || (i > (mLoopTimes / 2 - 1)))) || (isOdd && (i > (mLoopTimes / 2)));
+            LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(aL0BufIter % 2) * L0A_PP_SIZE / sizeof(KV_T)];
+            WaitFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
+            LoadData2DParams loadData2DParamsForA;
+            loadData2DParamsForA.startIndex = 0;
+            if constexpr (KVINT4) {
+                loadData2DParamsForA.repeatTimes = (actualBaseM + 15) / 16 * headDimAlign / 64;
+            } else {
+                loadData2DParamsForA.repeatTimes = (actualBaseM + 15) / 16 * headDimAlign / (32 / sizeof(KV_T));
+            }
+            loadData2DParamsForA.srcStride = 1;
+            loadData2DParamsForA.dstGap = 0;
+            loadData2DParamsForA.ifTranspose = false;
+            LoadData(aL0Tensor, aL1Tensor[i * baseM * headDimAlign], loadData2DParamsForA);
+            SetFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
+            WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
+
+            constexpr uint32_t baseN = 256 / sizeof(KV_T);
+            uint32_t nLoopTimes = (nActCopyRowCountAlign + baseN - 1) / baseN;
+            uint32_t nTail = nActCopyRowCountAlign - (nLoopTimes - 1) * baseN;
+            for (uint32_t j = 0, actualBaseN = baseN; j < nLoopTimes; j++) {
+                if (j + 1 == nLoopTimes) {
+                    actualBaseN = nTail;
                 }
-                LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(aL0BufIter % 2) * L0A_PP_SIZE / sizeof(KV_T)];
-                WaitFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
-                LoadData2DParams loadData2DParamsForA;
-                loadData2DParamsForA.startIndex = 0;
+                LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(bL0BufIter % 2) * L0B_PP_SIZE / sizeof(KV_T)];
+                WaitFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
+                uint32_t blockElementCnt = 32 / sizeof(KV_T);
                 if constexpr (KVINT4) {
-                    loadData2DParamsForA.repeatTimes = (actualBaseM + 15) / 16 * headDimAlign / 64;
-                } else {
-                    loadData2DParamsForA.repeatTimes = (actualBaseM + 15) / 16 * headDimAlign / (32 / sizeof(KV_T));
+                    blockElementCnt = 64;
                 }
-                loadData2DParamsForA.srcStride = 1;
-                loadData2DParamsForA.dstGap = 0;
-                loadData2DParamsForA.ifTranspose = false;
-                LoadData(aL0Tensor, aL1Tensor[(mIter * mActCopyRowCountAlign + i * baseM) * headDimAlign], loadData2DParamsForA);
-                SetFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
-                WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
+                LoadData2DParams loadData2DParamsForB;
+                loadData2DParamsForB.startIndex = 0;
+                loadData2DParamsForB.srcStride = 1;
+                loadData2DParamsForB.dstGap = 0;
+                loadData2DParamsForB.ifTranspose = false;
+#ifdef L1_LAYOUT_zN
+                loadData2DParamsForB.repeatTimes = actualBaseN / 16;
+                uint32_t loadLoopTimes = headDimAlign / blockElementCnt;
+                for(uint32_t k = 0; k < loadLoopTimes; k++){
+                    LoadData(bL0Tensor[k * actualBaseN * blockElementCnt],
+                        bL1Tensor[(j * baseN + k * nActCopyRowCountAlign) * blockElementCnt], loadData2DParamsForB);
+                }
+#else
+                loadData2DParamsForB.repeatTimes = (actualBaseN / 16) * (headDimAlign / blockElementCnt);
+                LoadData(bL0Tensor, bL1Tensor[baseN * headDimAlign * j], loadData2DParamsForB);
+#endif
+                SetFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
+                WaitFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
 
-                constexpr uint32_t baseN = 128 / sizeof(KV_T);
-                uint32_t nLoopTimes = (nActCopyRowCountAlign + baseN - 1) / baseN;
-                uint32_t nTail = nActCopyRowCountAlign - (nLoopTimes - 1) * baseN;
-                for (uint32_t j = 0, actualBaseN = baseN; j < nLoopTimes; j++) {
-                    if (j + 1 == nLoopTimes) {
-                        actualBaseN = nTail;
+                MmadParams mmadParams;
+                mmadParams.m = actualBaseM;
+                if (mmadParams.m == 1) {  // m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
+                    mmadParams.m = 16;
+                }
+                mmadParams.n = actualBaseN; // 无效数据不参与计算
+                mmadParams.k = 128;
+                mmadParams.cmatrixInitVal = true;
+                mmadParams.cmatrixSource = false;
+
+                LocalTensor<L0C_T> cL0Tensor = cL0TensorPingPong[(cL0BufIter % 2) * L0C_PP_SIZE / sizeof(L0C_T)];
+                WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
+
+                Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
+                PipeBarrier<PIPE_M>();
+                SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
+                WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
+
+                if (mLoopTimes == 1) {
+                    for (uint32_t mIter = 0; mIter < msdIterNum; mIter++) {
+                        float tmp = quantScaleC1S1;
+                        if (mIter == 1) {
+                            tmp = quantScaleC1S2;
+                        }
+                        FixpipeParamsV220 fixParams;
+                        fixParams.nSize = actualBaseN;
+                        fixParams.mSize = actualBaseM / msdIterNum; // 有效数据不足16行，只需要输出部分行即可
+                        fixParams.srcStride = ((actualBaseM + 15) / 16) * 16;
+                        fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign; // mm1ResGm两行之间的间隔
+                        fixParams.ndNum = 1;
+                        fixParams.quantPre = QuantMode_t::DEQF16;
+                        fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                        if (mIter == 1) {
+                            SetAtomicAdd<half>();
+                        }
+                        Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
+                                cL0Tensor[info.mSize * mIter * 16], fixParams);
+                        if (mIter == 1) {
+                            SetAtomicNone();
+                        }
+                        PipeBarrier<PIPE_FIX>();
                     }
-                    LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(bL0BufIter % 2) * L0B_PP_SIZE / sizeof(KV_T)];
-                    WaitFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
-                    uint32_t blockElementCnt = 32 / sizeof(KV_T);
-                    if constexpr (KVINT4) {
-                        blockElementCnt = 64;
-                    }
-                    LoadData2DParams loadData2DParamsForB;
-                    loadData2DParamsForB.startIndex = 0;
-                    loadData2DParamsForB.srcStride = 1;
-                    loadData2DParamsForB.dstGap = 0;
-                    loadData2DParamsForB.ifTranspose = false;
-        #ifdef L1_LAYOUT_zN
-                    loadData2DParamsForB.repeatTimes = actualBaseN / 16;
-                    uint32_t loadLoopTimes = headDimAlign / blockElementCnt;
-                    for(uint32_t k = 0; k < loadLoopTimes; k++){
-                        LoadData(bL0Tensor[k * actualBaseN * blockElementCnt],
-                            bL1Tensor[(j * baseN + k * nActCopyRowCountAlign) * blockElementCnt], loadData2DParamsForB);
-                    }
-        #else
-                    loadData2DParamsForB.repeatTimes = (actualBaseN / 16) * (headDimAlign / blockElementCnt);
-                    LoadData(bL0Tensor, bL1Tensor[baseN * headDimAlign * j], loadData2DParamsForB);
-        #endif
-                    SetFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
-                    WaitFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
-
-                    MmadParams mmadParams;
-                    mmadParams.m = actualBaseM;
-                    if (mmadParams.m == 1) { //m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
-                        mmadParams.m = 16;
-                    }
-                    mmadParams.n = actualBaseN; // 无效数据不参与计算
-                    mmadParams.k = 128;
-                    mmadParams.cmatrixInitVal = true;
-                    mmadParams.cmatrixSource = false;
-
-                    LocalTensor<L0C_T> cL0Tensor = cL0TensorPingPong[(cL0BufIter % 2) * L0C_PP_SIZE / sizeof(L0C_T)];
-                    WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
-
-                    Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
-
-                    SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
-                    WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
-
+                } else if (isHead) {
+                    float tmp = quantScaleC1S1;
                     FixpipeParamsV220 fixParams;
                     fixParams.nSize = actualBaseN;
                     fixParams.mSize = actualBaseM; // 有效数据不足16行，只需要输出部分行即可
@@ -3232,24 +3258,52 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
                     fixParams.ndNum = 1;
                     fixParams.quantPre = QuantMode_t::DEQF16;
                     fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
-                    if (mIter == 1) {
-                        SetAtomicAdd<half>();
-                    }
-
                     Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
                             cL0Tensor, fixParams);
-                    if (mIter == 1) {
-                        SetAtomicNone();
-                    }
                     PipeBarrier<PIPE_FIX>();
-                    SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
-                    cL0BufIter++;
-                    SetFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
-                    bL0BufIter++;
+                } else if (isTail) {
+                    float tmp = quantScaleC1S2;
+                    FixpipeParamsV220 fixParams;
+                    fixParams.nSize = actualBaseN;
+                    fixParams.mSize = actualBaseM; // 有效数据不足16行，只需要输出部分行即可
+                    fixParams.srcStride = ((actualBaseM + 15) / 16) * 16;
+                    fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign; // mm1ResGm两行之间的间隔
+                    fixParams.ndNum = 1;
+                    fixParams.quantPre = QuantMode_t::DEQF16;
+                    fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                    SetAtomicAdd<half>();
+                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + (i * baseM - info.mSize) * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
+                            cL0Tensor, fixParams);
+                    SetAtomicNone();
+                    PipeBarrier<PIPE_FIX>();
+                } else {
+                    float tmp = quantScaleC1S1;
+                    FixpipeParamsV220 fixParams;
+                    fixParams.nSize = actualBaseN;
+                    fixParams.mSize = info.mSize - i * baseM; // 有效数据不足16行，只需要输出部分行即可
+                    fixParams.srcStride = ((actualBaseM + 15) / 16) * 16;
+                    fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign; // mm1ResGm两行之间的间隔
+                    fixParams.ndNum = 1;
+                    fixParams.quantPre = QuantMode_t::DEQF16;
+                    fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
+                                cL0Tensor, fixParams);
+                    PipeBarrier<PIPE_FIX>();
+                    tmp = quantScaleC1S2;
+                    fixParams.mSize = (i + 1) * baseM - info.mSize;
+                    fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                    SetAtomicAdd<half>();
+                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + nCopyIdx * nCopyRowCount + j * baseN], cL0Tensor[(info.mSize - i * baseM) * 16], fixParams);
+                    SetAtomicNone();
+                    PipeBarrier<PIPE_FIX>();
                 }
-                SetFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
-                aL0BufIter++;
-            }  
+                SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
+                cL0BufIter++;
+                SetFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
+                bL0BufIter++;
+            }
+            SetFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
+            aL0BufIter++;
         }
         SetFlag<HardEvent::MTE1_MTE2>(L1KP_EVENT0 + (kpL1BufIter % 3));
     }
@@ -3260,8 +3314,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info, uint32_t mIter, uint32_t  mCopyIdx, uint32_t mCopyRowCount, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount) {
-    uint32_t mmRowCount = mCopyRowCount;
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info, uint32_t mCopyIdx, uint32_t mCopyRowCount, uint32_t mActCopyRowCount, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount) {
+    uint32_t mmRowCount = mActCopyRowCount;
     uint32_t copyStrideL1 = 16 * kActCopyRowCount;
     uint32_t copyStrideGm = 16 * info.actualSingleProcessSInnerSizeAlign;
     uint32_t copyIterNum = (mmRowCount + 15) / 16;
@@ -3269,7 +3323,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(L
         Nd2NzParams mm1Nd2NzParamsForA;
         mm1Nd2NzParamsForA.ndNum = 1; // ND矩阵的个数
         if(i == copyIterNum - 1) {
-            mm1Nd2NzParamsForA.nValue = mCopyRowCount - i * 16;
+            mm1Nd2NzParamsForA.nValue = mmRowCount - i * 16;
         }
         else {
             mm1Nd2NzParamsForA.nValue = 16; // 单个ND矩阵的行数, 单位为元素个数  16
@@ -3284,7 +3338,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(L
         mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
         mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移
-        DataCopy(aL1Tensor[i * copyStrideL1], vec1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + (mIter * info.mSize + mCopyIdx * mCopyRowCount) * info.actualSingleProcessSInnerSizeAlign + kCopyIdx * kCopyRowCount + i * copyStrideGm], mm1Nd2NzParamsForA);
+        DataCopy(aL1Tensor[i * copyStrideL1], vec1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + (mCopyIdx * mCopyRowCount) * info.actualSingleProcessSInnerSizeAlign + kCopyIdx * kCopyRowCount + i * copyStrideGm], mm1Nd2NzParamsForA);
     }
 }
 
@@ -3506,7 +3560,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm2B(Loc
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(ExtraInfo& info) {
     constexpr uint32_t mCopyRowCount = P_LOAD_TO_L1_ROW_NUM;
-    uint32_t mActRowCount = info.mSize;
+    uint32_t mActRowCount = msdIterNum * info.mSize;
     uint32_t mCopyTimes = (mActRowCount + mCopyRowCount - 1) / mCopyRowCount;
     uint32_t mTailCopyRowCount = mActRowCount - (mCopyTimes - 1) * mCopyRowCount;
 
@@ -3515,177 +3569,224 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
     uint32_t kTailCopyRowCount = info.actualSingleProcessSInnerSize - (kCopyTimes - 1) * kCopyRowCount;
     uint32_t kTailCopyRowCountAlign = info.actualSingleProcessSInnerSizeAlign - (kCopyTimes - 1) * kCopyRowCount;
 
-    for (uint32_t mIter = 0; mIter < msdIterNum; mIter++) {
-        float tmp = quantScaleC2O1;
-        if (mIter == 1) {
-            tmp = quantScaleC2O2;
+    for (uint32_t mCopyIdx = 0, mActCopyRowCount = mCopyRowCount; mCopyIdx < mCopyTimes; mCopyIdx++) {
+        if (mCopyIdx + 1 == mCopyTimes) {
+            mActCopyRowCount = mTailCopyRowCount;
         }
-        for (uint32_t mCopyIdx = 0, mActCopyRowCount = mCopyRowCount; mCopyIdx < mCopyTimes; mCopyIdx++) {
-            if (mCopyIdx + 1 == mCopyTimes) {
-                mActCopyRowCount = mTailCopyRowCount;
+        LocalTensor<L0C_T> cL0Tensor = cL0TensorPingPong[(cL0BufIter % 2) * L0C_PP_SIZE / sizeof(L0C_T)];
+        WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
+        for (uint32_t kCopyIdx = 0, kActCopyRowCount = kCopyRowCount, kActCopyRowCountAlign = kCopyRowCount; kCopyIdx < kCopyTimes; kCopyIdx++) {
+            if (kCopyIdx + 1 == kCopyTimes) {
+                kActCopyRowCount = kTailCopyRowCount;
+                kActCopyRowCountAlign = kTailCopyRowCountAlign;
             }
-            LocalTensor<L0C_T> cL0Tensor = cL0TensorPingPong[(cL0BufIter % 2) * L0C_PP_SIZE / sizeof(L0C_T)];
-            WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
-            for (uint32_t kCopyIdx = 0, kActCopyRowCount = kCopyRowCount, kActCopyRowCountAlign = kCopyRowCount; kCopyIdx < kCopyTimes; kCopyIdx++) {
-                if (kCopyIdx + 1 == kCopyTimes) {
-                    kActCopyRowCount = kTailCopyRowCount;
-                    kActCopyRowCountAlign = kTailCopyRowCountAlign;
-                }
-                kpL1BufIter++;
-                LocalTensor<KV_T> aL1Tensor = kpL1Buffers[(kpL1BufIter % 3)  * L1KP_BLOCK_SIZE / sizeof(KV_T)];
-                WaitFlag<HardEvent::MTE1_MTE2>(L1KP_EVENT0 + (kpL1BufIter % 3));
-                CopyInMm2AToL1(aL1Tensor, info, mIter, mCopyIdx, mActCopyRowCount, kCopyIdx, kCopyRowCount, kActCopyRowCountAlign);
-                SetFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
-                WaitFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
-                LocalTensor<KV_T> bL1Tensor = vL1Buffers[(vL1BufIter % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
-                uint32_t kb = 0;
-                if (mCopyIdx == 0) {
-                    vL1BufIter++;
-                    bL1Tensor = vL1Buffers[(vL1BufIter % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
-                    WaitFlag<HardEvent::MTE1_MTE2>(L1V_EVENT0 + (vL1BufIter % 4));
-                    if constexpr (PAGE_ATTENTION) {
-                        uint64_t blockTableBaseOffset = info.bIdx * maxBlockNumPerBatch;
-                        uint32_t curSeqIdx = info.s2BatchOffset + kCopyIdx * kCopyRowCount;
-                        uint32_t copyFinishRowCnt = 0;
-                        while (copyFinishRowCnt < kActCopyRowCount) {
-                            uint64_t blockIdOffset = curSeqIdx / kvCacheBlockSize; // 获取blcok table上的索引
-                            uint64_t reaminRowCnt = curSeqIdx % kvCacheBlockSize;  // 获取在单个块上超出的行数
-                            uint64_t idInBlockTable =
-                                blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上的获取编号
-                            // 计算可以拷贝行数
-                            uint32_t copyRowCnt = kvCacheBlockSize - reaminRowCnt;
-                            if (copyFinishRowCnt + copyRowCnt > kActCopyRowCount) {
-                                copyRowCnt = kActCopyRowCount - copyFinishRowCnt;
-                            }
-                            uint64_t valueOffset = idInBlockTable * kvCacheBlockSize * headDim * kvHeadNum;
-                            if constexpr (KV_LAYOUT_T == LAYOUT::NZ) {
-                                uint32_t blockElementCnt = 32 / sizeof(KV_T);
-                                if constexpr (KVINT4) {
-                                    blockElementCnt = 64;
-                                }
-                                valueOffset += (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * blockElementCnt;
-                            } else {
-                                if constexpr (KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) {
-                                    valueOffset += (uint64_t)(info.n2Idx * headDim) + reaminRowCnt * headDim * kvHeadNum;
-                                } else {
-                                    valueOffset += (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * headDim;
-                                }
-                            }
-                            CopyInMm2BToL1ForPA(bL1Tensor, valueOffset, kActCopyRowCount, copyFinishRowCnt, copyRowCnt);
-
-                            // 更新循环变量
-                            copyFinishRowCnt += copyRowCnt;
-                            curSeqIdx += copyRowCnt;
+            kpL1BufIter++;
+            LocalTensor<KV_T> aL1Tensor = kpL1Buffers[(kpL1BufIter % 3) * L1KP_BLOCK_SIZE / sizeof(KV_T)];
+            WaitFlag<HardEvent::MTE1_MTE2>(L1KP_EVENT0 + (kpL1BufIter % 3));
+            CopyInMm2AToL1(aL1Tensor, info, mCopyIdx, mCopyRowCount, mActCopyRowCount, kCopyIdx, kCopyRowCount, kActCopyRowCountAlign);
+            SetFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
+            WaitFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
+            LocalTensor<KV_T> bL1Tensor = vL1Buffers[(vL1BufIter % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
+            uint32_t kb = 0;
+            if (mCopyIdx == 0) {
+                vL1BufIter++;
+                bL1Tensor = vL1Buffers[(vL1BufIter % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
+                WaitFlag<HardEvent::MTE1_MTE2>(L1V_EVENT0 + (vL1BufIter % 4));
+                if constexpr (PAGE_ATTENTION) {
+                    uint64_t blockTableBaseOffset = info.bIdx * maxBlockNumPerBatch;
+                    uint32_t curSeqIdx = info.s2BatchOffset + kCopyIdx * kCopyRowCount;
+                    uint32_t copyFinishRowCnt = 0;
+                    while (copyFinishRowCnt < kActCopyRowCount) {
+                        uint64_t blockIdOffset = curSeqIdx / kvCacheBlockSize; // 获取blcok table上的索引
+                        uint64_t reaminRowCnt = curSeqIdx % kvCacheBlockSize;  // 获取在单个块上超出的行数
+                        uint64_t idInBlockTable =
+                            blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上的获取编号
+                        // 计算可以拷贝行数
+                        uint32_t copyRowCnt = kvCacheBlockSize - reaminRowCnt;
+                        if (copyFinishRowCnt + copyRowCnt > kActCopyRowCount) {
+                            copyRowCnt = kActCopyRowCount - copyFinishRowCnt;
                         }
-                    } else {
-                        CopyInMm2BToL1(bL1Tensor, info, kCopyIdx, kCopyRowCount, kActCopyRowCount);
+                        uint64_t valueOffset = idInBlockTable * kvCacheBlockSize * headDim * kvHeadNum;
+                        if constexpr (KV_LAYOUT_T == LAYOUT::NZ) {
+                            uint32_t blockElementCnt = 32 / sizeof(KV_T);
+                            if constexpr (KVINT4) {
+                                blockElementCnt = 64;
+                            }
+                            valueOffset += (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * blockElementCnt;
+                        } else {
+                            if constexpr (KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) {
+                                valueOffset += (uint64_t)(info.n2Idx * headDim) + reaminRowCnt * headDim * kvHeadNum;
+                            } else {
+                                valueOffset += (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * headDim;
+                            }
+                        }
+                        CopyInMm2BToL1ForPA(bL1Tensor, valueOffset, kActCopyRowCount, copyFinishRowCnt, copyRowCnt);
+
+                        // 更新循环变量
+                        copyFinishRowCnt += copyRowCnt;
+                        curSeqIdx += copyRowCnt;
                     }
-                    SetFlag<HardEvent::MTE2_MTE1>(L1V_EVENT0 + (vL1BufIter % 4));
-                    WaitFlag<HardEvent::MTE2_MTE1>(L1V_EVENT0 + (vL1BufIter % 4));
-                    kb = vL1BufIter;
                 } else {
-                    kb = vL1BufIter - (kCopyTimes - kCopyIdx - 1);
-                    bL1Tensor = vL1Buffers[(kb % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
+                    CopyInMm2BToL1(bL1Tensor, info, kCopyIdx, kCopyRowCount, kActCopyRowCount);
                 }
-                constexpr uint32_t baseK = 128 / sizeof(KV_T);
-                uint32_t kLoopTimes = (kActCopyRowCountAlign + baseK - 1) / baseK;
-                uint32_t kTailAlign = kActCopyRowCountAlign - (kLoopTimes - 1) * baseK;
-                uint32_t kTail = kActCopyRowCount - (kLoopTimes - 1) * baseK;
-                for (uint32_t i = 0, actualBaseKAlign = baseK, actualBaseK = baseK; i < kLoopTimes; i++) {
-                    if (i + 1 == kLoopTimes) {
-                        actualBaseKAlign = kTailAlign;
-                        actualBaseK = kTail;
-                    }
-
-                    LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(aL0BufIter % 2) * L0A_PP_SIZE / sizeof(KV_T)];
-                    WaitFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
-                    LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(bL0BufIter % 2) * L0B_PP_SIZE / sizeof(KV_T)];
-                    WaitFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
-
-                    LocalTensor<KV_T> curAL1Tensor = aL1Tensor[16 * baseK * i];
-
-                    uint32_t mmRowCount = mActCopyRowCount;
-                    uint32_t copyStrideL0 = 16 * actualBaseKAlign;
-                    uint32_t copyStrideL1 = 16 * kActCopyRowCountAlign;
-                    uint32_t copyIterNum = (mmRowCount + 15) / 16;
-                    for(int i = 0; i < copyIterNum; i++){
-                        LoadDataMm2A(aL0Tensor[i * copyStrideL0], curAL1Tensor[i * copyStrideL1], actualBaseKAlign);
-                    }
-                    
-                    SetFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
-                    WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
-
-                    uint32_t blockElementCnt = 32 / sizeof(KV_T);
-                    if constexpr (KVINT4) {
-                        blockElementCnt = 64;
-                    }
-                    LoadData2dTransposeParams loadData2DTransposeParamsForB;
-                    loadData2DTransposeParamsForB.startIndex = 0;
-                    loadData2DTransposeParamsForB.srcStride = 1;
-                    loadData2DTransposeParamsForB.dstFracGap = 0;
-    #ifdef L1_LAYOUT_zN
-                    loadData2DTransposeParamsForB.repeatTimes = actualBaseKAlign / blockElementCnt;
-                    loadData2DTransposeParamsForB.dstGap = headDimAlign / 16 - 1;
-                    uint32_t loadLoopTimes = headDimAlign / blockElementCnt;
-                    for(uint32_t j = 0; j < loadLoopTimes; j++){
-                        LoadDataWithTranspose(bL0Tensor[j * blockElementCnt * blockElementCnt],
-                            bL1Tensor[(i * baseK + j * kActCopyRowCountAlign) * blockElementCnt], loadData2DTransposeParamsForB);
-                    }
-    #else
-                    loadData2DTransposeParamsForB.repeatTimes = (actualBaseKAlign / blockElementCnt) * (headDimAlign / blockElementCnt);
-                    loadData2DTransposeParamsForB.dstGap = blockElementCnt / 16 - 1;
-                    uint32_t l1BaseOffset = baseK * headDimAlign * i;
-                    LoadDataWithTranspose(bL0Tensor, bL1Tensor[l1BaseOffset], loadData2DTransposeParamsForB);
-    #endif
-                    SetFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
-                    WaitFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
-
-                    MmadParams mmadParams;
-                    mmadParams.m = mActCopyRowCount;
-                    if (mmadParams.m == 1) { //m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
-                        mmadParams.m = 16;
-                    }
-                    mmadParams.n = 128;
-                    mmadParams.k = actualBaseK; // 无效数据不参与计算
-                    mmadParams.cmatrixInitVal = (kCopyIdx == 0) && (i == 0);
-                    mmadParams.cmatrixSource = false;
-                    Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
-                    PipeBarrier<PIPE_M>();
-
-                    SetFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
-                    aL0BufIter++;
-                    SetFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
-                    bL0BufIter++;
-                }
-
-                SetFlag<HardEvent::MTE1_MTE2>(L1KP_EVENT0 + (kpL1BufIter % 3));
-                if ((mCopyIdx + 1) == mCopyTimes) {
-                    SetFlag<HardEvent::MTE1_MTE2>(L1V_EVENT0 + (kb % 4));
-                }
+                SetFlag<HardEvent::MTE2_MTE1>(L1V_EVENT0 + (vL1BufIter % 4));
+                WaitFlag<HardEvent::MTE2_MTE1>(L1V_EVENT0 + (vL1BufIter % 4));
+                kb = vL1BufIter;
+            } else {
+                kb = vL1BufIter - (kCopyTimes-kCopyIdx-1);
+                bL1Tensor = vL1Buffers[(kb % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
             }
-            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
-            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
-            FixpipeParamsV220 fixParams;
-            fixParams.nSize = 128;
-            fixParams.mSize = mActCopyRowCount; // 有效数据不足16行，只需要输出部分行即可
-            fixParams.srcStride = ((fixParams.mSize + 15) / 16) * 16;
-            fixParams.dstStride = 128;
-            fixParams.ndNum = 1;
-            fixParams.quantPre = QuantMode_t::DEQF16;
-            fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
-            if (mIter == 1) {
+            constexpr uint32_t baseK = 128 / sizeof(KV_T);
+            uint32_t kLoopTimes = (kActCopyRowCountAlign + baseK - 1) / baseK;
+            uint32_t kTailAlign = kActCopyRowCountAlign - (kLoopTimes - 1) * baseK;
+            uint32_t kTail = kActCopyRowCount - (kLoopTimes - 1) * baseK;
+            for (uint32_t i = 0, actualBaseKAlign = baseK, actualBaseK = baseK; i < kLoopTimes; i++) {
+                if (i + 1 == kLoopTimes) {
+                    actualBaseKAlign = kTailAlign;
+                    actualBaseK = kTail;
+                }
+
+                LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(aL0BufIter % 2) * L0A_PP_SIZE / sizeof(KV_T)];
+                WaitFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
+                LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(bL0BufIter % 2) * L0B_PP_SIZE / sizeof(KV_T)];
+                WaitFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
+
+                LocalTensor<KV_T> curAL1Tensor = aL1Tensor[16 * baseK * i];
+
+                uint32_t mmRowCount = mActCopyRowCount;
+                uint32_t copyStrideL0 = 16 * actualBaseKAlign;
+                uint32_t copyStrideL1 = 16 * kActCopyRowCountAlign;
+                uint32_t copyIterNum = (mmRowCount + 15) / 16;
+                for(int i = 0; i < copyIterNum; i++){
+                    LoadDataMm2A(aL0Tensor[i * copyStrideL0], curAL1Tensor[i * copyStrideL1], actualBaseKAlign);
+                }
+                
+                SetFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
+                WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
+
+                uint32_t blockElementCnt = 32 / sizeof(KV_T);
+                if constexpr (KVINT4) {
+                    blockElementCnt = 64;
+                }
+                LoadData2dTransposeParams loadData2DTransposeParamsForB;
+                loadData2DTransposeParamsForB.startIndex = 0;
+                loadData2DTransposeParamsForB.srcStride = 1;
+                loadData2DTransposeParamsForB.dstFracGap = 0;
+#ifdef L1_LAYOUT_zN
+                loadData2DTransposeParamsForB.repeatTimes = actualBaseKAlign / blockElementCnt;
+                loadData2DTransposeParamsForB.dstGap = headDimAlign / 16 - 1;
+                uint32_t loadLoopTimes = headDimAlign / blockElementCnt;
+                for(uint32_t j = 0; j < loadLoopTimes; j++){
+                    LoadDataWithTranspose(bL0Tensor[j * blockElementCnt * blockElementCnt],
+                        bL1Tensor[(i * baseK + j * kActCopyRowCountAlign) * blockElementCnt], loadData2DTransposeParamsForB);
+                }
+#else
+                loadData2DTransposeParamsForB.repeatTimes = (actualBaseKAlign / blockElementCnt) * (headDimAlign / blockElementCnt);
+                loadData2DTransposeParamsForB.dstGap = blockElementCnt / 16 - 1;
+                uint32_t l1BaseOffset = baseK * headDimAlign * i;
+                LoadDataWithTranspose(bL0Tensor, bL1Tensor[l1BaseOffset], loadData2DTransposeParamsForB);
+#endif
+                SetFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
+                WaitFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bL0BufIter % 2));
+
+                MmadParams mmadParams;
+                mmadParams.m = mActCopyRowCount;
+                if (mmadParams.m == 1) {  // m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
+                    mmadParams.m = 16;
+                }
+                mmadParams.n = 128;
+                mmadParams.k = actualBaseK; // 无效数据不参与计算
+                mmadParams.cmatrixInitVal = (kCopyIdx == 0) && (i == 0);
+                mmadParams.cmatrixSource = false;
+                Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
+                PipeBarrier<PIPE_M>();
+
+                SetFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (aL0BufIter % 2));
+                aL0BufIter++;
+                SetFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bL0BufIter % 2));
+                bL0BufIter++;
+            }
+
+            SetFlag<HardEvent::MTE1_MTE2>(L1KP_EVENT0 + (kpL1BufIter % 3));
+            if ((mCopyIdx + 1) == mCopyTimes) {
+                SetFlag<HardEvent::MTE1_MTE2>(L1V_EVENT0 + (kb % 4));
+            }
+        }         
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
+        if (mCopyTimes == 1) {
+            for (uint32_t mIter = 0; mIter < msdIterNum; mIter++) {
+                float tmp = quantScaleC2O1;
+                if (mIter == 1) {
+                    tmp = quantScaleC2O2;
+                }
+                FixpipeParamsV220 fixParams;
+                fixParams.nSize = 128;
+                fixParams.mSize = mActCopyRowCount / msdIterNum; // 有效数据不足16行，只需要输出部分行即可
+                fixParams.srcStride = ((msdIterNum * fixParams.mSize + 15) / 16) * 16;
+                fixParams.dstStride = 128;
+                fixParams.ndNum = 1;
+                fixParams.quantPre = QuantMode_t::DEQF16;
+                fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                if (mIter == 1) {
+                    SetAtomicAdd<half>();
+                }
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize], cL0Tensor[mIter * fixParams.mSize * 16], fixParams);
+                if (mIter == 1) {
+                    SetAtomicNone();
+                }
+                PipeBarrier<PIPE_FIX>();
+            }
+        } else {
+            if (mTailCopyRowCount != mCopyRowCount && mCopyIdx == 0) {
+                float tmp = quantScaleC2O1;
+                FixpipeParamsV220 fixParams;
+                fixParams.nSize = 128;
+                fixParams.mSize = info.mSize; // 有效数据不足16行，只需要输出部分行即可
+                fixParams.srcStride = ((mActCopyRowCount + 15) / 16) * 16;
+                fixParams.dstStride = 128;
+                fixParams.ndNum = 1;
+                fixParams.quantPre = QuantMode_t::DEQF16;
+                fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize], cL0Tensor, fixParams);
+                PipeBarrier<PIPE_FIX>();
+                tmp = quantScaleC2O2;
+                fixParams.mSize = mActCopyRowCount - info.mSize;
+                fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
                 SetAtomicAdd<half>();
-            }
-
-            Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize + mCopyIdx*mActCopyRowCount*headDimAlign], cL0Tensor, fixParams);
-
-            if (mIter == 1) {
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize], cL0Tensor[info.mSize * 16], fixParams);
                 SetAtomicNone();
+                PipeBarrier<PIPE_FIX>();
+            } else if (mCopyIdx == 0) {
+                float tmp = quantScaleC2O1;
+                FixpipeParamsV220 fixParams;
+                fixParams.nSize = 128;
+                fixParams.mSize = mActCopyRowCount; // 有效数据不足16行，只需要输出部分行即可
+                fixParams.srcStride = ((mActCopyRowCount + 15) / 16) * 16;
+                fixParams.dstStride = 128;
+                fixParams.ndNum = 1;
+                fixParams.quantPre = QuantMode_t::DEQF16;
+                fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize], cL0Tensor, fixParams);
+                PipeBarrier<PIPE_FIX>();
+            } else {
+                float tmp = quantScaleC2O2;
+                FixpipeParamsV220 fixParams;
+                fixParams.nSize = 128;
+                fixParams.mSize = mActCopyRowCount; // 有效数据不足16行，只需要输出部分行即可
+                fixParams.srcStride = ((mActCopyRowCount + 15) / 16) * 16;
+                fixParams.dstStride = 128;
+                fixParams.ndNum = 1;
+                fixParams.quantPre = QuantMode_t::DEQF16;
+                fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
+                SetAtomicAdd<half>();
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize + (mCopyIdx * mCopyRowCount - info.mSize) * headDimAlign], cL0Tensor, fixParams);
+                SetAtomicNone();
+                PipeBarrier<PIPE_FIX>();
             }
-            PipeBarrier<PIPE_FIX>();
-            SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
-            cL0BufIter++;
         }
+        SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
+        cL0BufIter++;
     }
 }
 

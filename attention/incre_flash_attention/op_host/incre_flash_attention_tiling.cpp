@@ -560,12 +560,8 @@ void IFATiling::SetupPerfMode()
     } else {
         if (gqaKvNZFlag_) {
             perfMode_ = IfaPerfMode::CUBE_VIEW_MM_DD;
-            return;
-        }
-        if (ropeFlag_) {
+        } else if (ropeFlag_) {
             perfMode_ = IfaPerfMode::CUBE_VIEW_MM_MLA;
-        } else if (EnableCubeViewMMDD()) {
-            perfMode_ = IfaPerfMode::CUBE_VIEW_MM_DD;
         } else {
             if (EnableAllVec()) {
                 perfMode_ = IfaPerfMode::BMM_ALL_BY_VEC;
@@ -1226,6 +1222,10 @@ ge::graphStatus IFATiling::CheckKVAntiQuantParamsInPagedAttention() const {
 
 ge::graphStatus IFATiling::CheckKVAntiQuantMode()
 {
+    if (gqaKvNZFlag_ && (antiquantMode_ != DEQUANT_PER_CHANNEL_MODE) && (antiquantMode_ != DEQUANT_PER_TOKEN_MODE)) {
+        OP_LOGE(context_->opName, "antiquantMode value[%u] should be 0 or 1 in GQA KV NZ", antiquantMode_);
+        return ge::GRAPH_FAILED;
+    }
     if ((antiquantMode_ != DEQUANT_PER_CHANNEL_MODE) &&
             (antiquantMode_ != DEQUANT_PER_TOKEN_MODE) &&
             (antiquantMode_ != DEQUANT_PER_TENSOR_HEAD_MODE) &&
@@ -1263,6 +1263,21 @@ ge::graphStatus IFATiling::CheckKVAntiQuantMode()
 
 ge::graphStatus IFATiling::CheckKVAntiQuantPerToken(const gert::Shape &inputParaShape) const
 {
+    if (gqaKvNZFlag_) {
+        OP_CHECK_IF(inputParaShape.GetDimNum() != DIM_PER_TOKEN_KvSplit, 
+            OP_LOGE(context_->opName,
+            "The dim of antiquant[%lu] should be %u when per_token mode in GQA KV NZ.",
+            inputParaShape.GetDimNum(), DIM_PER_TOKEN_KvSplit), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((inputParaShape.GetDim(PER_TOKEN_Split_B) != batchSize_),
+            OP_LOGE(context_->opName,
+            "The 1st dim of antiquant should be %u instead of the current %ld when per_token mode in GQA KV NZ.",
+            batchSize_, inputParaShape.GetDim(PER_TOKEN_Split_B)), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((inputParaShape.GetDim(PER_TOKEN_Split_S) < seqSize_),
+            OP_LOGE(context_->opName,
+            "The 2nd dim of antiquant should be greater than or equal to %u instead of the current %ld when per_token mode in GQA KV NZ.",
+            seqSize_, inputParaShape.GetDim(PER_TOKEN_Split_S)), return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
     if (inputParaShape.GetDimNum() == DIM_PER_TOKEN) {
         OP_CHECK_IF((inputParaShape.GetDim(PER_TOKEN_N) != antiquantNum_),
             OP_LOGE(context_->opName, "The 1st dim of antiquant should be %u instead of the current %ld",

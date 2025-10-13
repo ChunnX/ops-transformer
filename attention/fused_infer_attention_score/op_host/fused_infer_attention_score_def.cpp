@@ -43,7 +43,7 @@ public:
                        ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_INT8,
-                       ge::DT_INT8})
+                       ge::DT_INT8,    ge::DT_BF16,    ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("key")
@@ -65,7 +65,7 @@ public:
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
-                       ge::DT_INT8})
+                       ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("value")
@@ -87,7 +87,7 @@ public:
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
-                       ge::DT_INT8})
+                       ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("pse_shift")
@@ -109,7 +109,7 @@ public:
                        ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_FLOAT16})
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("atten_mask")
@@ -131,7 +131,7 @@ public:
                        ge::DT_BOOL,    ge::DT_UINT8, ge::DT_BOOL,    ge::DT_BOOL,    ge::DT_BOOL,  ge::DT_BOOL,
                        ge::DT_BOOL,    ge::DT_INT8,  ge::DT_UINT8,   ge::DT_BOOL,    ge::DT_BOOL,  ge::DT_BOOL,
                        ge::DT_BOOL,    ge::DT_INT8,  ge::DT_UINT8,   ge::DT_UINT8,   ge::DT_INT8,  ge::DT_UINT8,
-                       ge::DT_INT8})
+                       ge::DT_INT8,    ge::DT_INT8,  ge::DT_UINT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_seq_lengths")
@@ -165,7 +165,7 @@ public:
                        ge::DT_UINT64, ge::DT_UINT64, ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,
                        ge::DT_UINT64, ge::DT_UINT64, ge::DT_UINT64, ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,
                        ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_UINT64, ge::DT_UINT64, ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,  ge::DT_UINT64, ge::DT_UINT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("quant_scale1")
@@ -192,7 +192,7 @@ public:
                        ge::DT_UINT64, ge::DT_UINT64, ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,
                        ge::DT_UINT64, ge::DT_UINT64, ge::DT_UINT64, ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,
                        ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_FLOAT,  ge::DT_UINT64, ge::DT_UINT64, ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,  ge::DT_UINT64, ge::DT_UINT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("quant_scale2")
@@ -212,7 +212,7 @@ public:
                        ge::DT_FLOAT, ge::DT_BF16,  ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16,   ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT, ge::DT_BF16,  ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("quant_offset2")
@@ -232,7 +232,7 @@ public:
                        ge::DT_FLOAT, ge::DT_BF16,  ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16,   ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT, ge::DT_BF16,  ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("antiquant_scale")
@@ -254,7 +254,7 @@ public:
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("antiquant_offset")
@@ -276,7 +276,7 @@ public:
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("block_table")
@@ -313,7 +313,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("key_antiquant_offset")
@@ -335,7 +335,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("value_antiquant_scale")
@@ -357,7 +357,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("value_antiquant_offset")
@@ -379,7 +379,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT,
-                       ge::DT_FLOAT})
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("key_shared_prefix")
@@ -401,7 +401,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,
-                       ge::DT_INT8})
+                       ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("value_shared_prefix")
@@ -423,7 +423,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,
-                       ge::DT_INT8})
+                       ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_shared_prefix_len")
@@ -451,7 +451,7 @@ public:
                        ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_BF16})
+                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("key_rope")
@@ -473,7 +473,7 @@ public:
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,    ge::DT_INT4,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT4,
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_BF16,
-                       ge::DT_BF16})
+                       ge::DT_BF16,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("key_rope_antiquant_scale")
@@ -495,7 +495,7 @@ public:
                        ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,   ge::DT_BF16,     ge::DT_BF16,
-                       ge::DT_BF16})
+                       ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("dequant_scale_query")
@@ -539,7 +539,7 @@ public:
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_BF16})
+                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Attr("num_heads").AttrType(REQUIRED).Int(1);
