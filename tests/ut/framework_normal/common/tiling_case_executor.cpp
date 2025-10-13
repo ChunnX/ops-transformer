@@ -14,7 +14,7 @@
 #include "platform/platform_infos_def.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-#define DO_TILING(tilingPara)                                                                                          \
+#define DO_TILING(tilingContextPara)                                                                                          \
     auto contextFaker = gert::TilingContextFaker();                                                                    \
     /* 1. input/output information */                                                                                  \
     size_t inputNum = tilingContextPara.inputTensorDesc_.size();                                                       \
@@ -80,7 +80,7 @@
                                      .Build();                                                                         \
     string compileInfoStringPrefix = R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": )";\
     string compileInfoStringMiddle = R"(, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "CORE_NUM": )";\
-    string compileInfoStringSuffix = R"(, "socVersion": "Ascend910_95"} })";\
+    string compileInfoStringSuffix = std::string(", \"socVersion\":\"") + tilingContextPara.socVersion_ + "\"} }";\
     string compileInfoString = compileInfoStringPrefix +                                                               \
                                std::to_string(tilingContextPara.ubSize_) +                                             \
                                compileInfoStringMiddle +                                                               \
@@ -89,7 +89,7 @@
     map<string, string> socInfos;                                                                                      \
     map<string, string> aicoreSpec;                                                                                    \
     map<string, string> intrinsics;                                                                                    \
-    map<string, string> socversions = {{"Short_SoC_version", "Ascend910_95"}};                                         \
+    map<string, string> socversions = {{"Short_SoC_version", tilingContextPara.socVersion_}};                          \
     GetPlatFormInfos(compileInfoString.c_str(), socInfos, aicoreSpec, intrinsics);                                     \
     auto tilingContext = contextHolder.GetContext();                                                                   \
     tilingContext->GetPlatformInfo()->SetPlatformRes("SoCInfo", socInfos);                                             \

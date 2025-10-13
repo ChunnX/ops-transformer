@@ -41,6 +41,7 @@ public:
                       const std::vector<TensorDescription>& outputTensorDesc,
                       const std::vector<OpAttr>& attrs,
                       void* compileInfo = nullptr,
+                      const std::string& socVersion = "Ascend910B",
                       uint64_t coreNum = 64,
                       uint64_t ubSize = 262144,
                       uint64_t tilingDataSize = 4096) : 
@@ -48,6 +49,7 @@ public:
                       inputTensorDesc_(inputTensorDesc),
                       outputTensorDesc_(outputTensorDesc),
                       attrs_(attrs),
+                      socVersion_(socVersion),
                       compileInfo_(compileInfo),
                       coreNum_(coreNum),
                       ubSize_(ubSize),
@@ -57,6 +59,7 @@ public:
                       const std::vector<TensorDescription>& inputTensorDesc,
                       const std::vector<TensorDescription>& outputTensorDesc,
                       void* compileInfo = nullptr,
+                      const std::string& socVersion = "Ascend910B",
                       uint64_t coreNum = 64,
                       uint64_t ubSize = 262144,
                       uint64_t tilingDataSize = 4096) : 
@@ -64,6 +67,7 @@ public:
                       inputTensorDesc_(inputTensorDesc),
                       outputTensorDesc_(outputTensorDesc),
                       compileInfo_(compileInfo),
+                      socVersion_(socVersion),
                       coreNum_(coreNum),
                       ubSize_(ubSize),
                       tilingDataSize_(tilingDataSize) {}
@@ -77,6 +81,7 @@ public:
     uint64_t ubSize_         = 262144;
     uint64_t tilingDataSize_ = 4096;
     void* compileInfo_ = nullptr;
+    std::string socVersion_;
 };
 
 class TilingContextFaker : public OpTilingContextBuilder {

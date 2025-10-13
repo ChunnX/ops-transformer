@@ -66,7 +66,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       ${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE ${ASCEND_DIR}/include/base/context_builder
       )
     target_link_libraries(
-      ${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> c_sec
+      ${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> json gtest c_sec
       )
 
     # add opinfershape ut cases object: transformer_op_infershape_ut_cases_obj

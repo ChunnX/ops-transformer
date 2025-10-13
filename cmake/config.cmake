@@ -202,6 +202,8 @@ if (BUILD_OPEN_PROJECT)
         endif ()
     endif ()
 
+    string(REPLACE "," ";" ASCEND_OP_NAME "${ASCEND_OP_NAME}")
+
     if (NOT PREPARE_BUILD AND ENABLE_OPS_KERNEL)
         if (TILING_KEY)
             string(REPLACE ";" "::" EP_TILING_KEY "${TILING_KEY}")
@@ -217,7 +219,6 @@ if (BUILD_OPEN_PROJECT)
 
         string(REPLACE ";" "::" EP_ASCEND_COMPUTE_UNIT "${ASCEND_COMPUTE_UNIT}")
 
-        string(REPLACE "," ";" ASCEND_OP_NAME "${ASCEND_OP_NAME}")
         string(REPLACE ";" "::" EP_ASCEND_OP_NAME "${ASCEND_OP_NAME}")
 
         execute_process(COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/prepare.sh

@@ -1082,21 +1082,12 @@ function(OpsTest_AddLaunch)
             "--cann_package_name=opp"
             "get_package_version"
     )
-    execute_process(
-            COMMAND ${HI_PYTHON} ${OPS_ADV_DIR}/cmake/scripts/check_version_compatible.py ${_param}
-            RESULT_VARIABLE result
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            OUTPUT_VARIABLE _UTEST_OPP_CANN_VERSION
-    )
-    if (result)
-        message(FATAL_ERROR "Get package version failed.")
-    else ()
-        string(TOLOWER "${_UTEST_OPP_CANN_VERSION}" _UTEST_OPP_CANN_VERSION)
-        string(REPLACE "t" "" _UTEST_OPP_CANN_VERSION "${_UTEST_OPP_CANN_VERSION}")
-        if ("${_UTEST_OPP_CANN_VERSION}" VERSION_GREATER "7.3.10.0")
-            set(_ACLNN_UTEST_SUPPORTED ON)
-        endif ()
-    endif ()
+
+    string(TOLOWER "${_UTEST_OPP_CANN_VERSION}" _UTEST_OPP_CANN_VERSION)
+    string(REPLACE "t" "" _UTEST_OPP_CANN_VERSION "${_UTEST_OPP_CANN_VERSION}")
+    if ("${_UTEST_OPP_CANN_VERSION}" VERSION_GREATER "7.3.10.0")
+        set(_ACLNN_UTEST_SUPPORTED ON)
+    endif()
     if (_OpsTestUt_UTestAclnnCaseLibraries AND _ACLNN_UTEST_SUPPORTED)
         # 支持按算子分离可执行文件, 便于彼此冲突的 Kernel 侧编译宏设置
         foreach (_OpsTestUt_UTestAclnnCaseLibrary ${_OpsTestUt_UTestAclnnCaseLibraries})
