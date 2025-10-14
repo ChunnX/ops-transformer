@@ -15,9 +15,19 @@
 
 ## 功能说明
 
-- **算子功能**：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant和pertoken计算，接着与x3进行Add操作，最后做AllReduce计算。支持pertensor、perchannel、pertoken量化方式。
+- **算子功能**：aclnnQuantMatmulAllReduceV2接口是对aclnnQuantMatmulAllReduce接口的功能扩展，新增支持pertensor量化方式。aclnnQuantMatmulAllReduceV2共支持pertensor、perchannel、pertoken[量化方式](common/量化介绍.md)。
 
 - **计算公式**：
+
+    分为以下2种情形：
+
+    - 情形1：对量化后的入参x1、x2进行matmul计算后，接着进行dequant计算，接着与x3进行add操作，最后做all_reduce计算。
+
+  $$
+  output= allReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
+  $$
+
+    - 情形2：对量化后的入参x1、x2进行mm计算后，接着进行dequant和pertoken计算，接着与x3进行add操作，最后做all_reduce计算。
 
   $$
   output= allReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
@@ -29,25 +39,25 @@
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV2GetWorkspaceSize(
-    const aclTensor  *x1, 
-    const aclTensor  *x2, 
-    const aclTensor  *biasOptional,  
-    const aclTensor  *x3Optional,  
-    const aclTensor  *dequantScale,   
-    const aclTensor  *pertokenScaleOptional, 
-    const char       *group, 
-    const char       *reduceOp, 
-    int64_t           commTurn, 
-    int64_t           streamMode, 
-    const aclTensor  *output, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *x1,
+    const aclTensor  *x2,
+    const aclTensor  *biasOptional,
+    const aclTensor  *x3Optional,
+    const aclTensor  *dequantScale,
+    const aclTensor  *pertokenScaleOptional,
+    const char       *group,
+    const char       *reduceOp,
+    int64_t           commTurn,
+    int64_t           streamMode,
+    const aclTensor  *output,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -57,10 +67,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 330px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 330px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -213,6 +223,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
     - <term>昇腾910_95 AI处理器</term>：输入x2的数据格式仅支持ND格式（当前版本仅支持二维输入）。
 
 - **返回值：**
+
+    返回aclnnStatus状态码，具体参见aclnn返回码。
     第一段接口完成入参校验，出现以下场景时报错：
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
@@ -380,7 +392,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
         aclOpExecutor *executor;
         void *transWorkspaceAddr = nullptr;
         ret = aclnnTransMatmulWeightGetWorkspaceSize(*tensor, &transWorkspaceSize, &executor);
-        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0, 
+        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0,
                 printf("[ERROR] aclnnTransMatmulWeightGetWorkspaceSize failed. ret = %d \n", ret); return ret);
         ACL_CHECK(aclrtMalloc(&transWorkspaceAddr, transWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST));
         ret = aclnnTransMatmulWeight(transWorkspaceAddr, transWorkspaceSize, executor, args.stream);
@@ -704,7 +716,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
         aclOpExecutor *executor;
         void *transWorkspaceAddr = nullptr;
         ret = aclnnTransMatmulWeightGetWorkspaceSize(*tensor, &transWorkspaceSize, &executor);
-        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0, 
+        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0,
                 printf("[ERROR] aclnnTransMatmulWeightGetWorkspaceSize failed. ret = %d \n", ret); return ret);
         ACL_CHECK(aclrtMalloc(&transWorkspaceAddr, transWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST));
         ret = aclnnTransMatmulWeight(transWorkspaceAddr, transWorkspaceSize, executor, args.stream);

@@ -15,15 +15,32 @@
 
 ## 功能说明
 
-- **算子功能**：对量化后的入参x1、x2进行MatMul、Dequant和pertoken计算，接着与x3进行Add操作，再对输出进行perchannel量化，然后进行AllToAll通信，对第一次通讯结果进行reduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行Dequant，得到最终输出。支持pertensor、perchannel、pertoken量化方式。
+- **算子功能**：aclnnQuantMatmulAllReduceV3接口是对aclnnQuantMatmulAllReduceV2接口的功能扩展, 新增支持低比特通信：matmul的计算结果依次进行all_to_all通信、reduceSum计算、allgather通信、dequant反量化，代替先dequant和pertoken计算、再all_reduce通信的原流程。支持pertensor、perchannel、pertoken[量化方式](common/量化介绍.md)。
+
 - **计算公式**：
+
+    为以下3种情形：
+
+    - 情形1：对量化后的入参x1、x2进行matmul计算后，接着进行dequant计算，接着与x3进行add操作，最后做all_reduce计算。
+
+  $$
+  output= allReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
+  $$
+
+    - 情形2：对量化后的入参x1、x2进行mm计算后，接着进行dequant和pertoken计算，接着与x3进行add操作，最后做all_reduce计算。
+
+  $$
+  output= allReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
+  $$
+
+    - 情形3：对量化后的入参x1、x2进行matmul、dequant和pertoken计算，接着与x3进行add操作，再对输出进行perchannel量化，然后进行all_to_all通信，对第一次通讯结果进行reduceSum计算，接着进行all_gather通信，最后对第二次通信结果进行dequant，得到最终输出。
 
   $$
   matmulAddOutPut = (dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
   $$
 
   $$
-  alltoallOutPut_{int8} = alltoall(matmulAddOutPut / commQuantScale1Optional); 
+  alltoallOutPut_{int8} = alltoall(matmulAddOutPut / commQuantScale1Optional);
   $$
 
   $$
@@ -40,27 +57,27 @@
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
-    const aclTensor *x1, 
-    const aclTensor *x2, 
-    const aclTensor *biasOptional, 
-    const aclTensor *x3Optional, 
-    const aclTensor *dequantScale, 
-    const aclTensor *pertokenScaleOptional, 
-    const aclTensor *commQuantScale1Optional, 
-    const aclTensor *commQuantScale2Optional, 
-    const char      *group, 
-    const char      *reduceOp, 
-    int64_t          commTurn, 
-    int64_t          streamMode, 
-    const aclTensor *output, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *x1,
+    const aclTensor *x2,
+    const aclTensor *biasOptional,
+    const aclTensor *x3Optional,
+    const aclTensor *dequantScale,
+    const aclTensor *pertokenScaleOptional,
+    const aclTensor *commQuantScale1Optional,
+    const aclTensor *commQuantScale2Optional,
+    const char      *group,
+    const char      *reduceOp,
+    int64_t          commTurn,
+    int64_t          streamMode,
+    const aclTensor *output,
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV3(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -70,10 +87,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 330px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 330px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -348,9 +365,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     #include <thread>
     #include "aclnnop/aclnn_trans_matmul_weight.h"
     #include "../op_host/op_api/aclnn_quant_matmul_all_reduce_v3.h"
-    
+
     int ndev = 8;
-    
+
     #define ACL_CHECK(ret)                                                                                     \
         do {                                                                                                   \
             auto retcode = ret;                                                                                \
@@ -359,19 +376,19 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
                 return retcode;                                                                                \
             }                                                                                                  \
         } while (0)
-    
+
     #define CHECK_RET(cond, return_expr) \
       do {                               \
         if (!(cond)) {                   \
           return_expr;                   \
         }                                \
       } while (0)
-    
+
     #define LOG_PRINT(message, ...)     \
       do {                              \
         printf(message, ##__VA_ARGS__); \
       } while (0)
-    
+
     int64_t GetShapeSize(const std::vector<int64_t> &shape) {
         int64_t shapeSize = 1;
         for (auto i: shape) {
@@ -379,7 +396,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         }
         return shapeSize;
     }
-    
+
     struct Args {
         uint32_t rankId;
         HcclComm hcclComm;
@@ -387,7 +404,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         aclrtContext context;
         std::string format;
       };
-    
+
     template<typename T>
     int CreateWeightNzAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                                 aclDataType dataType, aclTensor **tensor, Args &args) {
@@ -396,15 +413,15 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         auto ret = aclnnCalculateMatmulWeightSizeV2(mat2Size, ACL_INT8, &size);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCalculateMatmulWeightSizeV2 failed. ERROR: %d\n", ret); return    ret);
         auto tensorSize = size * sizeof(T);
-    
+
         // 调用aclrtMalloc申请device内存
         ret = aclrtMalloc(deviceAddr, tensorSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    
+
         // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
         ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-    
+
         // 计算连续tensor的strides
         std::vector<int64_t> strides(shape.size(), 1);
         for (int64_t i = shape.size() - 2; i >= 0; i--) {
@@ -413,21 +430,21 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         // 调用aclCreateTensor接口创建aclTensor
         *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                                   shape.data(), shape.size(), *deviceAddr);
-        
+
         uint64_t transWorkspaceSize;
         aclOpExecutor *executor;
         void *transWorkspaceAddr = nullptr;
         ret = aclnnTransMatmulWeightGetWorkspaceSize(*tensor, &transWorkspaceSize, &executor);
-        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0, 
+        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0,
                   printf("[ERROR] aclnnTransMatmulWeightGetWorkspaceSize failed. ret = %d \n", ret); return ret);
         ACL_CHECK(aclrtMalloc(&transWorkspaceAddr, transWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST));
         ret = aclnnTransMatmulWeight(transWorkspaceAddr, transWorkspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, printf("[ERROR] aclnnTransMatmulWeight failed. ret = %d \n", ret);return ret);
         ACL_CHECK(aclrtSynchronizeStreamWithTimeout(args.stream, 20000));
-    
+
         return 0;
     }
-    
+
     template<typename T>
     int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                         aclDataType dataType, aclTensor **tensor) {
@@ -448,7 +465,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
                                   shape.data(), shape.size(), *deviceAddr);
         return 0;
     }
-    
+
     int launchOneThreadQuantMatmulAllReduce(Args &args) {
         int ret;
         ret = aclrtSetCurrentContext(args.context);
@@ -458,7 +475,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
         LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
                   args.context);
-    
+
         std::vector<int64_t> x1Shape = {32, 64};
         std::vector<int64_t> x2Shape = {64, 128};
         std::vector<int64_t> biasShape = {128};
@@ -486,13 +503,13 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         aclTensor *commQuantScale2 = nullptr;
         aclTensor *x3 = nullptr;
         aclTensor *out = nullptr;
-    
+
         int64_t commTurn = 0;
         int64_t streamMode = 1;
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
-    
+
         long long x1ShapeSize = GetShapeSize(x1Shape);
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
@@ -502,7 +519,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         long long commQuantScale2ShapeSize = GetShapeSize(commQuantScale2Shape);
         long long x3ShapeSize = GetShapeSize(x3Shape);
         long long outShapeSize = GetShapeSize(outShape);
-    
+
         std::vector<int8_t> x1HostData(x1ShapeSize, 1);
         std::vector<int8_t> x2HostData(x2ShapeSize, 1);
         std::vector<int32_t> biasHostData(biasShapeSize, 1);
@@ -622,7 +639,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         aclrtResetDevice(args.rankId);
         return 0;
     }
-    
+
     int main(int argc, char *argv[]) {
         int ret;
         int32_t devices[ndev];
@@ -771,7 +788,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         aclOpExecutor *executor;
         void *transWorkspaceAddr = nullptr;
         ret = aclnnTransMatmulWeightGetWorkspaceSize(*tensor, &transWorkspaceSize, &executor);
-        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0, 
+        CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > 0,
                   printf("[ERROR] aclnnTransMatmulWeightGetWorkspaceSize failed. ret = %d \n", ret); return ret);
         ACL_CHECK(aclrtMalloc(&transWorkspaceAddr, transWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST));
         ret = aclnnTransMatmulWeight(transWorkspaceAddr, transWorkspaceSize, executor, args.stream);
