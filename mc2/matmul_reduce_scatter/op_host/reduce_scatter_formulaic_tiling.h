@@ -49,7 +49,6 @@ class MMPlusReduceScatter : public OneCalcOneCommBase {
         void EstimateKernelTime() override;
         void SelectTilingMethod() override;
     private:
-        void SetCommTimeFactorForA5();
         void SetCommTimeFactorForOther();
         void SetCommTimeFactor();
 };

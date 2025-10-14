@@ -13,7 +13,6 @@
  * \brief
  */
 #include "aclnn_matmul_reduce_scatter.h"
-#include "matmul_reduce_scatter_v2/op_host/op_api/aclnn_matmul_reduce_scatter_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "op_mc2.h"
@@ -63,12 +62,6 @@ extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &d
 extern "C" void NnopbaseReportLaunchInfo(const uint64_t beginTime, const char *const opType);
 extern "C" aclnnStatus NnopbaseReportAicpuAdditionInfo(const uint64_t timeStamp, const char *const opType);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
-
-
-static inline bool IsAscend910A5(void)
-{
-    return op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910_95;
-}
 
 static uint8_t GetDebugMode() {
   auto debugModeEnv = getenv("ASCEND_MC2_DEBUG_MODE");
@@ -186,12 +179,6 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
                                                  const char *group, const char *reduce_op, int64_t commTurn,
                                                  int64_t streamMode, const aclTensor *output,
                                                  uint64_t *workspaceSize, aclOpExecutor **executor) {
-  if (IsAscend910A5()) {
-    const char *commMode = "ccu";
-    return aclnnMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, reduce_op,
-                                                      commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
-                                                      nullptr, workspaceSize, executor);
-  }
   uint64_t timeStamp = NnopbaseMsprofSysTime();
   // 固定写法，参数检查
   auto retParam = CheckParams(x1, x2, bias, streamMode, output);
@@ -225,9 +212,6 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
 
 aclnnStatus aclnnMatmulReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                      aclrtStream stream) {
-  if (IsAscend910A5()) {
-    return aclnnMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
-  }
   if (workspace == nullptr || workspaceSize == 0UL) {
     OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
     return ACLNN_SUCCESS;
