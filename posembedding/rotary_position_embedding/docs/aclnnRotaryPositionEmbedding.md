@@ -34,7 +34,7 @@
     $$
     y = x * cos + x\_rotate * sin
     $$
-        （2）interleave模式（mode等于1）：
+    （2）interleave模式（mode等于1）：
     $$
     x1 = x[..., ::2].view(-1, 1)
     $$

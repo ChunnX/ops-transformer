@@ -29,7 +29,7 @@
     $$
     y = x * cos + x\_rotate * sin
     $$
-        （2）interleave模式（mode等于1）：
+    （2）interleave模式（mode等于1）：
     $$
     x1 = x[..., ::2].view(-1, 1)
     $$
@@ -88,13 +88,13 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px">
+<table style="undefined;table-layout: fixed; width: 1200px">
 <colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 310px">
-  <col style="width: 212px">
+  <col style="width: 50px">
+  <col style="width: 50px">
+  <col style="width: 200px">
   <col style="width: 100px">
+  <col style="width: 50px">
 </colgroup>
 <thead>
   <tr>

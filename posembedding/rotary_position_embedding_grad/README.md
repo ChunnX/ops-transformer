@@ -134,15 +134,13 @@
 
 ## 参数说明
 
-- **参数说明：**
-
-<table style="undefined;table-layout: fixed; width: 1576px">
+<table style="undefined;table-layout: fixed; width: 1200px">
 <colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 310px">
-  <col style="width: 212px">
+  <col style="width: 50px">
+  <col style="width: 50px">
+  <col style="width: 200px">
   <col style="width: 100px">
+  <col style="width: 50px">
 </colgroup>
 <thead>
   <tr>
