@@ -400,8 +400,8 @@ function build_example()
             ./test_aclnn_${EXAMPLE_NAME}
         done
     elif [[ "${EXAMPLE_MODE}" == "graph" ]]; then
-        file=$(find ../ -path "*/${EXAMPLE_NAME}/examples/*" -name test_geir_*.cpp)
-        if [ -z "$file" ]; then
+        files=$(find ../ -path "*/${EXAMPLE_NAME}/examples/*" -name test_geir_*.cpp)
+        if [ -z "$files" ]; then
             echo "ERROR: ${EXAMPLE_NAME} do not have graph example"
             exit 1
         fi
