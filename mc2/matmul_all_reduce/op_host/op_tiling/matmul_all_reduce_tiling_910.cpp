@@ -244,7 +244,10 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInput()
     OP_LOGD(opName_, "Begin Check Input.");
     GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
     GE_ASSERT_GRAPH_SUCCESS(CheckInputDtype());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInputFormat());
+    //  非量化场景不支持B矩阵Nz格式 除了310P
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND310P) {
+        GE_ASSERT_GRAPH_SUCCESS(CheckInputFormat());
+    }
     GE_ASSERT_GRAPH_SUCCESS(CheckInputShape());
 
     return CheckAxisSize();
