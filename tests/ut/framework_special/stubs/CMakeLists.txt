@@ -28,5 +28,6 @@ target_link_libraries(${_Target}
             $<BUILD_INTERFACE:intf_pub_utest>
             $<BUILD_INTERFACE:${_Target}_Wno>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:alog_headers>>
+            $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:dlog_headers>>
             ${UTest_NamePrefix}_Utils
 )

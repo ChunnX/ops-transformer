@@ -36,6 +36,7 @@ target_link_libraries(${_Target}
         PRIVATE
             $<BUILD_INTERFACE:intf_pub_utest>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:alog_headers>>
+            $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:dlog_headers>>
 )
 target_compile_options(${_Target}
         PUBLIC

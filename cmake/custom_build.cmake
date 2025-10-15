@@ -113,6 +113,7 @@ if (BUILD_OPEN_PROJECT)
             $<BUILD_INTERFACE:intf_pub>
             $<BUILD_INTERFACE:ops_transformer_utils_proto_headers>
             $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
+            $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
             -Wl,--whole-archive
             rt2_registry
             -Wl,--no-whole-archive
@@ -154,6 +155,7 @@ if (BUILD_OPEN_PROJECT)
             $<BUILD_INTERFACE:intf_pub>
             $<BUILD_INTERFACE:ops_transformer_utils_tiling_headers>
             $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
+            $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
             -Wl,--whole-archive
             rt2_registry
             -Wl,--no-whole-archive

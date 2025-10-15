@@ -306,6 +306,7 @@ function(add_infer_modules)
       $<BUILD_INTERFACE:intf_pub>
       $<BUILD_INTERFACE:ops_transformer_utils_proto_headers>
       $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
+      $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       -Wl,--whole-archive
       rt2_registry_static
       -Wl,--no-whole-archive
@@ -363,6 +364,7 @@ function(add_tiling_modules)
       $<BUILD_INTERFACE:intf_pub>
       $<BUILD_INTERFACE:ops_transformer_utils_tiling_headers>
       $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
+      $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       -Wl,--whole-archive
       rt2_registry_static
       -Wl,--no-whole-archive
@@ -440,6 +442,7 @@ function(add_opmaster_ct_gentask_modules)
       PRIVATE
       $<BUILD_INTERFACE:intf_pub_cxx17>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:alog_headers>>
+      $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:$<BUILD_INTERFACE:slog_headers>>
     )
   endif()
