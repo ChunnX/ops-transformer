@@ -1,7 +1,5 @@
 # MoeDistributeDispatch
 
-> 注意：
-> 本文档仅仅是算子功能的简介，不支持用户直接调用，因为当前不支持kernel直调，等后续支持再完善文档!!!!!!
 
 ## 产品支持情况
 
@@ -22,13 +20,13 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px">
+<table style="undefined;table-layout: fixed; width: 1490px">
 <colgroup>
 <col style="width: 170px">
 <col style="width: 170px">
-<col style="width: 1000px">
-<col style="width: 1000px">
-<col style="width: 200px">
+<col style="width: 840px">
+<col style="width: 210px">
+<col style="width: 100px">
 </colgroup>
 <thead>
 <tr>
@@ -44,7 +42,7 @@
 <td>x</td>
 <td>输入</td>
 <td>本卡发送的token数据，Device侧的aclTensor，要求为2D Tensor。</td>
-<td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
+<td>FLOAT16、BFLOAT16</td>
 <td>ND</td>
 </tr>
 <tr>
@@ -58,7 +56,7 @@
 <td>scales</td>
 <td>输入</td>
 <td>每个专家的平滑权重、融合量化平滑权重的量化系数或量化系数，Device侧的aclTensor，要求为1D或2D Tensor。</td>
-<td>FLOAT32、FLOAT8_E8M0</td>
+<td>FLOAT32</td>
 <td>ND</td>
 </tr>
 <tr>
@@ -170,14 +168,14 @@
 <td>expandX</td>
 <td>输出</td>
 <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor。</td>
-<td>FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+<td>FLOAT16、BFLOAT16、INT8</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>dynamicScales</td>
 <td>输出</td>
 <td>Device侧的aclTensor，要求为1D或2D Tensor；支持非连续的Tensor。</td>
-<td>FLOAT32、FLOAT32_E8M0</td>
+<td>FLOAT32</td>
 <td>ND</td>
 </tr>
 <tr>

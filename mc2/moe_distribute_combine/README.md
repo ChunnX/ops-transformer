@@ -1,7 +1,5 @@
 # MoeDistributeCombine
 
-> 注意：
-> 本文档仅仅是算子功能的简介，不支持用户直接调用，因为当前不支持kernel直调，等后续支持再完善文档!!!!!!
 
 ## 产品支持情况
 
@@ -22,13 +20,13 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px">
+<table style="undefined;table-layout: fixed; width: 1490px">
 <colgroup>
 <col style="width: 170px">
 <col style="width: 170px">
-<col style="width: 800px">
-<col style="width: 800px">
+<col style="width: 850px">
 <col style="width: 200px">
+<col style="width: 100px">
 </colgroup>
 <thead>
 <tr>
