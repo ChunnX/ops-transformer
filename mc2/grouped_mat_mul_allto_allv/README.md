@@ -165,4 +165,4 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_grouped_mat_mul_allto_allv.cpp](./examples/test_grouped_mat_mul_allto_allv.cpp) | 通过[aclnnGroupedMatMulAlltoAllv](./docs/aclnnGroupedMatMulAlltoAllv.md)接口方式调用grouped_mat_mul_allto_allv算子。 |
+| aclnn接口 | [test_aclnn_grouped_mat_mul_allto_allv.cpp](./examples/test_aclnn_grouped_mat_mul_allto_allv.cpp) | 通过[aclnnGroupedMatMulAlltoAllv](./docs/aclnnGroupedMatMulAlltoAllv.md)接口方式调用grouped_mat_mul_allto_allv算子。 |

@@ -271,7 +271,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV2` → `aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`；
 
     或与`aclnnMoeDistributeDispatchV3`及`aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`接口配套使用，**调用顺序固定为**：  
-    `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV3` → `aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`；具体参考[调用示例](#调用示例)。
+    `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV3` → `aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`；具体参考调用示例。
 
 2. **参数一致性要求**：  
    调用过程中使用的`worldSize`、`moeExpertNum`参数取值，所有卡需保持一致，网络不同层中也需保持一致，且需与`aclnnMoeDistributeDispatchV2`、`aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`的对应参数一致。
@@ -289,33 +289,9 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
 
-- 文件准备：    
-  1.新建eplbDemo目录，按照下方指导在eplbDemo下新建aclnnEPLBDemo.cpp，buildEPLB.sh，文件并修改。
-  2.将eplbDemo项目拷贝到服务器中。
-  3.安装cann包，并根据下方指导编译运行eplbDemo。
-
--  编译脚本
-    ```bash
-    #!/bin/bash
-    cann_path="/path/to/cann_env" # 更改cann包环境的路径
-    g++ "aclnnEPLBDemo.cpp" -o eplbDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
-        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
-    ```
-- 编译与运行：
-
-    ```bash
-    # source cann环境
-    source /path/to/cann_env/latest/bin/setenv.bash
-
-    # 编译aclnnEPLBDemo.cpp
-    bash buildEPLB.sh
-
-    ./eplbDemo
-    ```
-
-- 示例代码如下，仅供参考
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -323,9 +299,10 @@ aclnnStatus aclnnMoeUpdateExpert(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_moe_update_expert.h"
-    #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
-    #include "aclnnop/aclnn_moe_distribute_combine_add_rms_norm.h"
+    #include "../op_host/op_api/aclnn_moe_update_expert.h"
+    #include "../../moe_distribute_dispatch_v2/op_host/op_api/aclnn_moe_distribute_dispatch_v2.h"
+    #include "../../moe_distribute_combine_add_rms_norm/op_host/op_api/aclnn_moe_distribute_combine_add_rms_norm.h"
+    #include <unistd.h>
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \

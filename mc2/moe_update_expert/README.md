@@ -111,7 +111,7 @@
 
 ## 约束说明
 
-- aclnnMoeUpdateExpert接口必须与aclnnMoeDistributeDispatchV2及aclnnMoeDistributeCombineV2或aclnnMoeDistributeCombineAddRmsNorm接口配套使用，调用顺序为aclnnUpdateExpert，aclnnMoeDistributeDispatchV2，aclnnMoeDistributeCombineV2或aclnnMoeDistributeCombineAddRmsNorm，具体参考[调用示例](#调用示例)。
+- aclnnMoeUpdateExpert接口必须与aclnnMoeDistributeDispatchV2及aclnnMoeDistributeCombineV2或aclnnMoeDistributeCombineAddRmsNorm接口配套使用，调用顺序为aclnnUpdateExpert，aclnnMoeDistributeDispatchV2，aclnnMoeDistributeCombineV2或aclnnMoeDistributeCombineAddRmsNorm，具体参考调用示例。
 
 - 调用接口过程中使用的worldSize、moeExpertNum参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和aclnnMoeDistributeDispatchV2,aclnnMoeDistributeCombineV2或aclnnMoeDistributeCombineAddRmsNorm对应参数也保持一致。
 
@@ -130,6 +130,6 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_moe_update_expert.cpp](./examples/test_moe_update_expert.cpp) | 通过[aclnnMoeUpdateExpert](./docs/aclnnMoeUpdateExpert.md)接口方式调用moe_update_expert算子。 |
+| aclnn接口 | [test_aclnn_moe_update_expert.cpp](./examples/test_aclnn_moe_update_expert.cpp) | 通过[aclnnMoeUpdateExpert](./docs/aclnnMoeUpdateExpert.md)接口方式调用moe_update_expert算子。 |
 
 

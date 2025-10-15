@@ -73,4 +73,4 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_distribute_barrier.cpp](./example/test_distribute_barrier.cpp) | 通过[aclnnDistributeBarrier](aclnnDistributeBarrier.md)接口方式调用distribute_barrier算子。 |
+| aclnn接口 | [test_aclnn_distribute_barrier.cpp](./examples/test_aclnn_distribute_barrier.cpp) | 通过[aclnnDistributeBarrier](./docs/aclnnDistributeBarrier.md)接口方式调用distribute_barrier算子。 |

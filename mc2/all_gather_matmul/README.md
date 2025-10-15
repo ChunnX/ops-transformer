@@ -147,5 +147,5 @@
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_all_gather_matmul](./examples/test_all_gather_matmul.cpp) | 通过[aclnnAllGatherMatmul](./docs/aclnnAllGatherMatmul.md)接口方式调用AllGatherMatmul算子。 |
+| aclnn接口  | [test_aclnn_all_gather_matmul](./examples/test_aclnn_all_gather_matmul.cpp) | 通过[aclnnAllGatherMatmul](./docs/aclnnAllGatherMatmul.md)接口方式调用AllGatherMatmul算子。 |
 

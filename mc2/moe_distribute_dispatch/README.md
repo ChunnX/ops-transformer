@@ -221,7 +221,7 @@
 
 ## 约束说明
 
-- aclnnMoeDistributeDispatch接口与aclnnMoeDistributeCombine接口必须配套使用，具体参考[调用示例](#调用示例)。
+- aclnnMoeDistributeDispatch接口与aclnnMoeDistributeCombine接口必须配套使用，具体参考调用示例。
 
 - 在不同产品型号、不同通信算法或不同版本中，aclnnMoeDistributeDispatch的Tensor输出expandIdx、epRecvCounts、tpRecvCounts、expandScales中的的元素值可能不同，使用时直接将上述Tensor传给aclnnMoeDistributeCombine对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
@@ -280,4 +280,4 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_moe_distribute_dispatch.cpp](./examples/test_moe_distribute_dispatch.cpp) | 通过[aclnnMoeDistributeDispatch](./docs/aclnnMoeDistributeDispatch.md)接口方式调用moe_distribute_dispatch算子。 |
+| aclnn接口 | [test_aclnn_moe_distribute_dispatch.cpp](./examples/test_aclnn_moe_distribute_dispatch.cpp) | 通过[aclnnMoeDistributeDispatch](./docs/aclnnMoeDistributeDispatch.md)接口方式调用moe_distribute_dispatch算子。 |

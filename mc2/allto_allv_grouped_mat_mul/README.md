@@ -180,5 +180,5 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_allto_allv_grouped_mat_mul.cpp](./examples/test_allto_allv_grouped_mat_mul.cpp) | 通过[aclnnAlltoAllvGroupedMatMul](./docs/aclnnAlltoAllvGroupedMatMul.md)接口方式调用allto_allv_grouped_mat_mul算子。 |
+| aclnn接口 | [test_aclnn_allto_allv_grouped_mat_mul.cpp](./examples/test_aclnn_allto_allv_grouped_mat_mul.cpp) | 通过[aclnnAlltoAllvGroupedMatMul](./docs/aclnnAlltoAllvGroupedMatMul.md)接口方式调用allto_allv_grouped_mat_mul算子。 |
 

@@ -266,9 +266,9 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
   - x: (E, C/tp, H)
   - weight：(E/ep, H, M/tp)
   - biasOptional：非空指针情况下，三维时为(E/ep, 1, M/tp)，两维时为(E/ep, M/tp)
-  - y1Out：(E/ep, ep*tp*C/tp, M/tp)
-  - y2OutOptional：(E/ep, ep*tp*C/tp, H)
-  - y3OutOptional：(E/ep, ep*tp*C/tp, M/tp)
+  - y1Out：(E/ep, ep*tp\*C/tp, M/tp)
+  - y2OutOptional：(E/ep, ep*tp\*C/tp, H)
+  - y3OutOptional：(E/ep, ep*tp\*C/tp, M/tp)
 
 数据关系说明：
   - 比如x.size(0)等于E，weight.size(0)等于E/ep，则表示，x.size(0) = ep*weight.size(0)，x.size(0)是ep的整数倍；其他关系类似。

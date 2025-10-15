@@ -230,9 +230,9 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -386,7 +386,6 @@ aclnnStatus aclnnMatmulReduceScatter(
 
     int main(int argc, char *argv[])
     {
-        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[DEV_NUM];

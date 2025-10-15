@@ -397,7 +397,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 ## 约束说明
 
-1. `aclnnMoeDistributeDispatchV2`接口与`aclnnMoeDistributeCombineV2`接口必须配套使用，具体参考[调用示例](#调用示例)。
+1. `aclnnMoeDistributeDispatchV2`接口与`aclnnMoeDistributeCombineV2`接口必须配套使用，具体参考调用示例。
 
 2. 在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatchV2`的Tensor输出`assistInfoForCombineOut`、`epRecvCounts`、`tpRecvCounts`、`expandScales`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombineV2`对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
@@ -440,33 +440,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeDistributeCombineV2和MoeDistributeDispatchV2算子。本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
 
-- 文件准备：
-  1.新建combineDemo目录，按照下方指导在combineDemo下新建aclnnCombineDemo.cpp，buildCombine.sh，文件并参考如下代码修改。
-
-  2.安装cann包，并根据下方指导编译运行combineDemo。
-
--  编译脚本
-    ```bash
-    #!/bin/bash
-    cann_path="/path/to/cann_env" # 更改cann包环境的路径
-    g++ "aclnnCombineDemo.cpp" -o combineDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
-                        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
-    ```
-- 编译与运行：
-
-    ```bash
-    # source cann环境
-    source /path/to/cann_env/latest/bin/setenv.bash
-
-    # 编译aclnnCombineDemo.cpp
-    bash buildCombine.sh
-
-    ./combineDemo
-    ```
-
-- 示例代码如下，仅供参考
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -474,8 +450,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
-    #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
+    #include "../../moe_distribute_dispatch_v2/op_host/op_api/aclnn_moe_distribute_dispatch_v2.h"
+    #include "../op_host/op_api/aclnn_moe_distribute_combine_v2.h"
+    #include <unistd.h>
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \

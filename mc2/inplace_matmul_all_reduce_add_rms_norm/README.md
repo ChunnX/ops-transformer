@@ -189,14 +189,14 @@
   </tbody></table>
 
 ## 约束说明
-* 使用场景同融合算子[aclnnWeightQuantMatmulAllReduce](../context/aclnnWeightQuantMatmulAllReduce.md)一致：增量场景不使能MC2，全量场景使能MC2
+* 使用场景同融合算子aclnnWeightQuantMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2
 * 输入x1可为二维或者三维，其shape为(b, s, k)或者(s, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。bias若非空，bias为一维，其shape为(n)。bias可选，可为空，非空时当前版本仅支持一维输入。
 * 输入residual必须是三维，其shape为(b, s, n)，当x1为二维时，residual的(b*s)等于x1的s，不支持非连续的tensor。输入gamma必须是一维，其shape为(n)，不支持非连续的tensor。
 * antiquantScale满足per-tensor场景shape为(1)，per-channel场景shape为(1,n)/(n)，per-group场景shape为(ceil(k,antiquantGroupSize),n)。antiquantOffset可选，可为空，非空时shape与antiquantScale一致。
 * dequantScale的shape在per-tensor场景为(1)，per-channel场景为(n)/(1, n)。
 * 输出y和normOut的维度和数据类型同residual。bias若非空，shape大小与normOut最后一维相等。
 * x2的数据类型需为int8或者int4，x1、bias、residual、gamma、y、normOut计算输入的数据类型要一致。
-* antiquantGroupSize在不支持per_group场景时，传入0，在支持per_group场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与[mm接口](aclnnMatmulAllReduce.md)保持一致。。
+* antiquantGroupSize在不支持per_group场景时，传入0，在支持per_group场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与mm接口保持一致。
 * 支持(b*s)、n为0的空tensor，不支持k为0的空tensor。
 * 只支持x2矩阵转置/不转置，x1矩阵支持不转置场景。
 * 属性reduceOp当前版本仅支持输入"sum"。
@@ -209,4 +209,4 @@
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_inplace_matmul_all_reduce_add_rms_norm.cpp](./examples/test_inplace_matmul_all_reduce_add_rms_norm.cpp) | 通过[aclnnInplaceMatmulAllReduceAddRmsNorm.md](./docs/aclnnInplaceMatmulAllReduceAddRmsNorm.md)接口方式调用InplaceMatmulAllReduceAddRmsNorm算子。 |
+| aclnn接口  | [test_aclnn_inplace_matmul_all_reduce_add_rms_norm.cpp](./examples/test_aclnn_inplace_matmul_all_reduce_add_rms_norm.cpp) | 通过[aclnnInplaceMatmulAllReduceAddRmsNorm.md](./docs/aclnnInplaceMatmulAllReduceAddRmsNorm.md)接口方式调用InplaceMatmulAllReduceAddRmsNorm算子。 |

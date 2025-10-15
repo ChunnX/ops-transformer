@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- **算子功能**：对入参x2进行伪量化计算后，完成Matmul和AllReduce计算。支持pertensor、perchannel、pergroup[量化方式](common/量化介绍.md)。
+- **算子功能**：对入参x2进行伪量化计算后，完成Matmul和AllReduce计算。支持pertensor、perchannel、pergroup量化方式。
 
 - **计算公式**：
 
@@ -231,7 +231,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     </table>
 
     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
-      - 输入x2的数据类型支持INT8、INT4，[数据格式](common/数据格式.md)支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。当x2的[数据格式](common/数据格式.md)为FRACTAL_NZ时，配合[aclnnCalculateMatmulWeightSizeV2](aclnnCalculateMatmulWeightSizeV2.md)和[aclnnTransMatmulWeight](aclnnTransMatmulWeight.md)完成输入ND到NZ的转换，[非连续的tensor](common/非连续的Tensor.md)仅支持transpose场景。
+      - 输入x2的数据类型支持INT8、INT4，数据格式支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。当x2的数据格式为FRACTAL_NZ时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight完成输入ND到NZ的转换，非连续的tensor仅支持transpose场景。
       - 输入bias的数据类型与x1保持一致。
       - 输入x3的数据类型支持BFLOAT16、FLOAT16。
       - 输出output的数据类型支持BFLOAT16、FLOAT16。
@@ -309,7 +309,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     </tbody></table>
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
@@ -328,7 +328,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](common/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     ```Cpp
@@ -336,7 +336,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     #include <vector>
     #include <thread>
     #include <string.h>
-    #include "aclnnop/aclnn_weight_quant_matmul_all_reduce.h"
+    #include "../op_host/op_api/aclnn_weight_quant_matmul_all_reduce.h"
 
     int ndev = 8;
 

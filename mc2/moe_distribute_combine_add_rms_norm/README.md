@@ -12,7 +12,7 @@
 
 ## 功能说明
 
-**算子功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加），之后完成Add + RmsNorm融合。
+**算子功能**：当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加），之后完成Add + RmsNorm融合。
 
 **计算公式**：
 $$
@@ -284,7 +284,7 @@ $$
 
 ## 约束说明
 
-- aclnnMoeDistributeDispatchV2接口与aclnnMoeDistributeCombineAddRmsNorm接口必须配套使用，具体参考[调用示例](#调用示例)。
+- aclnnMoeDistributeDispatchV2接口与aclnnMoeDistributeCombineAddRmsNorm接口必须配套使用，具体参考调用示例。
 
 - 调用接口过程中使用的groupEp、epWorldSize、moeExpertNum、groupTp、tpWorldSize、expertShardType、sharedExpertNum、sharedExpertRankNum、globalBs参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和aclnnMoeDistributeDispatchV2对应参数也保持一致。
 
@@ -312,6 +312,6 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_moe_distribute_combine_add_rms_norm.cpp](./examples/test_moe_distribute_combine_add_rms_norm.cpp) | 通过[aclnnMoeDistributeCombineAddRmsNorm](./docs/aclnnMoeDistributeCombineAddRmsNorm.md)接口方式调用moe_distribute_combine_add_rms_norm算子。 |
+| aclnn接口 | [test_aclnn_moe_distribute_combine_add_rms_norm.cpp](./examples/test_aclnn_moe_distribute_combine_add_rms_norm.cpp) | 通过[aclnnMoeDistributeCombineAddRmsNorm](./docs/aclnnMoeDistributeCombineAddRmsNorm.md)接口方式调用moe_distribute_combine_add_rms_norm算子。 |
 
 

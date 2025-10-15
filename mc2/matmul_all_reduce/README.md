@@ -260,7 +260,7 @@
 * 输入dequant_scale可选，可为空，shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。输出为FLOAT16时，如果pertokenScale不为空，可直接将FLOAT32类型的dequantScale传入本接口，如果pertokenScale为空，则需提前调用TransQuantParamV2算子的aclnn接口来将dequantScale转成INT64/UINT64数据类型。
 * bias若非空，当前版本仅支持一维，shape大小与output最后一维大小相等。antiquantScale在per-tensor场景下shape为(1)，在per-channel场景下shape为(1,n)/(n)，在per-group场景shape为(ceil(k,antiquantGroupSize), n)。antiquantOffset若非空，其shape与antiquantScale一致。
 * x1和x2，x3（非空场景）、antiquantScale、antiquantOffset（非空场景）、output、bias（非空场景）的数据类型和数据格式需要在支持的范围之内。
-* x1，antiquantScale，antiquantOffset（非空场景），x3（非空场景）、bias（非空场景）output的数据类型相同。antiquantGroupSize在不支持per_group场景时，传入0，在支持per_group场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与[mm接口](aclnnMatmulAllReduce.md)保持一致。
+* x1，antiquantScale，antiquantOffset（非空场景），x3（非空场景）、bias（非空场景）output的数据类型相同。antiquantGroupSize在不支持per_group场景时，传入0，在支持per_group场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与mm接口保持一致。
 * group_size在perblock场景下，只支持549764202624。其他场景，只支持0。
 * 只支持x2矩阵转置/不转置，x1矩阵不支持转置场景。
 * 属性reduceOp当前版本仅支持输入"sum"。
@@ -276,4 +276,4 @@
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_matmul_all_reduce.cpp](./examples/test_matmul_all_reduce.cpp) | 通过[aclnnMatMulAllReduce](./docs/aclnnMatMulAllReduce.md)接口方式调用MatMulAllReduce算子。 |
+| aclnn接口  | [test_aclnn_matmul_all_reduce.cpp](./examples/test_aclnn_matmul_all_reduce.cpp) | 通过[aclnnMatMulAllReduce](./docs/aclnnMatMulAllReduce.md)接口方式调用MatMulAllReduce算子。 |

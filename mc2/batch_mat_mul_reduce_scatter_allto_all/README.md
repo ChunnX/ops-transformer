@@ -123,7 +123,7 @@ $$
   - y：(E, C, H/tp)
 
 - 按C轴进行ReduceScatter场景，即yShardType为1场景：
-  - x: (E/ep, ep*tp*C/tp, M/tp)
+  - x: (E/ep, ep*tp\*C/tp, M/tp)
   - weight：(E/ep, M/tp, H)
   - biasOptional：非空指针情况下，三维时为(E/ep, 1, H)，两维时为(E/ep, H)
   - y：(E, C/tp, H)
@@ -144,4 +144,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_batch_mat_mul_reduce_scatter_allto_all.cpp](./examples/test_batch_mat_mul_reduce_scatter_allto_all.cpp) | 通过[aclnnBatchMatMulReduceScatterAlltoAll](./docs/aclnnBatchMatMulReduceScatterAlltoAll.md)接口方式调用batch_mat_mul_reduce_scatter_allto_all算子。 |
+| aclnn接口 | [test_aclnn_batch_mat_mul_reduce_scatter_allto_all.cpp](./examples/test_aclnn_batch_mat_mul_reduce_scatter_allto_all.cpp) | 通过[aclnnBatchMatMulReduceScatterAlltoAll](./docs/aclnnBatchMatMulReduceScatterAlltoAll.md)接口方式调用batch_mat_mul_reduce_scatter_allto_all算子。 |
