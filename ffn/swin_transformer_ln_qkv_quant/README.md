@@ -17,27 +17,159 @@
   q/k/v = (Quant(Layernorm(x).transpose)  * weight).dequant.transpose.split
   其中，weight 是 Q、K、V 三个矩阵权重的拼接。
 
-
 ## 参数说明
-  - x(aclTensor*,计算输入): 表示待进行归一化计算的目标张量，公式中的x， Device侧的aclTensor，数据类型支持FLOAT16。只支持维度为[B,S,H]，其中B为batch size且只支持[1,32],S为原始图像长宽的乘积，H为序列长度和通道数的乘积且小于等于1024，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - gamma(aclTensor*,计算输入): 表示layernorm计算中尺度缩放的大小，维度只支持1维且为[H]，Device侧的aclTensor，数据类型支持FLOAT16，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - beta(aclTensor*,计算输入): 表示layernorm计算中尺度偏移的大小，维度只支持1维且维度为[H]，Device侧的aclTensor，数据类型支持FLOAT16，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - weight(aclTensor*,计算输入): 表示目标张量转换使用的权重矩阵，维度只支持2维且维度为[H, 3 * H],Device侧的aclTensor，数据类型支持INT8，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - bias(aclTensor*,计算输入): 表示目标张量转换使用的偏移矩阵，维度只支持1维且维度为[3 * H]，Device侧的aclTensor，数据类型支持INT32，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - quantScale(aclTensor*,计算输入):  表示目标张量量化使用的缩放参数，维度只支持1维且维度为[H]，Device侧的aclTensor，数据类型支持FLOAT16，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - quantOffset(aclTensor*,计算输入): 表示目标张量量化使用的偏移参数，维度只支持1维且维度为[H]，Device侧的aclTensor，数据类型支持FLOAT16，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - dequantScale(aclTensor*,计算输入): 表示目标张量乘以权重矩阵之后反量化使用的缩放参数，维度只支持1维且维度为[3 * H]，Device侧的aclTensor，数据类型支持UINT64，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - headNum(int，计算输入): 表示转换使用的通道数；支持范围[1,32]。
-  - seqLength(int，计算输入): 表示转换使用的通道深度。只支持32/64两种。
-  - epsilon(float,计算输入): layernorm 计算除0保护值；为了保证精度，建议小于等于1e-4。
-  - oriHeight(int,计算输入): layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。
-  - oriWeight(int,计算输入): layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。
-  - hWinSize(int,计算输入): 使用的特征窗高度大小；支持范围[7,32]。
-  - wWinSize(int,计算输入): 使用的特征窗宽度大小；支持范围[7,32]。
-  - weightTranspose(bool,计算输入): weight矩阵需要转置，当前不支持不转置场景。
-  - queryOutputOut(aclTensor*, 计算输出)：表示转换之后的张量，公式中的Q，Device侧的aclTensor，数据类型支持FLOAT16，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - keyOutputOut(aclTensor*, 计算输出)：表示转换之后的张量，公式中的K，Device侧的aclTensor，数据类型支持FLOAT16，不支持[非连续的Tensor](common/非连续的Tensor.md)，[数据格式](common/数据格式.md)支持ND。
-  - valueOutputOut(aclTensor*, 计算输出)：表示转换之后的张量，公式中的V，Device侧的aclTensor，数据类型支持
+
+<table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
+<col style="width: 150px">
+<col style="width: 300px">
+<col style="width: 200px">
+<col style="width: 300px">
+<col style="width: 100px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出/属性</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td>x</td>
+    <td>输入</td>
+    <td>表示待进行归一化计算的目标张量，公式中的x， Device侧的aclTensor，数据类型支持FLOAT16。只支持维度为[B,S,H]，其中B为batch size且只支持[1,32],S为原始图像长宽的乘积，H为序列长度和通道数的乘积且小于等于1024。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>gamma</td>
+    <td>输入</td>
+    <td>表示layernorm计算中尺度缩放的大小，维度只支持1维且为[H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>beta</td>
+    <td>输入</td>
+    <td>表示layernorm计算中尺度偏移的大小，维度只支持1维且维度为[H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>weight</td>
+    <td>输入</td>
+    <td>表示目标张量转换使用的权重矩阵，维度只支持2维且维度为[H, 3 * H],Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>INT8</td>
+    <td>ND</td>
+  </tr>  
+  <tr>
+    <td>bias</td>
+    <td>输入</td>
+    <td>表示目标张量转换使用的偏移矩阵，维度只支持1维且维度为[3 * H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>INT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>quantScale</td>
+    <td>输入</td>
+    <td>表示目标张量量化使用的缩放参数，维度只支持1维且维度为[H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>quantOffset</td>
+    <td>输入</td>
+    <td>表示目标张量转换使用的偏移矩阵，维度只支持1维且维度为[3 * H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>INT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>dequantScale</td>
+    <td>输入</td>
+    <td>表示目标张量乘以权重矩阵之后反量化使用的缩放参数，维度只支持1维且维度为[3 * H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>UINT64</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>headNum</td>
+    <td>输入</td>
+    <td>表示转换使用的通道数；支持范围[1,32]。</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>seqLength</td>
+    <td>输入</td>
+    <td> 表示转换使用的通道深度。只支持32/64两种。</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>epsilon</td>
+    <td>输入</td>
+    <td>layernorm 计算除0保护值；为了保证精度，建议小于等于1e-4。</td>
+    <td>float</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>oriHeight</td>
+    <td>输入</td>
+    <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>oriWeight</td>
+    <td>输入</td>
+    <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>hWinSize</td>
+    <td>属性</td>
+    <td>使用的特征窗宽度大小；支持范围[7,32]。</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>wWinSize</td>
+    <td>属性</td>
+    <td>使用的特征窗宽度大小；支持范围[7,32]。</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>weightTranspose</td>
+    <td>属性</td>
+    <td>weight矩阵需要转置，当前不支持不转置场景。</td>
+    <td>bool</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>queryOutputOut</td>
+    <td>输出</td>
+    <td>表示转换之后的张量，公式中的Q，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>keyOutputOut</td>
+    <td>输出</td>
+    <td>表示转换之后的张量，公式中的K，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>valueOutputOut</td>
+    <td>输出</td>
+    <td>表示转换之后的张量，公式中的V，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
+    <td>ND</td>
+  </tr>
+</tbody>
+</table>
 
 ## 约束说明
 - seqLength只支持32/64。
