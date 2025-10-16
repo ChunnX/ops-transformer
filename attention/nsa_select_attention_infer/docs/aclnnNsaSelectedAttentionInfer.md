@@ -2,45 +2,41 @@
 
 # 产品支持情况
 
-<table style="table-layout: fixed; width: 750px; border-collapse: collapse;">
-  <colgroup>
-    <col style="width: 600px;">
-    <col style="width: 150px;">
-  </colgroup>
+<table style="table-layout: fixed; border-collapse: collapse;">
   <thead>
     <tr>
       <!-- 表头单元格完全居中 -->
-      <th style="border: 1px solid #ccc; text-align: center; font-weight: bold;">产品</th>
+      <th style="border: 1px solid #ccc; font-weight: bold;">产品</th>
       <th style="border: 1px solid #ccc; text-align: center; font-weight: bold;">是否支持</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td style="border: 1px solid #ccc; padding: 12px;"><term>昇腾910_95 AI处理器</term></td>
+      <td style="border: 1px solid #ccc;"><term>昇腾910_95 AI处理器</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+      <td style="border: 1px solid #ccc;"><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">√</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+      <td style="border: 1px solid #ccc;"><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">√</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 200I/500 A2 推理产品</term></td>
+      <td style="border: 1px solid #ccc;"><term>Atlas 200I/500 A2 推理产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 推理系列产品</term></td>
+      <td style="border: 1px solid #ccc;"><term>Atlas 推理系列产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 训练系列产品</term></td>
+      <td style="border: 1px solid #ccc;"><term>Atlas 训练系列产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #ccc; padding: 12px;"><term>Atlas 200I/300/500 推理产品</term></td>
+      <td style="border: 1px solid #ccc;"><term>Atlas 200I/300/500 推理产品</term></td>
       <td style="border: 1px solid #ccc; text-align: center;">×</td>
     </tr>
   </tbody>
@@ -67,25 +63,25 @@
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionInferGetWorkspaceSize(
-    const aclTensor		*query, 
-    const aclTensor		*key, 
-    const aclTensor		*value, 
-    const aclTensor		*topkIndices, 
-    const aclTensor		*attenMaskOptional,
-    const aclTensor		*blockTableOptional,
-    const aclIntArray *actualQSeqLenOptional,
-    const aclIntArray	*actualKvSeqLenOptional,
-    char 			        *layoutOptional,
-    int64_t 		       numHeads,
-    int64_t 		       numKeyValueHeads,
-    int64_t 		       selectBlockSize,
-    int64_t            selectBlockCount,
-    int64_t            pageBlockSize,
-    double             scaleValue,
-    int64_t            sparseMode,
-    aclTensor         *output,
-    uint64_t          *workspaceSize,
-    aclOpExecutor    **executor)
+    const aclTensor     *query, 
+    const aclTensor     *key, 
+    const aclTensor     *value, 
+    const aclTensor     *topkIndices, 
+    const aclTensor     *attenMaskOptional,
+    const aclTensor     *blockTableOptional,
+    const aclIntArray   *actualQSeqLenOptional,
+    const aclIntArray   *actualKvSeqLenOptional,
+    char                *layoutOptional,
+    int64_t              numHeads,
+    int64_t              numKeyValueHeads,
+    int64_t              selectBlockSize,
+    int64_t              selectBlockCount,
+    int64_t              pageBlockSize,
+    double               scaleValue,
+    int64_t              sparseMode,
+    aclTensor           *output,
+    uint64_t            *workspaceSize,
+    aclOpExecutor      **executor)
 ```
 
 ```c++
@@ -98,7 +94,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 
 # aclnnNsaSelectedAttentionInferGetWorkspaceSize
 
-- 参数说明
+- **参数说明**
   
   <div style="overflow-x: auto;">
     <table style="undefined;table-layout: fixed; width: 1567px">
@@ -382,7 +378,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
     </table>
   </div>
   
-- 返回值
+- **返回值**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
   
@@ -405,7 +401,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
       <tr>
         <td>ACLNN_ERR_PARAM_NULLPTR</td>
         <td>161001</td>
-        <td>传入参数是必选输入，输出或者必选属性，且是空指针</td>
+        <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
       </tr>
       <tr>
         <!-- 合并单元格添加 merged-cell 类实现上下居中 -->
@@ -422,7 +418,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 
 # aclnnNsaSelectedAttentionInfer
 
-- 参数说明
+- **参数说明**
   
   <div style="overflow-x: auto;">
       <table style="undefined;table-layout: fixed; width: 1030px">
@@ -457,12 +453,12 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
         <tr>
           <td>stream</td>
           <td>输入</td>
-          <td>指定执行任务的AscendCL stream流</td>
+          <td>指定执行任务的AscendCL Stream流。</td>
         </tr>
       </tbody>
     </table>
   </div>
-- 返回值
+- **返回值**
   
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
