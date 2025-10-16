@@ -259,6 +259,7 @@ function(add_opapi_modules)
       -Wl,--whole-archive
       ops_aclnn
       -Wl,--no-whole-archive
+      $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       nnopbase
       profapi
       ge_common_base
@@ -391,13 +392,6 @@ function(add_graph_plugin_modules)
     add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
     target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
       ${OP_PROTO_INCLUDE}
-
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/external>>
-      ${OPS_TRANSFORMER_DIR}/mc2/common/inc
-      ${OPS_TRANSFORMER_DIR}/mc2/3rd
     )
     target_compile_definitions(${GRAPH_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="GRAPH_PLUGIN" LOG_CPP)
     target_compile_options(
@@ -468,7 +462,6 @@ macro(add_graph_plugin_sources)
 
   file(GLOB GRAPH_PLUGIN_SRCS 
       ${SOURCE_DIR}/*_graph_plugin*.cpp
-      ${SOURCE_DIR}/../op_host/*_infershape.cpp
   )
   if(GRAPH_PLUGIN_SRCS)
     add_graph_plugin_modules()
