@@ -29,7 +29,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(
     const aclTensor *pertokenScaleOptional,
     const aclTensor *groupList,
     const aclTensor *sharedInput,
-    const aclTensor *logit,
+    const aclTensor* logit,
     const aclTensor *rowIndex,
     int64_t          dtype,
     float            sharedInputWeight,

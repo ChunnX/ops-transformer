@@ -58,9 +58,10 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
-    void            *workspace, 
-    uint64_t        workspaceSize, 
-    aclOpExecutor   *executor, ）
+    void              *workspace, 
+    uint64_t          workspaceSize, 
+    aclOpExecutor     *executor,
+    const aclrtStream stream ）
 ```
 
 ## aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize
