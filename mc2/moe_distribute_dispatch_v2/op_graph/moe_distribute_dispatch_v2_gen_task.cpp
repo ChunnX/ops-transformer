@@ -31,6 +31,7 @@
 #include "mc2_gen_task_moe.h"
 #include "mc2_gen_task_utils.h"
 #include "register/op_ct_impl_registry.h"
+#include "register/op_ext_gentask_registry.h"
 #endif
 
 namespace ops {
@@ -98,5 +99,6 @@ ge::Status MoeDistributeDispatchV2GenTaskFunc(const gert::ExeResGenerationContex
 IMPL_OP_CT(MoeDistributeDispatchV2)
     .CalcOpParam(MoeDistributeDispatchV2CalcParamFunc)
     .GenerateTask(MoeDistributeDispatchV2GenTaskFunc);
+REGISTER_EXT_TASK_TYPE(MoeDistributeDispatchV2, fe::ExtTaskType::kAicoreTask);
 #endif
 } // namespace ops

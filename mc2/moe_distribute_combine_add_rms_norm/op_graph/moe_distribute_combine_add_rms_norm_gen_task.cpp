@@ -31,6 +31,7 @@
 #include "mc2_gen_task_moe.h"
 #include "mc2_gen_task_utils.h"
 #include "register/op_ct_impl_registry.h"
+#include "register/op_ext_gentask_registry.h"
 #endif
 
 namespace ops {
@@ -98,5 +99,7 @@ ge::Status MoeDistributeCombineAddRmsNormGenTaskFunc(const gert::ExeResGeneratio
 IMPL_OP_CT(MoeDistributeCombineAddRmsNorm)
     .CalcOpParam(MoeDistributeCombineAddRmsNormCalcParamFunc)
     .GenerateTask(MoeDistributeCombineAddRmsNormGenTaskFunc);
+
+REGISTER_EXT_TASK_TYPE(MoeDistributeCombineAddRmsNorm, fe::ExtTaskType::kAicoreTask);
 #endif
 } // namespace ops

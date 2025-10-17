@@ -20,8 +20,8 @@
 #ifdef BUILD_OPEN_PROJECT
 #include "mc2_gen_task_ops_utils.h"
 #include "matmul_all_reduce_gen_task_ops_utils.h"
-#include "external/graph/arg_desc_info.h"
-#include "external/graph/kernel_launch_info.h"
+#include "graph/arg_desc_info.h"
+#include "graph/kernel_launch_info.h"
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #else
