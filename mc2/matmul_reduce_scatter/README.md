@@ -1,8 +1,5 @@
 # MatmulReduceScatter
 
-> 注意：
-> 本文档仅仅是算子功能的简介，不支持用户直接调用，因为当前不支持kernel直调，等后续支持再完善文档!!!!!!
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -102,8 +99,8 @@ $$
 
 ## 约束说明
 
-- 输入x1为2维，其shape为\(m, k\)，m须为卡数rank_size的整数倍。
-- 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535)。
+- 输入x1为2维，其shape为(m, k)，m须为卡数rank_size的整数倍。
+- 输入x2必须是2维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为[256, 65535)。
 - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需满足以下条件：
   - m为空，k不为空，n不为空；
   - m不为空，k不为空，n为空；
@@ -111,7 +108,7 @@ $$
 - x2矩阵支持转置/不转置场景，x1矩阵只支持不转置场景。
 - x1、x2计算输入的数据类型要和output计算输出的数据类型一致。
 - bias暂不支持输入为非0的场景。
-- 输出为2维，其shape为\(m/rank\_size, n\), rank_size为卡数。
+- 输出为2维，其shape为(m/rank_size, n), rank_size为卡数。
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持2、4、8卡，并且仅支持hccs链路all mesh组网。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16、32卡，并且仅支持hccs链路double ring组网。
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。

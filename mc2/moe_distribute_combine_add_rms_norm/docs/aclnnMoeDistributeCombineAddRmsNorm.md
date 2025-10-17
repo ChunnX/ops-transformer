@@ -103,63 +103,63 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
   <tr>
    <td>expandX</td>
    <td>输入</td>
-   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 \(max(tpWorldSize, 1) * A , H\)；支持非连续的Tensor。</td>
+   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 (max(tpWorldSize, 1) * A , H)；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertIds</td>
    <td>输入</td>
-   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, K\)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, K)；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>assistInfoForCombine</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出，Device侧的aclTensor，要求为1D Tensor，shape为 \(A * 128, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出，Device侧的aclTensor，要求为1D Tensor，shape为 (A * 128, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>epSendCounts</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出，Device侧的aclTensor，要求为1D Tensor，shape为 \(epWorldSize * max(tpWorldSize, 1) * localExpertNum, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出，Device侧的aclTensor，要求为1D Tensor，shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertScales</td>
    <td>输入</td>
-   <td>每个token的topK个专家的权重，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, K\)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家的权重，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, K)；支持非连续的Tensor。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>residualX</td>
    <td>输入</td>
-   <td>AddRmsNorm中Add的右矩阵，Device侧的aclTensor，要求为3D Tensor，shape为 \(Bs，1，H\)；支持非连续的Tensor。</td>
+   <td>AddRmsNorm中Add的右矩阵，Device侧的aclTensor，要求为3D Tensor，shape为 (Bs，1，H)；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>gamma</td>
    <td>输入</td>
-   <td>RmsNorm中的gamma输入，Device侧的aclTensor，要求为1D Tensor，shape为 \(H, \)；支持非连续的Tensor。</td>
+   <td>RmsNorm中的gamma输入，Device侧的aclTensor，要求为1D Tensor，shape为 (H, )；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpSendCountsOptional</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出，Device侧的aclTensor；有TP域通信需传参，无TP域通信传空指针；有TP域通信时为1D Tensor，shape为 \(tpWorldSize, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出，Device侧的aclTensor；有TP域通信需传参，无TP域通信传空指针；有TP域通信时为1D Tensor，shape为 (tpWorldSize, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>xActiveMaskOptional</td>
    <td>输入</td>
-   <td>表示token是否参与通信，Device侧的aclTensor；要求为1D或2D Tensor（1D时shape为\(BS, \)，2D时shape为\(BS, K\)）；可传有效数据或空指针；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；默认所有token参与通信；各卡BS不一致时所有token需有效；支持非连续的Tensor。</td>
+   <td>表示token是否参与通信，Device侧的aclTensor；要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；可传有效数据或空指针；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；默认所有token参与通信；各卡BS不一致时所有token需有效；支持非连续的Tensor。</td>
    <td>BOOL</td>
    <td>ND</td>
   </tr>
@@ -194,7 +194,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
   <tr>
    <td>sharedExpertXOptional</td>
    <td>输入</td>
-   <td>表示共享专家计算后的Token，Device侧的aclTensor；要求为2D或3D Tensor（2D时shape为\(Bs, H\)，3D时shape为\(Bs, 1, H\)）；数据类型需与expandX保持一致；可传或不传；支持非连续的Tensor。</td>
+   <td>表示共享专家计算后的Token，Device侧的aclTensor；要求为2D或3D Tensor（2D时shape为(Bs, H)，3D时shape为(Bs, 1, H)）；数据类型需与expandX保持一致；可传或不传；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -327,7 +327,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
   <tr>
    <td>xOut</td>
    <td>输出</td>
-   <td>Add后的输出结果，Device侧的aclTensor，要求为3D Tensor，shape为 \(Bs, 1，H\)；数据类型、数据格式与residualX保持一致。</td>
+   <td>Add后的输出结果，Device侧的aclTensor，要求为3D Tensor，shape为 (Bs, 1，H)；数据类型、数据格式与residualX保持一致。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -439,17 +439,17 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 
 4. 参数说明里shape格式说明：
     - **A**：表示本卡需要分发的最大token数量，取值范围如下：
-      - 对于共享专家，需满足 \(A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum\)。
-      - 对于MoE专家，当`globalBs`为0时，需满足 \(A >= Bs * epWorldSize * min(localExpertNum, K)\)；当`globalBs`非0时，需满足 \(A >= globalBs * min(localExpertNum, K)\)。
+      - 对于共享专家，需满足 (A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
+      - 对于MoE专家，当`globalBs`为0时，需满足 (A >= Bs * epWorldSize * min(localExpertNum, K))；当`globalBs`非0时，需满足 (A >= globalBs * min(localExpertNum, K))。
     - **H**：表示hidden size（隐藏层大小），取值范围为[1024, 8192]。
-    - **Bs**：表示batch sequence size（本卡最终输出的token数量），取值范围为 \(0 < Bs ≤ 512\)。
-    - **K**：表示选取topK个专家，取值范围为 \(0 < K ≤ 16\) 且满足 \(0 < K ≤ moeExpertNum\)。
+    - **Bs**：表示batch sequence size（本卡最终输出的token数量），取值范围为 (0 < Bs ≤ 512)。
+    - **K**：表示选取topK个专家，取值范围为 (0 < K ≤ 16) 且满足 (0 < K ≤ moeExpertNum)。
     - **localExpertNum**：表示本卡专家数量：
-      - 对于共享专家卡，\(localExpertNum = 1\)。
-      - 对于MoE专家卡，\(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)\)；当\(localExpertNum > 1\)时，不支持TP域通信。
+      - 对于共享专家卡，(localExpertNum = 1)。
+      - 对于MoE专家卡，(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum))；当(localExpertNum > 1)时，不支持TP域通信。
 
 5. **HCCL_BUFFSIZE**：
-   调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 \(≥ 2\) 且满足 \(1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)\)，其中`localExpertNum`需使用MoE专家卡的本卡专家数。
+   调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 (≥ 2) 且满足 (1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1))，其中`localExpertNum`需使用MoE专家卡的本卡专家数。
 
 6. 通信域使用约束：
    - 一个模型中的`aclnnMoeDistributeCombineAddRmsNorm`和`aclnnMoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
@@ -457,7 +457,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp

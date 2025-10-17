@@ -546,33 +546,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调用aclnnMoeDistributeDispatchV3和aclnnMoeDistributeCombineAddRmsNormV2接口,本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
 
-- 文件准备：    
-  1.新建combineAddRmsNormV2Demo目录，按照下方指导在combineAddRmsNormV2Demo下新建aclnnCombineAddRmsNormDemoV2.cpp，buildCombineAddRmsNormV2.sh，文件并修改。
-  2.将combineAddRmsNormV2Demo项目拷贝到服务器中。
-  3.安装cann包，并根据下方指导编译运行combineAddRmsNormV2Demo。
-
--  编译脚本
-    ```bash
-    #!/bin/bash
-    cann_path="/path/to/cann_env" # 更改cann包环境的路径
-    g++ "aclnnCombineAddRmsNormDemoV2.cpp" -o combineAddRmsNormDemoV2 -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
-        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
-    ```
-- 编译与运行：
-
-    ```bash
-    # source cann环境
-    source /path/to/cann_env/latest/bin/setenv.bash
-
-    # 编译aclnnCombineAddRmsNormV2Demo.cpp
-    bash buildCombineAddRmsNormV2.sh
-
-    ./combineAddRmsNormDemoV2
-    ```
-
-- 示例代码如下，仅供参考
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>

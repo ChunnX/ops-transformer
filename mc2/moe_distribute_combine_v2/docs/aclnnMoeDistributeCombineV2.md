@@ -102,49 +102,49 @@ aclnnStatus aclnnMoeDistributeCombineV2(
   <tr>
    <td>expandX</td>
    <td>输入</td>
-   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 \(max(tpWorldSize, 1) * A , H\)；支持非连续的Tensor。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持共享专家场景。</td>
+   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 (max(tpWorldSize, 1) * A , H)；支持非连续的Tensor。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertIds</td>
    <td>输入</td>
-   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, K\)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, K)；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>assistInfoForCombine</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出，Device侧的aclTensor，要求为1D Tensor，shape为 \(A * 128, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出，Device侧的aclTensor，要求为1D Tensor，shape为 (A * 128, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>epSendCounts</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出，Device侧的aclTensor，要求为1D Tensor；支持非连续的Tensor。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：shape为 \(moeExpertNum + 2 * globalBs * K * serverNum, \)，前moeExpertNum个数表示从EP通信域各卡接收的token数，2 * globalBs * K * serverNum存储机间机内通信前combine可提前做reduce的token个数和通信区偏移，globalBs=0时按Bs * epWorldSize计算。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：shape为 \(epWorldSize * max(tpWorldSize, 1) * localExpertNum, \)。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出，Device侧的aclTensor，要求为1D Tensor；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertScales</td>
    <td>输入</td>
-   <td>每个token的topK个专家的权重，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, K\)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家的权重，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, K)；支持非连续的Tensor。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpSendCountsOptional</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出，Device侧的aclTensor；有TP域通信需传参，无TP域通信传空指针。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前不支持TP域通信。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：有TP域通信时为1D Tensor，shape为 \(tpWorldSize, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出，Device侧的aclTensor；有TP域通信需传参，无TP域通信传空指针。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>xActiveMaskOptional</td>
    <td>输入</td>
-   <td>表示token是否参与通信，Device侧的aclTensor；可传有效数据或空指针，默认所有token参与通信；各卡BS不一致时所有token需有效；支持非连续的Tensor。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：要求为1D Tensor，shape为\(BS, \)；true需排在false前（例：{true, false, true}非法）。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求为1D或2D Tensor（1D时shape为\(BS, \)，2D时shape为\(BS, K\)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。</td>
+   <td>表示token是否参与通信，Device侧的aclTensor；可传有效数据或空指针，默认所有token参与通信；各卡BS不一致时所有token需有效；支持非连续的Tensor。</td>
    <td>BOOL</td>
    <td>ND</td>
   </tr>
@@ -172,14 +172,14 @@ aclnnStatus aclnnMoeDistributeCombineV2(
   <tr>
    <td>expandScalesOptional</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的expandScales输出，Device侧的aclTensor；支持非连续的Tensor。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：要求为1D Tensor，shape为 \(A, \)。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：预留参数，当前版本不支持，传空指针即可。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的expandScales输出，Device侧的aclTensor；支持非连续的Tensor。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedExpertXOptional</td>
    <td>输入</td>
-   <td>表示共享专家计算后的token，Device侧的aclTensor；数据类型需与expandX保持一致；支持非连续的Tensor。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：预留参数，当前版本不支持，传空指针即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求为2D或3D Tensor（2D时shape为 \(Bs, H\)；3D时前两位乘积等于Bs、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。</td>
+   <td>表示共享专家计算后的token，Device侧的aclTensor；数据类型需与expandX保持一致；支持非连续的Tensor。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -193,7 +193,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
   <tr>
    <td>epWorldSize</td>
    <td>输入</td>
-   <td>EP通信域大小。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：依commAlg取值，"fullmesh"支持16、32、64、128、256；"hierarchy"支持16、32、64。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值支持[2, 768]。</td>
+   <td>EP通信域大小。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -207,49 +207,49 @@ aclnnStatus aclnnMoeDistributeCombineV2(
   <tr>
    <td>moeExpertNum</td>
    <td>输入</td>
-   <td>MoE专家数量，满足moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：取值范围(0, 512]，还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围(0, 1024]。</td>
+   <td>MoE专家数量，满足moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>groupTp</td>
    <td>输入</td>
-   <td>TP通信域名称（数据并行通信域）。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传空字符即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：字符串长度范围为[1, 128)，不能和groupEp相同。</td>
+   <td>TP通信域名称（数据并行通信域）。</td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpWorldSize</td>
    <td>输入</td>
-   <td>TP通信域大小。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。</td>
+   <td>TP通信域大小。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpRankId</td>
    <td>输入</td>
-   <td>TP域本卡Id。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。</td>
+   <td>TP域本卡Id。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertShardType</td>
    <td>输入</td>
-   <td>表示共享专家卡分布类型。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前仅支持传0，表示共享专家卡排在MoE专家卡前面。</td>
+   <td>表示共享专家卡分布类型。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedExpertNum</td>
    <td>输入</td>
-   <td>表示共享专家数量（一个共享专家可复制部署到多个卡上）。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前取值范围[0, 4]。</td>
+   <td>表示共享专家数量（一个共享专家可复制部署到多个卡上）。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedExpertRankNum</td>
    <td>输入</td>
-   <td>表示共享专家卡数量。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。</td>
+   <td>表示共享专家卡数量。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -270,7 +270,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
   <tr>
    <td>commQuantMode</td>
    <td>输入</td>
-   <td>通信量化类型，取值范围0或2（0表示不量化，2表示int8量化）。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：2仅当commAlg为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：2仅当tpWorldSize < 2时可使能。</td>
+   <td>通信量化类型，取值范围0或2（0表示不量化，2表示int8量化）。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -284,14 +284,14 @@ aclnnStatus aclnnMoeDistributeCombineV2(
   <tr>
    <td>commAlg</td>
    <td>输入</td>
-   <td>表示通信亲和内存布局算法，string数据类型。<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经机内、跨机两次发送减少跨机数据量。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前版本不支持，传空指针即可。</td>
+   <td>表示通信亲和内存布局算法，string数据类型。</td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>xOut</td>
    <td>输出</td>
-   <td>表示处理后的token，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, H\)；数据类型、数据格式与expandX保持一致。</td>
+   <td>表示处理后的token，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, H)；数据类型、数据格式与expandX保持一致。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -311,6 +311,41 @@ aclnnStatus aclnnMoeDistributeCombineV2(
   </tr>
  </tbody>
 </table>
+
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - 不支持共享专家场景。
+    - epSendCounts 的shape为 (moeExpertNum + 2 * globalBs * K * serverNum, )，前moeExpertNum个数表示从EP通信域各卡接收的token数，2 * globalBs * K * serverNum存储机间机内通信前combine可提前做reduce的token个数和通信区偏移，globalBs=0时按Bs * epWorldSize计算。
+    - 当前不支持TP域通信。
+    - xActiveMaskOptional 要求为1D Tensor，shape为 (BS, )；true需排在false前（例：{true, false, true}非法）。
+    - exapndScalesOptional 要求为1D Tensor，shape为 (A, )。
+    - sharedExpertXOptional 为预留参数，当前版本不支持，传空指针即可。
+    - epWorldSize 依commAlg取值，"fullmesh"支持16、32、64、128、256；"hierarchy"支持16、32、64。
+    - moeExpertNum 取值范围(0, 512]，还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
+    - groupTp 当前版本不支持，传空字符即可。
+    - tpWorldSize 当前版本不支持，传0即可。
+    - tpRankId 当前版本不支持，传0即可。
+    - expertShardType 当前版本不支持，传0即可。
+    - sharedExpertNum 当前版本不支持，传0即可。
+    - sharedExpertRankNum 当前版本不支持，传0即可。
+    - commQuantMode 取值为2仅当commAlg为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持。
+    - commAlg 支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经机内、跨机两次发送减少跨机数据量。
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
+    - 有TP域通信时 tpSendCountsOptional 为1D Tensor，shape为 (tpWorldSize, )；支持非连续的Tensor。
+    - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
+    - exapndScalesOptional 预留参数，当前版本不支持，传空指针即可。
+    - sharedExpertXOptional 要求为2D或3D Tensor（2D时shape为 (Bs, H)；3D时前两位乘积等于Bs、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
+    - epWorldSize 取值支持[2, 768]。
+    - moeExpertNum 取值范围(0, 1024]。
+    - groupTp 字符串长度范围为[1, 128)，不能和groupEp相同。
+    - tpWorldSize 取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
+    - tpRankId 取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+    - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+    - sharedExpertNum 当前取值范围[0, 4]。
+    - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
+    - commQuantMode 取值为2仅当tpWorldSize < 2时可使能。
+    - commAlg 当前版本不支持，传空指针即可。
 
 ### 返回值
 
@@ -407,27 +442,27 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 5. 参数说明里shape格式说明：
     - **A**：表示本卡需要分发的最大token数量，取值范围如下：
-      - 对于共享专家，需满足 \(A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum\)。
-      - 对于MoE专家，当`globalBs`为0时，需满足 \(A >= Bs * epWorldSize * min(localExpertNum, K)\)；当`globalBs`非0时，需满足 \(A >= globalBs * min(localExpertNum, K)\)。
+      - 对于共享专家，需满足 (A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
+      - 对于MoE专家，当`globalBs`为0时，需满足 (A >= Bs * epWorldSize * min(localExpertNum, K))；当`globalBs`非0时，需满足 (A >= globalBs * min(localExpertNum, K))。
     - **H**：表示hidden size（隐藏层大小）：
       - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍。
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值为[1024, 8192]。
     - **Bs**：表示batch sequence size（本卡最终输出的token数量）：
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：取值范围为 \(0 < Bs ≤ 256\)。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围为 \(0 < Bs ≤ 512\)。
-    - **K**：表示选取topK个专家，取值范围为 \(0 < K ≤ 16\) 且满足 \(0 < K ≤ moeExpertNum\)。
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：取值范围为 (0 < Bs ≤ 256)。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围为 (0 < Bs ≤ 512)。
+    - **K**：表示选取topK个专家，取值范围为 (0 < K ≤ 16) 且满足 (0 < K ≤ moeExpertNum)。
     - **serverNum**：表示服务器的节点数，取值仅支持2、4、8。
     - **localExpertNum**：表示本卡专家数量：
-      - 对于共享专家卡，\(localExpertNum = 1\)。
-      - 对于MoE专家卡，\(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)\)；当\(localExpertNum > 1\)时，不支持TP域通信。
+      - 对于共享专家卡，(localExpertNum = 1)。
+      - 对于MoE专家卡，(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum))；当(localExpertNum > 1)时，不支持TP域通信。
 
 6. **HCCL_BUFFSIZE**：
    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
      - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
-     - commAlg为"fullmesh"：要求 \(≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)\)。
-     - commAlg为"hierarchy"：要求 \(≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB\)，不要求 \(moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24\)。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求 \(≥ 2\) 且满足 \(≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H))\)（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
+     - commAlg为"fullmesh"：要求 (≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
+     - commAlg为"hierarchy"：要求 (≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB)，不要求 (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24)。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
 
 7. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
    <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。

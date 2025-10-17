@@ -229,8 +229,8 @@
 
 - 参数说明里shape格式说明：
     - A：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足A = BS \* epWorldSize \* sharedExpertNum / sharedExpertRankNum。
-        - 对于MoE专家，当globalBs为0时，要满足A >= BS \* epWorldSize \* min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs \* min(localExpertNum, K)。
+        - 对于共享专家，要满足A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum。
+        - 对于MoE专家，当globalBs为0时，要满足A >= BS * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。
     - H：表示hidden size隐藏层大小。
         - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：取值范围(0, 7168]，且保证是32的整数倍。
     - BS：表示batch sequence size，即本卡最终输出的token数量。
@@ -244,12 +244,12 @@
 
 - HCCL_BUFFSIZE：
     调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：要求 >= 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求 >= 2且满足1024 ^ 2 \* (HCCL_BUFFSIZE - 2) / 2 >= BS \* 2 \* (H + 128) \* (epWorldSize \* localExpertNum + K + 1)，localExpertNum需使用MoE专家卡的本卡专家数。
+    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：要求 >= 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求 >= 2且满足1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)，localExpertNum需使用MoE专家卡的本卡专家数。
 
 - HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE：
     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：设置环境变量HCCL_INTRA_PCIE_ENABLE = 1和HCCL_INTRA_ROCE_ENABLE = 0可以减少跨机通信数据量，可能提升算子性能。
-    此时，HCCL_BUFFSIZE要求 >= moeExpertNum \* BS \* (H \* sizeof(dtypeX) + 4 \* ((K + 7) / 8 \* 8) \* sizeof(uint32)) + 4MB + 100MB。并且，对于入参moeExpertNum，只要求moeExpertNum \% (epWorldSize - sharedExpertRankNum) = 0，不要求moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
+    此时，HCCL_BUFFSIZE要求 >= moeExpertNum * BS * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB。并且，对于入参moeExpertNum，只要求moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0，不要求moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
     
 - 本文公式中的"/"表示整除。
 
@@ -262,16 +262,16 @@
         - expandX的数据类型为FLOAT16、BFLOAT16时，输入scales必须传入空指针。
         - expandX的数据类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，输入scales必须传入有效数据,且输入scales的shape第1维必须等于BS。
     - quantMode取值为1时，表示静态量化场景，expandX的数据类型支持INT8、HIFLOAT8。
-        - expandX的数据类型为INT8时，输入scales为量化系数时，shape为 \(1, \)；输入scales为每个专家共享的平滑权重时，shape为 \(H，\)。输入scales为融了每个专家的平滑权重的量化系数时，若有共享专家卡，其shape为 \(sharedExpertNum + moeExpertNum, H\)，若无共享专家卡，其shape为 \(moeExpertNum, H\)。
-        - expandX的数据类型为HIFLOAT8时，scales的shape必须为 \(1, \)。
+        - expandX的数据类型为INT8时，输入scales为量化系数时，shape为 (1, )；输入scales为每个专家共享的平滑权重时，shape为 (H，)。输入scales为融了每个专家的平滑权重的量化系数时，若有共享专家卡，其shape为 (sharedExpertNum + moeExpertNum, H)，若无共享专家卡，其shape为 (moeExpertNum, H)。
+        - expandX的数据类型为HIFLOAT8时，scales的shape必须为 (1, )。
     - quantMode取值为2时，表示pertoken动态量化场景，expandX的数据类型支持INT8、FLOAT8_E4M3FN、FLOAT8_E5M2。
         - 输入scales可传入空指针。
-        - 若输入scales传入有效数据且存在共享专家卡时，其shape为 \(sharedExpertNum + moeExpertNum, H\)。
-        - 若输入scales传入有效数据且不存在共享专家卡时，其shape为 \(moeExpertNum, H\)。
+        - 若输入scales传入有效数据且存在共享专家卡时，其shape为 (sharedExpertNum + moeExpertNum, H)。
+        - 若输入scales传入有效数据且不存在共享专家卡时，其shape为 (moeExpertNum, H)。
     - quantMode取值为3时，表示pergroup动态量化场景，expandX的数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2。
         - 输入scales可传入空指针。
-        - 若输入scales传入有效数据且存在共享专家卡时，其shape为 \(sharedExpertNum + moeExpertNum, H\)。
-        - 若输入scales传入有效数据且不存在共享专家卡时，其shape为 \(moeExpertNum, H\)。
+        - 若输入scales传入有效数据且存在共享专家卡时，其shape为 (sharedExpertNum + moeExpertNum, H)。
+        - 若输入scales传入有效数据且不存在共享专家卡时，其shape为 (moeExpertNum, H)。
     - quantMode取值为4时，表示mx量化场景，expandX的数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2，输入scales必须传入空指针。
 
 ## 调用说明

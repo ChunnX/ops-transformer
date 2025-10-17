@@ -160,7 +160,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
           <td>pertokenScaleOptional</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算后的pertoken去量化系数，即计算公式中的pertokenScaleOptional。</td>
-          <td>x1为(b, s, k)时,shape为(b*s\)；x1为(m, k)时shape为(m)。</td>
+          <td>x1为(b, s, k)时，shape为(b*s)；x1为(m, k)时shape为(m)。</td>
           <td>FLOAT32</td>
           <td>ND</td>
           <td>2</td>

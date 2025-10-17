@@ -1,8 +1,5 @@
 # aclnnMoeDistributeDispatchV2
 
-> 注意：
-> 本文档仅仅是算子功能的简介，不支持用户直接调用，因为当前不支持kernel直调，等后续支持再完善文档!!!!!!
-
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
@@ -26,7 +23,7 @@ $$
 
 相较于aclnnMoeDistributeDispatch接口，该接口变更如下：
 
--   输出了更详细的token信息辅助CombineV2系列算子高效地进行全卡同步，因此原接口中shape为(Bs \* K,)的expandIdx出参替换为shape为(A \* 128,)的assistInfoForCombineOut参数；
+-   输出了更详细的token信息辅助CombineV2系列算子高效地进行全卡同步，因此原接口中shape为(Bs * K,)的expandIdx出参替换为shape为(A * 128,)的assistInfoForCombineOut参数；
 -   新增commAlg入参，代替HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE环境变量。
 
 详细说明请参考以下参数说明。
@@ -54,21 +51,21 @@ $$
   <tr>
    <td>x</td>
    <td>输入</td>
-   <td>本卡发送的token数据，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, H\)（Bs为batch size，H为hidden size（隐藏层大小））；支持非连续的Tensor。</td>
+   <td>本卡发送的token数据，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, H)（Bs为batch size，H为hidden size（隐藏层大小））；支持非连续的Tensor。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertIds</td>
    <td>输入</td>
-   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, K\)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, K)；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>scalesOptional</td>
    <td>输入</td>
-   <td>每个专家的量化平滑参数，Device侧的aclTensor，要求为2D Tensor，shape为 \(sharedExpertNum + moeExpertNum, H\)；非量化场景传空指针，动态量化可传有效数据或空指针；支持非连续的Tensor。</td>
+   <td>每个专家的量化平滑参数，Device侧的aclTensor，要求为2D Tensor，shape为 (sharedExpertNum + moeExpertNum, H)；非量化场景传空指针，动态量化可传有效数据或空指针；支持非连续的Tensor。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
@@ -187,28 +184,28 @@ $$
   <tr>
    <td>expandXOut</td>
    <td>输出</td>
-   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 \(max(tpWorldSize, 1) * A, H\)；支持非连续的Tensor。</td>
+   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 (max(tpWorldSize, 1) * A, H)；支持非连续的Tensor。</td>
    <td>FLOAT16、BFLOAT16、INT8</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>dynamicScalesOut</td>
    <td>输出</td>
-   <td>Device侧的aclTensor，要求为1D Tensor，shape为 \(A, \)；仅quantMode=2时有该输出；支持非连续的Tensor。</td>
+   <td>Device侧的aclTensor，要求为1D Tensor，shape为 (A, )；仅quantMode=2时有该输出；支持非连续的Tensor。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>assistInfoForCombineOut</td>
    <td>输出</td>
-   <td>表示给同一专家发送的token个数（对应CombineV2系列算子中的assistInfoForCombine），Device侧的aclTensor，要求为1D Tensor，shape为 \(A*128, \)；支持非连续的Tensor。</td>
+   <td>表示给同一专家发送的token个数（对应CombineV2系列算子中的assistInfoForCombine），Device侧的aclTensor，要求为1D Tensor，shape为 (A*128, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertTokenNumsOut</td>
    <td>输出</td>
-   <td>表示每个专家收到的token个数，Device侧的aclTensor，要求为1D Tensor，shape为 \(localExpertNum, \)；支持非连续的Tensor。</td>
+   <td>表示每个专家收到的token个数，Device侧的aclTensor，要求为1D Tensor，shape为 (localExpertNum, )；支持非连续的Tensor。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -248,8 +245,8 @@ $$
 
 - 参数说明里shape格式说明：
     - A：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足A = Bs \* epWorldSize \* sharedExpertNum / sharedExpertRankNum。
-        - 对于MoE专家，当globalBs为0时，要满足A >= Bs \* epWorldSize \* min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs \* min(localExpertNum, K)。
+        - 对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。
+        - 对于MoE专家，当globalBs为0时，要满足A >= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。
     - H：表示hidden size隐藏层大小。
         - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：根据不同commAlg（见上文介绍）支持H不同的取值范围。
             - commAlg = "fullmesh": 取值范围(0, 7168]，且保证是32的整数倍。
@@ -268,9 +265,9 @@ $$
     调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
         - commAlg配置为""或nullptr：依照HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE环境变量配置，选择"fullmesh"或"hierarchy"公式。
-        - commAlg配置为"fullmesh": 要求 >= 2 \* (Bs \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)。
-        - commAlg配置为"hierarchy": 要求 >= moeExpertNum \* Bs \* (H \* sizeof(dtypeX) + 4 \* ((K + 7) / 8 \* 8) \* sizeof(uint32)) + 4MB + 100MB，不要求moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求 >= 2且满足>= 2 \* (localExpertNum \* maxBs \* epWorldSize * Align512(Align32(2 \* H) + 64) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32。
+        - commAlg配置为"fullmesh": 要求 >= 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)。
+        - commAlg配置为"hierarchy": 要求 >= moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB，不要求moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求 >= 2且满足>= 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
 
 - HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE：
     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。

@@ -1,8 +1,5 @@
 # MoeDistributeCombineAddRmsNorm
 
-> 注意：
-> 本文档仅仅是算子功能的简介，不支持用户直接调用，因为当前不支持kernel直调，等后续支持再完善文档!!!!!!
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -49,63 +46,63 @@ $$
   <tr>
    <td>expandX</td>
    <td>输入</td>
-   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 \(max(tpWorldSize, 1) * A , H\)；支持非连续的Tensor。</td>
+   <td>根据expertIds进行扩展过的token特征，Device侧的aclTensor，要求为2D Tensor，shape为 (max(tpWorldSize, 1) * A , H)；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertIds</td>
    <td>输入</td>
-   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, K\)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, K)；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>assistInfoForCombine</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出，Device侧的aclTensor，要求为1D Tensor，shape为 \(A * 128, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出，Device侧的aclTensor，要求为1D Tensor，shape为 (A * 128, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>epSendCounts</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出，Device侧的aclTensor，要求为1D Tensor，shape为 \(epWorldSize * max(tpWorldSize, 1) * localExpertNum, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出，Device侧的aclTensor，要求为1D Tensor，shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>expertScales</td>
    <td>输入</td>
-   <td>每个token的topK个专家的权重，Device侧的aclTensor，要求为2D Tensor，shape为 \(Bs, K\)；支持非连续的Tensor。</td>
+   <td>每个token的topK个专家的权重，Device侧的aclTensor，要求为2D Tensor，shape为 (Bs, K)；支持非连续的Tensor。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>residualX</td>
    <td>输入</td>
-   <td>AddRmsNorm中Add的右矩阵，Device侧的aclTensor，要求为3D Tensor，shape为 \(Bs，1，H\)；支持非连续的Tensor。</td>
+   <td>AddRmsNorm中Add的右矩阵，Device侧的aclTensor，要求为3D Tensor，shape为 (Bs，1，H)；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>gamma</td>
    <td>输入</td>
-   <td>RmsNorm中的gamma输入，Device侧的aclTensor，要求为1D Tensor，shape为 \(H, \)；支持非连续的Tensor。</td>
+   <td>RmsNorm中的gamma输入，Device侧的aclTensor，要求为1D Tensor，shape为 (H, )；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpSendCountsOptional</td>
    <td>输入</td>
-   <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出，Device侧的aclTensor；有TP域通信需传参，无TP域通信传空指针；有TP域通信时为1D Tensor，shape为 \(tpWorldSize, \)；支持非连续的Tensor。</td>
+   <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出，Device侧的aclTensor；有TP域通信需传参，无TP域通信传空指针；有TP域通信时为1D Tensor，shape为 (tpWorldSize, )；支持非连续的Tensor。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>xActiveMaskOptional</td>
    <td>输入</td>
-   <td>表示token是否参与通信，Device侧的aclTensor，要求为1D或2D Tensor；1D时shape为 \(BS, \)，2D时shape为 \(BS, K\)；可传有效数据或空指针；1D时true表示token参与通信且true需排在false前（例：{true, false, true}非法），2D时true表示token对应expert_ids参与通信，token对应K个值全为false则不参与通信；默认所有token参与通信；各卡BS不一致时所有token需有效；支持非连续的Tensor。</td>
+   <td>表示token是否参与通信，Device侧的aclTensor，要求为1D或2D Tensor；1D时shape为 (BS, )，2D时shape为 (BS, K)；可传有效数据或空指针；1D时true表示token参与通信且true需排在false前（例：{true, false, true}非法），2D时true表示token对应expert_ids参与通信，token对应K个值全为false则不参与通信；默认所有token参与通信；各卡BS不一致时所有token需有效；支持非连续的Tensor。</td>
    <td>BOOL</td>
    <td>ND</td>
   </tr>
@@ -140,7 +137,7 @@ $$
   <tr>
    <td>sharedExpertXOptional</td>
    <td>输入</td>
-   <td>表示共享专家计算后的Token，Device侧的aclTensor；要求为2D或3D Tensor，2D时shape为 \(Bs, H\)，3D时shape为 \(Bs, 1, H\)；数据类型需与expandX一致；可传或不传；支持非连续的Tensor。</td>
+   <td>表示共享专家计算后的Token，Device侧的aclTensor；要求为2D或3D Tensor，2D时shape为 (Bs, H)，3D时shape为 (Bs, 1, H)；数据类型需与expandX一致；可传或不传；支持非连续的Tensor。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -273,7 +270,7 @@ $$
   <tr>
    <td>xOut</td>
    <td>输出</td>
-   <td>Add后的输出结果，Device侧的aclTensor，要求为3D Tensor，shape为 \(Bs, 1，H\)；数据类型、数据格式与residualX保持一致。</td>
+   <td>Add后的输出结果，Device侧的aclTensor，要求为3D Tensor，shape为 (Bs, 1，H)；数据类型、数据格式与residualX保持一致。</td>
    <td>BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -292,7 +289,7 @@ $$
 
 - 参数说明里shape格式说明：
     - A：表示本卡需要分发的最大token数量，取值范围如下：
-        - 对于共享专家，要满足A = Bs * epWorldSize \* sharedExpertNum / sharedExpertRankNum。
+        - 对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。
         - 对于MoE专家，当globalBs为0时，要满足A >= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。
     - H：表示hidden size隐藏层大小，取值范围为[1024, 8192]。
     - Bs：表示batch sequence size，即本卡最终输出的token数量，取值范围为0 < Bs ≤ 512。
