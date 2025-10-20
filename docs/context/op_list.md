@@ -31,7 +31,6 @@
 | gmm         | [grouped_matmul_add](../../gmm/grouped_matmul_add/README.md) | 实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。 |
 | gmm         | [grouped_matmul_finalize_routing](../../gmm/grouped_matmul_finalize_routing/README.md) | roupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作 |
 | gmm         | [grouped_matmul_swiglu_quant](../../gmm/grouped_matmul_swiglu_quant/README.md) | 融合GroupedMatmul 、dquant、swiglu和quant |
-| gmm         | [quant_grouped_matmul_inplace_add](../../gmm/quant_grouped_matmul_inplace_add/README.md) | 实现分组矩阵乘计算和加法计算 |
 | mc2         | [all_gather_matmul](../../mc2/all_gather_matmul/README.md) | 完成AllGather通信与MatMul计算融合 |
 | mc2         | [allto_all_all_gather_batch_mat_mul](../../mc2/allto_all_all_gather_batch_mat_mul/README.md) | 完成AllToAll、AllGather集合通信与BatchMatMul计算融合、并行。|
 | mc2         | [allto_allv_grouped_mat_mul](../../mc2/allto_allv_grouped_mat_mul/README.md) | 完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算** |
