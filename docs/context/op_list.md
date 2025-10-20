@@ -37,7 +37,6 @@
 | mc2         | [allto_allv_grouped_mat_mul](../../mc2/allto_allv_grouped_mat_mul/README.md) | 完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算** |
 | mc2         | [batch_mat_mul_reduce_scatter_allto_all](../../mc2/batch_mat_mul_reduce_scatter_allto_all/README.md) | 实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行 |
 | mc2         | [distribute_barrier](../../mc2/distribute_barrier/README.md) | 完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作 |
-| mc2         | [grouped_mat_mul_all_reduce](../../mc2/grouped_mat_mul_all_reduce/README.md) | 在grouped_matmul的基础上实现多卡并行AllReduce功能，实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同 |
 | mc2         | [grouped_mat_mul_allto_allv](../../mc2/grouped_mat_mul_allto_allv/README.md) | 完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信** |
 | mc2         | [inplace_matmul_all_reduce_add_rms_norm](../../mc2/inplace_matmul_all_reduce_add_rms_norm/README.md) | 完成mm + all_reduce + add + rms_norm计算 |
 | mc2         | [matmul_all_reduce](../../mc2/matmul_all_reduce/README.md) | 完成MatMul计算与AllReduce通信融合 |
