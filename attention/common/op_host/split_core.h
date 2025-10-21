@@ -111,6 +111,7 @@ struct AssignInfo {
     uint32_t s1GLeftCost = 0U;
     uint32_t batchLeftBlock = 0U;
     uint32_t s1GLeftBlock = 0U;
+    bool isComplete = false;
 };
 
 enum  BlockType {
@@ -303,18 +304,20 @@ void RecordFDInfo(const BaseInfo &baseInfo, const InnerSplitParams &innerSplitPa
 
 void AssignByBatch(const SplitBatchInfo &splitBatchInfo, AssignInfo &assignInfo)
 {
+    if (assignInfo.isComplete) {
+        return;
+    }
+
     // 1、按整batch分配
     while (IsSpaceEnough(assignInfo.costLimit, assignInfo.curCostOnCore, splitBatchInfo.batchLastBlockCost[assignInfo.bIdx] / 2, assignInfo.batchLeftCost)) {// 2: 当前batch分配给当前核后，超出部分小于最后一块的一半（对齐按块分配的标准），则可以分配
         assignInfo.curCostOnCore += assignInfo.batchLeftCost;
         assignInfo.curBlockOnCore += assignInfo.batchLeftBlock;
-        if (assignInfo.bIdx == splitBatchInfo.lastValidBIdx) {  // 所有负载全部分配完
+        if (assignInfo.bIdx >= splitBatchInfo.lastValidBIdx) {  // 所有负载全部分配完
+            assignInfo.isComplete = true;
             return;
         }
 
         // 当前batch全部分配给当前核了，更新未分配负载的起始地址
-        while (assignInfo.bIdx < splitBatchInfo.lastValidBIdx && splitBatchInfo.batchTotalCost[assignInfo.bIdx + 1] == 0) { // 跳过所有空batch
-            assignInfo.bIdx ++;
-        }
         assignInfo.bIdx ++;
         assignInfo.s1GIdx = 0U;
         assignInfo.s2Idx = 0U;
@@ -329,6 +332,10 @@ void AssignByBatch(const SplitBatchInfo &splitBatchInfo, AssignInfo &assignInfo)
 
 void AssignByRow(const SplitBatchInfo &splitBatchInfo, AssignInfo &assignInfo)
 {
+    if (assignInfo.isComplete) {
+        return;
+    }
+
     // 2、按行分配
     uint32_t curTailBlockCost = (assignInfo.s1GIdx == splitBatchInfo.s1GBaseNum[assignInfo.bIdx] - 1 && splitBatchInfo.s1GTailSize[assignInfo.bIdx] != 0) ? 
                                 splitBatchInfo.batchLastBlockCost[assignInfo.bIdx] : splitBatchInfo.s2LastBlockCost[assignInfo.bIdx];
@@ -338,12 +345,12 @@ void AssignByRow(const SplitBatchInfo &splitBatchInfo, AssignInfo &assignInfo)
 
         assignInfo.s1GIdx ++;
         assignInfo.s2Idx = 0U;
-        assignInfo.batchLeftCost -= assignInfo.s1GLeftCost;   // 当前batch被分配一行出去，更新剩余负载
+        assignInfo.batchLeftCost = assignInfo.batchLeftCost > assignInfo.s1GLeftCost ? assignInfo.batchLeftCost - assignInfo.s1GLeftCost : 0U; // 当前batch被分配一行出去，更新剩余负载 
         assignInfo.s1GLeftCost = (assignInfo.s1GIdx == splitBatchInfo.s1GBaseNum[assignInfo.bIdx] - 1 && splitBatchInfo.s1GTailSize[assignInfo.bIdx] != 0) ? 
                         splitBatchInfo.tialS1GTotalCost[assignInfo.bIdx] : splitBatchInfo.normalS1GTotalCost[assignInfo.bIdx];   // 更新行剩余，需要考虑是不是尾行
-        assignInfo.batchLeftBlock -= assignInfo.s1GLeftBlock;
+        assignInfo.batchLeftBlock = assignInfo.batchLeftBlock > assignInfo.s1GLeftBlock ? assignInfo.batchLeftBlock - assignInfo.s1GLeftBlock : 0U;
         assignInfo.s1GLeftBlock = splitBatchInfo.s2BaseNum[assignInfo.bIdx];
-        if (assignInfo.s1GIdx == splitBatchInfo.s1GBaseNum[assignInfo.bIdx] - 1) {  // 根据AssignByBatch的规则，最后一行一定不会被分配
+        if (assignInfo.s1GIdx >= splitBatchInfo.s1GBaseNum[assignInfo.bIdx] - 1) {  // 根据AssignByBatch的规则，最后一行一定不会被分配
             return;
         }
     }
@@ -351,21 +358,32 @@ void AssignByRow(const SplitBatchInfo &splitBatchInfo, AssignInfo &assignInfo)
 
 void AssignByBlock(const SplitBatchInfo &splitBatchInfo, AssignInfo &assignInfo)
 {
+    if (assignInfo.isComplete) {
+        return;
+    }
+
     // 3、按块分配
     // 获取当前行S2维度满块的负载大小，需要考虑是否为尾行
     // 当前块分配给当前核后，超出部分小于该块的一半（对齐按块分配的标准），则可以分配
     // 使用当前行S2维度满块作为度量的原因是，按行分配的流程走完后，最后一块一定不能被分配，否则在行分配流程中就可以分配了
-    uint32_t curCost = (assignInfo.s1GIdx == splitBatchInfo.s1GBaseNum[assignInfo.bIdx] - 1 && splitBatchInfo.s1GTailSize[assignInfo.bIdx] != 0) ? 
-                        splitBatchInfo.s1GLastBlockCost[assignInfo.bIdx] : splitBatchInfo.normalBlockCost;
+    uint32_t normalCost = splitBatchInfo.normalBlockCost;
+    uint32_t tailCost = splitBatchInfo.s2LastBlockCost[assignInfo.bIdx];
+    if (assignInfo.s1GIdx == (splitBatchInfo.s1GBaseNum[assignInfo.bIdx] - 1U) && splitBatchInfo.s1GTailSize[assignInfo.bIdx] != 0U) {
+        normalCost = splitBatchInfo.s1GLastBlockCost[assignInfo.bIdx];
+        tailCost = splitBatchInfo.batchLastBlockCost[assignInfo.bIdx];
+    }
+    uint32_t curCost = (assignInfo.s2Idx == splitBatchInfo.s2BaseNum[assignInfo.bIdx] - 1) ? tailCost : normalCost;
     while (IsSpaceEnough(assignInfo.costLimit, assignInfo.curCostOnCore, curCost / 2, curCost) || assignInfo.curBlockOnCore == 0) {      // (maxCost - curCostOnCore) * 2 > s1GLeftCost
         assignInfo.curCostOnCore += curCost;
         assignInfo.curBlockOnCore += 1U;
         assignInfo.s2Idx ++;
-        assignInfo.batchLeftCost -= curCost;   // 当前batch被分配一块出去，更新剩余负载
-        assignInfo.s1GLeftCost -= curCost;     // 当前行被分配一块出去，更新剩余负载
+        assignInfo.batchLeftCost = assignInfo.batchLeftCost > curCost ? assignInfo.batchLeftCost - curCost : 0U;   // 当前batch被分配一块出去，更新剩余负载
+        assignInfo.s1GLeftCost = assignInfo.s1GLeftCost > curCost ? assignInfo.s1GLeftCost - curCost : 0U;     // 当前行被分配一块出去，更新剩余负载
         assignInfo.batchLeftBlock --;
         assignInfo.s1GLeftBlock --;
         if (assignInfo.s2Idx == splitBatchInfo.s2BaseNum[assignInfo.bIdx] - 1) { // 根据AssignByRow的规则，最后一块一定不会被分配
+            curCost = tailCost;
+        } else if (assignInfo.s2Idx >= splitBatchInfo.s2BaseNum[assignInfo.bIdx]) {
             return;
         }
     }
@@ -388,11 +406,9 @@ void GetBlockNumOnCore(const SplitBatchInfo &splitBatchInfo, uint32_t coreNum, s
     assignInfo.batchLeftBlock = splitBatchInfo.s1GBaseNum[0] * splitBatchInfo.s2BaseNum[0];
     assignInfo.s1GLeftBlock = splitBatchInfo.s2BaseNum[0];
 
-    while (assignInfo.unassignedCost > 0U) {
+    while (assignInfo.unassignedCost > 0U && coreNum > assignInfo.curCoreIdx) {
         // 更新当前核的负载上限
-        if (coreNum > assignInfo.curCoreIdx) {
-            assignInfo.costLimit = assignInfo.unassignedCost / (coreNum - assignInfo.curCoreIdx);
-        }
+        assignInfo.costLimit = assignInfo.unassignedCost / (coreNum - assignInfo.curCoreIdx);
         assignInfo.curCostOnCore = 0U;
         assignInfo.curBlockOnCore = 0U;
         // 1、按整batch分配
@@ -407,7 +423,7 @@ void GetBlockNumOnCore(const SplitBatchInfo &splitBatchInfo, uint32_t coreNum, s
         blockNumOnCore[assignInfo.curCoreIdx] = assignInfo.curBlockOnCore;
         maxCost = std::max(maxCost, assignInfo.curCostOnCore);
         assignInfo.curCoreIdx ++;
-        assignInfo.unassignedCost -= assignInfo.curCostOnCore;
+        assignInfo.unassignedCost = assignInfo.unassignedCost > assignInfo.curCostOnCore ? assignInfo.unassignedCost - assignInfo.curCostOnCore : 0U;
     }
     coreUse = assignInfo.curCoreIdx;
 }
@@ -437,7 +453,7 @@ void CalSplitBatchInfo(const BaseInfo &baseInfo, const InnerSplitParams &innerSp
             splitBatchInfo.s2BaseNum[bIdx] = 1;
         }
         splitBatchInfo.totalBlockNum += splitBatchInfo.s1GBaseNum[bIdx] * splitBatchInfo.s2BaseNum[bIdx] * baseInfo.n2Size;
-        if (splitBatchInfo.s1GBaseNum[bIdx] * splitBatchInfo.s2BaseNum[bIdx] > 0) {
+        if (splitBatchInfo.s1GBaseNum[bIdx] > 0) {
             splitBatchInfo.lastValidBIdx = bIdx;
         }
     }
@@ -498,9 +514,6 @@ void ReconSplitPlan(const BaseInfo &baseInfo, const InnerSplitParams &innerSplit
             gS1End = splitBatchInfo.s1GBaseNum[assignInfo.bIdx] - 1;
             s2End = splitBatchInfo.s2BaseNum[assignInfo.bIdx] - 1;
 
-            while (assignInfo.bIdx < splitBatchInfo.lastValidBIdx && splitBatchInfo.batchTotalCost[assignInfo.bIdx + 1] == 0) { // 跳过所有空batch
-                assignInfo.bIdx ++;
-            }
             assignInfo.bIdx ++;
             assignInfo.s1GIdx = 0;
             assignInfo.s2Idx = 0;
@@ -558,14 +571,14 @@ void SplitCore(const BaseInfo &baseInfo, const InnerSplitParams &innerSplitParam
     uint32_t maxCore = std::min(coreNum, splitBatchInfo.totalBlockNum);
     uint32_t minCore = static_cast<uint32_t>(std::sqrt(static_cast<float>(splitBatchInfo.totalBlockNum) + 0.25) + 0.5);
     minCore = std::min(minCore, maxCore);
-    uint32_t coreUse = 0;
-    uint32_t minMaxCost = splitBatchInfo.totalCost;
+    uint32_t coreUse = 0U;
+    uint32_t minMaxCost = UINT32_MAX;
     
-    uint32_t tmpMaxCost = 0;
-    uint32_t tmpCoreUse = 0;
+    uint32_t tmpMaxCost = 0U;
+    uint32_t tmpCoreUse = 0U;
     std::vector<uint32_t> tmpBlockNumOnCore(coreNum);
 
-    for (uint32_t i = minCore; i <= maxCore; i++) {
+    for (uint32_t i = minCore; i <= maxCore; ++i) {
         GetBlockNumOnCore(splitBatchInfo, i, tmpBlockNumOnCore, tmpCoreUse, tmpMaxCost);
         if (minMaxCost > tmpMaxCost) {
             minMaxCost = tmpMaxCost;
@@ -573,7 +586,7 @@ void SplitCore(const BaseInfo &baseInfo, const InnerSplitParams &innerSplitParam
             blockNumOnCore.assign(tmpBlockNumOnCore.begin(), tmpBlockNumOnCore.end());
         }
     }
-
+    coreUse = std::max(coreUse, 1U);    // 至少使用1个核，用于刷0
     res.usedCoreNum = coreUse;
     // 3、根据每个核的分配数量重建分核方案，获取切分点、记录归约信息等
     ReconSplitPlan(baseInfo, innerSplitParams, splitBatchInfo, blockNumOnCore, outerSplitParams, fDParams, res);
@@ -597,9 +610,9 @@ void SplitCore(const BaseInfo &baseInfo, const InnerSplitParams &innerSplitParam
         outerSplitParams.bN2End[i] += bN2Carry;
     }
 
-    outerSplitParams.bN2End[coreUse - 1] = baseInfo.bSize * baseInfo.n2Size;    
-    outerSplitParams.s2End[coreUse - 1] = 0U;    
-    outerSplitParams.gS1End[coreUse - 1] = 0U;    
+    outerSplitParams.bN2End[coreUse - 1] = baseInfo.bSize * baseInfo.n2Size;
+    outerSplitParams.s2End[coreUse - 1] = 0U;
+    outerSplitParams.gS1End[coreUse - 1] = 0U;
 }
 
 void SplitCoreOfBand(const BaseInfo &baseInfo, const InnerSplitParams &innerSplitParams, uint32_t coreNum, OuterSplitParams outerSplitParams, FlashDecodeParams fDParams, SplitCoreRes &res) {
