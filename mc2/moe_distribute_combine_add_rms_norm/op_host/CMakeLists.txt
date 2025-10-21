@@ -14,6 +14,13 @@ if (BUILD_OPEN_PROJECT)  # custom
     add_mc2_modules_sources(OPTYPE moe_distribute_combine_add_rms_norm moe_distribute_combine_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
     set(MC2_OPT ON PARENT_SCOPE)
     set(moe_distribute_combine_add_rms_norm_depends mc2/common mc2/3rd PARENT_SCOPE)
+    install(
+        DIRECTORY
+        ${OPS_ADV_DIR}/mc2/3rd/rms_norm
+        ${OPS_ADV_DIR}/mc2/3rd/norm_common
+        DESTINATION
+        ${IMPL_INSTALL_DIR}/ascendc/3rd
+    )
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_combine_add_rms_norm moe_distribute_combine_add_rms_norm ACLNNTYPE aclnn aclnn_inner) 
 endif()

@@ -173,7 +173,7 @@ macro(add_mc2_modules_sources)
       ${SOURCE_DIR}/../op_graph/moe_distribute_dispatch_v2_gen_task.cpp
       ${SOURCE_DIR}/../op_graph/moe_distribute_combine_gen_task.cpp
       ${SOURCE_DIR}/../op_graph/moe_distribute_combine_v2_gen_task.cpp
-      # ${SOURCE_DIR}/../op_graph/moe_distribute_combine_add_rms_norm_gen_task.cpp
+      ${SOURCE_DIR}/../op_graph/moe_distribute_combine_add_rms_norm_gen_task.cpp
       ${SOURCE_DIR}/../op_graph/allto_all_all_gather_batch_mat_mul_gen_task.cpp
       ${SOURCE_DIR}/../op_graph/bmm_reduce_scatter_all_to_all_gen_task.cpp
       ${SOURCE_DIR}/../op_graph/all_gather_matmul_gen_task.cpp
