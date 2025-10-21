@@ -393,7 +393,6 @@ aclnnStatus aclnnNsaSelectedAttention(
 #include "acl/acl.h"
 #include "aclnnop/aclnn_nsa_selected_attention.h"
 
-
 #define CHECK_RET(cond, return_expr)                   \
     do {                                               \
         if (!(cond)) {                                 \
@@ -438,13 +437,13 @@ int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); aclFinalize(); return ret);
     ret = aclrtCreateContext(context, deviceId);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateContext failed. ERROR: %d\n", ret); aclrtResetDevice(deviceId);
-                                  aclFinalize(); return ret);
+        aclFinalize(); return ret);
     ret = aclrtSetCurrentContext(*context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret);
-                                  aclrtDestroyContext(context); aclrtResetDevice(deviceId); aclFinalize(); return ret);
+        aclrtDestroyContext(context); aclrtResetDevice(deviceId); aclFinalize(); return ret);
     ret = aclrtCreateStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
-                                  aclrtDestroyContext(context); aclrtResetDevice(deviceId); aclFinalize(); return ret);
+        aclrtDestroyContext(context); aclrtResetDevice(deviceId); aclFinalize(); return ret);
     return 0;
 }
 

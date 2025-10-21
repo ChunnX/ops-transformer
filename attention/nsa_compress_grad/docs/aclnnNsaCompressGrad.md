@@ -372,17 +372,17 @@ aclnnStatus aclnnNsaCompressGrad(
 #define WARN_LOG(fmt, args...) fprintf(stdout, "[WARN]  " fmt "\n", ##args)
 #define ERROR_LOG(fmt, args...) fprintf(stderr, "[ERROR]  " fmt "\n", ##args)
 
-#define CHECK_RET(cond, return_expr) \
-  do {                               \
-    if (!(cond)) {                   \
-      return_expr;                   \
-    }                                \
-  } while (0)
+#define CHECK_RET(cond, return_expr)     \
+    do {                                 \
+        if (!(cond)) {                   \
+            return_expr;                 \
+        }                                \
+    } while (0)
 
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    printf(message, ##__VA_ARGS__); \
-  } while (0)
+#define LOG_PRINT(message, ...)         \
+    do {                                \
+        printf(message, ##__VA_ARGS__); \
+    } while (0)
 
 bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_t bufferSize)
 {
@@ -426,7 +426,7 @@ bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
   for (auto i : shape) {
-    shapeSize *= i;
+      shapeSize *= i;
   }
   return shapeSize;
 }
@@ -465,7 +465,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 
   // 调用aclCreateTensor接口创建aclTensor
     *xOrResult = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                                shape.data(), shape.size(), *deviceAddr);
+                                 shape.data(), shape.size(), *deviceAddr);
   return 0;
 }
 
@@ -494,17 +494,17 @@ int main() {
     int64_t SeqLenType = 0;
     char layOut[] = "TND";
 
-    void* outputGradDeviceAddr =  nullptr;
-    void* inputKVDeviceAddr =  nullptr;
-    void* weightDeviceAddr =  nullptr;
-    void* inputGradOutDeviceAddr =  nullptr;
-    void* weightGradOutDeviceAddr =  nullptr;
+    void* outputGradDeviceAddr = nullptr;
+    void* inputKVDeviceAddr = nullptr;
+    void* weightDeviceAddr = nullptr;
+    void* inputGradOutDeviceAddr = nullptr;
+    void* weightGradOutDeviceAddr = nullptr;
 
-    aclTensor* outputGrad =  nullptr;
-    aclTensor* inputKV =  nullptr;
-    aclTensor* weight =  nullptr;
-    aclTensor* inputGradOut =  nullptr;
-    aclTensor* weightGradOut =  nullptr;
+    aclTensor* outputGrad = nullptr;
+    aclTensor* inputKV = nullptr;
+    aclTensor* weight = nullptr;
+    aclTensor* inputGradOut = nullptr;
+    aclTensor* weightGradOut = nullptr;
 
     std::vector<float> inputGradOutHostData(seqLensSum * headNum * headDim, 0.0);
     std::vector<float> weightGradOutHostData(blockSize * headNum, 0.0);
@@ -518,7 +518,7 @@ int main() {
 
     // 创建dy aclTensor
     ret = CreateAclTensor(outputGradHostData, outputGradShape, &outputGradDeviceAddr, aclDataType::ACL_FLOAT16,
-                            &outputGrad);
+                          &outputGrad);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建x aclTensor
     ret = CreateAclTensor(inputKVHostData, inputKVShape, &inputKVDeviceAddr, aclDataType::ACL_FLOAT16, &inputKV);
@@ -538,8 +538,8 @@ int main() {
     aclOpExecutor* executor;
     // 调用aclnnGeGluBackward第一段接口
     ret = aclnnNsaCompressGradGetWorkspaceSize(
-            outputGrad, inputKV, weight, actSeqLenOptional, blockSize, blockStride, SeqLenType, layOut,
-            inputGradOut, weightGradOut, &workspaceSize, &executor);
+        outputGrad, inputKV, weight, actSeqLenOptional, blockSize, blockStride, SeqLenType, layOut,
+        inputGradOut, weightGradOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGeGluGradV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
