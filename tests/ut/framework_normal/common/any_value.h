@@ -43,6 +43,39 @@ public:
     template<typename T>
     static inline AnyValue CreateFrom(const T& value);
 
+    template <typename T>
+    void SetAttr(const std::string &item, T& faker) const
+    {
+        switch (type_) {
+            case ValueType::VT_BOOL:
+                faker.Attr(item, *reinterpret_cast<bool*>(valuePtr_.get()));
+                break;
+            case ValueType::VT_INT:
+                faker.Attr(item, *reinterpret_cast<int64_t*>(valuePtr_.get()));
+                break;
+            case ValueType::VT_FLOAT:
+                faker.Attr(item, *reinterpret_cast<float*>(valuePtr_.get()));
+                break;
+            case ValueType::VT_STRING:
+                faker.Attr(item, AscendString(reinterpret_cast<std::string*>(valuePtr_.get())->c_str()));
+                break;
+            case ValueType::VT_LIST_BOOL:
+                faker.Attr(item, *reinterpret_cast<std::vector<bool>*>(valuePtr_.get()));
+                break;
+            case ValueType::VT_LIST_INT:
+                faker.Attr(item, *reinterpret_cast<std::vector<int64_t>*>(valuePtr_.get()));
+                break;
+            case ValueType::VT_LIST_LIST_INT:
+                faker.Attr(item, *reinterpret_cast<std::vector<std::vector<int64_t>>*>(valuePtr_.get()));
+                break;
+            case ValueType::VT_LIST_FLOAT:
+                faker.Attr(item, *reinterpret_cast<std::vector<float>*>(valuePtr_.get()));
+                break;
+            default:
+                std::cout << "[ERROR]" << __FILE__ << ":" << __LINE__ << "The ValueType is not supported!" << std::endl;
+        }
+    }
+
     ValueType type_;
     std::shared_ptr<void> valuePtr_;
 };

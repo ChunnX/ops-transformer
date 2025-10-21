@@ -14,7 +14,7 @@
 #include "platform/platform_infos_def.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-#define DO_TILING(tilingContextPara)                                                                                          \
+#define DO_TILING(tilingPara)                                                                                          \
     auto contextFaker = gert::TilingContextFaker();                                                                    \
     /* 1. input/output information */                                                                                  \
     size_t inputNum = tilingContextPara.inputTensorDesc_.size();                                                       \
@@ -27,14 +27,22 @@
                                  tilingContextPara.inputTensorDesc_[index].dtype_,                                     \
                                  tilingContextPara.inputTensorDesc_[index].format_,                                    \
                                  tilingContextPara.inputTensorDesc_[index].format_);                                   \
-        inputTensors.push_back((gert::Tensor *)&tilingContextPara.inputTensorDesc_[index].shape_);                     \
+        if (tilingContextPara.inputTensorDesc_[index].shape_.GetStorageShape().GetDimNum() == 0){                      \
+            inputTensors.push_back(nullptr);                                                                           \
+        } else {                                                                                                       \
+            inputTensors.push_back((gert::Tensor *)&tilingContextPara.inputTensorDesc_[index].shape_);                 \
+        }                                                                                                              \
     }                                                                                                                  \
     for (size_t index = 0; index < outputNum; index++) {                                                               \
         contextFaker.NodeOutputTd(index,                                                                               \
                                   tilingContextPara.outputTensorDesc_[index].dtype_,                                   \
                                   tilingContextPara.outputTensorDesc_[index].format_,                                  \
                                   tilingContextPara.outputTensorDesc_[index].format_);                                 \
-        outputTensors.push_back((gert::Tensor *)&tilingContextPara.outputTensorDesc_[index].shape_);                   \
+        if (tilingContextPara.outputTensorDesc_[index].shape_.GetStorageShape().GetDimNum() == 0){                     \
+            outputTensors.push_back(nullptr);                                                                          \
+        } else {                                                                                                       \
+            outputTensors.push_back((gert::Tensor *)&tilingContextPara.outputTensorDesc_[index].shape_);               \
+        }                                                                                                              \
     }                                                                                                                  \
     contextFaker.InputTensors(inputTensors).OutputTensors(outputTensors);                                              \
     for (auto& attrInfo : tilingContextPara.attrs_) {                                                                  \
@@ -182,7 +190,8 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
                      ge::graphStatus                expectResult,
                      uint64_t                       expectTilingKey, 
                      const string&                  expectTilingData,
-                     const std::vector<size_t>&     expectWorkspaces)
+                     const std::vector<size_t>&     expectWorkspaces,
+                     uint64_t                       tilingDataReservedLen)
 {
     DO_TILING(tilingContextPara);
 
@@ -193,11 +202,13 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
     }
 
     // check workspace
-    size_t workspaceCount = tilingContext->GetWorkspaceNum();
-    if (workspaceCount > 0) {
-        auto workspaceSizes = tilingContext->GetWorkspaceSizes(workspaceCount);
-        for (size_t i = 0; i < workspaceCount; i++) {
-            ASSERT_EQ(workspaceSizes[i], expectWorkspaces[i]);
+    if (!expectWorkspaces.empty()) {
+        size_t workspaceCount = tilingContext->GetWorkspaceNum();
+        if (workspaceCount > 0) {
+            auto workspaceSizes = tilingContext->GetWorkspaceSizes(workspaceCount);
+            for (size_t i = 0; i < workspaceCount; i++) {
+                ASSERT_EQ(workspaceSizes[i], expectWorkspaces[i]);
+            }
         }
     }
 
@@ -206,9 +217,13 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
     ASSERT_EQ(tilingKeyResult, expectTilingKey);
 
     // check tiling data
-    auto rawTilingData = tilingContext->GetRawTilingData();
-    auto tilingDataResult = to_string<int64_t>(rawTilingData->GetData(), rawTilingData->GetDataSize());
-    EXPECT_EQ(tilingDataResult, expectTilingData);
+    if (expectTilingData != "") {
+        auto rawTilingData = tilingContext->GetRawTilingData();
+        auto tilingDataReservedSize = tilingDataReservedLen * sizeof(uint64_t);
+        auto tilingDataResult = to_string<int64_t>(rawTilingData->GetData() + tilingDataReservedSize,
+                                                   rawTilingData->GetDataSize() - tilingDataReservedSize);
+        EXPECT_EQ(tilingDataResult, expectTilingData);
+    }
 }
 
 bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo)

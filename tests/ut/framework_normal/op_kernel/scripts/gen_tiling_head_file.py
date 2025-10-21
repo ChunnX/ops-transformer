@@ -116,19 +116,27 @@ def load_lib_v2(hight_priority_path:str = None):
     return libregister
 
 
+def get_asc_file_path(opname: str):
+    asc_file_path = ""
+    project_path = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + "/../../../../../")
+    for repo_dir in os.listdir(project_path):
+        repo_dir_path = os.path.join(project_path, repo_dir)
+        if os.path.isdir(repo_dir_path):
+            for op_dir in os.listdir(repo_dir_path):
+                if op_dir == opname:
+                    asc_file_path = os.path.join(repo_dir_path, op_dir) + f"/op_kernel/{opname}.cpp"
+                    return asc_file_path
+    return asc_file_path
+
+
 def get_default_tiling_struct(opname: str):
-    default_tiling_struct = ""
-    old_path = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + "/../ops/built-in/tbe/impl/ascendc")
-    old_path = os.path.join(old_path, opname)
-    new_base_path = (os.path.dirname(os.path.abspath(__file__)) + "/../ops/")
-    pattern = f"*/{opname}"
-    new_paths = list(Path(new_base_path).glob(pattern))
-    asc_file_path = old_path
-    if len(new_paths) > 0:
-        asc_file_path = str(new_paths[0])
+    asc_file_path = get_asc_file_path(opname)
+    if asc_file_path == "":
+        raise FileNotFoundError(f"ERROR Not found {opname}.cpp")
     print(f"asc_file_path:{asc_file_path}")
-    command = ["grep", "-rnwE", "REGISTER_TILING_DEFAULT|BroadcastSch", asc_file_path]
+    command = ["grep", "-rnwE", "REGISTER_TILING_DEFAULT", asc_file_path]
     print("command:", " ".join(command))
+    default_tiling_struct = ""
     try:
         result = subprocess.run(command, text=True, capture_output=True, check=True)
         default_tiling_struct = result.stdout
@@ -137,7 +145,7 @@ def get_default_tiling_struct(opname: str):
         default_tiling_struct = default_tiling_struct.replace(')', '')
         default_tiling_struct = default_tiling_struct.strip()
         print("default_tiling_struct:", default_tiling_struct)
-        if result.returncode == 0:
+        if result.returncode != 0:
             default_tiling_struct = "TestUtDefaultTilingStruct"
     except subprocess.CalledProcessError as e:
         print(e)

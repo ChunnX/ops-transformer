@@ -10,7 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
-#include "infershape_context_faker.h"
+#include "infer_shape_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 class MoeFinalizeRoutingInfershape : public testing::Test {

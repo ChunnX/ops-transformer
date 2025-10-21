@@ -41,6 +41,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
     target_include_directories(
       ${OP_TILING_MODULE_NAME}_cases_obj PRIVATE ${UT_COMMON_INC} ${GTEST_INCLUDE} ${ASCEND_DIR}/include
                                                  ${ASCEND_DIR}/include/base/context_builder ${OP_TILING_INCLUDE}
+                                                 $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       )
     target_compile_definitions(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
             LOG_CPP
@@ -58,8 +59,10 @@ if(UT_TEST_ALL OR OP_HOST_UT)
     # add opinfershape ut common object: transformer_op_infershape_ut_common_obj
     add_library(${OP_INFERSHAPE_MODULE_NAME}_common_obj OBJECT)
     file(GLOB OP_INFERSHAPE_UT_COMMON_SRC 
-      ${UT_COMMON_INC}/infershape_context_faker.cpp
-      ${UT_COMMON_INC}/infershape_case_executor.cpp
+      ${UT_COMMON_INC}/infer_shape_context_faker.cpp
+      ${UT_COMMON_INC}/infer_shape_case_executor.cpp
+      ${UT_COMMON_INC}/infer_datatype_context_faker.cpp
+      ${UT_COMMON_INC}/infer_shaperange_context_faker.cpp
     )
     target_sources(${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE ${OP_INFERSHAPE_UT_COMMON_SRC})
     target_include_directories(
@@ -76,6 +79,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
     target_include_directories(
       ${OP_INFERSHAPE_MODULE_NAME}_cases_obj PRIVATE ${UT_COMMON_INC} ${GTEST_INCLUDE} ${ASCEND_DIR}/include
                                                      ${ASCEND_DIR}/pkg_inc ${ASCEND_DIR}/include/base/context_builder
+                                                     ${OPBASE_INC_DIRS}
       )
     target_link_libraries(
       ${OP_INFERSHAPE_MODULE_NAME}_cases_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> gtest
@@ -126,6 +130,8 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     target_include_directories(
       ${OP_KERNEL_MODULE_NAME}_common_obj PRIVATE ${JSON_INCLUDE_DIR} ${GTEST_INCLUDE}
                                                   ${ASCEND_DIR}/include/base/context_builder ${ASCEND_DIR}/pkg_inc
+                                                  ${ASCEND_DIR}/include/experiment
+                                                  ${ASCEND_DIR}/include/experiment/metadef/common/util
       )
     target_link_libraries(
       ${OP_KERNEL_MODULE_NAME}_common_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> json gtest c_sec
@@ -263,6 +269,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         ${opName}_${socVersion}_tiling_tmp
         PRIVATE ${ASCEND_DIR}/include/op_common/atvoss ${ASCEND_DIR}/include/op_common
                 ${ASCEND_DIR}/include/op_common/op_host ${PROJECT_SOURCE_DIR}/common/include
+                ${ASCEND_DIR}/include/experiment ${ASCEND_DIR}/include/experiment/metadef/common/util
         )
       target_compile_definitions(${opName}_${socVersion}_tiling_tmp PRIVATE LOG_CPP _GLIBCXX_USE_CXX11_ABI=0)
       target_link_libraries(
