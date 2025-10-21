@@ -17,7 +17,6 @@
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_swiglu_quant.h"
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
 do {                               \
@@ -173,7 +172,7 @@ int main() {
                         size * sizeof(out1Data[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < size; j++) {
-        LOG_PRINT("result[%d] is: %d\n", j, out1Data[j]);
+        LOG_PRINT("result[%ld] is: %d\n", j, out1Data[j]);
     }
     size = GetShapeSize(outputScaleShape);
     std::vector<float> out2Data(size, 0);
@@ -181,7 +180,7 @@ int main() {
                         size * sizeof(out2Data[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < size; j++) {
-        LOG_PRINT("result[%d] is: %f\n", j, out2Data[j]);
+        LOG_PRINT("result[%ld] is: %f\n", j, out2Data[j]);
     }
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(x);
@@ -206,5 +205,5 @@ int main() {
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    _exit(0);
+    return 0;
 }

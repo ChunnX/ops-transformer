@@ -12,7 +12,6 @@
 #include "aclnnop/aclnn_moe_token_permute_grad.h"
 #include <iostream>
 #include <vector>
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr)                                           \
   do {                                                                         \
@@ -190,5 +189,5 @@ int main() {
   aclrtResetDevice(deviceId);
   aclFinalize();
 
-  _exit(0);
+  return 0;
 }

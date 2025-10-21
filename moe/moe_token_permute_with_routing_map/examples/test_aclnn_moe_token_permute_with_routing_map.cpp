@@ -12,7 +12,6 @@
 #include "aclnnop/aclnn_moe_token_permute_with_routing_map.h"
 #include <iostream>
 #include <vector>
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -150,5 +149,5 @@ int main() {
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    _exit(0);
+    return 0;
 }

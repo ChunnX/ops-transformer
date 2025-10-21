@@ -12,7 +12,6 @@
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_dequant_rope_quant_kvcache.h"
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -248,5 +247,5 @@ int main() {
   aclrtResetDevice(deviceId);
   aclFinalize();
 
-  _exit(0);
+  return 0;
 }

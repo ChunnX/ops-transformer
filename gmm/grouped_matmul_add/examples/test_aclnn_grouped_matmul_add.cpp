@@ -12,7 +12,6 @@
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_add.h"
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -201,5 +200,5 @@ int main() {
   aclrtDestroyStream(stream);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  _exit(0);
+  return 0;
 }

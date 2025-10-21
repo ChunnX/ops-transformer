@@ -12,7 +12,6 @@
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_compute_expert_tokens.h"
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -159,5 +158,5 @@ int main()
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    _exit(0);
+    return 0;
 }

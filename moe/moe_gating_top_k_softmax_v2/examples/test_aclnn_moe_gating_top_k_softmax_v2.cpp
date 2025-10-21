@@ -12,7 +12,6 @@
 #include "aclnnop/aclnn_moe_gating_top_k_softmax_v2.h"
 #include <iostream>
 #include <vector>
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -156,5 +155,5 @@ int main() {
   aclrtDestroyStream(stream);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  _exit(0);
+  return 0;
 }

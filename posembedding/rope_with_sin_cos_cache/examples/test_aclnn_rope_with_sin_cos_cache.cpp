@@ -13,7 +13,6 @@
 #include "acl/acl.h"
 #include "aclnnop/level2/aclnn_rope_with_sin_cos_cache.h"
 #include <iostream>
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr)                                           \
   do {                                                                         \
@@ -229,5 +228,5 @@ int main() {
   aclrtResetDevice(deviceId);
   aclFinalize();
 
-  _exit(0);
+  return 0;
 }
