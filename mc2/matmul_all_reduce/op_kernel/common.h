@@ -303,10 +303,6 @@ __aicore__ inline void CastBFtoFloatOnAiv0Impl(
     uint32_t cpOutLen = size * sizeof(float);
     DataCopyExtParams cpOutParams{1, cpOutLen, 0, 0, 0};
     DataCopyPad(gmDst, yLocal, cpOutParams);
-
-    event_t eventIdMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-    SetFlag<HardEvent::MTE3_V>(eventIdMTE3ToV);
-    WaitFlag<HardEvent::MTE3_V>(eventIdMTE3ToV);
 }
 
 __aicore__ inline void CastBFtoFloatOnAiv0(GM_ADDR dst, GM_ADDR src, uint32_t size, TBuf<TPosition::VECCALC>& tmpBuf)
@@ -319,6 +315,9 @@ __aicore__ inline void CastBFtoFloatOnAiv0(GM_ADDR dst, GM_ADDR src, uint32_t si
     for (auto offset = 0; offset < size; offset += tmpBufCount) {
         auto calCount = (size - offset) > tmpBufCount ? tmpBufCount : (size - offset);
         CastBFtoFloatOnAiv0Impl(dst + offset * sizeof(float), src + offset * sizeof(bfloat16_t), calCount, tmpBuf);
+        if (offset + calCount < size) {
+            PipeBarrier<PIPE_ALL>();
+        }
     }
 }
 
