@@ -207,8 +207,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>ND</td>
             <td>
             <ul>
-                <li>Q_S不为1时建议shape输入 (Q_S,KV_S); (B,Q_S,KV_S); (1,Q_S,KV_S); (B,1,Q_S,KV_S); (1,1,Q_S,KV_S)。</li>
-                <li>Q_S为1时建议shape输入(B,KV_S); (B,1,KV_S); (B,1,1,KV_S)。</li>
+                <li>spareseMode = 2、3、4时，attenMaskOptional的shape需要为（2048,2048）或（1,2048,2048）或（1,1,2048,2048）。</li>
+                <li>spareseMode为其他值且Q_S不为1时建议shape输入 (Q_S,KV_S); (B,Q_S,KV_S); (1,Q_S,KV_S); (B,1,Q_S,KV_S); (1,1,Q_S,KV_S)。</li>
+                <li>spareseMode为其他值且Q_S为1时建议shape输入(B,KV_S); (B,1,KV_S); (B,1,1,KV_S)。</li>
             </ul>
             </td>
             <td>×</td>
@@ -603,7 +604,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>输入</td>
             <td>表示高精度、高性能以及是否进行行无效修正</td>
             <td>
-            具体参数使用见<a href="#InnerPrecision">InnerPrecision</a>&lt;blockquote&gt;</td>
+            具体参数使用见<a href="#innerPrecise">innerPrecise</a></td>
             <td>INT64</td>
             <td>-</td>
             <td>-</td>
@@ -845,26 +846,26 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tbody>
         <tr>
             <td>0</td>
-            <td>defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；如果传入，则需要传入完整的attenmask矩阵（Q_S * KV_S），表示preTokens和nextTokens之间的部分需要计算</td>
+            <td>defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens；如果传入，则需要传入完整的attenmask矩阵，表示preTokens和nextTokens之间的部分需要计算</td>
             <td>-</td>
         </tr>
         <tr>
             <td>1</td>
-            <td>allMask，必须传入完整的attenmask矩阵（Q_S * KV_S）</td>
+            <td>allMask，必须传入完整的attenmask矩阵</td>
             <td>-</td>
         </tr>
         <tr>
             <td>2</td>
-            <td>leftUpCausal模式的mask，需要传入优化后的attenmask矩阵（2048*2048）</td>
+            <td>leftUpCausal模式的mask，需要传入优化后的attenmask矩阵</td>
             <td rowspan="3">传入的attenMask为下三角矩阵，对角线全0。不传入attenMask或者传入的shape不正确报错。</td>
         </tr>
         <tr>
             <td>3</td>
-            <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵（2048*2048）</td>
+            <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵</td>
         </tr>
         <tr>
             <td>4</td>
-            <td>band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）</td>
+            <td>band模式的mask，需要传入优化后的attenmask矩阵</td>
         </tr>
         <tr>
             <td>5</td>
