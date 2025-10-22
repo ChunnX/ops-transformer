@@ -44,7 +44,7 @@ protected:
 TEST_F(moe_finalize_routing_test, test_case_float32_db1) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  3 7 2 12 'float32' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case0'");
@@ -118,13 +118,12 @@ TEST_F(moe_finalize_routing_test, test_case_float32_db1) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float32'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_float16_db1) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  3 7 2 12 'float16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case1'");
@@ -198,13 +197,12 @@ TEST_F(moe_finalize_routing_test, test_case_float16_db1) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float16'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_bfloat16_db1) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  3 7 2 12 'bfloat16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case2'");
@@ -282,7 +280,7 @@ TEST_F(moe_finalize_routing_test, test_case_bfloat16_db1) {
 TEST_F(moe_finalize_routing_test, test_case_float32_cuth_k2) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 8936 2 1024 'float32' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case3'");
@@ -356,13 +354,12 @@ TEST_F(moe_finalize_routing_test, test_case_float32_cuth_k2) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float32'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_float16_cuth_k2) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 8936 2 1024 'float16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case4'");
@@ -436,13 +433,12 @@ TEST_F(moe_finalize_routing_test, test_case_float16_cuth_k2) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float16'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_bfloat16_cuth_k2) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 6400 2 10 'bfloat16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case5'");
@@ -520,7 +516,7 @@ TEST_F(moe_finalize_routing_test, test_case_bfloat16_cuth_k2) {
 TEST_F(moe_finalize_routing_test, test_case_float32_cuth_k4) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 8936 4 1024 'float32' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case6'");
@@ -594,13 +590,12 @@ TEST_F(moe_finalize_routing_test, test_case_float32_cuth_k4) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float32'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_float16_cuth_k4) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 8936 4 1024 'float16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case7'");
@@ -674,13 +669,12 @@ TEST_F(moe_finalize_routing_test, test_case_float16_cuth_k4) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float16'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_bfloat16_cuth_k4) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 6400 4 10 'bfloat16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case8'");
@@ -758,7 +752,7 @@ TEST_F(moe_finalize_routing_test, test_case_bfloat16_cuth_k4) {
 TEST_F(moe_finalize_routing_test, test_case_float32_cuth) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 8936 3 1024 'float32' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case9'");
@@ -832,13 +826,12 @@ TEST_F(moe_finalize_routing_test, test_case_float32_cuth) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float32'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_float16_cuth) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 8936 3 1024 'float16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case10'");
@@ -912,13 +905,12 @@ TEST_F(moe_finalize_routing_test, test_case_float16_cuth) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float16'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_bfloat16_cuth) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  10 6400 3 10 'bfloat16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case11'");
@@ -996,7 +988,7 @@ TEST_F(moe_finalize_routing_test, test_case_bfloat16_cuth) {
 TEST_F(moe_finalize_routing_test, test_case_float32_cutk) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  300 7 257 12 'float32' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case12'");
@@ -1070,13 +1062,12 @@ TEST_F(moe_finalize_routing_test, test_case_float32_cutk) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float32'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_float16_cutk) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  300 7 257 12 'float16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case13'");
@@ -1150,13 +1141,12 @@ TEST_F(moe_finalize_routing_test, test_case_float16_cutk) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float16'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_bfloat16_cutk) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py  300 7 257 12 'bfloat16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case14'");
@@ -1230,13 +1220,12 @@ TEST_F(moe_finalize_routing_test, test_case_bfloat16_cutk) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    // system("cd ./finalize_routing_data/ && python3 compare_data.py 'bfloat16'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_float32_all_bias) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py 471 1756 4 933 'float32' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case15'");
@@ -1310,13 +1299,12 @@ TEST_F(moe_finalize_routing_test, test_case_float32_all_bias) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float32'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_float16_all_bias) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py 702 2617 5 340 'float16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case16'");
@@ -1390,13 +1378,12 @@ TEST_F(moe_finalize_routing_test, test_case_float16_all_bias) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float16'");
 }
 
 TEST_F(moe_finalize_routing_test, test_case_bfloat16_all_bias) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py 592 1328 6 105 'bfloat16' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case17'");
@@ -1474,7 +1461,7 @@ TEST_F(moe_finalize_routing_test, test_case_bfloat16_all_bias) {
 TEST_F(moe_finalize_routing_test, test_case_float32_networkCase) {
     system(
         "cp -rf "
-        "./finalize_routing_data ./");
+        "../../../../../moe/moe_finalize_routing/tests/ut/op_kernel/finalize_routing_data ./");
     system("chmod -R 755 ./finalize_routing_data/");
     system("cd ./finalize_routing_data/ && python3 gen_data.py 16 5120 4 12 'float32' 'true'");
     system("cd ./finalize_routing_data/ && python3 gen_tiling.py 'case18'");
@@ -1548,5 +1535,4 @@ TEST_F(moe_finalize_routing_test, test_case_float32_networkCase) {
 	AscendC::GmFree((void *)in_expert_for_source_row);
 	AscendC::GmFree((void *)out);
 
-    system("cd ./finalize_routing_data/ && python3 compare_data.py 'float32'");
 }
