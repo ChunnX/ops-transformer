@@ -14,7 +14,7 @@
 #include <cstdint>
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
-#include "test_dequant_rope_quant_kvcache.h"
+#include "dequant_rope_quant_kvcache_tiling.h"
 #include "data_utils.h"
 
 #include <cstdint>
