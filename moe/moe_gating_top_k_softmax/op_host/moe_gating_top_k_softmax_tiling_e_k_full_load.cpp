@@ -287,11 +287,11 @@ bool MoeGatingTopKSoftmaxEKFullLoadTiling::isBufferSizeEnough(
 }
 
 uint32_t MoeGatingTopKSoftmaxEKFullLoadTiling::calcMaxRowInUb(
-    const bool doubleBufferFlag, const uint64_t ubSizeLocal, const ge::DataType dtypeLocal, const uint32_t kLocal,
+    const bool doubleBufferFlagLocal, const uint64_t ubSizeLocal, const ge::DataType dtypeLocal, const uint32_t kLocal,
     const uint32_t blockRow)
 {
     uint32_t ubOuter = 1;
-    uint64_t tmpUbSize = doubleBufferFlag ? ubSizeLocal / static_cast<uint64_t>(2) : ubSizeLocal;
+    uint64_t tmpUbSize = doubleBufferFlagLocal ? ubSizeLocal / static_cast<uint64_t>(2) : ubSizeLocal;
     uint64_t curRowInUb;
     while (true) {
         curRowInUb = CeilDiv(blockRow, ubOuter);
