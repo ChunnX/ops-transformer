@@ -300,6 +300,9 @@ ge::graphStatus TilingCompute(gert::TilingContext* context, const int64_t topK)
     SetTilingKey(context, param);
     SetTilingData(context, param);
     DebugPrint(context, param);
+    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t* workspaces = context->GetWorkspaceSizes(1);
+    workspaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
 
     return context->SetTilingKey(param.core.tilingKey);
 }
@@ -309,9 +312,6 @@ static ge::graphStatus TilingPrepareForMoeTokenUnpermute(gert::TilingParseContex
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
-
-struct MoeTokenUnpermuteCompileInfo {
-};
 
 IMPL_OP_OPTILING(MoeTokenUnpermute)
     .Tiling(TilingMoeTokenUnpermute)

@@ -92,6 +92,8 @@ TILING_DATA_FIELD_DEF(int64_t, buffer_num);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MoeTokenUnpermute, MoeTokenUnpermuteTilingData)
+struct MoeTokenUnpermuteCompileInfo {
+};
 
 } // namespace optiling
 #endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_UNPERMUTE_H

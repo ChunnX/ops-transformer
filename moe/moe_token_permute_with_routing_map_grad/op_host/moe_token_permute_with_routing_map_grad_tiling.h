@@ -39,6 +39,8 @@ TILING_DATA_FIELD_DEF_STRUCT(
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGrad, MoeTokenPermuteWithRoutingMapGradTilingData)
+struct MoeTokenPermuteWithRoutingMapGradCompileInfo {
+};
 
 } // namespace optiling
 #endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_GRAD_H

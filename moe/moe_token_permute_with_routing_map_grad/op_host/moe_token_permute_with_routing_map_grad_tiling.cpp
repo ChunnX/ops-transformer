@@ -340,9 +340,6 @@ static inline ge::graphStatus TilingPrepareForMoeTokenPermuteWithRoutingMapGrad(
     return ge::GRAPH_SUCCESS;
 }
 
-struct MoeTokenPermuteWithRoutingMapGradCompileInfo {
-};
-
 IMPL_OP_OPTILING(MoeTokenPermuteWithRoutingMapGrad)
     .Tiling(Tiling4MoeTokenPermuteWithRoutingMapGrad)
     .TilingParse<MoeTokenPermuteWithRoutingMapGradCompileInfo>(TilingPrepareForMoeTokenPermuteWithRoutingMapGrad);
