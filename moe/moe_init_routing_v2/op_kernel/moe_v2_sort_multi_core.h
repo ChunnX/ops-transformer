@@ -73,7 +73,9 @@ private:
     int64_t perCoreExpert;
     int64_t needInitExpertCore;
     int64_t currentCoreExpert;
-
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
+    int64_t perCoreOffset;
+#endif
     static constexpr int64_t MAX_MRGSORT_LIST = 4;
 };
 
@@ -81,10 +83,18 @@ __aicore__ inline void MoeV2SortMultiCore::InitExpertTokensGlobalMemory()
 {
     if (this->blockIdx < this->needInitExpertCore) {
         if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE) {
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
+            InitGlobalMemory(expertTokensCountOrCumsumGm, Align(this->currentCoreExpert, sizeof(int32_t)), 0);
+#else
             InitGlobalMemory(expertTokensCountOrCumsumGm, currentCoreExpert, 0);
+#endif
         }
         if (this->expertTokensBeforeCapacityFlag == EXERPT_TOKENS_BEFORE_CAPACITY) {
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
+            InitGlobalMemory(expertTokensBeforeCapacityGm, Align(this->currentCoreExpert, sizeof(int32_t)), 0);
+#else
             InitGlobalMemory(expertTokensBeforeCapacityGm, currentCoreExpert, 0);
+#endif
         }
     }
 }
@@ -97,7 +107,7 @@ __aicore__ inline void MoeV2SortMultiCore::ResetIO(GM_ADDR expandedRowIdx, GM_AD
     expandDstToSrcRowGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expandedRowIdx),
         Align(this->totalLength, sizeof(int32_t)));
     expertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace) +
-                                Align(this->totalLength, sizeof(int32_t)) + this->blockIdx * sortTotalLength,
+                                Align(this->totalLength, sizeof(int32_t)) + this->blockIdx * perCoreOffset,
                                 this->sortTotalLength);
     this->srcWsIndex = 0;
     this->needInitExpertCore = 0;
@@ -392,7 +402,9 @@ __aicore__ inline void MoeV2SortMultiCore::Init(GM_ADDR expertIdx, GM_ADDR exper
     this->vbsTilingData = &(tilingData->vbsComputeParamsOp);
     this->vmsTilingData = &(tilingData->vmsMiddleComputeParamsOp);
     this->sortOutTilingData = &(tilingData->sortOutComputeParamsOp);
-
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
+    this->perCoreOffset = this->vbsTilingData->perCoreElements;
+#endif
     this->blockIdx = GetBlockIdx();
     this->tileLength = this->vbsTilingData->perCorePerLoopElements;
     this->sortTotalLength = this->vbsTilingData->perCoreElements;
