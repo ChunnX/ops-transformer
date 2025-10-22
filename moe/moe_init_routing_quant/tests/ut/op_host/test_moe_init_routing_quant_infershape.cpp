@@ -112,3 +112,328 @@ TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_01)
     ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 8};
     ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
 }
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_02)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};
+    gert::StorageShape RowIdxShape = {{-1, -1}, {-1, -1}};
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};
+    std::vector<int64_t> expandedXShap = {-1, -1};
+    std::vector<int64_t> expandedRowIdxShape = {-1};
+    std::vector<int64_t> expandedExpertShape = {-1};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_03)
+{
+    gert::StorageShape xShape = {{-1, 2}, {-1, 2}};
+    gert::StorageShape RowIdxShape = {{-1, -1}, {-1, -1}};
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};
+    std::vector<int64_t> expandedXShap = {-1, 2};
+    std::vector<int64_t> expandedRowIdxShape = {-1};
+    std::vector<int64_t> expandedExpertShape = {-1};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_04)
+{
+    gert::StorageShape xShape = {{2, -1}, {2, -1}};
+    gert::StorageShape RowIdxShape = {{-1, -1}, {-1, -1}};
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};
+    std::vector<int64_t> expandedXShap = {-1, -1};
+    std::vector<int64_t> expandedRowIdxShape = {-1};
+    std::vector<int64_t> expandedExpertShape = {-1};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_05)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{-1, -1}, {-1, -1}};
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};
+    std::vector<int64_t> expandedXShap = {-1, 3};
+    std::vector<int64_t> expandedRowIdxShape = {-1};
+    std::vector<int64_t> expandedExpertShape = {-1};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_06)
+{
+    gert::StorageShape xShape = {{-2}, {-2}};
+    gert::StorageShape RowIdxShape = {{-2}, {-2}};
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};
+    std::vector<int64_t> expandedXShap = {-1, -1};
+    std::vector<int64_t> expandedRowIdxShape = {-1};
+    std::vector<int64_t> expandedExpertShape = {-1};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_07)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};
+    gert::StorageShape RowIdxShape = {{-2}, {-2}};
+    gert::StorageShape expertIdxShape = {{-2}, {-2}};
+    std::vector<int64_t> expandedXShap = {-1, -1};
+    std::vector<int64_t> expandedRowIdxShape = {-1};
+    std::vector<int64_t> expandedExpertShape = {-1};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_08)
+{
+    gert::StorageShape xShape = {{-1, 2}, {-1, 2}};
+    gert::StorageShape RowIdxShape = {{-1, 3}, {-1, 3}};
+    gert::StorageShape expertIdxShape = {{2, -1}, {2, -1}};
+    std::vector<int64_t> expandedXShap = {3, 2};
+    std::vector<int64_t> expandedRowIdxShape = {6};
+    std::vector<int64_t> expandedExpertShape = {6};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_09)
+{
+    gert::StorageShape xShape = {{2, -1}, {2, -1}};
+    gert::StorageShape RowIdxShape = {{2, 3}, {2, 3}};
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};
+    std::vector<int64_t> expandedXShap = {3, -1};
+    std::vector<int64_t> expandedRowIdxShape = {6};
+    std::vector<int64_t> expandedExpertShape = {6};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_10)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{-1, -1}, {-1, -1}};
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};
+    std::vector<int64_t> expandedXShap = {-1, 3};
+    std::vector<int64_t> expandedRowIdxShape = {-1};
+    std::vector<int64_t> expandedExpertShape = {-1};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_11)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{2, 4}, {2, 4}};
+    gert::StorageShape expertIdxShape = {{2, 4}, {2, 4}};
+    std::vector<int64_t> expandedXShap = {8, 3};
+    std::vector<int64_t> expandedRowIdxShape = {8};
+    std::vector<int64_t> expandedExpertShape = {8};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 2};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_12)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{2, 4}, {2, 4}};
+    gert::StorageShape expertIdxShape = {{2, 4}, {2, 4}};
+    std::vector<int64_t> expandedXShap = {4, 3};
+    std::vector<int64_t> expandedRowIdxShape = {8};
+    std::vector<int64_t> expandedExpertShape = {8};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 1};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_13)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{2, 4}, {2, 4}};
+    gert::StorageShape expertIdxShape = {{2, 4}, {2, 4}};
+    std::vector<int64_t> expandedXShap = {8, 3};
+    std::vector<int64_t> expandedRowIdxShape = {8};
+    std::vector<int64_t> expandedExpertShape = {8};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShap, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 3};
+    ExeTestCase(ioInfoT, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_14)
+{
+    gert::StorageShape xShape = {{-1}, {-1}};  // 对应x_tensor_desc形状{-1}
+    gert::StorageShape rowIdxShape = {{-1, -1}, {-1, -1}};  // 对应row_idx形状{-1, -1}
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};  // 对应expert_idx形状{-1, -1}
+    std::vector<int64_t> expandedXShape = {};  // 失败用例输出为空
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);  // 期望失败
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_15)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{-1}, {-1}};  // row_idx形状{-1}
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};  // expert_idx形状{-1, -1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_16)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{-1, -1}, {-1, -1}};  // row_idx形状{-1, -1}
+    gert::StorageShape expertIdxShape = {{-1}, {-1}};  // expert_idx形状{-1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_17)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{2}, {2}};  // row_idx形状{2}
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};  // expert_idx形状{-1, -1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_18)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{2}, {2}};  // row_idx形状{2}
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};  // expert_idx形状{-1, -1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_19)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{-1, -1}, {-1, -1}};  // row_idx形状{-1, -1}
+    gert::StorageShape expertIdxShape = {{2}, {2}};  // expert_idx形状{2}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_20)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{-1, -1}, {-1, -1}};  // row_idx形状{-1, -1}
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};  // expert_idx形状{-1, -1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, -1};  // active_num=-1
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_21)
+{
+    gert::StorageShape xShape = {{2, -1}, {2, -1}};  // x形状{2, -1}
+    gert::StorageShape rowIdxShape = {{3, -1}, {3, -1}};  // row_idx形状{3, -1}
+    gert::StorageShape expertIdxShape = {{-1, -1}, {-1, -1}};  // expert_idx形状{-1, -1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 2};  // active_num=2
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_22)
+{
+    gert::StorageShape xShape = {{2, -1}, {2, -1}};  // x形状{2, -1}
+    gert::StorageShape rowIdxShape = {{-1, -1}, {-1, -1}};  // row_idx形状{-1, -1}
+    gert::StorageShape expertIdxShape = {{3, -1}, {3, -1}};  // expert_idx形状{3, -1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 2};  // active_num=2
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_23)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{2, -1}, {2, -1}};  // row_idx形状{2, -1}
+    gert::StorageShape expertIdxShape = {{3, -1}, {3, -1}};  // expert_idx形状{3, -1}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 2};  // active_num=2
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_24)
+{
+    gert::StorageShape xShape = {{-1, -1}, {-1, -1}};  // x形状{-1, -1}
+    gert::StorageShape rowIdxShape = {{-1, 2}, {-1, 2}};  // row_idx形状{-1, 2}
+    gert::StorageShape expertIdxShape = {{-1, 3}, {-1, 3}};  // expert_idx形状{-1, 3}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 2};  // active_num=2
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_25)
+{
+    gert::StorageShape xShape = {{2, 5}, {2, 5}};  // x形状{2, 5}
+    gert::StorageShape rowIdxShape = {{2}, {2}};  // row_idx形状{2}
+    gert::StorageShape expertIdxShape = {{2, 3}, {2, 3}};  // expert_idx形状{2, 3}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_26)
+{
+    gert::StorageShape xShape = {{2, 5}, {2, 5}};  // x形状{2, 5}
+    gert::StorageShape rowIdxShape = {{2, 3}, {2, 3}};  // row_idx形状{2, 3}
+    gert::StorageShape expertIdxShape = {{2}, {2}};  // expert_idx形状{2}
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}

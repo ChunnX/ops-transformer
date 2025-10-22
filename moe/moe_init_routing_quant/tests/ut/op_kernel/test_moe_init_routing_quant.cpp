@@ -69,8 +69,8 @@ TEST_F(moe_init_routing_quant_test, test_case_0) {
   size_t workspace_FileSize =
       num_rows * k * sizeof(float) * 2 * 3 + blockDim * 32 * 2 + num_rows * k * sizeof(int32_t) + 16781184;
   size_t tiling_FileSize = 48 * sizeof(int64_t);
-
   uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
+
   uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
   uint8_t* rowIdx = (uint8_t*)AscendC::GmAlloc(rowIdx_FileSize);
   uint8_t* expandedX = (uint8_t*)AscendC::GmAlloc(expandedX_FileSize);
@@ -78,7 +78,6 @@ TEST_F(moe_init_routing_quant_test, test_case_0) {
   uint8_t* expandedExpertIdx = (uint8_t*)AscendC::GmAlloc(expandedExpertIdx_FileSize);
   uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
   uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
-
   system(
       "cp -r "
       "./moe_init_routing_quant_data ./");
@@ -98,9 +97,6 @@ TEST_F(moe_init_routing_quant_test, test_case_0) {
   ICPU_SET_TILING_KEY(tilingKey);
   ICPU_RUN_KF(moe_init_routing_quant, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
               workspace, tiling);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_0.bin", expandedX, expandedX_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
   AscendC::GmFree((void*)x);
   AscendC::GmFree((void*)expertIdx);
@@ -161,9 +157,6 @@ TEST_F(moe_init_routing_quant_test, test_case_1) {
   ICPU_SET_TILING_KEY(tilingKey);
   ICPU_RUN_KF(moe_init_routing_quant, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
               workspace, tiling);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_0.bin", expandedX, expandedX_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
   AscendC::GmFree((void*)x);
   AscendC::GmFree((void*)expertIdx);
@@ -224,9 +217,6 @@ TEST_F(moe_init_routing_quant_test, test_case_2) {
   ICPU_SET_TILING_KEY(tilingKey);
   ICPU_RUN_KF(moe_init_routing_quant, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
               workspace, tiling);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_0.bin", expandedX, expandedX_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
   AscendC::GmFree((void*)x);
   AscendC::GmFree((void*)expertIdx);
@@ -287,9 +277,6 @@ TEST_F(moe_init_routing_quant_test, test_case_3) {
   ICPU_SET_TILING_KEY(tilingKey);
   ICPU_RUN_KF(moe_init_routing_quant, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
               workspace, tiling);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_0.bin", expandedX, expandedX_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
-  // WriteFile(path + "/moe_init_routing_quant_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
   AscendC::GmFree((void*)x);
   AscendC::GmFree((void*)expertIdx);

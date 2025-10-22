@@ -58,3 +58,88 @@ TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_float) {
     std::vector<size_t> expectWorkspaces = {16777448};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_multi_core) {
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t tokenNum = 16384;
+    int64_t topk = 3;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{tokenNum, 5}, {tokenNum, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{tokenNum * topk, 5}, {tokenNum * topk, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{tokenNum * topk}, {tokenNum * topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{tokenNum * topk}, {tokenNum * topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum * topk)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0)},
+                                            },
+                                            &compileInfo);
+    int64_t expectTilingKey = 2;
+    string expectTilingData = "64 16384 5 3 1065353216 16 3072 1 3072 3072 3072 1 3072 3072 8096 4 1024 64 0 768 0 0 0 768 768 768 0 0 0 768 768 0 0 64 49152 256 3 3 3 256 256 256 3 3 3 256 256 5 0 ";
+    std::vector<size_t> expectWorkspaces = {18157568};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_long_h) {
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t tokenNum = 32768;
+    int64_t topk = 3;
+    int64_t h = 16384;
+
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{tokenNum, h}, {tokenNum, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{tokenNum * topk, h}, {tokenNum * topk, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{tokenNum * topk}, {tokenNum * topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{tokenNum * topk}, {tokenNum * topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum * topk)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0)},
+                                            },
+                                            &compileInfo);
+    int64_t expectTilingKey = 2;
+    string expectTilingData = "64 32768 16384 3 1065353216 16 6144 1 6144 6144 6144 1 6144 6144 8096 4 1024 64 0 1536 0 0 0 1536 1536 1536 0 0 0 1536 1536 0 0 64 98304 512 3 3 3 2 2 512 3 3 3 2 2 4094 0 ";
+    std::vector<size_t> expectWorkspaces = {19533824};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_error) {
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t tokenNum = 32768;
+    int64_t topk = 3;
+    int64_t h = 16384;
+
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{tokenNum, h}, {tokenNum, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{3, topk}, {3, topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{tokenNum * topk, h}, {tokenNum * topk, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{tokenNum * topk}, {tokenNum * topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{tokenNum * topk}, {tokenNum * topk}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum * topk)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0)},
+                                            },
+                                            &compileInfo);
+    int64_t expectTilingKey = 2;
+    string expectTilingData = "64 16384 5 3 1065353216 16 3072 1 3072 3072 3072 1 3072 3072 8096 4 1024 64 0 768 0 0 0 768 768 768 0 0 0 768 768 0 0 64 49152 256 3 3 3 256 256 256 3 3 3 256 256 5 0 ";
+    std::vector<size_t> expectWorkspaces = {18157568};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
