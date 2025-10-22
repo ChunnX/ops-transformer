@@ -198,7 +198,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>actSeqLenType</td>
         <td>输入</td>
         <td>actSeqLenOptional的不同表达形式</td>
-        <td>actSeqLenOptional有输入时生效，可取值0或1，0代表actSeqLenOptional中数值为前继batch的系列大小的cumsum结果（累积和），1代表actSeqLenOptional中数值为每个batch中序列大小，当前仅支持1。</td>
+        <td>actSeqLenOptional有输入时生效，可取值0或1，0代表actSeqLenOptional中数值为前继batch的序列大小的cumsum结果（累积和），1代表actSeqLenOptional中数值为每个batch中序列大小，当前仅支持1。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>

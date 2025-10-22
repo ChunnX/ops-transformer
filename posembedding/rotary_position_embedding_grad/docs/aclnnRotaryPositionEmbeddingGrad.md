@@ -16,7 +16,7 @@
 -  算子功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
 -  计算公式：
   
-    取旋转位置编码的正向计算中，boardcast的轴列表为`dims`，则计算公式可表达如下：
+    取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 

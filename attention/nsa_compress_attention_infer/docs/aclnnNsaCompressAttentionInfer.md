@@ -126,7 +126,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
           <li>key中的blockSize和pageBlockSize值相等，且blockSize小于等于128，且是16的整数倍。</li>
           <li>key的S轴小于等于8192。</li>
           <li>key的N和numKeyValueHeads值相等。</li>
-          <li>Key的D轴小于等于192且大于等于value的D轴。</li>
+          <li>key的D轴小于等于192且大于等于value的D轴。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>

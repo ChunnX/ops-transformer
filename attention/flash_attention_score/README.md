@@ -80,7 +80,7 @@
       <td>dropMaskOptional</td>
       <td>可选输入</td>
       <td>公式中的Dropout，表示数据丢弃掩码。取值为1代表保留该数据，为0代表丢弃该数据。</td>
-      <td>UNIT8</td>
+      <td>UINT8</td>
       <td>ND</td>
     </tr>
     <tr>

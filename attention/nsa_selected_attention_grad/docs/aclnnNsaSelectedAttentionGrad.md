@@ -371,7 +371,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
 
 ## 约束说明
 
-- 该接口与pytorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
+- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - 输入query、key、value、attentionOut、attentionOutGrad的B（batchsize）必须相等。
 - 输入key、value的N（numHead）必须一致。
 - 输入query、attentionOut、attentionOutGrad的N（numHead）必须一致。

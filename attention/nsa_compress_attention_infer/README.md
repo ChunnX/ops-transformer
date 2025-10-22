@@ -121,9 +121,9 @@
   * 支持B轴小于等于3072。
   * 支持key/value的N轴小于等于256。
   * 支持query的N轴与key/value的N轴（H/D）的比值（即GQA中的group大小）小于等于16。
-  * 支持query与Key的D轴等于192。
+  * 支持query与key的D轴等于192。
   * 支持value的D轴等于128。
-  * 支持Key与Value的blockSize等于64或128。
+  * 支持key与value的blockSize等于64或128。
   * 普通场景下仅支持query的S轴等于1。
   * 多token推理场景下，仅支持query的S轴最大等于4，并且此时要求每个batch单独的actualQSeqLen<=actualSelKvSeqLen。
   * 仅支持paged attention。
