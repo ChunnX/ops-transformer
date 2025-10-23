@@ -28,99 +28,25 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px">
-<colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 310px">
-  <col style="width: 212px">
-  <col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th>参数名</th>
-    <th>输入/输出/属性</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>outputGrad</td>
-    <td>输入</td>
-    <td>正向算子输出的反向梯度，shape支持[T, N, D]。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>input</td>
-    <td>输入</td>
-    <td>待压缩张量，shape支持[T, N, D]。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>weight</td>
-    <td>输入</td>
-    <td>压缩权重，shape为[compressBlockSize, N]，与input满足broadcast关系。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>actSeqLenOptional</td>
-    <td>输入</td>
-    <td>每个Batch对应的S大小，batch序列长度不等时需输入。</td>
-    <td>INT64</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>compressBlockSize</td>
-    <td>输入</td>
-    <td>压缩滑窗大小。</td>
-    <td>INT64</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>compressStride</td>
-    <td>输入</td>
-    <td>两次压缩滑窗间隔大小。</td>
-    <td>INT64</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>actSeqLenType</td>
-    <td>输入</td>
-    <td>序列长度类型，0表示cumsum结果，1表示每个batch序列大小，当前仅支持0。</td>
-    <td>INT64</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>layoutOptional</td>
-    <td>输入</td>
-    <td>输入数据排布格式，支持TND。</td>
-    <td>String</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>inputGrad</td>
-    <td>输出</td>
-    <td>input的梯度，shape与input保持一致。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>weightGrad</td>
-    <td>输出</td>
-    <td>weight的梯度，shape与weight保持一致。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-</tbody>
-</table>
-
+| 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
+|--------|---------------|------|----------|----------|
+| outputGrad | 输入 | 正向算子输出的反向梯度，shape支持[T, N, D]。 | BFLOAT16、FLOAT16 | ND |
+| input | 输入 | 待压缩张量，shape支持[T, N, D]。 | BFLOAT16、FLOAT16 | ND |
+| weight | 输入 | 压缩权重，shape为[compressBlockSize, N]，与input满足broadcast关系。 | BFLOAT16、FLOAT16 | ND |
+| actSeqLenOptional | 输入 | 每个Batch对应的S大小，batch序列长度不等时需输入。 | INT64 | ND |
+| compressBlockSize | 输入 | 压缩滑窗大小。 | INT64 | - |
+| compressStride | 输入 | 两次压缩滑窗间隔大小。 | INT64 | - |
+| actSeqLenType | 输入 | 序列长度类型，0表示cumsum结果，1表示每个batch序列大小，当前仅支持0。 | INT64 | - |
+| layoutOptional | 输入 | 输入数据排布格式，支持TND。 | String | - |
+| inputGrad | 输出 | input的梯度，shape与input保持一致。 | BFLOAT16、FLOAT16 | ND |
+| weightGrad | 输出 | weight的梯度，shape与weight保持一致。 | BFLOAT16、FLOAT16 | ND |
 
 ## 约束说明
 
-- compressBlockSize和compressStride要是16的整数倍，且compressBlockSize > compressStride
+- compressBlockSize和compressStride要是16的整数倍，且compressBlockSize > compressStride。
 
+## 调用说明
+
+| 调用方式        | 调用样例        | 说明                                                 |
+|----------------|----------------|------------------------------------------------------|
+| aclnn调用 | [test_aclnn_nsa_compress_grad](./examples/test_aclnn_nsa_compress_grad.cpp) | 非TND场景，通过[aclnnNsaCompressGrad](./docs/aclnnNsaCompressGrad.md)接口方式调用NsaCompressGrad算子。|

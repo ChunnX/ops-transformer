@@ -42,117 +42,28 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 310px">
-  <col style="width: 212px">
-  <col style="width: 100px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出/属性</th>
-      <th>描述</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>query</td>
-      <td>输入</td>
-      <td>公式中的输入Q。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>key</td>
-      <td>输入</td>
-      <td>公式中的输入K。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>value</td>
-      <td>输入</td>
-      <td>公式中的输入V。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>attentionOut</td>
-      <td>可选输入</td>
-      <td>注意力正向计算的最终输出。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>attentionOutGrad</td>
-      <td>输入</td>
-      <td>公式中的输入dY。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>softmaxMax</td>
-      <td>输入</td>
-      <td>注意力正向计算的中间输出。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>softmaxSum</td>
-      <td>输入</td>
-      <td>注意力正向计算的中间输出。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>topkIndices</td>
-      <td>输入</td>
-      <td>公式中的所选择KV的索引。</td>
-      <td>INT32</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>scaleValue</td>
-      <td>属性</td>
-      <td>公式中d开根号的倒数，表示缩放系数。</td>
-      <td>DOUBLE</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>dqOut</td>
-      <td>输出</td>
-      <td>公式中的dQ，表示query的梯度。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>dkOut</td>
-      <td>输出</td>
-      <td>公式中的dK，表示key的梯度。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>dvOut</td>
-      <td>输出</td>
-      <td>公式中的dV，表示value的梯度。</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-    </tr>
-  </tbody>
-</table>
-
+| 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
+|--------|---------------|------|----------|----------|
+| query | 输入 | 公式中的输入Q。 | BFLOAT16、FLOAT16 | ND |
+| key | 输入 | 公式中的输入K。 | BFLOAT16、FLOAT16 | ND |
+| value | 输入 | 公式中的输入V。 | BFLOAT16、FLOAT16 | ND |
+| attentionOut | 可选输入 | 注意力正向计算的最终输出。 | BFLOAT16、FLOAT16 | ND |
+| attentionOutGrad | 输入 | 公式中的输入dY。 | BFLOAT16、FLOAT16 | ND |
+| softmaxMax | 输入 | 注意力正向计算的中间输出。 | FLOAT | ND |
+| softmaxSum | 输入 | 注意力正向计算的中间输出。 | FLOAT | ND |
+| topkIndices | 输入 | 公式中的所选择KV的索引。 | INT32 | ND |
+| scaleValue | 属性 | 公式中d开根号的倒数，表示缩放系数。 | DOUBLE | - |
+| dqOut | 输出 | 公式中的dQ，表示query的梯度。 | BFLOAT16、FLOAT16 | ND |
+| dkOut | 输出 | 公式中的dK，表示key的梯度。 | BFLOAT16、FLOAT16 | ND |
+| dvOut | 输出 | 公式中的dV，表示value的梯度。 | BFLOAT16、FLOAT16 | ND |
 
 ## 约束说明
 
-- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-- 输入query、key、value、attentionOut、attentionOutGrad的B（batchsize）必须相等。
-- 输入key、value的N（numHead）必须一致。
-- 输入query、attentionOut、attentionOutGrad的N（numHead）必须一致。
-- 输入value、attentionOut、attentionOutGrad的D（HeadDim）必须一致。
+- 该接口与pytorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
+- 输入query、key、value、attentionOut、attentionOutGrad的B(batchsize)必须相等。
+- 输入key、value的N(numHead)必须一致。
+- 输入query、attentionOut、attentionOutGrad的N(numHead)必须一致。
+- 输入value、attentionOut、attentionOutGrad的D(HeadDim)必须一致。
 - 输入query、key、value、attentionOut、attentionOutGrad的inputLayout必须一致。
 - 关于数据shape的约束，以inputLayout的TND举例。其中：
   - T1：取值范围为1\~2M。T1表示query所有batch下S的和。
@@ -160,9 +71,14 @@
   - B：取值范围为1\~2M。
   - N1：取值范围为1\~128。表示query的headNum。N1必须为N2的整数倍。
   - N2：取值范围为1\~128。表示key、value的headNum。
-  - G：取值范围为1\~32。G = N1 / N2
+  - G：取值范围为1\~32。 `G = N1 / N2`。
   - S：取值范围为1\~128K。对于key、value的S 必须大于等于selectedBlockSize * selectedBlockCount, 且必须为selectedBlockSize的整数倍。
-  - D：取值范围为192或128，支持K和V的D（HeadDim）不相等。
+  - D：取值范围为192或128，支持K和V的D(HeadDim)不相等。
 - 关于softmaxMax与softmaxSum参数shape的约束：\[T1, N1, 8\]。
 - 关于topkIndices参数shape的约束：[T1, N2, selectedBlockCount]。
 
+## 调用说明
+
+| 调用方式           | 调用样例                                                                                    | 说明                                                                                                 |
+|----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| aclnn调用 | [test_aclnn_nsa_selected_attention_grad](./examples/test_aclnn_nsa_selected_attention_grad.cpp) | 非TND场景，通过[aclnnNsaSelectedAttentionGrad](./docs/aclnnNsaSelectedAttentionGrad.md)接口方式调用NsaSelectedAttentionGrad算子。             |

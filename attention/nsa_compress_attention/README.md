@@ -50,136 +50,48 @@ NsaCompressAttention输入query、key、value的数据排布格式支持从多�
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px">
-<colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 310px">
-  <col style="width: 212px">
-  <col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th>参数名</th>
-    <th>输入/输出/属性</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>query</td>
-    <td>输入</td>
-    <td>公式中的query。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>key</td>
-    <td>输入</td>
-    <td>公式中的key。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>value</td>
-    <td>输入</td>
-    <td>公式中的value。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>attenMaskOptional</td>
-    <td>输入</td>
-    <td>公式中的atten_mask。</td>
-    <td>BOOL</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>actualSelSeqKvLenOptional</td>
-    <td>输入</td>
-    <td>公式中的P_slc'第0维。</td>
-    <td>INT64</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>topkMaskOptional</td>
-    <td>输入</td>
-    <td>公式中的topk_mask。</td>
-    <td>BOOL</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>scaleValue</td>
-    <td>输入</td>
-    <td>公式中的scale，缩放系数，一般为D^-0.5。</td>
-    <td>DOUBLE</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>compressBlockSize</td>
-    <td>输入</td>
-    <td>公式中的l，压缩滑窗大小。</td>
-    <td>INT64</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>compressStride</td>
-    <td>输入</td>
-    <td>公式中的d，两次压缩滑窗间隔。</td>
-    <td>INT64</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>selectBlockSize</td>
-    <td>输入</td>
-    <td>公式中的l'，选择块大小。</td>
-    <td>INT64</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>selectBlockCount</td>
-    <td>输入</td>
-    <td>公式中topK选择个数。</td>
-    <td>INT64</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>attentionOut</td>
-    <td>输出</td>
-    <td>公式中的attentionOut，输出与query形状一致。</td>
-    <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>topkIndicesOut</td>
-    <td>输出</td>
-    <td>公式中的topkIndices。</td>
-    <td>INT32</td>
-    <td>-</td>
-  </tr>
-</tbody>
-</table>
-
+| 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
+|--------|---------------|------|----------|----------|
+| query | 输入 | 公式中的query。 | BFLOAT16、FLOAT16 | ND |
+| key | 输入 | 公式中的key。 | BFLOAT16、FLOAT16 | ND |
+| value | 输入 | 公式中的value。 | BFLOAT16、FLOAT16 | ND |
+| attenMaskOptional | 输入 | 公式中的atten_mask。 | BOOL | ND |
+| actualSelSeqKvLenOptional | 输入 | 公式中的P_slc'第0维。 | INT64 | ND |
+| topkMaskOptional | 输入 | 公式中的topk_mask。 | BOOL | ND |
+| scaleValue | 输入 | 公式中的scale，缩放系数，一般为D^-0.5。 | DOUBLE | - |
+| compressBlockSize | 输入 | 公式中的l，压缩滑窗大小。 | INT64 | - |
+| compressStride | 输入 | 公式中的d，两次压缩滑窗间隔。 | INT64 | - |
+| selectBlockSize | 输入 | 公式中的l'，选择块大小。 | INT64 | - |
+| selectBlockCount | 输入 | 公式中topK选择个数。 | INT64 | - |
+| attentionOut | 输出 | 公式中的attentionOut，输出与query形状一致。 | BFLOAT16、FLOAT16 | ND |
+| topkIndicesOut | 输出 | 公式中的topkIndices。 | INT32 | - |
 
 ## 约束说明
 
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-- compressBlockSize、compressStride、selectBlockSize必须是16的整数倍，并且满足：compressBlockSize>=compressStride && selectBlockSize>=compressBlockSize && selectBlockSize%compressStride==0
-- compressBlockSize：16对齐，支持到128
-- compressStride：16对齐，支持到64
-- selectBlockSize：16对齐，支持到128
-- selectBlockCount：支持[1~32] && selectBlockCount <= min(SelSkv)
+- compressBlockSize、compressStride、selectBlockSize必须是16的整数倍，并且满足：`compressBlockSize >= compressStride && selectBlockSize >= compressBlockSize && selectBlockSize % compressStride == 0`
+- compressBlockSize：16对齐，支持到128。
+- compressStride：16对齐，支持到64。
+- selectBlockSize：16对齐，支持到128。
+- selectBlockCount：支持[1~32]。`selectBlockCount <= min(SelSkv)`。
 - actualSeqQLenOptional, actualCmpSeqKvLenOptional, actualSelSeqKvLenOptional需要是前缀和模式；且TND格式下必须传入。
-- 由于UB限制，CmpSkv需要满足以下约束：CmpSkv <= 14000
-- SelSkv = CeilDiv(CmpSkv, selectBlockSize // compressStride)
+- 由于UB限制，CmpSkv需要满足以下约束：`CmpSkv <= 14000`。
+- `SelSkv = CeilDiv(CmpSkv, selectBlockSize // compressStride)`。
 - layoutOptional目前仅支持TND。
 - 输入query、key、value的数据类型必须一致。
 - 输入query、key、value的batchSize必须相等。
-- 输入query、key、value的headDim必须满足：qD == kD && kD >= vD
+- 输入query、key、value的headDim必须满足：`qD == kD && kD >= vD`。
 - 输入query、key、value的inputLayout必须一致。
-- 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0
-- 设G = N1 / N2，G需要满足以下约束：G < 128 && 128 % G == 0
-- attenMask和topkMask的使用需符合论文描述
+- 输入query的headNum为N1，输入key和value的headNum为N2，则`N1 >= N2 && N1 % N2 == 0`。
+- 设`G = N1 / N2`，G需要满足以下约束：`G < 128 && 128 % G == 0`。
+- attenMask和topkMask的使用需符合论文描述。
+
+## 调用说明
+
+| 调用方式        | 调用样例        | 说明                                                 |
+|----------------|----------------|------------------------------------------------------|
+| aclnn调用 | [test_aclnn_nsa_compress_attention](./examples/test_aclnn_nsa_compress_attention.cpp) | 非TND场景，通过[aclnnNsaCompressAttention](./docs/aclnnNsaCompressAttention.md)接口方式调用NsaCompressAttention算子。|
+
+
+
 
