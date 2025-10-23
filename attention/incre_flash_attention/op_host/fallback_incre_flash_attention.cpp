@@ -93,8 +93,20 @@ graphStatus IncreHostExecuteFunc(OpExecuteContext *host_api_ctx)
     const char *layout = attrs->GetAttrPointer<char>(LAYOUT_INDEX);
     const uint32_t *kvHeadNum = attrs->GetAttrPointer<uint32_t>(KV_HEAD_NUM_INDEX);
     const uint32_t *blockSize = attrs->GetAttrPointer<uint32_t>(BLOCK_SIZE_INDEX);
+    OP_CHECK_IF(blockSize == nullptr,  
+        OP_LOGE(host_api_ctx->GetNodeName(),  
+            "In block-wise attention computation, blockSize is a required parameter (controls matrix block dimension), must not be null, but a null was actually passed."), 
+        return GRAPH_FAILED);
     const uint32_t *innerPrecise = attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
-
+    OP_CHECK_IF(innerPrecise == nullptr, 
+        OP_LOGE(host_api_ctx->GetNodeName(), 
+            "In internal operations (e.g., attention matrix multiplication, softmax), innerPrecise is a required parameter (specifies precision), must not be null, but a null was actually passed."), 
+        return GRAPH_FAILED);
+    
+    OP_CHECK_IF(scaleValue == nullptr,  
+        OP_LOGE(host_api_ctx->GetNodeName(),  
+            "When computing attention weights, scaleValue is a required parameter (normalizes QK^T to prevent softmax gradient vanishing), must not be null, but a null was actually passed."),
+        return GRAPH_FAILED);
     double dScaleValue = *scaleValue;
 
     // execute opapi

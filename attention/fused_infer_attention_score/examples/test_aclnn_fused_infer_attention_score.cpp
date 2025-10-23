@@ -171,7 +171,7 @@ int main() {
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
     string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length()];
+    char layerOut[sLayerOut.length() + 1];
     strcpy(layerOut, sLayerOut.c_str());
     int64_t sparseMode = 0;
     int64_t innerPrecise = 1;
@@ -248,5 +248,5 @@ int main() {
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    _exit(0);
+    return 0;
 }

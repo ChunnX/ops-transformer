@@ -60,6 +60,10 @@ static graphStatus PromptHostExecuteFunc(OpExecuteContext* host_api_ctx)
   std::vector<int64_t> actSeqArray;
   if (actualSeqLengthsGe != nullptr) {
     const int64_t* actSeqData = actualSeqLengthsGe->GetData<int64_t>();
+    OP_CHECK_IF(actSeqData == nullptr,  
+      OP_LOGE("aclnnfallback", 
+          "When processing attention padding masking, actSeqData is a required parameter (stores valid sequence lengths excluding padding), must not be null, but a null was actually passed."), 
+      return GRAPH_FAILED);
     const size_t len = static_cast<size_t>(actualSeqLengthsGe->GetShapeSize());
     for (size_t i = 0; i < len; i++) {
       actSeqArray.push_back(actSeqData[i]);
