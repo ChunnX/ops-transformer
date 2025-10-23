@@ -36,6 +36,7 @@ ENABLE_BUILD_PKG=FALSE
 ENABLE_BUILT_IN=FALSE
 ENABLE_BUILT_JIT=FALSE
 ENABLE_BUILT_CUSTOM=FALSE
+ENABLE_EXPERIMENTAL=FALSE
 ASCEND_SOC_UNITS="ascend910b"
 SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend910_95" "ascend310p" "ascend910")
 CMAKE_BUILD_MODE=""
@@ -87,10 +88,12 @@ function help_info() {
                 echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
                 echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
                 echo "    --debug                Build with debug mode"
+                echo "    --experimental         Build experimental version"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --pkg --soc=ascend910b --vendor_name=customize -j16 -O3"
                 echo "    bash build.sh --pkg --ops=add,sub --debug"
+                echo "    bash build.sh --pkg --experimental --soc=ascend910b"
                 return
                 ;;
             test)
@@ -267,6 +270,7 @@ function help_info() {
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
+    echo "    --experimental Build experimental version"
     echo "    --opapi_test build and run opapi unit tests"
     echo "    --ophost_test build and run ophost unit tests"
     echo "    --opgraph_test build and run opgraph unit tests"
@@ -679,6 +683,10 @@ while [[ $# -gt 0 ]]; do
             fi
         fi
         ;;
+     --experimental) 
+        ENABLE_EXPERIMENTAL=TRUE
+        shift
+        ;;
      -e|--example)
         shift
         if [ -n "$1" ];then
@@ -854,6 +862,10 @@ fi
 
 if [ -n "${VERSION}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DVERSION=${VERSION}"
+fi
+
+if [[ "$ENABLE_EXPERIMENTAL" == "TRUE" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_EXPERIMENTAL=TRUE"
 fi
 
 if [ -n "${ascend_compute_unit}" ];then

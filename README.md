@@ -28,6 +28,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 │   └── CMakeLists.txt             # 算子编译配置文件
 ├── docs                           # 项目文档介绍
 ├── examples                       # 端到端算子开发和调用示例
+├── experimental                   # 用户自定义算子存放目录
 ├── ...
 ├── moe                            # moe类算子
 ├── posembedding                   # posembedding类算子
