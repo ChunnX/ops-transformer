@@ -9,6 +9,7 @@
 # ----------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
+    set(mla_prolog_v2_depends attention/mla_prolog PARENT_SCOPE)
     target_sources(op_host_aclnnInner PRIVATE
         mla_prolog_v2_def.cpp
     )
@@ -28,7 +29,6 @@ if (BUILD_OPS_RTY_KERNEL)
         OPTIONS -mllvm
                 -cce-aicore-jump-expand=true
     )
-    set(mla_prolog_v2_depends ops-transformer/attention/mla_prolog PARENT_SCOPE)
 else()
     add_modules_sources(OPTYPE mla_prolog_v2 ACLNNTYPE aclnn_inner)
 endif()

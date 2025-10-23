@@ -12,8 +12,12 @@
  * \file mla_prolog_v2.cpp
  * \brief
  */
-
+ 
+#if __has_include("../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h")
 #include "../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h"
+#else
+#include "../mla_prolog/kernel_mla_prolog_split_n.h"
+#endif
 
 using namespace MlaProlog;
 

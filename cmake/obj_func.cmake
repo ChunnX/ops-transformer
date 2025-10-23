@@ -26,7 +26,7 @@ macro(add_modules_sources)
     target_sources(${OPHOST_NAME}_opapi_obj PRIVATE ${OPAPI_SRCS})
   else()
     if (NOT TARGET ${OPHOST_NAME}_opapi_obj)
-      add_library(${OPHOST_NAME}_opapi_obj OBJECT)
+      add_opapi_modules()
       add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/opapi_stub.cpp
           COMMAND touch ${CMAKE_CURRENT_BINARY_DIR}/opapi_stub.cpp
       )
