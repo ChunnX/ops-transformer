@@ -2,45 +2,10 @@
 
 # 产品支持情况
 
-<table style="table-layout: fixed; border-collapse: collapse;">
-  <thead>
-    <tr>
-      <!-- 表头单元格完全居中 -->
-      <th style="border: 1px solid #ccc; font-weight: bold;">产品</th>
-      <th style="border: 1px solid #ccc; text-align: center; font-weight: bold;">是否支持</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td style="border: 1px solid #ccc;">昇腾910_95 AI处理器</td>
-      <td style="border: 1px solid #ccc; text-align: center;">×</td>
-    </tr>
-    <tr>
-      <td style="border: 1px solid #ccc;">Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-      <td style="border: 1px solid #ccc; text-align: center;">√</td>
-    </tr>
-    <tr>
-      <td style="border: 1px solid #ccc;">Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</td>
-      <td style="border: 1px solid #ccc; text-align: center;">√</td>
-    </tr>
-    <tr>
-      <td style="border: 1px solid #ccc;">Atlas 200I/500 A2 推理产品</td>
-      <td style="border: 1px solid #ccc; text-align: center;">×</td>
-    </tr>
-    <tr>
-      <td style="border: 1px solid #ccc;">Atlas 推理系列产品</td>
-      <td style="border: 1px solid #ccc; text-align: center;">×</td>
-    </tr>
-    <tr>
-      <td style="border: 1px solid #ccc;">Atlas 训练系列产品</td>
-      <td style="border: 1px solid #ccc; text-align: center;">×</td>
-    </tr>
-    <tr>
-      <td style="border: 1px solid #ccc;">Atlas 200I/300/500 推理产品</td>
-      <td style="border: 1px solid #ccc; text-align: center;">×</td>
-    </tr>
-  </tbody>
-</table>
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 
 # 功能说明
 

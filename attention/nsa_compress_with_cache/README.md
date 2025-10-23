@@ -2,22 +2,10 @@
 
 ## 产品支持情况
 
-<table class="tg"><thead>
-  <tr>
-    <th class="tg-baqh">产品</th>
-    <th class="tg-baqh">是否支持</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td class="tg-0lax">Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-    <td class="tg-0lax">√</td>
-  </tr>
-  <tr>
-    <td class="tg-0lax">Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</td>
-    <td class="tg-0lax">√</td>
-  </tr>
-</tbody>
-</table>
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 
 ## 功能说明
 
