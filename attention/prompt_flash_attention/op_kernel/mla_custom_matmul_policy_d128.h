@@ -176,7 +176,7 @@ public:
         return CurrentTensor;
     }
 
-    __aicore__ inline void ClearLoadData(const LocalTensor<TransT> &tensor = NULL_TENSOR<TransT>,
+    __aicore__ inline void ClearLoadData(const LocalTensor<TransT> &tensor = LocalTensor<TransT>{},
                                         int32_t curRow = 0, int32_t curCol = 0)
     {
         MATMUL_MODULE(CubeInBuffer)->FreeTensor();
@@ -246,7 +246,7 @@ public:
         }
     }
 
-    __aicore__ inline void FreeTensor(int32_t bufferPos = -1, const LocalTensor<SrcT> &tensor = NULL_TENSOR<SrcT>)
+    __aicore__ inline void FreeTensor(int32_t bufferPos = -1, const LocalTensor<SrcT> &tensor = LocalTensor<SrcT>{})
     {
         if constexpr (INPUT_TYPE::TAG == InputTypeTag::A) {
             if (MATMUL_MODULE(Context)->needFreeA) {

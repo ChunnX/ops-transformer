@@ -95,7 +95,7 @@ public:
         }
     }
 
-    __aicore__ inline void FreeTensor(int32_t bufferPos = -1, const LocalTensor<SrcT>& tensor = NULL_TENSOR<SrcT>)
+    __aicore__ inline void FreeTensor(int32_t bufferPos = -1, const LocalTensor<SrcT>& tensor = LocalTensor<SrcT>{})
     {
         if constexpr (INPUT_TYPE::TAG == InputTypeTag::A) {
             if (MATMUL_MODULE(Context)->needFreeA) {
