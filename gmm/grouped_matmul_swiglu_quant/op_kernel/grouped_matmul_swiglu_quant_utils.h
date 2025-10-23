@@ -76,7 +76,7 @@ constexpr uint8_t NUM_8 = 8;
 constexpr bool NO_BIAS = false;
 constexpr int64_t DOUBLE_ROW = 2;
 constexpr MatmulConfig CUSTOM_CFG_MDL = GetMDLConfig(false, false, 0, true, false, false, true);
-constexpr MatmulConfig GetMMCFG()
+constexpr MatmulConfig GetMMStaticCFG()
 {
     MatmulConfig MM_CFG = CUSTOM_CFG_MDL;
     MM_CFG.singleCoreM = SINGLE_CORE_M;
@@ -102,15 +102,25 @@ constexpr static MatmulApiStaticTiling GetMMTiling(const MatmulApiStaticTiling &
 }
 
 template <class AT_, class BT_, class CT_>
+struct MMImplTypeStatic {
+    using AT = AT_;
+    using BT = BT_;
+    using CT = CT_;
+    // bias未被使用但高阶模板参数需要传入
+    using BiasT = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, int32_t>;
+    static constexpr MatmulConfig cfg = GetMMStaticCFG();
+    static constexpr MatmulApiStaticTiling mdl = GetMMTiling(GetMatmulApiTiling<AT, BT, CT, BiasT>(cfg));
+    using MT = matmul::MatmulImpl<AT, BT, CT, BiasT, mdl>;
+};
+
+template <class AT_, class BT_, class CT_>
 struct MMImplType {
     using AT = AT_;
     using BT = BT_;
     using CT = CT_;
     // bias未被使用但高阶模板参数需要传入
     using BiasT = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, int32_t>;
-    static constexpr MatmulConfig cfg = GetMMCFG();
-    static constexpr MatmulApiStaticTiling mdl = GetMMTiling(GetMatmulApiTiling<AT, BT, CT, BiasT>(cfg));
-    using MT = matmul::MatmulImpl<AT, BT, CT, BiasT, mdl>;
+    using MT = matmul::MatmulImpl<AT, BT, CT, BiasT, CUSTOM_CFG_MDL>;
 };
 
 struct MNConfig {

@@ -94,7 +94,6 @@ private:
     GlobalTensor<int4b_t> xGM1;
     GlobalTensor<int4b_t> xGM2;
     GlobalTensor<int4b_t> weightGM;
-    // GlobalTensor<int8_t>weightGM_8;
 
     GlobalTensor<half> mmOutGM;
     GlobalTensor<half> mmOutGM1;
@@ -151,10 +150,10 @@ template <typename mmType>
 __aicore__ inline void GMMA8W4MidProcess<mmType>::SetMNConfig(const int32_t splitValue, MNConfig &mnConfig)
 {
     mnConfig.m = static_cast<int64_t>(splitValue);
-    mnConfig.baseM = BASIC_M;
-    mnConfig.baseN = BASIC_N;
-    mnConfig.singleM = SINGLE_CORE_M;
-    mnConfig.singleN = SINGLE_CORE_N;
+    mnConfig.baseM = gmmBaseParams->baseM;
+    mnConfig.baseN = gmmBaseParams->baseN;
+    mnConfig.singleM = gmmBaseParams->baseM;
+    mnConfig.singleN = gmmBaseParams->baseN;
 }
 
 template <typename mmType>
@@ -168,10 +167,10 @@ __aicore__ inline void GMMA8W4MidProcess<mmType>::Process(WorkSpaceSplitConfig &
         xGM = (workspaceSplitLoopIdx % 2 == 0 ? xGM1 : xGM2);
         mmOutGM = (workspaceSplitLoopIdx % 2 == 0 ? mmOutGM1 : mmOutGM2);
         MNConfig mnConfig;
-        mnConfig.baseM = BASIC_M;
-        mnConfig.baseN = BASIC_N;
-        mnConfig.singleM = SINGLE_CORE_M;
-        mnConfig.singleN = SINGLE_CORE_N;
+        mnConfig.baseM = gmmBaseParams->baseM;
+        mnConfig.baseN = gmmBaseParams->baseN;
+        mnConfig.singleM = gmmBaseParams->baseM;
+        mnConfig.singleN = gmmBaseParams->baseN;
         mnConfig.k = gmmBaseParams->K; // tilingData
         mnConfig.n = gmmBaseParams->N; // tilingData
         mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN);

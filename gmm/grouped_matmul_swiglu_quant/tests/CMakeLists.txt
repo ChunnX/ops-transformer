@@ -7,33 +7,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
-
-########################################################################################################################
-# 调用编译方法, 生成对应编译目标
-########################################################################################################################
-
-set(_GmmSwigluQuant_TilingSourcesExt
-        ${CMAKE_SOURCE_DIR}/gmm/grouped_matmul_swiglu_quant/op_host/grouped_matmul_swiglu_quant_tiling.cpp
-)
-
-set(_GmmSwigluQuant_KernelTilingDataDefH
-        ${CMAKE_SOURCE_DIR}/gmm/grouped_matmul_swiglu_quant/op_host/grouped_matmul_swiglu_quant_tiling.h
-)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/gmm/grouped_matmul_swiglu_quant/op_kernel/ _GmmSwigluQuant_KernelSourcesExt)
-
-set(_GmmSwigluQuant_KernelPrivateCompileDefinitionsExt
-        KernelCtrlParam grouped_matmul_swiglu_quant,grouped_matmul_swiglu_quant_FIAS fp32 DTYPE_WEIGHT_SCALE=float DTYPE_X=int8_t DTYPE_WEIGHT=int8_t
-        KernelCtrlParam grouped_matmul_swiglu_quant,grouped_matmul_swiglu_quant_FIAS fp16 DTYPE_WEIGHT_SCALE=half DTYPE_X=int8_t DTYPE_WEIGHT=int8_t
-        KernelCtrlParam grouped_matmul_swiglu_quant,grouped_matmul_swiglu_quant_FIAS bf16 DTYPE_WEIGHT_SCALE=bfloat16_t DTYPE_X=int8_t DTYPE_WEIGHT=int8_t
-)
-
-OpsTest_Level2_AddOp(
-        SUB_SYSTEM                              gmm
-        BRIEF                                   GMMSwigluQuant
-        SNAKE                                   grouped_matmul_swiglu_quant
-        KERNEL_TILING_DATA_DEF_H                ${_GmmSwigluQuant_KernelTilingDataDefH}
-        KERNEL_SOURCES_EXT                      ${_GmmSwigluQuant_KernelSourcesExt}
-        KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT  ${_GmmSwigluQuant_KernelPrivateCompileDefinitionsExt}
-        TILING_SOURCES_EXT                      ${_GmmSwigluQuant_TilingSourcesExt}
-)
+message(STATUS "=== Debug: start ops.transformer.grouped_matmul_swiglu_quant.tests.CMakeLists.txt ")
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()

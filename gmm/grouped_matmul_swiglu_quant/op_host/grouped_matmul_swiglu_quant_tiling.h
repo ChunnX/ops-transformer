@@ -27,6 +27,8 @@ TILING_DATA_FIELD_DEF(uint32_t, coreNum);
 TILING_DATA_FIELD_DEF(uint32_t, K);
 TILING_DATA_FIELD_DEF(uint32_t, N);
 TILING_DATA_FIELD_DEF(uint32_t, M);
+TILING_DATA_FIELD_DEF(uint32_t, baseM);
+TILING_DATA_FIELD_DEF(uint32_t, baseN);
 TILING_DATA_FIELD_DEF(uint32_t, mLimit);
 TILING_DATA_FIELD_DEF(uint32_t, workSpaceOffset1);
 TILING_DATA_FIELD_DEF(uint32_t, workSpaceOffset2);
@@ -56,13 +58,15 @@ namespace GroupedMatmulSwigluQuantTiling {
 constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t WEIGHT_INDEX = 1;
 constexpr uint32_t WEIGHT_SCALE_INDEX = 2;
-constexpr uint32_t GROUPLIST_INDEX = 4;
+constexpr uint32_t GROUPLIST_INDEX = 5;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 constexpr uint32_t DIM_0 = 0;
 constexpr uint32_t DIM_1 = 1;
 constexpr uint32_t DIM_2 = 2;
 constexpr uint32_t DIM_3 = 3;
 constexpr uint32_t DIM_4 = 4;
+constexpr uint32_t NUM_FOUR = 4;
+constexpr uint32_t NUM_EIGHT = 8;
 constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
 constexpr int64_t USER_WORKSPACE_LIMIT = 64 * 1024 * 1024;
 constexpr int64_t DOUBLE_WORKSPACE_SPLIT = 2;
@@ -80,6 +84,10 @@ constexpr int64_t PERGROUP_WSCALE_DIM_LIMIT = 3;
 constexpr int64_t A8W4_MSD_TILING_KEY_MODE = 2;
 constexpr int64_t SPLITWORKSPACE_TILING_KEY_MODE = 1;
 constexpr int64_t COMMON_TILING_KEY_MODE = 0;
+constexpr int64_t A8W4_TOKEN_THRESHOLD = 32;
+constexpr int64_t A8W4_BASEM = 128;
+constexpr int64_t A8W4_BASEK = 256;
+constexpr int64_t A8W4_BASEN = 256;
 } // namespace GroupedMatmulSwigluQuantTiling
 
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_GROUPED_MATMUL_SWIGLU_QUANT_H

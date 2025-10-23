@@ -34,7 +34,8 @@ extern "C" {
 #endif
 
 static constexpr int64_t SPLIT = 2L;
-static constexpr int64_t K_LIMIT = 65536L;
+static constexpr int64_t K_LIMIT_A8W8 = 65536L;
+static constexpr int64_t K_LIMIT_A8W4 = 20000L;
 static constexpr int64_t N_LIMIT = 10240L;
 static constexpr int64_t NZ_DIM_4_INT8 = 32L;
 static constexpr int64_t NZ_DIM_4_INT4 = 64L;
@@ -189,23 +190,23 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, Length of 'groupList' out of range (expected to be in range of [1, "
+                "aclnnGroupedMatmulSwiGluQuant A8W8, Length of 'groupList' out of range (expected to be in range of [1, "
                 "%ld], but got %ld)",
                 e, groupListLen);
         return false;
     }
     if (n > N_LIMIT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant: The current version does not support the scenario that "
+                "aclnnGroupedMatmulSwiGluQuant A8W8: The current version does not support the scenario that "
                 "N(%ld) is greater than %ld.",
                 n, N_LIMIT);
         return false;
     }
-    if (k >= K_LIMIT) {
+    if (k >= K_LIMIT_A8W8) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario."
+                "aclnnGroupedMatmulSwiGluQuant A8W8, The current version does not support the scenario."
                 "The tail axis dimension of input0(x) is %ld, which need lower than %ld.",
-                k, K_LIMIT);
+                k, K_LIMIT_A8W8);
         return false;
     }
     return true;
@@ -277,23 +278,23 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, Length of 'groupList' out of range (expected to be in range of [1, "
+                "aclnnGroupedMatmulSwiGluQuant A8W4, Length of 'groupList' out of range (expected to be in range of [1, "
                 "%ld], but got %ld)",
                 e, groupListLen);
         return false;
     }
     if (n > N_LIMIT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario."
+                "aclnnGroupedMatmulSwiGluQuant A8W4, The current version does not support the scenario."
                 "where N after halve is %ld greater than %ld.",
                 n, N_LIMIT);
         return false;
     }
-    if (k >= K_LIMIT) {
+    if (k >= K_LIMIT_A8W4) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulSwiGluQuant, The current version does not support the scenario."
+                "aclnnGroupedMatmulSwiGluQuant A8W4, The current version does not support the scenario."
                 "The tail axis dimension of input0(x) is %ld, which need lower than %ld.",
-                k, K_LIMIT);
+                k, K_LIMIT_A8W4);
         return false;
     }
     (void)KGroupSize;
@@ -356,6 +357,7 @@ static void UnpackInt32ToInt4(const aclTensor *&tensorS32, const std::string &te
     auto viewShapeDim = tensorShape.GetDimNum();
     tensorShape[viewShapeDim - 1] = tensorShape[viewShapeDim - 1] * INT4_PER_INT32;
     tensorS4->SetViewShape(tensorShape);
+    tensorS4->SetStorageShape(tensorShape);
     tensorS4->SetDataType(DataType::DT_INT4);
     OP_LOGD("Unpack %s from int32 to int4 finished.", tensorType.c_str());
 }
@@ -495,8 +497,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(const aclTenso
     auto viewShape = weight->GetViewShape();
     aclTensor *weightNZ = const_cast<aclTensor *>(weight);
     CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-               "aclnnGroupedMatmulSwigluQuantWeightNZ, The dimnum of storageShape for second input (weight) \
-             must be 5. \n But StorageShape got %s , and dimNum is %lu.",
+               "aclnnGroupedMatmulSwigluQuantWeightNZ, The dimnum of storageShape for second input (weight)"
+               "must be 5. \n But StorageShape got %s , and dimNum is %lu.",
                op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
     // weight的StorageFormat无条件视为NZ
     weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);

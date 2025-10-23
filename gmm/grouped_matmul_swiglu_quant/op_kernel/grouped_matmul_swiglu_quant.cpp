@@ -26,7 +26,7 @@ using namespace GROUPED_MATMUL_SWIGLU_QUANT;
         using xType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X, false>;                              \
         using weightType = MatmulType<AscendC::TPosition::GM, CubeFormat::NZ, DTYPE_WEIGHT, false>;                    \
         using yType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, int32_t>;                                     \
-        using matmulType = MMImplType<xType, weightType, yType>;                                                       \
+        using matmulType = MMImplTypeStatic<xType, weightType, yType>;                                                       \
         matmulType::MT mm;                                                                                             \
         GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingData, gmmSwigluBaseParams, gmmSwigluBaseParams_, tiling);           \
         GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingData, mmTilingData, mmTilingData_, tiling);                         \

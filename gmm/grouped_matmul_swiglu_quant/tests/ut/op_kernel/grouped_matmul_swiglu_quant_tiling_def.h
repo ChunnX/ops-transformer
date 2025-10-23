@@ -7,18 +7,27 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-/*!
- * \file ts_gmm_swiglu_quant.h
- * \brief IncreFlashAttention UTest 相关基类定义.
- */
+#ifndef __GROUPED_MATMUL_ADD_TILING_DEF_H__
+#define __GROUPED_MATMUL_ADD_TILING_DEF_H__
 
-#include "tests/utest/ts.h"
-#include "grouped_matmul_swiglu_quant_case.h"
+#include "kernel_tiling/kernel_tiling.h"
 
-using GmmSwigluQuantCase = ops::adv::tests::grouped_matmul_swiglu_quant::GmmSwigluQuantCase;
+#include <cstdint>
+#include <cstring>
 
-class Ts_GmmSwigluQuant : public Ts<GmmSwigluQuantCase> {};
-class Ts_GmmSwigluQuant_Ascend910B2 : public Ts_Ascend910B2<GmmSwigluQuantCase> {};
+#define __CCE_UT_TEST__
 
-class Ts_GmmSwigluQuant_WithParam : public Ts_WithParam<GmmSwigluQuantCase> {};
-class Ts_GmmSwigluQuant_WithParam_Ascend910B2 : public Ts_WithParam_Ascend910B2<GmmSwigluQuantCase> {};
+#define __aicore__
+
+constexpr uint16_t GMM_MAX_TENSOR_LIST_SIZE = 128;
+
+
+inline void InitGMMSwigluQuantTilingDataTilingData(uint8_t* tiling, GMMSwigluQuantTilingData* const_data)
+{
+    memcpy(const_data, tiling, sizeof(GMMSwigluQuantTilingData));
+}
+
+#define GET_TILING_DATA(tilingData, tilingPointer) \
+    GMMSwigluQuantTilingData tilingData;         \
+    InitGMMSwigluQuantTilingDataTilingData(tilingPointer, &tilingData)
+#endif
