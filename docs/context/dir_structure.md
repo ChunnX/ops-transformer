@@ -15,6 +15,19 @@
 │   ├── CMakeLists.txt
 │   ├── inc                                             # 公共头文件目录
 │   └── src                                             # 公共代码目录
+├── experimental                                        # 用户自定义算子存放目录
+│   ├── attention                                       # 可选，用户开发的attention类算子目录
+│   │   └── CMakeLists.txt
+│   ├── ffn                                             # 可选，用户开发的ffn类算子目录
+│   │   └── CMakeLists.txt
+│   ├── gmm                                             # 可选，用户开发的gmm类算子目录
+│   │   └── CMakeLists.txt
+│   ├── mc2                                             # 可选，用户开发的mc2类算子目录
+│   │   └── CMakeLists.txt
+│   ├── moe                                             # 可选，用户开发的moe类算子目录
+│   │   └── CMakeLists.txt
+│   └── posembedding                                    # 可选，用户开发的posembedding类算子目录
+│       └── CMakeLists.txt
 ├── ${op_class}                                         # 算子分类，如attention、ffn、gmm类算子
 │   ├${op_name}                                         # 算子工程目录，${op_name}表示算子名（小写下划线形式）
 │   │   ├── CMakeLists.txt                              # 算子cmakelist入口
