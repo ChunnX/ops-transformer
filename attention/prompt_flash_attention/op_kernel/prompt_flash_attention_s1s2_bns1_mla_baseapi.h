@@ -1795,11 +1795,11 @@ MlaS1s2Bn2gs1SameABBaseApi<TILING_TYPE, implMode, layOutType, hasAtten, INPUT_T,
         PipeBarrier<PIPE_V>();
         for (int i = 0; i < loop; ++i) {
             Mul(bmm2ResUb[i * repeatMaxSize], softmaxTemp[softmaxTempOffset], bmm2ResUb[i * repeatMaxSize],
-                repeatMaxSize, extraInfo.vec2S1RealSize, repeatParams);
+                repeatMaxSize, extraInfo.vec2S1RealSize * extraInfo.gBaseSize, repeatParams);
         }
         if (remain) {
             Mul(bmm2ResUb[loop * repeatMaxSize], softmaxTemp[softmaxTempOffset],
-                bmm2ResUb[loop * repeatMaxSize], remain, extraInfo.vec2S1RealSize, repeatParams);
+                bmm2ResUb[loop * repeatMaxSize], remain, extraInfo.vec2S1RealSize * extraInfo.gBaseSize, repeatParams);
         }
     } else {
         for (int i = 0; i < loop; ++i) {
