@@ -155,84 +155,78 @@
     $$
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 312px">
-  <col style="width: 213px">
-  <col style="width: 100px">
-  </colgroup>
+<table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
-      <th>参数名</th>
-      <th>输入/输出/属性</th>
-      <th>描述</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
+      <th style="white-space: nowrap">参数名</th>
+      <th style="white-space: nowrap">输入/输出/属性</th>
+      <th style="white-space: nowrap">描述</th>
+      <th style="white-space: nowrap">数据类型</th>
+      <th style="white-space: nowrap">数据格式</th>
     </tr></thead>
   <tbody>
     <tr>
-      <td>positions</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，输入索引。</td>
-      <td>INT32、INT64</td>
-      <td>ND</td>
+      <td style="white-space: nowrap">positions</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">Device侧的aclTensor，输入索引。</td>
+      <td style="white-space: nowrap">INT32、INT64</td>
+      <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
-      <td>queryIn</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，表示要执行旋转位置编码的第一个张量，公式中的`query`。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
-      <td>ND</td>
+      <td style="white-space: nowrap">queryIn</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">Device侧的aclTensor，表示要执行旋转位置编码的第一个张量，公式中的`query`。</td>
+      <td style="white-space: nowrap">BFLOAT16、FLOAT16、FLOAT32</td>
+      <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
-      <td>keyIn</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，表示要执行旋转位置编码的第二个张量，公式中的`key`。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
-      <td>ND</td>
+      <td style="white-space: nowrap">keyIn</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">Device侧的aclTensor，表示要执行旋转位置编码的第二个张量，公式中的`key`。</td>
+      <td style="white-space: nowrap">BFLOAT16、FLOAT16、FLOAT32</td>
+      <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
-      <td>cosSinCache</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，表示参与计算的位置编码张量。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
-      <td>ND</td>
+      <td style="white-space: nowrap">cosSinCache</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">Device侧的aclTensor，表示参与计算的位置编码张量。</td>
+      <td style="white-space: nowrap">BFLOAT16、FLOAT16、FLOAT32</td>
+      <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
-      <td>mropeSection</td>
-      <td>输入</td>
-      <td>mrope模式下用于整合输入的位置编码张量信息，公式中的`mropeSection`。</td>
-      <td>INT64</td>
-      <td>-</td>
+      <td style="white-space: nowrap">mropeSection</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">mrope模式下用于整合输入的位置编码张量信息，公式中的`mropeSection`。</td>
+      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
-      <td>headSize</td>
-      <td>输入</td>
-      <td>表示每个注意力头维度大小。</td>
-      <td>INT64</td>
-      <td>-</td>
+      <td style="white-space: nowrap">headSize</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">表示每个注意力头维度大小。</td>
+      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
-      <td>isNeoxStyle</td>
-      <td>输入</td>
-      <td>true表示rotate\_half（GPT-NeoX style）计算模式，false表示rotate\_interleaved（GPT-J style）计算模式。</td>
-      <td>BOOL</td>
-      <td>-</td>
+      <td style="white-space: nowrap">isNeoxStyle</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">true表示rotate\_half（GPT-NeoX style）计算模式，false表示rotate\_interleaved（GPT-J style）计算模式。</td>
+      <td style="white-space: nowrap">BOOL</td>
+      <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
-      <td>queryOut</td>
-      <td>输出</td>
-      <td>输出query执行旋转位置编码后的结果。</td>
-      <td>FLOAT、FLOAT16、BFLOAT16</td>
-      <td>ND</td>
+      <td style="white-space: nowrap">queryOut</td>
+      <td style="white-space: nowrap">输出</td>
+      <td style="white-space: nowrap">输出query执行旋转位置编码后的结果。</td>
+      <td style="white-space: nowrap">FLOAT、FLOAT16、BFLOAT16</td>
+      <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
-      <td>keyOut</td>
-      <td>输出</td>
-      <td>输出key执行旋转位置编码后的结果。</td>
-      <td>INT32</td>
-      <td>ND</td>
+      <td style="white-space: nowrap">keyOut</td>
+      <td style="white-space: nowrap">输出</td>
+      <td style="white-space: nowrap">输出key执行旋转位置编码后的结果。</td>
+      <td style="white-space: nowrap">INT32</td>
+      <td style="white-space: nowrap">ND</td>
     </tr>
   </tbody></table>
 
@@ -241,8 +235,8 @@
 - queryIn、keyIn、cosSinCache只支持2维shape输入。
 - numQHeads支持范围: 1~32。
 - numKHeads支持范围: 1~32。
-- headSize支持范围: 16~128。数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数；
-- rotaryDim支持范围: 16~128，始终小于等于headSize。数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数；
+- headSize支持范围: 16~128。数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数。
+- rotaryDim支持范围: 16~128，始终小于等于headSize。数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数。
 - 当输入tensor positions中值域超过cosSinCache的0维maxSeqLen，会有越界报错。
 
 ## 调用说明

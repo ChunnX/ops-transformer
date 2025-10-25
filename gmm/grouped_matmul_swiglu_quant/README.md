@@ -89,19 +89,93 @@
         $Q_{i} = \left \lfloor \frac{S_{i}}{ Q\_scale_{i} } + Q\_offset_{i}\right \rceil $
 
 ## 参数说明
-|参数名| 输入/输出/属性   |    描述 |数据类型 |
-|-----|---------|------|------|
-|x|输入|左矩阵，公式中的$X$|INT8|
-|weight|输入|权重矩阵，公式中的$W$|INT8|
-|bias|输入|矩阵乘计算的偏移值，公式中的$bias$|INT32|
-|offsetx|输入|per-channel非对称反量化的偏移，公式中的$offset$|FLOAT32|
-|weightScale|输入|右矩阵的量化因子，公式中的$w\_scale$|FLOAT、FLOAT16、BFLOAT16|
-|xScale|输入|左矩阵的量化因子，公式中的$x\_scale$|FLOAT32|
-|groupList|输入|指示每个分组参与计算的Token个数，公式中的$grouplist$|INT64|
-|output|输出|输出的量化因子，公式中的$Q\_scale$|FLOAT|
-|outputScale|输出|输出的量化因子，公式中的$Q\_scale$|FLOAT|
-|outputOffset|输出|输出的非对称量化的偏移，公式中的$Q\_offset$|FLOAT|
+<table style="table-layout: auto; width: 100%">
+<thead>
+<tr>
+<th style="white-space: nowrap">参数名</th>
+<th style="white-space: nowrap">输入/输出/属性</th>
+<th style="white-space: nowrap">描述</th>
+<th style="white-space: nowrap">数据类型</th>
+<th style="white-space: nowrap">数据格式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="white-space: nowrap">x</td>
+<td style="white-space: nowrap">输入</td>
+<td style="white-space: nowrap">左矩阵，公式中的X。</td>
+<td style="white-space: nowrap">INT8</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">weight</td>
+<td style="white-space: nowrap">输入</td>
+<td style="white-space: nowrap">权重矩阵，公式中的W。</td>
+<td style="white-space: nowrap">INT8</td>
+<td style="white-space: nowrap">ND / NZ</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">bias</td>
+<td style="white-space: nowrap">输入</td>
+<td style="white-space: nowrap">矩阵乘计算的偏移值，公式中的bias。</td>
+<td style="white-space: nowrap">INT32</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">offset</td>
+<td style="white-space: nowrap">输入</td>
+<td style="white-space: nowrap">per-channel非对称反量化的偏移，公式中的offset。</td>
+<td style="white-space: nowrap">FLOAT32</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">weightScale</td>
+<td style="white-space: nowrap">输入</td>
+<td style="white-space: nowrap">右矩阵的量化因子，公式中的w_scale。</td>
+<td style="white-space: nowrap">FLOAT、FLOAT16、BFLOAT16</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">xScale</td>
+<td style="white-space: nowrap">输入</td>
+<td style="white-space: nowrap">左矩阵的量化因子，公式中的x_scale。</td>
+<td style="white-space: nowrap">FLOAT32</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">groupList</td>
+<td style="white-space: nowrap">输入</td>
+<td style="white-space: nowrap">指示每个分组参与计算的Token个数，公式中的grouplist。</td>
+<td style="white-space: nowrap">INT64</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">output</td>
+<td style="white-space: nowrap">输出</td>
+<td style="white-space: nowrap">输出的量化因子，公式中的Q。</td>
+<td style="white-space: nowrap">FLOAT</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+<tr>
+<td style="white-space: nowrap">outputScale</td>
+<td style="white-space: nowrap">输出</td>
+<td style="white-space: nowrap">输出的量化因子，公式中的Q_scale。</td>
+<td style="white-space: nowrap">FLOAT</td>
+<td style="white-space: nowrap">ND </td>
+</tr>
+<tr>
+<td style="white-space: nowrap">outputOffset</td>
+<td style="white-space: nowrap">输出</td>
+<td style="white-space: nowrap">输出的非对称量化的偏移，公式中的Q_offset。</td>
+<td style="white-space: nowrap">FLOAT</td>
+<td style="white-space: nowrap">ND</td>
+</tr>
+</tbody>
+</table>
 
+## 约束说明
+ - N轴长度不能超过10240。
+ - K轴长度不能超过65536。
 
 ## 调用说明
 

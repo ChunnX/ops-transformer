@@ -1,4 +1,4 @@
-# aclnnGroupedMatmulAdd
+# GroupedMatmulAdd
 
 ## 产品支持情况
 
@@ -19,26 +19,81 @@
   y_i=x_i\times weight_i + y_i
   $$
 
-
 ## 参数说明
 
-|参数名| 输入/输出/属性   |    描述 |数据类型 |
-|-----|---------|------|------|
-|x|输入|公式中的输入x|FLOAT16、BFLOAT16|
-|weight|输入|公式中的weight|FLOAT16、BFLOAT16|
-|groupList|输入|表示输入K轴方向的matmul大小分布的cumsum结果（累积和）|INT64|
-|y|输入|表示原地累加的输出矩阵|FLOAT32|
-|transposeX|属性|表示x矩阵是否转置|BOOL|
-|transposeWeight|属性|表示weight矩阵是否转置|BOOL|
-|groupType|属性|表示分组类型|INT64|
-|yRef|输出|表示原地累加的输出矩阵|FLOAT32|
+<table style="table-layout: auto; width: 100%">
+  <thead>
+    <tr>
+      <th style="white-space: nowrap">参数名</th>
+      <th style="white-space: nowrap">输入/输出/属性</th>
+      <th style="white-space: nowrap">描述</th>
+      <th style="white-space: nowrap">数据类型</th>
+      <th style="white-space: nowrap">数据格式</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="white-space: nowrap">x</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">公式中的输入x。</td>
+      <td style="white-space: nowrap">FLOAT16、BFLOAT16</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">weight</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">公式中的weight。</td>
+      <td style="white-space: nowrap">FLOAT16、BFLOAT16</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">groupList</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">表示输入K轴方向的matmul大小分布的cumsum结果（累积和）。</td>
+      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">y</td>
+      <td style="white-space: nowrap">输入</td>
+      <td style="white-space: nowrap">表示原地累加的输出矩阵。</td>
+      <td style="white-space: nowrap">FLOAT32</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">transposeX</td>
+      <td style="white-space: nowrap">属性</td>
+      <td style="white-space: nowrap">表示x矩阵是否转置。</td>
+      <td style="white-space: nowrap">BOOL</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">transposeWeight</td>
+      <td style="white-space: nowrap">属性</td>
+      <td style="white-space: nowrap">表示weight矩阵是否转置。</td>
+      <td style="white-space: nowrap">BOOL</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">groupType</td>
+      <td style="white-space: nowrap">属性</td>
+      <td style="white-space: nowrap">表示分组类型。</td>
+      <td style="white-space: nowrap">INT64</td>
+      <td style="white-space: nowrap">-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">yRef</td>
+      <td style="white-space: nowrap">输出</td>
+      <td style="white-space: nowrap">表示原地累加的输出矩阵。</td>
+      <td style="white-space: nowrap">FLOAT32</td>
+      <td style="white-space: nowrap">ND</td>
+    </tr>
+  </tbody>
+</table>
 
 ## 约束说明
 
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
-- 支持的输入类型为：
-  - x为FLOAT16、weight为FLOAT16、y为FLOAT32。
-  - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。
 
 ## 调用说明
 
