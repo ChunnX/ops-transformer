@@ -635,15 +635,15 @@ ${op_name}                              # 替换为实际算子名的小写下�
 │   └── ${op_name}_infershape.cpp       # InferShape实现，实现算子形状推导，在运行时推导输出shape
 ├── op_graph                            # 图融合相关实现
 │   ├── CMakeLists.txt                  # op_graph侧cmakelist文件
-│   ├── ${op_name}_graph_infer.cpp      # InferDataType文件，实现算子类型推导，在运行时推导输出dataType
+│   ├── ${op_name}_graph_infer.cpp      # InferDataType文件，实现算子类型推导，在运行时推导输出DataType
 └── └── ${op_name}_proto.h              # 算子原型定义，用于图优化和融合阶段识别算子
 ```
 
 ### Shape与DataType推导
 
 在深度学习中，当一个算子被加入计算图时，为确保图的正确性和后续的编译、优化、执行流程顺利进行，通常需要为该算子实现两个关键的推导函数：
-  - InferShape：用于推导输出张量的形状（shape）。
-  - InferDataType：用于推导输出张量的数据类型（dataType）。
+  - InferShape：用于推导输出张量的形状（Shape）。
+  - InferDataType：用于推导输出张量的数据类型（DataType）。
 
 操作步骤如下：
 
@@ -682,11 +682,11 @@ static ge::graphStatus InferShapeAddExample(gert::InferShapeContext* context)
     ....
 }
 
-// AddExample算子逻辑是两个数相加，因此输出dataType与输入dataType一致
+// AddExample算子逻辑是两个数相加，因此输出DataType与输入DataType一致
 static ge::graphStatus InferDataTypeAddExample(gert::InferDataTypeContext* context)
 {
     ....
-    // 获取输入的dataType
+    // 获取输入的DataType
     ge::DataType sizeDtype = context->GetInputDataType(IDX_0);
     // 将输出dataType设置到输出
     context->SetOutputDataType(IDX_0, sizeDtype);

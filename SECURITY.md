@@ -28,7 +28,7 @@
 | :------------: |:------------------------------------------------------------------------------------------:|:----------------------------------------------------------| :---------------------------------------------------------- |:-----------------------------------------|
 |  依赖  | 不涉及  | cmake/third_party/makeself-fetch.cmake | https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz | 从gitcode下载makeself源码，作用编译依赖 |
 |  依赖  | 不涉及  | cmake/third_party/protobuf.cmake | https://github.com/protocolbuffers/protobuf/archive/v3.13.0.tar.gz | 从github下载protobuf源码，作用编译依赖 |
-|  依赖  | 不涉及  | cmake/third_party/json.cmake | https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip | 从gitcode下载json源码，作用编译依赖 |
+|  依赖  | 不涉及  | cmake/third_party/json.cmake | https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip | 从gitcode下载JSON源码，作用编译依赖 |
 |  依赖  | 不涉及  | cmake/third_party/gtest.cmake | https://github.com/google/googletest/archive/release-1.8.0.tar.gz | 从github下载googletest源码，作用编译依赖 |
 |  依赖  | 不涉及  | cmake/third_party/secure_c.cmake | https://gitee.com/openeuler/libboundscheck/repository/archive/v1.1.10.tar.gz | 从gitee下载libboundscheck源码，作用编译依赖 |
 ---
@@ -40,7 +40,7 @@
 
 ### A-文件（夹）各场景权限管控推荐最大值
 
-| 类型           | Linux权限参考最大值 |
+| 类型           | Linx权限参考最大值 |
 | -------------- | ---------------  |
 | 用户主目录                        |   750（rwxr-x---）            |
 | 程序文件(含脚本文件、库文件等)       |   550（r-xr-x---）             |

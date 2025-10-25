@@ -22,7 +22,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 │   │   ├── examples               # 算子使用示例
 │   │   ├── op_host                # 算子信息库、Tiling、InferShape相关实现目录
 │   │   │   └── op_api             # 算子aclnn接口实现目录
-│   │   ├── op_kernel              # 算子kernel目录
+│   │   ├── op_kernel              # 算子Kernel目录
 │   │   └── README.md              # 算子说明文档
 │   ├── ...
 │   └── CMakeLists.txt             # 算子编译配置文件
@@ -32,7 +32,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 ├── ...
 ├── moe                            # moe类算子
 ├── posembedding                   # posembedding类算子
-├── scripts                        # 脚本目录，包含自定义算子、kernel构建相关配置文件
+├── scripts                        # 脚本目录，包含自定义算子、Kernel构建相关配置文件
 ├── tests                          # 测试工程目录
 ├── CMakeLists.txt
 ├── README.md
