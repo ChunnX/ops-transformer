@@ -9,7 +9,7 @@
 
 ## 功能说明
 
-- 算子功能：Native Sparse Attention推理过程中，Compress Attention的计算。
+- 接口功能：Native Sparse Attention推理过程中，Compress Attention的计算。
 - 计算公式：
 
 <center>
@@ -99,7 +99,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
       <td>attention结构的Query输入。</td>
       <td>
         <ul style="list-style-type: circle;">
-          <li>query中的B是[1, 10000]区间内的整数，且与blockTable中的B与actualCmpKvSeqLenOptional数组的长度相等。</li>
+          <li>query中的B是[1, 10000]区间内的整数，且与blockTableOptional中的B与actualCmpKvSeqLenOptional数组的长度相等。</li>
           <li>query的S轴小于等于4。</li>
           <li>query中的N和numHeads值相等，且N轴必须是key/value的N轴（H/D）的整数倍，此外，query的N轴与key/value的N轴（H/D）的比值（即GQA中的group大小）小于等于128，且128是group的整数倍。</li>
           <li>query中的D和key的D(H/numKeyValueHeads)值相等，小于等于192且大于等于value的D轴。</li>
@@ -231,7 +231,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
       <td>selectBlockSize</td>
       <td>输入</td>
       <td>select阶段的block大小，在计算importance score时使用。</td>
-      <td>selectBlockSize大于等于compressBlockSize，且是compressBlockStride的整数倍。</td>
+      <td>仅支持selectBlockSize取值16、32、48、64、80、96、112、128，且selectBlockSize大于等于compressBlockSize，并且是compressBlockStride的整数倍。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -251,7 +251,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
       <td>compressBlockSize</td>
       <td>输入</td>
       <td>压缩时的滑窗大小。</td>
-      <td>仅支持compressBlockSize取值16、32、48、64、80、96、112、118，且需要大于等于compressBlockStride。</td>
+      <td>仅支持compressBlockSize取值16、32、48、64、80、96、112、128，且需要大于等于compressBlockStride。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -290,7 +290,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
     <tr>
       <td>pageBlockSize</td>
       <td>输入</td>
-      <td>blockTable中一个block的大小。</td>
+      <td>blockTableOptional中一个block的大小。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
     <tr>
       <td>sparseMode</td>
       <td>输入</td>
-      <td>sparse的模式，控制有attentionMask输入时的稀疏计算。</td>
+      <td>sparse的模式，控制有attentionMaskOptional输入时的稀疏计算。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -426,9 +426,9 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 
 ## 约束说明
 
-* 参数query仅支持TND、BSND输入。T是B和S合轴紧密排列的数据（每个batch的actualQSeqLen）、B（batch）表示输入样本批量大小、S（qSeqlen）表示输入样本序列长度、N（numHeads）表示多头数、D（headDimsQK）表示隐藏层最小的单元尺寸。
-* 压缩前的kvSeqlen的上限可以表示为：NoCmpKvSeqlenCeil=（cmpKvSeqlen-1）*compressBlockStride+compressBlockSize，需要满足NoCmpKvSeqlenCeil/selectBlockSize<=4096，且需要满足selectBlockCount<=NoCmpKvSeqlenCeil/selectBlockSize。
-* 多token推理场景下，仅支持query的S轴最大等于4，并且此时要求每个batch单独的actualQSeqLen<=actualSelKvSeqLen。
+* 参数query仅支持TND、BSND输入。T是B和S合轴紧密排列的数据（每个batch的actualQSeqLenOptional）、B（batch）表示输入样本批量大小、S（qSeqlen）表示输入样本序列长度、N（numHeads）表示多头数、D（headDimsQK）表示隐藏层最小的单元尺寸。
+* 压缩前的kvSeqlen的上限可以表示为：actualSelKvSeqLenCeil=(actualCmpKvSeqLenOptional-1)*compressBlockStride+compressBlockSize，需要满足actualSelKvSeqLenCeil/selectBlockSize<=4096，且需要满足selectBlockCount<=actualSelKvSeqLenCeil/selectBlockSize。如果actualSelKvSeqLenOptional不满足actualCmpKvSeqLenOptional=(actualSelKvSeqLenOptional-compressBlockSize)/compressBlockStride+1，或者actualCmpKvSeqLenOptional的长度和blockTableOptional的batch维度不同，则会默认进入单token推理场景。
+* 多token推理场景下，actualQSeqLenOptional参数必须传入，actualQSeqLenOptional的长度必须和blockTableOptional的batch维度相等，仅支持query的S轴最大等于4，并且此时要求每个batch单独的actualQSeqLenOptional<=actualSelKvSeqLenOptional。如果actualQSeqLenOptional的长度和blockTableOptional的batch维度不同，或者actualQSeqLenOptional的值小于1或者大于4，则会默认进入单token推理场景。
 
 ## 调用示例
 
