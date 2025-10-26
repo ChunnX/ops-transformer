@@ -32,6 +32,7 @@
 #include "l1_to_bt_iterator.h"
 #include "l1_to_l0_iterator.h"
 #include "l1_to_ub_iterator.h"
+#include "incre_flash_attention_tiling.h"
 
 constexpr int32_t LOCAL_STORAGE_BUFFER_SIZE = 4096;
 
