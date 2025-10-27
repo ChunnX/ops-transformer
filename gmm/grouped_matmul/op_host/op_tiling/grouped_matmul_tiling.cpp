@@ -899,6 +899,10 @@ void GMMTiling::GMMSetTilingKey(gert::TilingContext* context) const {
       context->SetTilingKey(transposeWeight_ ? TILING_KEY_A16W8_MSD_TRANS_W : TILING_KEY_A16W8_MSD);
       return;
     }
+    if (isA8W4FakeA8W8_) {
+      context->SetTilingKey(TILING_KEY_A8W4_FAKE_A8W8);
+      return;
+    }
     if (isA8W8_) {
       if(actType_ == ACT_TYPE_GELU
           || ((maxK_ <= DOUBLE_VECTOT_THRESHOLD_K_LOWER || maxK_ >= DOUBLE_VECTOT_THRESHOLD_K_UPPER)
@@ -914,10 +918,6 @@ void GMMTiling::GMMSetTilingKey(gert::TilingContext* context) const {
     }
     if (isA4W4_) {
       context->SetTilingKey(TILING_KEY_QUANT_2VECTOR);
-      return;
-    }
-    if (isA8W4FakeA8W8_) {
-      context->SetTilingKey(TILING_KEY_A8W4_FAKE_A8W8);
       return;
     }
     if (transposeWeight_) {
@@ -967,7 +967,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
     tilingData.gmmBaseParams.set_k(k);
     tilingData.gmmBaseParams.set_quantGroupNum(quantGroupNum);
   }
-  isA8W8_ = (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT8) || isA8W4FakeA8W8_;
+  isA8W8_ = (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT8);
   isA4W4_ = xDType_ == ge::DT_INT4 && weightDtype_ == ge::DT_INT4;
 
   auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
@@ -1136,7 +1136,7 @@ void GMMTiling::FullLoadK(const GMMCompileInfo* compileInfoPtr) {
 ge::graphStatus GMMTiling::CalcStepKaKb(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr,
                                         int64_t mInMM, uint32_t& mmStepKa, uint32_t& mmStepKb) {
   uint64_t availableL1Size = compileInfoPtr->l1Size;
-  if (isA8W8_) {
+  if (isA8W8_ || isA8W4FakeA8W8_) {
     availableL1Size -= static_cast<uint64_t>(baseN_) * sizeof(uint64_t);
   }
   if (hasBias_) {
@@ -1235,7 +1235,7 @@ ge::graphStatus GMMTiling::GMMSetMMTiling(const gert::TilingContext* context, co
 void GMMTiling::SetMMPreTiling() {
   uint64_t ispreTiling = 0;
   int64_t isNz = wFormat_ ==  matmul_tiling::CubeFormat::NZ ? 1 : 0;
-  if (tuningConfig_ == 0L && isA8W8_ && groupNum_ == 1U && usedCoreNum_ == A3_AIC_NUM) {
+  if (tuningConfig_ == 0L && (isA8W8_ || isA8W4FakeA8W8_) && groupNum_ == 1U && usedCoreNum_ == A3_AIC_NUM) {
     ispreTiling = static_cast<uint64_t>(1); // 1: pretiling key
   } else {
     tilingData.gmmBaseParams.set_isPreTiling(ispreTiling);
@@ -1269,7 +1269,7 @@ ge::graphStatus GMMTiling::CalMMTiling(const gert::TilingContext* context, const
   // 2048: min n for a16w8 msd to set baseN 512
   if (isA16W8Msd_ && maxN_ >= 2048 && !transposeWeight_) {
     baseN_ = BEST_BASEN_MSD;
-  } else if (isA8W8_ && tuningConfigFlag){
+  } else if ((isA8W8_ || isA8W4FakeA8W8_) && tuningConfigFlag){
     baseN_ = BEST_BASEN_QUANT_ONE_GROUP;
     baseM_ = BEST_BASEM_QUANT_ONE_GROUP;
     baseK_ = BEST_BASEK_QUANT_ONE_GROUP;
