@@ -323,5 +323,5 @@ int main() {
 
     // 6. Cleanup resources
     CleanupResources(resources, workspaceAddr, stream, deviceId);
-    _exit(0);
+    return 0;
 }
