@@ -424,7 +424,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 - **参数一致性约束**：
   - 所有卡的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commAlg`参数及`HCCL_BUFFSIZE`取值需保持一致，且与CombineV3系列算子对应参数一致。
-  - 动态缩容后的部署信息通过`elasticInfoOptional`参数传递给算子，无需修改其他参数，缩容参数仅在 tp_world_size 取值为 1 时生效。动态缩容后，MOE专家卡上的本卡部署MOE专家数需与缩容前保持一致。
+  - 动态缩容后的部署信息通过`elasticInfoOptional`参数传递给算子，无需修改其他参数，缩容参数仅在 tp_world_size 取值为 1 时生效。动态缩容后，MOE专家卡上的本卡部署MOE专家数需与缩容前保持一致，不支持缩容后无MOE专家卡。
 
 - **产品特定约束**：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
