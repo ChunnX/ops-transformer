@@ -10,7 +10,7 @@
 
 ##  功能说明
 
-- **算子功能**：兼容（[aclnnIncreFlashAttentionV2](aclnnIncreFlashAttentionV2.md)）接口功能，在其基础上**新增位置编码，page attention，kv cache反量化特性**。
+- **算子功能**：兼容（[aclnnIncreFlashAttentionV2](aclnnIncreFlashAttentionV2.md)）接口功能，在其基础上**新增位置编码，page attention，KV cache反量化特性**。
 
   对于自回归（Auto-regressive）的语言模型，随着新词的生成，推理输入长度不断增大。在原来全量推理的基础上**实现增量推理**，query的S轴固定为1，key和value是经过KV Cache后，将之前推理过的state信息，叠加在一起，每个Batch对应S轴的实际长度可能不一样，输入的数据是经过padding后的固定长度数据。
 
@@ -465,7 +465,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
   - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value 输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
   - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
   - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
-  - page attention使能场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
+  - page attention使能场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 numKeyValueHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKeyValueHeads）或调整kv cache排布格式为（blocknum, numKeyValueHeads, blocksize, D）解决。
   - page attention场景下，必须传入输入actualSeqLengths。
   - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
   - page attention使能场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。

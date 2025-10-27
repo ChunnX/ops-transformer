@@ -27,7 +27,7 @@
     Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
     $$
 
-    其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
+    其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的平方根进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
 ## 参数说明
 
@@ -157,7 +157,7 @@
   - query、key、value输入类型均为INT8的场景暂不支持。
   - 在INT4伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
   - 在INT4伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
-  - key、value在特定数据数据类型下存在对于D轴的限制
+  - key、value在特定数据类型下存在对于D轴的限制
     - key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
   
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。

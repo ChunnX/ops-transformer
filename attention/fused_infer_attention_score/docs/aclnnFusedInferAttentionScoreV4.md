@@ -1910,7 +1910,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                 <td>
                 <ul>
                     <li>
-                    当query的inputLayout不为TND时，该参数无效。当query的inputLayout为TND/TND_NTD时，综合约束请见[TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制](#TND)。</li>
+                    当query的inputLayout不为TND时，该参数无效。当query的inputLayout为TND/TND_NTD时，综合约束请见<a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。</li>
                 </ul>
                 </td>
             </tr>
@@ -1918,7 +1918,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                 <td>actualSeqLengthsKv</td>
                 <td>
                 <ul>
-                    <li>当key/value的inputLayout为TND/TND_NTD时，综合约束请见[TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制](#TND)。
+                    <li>当key/value的inputLayout为TND/TND_NTD时，综合约束请见<a href="#TND">TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制</a>。
                     </li>
                 </ul>
                 </td>
