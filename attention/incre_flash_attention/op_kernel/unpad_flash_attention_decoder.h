@@ -22,7 +22,6 @@
 #include "common.h"
 #include "mma.h"
 #include "kernel_operator.h"
-#include "incre_flash_attention_tiling.h"
 
 extern constexpr int32_t LOCAL_STORAGE_BUFFER_SIZE = 4096;
 extern constexpr int32_t FLOAT_VECTOR_SIZE_T = 64;

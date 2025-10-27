@@ -159,10 +159,6 @@ protected:
         return oss.str();
     }
 
-    [[nodiscard]] gert::TilingContext *GetContext()
-    {
-        return context_;
-    }
 private:
     gert::TilingContext *context_ = nullptr;
     std::unique_ptr<platform_ascendc::PlatformAscendC> ascendcPlatform_{nullptr};

@@ -29,8 +29,7 @@
 #include "incre_flash_attention_tiling_context.h"
 #include "incre_flash_attention_tiling_base.h"
 #include "incre_flash_attention_tiling_struct.h"
-#include "../../incre_flash_attention/op_kernel/incre_flash_attention_tiling.h"
-
+#include "../../incre_flash_attention/op_host/incre_flash_attention_tiling.h"
 #ifdef ASCENDC_OP_TEST
 #define IFA_EXTERN_C extern "C"
 #else
@@ -44,7 +43,7 @@ public:
 
     ge::graphStatus DoTiling(gert::TilingContext &context);
     ge::graphStatus RunBigKernelTiling(IncreFlashAttentionContext &context,
-        IncreFlashAttentionTilingDataV2* tilingData, bool isWorkspace = false);
+        IncreFlashAttentionTilingDataV2 &tilingData, bool isWorkspace = false);
     ge::graphStatus IncreFlashAttentionSetTilingData(gert::TilingContext &context, IncreFlashAttentionTilingDataV2 &tilingData);
     static ge::graphStatus ConvertContext(gert::TilingContext &context, IncreFlashAttentionContext &ifaContext);
     bool NeedRollBack() const
@@ -58,9 +57,7 @@ public:
     }
     uint32_t GetAntiquantSeqLength() const;
     bool IsBalanceSplitCore() const;
-    IncreFlashAttentionTilingAtbDataV2* ifaTilingAtbData;
-    IncreFlashAttentionTilingDataMla* tilingDataMla_;
-    gert::TilingContext *geContext_ = nullptr;
+
 private:
     ge::graphStatus GetNpuInfo();
     ge::graphStatus PreProcess();
@@ -475,6 +472,9 @@ private:
     uint32_t tailSplitedBatchRangeSp_ = 0;
     uint32_t combinUsedCore_ = 0;
 
+    IncreFlashAttentionTilingAtbDataV2 ifaTilingAtbData;
+    IncreFlashAttentionTilingDataMla tilingDataMla_;
+
     bool balanceModeFlag_ = false;
 
     // Atb param
@@ -486,7 +486,7 @@ std::string DataTypeToSerialString(ge::DataType type);
 
 ge::graphStatus TilingPrepareForIncreFlashAttention(gert::TilingParseContext* context);
 ge::graphStatus TilingIncreFlashAttentionAdapter(gert::TilingContext* context, IncreFlashAttentionContext& ifaContext,
-    IncreFlashAttentionTilingDataV2* ifaTilingData);
+    IncreFlashAttentionTilingDataV2& ifaTilingData);
 
 IFA_EXTERN_C ge::graphStatus TilingIncreFlashAttention(gert::TilingContext* context);
 

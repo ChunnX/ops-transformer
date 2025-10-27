@@ -27,7 +27,6 @@
 #include "fia_block_cube_nonquant_mla.h"
 #include "fia_block_vec_flashdecode.h"
 
-using namespace optiling;
 using namespace matmul;
 using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;

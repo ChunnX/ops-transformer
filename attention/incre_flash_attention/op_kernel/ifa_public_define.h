@@ -18,7 +18,6 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "incre_flash_attention_tiling.h"
 
 using namespace AscendC;
 using AscendC::AIC;

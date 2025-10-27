@@ -20,7 +20,6 @@
 #include "../fia_tiling_base.h"
 #include "../fia_tiling_info.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"
-#include "../../../fused_infer_attention_score/op_kernel/fused_infer_attention_score_tilingdata.h"
 
 namespace optiling {
 
@@ -85,7 +84,7 @@ private:
     size_t libapiSize_ = 0;
 
     // set info to context
-    FusedInferAttentionScoreTilingData *tilingData_ = GetContext()->GetTilingData<FusedInferAttentionScoreTilingData>();
+    FusedInferAttentionScoreTilingData tilingData_;
     uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};
