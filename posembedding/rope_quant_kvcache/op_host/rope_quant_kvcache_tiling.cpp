@@ -68,6 +68,7 @@ static ge::graphStatus TilingForRopeQuantKvcache(gert::TilingContext* context)
 
 static ge::graphStatus TilingPrepareForRopeQuantKvcache(gert::TilingParseContext* context)
 {
+    (void)context;
     return GRAPH_SUCCESS;
 }
 

@@ -81,7 +81,7 @@ bool MoeGatingTopKSoftmaxV2PerfRegbaseTiling::IsCapable()
 
 ge::graphStatus MoeGatingTopKSoftmaxV2PerfRegbaseTiling::DoOpTiling()
 {
-    gatingAlignCol = calcGatingAlignCol(col);
+    gatingAlignCol = calcGatingAlignCol(col, dtype);
     doubleBufferFlag = getDoubleBufferFlag();
     maxRow = calcMaxRowInUb(ubSize, CeilDiv(row, coreNum));
     maxRow = std::min(maxRow, static_cast<uint32_t>(MAX_ROW / (gatingAlignCol / ALIGN_NUM)));

@@ -172,7 +172,7 @@ void MoeInitRoutingV2GradTilingBase::TilingGradCompute()
 
     // 根据K大小，选择对应的二分累加buffer数量，以一个数exp + 1做2的指数，无限逼近K的大小
     int64_t K = moeInitRoutingV2GradTilingData.get_k();
-    int64_t exponentOfBinary = (K >= BOUND_K_FOR_BINARY) ? MAX_EXPONENT_OF_BINARY : std::floor(std::log2(K)) - 1;
+    int64_t exponentOfBinary = (K >= BOUND_K_FOR_BINARY) ? MAX_EXPONENT_OF_BINARY : static_cast<int64_t>(std::floor(std::log2(K)) - 1);
     exponentOfBinary = (exponentOfBinary < 0) ? 0 : exponentOfBinary;
     int64_t binaryAddBuffNum =
         (K >= BOUND_K_FOR_BINARY) ? MAX_BINARY_ADD_BUFFER_CNT : static_cast<int64_t>(std::pow(2, exponentOfBinary)); //  2^exp

@@ -251,6 +251,7 @@ struct TilingmropeCompileInfo {
 
 static ge::graphStatus TilingPreparemrope(gert::TilingParseContext* context)
 {
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 

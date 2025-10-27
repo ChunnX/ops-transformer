@@ -81,7 +81,21 @@ static inline int64_t ComputeMaxHiddenSize(MoeTokenUnpermuteParam &param, int64_
 
 static inline ge::graphStatus InputParamCheck(const gert::TilingContext *context)
 {
+    const gert::StorageShape *tokensShape = context->GetInputShape(0);
+    const gert::StorageShape *indicesShape = context->GetInputShape(1);
+    const gert::StorageShape *probsShape = context->GetInputShape(2);
+    auto dataTensor0 = context->GetInputTensor(0);
+    auto dataTensor1 = context->GetInputTensor(1);
+    auto nodeName = context->GetNodeName();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto is310P = (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P);
+    (void)tokensShape;
+    (void)indicesShape;
+    (void)probsShape;
+    (void)dataTensor0;
+    (void)dataTensor1;
+    (void)nodeName;
+    (void)is310P;
     return ge::GRAPH_SUCCESS;
 }
 

@@ -449,6 +449,8 @@ static void InitPad(const gert::TilingContext* context, TilingPadParams& param) 
 
 static ge::graphStatus SetTilingKeyPad(gert::TilingContext* context, TilingPadParams& params, uint64_t dType)
 {
+    (void)params;
+    (void)dType;
     uint64_t tilingKey = 1000;
     OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithRoutingMapPadTilingData] tilingKey: %ld", tilingKey);
     return context->SetTilingKey(tilingKey);

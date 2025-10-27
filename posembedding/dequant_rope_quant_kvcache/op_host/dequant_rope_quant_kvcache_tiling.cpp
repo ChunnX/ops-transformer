@@ -183,7 +183,7 @@ ge::graphStatus checkOptDtype(const uint64_t index, gert::TilingContext* context
         auto optDtype = optDesc->GetDataType();
         OP_CHECK_IF(
             optDtype != ge::DT_FLOAT,
-            OP_LOGE(nodeName_, "input %ld 's dtype should be float.", index),
+            OP_LOGE(nodeName_, "input %lu 's dtype should be float.", index),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -195,14 +195,14 @@ ge::graphStatus checkDRQKDim(
     OP_CHECK_IF(
         inShape->GetStorageShape().GetDimNum() != realShape.size(),
         OP_LOGE(
-            nodeName_, "%s's dim size should be %ld but got %zu", logName.c_str(), realShape.size(),
+            nodeName_, "%s's dim size should be %zu but got %zu", logName.c_str(), realShape.size(),
             inShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
     for (uint64_t dimI = 0; dimI < realShape.size(); dimI++) {
         OP_CHECK_IF(
             inShape->GetStorageShape().GetDim(dimI) != realShape[dimI],
             OP_LOGE(
-                nodeName_, "%s's dim[%ld] should be [%ld] but got %zu.", logName.c_str(), dimI, realShape[dimI],
+                nodeName_, "%s's dim[%lu] should be [%ld] but got %ld.", logName.c_str(), dimI, realShape[dimI],
                 inShape->GetStorageShape().GetDim(dimI)),
             return ge::GRAPH_FAILED);
     }
@@ -238,7 +238,7 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext* context, TilingInfoDRQK& t
     OP_CHECK_IF(
         attr->GetSize() != QKV_NUM,
         OP_LOGE(
-            context->GetNodeName(), "the attr size_splits's size %ld is invalid, it should be 3", attr->GetSize()),
+            context->GetNodeName(), "the attr size_splits's size %zu is invalid, it should be 3", attr->GetSize()),
         return ge::GRAPH_FAILED);
     tilingInfoDRQK.attrData = reinterpret_cast<const int64_t*>(attr->GetData());
     int64_t qHiddensize = tilingInfoDRQK.attrData[0];
@@ -301,7 +301,7 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext* context, TilingInfoDRQK& t
     int64_t xShapeDimNum = xShape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(
         (xShapeDimNum != INPUT_X_DIM && xShapeDimNum != BASE_2),
-        OP_LOGE(context->GetNodeName(), "x's dim [%zu] is not 3D or 2D.", xShapeDimNum),
+        OP_LOGE(context->GetNodeName(), "x's dim [%ld] is not 3D or 2D.", xShapeDimNum),
         return ge::GRAPH_FAILED);
     tilingInfoDRQK.batch = xShape->GetStorageShape().GetDim(0);
     tilingInfoDRQK.seqlen = (xShapeDimNum == BASE_2) ? 1 : xShape->GetStorageShape().GetDim(1);
@@ -395,7 +395,7 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext* context, TilingInfoDRQK& t
         OP_CHECK_IF(
             vCacheShape->GetStorageShape().GetDim(0) < xShape->GetStorageShape().GetDim(0),
             OP_LOGE(
-                context->GetNodeName(), "vcache's dim[0]:%zu should not be less than input x's dim[0]:%zu",
+                context->GetNodeName(), "vcache's dim[0]:%ld should not be less than input x's dim[0]:%ld",
                 vCacheShape->GetStorageShape().GetDim(0), xShape->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
     }
@@ -536,6 +536,7 @@ static ge::graphStatus TilingDequantRopeQuantKvcache(gert::TilingContext* contex
 
 static ge::graphStatus TilingPrepareForDequantRopeQuantKvcache(gert::TilingParseContext* context)
 {
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 

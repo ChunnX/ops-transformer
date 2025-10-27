@@ -466,6 +466,7 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingCo
 
 static ge::graphStatus TilingPrepare4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingParseContext* context)
 {
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 

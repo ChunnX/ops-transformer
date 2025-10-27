@@ -130,6 +130,7 @@ static inline bool CheckDtypeValid(
     }
     OP_CHECK_DTYPE_NOT_SUPPORT(sortedIndices, indice_dtype_list, return false);
     (void)probsGradOutOptional;
+    (void)tokensGradOut;
     return true;
 }
 

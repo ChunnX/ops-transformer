@@ -157,7 +157,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
         return ge::GRAPH_FAILED);
     k = scalesShape->GetStorageShape().GetDim(1);
     OP_CHECK_IF(
-        k <= 0, OP_LOGE(context_->GetNodeName(), "k[%lu] must be greater than 0.", k),
+        k <= 0, OP_LOGE(context_->GetNodeName(), "k[%ld] must be greater than 0.", k),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -173,7 +173,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetECH(const gert::StorageShape* ex
         dim0OfExpandedX = expandedXShape->GetStorageShape().GetDim(0);
         h = expandedXShape->GetStorageShape().GetDim(1);
         OP_CHECK_IF(
-            h <= 0, OP_LOGE(context_->GetNodeName(), "h[%lu] must be greater than 0.", h),
+            h <= 0, OP_LOGE(context_->GetNodeName(), "h[%ld] must be greater than 0.", h),
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
@@ -188,7 +188,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetECH(const gert::StorageShape* ex
     OP_CHECK_IF(
         e <= 0 || c <= 0 || h <= 0,
         OP_LOGE(
-            context_->GetNodeName(), "e[%lu],c[%lu],h[%lu] must be greater than 0.", e, c, h),
+            context_->GetNodeName(), "e[%ld],c[%ld],h[%ld] must be greater than 0.", e, c, h),
         return ge::GRAPH_FAILED);
     dim0OfExpandedX = e;
     return ge::GRAPH_SUCCESS;
@@ -202,7 +202,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetRow(const gert::StorageShape* ex
         return ge::GRAPH_FAILED);
     row = expandedRowIdxShape->GetStorageShape().GetDim(0) / k;
     OP_CHECK_IF(
-        row <= 0, OP_LOGE(context_->GetNodeName(), "row[%lu] must be greater than 0.", row),
+        row <= 0, OP_LOGE(context_->GetNodeName(), "row[%ld] must be greater than 0.", row),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

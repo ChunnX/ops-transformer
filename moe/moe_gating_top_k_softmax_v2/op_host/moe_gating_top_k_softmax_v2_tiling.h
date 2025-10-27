@@ -238,8 +238,9 @@ inline int64_t calcUbAlignBufferSize(const uint32_t curRowInUb, const uint32_t c
     return CeilDiv(col * typeSize, BLOCK_SIZE) * BLOCK_SIZE * curRowInUb;
 }
 
-inline uint32_t calcGatingAlignCol(const uint32_t col)
+inline uint32_t calcGatingAlignCol(const uint32_t col, const ge::DataType dtypeLocal)
 {
+    (void)dtypeLocal;
     // 对齐成32个数处理
     return CeilDiv(col, ALIGN_NUM) * ALIGN_NUM;
 }

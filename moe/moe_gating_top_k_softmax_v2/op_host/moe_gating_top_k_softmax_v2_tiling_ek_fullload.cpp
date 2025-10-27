@@ -64,7 +64,7 @@ bool MoeGatingTopKSoftmaxV2EKFullLoadTiling::IsCapable()
     if (col > MAX_COL_IN_UB) {
         return false;
     }
-    gatingAlignCol = calcGatingAlignCol(col);
+    gatingAlignCol = calcGatingAlignCol(col, dtype);
     doubleBufferFlag = getDoubleBufferFlag(gatingAlignCol, ubSize, dtype, k);
     maxRow = calcMaxRowInUb(doubleBufferFlag, ubSize, dtype, k, CeilDiv(row, coreNum));
     if (maxRow == 0) {

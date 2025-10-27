@@ -426,6 +426,7 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* c
 
 static ge::graphStatus TilingPrepare4MoeTokenUnpermuteWithEpGrad(gert::TilingParseContext* context)
 {
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 

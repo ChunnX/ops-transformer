@@ -21,11 +21,13 @@ using namespace ge;
 namespace ops {
 static ge::graphStatus InferShapeForRopeWithSinCosCache(gert::InferShapeContext* context)
 {
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus InferDataTypeForRopeWithSinCosCache(gert::InferDataTypeContext* context)
 {
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
