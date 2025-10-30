@@ -83,12 +83,6 @@ struct MoeTokenPermuteTilingData {
     IndexCopyComputeTilingData indexCopyComputeParamsOp;
 };
 
-inline void InitMoeTokenPermuteTilingData(uint8_t* tiling, MoeTokenPermuteTilingData* const_data)
-{
-    memcpy(const_data, tiling, sizeof(MoeTokenPermuteTilingData));
-}
-
 #define GET_TILING_DATA(tilingData, tilingPointer) \
-    MoeTokenPermuteTilingData tilingData;          \
-    InitMoeTokenPermuteTilingData(tilingPointer, &tilingData)
+    MoeTokenPermuteTilingData tilingData;
 #endif
