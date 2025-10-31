@@ -29,11 +29,6 @@
  * 以下函数声明需要保持与 CMakeList.txt 中调用 OpsTest_Level2_AddOp 函数时 KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT
  * 参数所控制的 Kernel 入口一致.
  */
-#ifdef TESTS_UT_OPS_TEST_FAG
-extern "C" __global__ __aicore__ void flash_attention_score_grad_fp16 FAG_KERNEL_PARAM;
-extern "C" __global__ __aicore__ void flash_attention_score_grad_fp32 FAG_KERNEL_PARAM;
-extern "C" __global__ __aicore__ void flash_attention_score_grad_bf16 FAG_KERNEL_PARAM;
-#endif
 
 namespace optiling {
 ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionScore(gert::TilingContext *context);
@@ -226,15 +221,6 @@ FaCase::FaCase(const char *name, bool enable, const char *dbgInfo, OpInfoWithSoc
 
     mFasOriginTilingFuncName = "TilingFlashAttentionScore";
     mFagOriginTilingFuncName = "TilingFlashAttentionGradScore";
-
-#ifdef TESTS_UT_OPS_TEST_FAG
-    mFagKernelFunc = (void *)flash_attention_score_grad_bf16;
-    if (mParam.dtype == ge::DataType::DT_FLOAT16) {
-        mFagKernelFunc = (void *)flash_attention_score_grad_fp16;
-    } else if (mParam.dtype == ge::DataType::DT_FLOAT) {
-        mFagKernelFunc = (void *)flash_attention_score_grad_fp32;
-    }
-#endif
 }
 
 FaCase::FaCase(const char *name, bool enable, const char *dbgInfo, const std::function<void(FAS_INPUT_DTYPE)>& templatekeyKernelFunc,
@@ -249,15 +235,6 @@ FaCase::FaCase(const char *name, bool enable, const char *dbgInfo, const std::fu
     mFagOriginTilingFuncName = "TilingFlashAttentionGradScore";
 
     mFasKernelTemplateFunc = templatekeyKernelFunc;
-
-#ifdef TESTS_UT_OPS_TEST_FAG
-    mFagKernelFunc = (void *)flash_attention_score_grad_bf16;
-    if (mParam.dtype == ge::DataType::DT_FLOAT16) {
-        mFagKernelFunc = (void *)flash_attention_score_grad_fp16;
-    } else if (mParam.dtype == ge::DataType::DT_FLOAT) {
-        mFagKernelFunc = (void *)flash_attention_score_grad_fp32;
-    }
-#endif
 }
 
 bool FaCase::Run()
@@ -270,14 +247,6 @@ bool FaCase::Run()
         return false;
     }
     if (!mForward.ProcessKernel(mName)) {
-        return false;
-    }
-#endif
-#ifdef TESTS_UT_OPS_TEST_FAG
-    if (!mReverse.ProcessTiling(mName, this->socVersion)) {
-        return false;
-    }
-    if (!mReverse.ProcessKernel(mName)) {
         return false;
     }
 #endif

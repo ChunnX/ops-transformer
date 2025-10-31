@@ -14,10 +14,6 @@
 
 # FA/FAG 算子的 Kernel 均包含较多的 TilingKey, 在编译态、执行态均区分是否只执行FA/FAG, 以便提高编译执行效率;
 # Host 侧各 Target 暂不区分 FA/FAG 以便于用例实现.
-set(_TESTS_UT_OPS_TEST_FAS OFF)  # 对应 flash_attention_score 算子
-if ("ALL" IN_LIST TESTS_UT_OPS_TEST OR "all" IN_LIST TESTS_UT_OPS_TEST OR "flash_attention_score" IN_LIST TESTS_UT_OPS_TEST)
-    set(_TESTS_UT_OPS_TEST_FAS ON)
-endif ()
 
 set(_FA_OpApiSourcesExt
         # FAS
@@ -93,21 +89,19 @@ list(APPEND _FA_UTestAclnnSourcesExtForce ${_Src1} ${_Src2})
 
 set(_FA_UTestCompileDefinitions)
 
-if (_TESTS_UT_OPS_TEST_FAS)
-    list(APPEND _FA_OpKernelSourcesExt
-            ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_kernel/flash_attention_score.cpp
-    )
+list(APPEND _FA_OpKernelSourcesExt
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_kernel/flash_attention_score.cpp
+)
 
-    file(GLOB_RECURSE _Src1 "${CMAKE_CURRENT_SOURCE_DIR}/utest/ts_fas/*.cc")
-    file(GLOB_RECURSE _Src2 "${CMAKE_CURRENT_SOURCE_DIR}/utest/ts_fas/*.cpp")
-    list(APPEND _FA_UTestSourcesExtForce ${_Src1} ${_Src2})
+file(GLOB_RECURSE _Src1 "${CMAKE_CURRENT_SOURCE_DIR}/utest/ts_fas/*.cc")
+file(GLOB_RECURSE _Src2 "${CMAKE_CURRENT_SOURCE_DIR}/utest/ts_fas/*.cpp")
+list(APPEND _FA_UTestSourcesExtForce ${_Src1} ${_Src2})
 
-    file(GLOB_RECURSE _Src1 "${CMAKE_CURRENT_SOURCE_DIR}/utest_aclnn/ts_fas/*.cc")
-    file(GLOB_RECURSE _Src2 "${CMAKE_CURRENT_SOURCE_DIR}/utest_aclnn/ts_fas/*.cpp")
-    list(APPEND _FA_UTestAclnnSourcesExtForce ${_Src1} ${_Src2})
+file(GLOB_RECURSE _Src1 "${CMAKE_CURRENT_SOURCE_DIR}/utest_aclnn/ts_fas/*.cc")
+file(GLOB_RECURSE _Src2 "${CMAKE_CURRENT_SOURCE_DIR}/utest_aclnn/ts_fas/*.cpp")
+list(APPEND _FA_UTestAclnnSourcesExtForce ${_Src1} ${_Src2})
 
-    list(APPEND _FA_UTestCompileDefinitions TESTS_UT_OPS_TEST_FAS)
-endif ()
+list(APPEND _FA_UTestCompileDefinitions TESTS_UT_OPS_TEST_FAS)
 
 OpsTest_Level2_AddOp(
         SUB_SYSTEM                                transformer
