@@ -15,12 +15,6 @@ body:
       required: true
   - type: textarea
     attributes:
-      label: Origin（信息来源）
-      description: 请说明下是哪个部门/团队提出的需求，以便我们确定优先级
-    validations:
-      required: true
-  - type: textarea
-    attributes:
       label: Benefit / Necessity （价值/作用）
       description: 请描述下该需求的价值，应用场景等
     validations:
