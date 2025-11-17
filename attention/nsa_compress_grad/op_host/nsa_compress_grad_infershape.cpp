@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file nsa_compress_grad.cc
+ * \file nsa_compress_grad.cpp
  * \brief
  */
 #include <graph/utils/type_utils.h>

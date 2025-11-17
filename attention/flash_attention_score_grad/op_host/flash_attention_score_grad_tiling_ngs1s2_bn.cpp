@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attention_score_grad_tiling_ngs1s2_bn.cc
+ * \file flash_attention_score_grad_tiling_ngs1s2_bn.cpp
  * \brief
  */
 

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attention_score_grad_tiling_unpadded_attension.cc
+ * \file flash_attention_score_grad_tiling_unpadded_attension.cpp
  * \brief
  */
 
