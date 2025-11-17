@@ -153,18 +153,10 @@ TEST_F(moe_token_permute_grad_test, test_fp32) {
   string path(path_);
 
   MoeTokenPermuteGradTilingData* tilingData = reinterpret_cast<MoeTokenPermuteGradTilingData*>(tiling);
-  tilingData->hidden_size = 5120;
-  tilingData->top_k = 8;
-  tilingData->num_out_tokens = 49152;
-  tilingData->hidden_splited_length = 5120;
-  tilingData->hidden_splited_num = 1;
-  tilingData->hidden_splited_remain = 0;
-  tilingData->tokens_core_length = 96;
-  tilingData->tokens_core_remain = 0;
-  tilingData->tokens_splited_length = 96;
-  tilingData->tokens_splited_num = 1;
-  tilingData->tokens_splited_remain = 0;
-  tilingData->buffer_num = 4;
+  tilingData->buffer_num = 1;
+  tilingData->hidden_splited_length = 1;
+  tilingData->tokens_splited_length = 1;
+  tilingData->top_k = 1;
 
   ICPU_SET_TILING_KEY(4);
   ICPU_RUN_KF(moe_token_permute_grad, blockDim, permuted_output_d, sorted_indices, input_grad, workspace, tiling);

@@ -7,7 +7,7 @@
  # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  # See LICENSE in the root of the software repository for the full text of the License.
 
- # 该算子依赖moe_init_routing_v2，ut需要两个算子一起编译,等后续ut框架支持后开放。
+ # 该算子依赖moe_init_routing_v2_grad，ut需要两个算子一起编译,等后续ut框架支持后开放。
 if(UT_TEST_ALL OR OP_API_UT)
-#  add_modules_ut_sources(UT_NAME ${OP_API_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+ add_modules_ut_sources(UT_NAME ${OP_API_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
