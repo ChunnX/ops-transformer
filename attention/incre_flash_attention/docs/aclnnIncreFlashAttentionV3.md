@@ -9,7 +9,7 @@
 
 ##  功能说明
 
-- **算子功能**：兼容（[aclnnIncreFlashAttentionV2](aclnnIncreFlashAttentionV2.md)）接口功能，在其基础上**新增位置编码，page attention，KV cache反量化特性**。
+- 接口功能：兼容（[aclnnIncreFlashAttentionV2](aclnnIncreFlashAttentionV2.md)）接口功能，在其基础上**新增位置编码，page attention，KV cache反量化特性**。
 
   对于自回归（Auto-regressive）的语言模型，随着新词的生成，推理输入长度不断增大。在原来全量推理的基础上**实现增量推理**，query的S轴固定为1，key和value是经过KV Cache后，将之前推理过的state信息，叠加在一起，每个Batch对应S轴的实际长度可能不一样，输入的数据是经过padding后的固定长度数据。
 
@@ -92,260 +92,260 @@ aclnnStatus aclnnIncreFlashAttentionV3(
 
 - **参数说明**
 
-<div style="overflow-x: auto;">
-<table style="undefined;table-layout: fixed; width: 1567px"><colgroup> 
- <col style="width: 190px"> 
- <col style="width: 120px"> 
- <col style="width: 300px"> 
- <col style="width: 330px"> 
- <col style="width: 212px"> 
- <col style="width: 100px">  
- <col style="width: 170px">  
- <col style="width: 145px">   
-   </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>query</td>
-      <td>输入</td>
-      <td>公式中的输入Q。</td>
-      <td>query和attentionOut的shape需要完全一致。</td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>key</td>
-      <td>输入</td>
-      <td>公式中的输入K。</td>
-      <td>key、value 中对应tensor的shape需要完全一致。</td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
-      <td>ND</td>
-      <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>value</td>
-      <td>输入</td>
-      <td>公式中的输入V。</td>
-      <td>key、value 中对应tensor的shape需要完全一致。</td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
-      <td>ND</td>
-      <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>pseShift</td>
-      <td>输入</td>
-      <td>位置编码。</td>
-      <td><ul><li>支持空Tensor。</li><li>pseShift数据类型需与query数据类型保持一致。</li></ul></td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td><ul><li>(B, N, 1, S)</li><li>(1, N, 1, S)</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>attenMask</td>
-      <td>输入</td>
-      <td>attention掩码矩阵。</td>
-      <td><ul><li>支持空Tensor。</li><li>当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。</li></ul></td>
-      <td>BOOL、INT8、UINT8</td>
-      <td>ND</td>
-      <td><ul><li>(B, S)</li><li>(B, 1, S)</li><li>(B, 1, 1, S)</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>actualSeqLengths</td>
-      <td>输入</td>
-      <td>key和value的S轴实际长度。</td>
-      <td>综合约束请见<a href="#约束说明">约束说明</a>。</td>
-      <td>INT64</td>
-      <td>ND</td>
-      <td>(B)</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>dequantScale1</td>
-      <td>输入</td>
-      <td>BMM1后面反量化的量化因子。</td>
-      <td><ul><li>支持空Tensor。</li><li>支持per-tensor（scalar）。</li></ul></td>
-      <td>UINT64、FLOAT32</td>
-      <td>ND</td>
-      <td>(1)</td>
-      <td>×</td>
-    </tr>
-     <tr>
-      <td>quantScale1</td>
-      <td>输入</td>
-      <td>BMM2前面量化的量化因子。</td>
-      <td><ul><li>支持空Tensor。</li><li>支持per-tensor（scalar）。</li></ul></td>
-      <td>FLOAT32、BFLOAT16</td>
-      <td>ND</td>
-      <td>(1)</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>dequantScale2</td>
-      <td>输入</td>
-      <td>BMM2后面反量化的量化因子。</td>
-      <td><ul><li>支持空Tensor。</li><li>支持per-tensor（scalar）。</li></ul></td>
-      <td>UINT64、FLOAT32</td>
-      <td>ND</td>
-      <td>(1)</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>quantScale2</td>
-      <td>输入</td>
-      <td>输出量化的量化因子。</td>
-      <td><ul><li>支持空Tensor。</li><li>支持per-tensor，per-channel。</li></ul></td>
-      <td>FLOAT32、BFLOAT16</td>
-      <td>ND</td>
-      <td><ul><li>(1)</li><li>(D * N)，N为numKeyValueHeads</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>quantOffset2</td>
-      <td>输入</td>
-      <td>输出量化的量化偏移。</td>
-      <td><ul><li>支持空Tensor。</li><li>支持per-tensor，per-channel。</li></ul></td>
-      <td>FLOAT32、BFLOAT16</td>
-      <td>ND</td>
-      <td><ul><li>(1)</li><li>(D * N)，N为numKeyValueHeads</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>antiquantScale</td>
-      <td>输入</td>
-      <td>量化因子。</td>
-      <td><ul><li>支持空Tensor。</li><li>持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>-</td>
-      <td><ul><li>(2, N, 1, D)</li><li>(2, H)</li><li>(2, N, D)</li><li>(2)</li></ul></td>
-      <td>×</td>
-    </tr>
+  <div style="overflow-x: auto;">
+  <table style="undefined;table-layout: fixed; width: 1567px"><colgroup> 
+  <col style="width: 190px"> 
+  <col style="width: 120px"> 
+  <col style="width: 300px"> 
+  <col style="width: 330px"> 
+  <col style="width: 212px"> 
+  <col style="width: 100px">  
+  <col style="width: 170px">  
+  <col style="width: 145px">   
+    </colgroup>
+    <thead>
       <tr>
-      <td>antiquantOffset</td>
-      <td>输入</td>
-      <td>输出量化的量化因子。</td>
-      <td><ul><li>支持空Tensor。</li><li>持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td><ul><li>(2, N, 1, D)</li><li>(2, H)</li><li>(2, N, D)</li><li>(2)</li></ul></td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>blocktable</td>
-      <td>输入</td>
-      <td>page attention中KV存储使用的block映射表。</td>
-      <td><ul><li>支持空Tensor。</li><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-      <td>INT32</td>
-      <td>ND</td>
-      <td>(B, maxBlockNumPerSeq)</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>numHeads</td>
-      <td>输入</td>
-      <td>query的head个数。</td>
-      <td>numHeads是numKeyValueHeads的倍数关系。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>scaleValue</td>
-      <td>输入</td>
-      <td>公式中d开根号的倒数。</td>
-      <td>-</td>
-      <td>DOUBLE</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>inputLayout</td>
-      <td>输入</td>
-      <td>标识输入query、key、value的数据排布格式。</td>
-      <td>当前支持BSH、BNSD、BSND。用户不特意指定时建议传入"BSH"。</td>
-      <td>CHAR</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>numKeyValueHeads</td>
-      <td>输入</td>
-      <td>key、value中head个数。</td>
-      <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，默认为0，表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+      </tr></thead>
+    <tbody>
       <tr>
-      <td>blockSize</td>
-      <td>输入</td>
-      <td>page attention中KV存储每个block中最大的token个数。</td>
-      <td><ul><li>用户不特意指定时建议传入0。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-       <tr>
-      <td>innerPrecise</td>
-      <td>输入</td>
-      <td>代表高精度/高性能选择。</td>
-      <td>0代表高精度，1代表高性能，用户不特意指定时建议传入1。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>attentionOut</td>
-      <td>输出</td>
-      <td>公式中的输出。</td>
-      <td>-</td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
-      <td>ND</td>
-      <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回用户需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-  </tbody></table></div>
+        <td>query</td>
+        <td>输入</td>
+        <td>公式中的输入Q。</td>
+        <td>query和attentionOut的shape需要完全一致。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>key</td>
+        <td>输入</td>
+        <td>公式中的输入K。</td>
+        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>value</td>
+        <td>输入</td>
+        <td>公式中的输入V。</td>
+        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>pseShift</td>
+        <td>输入</td>
+        <td>位置编码。</td>
+        <td><ul><li>支持空Tensor。</li><li>pseShift数据类型需与query数据类型保持一致。</li></ul></td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td><ul><li>(B, N, 1, S)</li><li>(1, N, 1, S)</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>attenMask</td>
+        <td>输入</td>
+        <td>attention掩码矩阵。</td>
+        <td><ul><li>支持空Tensor。</li><li>当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。</li></ul></td>
+        <td>BOOL、INT8、UINT8</td>
+        <td>ND</td>
+        <td><ul><li>(B, S)</li><li>(B, 1, S)</li><li>(B, 1, 1, S)</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>actualSeqLengths</td>
+        <td>输入</td>
+        <td>key和value的S轴实际长度。</td>
+        <td>综合约束请见<a href="#约束说明">约束说明</a>。</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>(B)</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>dequantScale1</td>
+        <td>输入</td>
+        <td>BMM1后面反量化的量化因子。</td>
+        <td><ul><li>支持空Tensor。</li><li>支持per-tensor（scalar）。</li></ul></td>
+        <td>UINT64、FLOAT32</td>
+        <td>ND</td>
+        <td>(1)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>quantScale1</td>
+        <td>输入</td>
+        <td>BMM2前面量化的量化因子。</td>
+        <td><ul><li>支持空Tensor。</li><li>支持per-tensor（scalar）。</li></ul></td>
+        <td>FLOAT32、BFLOAT16</td>
+        <td>ND</td>
+        <td>(1)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>dequantScale2</td>
+        <td>输入</td>
+        <td>BMM2后面反量化的量化因子。</td>
+        <td><ul><li>支持空Tensor。</li><li>支持per-tensor（scalar）。</li></ul></td>
+        <td>UINT64、FLOAT32</td>
+        <td>ND</td>
+        <td>(1)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>quantScale2</td>
+        <td>输入</td>
+        <td>输出量化的量化因子。</td>
+        <td><ul><li>支持空Tensor。</li><li>支持per-tensor，per-channel。</li></ul></td>
+        <td>FLOAT32、BFLOAT16</td>
+        <td>ND</td>
+        <td><ul><li>(1)</li><li>(D * N)，N为numKeyValueHeads</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>quantOffset2</td>
+        <td>输入</td>
+        <td>输出量化的量化偏移。</td>
+        <td><ul><li>支持空Tensor。</li><li>支持per-tensor，per-channel。</li></ul></td>
+        <td>FLOAT32、BFLOAT16</td>
+        <td>ND</td>
+        <td><ul><li>(1)</li><li>(D * N)，N为numKeyValueHeads</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>antiquantScale</td>
+        <td>输入</td>
+        <td>量化因子。</td>
+        <td><ul><li>支持空Tensor。</li><li>持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>-</td>
+        <td><ul><li>(2, N, 1, D)</li><li>(2, H)</li><li>(2, N, D)</li><li>(2)</li></ul></td>
+        <td>×</td>
+      </tr>
+        <tr>
+        <td>antiquantOffset</td>
+        <td>输入</td>
+        <td>输出量化的量化因子。</td>
+        <td><ul><li>支持空Tensor。</li><li>持per-channel（list），由shape决定，BNSD场景下shape为(2, N, 1, D)，BSH场景下shape为(2, H)，BSND场景下shape为(2, N, D)。</li></ul></td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td><ul><li>(2, N, 1, D)</li><li>(2, H)</li><li>(2, N, D)</li><li>(2)</li></ul></td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>blocktable</td>
+        <td>输入</td>
+        <td>page attention中KV存储使用的block映射表。</td>
+        <td><ul><li>支持空Tensor。</li><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>(B, maxBlockNumPerSeq)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>numHeads</td>
+        <td>输入</td>
+        <td>query的head个数。</td>
+        <td>numHeads是numKeyValueHeads的倍数关系。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>scaleValue</td>
+        <td>输入</td>
+        <td>公式中d开根号的倒数。</td>
+        <td>-</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>inputLayout</td>
+        <td>输入</td>
+        <td>标识输入query、key、value的数据排布格式。</td>
+        <td>当前支持BSH、BNSD、BSND。用户不特意指定时建议传入"BSH"。</td>
+        <td>CHAR</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>numKeyValueHeads</td>
+        <td>输入</td>
+        <td>key、value中head个数。</td>
+        <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，默认为0，表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+        <tr>
+        <td>blockSize</td>
+        <td>输入</td>
+        <td>page attention中KV存储每个block中最大的token个数。</td>
+        <td><ul><li>用户不特意指定时建议传入0。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+        <tr>
+        <td>innerPrecise</td>
+        <td>输入</td>
+        <td>代表高精度/高性能选择。</td>
+        <td>0代表高精度，1代表高性能，用户不特意指定时建议传入1。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>attentionOut</td>
+        <td>输出</td>
+        <td>公式中的输出。</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回用户需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+    </tbody></table></div>
 
 
 - **返回值**
@@ -391,7 +391,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
 
 - **参数说明**
 
-  <div style="overflow-x: auto;">
+  <div style="overflow-x: auto; margin-top: -10px;">
   <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
@@ -422,7 +422,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
     <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的stream。</td>
+      <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>

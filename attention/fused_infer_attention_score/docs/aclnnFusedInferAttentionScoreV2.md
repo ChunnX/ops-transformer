@@ -91,8 +91,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 - **参数说明**
 
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1617px"><colgroup> 
-     <col style="width: 270px"> 
+    <table style="undefined;table-layout: fixed; width: 1497px"><colgroup> 
+     <col style="width: 150px"> 
      <col style="width: 120px"> 
      <col style="width: 300px"> 
      <col style="width: 330px"> 
@@ -277,7 +277,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
        <td>blockTableOptional</td>
         <td>输入</td>
         <td>PageAttention中KV存储使用的block映射表。</td>
-        <td><ul><li>不使用该功能时可传入nullptr。</li></ul></td>
+        <td>不使用该功能时可传入nullptr。</td>
         <td>INT32</td>
         <td>ND</td>
         <td>1</td>
@@ -298,8 +298,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
        <td>kvPaddingSizeOptional</td>
         <td>输入</td>
         <td>表示key/value中每个batch的数据是否右对齐，且右对齐的个数是多少。</td>
-        <td><ul>
-            <li>不使用该功能时可传入nullptr。</li></ul></td>
+        <td>不使用该功能时可传入nullptr。</td>
         <td>INT64</td>
         <td>ND</td>
         <td>1</td>
@@ -477,7 +476,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
         <td>blockSize</td>
         <td>输入</td>
         <td>PageAttention中KV存储每个block中最大的token个数。</td>
-        <td>默认为0。</td>
+        <td>仅支持取值为0。</td>
         <td>INT64</td>
         <td>-</td>
         <td>1</td>
@@ -580,15 +579,15 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
   
-  第一段接口完成入参校验，若出现以下错误码，则对应原因为：
+  第一段接口完成入参校验，出现以下场景时报错：
   
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px">			<colgroup>
+    <table style="undefined;table-layout: fixed; width: 1000px">			<colgroup>
     <col style="width: 250px">
-    <col style="width: 130px">
+    <col style="width: 100px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
       <tr>
         <th>返回值</th>
         <th>错误码</th>
@@ -619,12 +618,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 - **参数说明**
   
   <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
+    <table style="undefined;table-layout: fixed; width: 900px"><colgroup>
+    <col style="width: 150px">
+    <col style="width: 100px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
       <tr>
         <th>参数名</th>
         <th>输入/输出</th>
@@ -649,7 +648,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
       <tr>
         <td>stream</td>
         <td>输入</td>
-        <td>指定执行任务的AscendCL stream流。</td>
+        <td>指定执行任务的Stream。</td>
       </tr>
     </tbody>
     </table>
@@ -700,8 +699,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
   - 仅支持kv_dtype为int8的伪量化场景。
   - per-channel模式：两个参数的shape可支持\(2, N, 1, D\)，\(2, N, D\)，\(2, H\)，N为numKeyValueHeads。参数数据类型和query数据类型相同，antiquantMode置0。
-  - per-tensor模式:两个参数的shape均为(2)，数据类型和query数据类型相同, antiquantMode置0。
-  - per-token模式:两个参数的shape均为\(2, B, S\), 数据类型固定为FLOAT32, antiquantMode置1。
+  - per-tensor模式：两个参数的shape均为(2)，数据类型和query数据类型相同, antiquantMode置0。
+  - per-token模式：两个参数的shape均为\(2, B, S\), 数据类型固定为FLOAT32, antiquantMode置1。
   - 非对称量化模式下， antiquantScale和antiquantOffset参数需同时存在。
   - 对称量化模式下，antiquantOffset可以为空（即nullptr）；当antiquantOffset参数为空时，执行对称量化，否则执行非对称量化。
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：Q_S等于1时，数据类型支持FLOAT16、BFLOAT16、FLOAT32。Q_S大于等于2时只支持FLOAT16。
@@ -724,13 +723,79 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
 - sparseMode使用限制如下：
 
-  - Q_S为1且不带rope输入时该参数无效。
-  - sparseMode为0时，代表defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT\_MAX）；如果传入，则需要传入完整的attenmask矩阵（S1 \* S2），表示preTokens和nextTokens之间的部分需要计算。
-  - sparseMode为1时，代表allMask，必须传入完整的attenmask矩阵（S1 \* S2）。
-  - sparseMode为2时，代表leftUpCausal模式的mask，需要传入优化后的attenmask矩阵（2048\*2048）。
-  - sparseMode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵（2048\*2048）。
-  - sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048\*2048）。
-  - sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block\_local，**均暂不支持**。用户不特意指定时建议传入0。
+  <div style="overflow-x: auto;">
+    <table style="table-layout: fixed; width: 1210px">
+        <colgroup>
+            <col style="width: 150px">
+            <col style="width: 210px">
+            <col style="width: 850px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>sparseMode</th>
+                <th>模式</th>
+                <th>描述</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>0</td>
+                <td>defaultMask模式</td>
+                <td>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>未传入attenmask：不执行mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；</li>
+                        <li>传入attenmask：需要传入完整的attenmask矩阵（S1 * S2），表示preTokens和nextTokens之间的部分需要计算。</li>
+                    </ul>
+                </td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>allMask模式</td>
+                <td>必须传入完整的attenmask矩阵（S1 * S2）。</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>leftUpCausal模式</td>
+                <td>需要传入优化后的attenmask矩阵（2048*2048）。</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>rightDownCausal模式</td>
+                <td>对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵（2048*2048）。</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>band模式</td>
+                <td>需要传入优化后的attenmask矩阵（2048*2048）。</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>prefix模式</td>
+                <td>暂不支持该模式，用户不特意指定时建议传入0。</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>global模式</td>
+                <td>暂不支持该模式，用户不特意指定时建议传入0。</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>dilated模式</td>
+                <td>暂不支持该模式，用户不特意指定时建议传入0。</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>block_local模式</td>
+                <td>暂不支持该模式，用户不特意指定时建议传入0。</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align: left; ">
+                    <strong>特殊约束：</strong>Q_S为1且不带rope输入时，sparseMode参数无效。
+                </td>
+            </tr>
+          </tbody>
+      </table>
+  </div>
 
 - innerPrecise使用限制如下：
 
@@ -774,16 +839,56 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
 
 - keyAntiquantMode使用限制如下：
 
-  - 除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，需要与valueAntiquantMode一致。
-  - keyAntiquantMode为0时，代表per-channel模式（per-channel包含per-tensor）。
-  - keyAntiquantMode为1时，代表per-token模式。
-  - keyAntiquantMode为2时，代表per-tensor叠加per-head模式。
-  - keyAntiquantMode为3时，代表per-token叠加per-head模式。
-  - keyAntiquantMode为4时，代表per-token叠加使用page attention模式管理scale/offset模式。
-  - keyAntiquantMode为5时，代表per-token叠加per head并使用page attention模式管理scale/offset模式。
-  - keyAntiquantMode为6时，代表per-token-group模式。
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：Q_S等于1时传入0，1，2，3，4，5之外的其他值会执行异常。Q_S大于等于2时仅支持传入值为0、1，其他值会执行异常。
-  
+  <div style="overflow-x: auto;">
+    <table style="table-layout: fixed; width: 830px">
+        <colgroup>
+            <col style="width: 230px">
+            <col style="width: 600px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>keyAntiquantMode</th>
+                <th>描述</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>0</td>
+                <td>代表per-channel模式（per-channel包含per-tensor）。</td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>代表per-token模式。</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>代表per-tensor叠加per-head模式。</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>代表per-token叠加per-head模式。</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>代表per-token叠加使用page attention模式管理scale/offset模式。</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>代表per-token叠加per-head并使用page attention模式管理scale/offset模式。</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>代表per-token-group模式。</td>
+            </tr>
+            <tr>
+                <td colspan="2" style="text-align: left; ">
+                    <strong>特殊约束：</strong>除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，需要与valueAntiquantMode一致。
+                </td>
+            </tr>
+          </tbody>
+      </table>
+  </div>
+
 
 - valueAntiquantMode使用限制如下：
 
@@ -797,203 +902,203 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
   - softmaxLseFlag为True时，一般情况下,shape必须为[B,N,Q_S,1]，当inputLayout为TND/NTD_TND时，shape必须为[T,N,1]。
   - softmaxLseFlag为False时，如果softmaxLse传入的Tensor非空，则直接返回该Tensor数据，如果softmaxLse传入的是nullptr，则返回shape为{1}全0的Tensor。
 
-#### **当Q_S大于1时**：
+- **当Q_S大于1时**：
 
-- query，key，value输入，功能使用限制如下：
+  - query，key，value输入，功能使用限制如下：
 
-  - 支持B轴小于等于65536。
+    - 支持B轴小于等于65536。
 
-  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
+    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
 
-  - 支持N轴小于等于256，支持D轴小于等于512。inputLayout为BSH或者BSND时，建议N*D小于65535。
+    - 支持N轴小于等于256，支持D轴小于等于512。inputLayout为BSH或者BSND时，建议N*D小于65535。
 
-  - S支持小于等于20971520（20M）。部分长序列场景下，如果计算量过大可能会导致pfa算子执行超时（aicore error类型报错，errorStr为:timeout or trap error），此场景下建议做S切分处理，注：这里计算量会受B、S、N、D等的影响，值越大计算量越大。典型的会超时的长序列(即B、S、N、D的乘积较大)场景包括但不限于：
+    - S支持小于等于20971520（20M）。部分长序列场景下，如果计算量过大可能会导致pfa算子执行超时（aicore error类型报错，errorStr为:timeout or trap error），此场景下建议做S切分处理，注：这里计算量会受B、S、N、D等的影响，值越大计算量越大。典型的会超时的长序列(即B、S、N、D的乘积较大)场景包括但不限于：
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 550px"><colgroup>
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 200px">
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 150px">
-    </colgroup><thead>
-    <tr>
-    <th>B</th>
-    <th>Q_N</th>
-    <th>Q_S</th>
-    <th>D</th>
-    <th>KV_N</th>
-    <th>KV_S</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-    <td>1</td>
-    <td>20</td>
-    <td>2097152</td>
-    <td>256</td>
-    <td>1</td>
-    <td>2097152</td>
-    </tr>
-    <tr>
-    <td>1</td>
-    <td>2</td>
-    <td>20971520</td>
-    <td>256</td>
-    <td>2</td>
-    <td>20971520</td>
-    </tr>
-    <tr>
-    <td>20</td>
-    <td>1</td>
-    <td>2097152</td>
-    <td>256</td>
-    <td>1</td>
-    <td>2097152</td>
-    </tr>
-    <tr>
-    <td>1</td>
-    <td>10</td>
-    <td>2097152</td>
-    <td>512</td>
-    <td>1</td>
-    <td>2097152</td>
-    </tr>
-    </tbody>
-    </table>
-    </div>
+      <div style="overflow-x: auto;">
+      <table style="undefined;table-layout: fixed; width: 900px"><colgroup>
+      <col style="width: 130px">
+      <col style="width: 130px">
+      <col style="width: 230px">
+      <col style="width: 130px">
+      <col style="width: 130px">
+      <col style="width: 180px">
+      </colgroup><thead>
+      <tr>
+      <th>B</th>
+      <th>Q_N</th>
+      <th>Q_S</th>
+      <th>D</th>
+      <th>KV_N</th>
+      <th>KV_S</th>
+      </tr></thead>
+      <tbody>
+      <tr>
+      <td>1</td>
+      <td>20</td>
+      <td>2097152</td>
+      <td>256</td>
+      <td>1</td>
+      <td>2097152</td>
+      </tr>
+      <tr>
+      <td>1</td>
+      <td>2</td>
+      <td>20971520</td>
+      <td>256</td>
+      <td>2</td>
+      <td>20971520</td>
+      </tr>
+      <tr>
+      <td>20</td>
+      <td>1</td>
+      <td>2097152</td>
+      <td>256</td>
+      <td>1</td>
+      <td>2097152</td>
+      </tr>
+      <tr>
+      <td>1</td>
+      <td>10</td>
+      <td>2097152</td>
+      <td>512</td>
+      <td>1</td>
+      <td>2097152</td>
+      </tr>
+      </tbody>
+      </table>
+      </div>
 
-  - D轴限制：<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
+    - D轴限制：<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
 
-- 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
+  - 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
 
-  - sparseMode = 0时，attenMask如果为空指针,或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
-   - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，不传入attenMask或者传入的shape不正确报错。
-   - sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。
-- kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
-- page attention场景：
+    - sparseMode = 0时，attenMask如果为空指针,或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
+    - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，不传入attenMask或者传入的shape不正确报错。
+    - sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。
+  - kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
+  - page attention场景：
 
-  - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-    -  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持key、value dtype为FLOAT16/BFLOAT16。
-   - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
-   - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
-   - page attention 伪量化场景
-     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持query为FLOAT16/BFLOAT16，支持key、value为INT8。
-    
-   - page attention 全量化场景
-     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持query dtype为INT8。
-   - page attention 不支持tensorlist场景，不支持左padding场景。
-   - page attention场景下，必须传入actualSeqLengthsKv。
-   - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
-   - page attention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
-     - 传入attenMask时，例如 mask shape为(B, 1, Q_S, KV_S)
-     - 传入pseShift时，例如 pseShift shape为(B, N, Q_S, KV_S)
-- query左padding场景：
+    - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
+      -  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持key、value dtype为FLOAT16/BFLOAT16。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
+    - page attention 伪量化场景
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持query为FLOAT16/BFLOAT16，支持key、value为INT8。
+      
+    - page attention 全量化场景
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持query dtype为INT8。
+    - page attention 不支持tensorlist场景，不支持左padding场景。
+    - page attention场景下，必须传入actualSeqLengthsKv。
+    - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
+    - page attention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
+      - 传入attenMask时，例如 mask shape为(B, 1, Q_S, KV_S)
+      - 传入pseShift时，例如 pseShift shape为(B, N, Q_S, KV_S)
+  - query左padding场景：
 
-  - query左padding场景query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。
-   - query左padding场景kvPaddingSize小于0时将被置为0。
-   - query左padding场景需要与actualSeqLengths参数一起使能，否则默认为query右padding场景。
-   - query左padding场景不支持PageAttention，不能与blocktable参数一起使能。
-   - query左padding场景不支持Q为BF16/FP16、KV为INT4的场景。
-- kv左padding场景：
-
-  - kv左padding场景key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。
-   - kv左padding场景kvPaddingSize小于0时将被置为0。
-   - kv左padding场景需要与actualSeqLengthsKv参数一起使能，否则默认为kv右padding场景。
-   - kv左padding场景不支持PageAttention，不能与blocktable参数一起使能。
-   - kv左padding场景不支持Q为BF16/FP16、KV为INT4的场景。
-- 输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、Ring Attention或者D非32Byte对齐的场景。
-- 输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。
-- pseShift功能使用限制如下：
-
-  - 支持query数据类型为FLOAT16或BFLOAT16或INT8场景下使用该功能。
-   - query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。
-   - Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。prefix场景KV_S需大于等于actualSharedPrefixLen与key的S长度之和。
-- 输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截(解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能)：
-
-  - sparseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件
-  - sparseMode = 1 或 2，不会出现满足拦截条件的情况
-   - sparseMode = 3，每个batch actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0，满足拦截条件
-   - sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0 时，满足拦截条件
-- prefix相关参数约束：
-
-  - keySharedPrefix和valueSharedPrefix要么都为空，要么都不为空
-   - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix、valueSharedPrefix、key、value的维度相同、dtype保持一致。
-   - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix的shape第一维batch必须为1，layout为BNSD和BSND情况下N、D轴要与key一致、BSH情况下H要与key一致，valueSharedPrefix同理。keySharedPrefix和valueSharedPrefix的S应相等
-   - 当actualSharedPrefixLen存在时，actualSharedPrefixLen的shape需要为[1]，值不能大于keySharedPrefix和valueSharedPrefix的S
-   - 公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制
-   - prefix不支持PageAttention场景、不支持左padding场景、不支持tensorlist场景
-   - prefix场景，sparse为0或1时，如果传入attenmask，则S2需大于等于actualSharedPrefixLen与key的S长度之和
-   - prefix场景，不支持输入qkv全部为int8的情况
-- kv伪量化参数分离：
-
-  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
-    - keyAntiquantMode 和 valueAntiquantMode需要保持一致
-    - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
-    - KeyAntiquantScale 和valueAntiquantScale都不为空时，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，其shape需要保持一致
-    - 仅支持per-token和per-channel模式，per-token模式下要求两个参数的shape均为\(B, S\)，数据类型固定为FLOAT32；per-channel模式下要求两个参数的shape为(N, D\)，(N, 1, D\)或(H\)，数据类型固定为BF16。
-    - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
-    - keyAntiquantScale与valueAntiquantScale非空场景，要求query的s小于等于16。
-    - keyAntiquantScale与valueAntiquantScale非空场景，要求query的dtype为BFLOAT16,key、value的dtype为INT8，输出的dtype为BFLOAT16。
-    - keyAntiquantScale与valueAntiquantScale非空场景，不支持tensorlist、左padding、page attention特性。
-  
-
-#### **当Q_S等于1时**：
-
-- query，key，value输入，功能使用限制如下：
-  - 支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。
-  - query、key、value输入类型均为INT8的场景暂不支持。
-  - 在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
-  - 在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
-  - key、value在特定数据数据类型下存在对于D轴的限制
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
-- page attention场景：
-  - page attention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
-  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
-  - page attention场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）和BnNBsD（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
-  - page attention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
-  - page attention使能场景下，当输入kv cache排布格式为BnBsH，且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为BnNBsD解决。
-  - page attention不支持tensorlist场景，不支持左padding场景，不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
-  - page attention场景下，必须传入actualSeqLengthsKv。
-  - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
-  - page attention的使能场景下，以以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
-    - 使能Attention mask，如mask shape为 \(B, 1, 1, S\)。
-    - 使能pseShift，如pseShift shape为\(B, N, 1, S\)。
-    - 使能伪量化per-token模式：输入参数antiquantScale和antiquantOffset的shape均为\(2, B, S\)。
+    - query左padding场景query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。
+    - kvPaddingSize小于0时将被置为0。
+    - 需要与actualSeqLengths参数一起使能，否则默认为query右padding场景。
+    - 不支持PageAttention，不能与blocktable参数一起使能。
+    - 不支持Q为BF16/FP16、KV为INT4的场景。
   - kv左padding场景：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
-    - kv左padding场景中kvCache的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengths。kvCache的搬运终点计算公式为：KV_S - kvPaddingSize。其中kvCache的搬运起点或终点小于0时，返回数据结果为全0。
-    - kv左padding场景中kvPaddingSize小于0时将被置为0。
-    - kv左padding场景需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。
-    - kv左padding场景不支持PageAttention、tensorlist，否则默认为kv右padding场景。
-    - kv左padding场景与attenMask参数一起使能时，需要保证attenMask含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。
+
+    - kv左padding场景key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。
+    - kvPaddingSize小于0时将被置为0。
+    - 需要与actualSeqLengthsKv参数一起使能，否则默认为kv右padding场景。
+    - 不支持PageAttention，不能与blocktable参数一起使能。
+    - 不支持Q为BF16/FP16、KV为INT4的场景。
+  - 输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、Ring Attention或者D非32Byte对齐的场景。
+  - 输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。
   - pseShift功能使用限制如下：
-    - pseShift数据类型需与query数据类型保持一致。
-  - kv伪量化参数分离：
-    - 除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，keyAntiquantMode 和 valueAntiquantMode需要保持一致
-    - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
-    - KeyAntiquantScale 和valueAntiquantScale都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持per-channel、per-tensor、per-token、per-tensor叠加per-head、per-token叠加per-head、per-token使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset、key支持per-channel叠加value支持per-token八种模式，以下N均为numKeyValueHeads。
-      - per-channel模式：两个参数的shape可支持\(1, N, 1, D\)，\(1, N, D\)，\(1, H\)。参数数据类型和query数据类型相同，当key、value数据类型为INT8、INT4\(INT32\)时支持。
-      - per-tensor模式：两个参数的shape均为\(1\)，数据类型和query数据类型相同，当key、value数据类型为INT8时支持。
-      - per-token模式：两个参数的shape均为\(1, B, S\)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。
-      - per-tensor叠加per-head模式：两个参数的shape均为\(N\)，数据类型和query数据类型相同，当key、value数据类型为INT8时支持。
-      - key支持per-channel叠加value支持per-token模式：对于key支持per-channel，两个参数的shape可支持\(1, N, 1, D\)，\(1, N, D\)，\(1, H\)且参数数据类型和query数据类型相同；对于value支持per-token，两个参数的shape均为\(1, B, S\)且数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。当key、value数据类型为INT8时，仅支持query和attentionOut的数据类型为FLOAT16。
-    - per-token叠加per-head模式并使用page attention管理scale/offset模式：两个参数的shape均为(blocknum, N, blocksize)，数据类型固定为FLOAT32，当key、value数据类型为INT8时支持。
-    - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
-    - INT4（INT32）伪量化场景仅支持KV伪量化参数分离，具体包括：
-      - per-channel模式；
-      - per-token模式；
-      - per-token叠加per-head模式；
-      - key支持per-channel叠加value支持per-token模式。
-    - INT4（INT32）伪量化场景不支持后量化。
+
+    - 支持query数据类型为FLOAT16或BFLOAT16或INT8场景下使用该功能。
+    - query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。
+    - Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。prefix场景KV_S需大于等于actualSharedPrefixLen与key的S长度之和。
+  - 输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截(解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能)：
+
+    - sparseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件
+    - sparseMode = 1 或 2，不会出现满足拦截条件的情况
+    - sparseMode = 3，每个batch actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0，满足拦截条件
+    - sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0 时，满足拦截条件
   - prefix相关参数约束：
-    - keySharedPrefix和valueSharedPrefix要么都为空，要么都不为空。
+
+    - keySharedPrefix和valueSharedPrefix要么都为空，要么都不为空
     - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix、valueSharedPrefix、key、value的维度相同、dtype保持一致。
-    - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix的shape第一维batch必须为1，layout为BNSD和BSND情况下N、D轴要与key一致、BSH情况下H要与key一致，valueSharedPrefix同理。keySharedPrefix和valueSharedPrefix的S应相等。
-    - 当actualSharedPrefixLen存在时，actualSharedPrefixLen的shape需要为[1]，值不能大于keySharedPrefix和valueSharedPrefix的S。
-    - 公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制。
+    - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix的shape第一维batch必须为1，layout为BNSD和BSND情况下N、D轴要与key一致、BSH情况下H要与key一致，valueSharedPrefix同理。keySharedPrefix和valueSharedPrefix的S应相等
+    - 当actualSharedPrefixLen存在时，actualSharedPrefixLen的shape需要为[1]，值不能大于keySharedPrefix和valueSharedPrefix的S
+    - 公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制
+    - prefix不支持PageAttention场景、不支持左padding场景、不支持tensorlist场景
+    - prefix场景，sparse为0或1时，如果传入attenmask，则S2需大于等于actualSharedPrefixLen与key的S长度之和
+    - prefix场景，不支持输入qkv全部为int8的情况
+  - kv伪量化参数分离：
+
+    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+      - keyAntiquantMode 和 valueAntiquantMode需要保持一致
+      - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
+      - KeyAntiquantScale 和valueAntiquantScale都不为空时，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，其shape需要保持一致
+      - 仅支持per-token和per-channel模式，per-token模式下要求两个参数的shape均为\(B, S\)，数据类型固定为FLOAT32；per-channel模式下要求两个参数的shape为(N, D\)，(N, 1, D\)或(H\)，数据类型固定为BF16。
+      - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
+      - keyAntiquantScale与valueAntiquantScale非空场景，要求query的s小于等于16。
+      - keyAntiquantScale与valueAntiquantScale非空场景，要求query的dtype为BFLOAT16,key、value的dtype为INT8，输出的dtype为BFLOAT16。
+      - keyAntiquantScale与valueAntiquantScale非空场景，不支持tensorlist、左padding、page attention特性。
+    
+
+- **当Q_S等于1时**：
+
+  - query，key，value输入，功能使用限制如下：
+    - 支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。
+    - query、key、value输入类型均为INT8的场景暂不支持。
+    - 在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
+    - 在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
+    - key、value在特定数据数据类型下存在对于D轴的限制
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
+  - page attention场景：
+    - page attention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - page attention场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）和BnNBsD（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
+    - page attention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
+    - page attention使能场景下，当输入kv cache排布格式为BnBsH，且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为BnNBsD解决。
+    - page attention不支持tensorlist场景，不支持左padding场景，不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+    - page attention场景下，必须传入actualSeqLengthsKv。
+    - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
+    - page attention的使能场景下，以以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
+      - 使能Attention mask，如mask shape为 \(B, 1, 1, S\)。
+      - 使能pseShift，如pseShift shape为\(B, N, 1, S\)。
+      - 使能伪量化per-token模式：输入参数antiquantScale和antiquantOffset的shape均为\(2, B, S\)。
+    - kv左padding场景：
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+      - 中kvCache的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengths。kvCache的搬运终点计算公式为：KV_S - kvPaddingSize。其中kvCache的搬运起点或终点小于0时，返回数据结果为全0。
+      - 中kvPaddingSize小于0时将被置为0。
+      - 需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。
+      - 不支持PageAttention、tensorlist，否则默认为kv右padding场景。
+      - 与attenMask参数一起使能时，需要保证attenMask含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。
+    - pseShift功能使用限制如下：
+      - pseShift数据类型需与query数据类型保持一致。
+    - kv伪量化参数分离：
+      - 除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，keyAntiquantMode 和 valueAntiquantMode需要保持一致
+      - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
+      - KeyAntiquantScale 和valueAntiquantScale都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持per-channel、per-tensor、per-token、per-tensor叠加per-head、per-token叠加per-head、per-token使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset、key支持per-channel叠加value支持per-token八种模式，以下N均为numKeyValueHeads。
+        - per-channel模式：两个参数的shape可支持\(1, N, 1, D\)，\(1, N, D\)，\(1, H\)。参数数据类型和query数据类型相同，当key、value数据类型为INT8、INT4\(INT32\)时支持。
+        - per-tensor模式：两个参数的shape均为\(1\)，数据类型和query数据类型相同，当key、value数据类型为INT8时支持。
+        - per-token模式：两个参数的shape均为\(1, B, S\)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。
+        - per-tensor叠加per-head模式：两个参数的shape均为\(N\)，数据类型和query数据类型相同，当key、value数据类型为INT8时支持。
+        - key支持per-channel叠加value支持per-token模式：对于key支持per-channel，两个参数的shape可支持\(1, N, 1, D\)，\(1, N, D\)，\(1, H\)且参数数据类型和query数据类型相同；对于value支持per-token，两个参数的shape均为\(1, B, S\)且数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。当key、value数据类型为INT8时，仅支持query和attentionOut的数据类型为FLOAT16。
+      - per-token叠加per-head模式并使用page attention管理scale/offset模式：两个参数的shape均为(blocknum, N, blocksize)，数据类型固定为FLOAT32，当key、value数据类型为INT8时支持。
+      - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
+      - INT4（INT32）伪量化场景仅支持KV伪量化参数分离，具体包括：
+        - per-channel模式；
+        - per-token模式；
+        - per-token叠加per-head模式；
+        - key支持per-channel叠加value支持per-token模式。
+      - INT4（INT32）伪量化场景不支持后量化。
+    - prefix相关参数约束：
+      - keySharedPrefix和valueSharedPrefix要么都为空，要么都不为空。
+      - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix、valueSharedPrefix、key、value的维度相同、dtype保持一致。
+      - keySharedPrefix和valueSharedPrefix都不为空时，keySharedPrefix的shape第一维batch必须为1，layout为BNSD和BSND情况下N、D轴要与key一致、BSH情况下H要与key一致，valueSharedPrefix同理。keySharedPrefix和valueSharedPrefix的S应相等。
+      - 当actualSharedPrefixLen存在时，actualSharedPrefixLen的shape需要为[1]，值不能大于keySharedPrefix和valueSharedPrefix的S。
+      - 公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制。
 
 ## 调用示例
 

@@ -9,7 +9,7 @@
 
 ##  功能说明
 
-- 算子功能：兼容（[aclnnIncreFlashAttentionV3](aclnnIncreFlashAttentionV3.md)）接口功能，在其基础上新增**kv左Padding特性。**
+- 接口功能：兼容（[aclnnIncreFlashAttentionV3](aclnnIncreFlashAttentionV3.md)）接口功能，在其基础上新增**kv左Padding特性。**
 
   对于自回归（Auto-regressive）的语言模型，随着新词的生成，推理输入长度不断增大。在原来全量推理的基础上**实现增量推理**，query的S轴固定为1，key和value是经过KV Cache后，将之前推理过的state信息，叠加在一起，每个Batch对应S轴的实际长度可能不一样，输入的数据是经过padding后的固定长度数据。
 
@@ -131,7 +131,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td><ul><li>key、value 中对应tensor的shape需要完全一致。</li></ul></td>
+        <td>key、value 中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td><ul><li>key、value 中对应tensor的shape需要完全一致。</li></ul></td>
+        <td>key、value 中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -404,9 +404,8 @@ aclnnStatus aclnnIncreFlashAttentionV4(
 ## aclnnIncreFlashAttentionV4
 
 - **参数说明**
-
-  <div style="overflow-x: auto;">
-  <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+  <div style="overflow-x: auto; margin-top: -10px;">
+  <table style="undefined; table-layout: fixed; width: 1030px; margin-top: 0;">
   <col style="width: 250px">
   <col style="width: 130px">
   <col style="width: 650px">
@@ -436,13 +435,13 @@ aclnnStatus aclnnIncreFlashAttentionV4(
     <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的stream。</td>
+      <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>
   </div>
 
-- **返回值**
+- **返回值**  
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
 ##   约束说明
