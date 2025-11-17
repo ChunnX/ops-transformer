@@ -46,6 +46,9 @@ constexpr uint32_t ATTR_NEED_SYNC_INDEX = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr uint64_t MB_SIZE = 1024UL * 1024;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
+constexpr uint32_t BATCH_MODE_NEED_SYNC = 1;
+constexpr uint32_t BATCH_MODE_NO_NEED_SYNC = 0;
+
 const char* A_INNER_DEBUG_BUFFER_RESET = "MoeDistributeBufferReset Tiling Debug";
 
 const int MIN_WORLD_SIZE = 16;
@@ -164,7 +167,12 @@ ge::graphStatus MoeDistributeBufferResetTilingFunc(gert::TilingContext* context)
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(blockDim);
-    context->SetScheduleMode(1); // 设置为batch mode模式，所有核同时启动
+    if (tilingData->moeDistributeBufferReset.needSync == NEED_SYNC) {
+        context->SetScheduleMode(BATCH_MODE_NEED_SYNC); // 设置batch mode模式，所有核同时启动
+    } else {
+        context->SetScheduleMode(BATCH_MODE_NO_NEED_SYNC); // 设置batch mode模式，所有核不用同时启动
+    }
+
     tilingData->moeDistributeBufferReset.totalUbSize = ubSize;
     tilingData->moeDistributeBufferReset.aivNum = aivNum;
     OP_LOGD(A_INNER_DEBUG_BUFFER_RESET, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
