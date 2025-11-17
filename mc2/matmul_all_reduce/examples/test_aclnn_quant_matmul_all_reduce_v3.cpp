@@ -16,7 +16,6 @@
 #include <iostream>
 #include <vector>
 #include <thread>
-#include "aclnnop/aclnn_trans_matmul_weight.h"
 #include "../op_host/op_api/aclnn_quant_matmul_all_reduce_v3.h"
 
 namespace {
@@ -58,46 +57,6 @@ struct Args {
     aclrtContext context;
     std::string format;
   };
-
-template<typename T>
-int CreateWeightNzAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                            aclDataType dataType, aclTensor **tensor, Args &args) {
-    auto size = GetShapeSize(shape) * sizeof(T);
-    const aclIntArray *mat2Size = aclCreateIntArray(shape.data(), shape.size());
-    auto ret = aclnnCalculateMatmulWeightSizeV2(mat2Size, ACL_INT8, &size);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCalculateMatmulWeightSizeV2 failed. ERROR: %d\n", ret); return    ret);
-    auto tensorSize = size * sizeof(T);
-
-    // 调用aclrtMalloc申请device内存
-    ret = aclrtMalloc(deviceAddr, tensorSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-
-    // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-
-    // 计算连续tensor的strides
-    std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
-    }
-    // 调用aclCreateTensor接口创建aclTensor
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                              shape.data(), shape.size(), *deviceAddr);
-    
-    uint64_t transWorkspaceSize;
-    aclOpExecutor *executor;
-    void *transWorkspaceAddr = nullptr;
-    ret = aclnnTransMatmulWeightGetWorkspaceSize(*tensor, &transWorkspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS && transWorkspaceSize > static_cast<uint64_t>(0), 
-              printf("[ERROR] aclnnTransMatmulWeightGetWorkspaceSize failed. ret = %d \n", ret); return ret);
-    ACL_CHECK(aclrtMalloc(&transWorkspaceAddr, transWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST));
-    ret = aclnnTransMatmulWeight(transWorkspaceAddr, transWorkspaceSize, executor, args.stream);
-    CHECK_RET(ret == ACL_SUCCESS, printf("[ERROR] aclnnTransMatmulWeight failed. ret = %d \n", ret);return ret);
-    ACL_CHECK(aclrtSynchronizeStreamWithTimeout(args.stream, 20000));
-
-    return 0;
-}
 
 template<typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
@@ -185,11 +144,7 @@ int launchOneThreadQuantMatmulAllReduce(Args &args) {
     // 创建 tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    if (args.format == "NZ") {
-        ret = CreateWeightNzAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2, args);
-    } else {
-        ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
-    }
+    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_INT32, &bias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
