@@ -15,8 +15,6 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "moe_distribute_combine_v2_tiling.h"
-#include "moe_distribute_combine_v2.h"
-
 #if __has_include("../moe_distribute_combine/moe_distribute_combine_a2.h")
 #include "../moe_distribute_combine/moe_distribute_combine_a2.h"
 #include "../moe_distribute_combine/moe_distribute_combine_a2_layered.h"
@@ -26,6 +24,7 @@
 #include "../../moe_distribute_combine/op_kernel/moe_distribute_combine_a2_layered.h"
 #include "../../moe_distribute_combine/op_kernel/moe_distribute_combine_a2_layered_aicpu.h"
 #endif
+#include "moe_distribute_combine_v2.h"
 
 using namespace MoeDistributeCombineV2Impl;
 using namespace MoeDistributeCombineA2Impl;
