@@ -1946,38 +1946,6 @@ ge::graphStatus IFATiling::CheckGqaTensorEmpty() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus IFATiling::CheckGqaHeadsNum() const
-{
-    switch (numHeads_) {
-        case 10U:
-            OP_CHECK_IF(numKvHeads_ != 1U, OP_LOGE(context_->opName,
-                "When numHead = 10, the key/value's heads num should be 1, but now it's %u in IFA GQA with KV NZ.",
-                    numKvHeads_), return ge::GRAPH_FAILED);
-            break;
-        case 64U:
-            OP_CHECK_IF(numKvHeads_ != 8U, OP_LOGE(context_->opName,
-                "When numHead = 64, the key/value's heads num should be 8, but now it's %u in IFA GQA with KV NZ.",
-                    numKvHeads_), return ge::GRAPH_FAILED);
-            break;
-        case 80U:
-            OP_CHECK_IF(numKvHeads_ != 8U, OP_LOGE(context_->opName,
-                "When numHead = 80, the key/value's heads num should be 8, but now it's %u in IFA GQA with KV NZ.",
-                    numKvHeads_), return ge::GRAPH_FAILED);
-            break;
-        case 128U:
-            OP_CHECK_IF(numKvHeads_ != 16U, OP_LOGE(context_->opName,
-                "When numHead = 128, the key/value's heads num should be 16, but now it's %u in IFA GQA with KV NZ.",
-                    numKvHeads_), return ge::GRAPH_FAILED);
-            break;
-        default:
-            OP_LOGE(context_->opName,
-                "Parameters the query's heads num = %u, the key/value's heads num = %u is not expected in IFA GQA with KV NZ."
-                "Expect [10, 1], [64, 8], [80, 8], [128, 16].", numHeads_, numKvHeads_);
-            return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus IFATiling::CheckGqaSeqSize() const
 {
     if (qSeqSize_ == 1U) {
@@ -2011,12 +1979,6 @@ ge::graphStatus IFATiling::CheckGqaAttribute() const
 {
     OP_CHECK_IF(headDim_ != 128U,        // 128: D dim
         OP_LOGE(context_->opName, "headDim = %u, IFA GQA with KV NZ only support 128.", headDim_), return ge::GRAPH_FAILED);
-    
-    OP_CHECK_IF(CheckGqaHeadsNum() != ge::GRAPH_SUCCESS, OP_LOGE(context_->opName,
-        "Parameters the query's heads num = %u, the key/value's heads num = %u is not expected in IFA GQA with KV NZ.",
-            numHeads_, numKvHeads_), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(nNumOfQInOneGroup_ != 8U && nNumOfQInOneGroup_ != 10U,
-        OP_LOGE(context_->opName, "the query's heads num divided by the key/value's heads num = %u, GQA only support {8, 10}.", nNumOfQInOneGroup_), return ge::GRAPH_FAILED);
 
     std::string layout(context_->layOut);
     OP_CHECK_IF(layout != "BSH" && layout != "BSND" && layout != "BNSD",

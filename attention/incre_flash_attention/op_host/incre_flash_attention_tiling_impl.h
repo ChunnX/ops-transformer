@@ -233,7 +233,6 @@ private:
     ge::graphStatus CheckGqaAntiquantType() const;
     ge::graphStatus CheckGqaBlockTable() const;
     ge::graphStatus CheckGqaTensorEmpty() const;
-    ge::graphStatus CheckGqaHeadsNum() const;
     ge::graphStatus CheckGqaSeqSize() const;
     ge::graphStatus CheckGqaAttribute() const;
     ge::graphStatus CheckGqaDefault() const;
