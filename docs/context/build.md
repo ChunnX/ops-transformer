@@ -18,7 +18,7 @@ build.sh是本项目的构建脚本，默认在项目根目录下，作用是将
    ```bash
    bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}]
    ```
-   量参数含义参见下方参数说明章节，请按实际情况选择合适的参数。
+   参数含义参见下方参数说明章节，请按实际情况选择合适的参数。
 
 ## 参数说明
 build.sh支持多种功能，可通过如下命令查看所有功能参数。

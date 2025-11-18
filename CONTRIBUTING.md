@@ -1,10 +1,10 @@
 # 贡献指南
 
-本项目欢迎广大开发者体验并参与贡献，在参与社区贡献之前。请参见[cann-community](https://gitcode.com/cann/community)了解行为准则，进行CLA协议签署，了解源码仓的贡献流程。
+本项目欢迎广大开发者体验并参与贡献，在参与社区贡献之前，请参见[cann-community](https://gitcode.com/cann/community)了解行为准则，进行CLA协议签署，了解源码仓的贡献流程。
 
 开发者准备本地代码与提交PR时需要重点关注如下几点：
 
-1. 提交PR时，请按照PR模板仔细填写本次PR的业务背景、目的、方案等信息。
+1. 提交PR时，请按照PR模板仔细填写业务背景、目的、方案等信息。
 2. 若您的修改不是简单的bug修复，而是涉及到新增特性、新增接口、新增配置参数或者修改代码流程等，请务必先通过Issue进行方案讨论，以避免您的代码被拒绝合入。若您不确定本次修改是否可被归为“简单的bug修复”，亦可通过提交Issue进行方案讨论。
 
 
@@ -35,7 +35,7 @@
   ```
   ${op_class}                                          # 算子分类
   ├── ${op_name}                                       # 算子名
-  │   ├── op_host                                      # 算子信息库、Tiling、InferShape相关实现
+  │   ├── op_host                                      # 算子信息库定义、Tiling等相关实现
   │   │   ├── ${op_name}_def.cpp                       # 算子信息库定义文件
   │   │   ├── ${op_name}_tiling.cpp                    # 算子Tiling实现文件
   │   │   └── CMakeLists.txt

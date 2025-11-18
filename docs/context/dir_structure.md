@@ -1,8 +1,8 @@
 # 项目目录
 
-详细目录层级介绍如下：
+## 详细目录层级介绍如下：
 
-> 本章罗列的部分目录是可选的，请以实际交付件为准。尤其**单算子目录**，不同场景下交付件有差异，具体说明如下：
+> ### 本章罗列的部分目录是可选的，请以实际交付件为准。尤其**单算子目录**，不同场景下交付件有差异，具体说明如下：
 >
 > - 若缺少op_host目录，可能是调用了其他算子op_host实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../CONTRIBUTING.md)补充贡献该算子。
 > - 若缺少op_kernel目录，可能是调用了其他算子op_kernel实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../CONTRIBUTING.md)补充贡献该算子。
@@ -20,16 +20,8 @@
 ├── experimental                                        # 用户自定义算子存放目录
 │   ├── attention                                       # 可选，用户开发的attention类算子目录
 │   │   └── CMakeLists.txt
-│   ├── ffn                                             # 可选，用户开发的ffn类算子目录
-│   │   └── CMakeLists.txt
-│   ├── gmm                                             # 可选，用户开发的gmm类算子目录
-│   │   └── CMakeLists.txt
-│   ├── mc2                                             # 可选，用户开发的mc2类算子目录
-│   │   └── CMakeLists.txt
-│   ├── moe                                             # 可选，用户开发的moe类算子目录
-│   │   └── CMakeLists.txt
-│   └── posembedding                                    # 可选，用户开发的posembedding类算子目录
-│       └── CMakeLists.txt
+│   └── ...                                        
+│    
 ├── ${op_class}                                         # 算子分类，如attention、ffn、gmm类算子
 │   ├${op_name}                                         # 算子工程目录，${op_name}表示算子名（小写下划线形式）
 │   │   ├── CMakeLists.txt                              # 算子cmakelist入口
@@ -53,7 +45,7 @@
 │   │   │   │   └── ...
 │   │   │   ├── ${op_name}_def.cpp                      # 算子信息库，定义算子基本信息，如名称、输入输出、数据类型等
 │   │   │   ├── ${op_name}_infershape.cpp               # 可选，InferShape实现，根据算子形状推导输出shape，若未配置则输出shape与输入shape一样
-│   │   │   ├── ${op_name}_tiling_${sub_case}.cpp       # 可选，针对某些子场景下的Tiling优化，${sub_case}表示子场景，如${op_name}_tiling_arch35是针对arch35架构的优化，若无该文件表明该算子没有对应子场景的特定Tiling策略
+│   │   │   ├── ${op_name}_tiling_${sub_case}.cpp       # 可选，针对某些子场景下的Tiling优化，${sub_case}表示子场景，若无该文件表明该算子没有对应子场景的特定Tiling策略
 │   │   │   ├── ${op_name}_tiling_${sub_case}.h         # 可选，${sub_case}子场景下Tiling实现用的头文件
 │   │   │   ├── ${op_name}_tiling.cpp                   # 可选，若无该文件表明对应场景下无Tiling实现(将张量划分为多个小块，区分数据类型进行并行计算)
 │   │   │   ├── ${op_name}_tiling.h                     # 可选，Tiling实现用的头文件

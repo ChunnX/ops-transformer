@@ -26,13 +26,13 @@ aclnn接口调用流程介绍请参考[《应用开发（C&C++）》](https://hi
 ```Cpp
 int main()
 {
-    // 1. 调用acl进行device/stream初始化
+    // 1.调用acl进行device/stream初始化
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2. 构造输入与输出，需要根据API的接口自定义构造
+    // 2.构造输入与输出，需要根据API的接口自定义构造
     aclTensor* selfX = nullptr;
     void* selfXDeviceAddr = nullptr;
     std::vector<int64_t> selfXShape = {32, 4, 4, 4};
@@ -54,38 +54,38 @@ int main()
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    // 3. 调用CANN算子库API，需要修改为具体的Api名称
+    // 3.调用CANN算子库API，需要修改为具体的Api名称
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
 
-    // 4. 调用aclnnAddExample第一段接口
+    // 4.调用aclnnAddExample第一段接口
     ret = aclnnAddExampleGetWorkspaceSize(selfX, selfY, out, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAddExampleGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
-    // 根据第一段接口计算出的workspaceSize申请device内存
+    // 5.根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
     if (workspaceSize > static_cast<uint64_t>(0)) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
 
-    // 5. 调用aclnnAddExample第二段接口
+    // 6.调用aclnnAddExample第二段接口
     ret = aclnnAddExample(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAddExample failed. ERROR: %d\n", ret); return ret);
 
-    // 6. （固定写法）同步等待任务执行结束
+    // 7.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 7. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
+    // 8.获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
     PrintOutResult(outShape, &outDeviceAddr);
 
-    // 8. 释放aclTensor，需要根据具体API的接口定义修改
+    // 9.释放aclTensor，需要根据具体API的接口定义修改
     aclDestroyTensor(selfX);
     aclDestroyTensor(selfY);
     aclDestroyTensor(out);
 
-    // 9. 释放device资源
+    // 10.释放device资源
     aclrtFree(selfXDeviceAddr);
     aclrtFree(selfYDeviceAddr);
     aclrtFree(outDeviceAddr);
@@ -95,7 +95,7 @@ int main()
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
 
-    // 10. acl去初始化
+    // 11.acl去初始化
     aclFinalize();
     return 0;
 }
@@ -108,9 +108,9 @@ int main()
 1. 前提条件。
    请参考本项目[编译执行](./quick_op_invocation.md#编译执行)完成目标算子的编译部署。
 
-2. 创建CMakelists文件。
+2. 创建CMakeLists文件。
 
-   在test\_aclnn\_\$\{op\_name\}.cpp同级目录下创建CMakelists文件，以`AddExample`算子为例，示例如下，请根据实际情况自行修改。
+   在test\_aclnn\_\$\{op\_name\}.cpp同级目录下创建CMakeLists文件，以`AddExample`算子为例，示例如下，请根据实际情况自行修改。
 
     ```bash
    cmake_minimum_required(VERSION 3.14)
@@ -154,7 +154,7 @@ int main()
 
    # 添加可执行文件（请替换为实际算子可执行文件），指定算子调用的*.cpp文件
    add_executable(test_aclnn_add_example              
-   test_aclnn_add_example.cpp)         
+                  test_aclnn_add_example.cpp)
 
    # ASCEND_PATH（CANN软件包目录，请根据实际路径修改）
    if(NOT "$ENV{ASCEND_HOME_PATH}" STREQUAL "")      
@@ -169,9 +169,6 @@ int main()
        ${INCLUDE_BASE_DIR}
        ${ASCEND_PATH}/opp/vendors/${TARGET_SUBDIR}/op_api/include    # 仅自定义算子需要
        # ${INCLUDE_BASE_DIR}/aclnn                                   # 仅内置算子需要
-   )
-   include_directories(
-       ${INCLUDE_BASE_DIR}
    )
 
    # 链接所需的动态库
@@ -238,41 +235,41 @@ int main()
 
 ```CPP
 int main() {
-    // 1. 创建图对象
+    // 1.创建图对象
     Graph graph(graphName);
 
-    // 2. 图全局编译选项初始化
+    // 2.图全局编译选项初始化
     Status ret = ge::GEInitialize(globalOptions);
 
-    // 3. 创建AddExample算子实例
+    // 3.创建AddExample算子实例
     auto add1 = op::AddExample("add1");
 
-    // 4. 定义图输入输出向量
+    // 4.定义图输入输出向量
     std::vector<Operator> inputs{};
     std::vector<Operator> outputs{};
 
-    // 5. 准备输入数据
+    // 5.准备输入数据
     std::vector<int64_t> xShape = {32,4,4,4};
-    // 宏展开方式处理变量赋值
+    // 6.宏展开方式处理变量赋值
     ADD_INPUT(1, x1, inDtype, xShape);
     ADD_INPUT(2, x2, inDtype, xShape);
     ADD_OUTPUT(1, y, inDtype, xShape);
 
     outputs.push_back(add1);
 
-    // 6. 设置图对象的输入算子和输出算子
+    // 7.设置图对象的输入算子和输出算子
     graph.SetInputs(inputs).SetOutputs(outputs);
 
-    // 7. 创建session对象
+    // 8.创建session对象
     ge::Session* session = new Session(buildOptions);
 
-    // 8. session添加图
+    // 9.session添加图
     ret = session->AddGraph(graphId, graph, graphOptions);
 
-    // 9. 运行图
+    // 10.运行图
     ret = session->RunGraph(graphId, input, output);
 
-    // 10. 释放资源
+    // 11.释放资源
     GEFinalize();
 
     return 0;
@@ -286,9 +283,9 @@ int main() {
 1. 前提条件。
    请参考本项目[编译执行](./quick_op_invocation.md#编译执行)完成目标算子的编译部署。
 
-2. 创建CMakelist文件。
+2. 创建CMakeLists文件。
 
-   在test\_geir\_\$\{op\_name\}.cpp同级目录下创建CMakelist文件，以`AddExample`算子为例，示例如下，请根据实际情况自行修改。
+   在test\_geir\_\$\{op\_name\}.cpp同级目录下创建CMakeLists文件，以`AddExample`算子为例，示例如下，请根据实际情况自行修改。
 
     ```bash
    cmake_minimum_required(VERSION 3.14)

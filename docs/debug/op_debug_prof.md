@@ -8,7 +8,7 @@
 
 以`AddExample`算子为例，常见调试方法如下：
 
-* **printf**
+* **PRINTF**
 
   该接口支持打印Scalar类型数据，如整数、字符、布尔型等，详细介绍请参见[《Ascend C API》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)中“算子调测API > printf”。
   
@@ -25,7 +25,7 @@
   
   ```c++
   AscendC::LocalTensor<T> zLocal = outputQueueZ.DeQue<T>();
-  // 打印zLocal Tensor信息
+  // 打印zLocal Tensor信息 ,0为用户自定义的打印信息，128为打印zLocal的数据长度
   DumpTensor(zLocal, 0, 128);
   AscendC::DataCopy(outputGMZ[progress * tileLength_], zLocal, tileLength_);
   ```
@@ -34,9 +34,9 @@
 
 ## 性能调优
 
-算子运行过程中，如果出现执行精度下降、内存占用异常等问题，可通过[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)性能分析工具分析算子各运行阶段指标数据（如吞吐率、内存占用、耗时等），从而确定问题根源，并针对性地优化。
+算子运行过程中，如果出现执行耗时异常、内存占用异常等问题，可通过[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)性能分析工具分析算子各运行阶段指标数据（如吞吐率、内存占用、耗时等），从而确定问题根源，并针对性地优化。
 
-本章以`AddExample`自定义算子为例，通过采集算子上板运行时各项流水指标分析算子Bound场景。
+本章以`AddExample`自定义算子为例采集算子上板运行时各项流水指标。
 
 1. 前提条件。
 
@@ -49,19 +49,18 @@
    ```bash
    msprof op ./test_aclnn_add_example
    ```
-   采集结果在本项目`examples/add_example/examples/build/bin/OPPROF_*`目录，采集完成后打印如下信息：
+   采集结果保存在本项目`examples/add_example/examples/build/bin/OPPROF_*`目录，采集完成后打印如下信息：
    
     ``` text
     Op Name: AddExample_a1532827238e1555db7b997c7bce2928_high_performance_1
     Op Type: vector             
-    Task Duration(us): 97.861954 
-    Block Dim: 8
+    Task Duration(us): 97.861954  // Task Duration是当前算子Kernel耗时
+    Block Dim: 8 // Block Dim是当前算子执行核数
     Mix Block Dim:
     Device Id: 0
     Pid: 2776181
     Current Freq: 1800
     Rated Freq: 1800
     ```
-   其中Task Duration是当前算子Kernel耗时，Block Dim是当前算子执行核数。
 
    算子各项流水详细指标可关注`OPPROF_*`下`ArithmeticUtilization`文件，包含了当前各项流水的占比，具体介绍参见[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)中“性能数据文件 > msprof op > ArithmeticUtilization（cube及vector类型指令耗时和占比）”章节。
