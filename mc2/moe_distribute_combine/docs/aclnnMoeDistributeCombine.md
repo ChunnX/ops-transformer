@@ -427,9 +427,48 @@ aclnnStatus aclnnMoeDistributeCombine(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    
+    - 文件准备：
+        
+        1. 按照下方指导创建rank_table_m2.json文件并修改。
+        
+        2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
+        
+        3. 安装cann包，并根据[算子调用](../../../docs/invocation/quick_op_invocation.md)编译运行。
+
+    - 关于rankTable:
+    
+        1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommercialHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
+
+        2. 使用`cat /etc/hccn.conf` 或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
+
+        > 注意：两机16卡场景中，两机器的device_id都是0~7，其中一台机器的rank_id为0~7，另一台机器的rank_id为8~15。单机16卡场景中，device_id和rank_id都是0~15。
+
+    - 环境变量配置：
+
+        ```bash
+        # 运行前需设置两个环境变量
+        ## FIRST_RANK_ID说明：以两机16卡为例，其中一机器设置为0，另一机器设置为8
+        ## 如export FIRST_RANK_ID=0
+        export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
+        export FIRST_RANK_ID=<设备的起始rank_id>
+        ```
+    
+    - 机器数量设置：
+        两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+        ```Cpp
+        const uint32_t MACHINE_NUM = 2;
+        ```
+        单机16卡场景则无需修改。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。     
+       
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -437,8 +476,9 @@ aclnnStatus aclnnMoeDistributeCombine(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_moe_distribute_dispatch.h"
-    #include "aclnnop/aclnn_moe_distribute_combine.h"
+    #include "aclnn/opdev/fp16_t.h"
+    #include "../../moe_distribute_dispatch/op_host/op_api/aclnn_moe_distribute_dispatch.h"
+    #include "../op_host/op_api/aclnn_moe_distribute_combine.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \
@@ -463,9 +503,13 @@ aclnnStatus aclnnMoeDistributeCombine(
         aclrtContext context;
     };
 
-    constexpr uint32_t EP_WORLD_SIZE = 8;
-    constexpr uint32_t TP_WORLD_SIZE = 2;
-    constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
+    const uint32_t MACHINE_NUM = 1;
+    const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
+    const char* first_rank_id = std::getenv("FIRST_RANK_ID");
+
+    const uint32_t EP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 8 : 16;
+    const uint32_t TP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 2 : 0;
+    const uint32_t DEV_NUM = (!rank_table_file && !first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
 
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
@@ -496,7 +540,8 @@ aclnnStatus aclnnMoeDistributeCombine(
         return 0;
     }
 
-    int launchOneThreadDispatchAndCombine(Args &args){
+    int launchOneThreadDispatchAndCombine(Args &args)
+    {
         int ret = aclrtSetCurrentContext(args.context);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
 
@@ -504,8 +549,10 @@ aclnnStatus aclnnMoeDistributeCombine(
         ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
         char hcomTpName[128] = {0};
-        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
+        if (!rank_table_file && !first_rank_id) {
+            ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
+            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
+        }
         LOG_PRINT(
             "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchStream = %p, combineStream = %p, context = %p\n",
             args.rankId, hcomEpName, hcomTpName, args.dispatchStream, args.combineStream, args.context
@@ -516,15 +563,19 @@ aclnnStatus aclnnMoeDistributeCombine(
         int64_t H = 7168;
         int64_t K = 3;
         int64_t expertShardType = 0;
-        int64_t sharedExpertNum = 1;
-        int64_t sharedExpertRankNum = 1;
-        int64_t moeExpertNum = 7;
+        int64_t sharedExpertNum = 0;
+        int64_t sharedExpertRankNum = 0;
+        if (!rank_table_file && !first_rank_id) {
+            sharedExpertNum = 1;
+            sharedExpertRankNum = 1;
+        } 
+        int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
         int64_t quantMode = 0;
         int64_t globalBS = BS * EP_WORLD_SIZE;
-        int64_t expertTokenNumsType = 1;
+        int64_t expertTokenNumsType = 0;
         int64_t outDtype = 0;
         int64_t commQuantMode = 0;
-        int64_t groupList_type = 1;
+        int64_t groupListType = 0;
         int64_t localExpertNum;
         int64_t A;
         if (args.epRankId < sharedExpertRankNum) {
@@ -568,28 +619,28 @@ aclnnStatus aclnnMoeDistributeCombine(
         std::vector<int64_t> expertIdsShape{BS, K};
         std::vector<int64_t> scalesShape{(sharedExpertRankNum > 0) ? 1 + moeExpertNum : moeExpertNum, H};
         std::vector<int64_t> expertScalesShape{BS, K};
-        std::vector<int64_t> expandXShape{TP_WORLD_SIZE * A, H};
-        std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE * A};
+        std::vector<int64_t> expandXShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A, H};
+        std::vector<int64_t> dynamicScalesShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A};
         std::vector<int64_t> expandIdxShape{BS * K};
         std::vector<int64_t> expertTokenNumsShape{localExpertNum};
-        std::vector<int64_t> epRecvCountsShape{TP_WORLD_SIZE * localExpertNum * EP_WORLD_SIZE};
-        std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE};
+        std::vector<int64_t> epRecvCountsShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * localExpertNum * EP_WORLD_SIZE};
+        std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1};
         std::vector<int64_t> expandScalesShape{A};
 
-        int64_t xShapeSize = GetShapeSize(xShape);
-        int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
-        int64_t scalesShapeSize = GetShapeSize(scalesShape);
-        int64_t expertScalesShapeSize = GetShapeSize(expertScalesShape);
-        int64_t expandXShapeSize = GetShapeSize(expandXShape);
-        int64_t dynamicScalesShapeSize = GetShapeSize(dynamicScalesShape);
-        int64_t expandIdxShapeSize = GetShapeSize(expandIdxShape);
-        int64_t expertTokenNumsShapeSize = GetShapeSize(expertTokenNumsShape);
-        int64_t epRecvCountsShapeSize = GetShapeSize(epRecvCountsShape);
-        int64_t tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
-        int64_t expandScalesShapeSize = GetShapeSize(expandScalesShape);
+        long long xShapeSize = GetShapeSize(xShape);
+        long long expertIdsShapeSize = GetShapeSize(expertIdsShape);
+        long long scalesShapeSize = GetShapeSize(scalesShape);
+        long long expertScalesShapeSize = GetShapeSize(expertScalesShape);
+        long long expandXShapeSize = GetShapeSize(expandXShape);
+        long long dynamicScalesShapeSize = GetShapeSize(dynamicScalesShape);
+        long long expandIdxShapeSize = GetShapeSize(expandIdxShape);
+        long long expertTokenNumsShapeSize = GetShapeSize(expertTokenNumsShape);
+        long long epRecvCountsShapeSize = GetShapeSize(epRecvCountsShape);
+        long long tpRecvCountsShapeSize = GetShapeSize(tpRecvCountsShape);
+        long long expandScalesShapeSize = GetShapeSize(expandScalesShape);
 
         // 构造host侧变量
-        std::vector<int16_t> xHostData(xShapeSize, 1);
+        std::vector<op::fp16_t> xHostData(xShapeSize, 1);
         std::vector<int32_t> expertIdsHostData;
         for (int32_t token_id = 0; token_id < expertIdsShape[0]; token_id++) {
             // 每个token发给moe专家{0, 1, ... k - 1}
@@ -597,9 +648,9 @@ aclnnStatus aclnnMoeDistributeCombine(
                 expertIdsHostData.push_back(k_id);
             }
         }
-        std::vector<float> scalesHostData(scalesShapeSize, 0.1);
-        std::vector<float> expertScalesHostData(expertScalesShapeSize, 0.1);
-        std::vector<int16_t> expandXHostData(expandXShapeSize, 0);
+        std::vector<float> scalesHostData(scalesShapeSize, 0);
+        std::vector<float> expertScalesHostData(expertScalesShapeSize, 0);
+        std::vector<op::fp16_t> expandXHostData(expandXShapeSize, 0);
         std::vector<float> dynamicScalesHostData(dynamicScalesShapeSize, 0);
         std::vector<int32_t> expandIdxHostData(expandIdxShapeSize, 0);
         std::vector<int64_t> expertTokenNumsHostData(expertTokenNumsShapeSize, 0);
@@ -680,7 +731,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         ret = aclnnMoeDistributeCombineGetWorkspaceSize(expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
             nullptr, nullptr, nullptr, nullptr, nullptr,
             hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
-            expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupList_type,
+            expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
             x, &combineWorkspaceSize, &combineExecutor);
         CHECK_RET(
             ret == ACL_SUCCESS,
@@ -787,9 +838,47 @@ aclnnStatus aclnnMoeDistributeCombine(
         return 0;
     }
 
-    int main(int argc, char *argv[])
+    int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST_RANK_ID)
     {
-        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
+        Args args;
+        aclrtStream dispatchStream;
+        aclrtStream combineStream;
+        aclrtContext context;
+
+        int ret = aclrtSetDevice(rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d", ret));
+        ret = aclrtCreateContext(&context, rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d", ret));
+        ret = aclrtCreateStream(&dispatchStream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
+        ret = aclrtCreateStream(&combineStream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
+
+        int first_rank_id = std::stoi(std::string(FIRST_RANK_ID));
+        HcclComm hcclComm = nullptr;
+        int rank_id = rankId + first_rank_id;
+        ret = HcclCommInitClusterInfo(RANK_TABLE_FILE, rank_id, &hcclComm);
+        if (ret != HCCL_SUCCESS || hcclComm == nullptr) {
+            std::cout << "[ERROR] HCCL CommInitClusterInfo failed. ret = " << ret << std::endl;
+            return 0;
+        }
+        std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
+                << ", hcclComm:" << hcclComm << std::endl;
+
+        args.rankId = rankId;
+        args.epRankId = rankId;
+        args.tpRankId = 0;
+        args.hcclEpComm = hcclComm;
+        args.dispatchStream = dispatchStream;
+        args.combineStream = combineStream;
+        args.context = context;
+
+        launchOneThreadDispatchAndCombine(args);
+        return 0;
+    }
+
+    int run_example_on_A3()
+    {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
 
@@ -861,6 +950,38 @@ aclnnStatus aclnnMoeDistributeCombine(
         }
         aclFinalize();
         LOG_PRINT("[INFO] aclFinalize success\n");
+        return 0;
+    }
+
+    int main(int argc, char *argv[])
+    {
+        const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
+        if (!rank_table_file && !first_rank_id) {
+            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
+            int ret = run_example_on_A3();   
+        }
+        else if (rank_table_file && first_rank_id) {
+            LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
+            uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
+            std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
+            int ret = aclInit(nullptr);
+            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
+            for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
+                threads[rankId] = std::make_unique<std::thread>([rankId]()
+                {
+                    int ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
+                });
+            }
+            for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
+                threads[rankId]->join();
+            }
+            aclFinalize();
+            LOG_PRINT("[INFO] aclFinalize success\n");
+        }
+        else {
+            LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
+        }
+
         return 0;
     }
     ```
