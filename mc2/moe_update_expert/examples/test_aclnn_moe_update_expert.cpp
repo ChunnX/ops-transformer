@@ -19,9 +19,9 @@
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
-#include "../op_host/op_api/aclnn_moe_update_expert.h"
-#include "../../moe_distribute_dispatch_v2/op_host/op_api/aclnn_moe_distribute_dispatch_v2.h"
-#include "../../moe_distribute_combine_add_rms_norm/op_host/op_api/aclnn_moe_distribute_combine_add_rms_norm.h"
+#include "../op_api/aclnn_moe_update_expert.h"
+#include "../../moe_distribute_dispatch_v2/op_api/aclnn_moe_distribute_dispatch_v2.h"
+#include "../../moe_distribute_combine_add_rms_norm/op_api/aclnn_moe_distribute_combine_add_rms_norm.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \

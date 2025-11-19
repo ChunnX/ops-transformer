@@ -231,7 +231,7 @@ aclnnStatus aclnnMatmulReduceScatter(
     #include <thread>
     #include <iostream>
     #include <vector>
-    #include "../op_host/op_api/aclnn_matmul_reduce_scatter.h"
+    #include "../op_api/aclnn_matmul_reduce_scatter.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \

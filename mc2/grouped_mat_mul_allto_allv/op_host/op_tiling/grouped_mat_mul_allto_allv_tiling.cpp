@@ -237,31 +237,25 @@ static bool CheckSendCntAndRecvCnt(
     const int64_t* sendArray = static_cast<const int64_t*>(sendCountsPtr->GetData());
     OP_TILING_CHECK(
         static_cast<int64_t>(recvSize) != epWorldSize * E_ep,
-        OP_LOGE(
-            C_INNER_DEBUG, "The length of recvCnts[%lu] should be equal to E_ep * epworldSize[%ld]", recvSize,
-            epWorldSize * E_ep),
+        OP_LOGE(C_INNER_DEBUG, "The length of recvCnts[%lu] should be equal to E_ep * epworldSize[%ld]", recvSize, epWorldSize * E_ep),
         return false);
     OP_TILING_CHECK(
         static_cast<int64_t>(sendSize) != epWorldSize * E_ep,
-        OP_LOGE(
-            C_INNER_DEBUG, "The length of sendCnts[%lu] should be equal to E_ep * epworldSize[%ld]", sendSize,
-            epWorldSize * E_ep),
+        OP_LOGE(C_INNER_DEBUG, "The length of sendCnts[%lu] should be equal to E_ep * epworldSize[%ld]", sendSize, epWorldSize * E_ep),
         return false);
 
     int64_t recvSum = 0;
     for (uint64_t i = 0; i < recvSize; i++) {
         recvSum += recvArray[i];
     }
-    OP_TILING_CHECK(
-        BsK != recvSum, OP_LOGE(C_INNER_DEBUG, "BsK[%ld] should be equal to the sum of recvCounts[%ld]!", BsK, recvSum),
+    OP_TILING_CHECK(BsK != recvSum, OP_LOGE(C_INNER_DEBUG, "BsK[%ld] should be equal to the sum of recvCounts[%ld]!", BsK, recvSum),
         return false);
 
     int64_t sendSum = 0;
     for (uint64_t i = 0; i < sendSize; i++) {
         sendSum += sendArray[i];
     }
-    OP_TILING_CHECK(
-        A != sendSum, OP_LOGE(C_INNER_DEBUG, "A[%ld] should be equal to the sum of sendCounts[%ld]!", A, sendSum),
+    OP_TILING_CHECK(A != sendSum, OP_LOGE(C_INNER_DEBUG, "A[%ld] should be equal to the sum of sendCounts[%ld]!", A, sendSum),
         return false);
     for (int64_t i = 1; i <= epWorldSize; i++) {
         recvSum = 0;
@@ -270,22 +264,14 @@ static bool CheckSendCntAndRecvCnt(
             recvSum += recvArray[j] * H;
             sendSum += sendArray[j] * H;
         }
-        OP_TILING_CHECK(
-            (recvSum > RECV_SEND_MAX) || (recvSum < RECV_SEND_MIN),
-            OP_LOGE(
-                C_INNER_DEBUG,
-                "rank %ld:sum(recvCounts[%ld, %ld]) * H1 * sizeof dtype(gmmx) should be [2MB, 100MB], "
-                "but got %ld Byte!",
-                i - 1, (i - 1) * E_ep, i * E_ep - 1, 2 * recvSum),
-            return false);
-        OP_TILING_CHECK(
-            (sendSum > RECV_SEND_MAX) || (sendSum < RECV_SEND_MIN),
-            OP_LOGE(
-                C_INNER_DEBUG,
-                "rank %ld:sum(sendCounts[%ld, %ld]) * H1 * sizeof dtype(gmmx) should be [2MB, 100MB], "
-                "but got %ld Byte!",
-                i - 1, (i - 1) * E_ep, i * E_ep - 1, 2 * sendSum),
-            return false);
+        OP_TILING_CHECK(recvSum < RECV_SEND_MIN, OP_LOGE(C_INNER_DEBUG,
+                "rank %ld:sum(recvCounts[%ld, %ld]) * H1 * sizeof dtype(gmmx) should be greater than or equal to 2MB, "
+                "but got %ld Byte!", i - 1, (i - 1) * E_ep, i * E_ep - 1, 2 * recvSum), 
+                return false);
+        OP_TILING_CHECK(sendSum < RECV_SEND_MIN, OP_LOGE(C_INNER_DEBUG,
+                "rank %ld:sum(sendCounts[%ld, %ld]) * H1 * sizeof dtype(gmmx) should be greater than or equal to 2MB, "
+                "but got %ld Byte!", i - 1, (i - 1) * E_ep, i * E_ep - 1, 2 * sendSum), 
+                return false);
     }
     return true;
 }
@@ -386,7 +372,7 @@ static bool CheckDtype(const gert::TilingContext* context, const GroupedMatMulAl
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
             (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_BF16),
-        OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, gmmx only support float16 and bf16!"), return false);
+        OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, gmmx only support float16 and bfloat16!"), return false);
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != context->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType()) ||
             (context->GetInputDesc(GMM_X_INDEX)->GetDataType() !=
@@ -404,7 +390,7 @@ static bool CheckDtype(const gert::TilingContext* context, const GroupedMatMulAl
         OP_TILING_CHECK(
             (context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
                 (context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType() != ge::DT_BF16),
-            OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, mmx only support float16 and bf16!"), return false);
+            OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, mmx only support float16 and bfloat16!"), return false);
         OP_TILING_CHECK(
             (context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType() !=
              context->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX)->GetDataType()) ||

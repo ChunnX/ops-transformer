@@ -16,7 +16,7 @@
 #include <thread>
 #include <iostream>
 #include <vector>
-#include "../op_host/op_api/aclnn_all_gather_matmul.h"
+#include "../op_api/aclnn_all_gather_matmul.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \

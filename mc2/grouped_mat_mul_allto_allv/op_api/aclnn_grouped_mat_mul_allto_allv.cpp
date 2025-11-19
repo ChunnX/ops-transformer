@@ -63,7 +63,30 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
     }
     return true;
 }
-
+static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntArray* recvCounts)
+{
+    if (sendCounts == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be null.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (recvCounts == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be null.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    uint64_t recvSize = 0U;  // recvCounts的大小
+    uint64_t sendSize = 0U;  // recvCounts的大小
+    aclGetIntArraySize(recvCounts, &recvSize);
+    aclGetIntArraySize(sendCounts, &sendSize);
+    if (recvSize == 0U) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be empty.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (sendSize == 0U) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be empty.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight,
                                const aclTensor* sendCountsTensorOptional, const aclTensor* recvCountsTensorOptional,
@@ -97,7 +120,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
         CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
                     group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-
+    auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
+    CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, group,
         epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional, workspaceSize, executor);

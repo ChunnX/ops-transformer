@@ -351,7 +351,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
 #include <iostream>
 #include <vector>
 #include <thread>
-#include "../op_host/op_api/aclnn_weight_quant_matmul_all_reduce_add_rms_norm.h"
+#include "../op_api/aclnn_weight_quant_matmul_all_reduce_add_rms_norm.h"
 
 int ndev = 8;
 

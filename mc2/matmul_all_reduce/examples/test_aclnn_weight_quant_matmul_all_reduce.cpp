@@ -17,7 +17,7 @@
 #include <vector>
 #include <thread>
 #include <cstring>
-#include "../op_host/op_api/aclnn_weight_quant_matmul_all_reduce.h"
+#include "../op_api/aclnn_weight_quant_matmul_all_reduce.h"
 
 namespace {
 static int ndev = 8;

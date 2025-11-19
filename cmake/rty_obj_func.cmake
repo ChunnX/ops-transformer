@@ -318,7 +318,7 @@ macro(add_mc2_modules_sources)
   get_filename_component(ASCEND_PARENT_DIR ${ASCEND_CANN_PACKAGE_PATH} DIRECTORY)
 
   # opapi 默认全部编译
-  file(GLOB OPAPI_SRCS ${SOURCE_DIR}/op_api/*.cpp)
+  file(GLOB OPAPI_SRCS ${SOURCE_DIR}/../op_api/*.cpp)
   if (OPAPI_SRCS)
     add_opapi_modules()
     target_sources(${OPHOST_NAME}_opapi_obj PRIVATE ${OPAPI_SRCS})

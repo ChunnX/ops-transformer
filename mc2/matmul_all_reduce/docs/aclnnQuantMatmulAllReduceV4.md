@@ -377,7 +377,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 #include <vector>
 #include <getopt.h>
 #include "aclnnop/aclnn_trans_matmul_weight.h"
-#include "../op_host/op_api/aclnn_quant_matmul_all_reduce_v4.h"
+#include "../op_api/aclnn_quant_matmul_all_reduce_v4.h"
 
 #define ACL_CHECK(ret)                                                                                     \
     do {                                                                                                   \

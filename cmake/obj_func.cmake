@@ -119,7 +119,7 @@ macro(add_mc2_modules_sources)
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
   #opapi 默认全部编译
-  file(GLOB OPAPI_SRCS ${SOURCE_DIR}/op_api/*.cpp)
+  file(GLOB OPAPI_SRCS ${SOURCE_DIR}/../op_api/*.cpp)
   if (OPAPI_SRCS)
     # aclnn
     add_opapi_modules()

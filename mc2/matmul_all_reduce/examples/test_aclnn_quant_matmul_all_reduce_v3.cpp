@@ -16,7 +16,7 @@
 #include <iostream>
 #include <vector>
 #include <thread>
-#include "../op_host/op_api/aclnn_quant_matmul_all_reduce_v3.h"
+#include "../op_api/aclnn_quant_matmul_all_reduce_v3.h"
 
 namespace {
 static int ndev = 8;

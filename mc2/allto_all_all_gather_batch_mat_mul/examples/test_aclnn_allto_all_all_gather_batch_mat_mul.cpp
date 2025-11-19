@@ -20,7 +20,7 @@
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
-#include "../op_host/op_api/aclnn_all_to_all_all_gather_batch_matmul.h"
+#include "../op_api/aclnn_all_to_all_all_gather_batch_matmul.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \

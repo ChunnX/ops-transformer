@@ -314,7 +314,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
     #include <vector>
     #include <thread>
     #include "aclnnop/aclnn_trans_matmul_weight.h"
-    #include "../op_host/op_api/aclnn_quant_matmul_all_reduce_v2.h"
+    #include "../op_api/aclnn_quant_matmul_all_reduce_v2.h"
 
     int ndev = 8;
 

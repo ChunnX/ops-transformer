@@ -19,7 +19,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 constexpr uint32_t MAX_EXPERT_SIZE = 256U; // 最大通信域专家的数量
-constexpr uint32_t MAX_EP_RANK_SIZE = 64U; // 最大通信域内卡的数量
+constexpr uint32_t MAX_EP_RANK_SIZE = 128U; // 最大通信域内卡的数量
 
 struct AlltoAllvGmmCommonTilingInfo {
     uint64_t BSK;

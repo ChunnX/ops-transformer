@@ -19,7 +19,7 @@
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
-#include "../op_host/op_api/aclnn_grouped_mat_mul_allto_allv.h"
+#include "../op_api/aclnn_grouped_mat_mul_allto_allv.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \

@@ -12,7 +12,7 @@
 #include <vector>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "../../../../op_host/op_api/aclnn_elastic_receivable_test.h"
+#include "../../../../op_api/aclnn_elastic_receivable_test.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"

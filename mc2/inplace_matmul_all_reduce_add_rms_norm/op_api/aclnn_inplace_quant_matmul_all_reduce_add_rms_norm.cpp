@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file aclnn_inplace_matmul_all_reduce_add_rms_norm.cpp
+ * \file aclnn_inplace_quant_matmul_all_reduce_add_rms_norm.cpp
  * \brief
  */
 
-#include "aclnn_inplace_matmul_all_reduce_add_rms_norm.h"
-#include "matmul_all_reduce_add_rms_norm/op_host/op_api/aclnn_matmul_all_reduce_add_rms_norm.h"
+#include "aclnn_inplace_quant_matmul_all_reduce_add_rms_norm.h"
+#include "matmul_all_reduce_add_rms_norm/op_api/aclnn_quant_matmul_all_reduce_add_rms_norm.h"
 #include "securec.h"
 
 #include "acl/acl.h"
@@ -35,20 +35,20 @@ using namespace op;
 extern "C" {
 #endif
 
-aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,
-    double epsilon, const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode,
-    const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
+    const aclTensor* residual, const aclTensor* gamma, double epsilon, const char* group, const char* reduceOp,
+    int64_t commTurn, int64_t streamMode, const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    return aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
-        x1, x2, bias, residual, gamma, epsilon, group, reduceOp, commTurn, streamMode, residual, normOut, workspaceSize,
-        executor);
+    return aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
+        x1, x2, bias, dequantScale, residual, gamma, epsilon, group, reduceOp, commTurn, streamMode, residual, normOut,
+        workspaceSize, executor);
 }
 
-aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
+aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
-    return aclnnMatmulAllReduceAddRmsNorm(workspace, workspaceSize, executor, stream);
+    return aclnnQuantMatmulAllReduceAddRmsNorm(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus
