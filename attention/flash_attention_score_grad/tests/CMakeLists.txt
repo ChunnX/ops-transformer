@@ -17,11 +17,11 @@
 
 set(_FA_OpApiSourcesExt
         # FAS
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_host/op_api/flash_attention_score.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_host/op_api/aclnn_flash_attention_score.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_api/flash_attention_score.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp
         # FAG
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host/op_api/flash_attention_score_grad.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host/op_api/aclnn_flash_attention_score_grad.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_api/flash_attention_score_grad.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_api/aclnn_flash_attention_score_grad.cpp
 )
 
 set(_FA_OpProtoSourcesExt
@@ -68,9 +68,9 @@ set(_FA_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
         ${OPS_TRANSFORMER_DIR}/common/include
         ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_host
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_host/op_api
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_api
         ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host/op_api
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_api
 )
 
 set(_FA_UTestCommonPrivateLinkLibrariesExt

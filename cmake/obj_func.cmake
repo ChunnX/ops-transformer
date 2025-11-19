@@ -13,13 +13,29 @@
 
 # 用于custom自定算子包host侧obj生成
 macro(add_modules_sources)
+  set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR)
   set(multiValueArgs OPTYPE ACLNNTYPE)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # 该段代码作用为兼容op_api新旧目录结构(旧： 嵌套于op_host下； 新： 与op_host同级)
+  if (NOT DEFINED MODULE_OP_API_INDEPENDENT)
+    set(MODULE_OP_API_INDEPENDENT OFF)
+  endif()
+  if(MODULE_OP_API_INDEPENDENT)
+    # 新结构：op_api与op_host同级，需要指定有效路径
+    if (NOT DEFINED MODULE_OP_API_DIR OR NOT EXISTS "${MODULE_OP_API_DIR}")
+      message(FATAL_ERROR "OP_API_INDEPENDENT=ON时，必须传递有效的OP_API_DIR路径")
+    endif()
+    set(OP_API_SRC_DIR "${MODULE_OP_API_DIR}")
+  else()
+    # 旧结构：op_api嵌套在op_host目录下
+    set(OP_API_SRC_DIR "${SOURCE_DIR}/op_api")
+  endif()
+
   # opapi 默认全部编译
-  file(GLOB OPAPI_SRCS ${SOURCE_DIR}/op_api/*.cpp)
+  file(GLOB OPAPI_SRCS ${OP_API_SRC_DIR}/*.cpp)
   if (OPAPI_SRCS)
     # aclnn
     add_opapi_modules()
@@ -35,7 +51,7 @@ macro(add_modules_sources)
       )
     endif()
   endif()
-  file(GLOB OPAPI_HEADERS ${SOURCE_DIR}/op_api/aclnn_*.h)
+  file(GLOB OPAPI_HEADERS ${OP_API_SRC_DIR}/aclnn_*.h)
   if (OPAPI_HEADERS)
     target_sources(${OPHOST_NAME}_aclnn_exclude_headers INTERFACE ${OPAPI_HEADERS})
   endif()
