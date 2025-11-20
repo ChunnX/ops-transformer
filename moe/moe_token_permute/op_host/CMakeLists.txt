@@ -8,18 +8,18 @@
 # ======================================================================================================================
 
 if (BUILD_OPEN_PROJECT)
+    set(moe_token_permute_depends moe/moe_init_routing_v2 CACHE INTERNAL "Dependencies for moe_token_permute")
     target_sources(op_host_aclnnInner PRIVATE
        moe_token_permute_def.cpp
     )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME MoeTokenPermute
         OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
     )
-else()
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE moe_token_permute ACLNNTYPE aclnn_inner )
 endif()
