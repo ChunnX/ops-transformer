@@ -499,8 +499,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
-    #include "../op_host/op_api/aclnn_moe_distribute_dispatch_v2.h"
-    #include "../../moe_distribute_combine_v2/op_host/op_api/aclnn_moe_distribute_combine_v2.h"
+    #include "../op_api/aclnn_moe_distribute_dispatch_v2.h"
+    #include "../../moe_distribute_combine_v2/op_api/aclnn_moe_distribute_combine_v2.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \

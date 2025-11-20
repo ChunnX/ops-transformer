@@ -20,8 +20,8 @@
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "../op_host/op_api/aclnn_moe_distribute_dispatch.h"
-#include "../../moe_distribute_combine/op_host/op_api/aclnn_moe_distribute_combine.h"
+#include "../op_api/aclnn_moe_distribute_dispatch.h"
+#include "../../moe_distribute_combine/op_api/aclnn_moe_distribute_combine.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
