@@ -37,7 +37,8 @@ namespace npu_ops_transformer_ext {
 
 TORCH_LIBRARY(npu_ops_transformer_ext, m)
 {
-    // m.def("dummy(Tensor x) -> Tensor");
+    // set def like the rule below: m.def("dummy(Tensor x) -> Tensor");
+    m.def("rope_matrix(Tensor x, Tensor y, Tensor sin, Tensor cos) -> Tensor");
 }
 
 } // namespace npu_ops_transformer_ext
