@@ -14,6 +14,9 @@
 │   │   ├── op_graph               # 算子构图相关目录
 │   │   ├── op_host                # 算子信息库、Tiling、InferShape相关实现
 │   │   └── op_kernel              # 算子kernel目录
+│   ├── mc2                        # 通算融合类算子示例
+│   │   ├── all_gather_add         # AI Core算子名
+│   │   │   └── ...              
 │   ├── CMakeLists.txt             # 算子编译配置文件，保留原文件即可
 │   └── README.md                  # 算子说明文档
 
@@ -23,3 +26,4 @@
 |样例目录| 	样例介绍	           |算子开发|算子调用 |
 |---|------------------|---|---|
 | add_example | 	实现两个张量相加功能的算子。	 | 算子端到端开发过程参见[AI Core算子开发指南](../docs/develop/aicore_develop_guide.md)。 |调用样例参见[examples](./add_example/examples/)|
+| mc2/all_gather_add | 	实现AllGatherAdd通算算子 。	 | 算子端到端开发过程参见[AI Core算子开发指南](../docs/develop/aicore_develop_guide.md)。 |调用样例参见[examples](./mc2/all_gather_add/examples/)|

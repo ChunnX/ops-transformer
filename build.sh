@@ -390,10 +390,11 @@ function build_example()
                 echo "pkg_mode:${PKG_MODE} vendor_name:${VENDOR}"
                 export CUST_LIBRARY_PATH="${ASCEND_OPP_PATH}/vendors/${VENDOR}_transformer/op_api/lib"     # 仅自定义算子需要
                 export CUST_INCLUDE_PATH="${ASCEND_OPP_PATH}/vendors/${VENDOR}_transformer/op_api/include" # 仅自定义算子需要
+                ABSOLUTE_EXAMPLES_PATH=$(realpath ${BUILD_PATH}/../examples/mc2)
                 ABSOLUTE_MC2_PATH=$(realpath ${BUILD_PATH}/../mc2)
                 REAL_FILE_PATH=$(realpath "$file")
                 MC2_APPEND_INCLUDE_AND_LIBRARY=""
-                if [[ "$REAL_FILE_PATH" == "${ABSOLUTE_MC2_PATH}"* ]]; then
+                if [[ "$REAL_FILE_PATH" == "${ABSOLUTE_MC2_PATH}"* || "$REAL_FILE_PATH" == "${ABSOLUTE_EXAMPLES_PATH}"* ]]; then
                     MC2_APPEND_INCLUDE_AND_LIBRARY="-lpthread -lhccl"
                 fi
                 g++ ${file} -I ${INCLUDE_PATH} -I ${CUST_INCLUDE_PATH} -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} -lcust_opapi -lascendcl -lnnopbase ${MC2_APPEND_INCLUDE_AND_LIBRARY} -o test_aclnn_${EXAMPLE_NAME} -Wl,-rpath=${CUST_LIBRARY_PATH}
@@ -1214,10 +1215,11 @@ function build_example_group_eager()
                 echo "pkg_mode:${PKG_MODE} vendor_name:${VENDOR}"
                 export CUST_LIBRARY_PATH="${ASCEND_OPP_PATH}/vendors/${VENDOR}_transformer/op_api/lib"     # 仅自定义算子需要
                 export CUST_INCLUDE_PATH="${ASCEND_OPP_PATH}/vendors/${VENDOR}_transformer/op_api/include" # 仅自定义算子需要
+                ABSOLUTE_EXAMPLES_PATH=$(realpath ${BUILD_PATH}/../examples/mc2)
                 ABSOLUTE_MC2_PATH=$(realpath ${BUILD_PATH}/../mc2)
                 REAL_FILE_PATH=$(realpath "$file")
                 MC2_APPEND_INCLUDE_AND_LIBRARY=""
-                if [[ "$REAL_FILE_PATH" == "${ABSOLUTE_MC2_PATH}"* ]]; then
+                if [[ "$REAL_FILE_PATH" == "${ABSOLUTE_MC2_PATH}"* || "$REAL_FILE_PATH" == "${ABSOLUTE_EXAMPLES_PATH}"* ]]; then
                     MC2_APPEND_INCLUDE_AND_LIBRARY="-lpthread -lhccl"
                 fi
                 g++ ${file} -I ${INCLUDE_PATH} -I ${CUST_INCLUDE_PATH} -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} -lcust_opapi -lascendcl -lnnopbase ${MC2_APPEND_INCLUDE_AND_LIBRARY} -o test_aclnn_${example_name} -Wl,-rpath=${CUST_LIBRARY_PATH}
