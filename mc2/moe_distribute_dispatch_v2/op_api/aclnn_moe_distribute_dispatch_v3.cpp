@@ -30,7 +30,7 @@ enum NnopbaseHcclServerType {
 };
 
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(const aclTensor* x, const aclTensor* expertIds, const aclTensor* scales,
-                                                                   const aclTensor* xActiveMask, const aclTensor* expertScales,  const aclTensor* elasticInfo,
+                                                                   const aclTensor* xActiveMask, const aclTensor* expertScales,  const aclTensor* elasticInfo, const aclTensor* performanceInfo,
                                                                    const char* groupEp, int64_t epWorldSize,
                                                                    int64_t epRankId, int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
                                                                    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t shareExpertRankNum,
@@ -110,7 +110,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(const aclTensor* x, con
 
     if (is910B) {
         return aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
-                                                                 elasticInfoOptional, groupEp, epWorldSize, epRankId, moeExpertNum,
+                                                                 elasticInfoOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum,
                                                                  "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
                                                                  sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg,
                                                                  zeroExpertNum, copyExpertNum, constExpertNum, expandXOut,
@@ -119,7 +119,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(const aclTensor* x, con
     }
 
     return aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
-                                                                        elasticInfoOptional, groupEp, epWorldSize, epRankId, moeExpertNum,
+                                                                        elasticInfoOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum,
                                                                         groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
                                                                         sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg,
                                                                         zeroExpertNum, copyExpertNum, constExpertNum, expandXOut,

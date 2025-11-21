@@ -56,6 +56,7 @@ namespace {
     constexpr uint32_t CONST_EXPERT_ALPHA_1_INDEX = 14;
     constexpr uint32_t CONST_EXPERT_ALPHA_2_INDEX = 15;
     constexpr uint32_t CONST_EXPERT_V_INDEX = 16;
+    constexpr uint32_t PERFORMANCE_INFO_INDEX = 17;
     constexpr uint32_t OUTPUT_X_INDEX = 0;
 
     constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
@@ -1198,6 +1199,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
     const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
     const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(ELASTIC_INFO_INDEX);
+    const gert::StorageShape *performanceInfoStorageShape = context->GetOptionalInputShape(PERFORMANCE_INFO_INDEX);
     OP_TILING_CHECK(expandXStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "expandXShape is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "expertIdShape is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(elasticInfoStorageShape != nullptr, OP_LOGE(K_INNER_DEBUG, "current does not support elasticInfo as input"), return GRAPH_FAILED);
@@ -1243,6 +1245,19 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
             "xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is %ld, "
             "expertIds's dim0 is %u",
             xActiveMaskStorageShape->GetStorageShape().GetDim(0), bs),
+        return GRAPH_FAILED);
+    
+    OP_TILING_CHECK(performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(K_INNER_DEBUG, "When performanceInfo is not null, it needs to be one-dimensional."), return GRAPH_FAILED);
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(*epWorldSizePtr),
+        OP_LOGE(
+            K_INNER_DEBUG,
+            "The Size of performanceInfo should be equal to epWorldSize when performanceInfo is not null,"
+            "but performanceInfo Size is %ld and epWorldSize is %d.",
+            performanceInfoStorageShape->GetStorageShape().GetDim(0), *epWorldSizePtr),
         return GRAPH_FAILED);
 
     info.isTokenMask = isTokenMask;

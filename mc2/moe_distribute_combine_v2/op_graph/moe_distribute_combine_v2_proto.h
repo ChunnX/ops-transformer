@@ -37,6 +37,7 @@ namespace ge {
 * @li group_list: An optional tensor. Support dtype: int64, support format: ND.
 * @li expand_scales: A tensor. Support dtype: float32, Support Shape: (A, ), support format: ND.
 * @li shared_expert_x: A tensor. Support dtype: float16, bfloat16, int32, support format: ND.
+* @li performance_info: A tensor. Support dtype: int64, support format: ND.
 
 * @par Attributes
 * @li group_ep: Input ep comm group name, ep means experts parallelism, dtype: String.
@@ -77,6 +78,7 @@ REG_OP(MoeDistributeCombineV2)
     .OPTIONAL_INPUT(const_expert_alpha_1, TensorType({DT_BF16, DT_FLOAT16, DT_INT32}))
     .OPTIONAL_INPUT(const_expert_alpha_2, TensorType({DT_BF16, DT_FLOAT16, DT_INT32}))
     .OPTIONAL_INPUT(const_expert_v, TensorType({DT_BF16, DT_FLOAT16, DT_INT32}))
+    .OPTIONAL_INPUT(performance_info, TensorType({DT_INT64}))
     .OUTPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
     .REQUIRED_ATTR(group_ep, String)
     .REQUIRED_ATTR(ep_world_size, Int)

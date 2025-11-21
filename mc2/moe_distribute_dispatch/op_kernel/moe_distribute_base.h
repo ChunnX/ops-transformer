@@ -22,6 +22,7 @@ constexpr uint32_t LOCAL_NOTIFY_MAX_NUM = 64;
 constexpr uint32_t LOCAL_STREAM_MAX_NUM = 40U;
 constexpr uint32_t AICPU_OP_NOTIFY_MAX_NUM = 2;
 constexpr uint32_t AICPU_MAX_RANK_NUM = 128 * 1024;
+constexpr uint32_t TIME_CYCLE = 50; // 系统cycle数转换成时间的基准单位，固定为50
 
 struct HcclSignalInfo {
     uint64_t resId; // 在代表event时为eventid，notify时为notifyid
@@ -348,5 +349,17 @@ __aicore__ inline DataplaneMode GetDataplaneMode(GM_ADDR contextGM0) {
         dataplaneMode = DataplaneMode::AIV;
     }
     return dataplaneMode;
+}
+
+__aicore__ inline int64_t GetCurrentTimestampUs()
+{
+    return AscendC::GetSystemCycle() / TIME_CYCLE;
+}
+
+__aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> performanceInfoU32Tensor, uint32_t rankId, int64_t startTime)
+{
+    int64_t endTime = GetCurrentTimestampUs();
+    int32_t duration = static_cast<int32_t>(endTime - startTime); // int32_t可以表示2^31(us)，约35min在实际场景下满足需要
+    performanceInfoU32Tensor.SetValue(rankId * sizeof(int64_t) / sizeof(int32_t), duration); // 使用int32_t是因为atomicAdd不支持int64_t类型，这里只赋值到int64_t的低32位。
 }
 #endif // MOE_DISTRIBUTE_BASE_H

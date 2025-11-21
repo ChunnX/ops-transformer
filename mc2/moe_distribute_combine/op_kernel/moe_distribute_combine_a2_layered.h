@@ -102,7 +102,7 @@ public:
 
     __aicore__ inline MoeDistributeCombineA2Layered(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR sendCount,
-                                GM_ADDR scales, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
+                                GM_ADDR scales, GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
                                 const MoeDistributeCombineA2TilingData *tilingData, GM_ADDR contextGM);
     __aicore__ inline void Process();
     __aicore__ inline void AIVRDMAPostSend(GM_ADDR srcDmaAddr, GM_ADDR destDmaAddr, uint64_t destRankId, uint64_t messageLen, __gm__ HcclAiRMAInfo* QpInfo);
@@ -118,6 +118,7 @@ private:
     __aicore__ inline void SumToServer();
     __aicore__ inline void Preload();
     __aicore__ inline void ToWindowPreload();
+    __aicore__ inline void CopyPerformanceInfo();
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<ExpandXType> expandXGlobal_;
@@ -133,6 +134,7 @@ private:
     GlobalTensor<uint32_t> bufferIdGlobal_;     // 用于存对端状态window的变量
     GlobalTensor<int32_t> statusSpaceGlobal_;   // win区状态位置拷入相关参数
     GlobalTensor<int32_t> readStateGlobal_;
+    GlobalTensor<int32_t> performanceInfoI32GMTensor_;
 
     uint64_t shareAddreRank[8];
 
@@ -208,10 +210,13 @@ private:
     uint64_t offset_outer_offset{0};
     uint64_t share_offset{0};
     uint32_t IPC_DATA_SIZE{0};
+    uint32_t performanceInfoSize_{0};
+    bool needPerformanceInfo_{false};
     TBuf<QuePosition::VECCALC> tBuf;
     TBuf<TPosition::VECOUT> rdmaInBuf_;
     TBuf<TPosition::VECOUT> rdmaInBuf2_;
     TBuf<> statusBuf_;
+    TBuf<> performanceInfoBuf_; 
 
     int32_t sumTarget_{0};
     int32_t stateValue_{0};
@@ -228,6 +233,7 @@ private:
     LocalTensor<int32_t> countReduceLocal_;
     LocalTensor<uint64_t> ubLocal;
     LocalTensor<uint32_t> ubLocalHead;
+    LocalTensor<int32_t> performanceInfoI32Tensor_;
     // 低精度相关
     uint32_t repeatNum{0};
     uint32_t scaleNum;
@@ -326,7 +332,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::Init(
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR sendCount, GM_ADDR scales, GM_ADDR XOut,
+    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR sendCount, GM_ADDR scales, GM_ADDR performanceInfo, GM_ADDR XOut,
     GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineA2TilingData *tilingData, GM_ADDR contextGM)
 {
     tpipe_ = pipe;
@@ -343,7 +349,6 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     aivNum_ = tilingData->moeDistributeCombineInfo.aivNum;
     moeExpertNum_ = tilingData->moeDistributeCombineInfo.moeExpertNum;
     worldSize_ = tilingData->moeDistributeCombineInfo.epWorldSize;
-
     globalBs = tilingData->moeDistributeCombineInfo.globalBs;
     if (globalBs >= 256U) {
         maxLocalBs = 256U;
@@ -430,6 +435,15 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     }
 
     BuffInit();
+
+    needPerformanceInfo_ = performanceInfo != nullptr;
+    if (unlikely(needPerformanceInfo_)) {
+        performanceInfoSize_ = worldSize_;
+        performanceInfoI32GMTensor_.SetGlobalBuffer((__gm__ int32_t*)performanceInfo);
+        tpipe_->InitBuffer(performanceInfoBuf_, performanceInfoSize_ * sizeof(int64_t));
+        performanceInfoI32Tensor_ = performanceInfoBuf_.Get<int32_t>();
+        Duplicate<int32_t>(performanceInfoI32Tensor_, 0, performanceInfoSize_ * sizeof(int64_t) / sizeof(int32_t));
+    }
 
     SplitCoreCal();
 
@@ -583,6 +597,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     // 只要8个core分别wait 来自8卡的flag，然后sync一下 再进行流水
 
     if (coreIdx_ < stepCoreNum_){
+        int64_t startTime = GetCurrentTimestampUs();
         LocalTensor<uint64_t> inUb = statusBuf_.Get<uint64_t>();
         uint32_t waitFlagAddr = coreIdx_ % stepCoreNum_;
         while (true) {
@@ -596,6 +611,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         PipeBarrier<PIPE_ALL>();
         DataCopy(shareFlagGlobal_[waitFlagAddr * 4], inUb, 4);  // *4是因为单次拷贝256byte = 4*int64
         PipeBarrier<PIPE_ALL>();
+        if (unlikely(needPerformanceInfo_)) {
+	        auto srcRankId = (rankId_ / SERVER_RANK_SIZE) * SERVER_RANK_SIZE + coreIdx_;
+            RecordRankCommDuration(performanceInfoI32Tensor_, srcRankId, startTime);
+        }
     }
     SyncAll<true>();
 }
@@ -903,6 +922,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         LocalTensor<int32_t> statusTensor = statusBuf_.Get<int32_t>();
         uint32_t readNum = 1U;
         DataCopyParams intriParams{static_cast<uint16_t>(readNum), 1, 15, 0};  // srcStride为15个block
+        int64_t startTime = GetSystemCycle() / TIME_CYCLE;
         while (true) {
             DataCopy(statusTensor, statusSpaceGlobal_[(coreIdx_)*STATE_OFFSET / sizeof(int32_t)], intriParams);
             PipeBarrier<PIPE_ALL>();
@@ -910,6 +930,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
             if (sumOfFlag == sumTarget_) {
                 break;
             }
+        }
+        if (unlikely(needPerformanceInfo_)) {
+            auto srcRankId = targetRank;
+            RecordRankCommDuration(performanceInfoI32Tensor_, srcRankId, startTime);
         }
     }
     PipeBarrier<PIPE_ALL>();
@@ -1123,6 +1147,16 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 }
 
 template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::CopyPerformanceInfo()
+{
+    if (unlikely(needPerformanceInfo_)) {
+        AscendC::SetAtomicAdd<int32_t>();
+        AscendC::DataCopy(performanceInfoI32GMTensor_, performanceInfoI32Tensor_, performanceInfoSize_ * sizeof(int64_t) / sizeof(int32_t));
+        AscendC::SetAtomicNone();
+    }
+}
+
+template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV {
@@ -1150,6 +1184,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         Preload();
         WaitDispatch();
         SumToServer();
+        CopyPerformanceInfo();
         hccl_.Finalize();
     }
 }

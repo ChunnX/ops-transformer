@@ -190,6 +190,17 @@
                 -2
                 ],
                 "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "performance_info",
+                "index": 17,
+                "dtype": "int64",
+                "format": "ND",
+                "paramType": "optional",
+                "shape": [
+                -2
+                ],
+                "format_match_mode": "FormatAgnostic"
             }
             ],
             "outputs": [
@@ -481,6 +492,17 @@
                 "name": "const_expert_v",
                 "index": 16,
                 "dtype": "float16",
+                "format": "ND",
+                "paramType": "optional",
+                "shape": [
+                -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "performance_info",
+                "index": 17,
+                "dtype": "int64",
                 "format": "ND",
                 "paramType": "optional",
                 "shape": [

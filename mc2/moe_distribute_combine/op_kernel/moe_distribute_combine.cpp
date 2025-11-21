@@ -60,7 +60,7 @@ extern "C" __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM
   if (TILING_KEY_IS(2000)) {
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineA2TilingData, tilingData, tilingGM);
     MoeDistributeCombineA2<DTYPE_EXPAND_X, int32_t> op;
-    op.Init(expandX, expertIds, expandIdx, epSendCount, scales, xActiveMask, XOut, workspaceGM, &pipe, &tilingData);
+    op.Init(expandX, expertIds, expandIdx, epSendCount, scales, xActiveMask, nullptr, XOut, workspaceGM, &pipe, &tilingData);
     op.Process();
   }
   if (TILING_KEY_IS(3000)) {
@@ -74,7 +74,7 @@ extern "C" __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM
       op.Process();
     } else if (dataplaneMode == DataplaneMode::AIV) {
       MoeDistributeCombineA2Layered<DTYPE_EXPAND_X, int32_t, DTYPE_EXPAND_X> op;
-      op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, XOut, workspaceGM, &pipe, &tilingData,
+      op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, nullptr, XOut, workspaceGM, &pipe, &tilingData,
         contextGM0);
       op.Process();
     }
@@ -85,7 +85,7 @@ extern "C" __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM
     DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
     if (dataplaneMode == DataplaneMode::AIV) {
       MoeDistributeCombineA2Layered<DTYPE_EXPAND_X, int32_t, int8_t> op;
-      op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, XOut, workspaceGM, &pipe, &tilingData,
+      op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, nullptr, XOut, workspaceGM, &pipe, &tilingData,
         contextGM0);
       op.Process();
     }

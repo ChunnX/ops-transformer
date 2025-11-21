@@ -36,7 +36,7 @@ extern aclnnStatus aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(const aclTen
                                                                   const aclTensor* expandScales, const aclTensor* sharedExpertX,
                                                                   const aclTensor* elasticInfo, const aclTensor* oriX,
                                                                   const aclTensor* constExpertAlpha1, const aclTensor* constExpertAlpha2, 
-                                                                  const aclTensor* constExpertV,
+                                                                  const aclTensor* constExpertV, const aclTensor *performanceInfo,
                                                                   const char* groupEp, int64_t epWorldSize,
                                                                   int64_t epRankId, int64_t moeExpertNum,
                                                                   const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
@@ -121,7 +121,7 @@ aclnnStatus aclnnMoeDistributeCombineV3GetWorkspaceSize(const aclTensor* expandX
         return aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
             tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional, 
-            constExpertVOptional, groupEp, epWorldSize, epRankId, moeExpertNum, "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            constExpertVOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum, "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
             sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
     }
@@ -129,7 +129,7 @@ aclnnStatus aclnnMoeDistributeCombineV3GetWorkspaceSize(const aclTensor* expandX
     return aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
         tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
         sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional, 
-            constExpertVOptional, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        constExpertVOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
         sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum, 
         xOut, workspaceSize, executor);
 }
