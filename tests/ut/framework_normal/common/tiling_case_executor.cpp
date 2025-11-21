@@ -19,32 +19,50 @@
     /* 1. input/output information */                                                                                  \
     size_t inputNum = tilingContextPara.inputTensorDesc_.size();                                                       \
     size_t outputNum = tilingContextPara.outputTensorDesc_.size();                                                     \
-    contextFaker.NodeIoNum(inputNum, outputNum);                                                                       \
-    std::vector<gert::Tensor *> inputTensors = {};                                                                     \
-    std::vector<gert::Tensor *> outputTensors = {};                                                                    \
+    std::vector<uint32_t> inputIrInstance = {};                                                                        \
+    std::vector<uint32_t> outputIrInstance = {};                                                                       \
+    std::vector<gert::Tensor> inputTensors = {};                                                                       \
+    std::vector<gert::Tensor> outputTensors = {};                                                                      \
+    std::vector<gert::Tensor *> inputTensorsPtr = {};                                                                  \
+    std::vector<gert::Tensor *> outputTensorsPtr = {};                                                                 \
     for (size_t index = 0; index < inputNum; index++) {                                                                \
-        contextFaker.NodeInputTd(index,                                                                                \
-                                 tilingContextPara.inputTensorDesc_[index].dtype_,                                     \
-                                 tilingContextPara.inputTensorDesc_[index].format_,                                    \
-                                 tilingContextPara.inputTensorDesc_[index].format_);                                   \
         if (tilingContextPara.inputTensorDesc_[index].shape_.GetStorageShape().GetDimNum() == 0){                      \
-            inputTensors.push_back(nullptr);                                                                           \
+            inputIrInstance.push_back(0);                                                                              \
         } else {                                                                                                       \
-            inputTensors.push_back((gert::Tensor *)&tilingContextPara.inputTensorDesc_[index].shape_);                 \
+            inputIrInstance.push_back(1);                                                                              \
+            inputTensors.push_back(gert::Tensor());                                                                    \
+            inputTensors[inputTensors.size() - 1].SetDataType(tilingContextPara.inputTensorDesc_[index].dtype_);       \
+            inputTensors[inputTensors.size() - 1].SetOriginFormat(tilingContextPara.inputTensorDesc_[index].format_);  \
+            inputTensors[inputTensors.size() - 1].SetStorageFormat(tilingContextPara.inputTensorDesc_[index].format_); \
+            inputTensors[inputTensors.size() - 1].MutableStorageShape() = tilingContextPara.inputTensorDesc_[index].shape_.GetStorageShape();\
+            inputTensors[inputTensors.size() - 1].MutableOriginShape() = tilingContextPara.inputTensorDesc_[index].shape_.GetOriginShape();\
         }                                                                                                              \
     }                                                                                                                  \
     for (size_t index = 0; index < outputNum; index++) {                                                               \
-        contextFaker.NodeOutputTd(index,                                                                               \
-                                  tilingContextPara.outputTensorDesc_[index].dtype_,                                   \
-                                  tilingContextPara.outputTensorDesc_[index].format_,                                  \
-                                  tilingContextPara.outputTensorDesc_[index].format_);                                 \
         if (tilingContextPara.outputTensorDesc_[index].shape_.GetStorageShape().GetDimNum() == 0){                     \
-            outputTensors.push_back(nullptr);                                                                          \
+            outputIrInstance.push_back(0);                                                                             \
         } else {                                                                                                       \
-            outputTensors.push_back((gert::Tensor *)&tilingContextPara.outputTensorDesc_[index].shape_);               \
+            outputIrInstance.push_back(1);                                                                             \
+            outputTensors.push_back(gert::Tensor());                                                                   \
+            outputTensors[outputTensors.size() - 1].SetDataType(tilingContextPara.outputTensorDesc_[index].dtype_);    \
+            outputTensors[outputTensors.size() - 1].SetOriginFormat(tilingContextPara.outputTensorDesc_[index].format_);\
+            outputTensors[outputTensors.size() - 1].SetStorageFormat(tilingContextPara.outputTensorDesc_[index].format_);\
+            outputTensors[outputTensors.size() - 1].MutableStorageShape() = tilingContextPara.outputTensorDesc_[index].shape_.GetStorageShape();\
+            outputTensors[outputTensors.size() - 1].MutableOriginShape() = tilingContextPara.outputTensorDesc_[index].shape_.GetOriginShape();\
         }                                                                                                              \
     }                                                                                                                  \
-    contextFaker.InputTensors(inputTensors).OutputTensors(outputTensors);                                              \
+    for (size_t index = 0; index < inputTensors.size(); index++) {                                                     \
+        inputTensorsPtr.push_back(&(inputTensors[index]));                                                             \
+    }                                                                                                                  \
+    for (size_t index = 0; index < outputTensors.size(); index++) {                                                    \
+        outputTensorsPtr.push_back(&(outputTensors[index]));                                                           \
+    }                                                                                                                  \
+    if (tilingContextPara.inputInstanceNum_.size() != 0 || tilingContextPara.outputInstanceNum_.size() != 0) {         \
+        contextFaker.IrInstanceNum(tilingContextPara.inputInstanceNum_, tilingContextPara.outputInstanceNum_);         \
+    } else {                                                                                                           \
+        contextFaker.IrInstanceNum(inputIrInstance, outputIrInstance);                                                 \
+    }                                                                                                                  \
+    contextFaker.InputTensors(inputTensorsPtr).OutputTensors(outputTensorsPtr);                                        \
     for (auto& attrInfo : tilingContextPara.attrs_) {                                                                  \
         switch (attrInfo.attr_.type_) {                                                                                \
             case Ops::Transformer::AnyValue::ValueType::VT_BOOL: {                                                            \
@@ -57,7 +75,7 @@
                 contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<float*>(attrInfo.attr_.valuePtr_.get()));      \
                 break;}                                                                                                \
             case Ops::Transformer::AnyValue::ValueType::VT_STRING: {                                                          \
-                contextFaker.Attr(attrInfo.attrName_, AscendString(reinterpret_cast<std::string*>(attrInfo.attr_.valuePtr_.get())->c_str()));\
+                contextFaker.Attr(attrInfo.attrName_, ge::AscendString(reinterpret_cast<std::string*>(attrInfo.attr_.valuePtr_.get())->c_str()));\
                 break;}                                                                                                \
             case Ops::Transformer::AnyValue::ValueType::VT_LIST_BOOL: {                                                       \
                 contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<std::vector<bool>*>(attrInfo.attr_.valuePtr_.get()));\
@@ -79,12 +97,13 @@
     fe::PlatFormInfos platformInfo;                                                                                    \
     platformInfo.Init();                                                                                               \
     auto tilingData = gert::TilingData::CreateCap(tilingContextPara.tilingDataSize_);                                  \
-    gert::ContinuousVector workspace;                                                                                  \
+    auto workspace_size_holder = gert::ContinuousVector::Create<size_t>(4096);                                         \
+    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holder.get());                             \
     auto contextHolder = contextFaker.SetOpType(tilingContextPara.opName_.c_str())                                     \
                                      .CompileInfo(tilingContextPara.compileInfo_)                                      \
                                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))                             \
                                      .TilingData(tilingData.get())                                                     \
-                                     .Workspace(&workspace)                                                            \
+                                     .Workspace(ws_size)                                                            \
                                      .Build();                                                                         \
     string compileInfoStringPrefix = R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": )";\
     string compileInfoStringMiddle = R"(, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "CORE_NUM": )";\
@@ -94,6 +113,9 @@
                                compileInfoStringMiddle +                                                               \
                                std::to_string(tilingContextPara.coreNum_) +                                            \
                                compileInfoStringSuffix;                                                                \
+    if (tilingContextPara.socInfoString_ != "") {                                                                      \
+        compileInfoString = tilingContextPara.socInfoString_;                                                          \
+    }                                                                                                                  \
     map<string, string> socInfos;                                                                                      \
     map<string, string> aicoreSpec;                                                                                    \
     map<string, string> intrinsics;                                                                                    \

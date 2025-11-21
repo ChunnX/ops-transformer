@@ -8,13 +8,18 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_INFERSHAPE_CASE_EXECUTOR_H
-#define OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_INFERSHAPE_CASE_EXECUTOR_H
+#include "nnopbase.h"
 
-#include "infer_shape_context_faker.h"
+extern "C" {
+aclnnStatus NnopbaseRunForWorkspace(void *executor, uint64_t *workspaceLen) {
+    return OK;
+}
 
-void ExecuteTestCase(gert::InfershapeContextPara&             infershapeContextPara, 
-                     ge::graphStatus                          expectResult = ge::GRAPH_FAILED,
-                     const std::vector<std::vector<int64_t>>& expectOutputShape = {});
+aclnnStatus NnopbaseSetHcomGroup(void *const executor, char *const group) {
+    return OK;
+}
 
-#endif // OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_INFERSHAPE_CASE_EXECUTOR_H
+aclnnStatus NnopbaseDisableOptionalInput(void *executor, const size_t irIndex) {
+    return OK;
+}
+}

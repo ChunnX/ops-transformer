@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPS_MATH_DEV_TESTS_UT_OP_API_STUB_OPDEV_PLATFORM_H
-#define OPS_MATH_DEV_TESTS_UT_OP_API_STUB_OPDEV_PLATFORM_H
+#ifndef OPS_TRANSFORMER_DEV_TESTS_UT_OP_API_STUB_OPDEV_PLATFORM_H
+#define OPS_TRANSFORMER_DEV_TESTS_UT_OP_API_STUB_OPDEV_PLATFORM_H
 
 #include "graph/ascend_string.h"
 #include "platform/platform_info.h"
@@ -107,4 +107,4 @@ void SetPlatformSocVersion(SocVersion socVersion);
 
 } // namespace op
 
-#endif // OPS_MATH_DEV_TESTS_UT_OP_API_STUB_OPDEV_PLATFORM_H
+#endif // OPS_TRANSFORMER_DEV_TESTS_UT_OP_API_STUB_OPDEV_PLATFORM_H

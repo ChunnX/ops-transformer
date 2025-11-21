@@ -24,7 +24,7 @@ InferShapeRangeContextFaker::InferShapeRangeContextFaker(InferShapeRangeContextF
 InferShapeRangeContextFaker& InferShapeRangeContextFaker::SetOpType(const std::string opType)
 {
     opType_ = opType;
-    OpInferShapeRangeContextBuilder::MutableOpInfo().OpType(opType.c_str()).OpName(opType.c_str());
+    OpInferShapeRangeContextBuilder::OpType(opType.c_str()).OpName(opType.c_str());
     return *this;
 }
 
@@ -40,7 +40,7 @@ InferShapeRangeContextFaker& InferShapeRangeContextFaker::IrInstanceNum(const st
 
 InferShapeRangeContextFaker& InferShapeRangeContextFaker::NodeIoNum(size_t inputNum, size_t outputNum)
 {
-    OpInferShapeRangeContextBuilder::MutableOpInfo().IONum(inputNum, outputNum);
+    OpInferShapeRangeContextBuilder::IONum(inputNum, outputNum);
     return *this;
 }
 
@@ -48,20 +48,19 @@ InferShapeRangeContextFaker& InferShapeRangeContextFaker::NodeInputTd(
     int32_t index, ge::DataType dtype, ge::Format originFormat, ge::Format storageFormat,
     const gert::StorageShape& shape)
 {
-    OpInferShapeRangeContextBuilder::MutableOpInfo().SetInputTd(index, dtype, originFormat, storageFormat, shape);
     return *this;
 }
 
 InferShapeRangeContextFaker& InferShapeRangeContextFaker::NodeOutputTd(
     int32_t index, ge::DataType dtype, ge::Format originFormat, ge::Format storageFormat)
 {
-    OpInferShapeRangeContextBuilder::MutableOpInfo().SetOutputTd(index, dtype, originFormat, storageFormat);
+    OpInferShapeRangeContextBuilder::OutputTensorDesc(index, dtype, originFormat, storageFormat);
     return *this;
 }
 
 InferShapeRangeContextFaker& InferShapeRangeContextFaker::InputTensors(const std::vector<Range<Tensor>*>& inputTensors)
 {
-    OpInferShapeRangeContextBuilder::InputTensors(inputTensors);
+    OpInferShapeRangeContextBuilder::InputTensorsRange(inputTensors);
     return *this;
 }
 
@@ -101,7 +100,9 @@ InferShapeRangeContextFaker& InferShapeRangeContextFaker::InputShapeRanges(
 InferShapeRangeContextFaker& InferShapeRangeContextFaker::OutputShapeRanges(
     const std::vector<Range<Shape>*>& outputShapeRanges)
 {
-    OpInferShapeRangeContextBuilder::OutputShapes(outputShapeRanges);
+    for (size_t idx = 0; idx < outputShapeRanges.size(); ++idx) {
+        NodeOutputTd(idx, ge::DT_UNDEFINED, ge::FORMAT_ND, ge::FORMAT_ND);
+    }
     return *this;
 }
 

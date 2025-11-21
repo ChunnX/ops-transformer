@@ -10,6 +10,19 @@
 
 include_guard(GLOBAL)
 
+function(register_op_name op_name)
+  get_property(op_list GLOBAL PROPERTY ALL_OP_LIST)
+  if(NOT op_list)
+    set(op_list "")
+  endif()
+
+  list(FIND op_list "${op_name}" idx)
+  if(idx EQUAL -1)
+    list(APPEND op_list "${op_name}")
+    set_property(GLOBAL PROPERTY ALL_OP_LIST "${op_list}")
+  endif()
+endfunction()
+
 if(UT_TEST_ALL OR OP_HOST_UT)
   set(OP_TILING_MODULE_NAME
       ${PKG_NAME}_op_tiling_ut
@@ -46,7 +59,10 @@ if(UT_TEST_ALL OR OP_HOST_UT)
     target_compile_definitions(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
             LOG_CPP
       )
-    target_link_libraries(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> gtest)
+    target_link_libraries(${OP_TILING_MODULE_NAME}_cases_obj 
+      PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+      $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
+      gtest)
 
     # add op tiling ut cases static lib: libtransformer_op_tiling_ut_cases.a
     add_library(${OP_TILING_MODULE_NAME}_cases STATIC)
@@ -82,7 +98,10 @@ if(UT_TEST_ALL OR OP_HOST_UT)
                                                      ${OPBASE_INC_DIRS}
       )
     target_link_libraries(
-      ${OP_INFERSHAPE_MODULE_NAME}_cases_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> gtest
+      ${OP_INFERSHAPE_MODULE_NAME}_cases_obj 
+        PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+        $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
+        gtest
       )
 
     # add op infershape ut cases static lib: libtransformer_op_infershape_ut_cases.a
@@ -104,14 +123,19 @@ if(UT_TEST_ALL OR OP_API_UT)
     if(NOT TARGET ${OP_API_MODULE_NAME}_cases_obj)
       add_library(${OP_API_MODULE_NAME}_cases_obj OBJECT)
     endif()
-    target_sources(${OP_API_MODULE_NAME}_cases_obj PRIVATE ${UT_PATH}/op_api/stub/opdev/platform.cpp)
+    target_sources(${OP_API_MODULE_NAME}_cases_obj PRIVATE
+                      ${UT_PATH}/op_api/stub/opdev/platform.cpp
+                      ${UT_PATH}/op_api/stub/opdev/nnopbase.cpp)
     target_include_directories(
       ${OP_API_MODULE_NAME}_cases_obj
       PRIVATE ${JSON_INCLUDE_DIR} ${HI_PYTHON_INC_TEMP} ${UT_PATH}/op_api/stub ${OP_API_UT_COMMON_INC}
               ${ASCEND_DIR}/include ${ASCEND_DIR}/include/aclnn ${ASCEND_DIR}/include/aclnnop
               ${OPAPI_INCLUDE}
       )
-    target_link_libraries(${OP_API_MODULE_NAME}_cases_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> gtest)
+    target_link_libraries(${OP_API_MODULE_NAME}_cases_obj 
+      PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+      $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
+      gtest)
   endfunction()
 endif()
 
@@ -129,7 +153,8 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     target_sources(${OP_KERNEL_MODULE_NAME}_common_obj PRIVATE ${OP_KERNEL_UT_COMMON_SRC})
     target_include_directories(
       ${OP_KERNEL_MODULE_NAME}_common_obj PRIVATE ${JSON_INCLUDE_DIR} ${GTEST_INCLUDE}
-                                                  ${ASCEND_DIR}/include/base/context_builder ${ASCEND_DIR}/pkg_inc
+                                                  ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base
+                                                  ${ASCEND_DIR}/include/base/context_builder
                                                   ${ASCEND_DIR}/include/experiment
                                                   ${ASCEND_DIR}/include/experiment/metadef/common/util
       )
@@ -170,13 +195,13 @@ if(UT_TEST_ALL
     cmake_parse_arguments(MODULE "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     if("${MODULE_UT_NAME}" STREQUAL "${OP_TILING_MODULE_NAME}")
-      get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+      get_filename_component(UT_DIR ${MODULE_DIR} DIRECTORY)
       get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
       get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
       get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
       list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
       # if "--ops" is not NULL, opName not include, jump over. if "--ops" is NULL, include all.
-      if(NOT "${ASCEND_OP_NAME}" STREQUAL "" AND INDEX EQUAL -1)
+      if(NOT "${ASCEND_OP_NAME}" STREQUAL "ALL" AND INDEX EQUAL -1)
         return()
       endif()
 
@@ -188,13 +213,13 @@ if(UT_TEST_ALL
     endif()
 
     if("${MODULE_UT_NAME}" STREQUAL "${OP_INFERSHAPE_MODULE_NAME}")
-      get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+      get_filename_component(UT_DIR ${MODULE_DIR} DIRECTORY)
       get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
       get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
       get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
       list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
       # if "--ops" is not NULL, opName not include, jump over. if "--ops" is NULL, include all.
-      if(NOT "${ASCEND_OP_NAME}" STREQUAL "" AND INDEX EQUAL -1)
+      if(NOT "${ASCEND_OP_NAME}" STREQUAL "ALL" AND INDEX EQUAL -1)
         return()
       endif()
 
@@ -206,17 +231,23 @@ if(UT_TEST_ALL
     endif()
 
     if("${MODULE_UT_NAME}" STREQUAL "${OP_API_MODULE_NAME}")
-      get_filename_component(OP_HOST_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
-      get_filename_component(UT_DIR ${OP_HOST_DIR} DIRECTORY)
+      get_filename_component(OP_HOST_DIR ${MODULE_DIR} DIRECTORY)
+      get_filename_component(OP_HOST_NAME ${OP_HOST_DIR} NAME)
+      if("${OP_HOST_NAME}" STREQUAL "op_host")
+        get_filename_component(UT_DIR ${OP_HOST_DIR} DIRECTORY)
+      else()
+        get_filename_component(UT_DIR ${MODULE_DIR} DIRECTORY)
+      endif()
       get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
       get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
       get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
       list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
       # if "--ops" is not NULL, opName not include, jump over. if "--ops" is NULL, include all.
-      if(NOT "${ASCEND_OP_NAME}" STREQUAL "" AND INDEX EQUAL -1)
+      if(NOT "${ASCEND_OP_NAME}" STREQUAL "ALL" AND INDEX EQUAL -1)
         return()
       endif()
 
+      register_op_name(${OP_NAME})
       if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
         add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
       endif()
@@ -238,7 +269,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
     list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
     # if "--ops" is not NULL, opName not include, jump over. if "--ops" is NULL, include all.
-    if(NOT "${ASCEND_OP_NAME}" STREQUAL "" AND INDEX EQUAL -1)
+    if(NOT "${ASCEND_OP_NAME}" STREQUAL "ALL" AND INDEX EQUAL -1)
       return()
     endif()
 
@@ -267,15 +298,17 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       add_library(${opName}_${socVersion}_tiling_tmp SHARED ${tilingSrc} $<TARGET_OBJECTS:${COMMON_NAME}_obj>)
       target_include_directories(
         ${opName}_${socVersion}_tiling_tmp
-        PRIVATE ${ASCEND_DIR}/include/op_common/atvoss ${ASCEND_DIR}/include/op_common
-                ${ASCEND_DIR}/include/op_common/op_host ${PROJECT_SOURCE_DIR}/common/include
-                ${ASCEND_DIR}/include/experiment ${ASCEND_DIR}/include/experiment/metadef/common/util
+        PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base 
+                ${PROJECT_SOURCE_DIR}/common/include
+                ${ASCEND_DIR}/include/experiment 
+                ${ASCEND_DIR}/include/experiment/metadef/common/util
         )
       target_compile_definitions(${opName}_${socVersion}_tiling_tmp PRIVATE LOG_CPP _GLIBCXX_USE_CXX11_ABI=0)
       target_link_libraries(
         ${opName}_${socVersion}_tiling_tmp
         PRIVATE -Wl,--no-as-needed $<$<TARGET_EXISTS:opsbase>:opsbase> -Wl,--as-needed -Wl,--whole-archive tiling_api
                 -Wl,--no-whole-archive
+                $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
         )
 
       # gen ascendc tiling head files

@@ -14,34 +14,33 @@ namespace gert {
 
 InferShapeContextFaker& InferShapeContextFaker::SetOpType(const std::string opType)
 {
-    OpInferShapeContextBuilder::MutableOpInfo().OpType(opType.c_str()).OpName(opType.c_str());
+    OpInferShapeContextBuilder::OpType(opType.c_str()).OpName(opType.c_str());
     return *this;
 }
 
 InferShapeContextFaker& InferShapeContextFaker::NodeIoNum(size_t inputNum, size_t outputNum)
 {
-    OpInferShapeContextBuilder::MutableOpInfo().IONum(inputNum, outputNum);
+    OpInferShapeContextBuilder::IONum(inputNum, outputNum);
     return *this;
 }
 
 InferShapeContextFaker& InferShapeContextFaker::IrInstanceNum(const std::vector<uint32_t>& inputInstanceNum,
                                                               const std::vector<uint32_t>& outputInstanceNum)
 {
-    OpInferShapeContextBuilder::MutableOpInfo().IOInstanceNum(inputInstanceNum, outputInstanceNum);
+    OpInferShapeContextBuilder::IOInstanceNum(inputInstanceNum, outputInstanceNum);
     return *this;
 }
 
 InferShapeContextFaker& InferShapeContextFaker::NodeInputTd(int32_t index, ge::DataType dtype, ge::Format originFormat,
                                                             ge::Format storageFormat)
 {
-    OpInferShapeContextBuilder::MutableOpInfo().SetInputTd(index, dtype, originFormat, storageFormat);
     return *this;
 }
 
 InferShapeContextFaker& InferShapeContextFaker::NodeOutputTd(int32_t index, ge::DataType dtype, ge::Format originFormat,
                                                              ge::Format storageFormat)
 {
-    OpInferShapeContextBuilder::MutableOpInfo().SetOutputTd(index, dtype, originFormat, storageFormat);
+    OpInferShapeContextBuilder::OutputTensorDesc(index, dtype, originFormat, storageFormat);
     return *this;
 }
 
@@ -53,7 +52,6 @@ InferShapeContextFaker& InferShapeContextFaker::InputTensors(const std::vector<T
 
 InferShapeContextFaker& InferShapeContextFaker::OutputShapes(const std::vector<StorageShape *>& outputShapes)
 {
-    OpInferShapeContextBuilder::OutputShapes(outputShapes);
     return *this;
 }
 

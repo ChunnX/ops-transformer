@@ -18,42 +18,9 @@
 using namespace std;
 #define CREATE_EXECUTOR() UniqueExecutor(__func__)
 
-#define INFER_SHAPE(KERNEL_NAME, op_args...) \
-  ({  aclnnStatus inferShapeRet; \
-    do {\
-      op::OpArgContext *opArgCtx = GetOpArgContext(op_args); \
-      if (opArgCtx == nullptr) { \
-        inferShapeRet = ACLNN_ERR_PARAM_NULLPTR; \
-      } else { \
-        inferShapeRet = InferShape(KERNEL_NAME##OpTypeId(), \
-                                   *opArgCtx->GetOpArg(op::OP_INPUT_ARG),\
-                                   *opArgCtx->GetOpArg(op::OP_OUTPUT_ARG),\
-                                   *opArgCtx->GetOpArg(op::OP_ATTR_ARG)); \
-        op::DestroyOpArgContext(opArgCtx); \
-      } \
-    } while(0); inferShapeRet;  \
-  })
-
+#define INFER_SHAPE(KERNEL_NAME, op_args...) ACLNN_SUCCESS
 
 #define ADD_TO_LAUNCHER_LIST_AICORE(KERNEL_NAME, op_args...) ACLNN_SUCCESS
-//  ({  \
-//      aclnnStatus addToLaunchRet = ACLNN_SUCCESS;                                            \
-//      do {                                                                   \
-//                 std::cout <<       "ADD_TO_LAUNCHER_LIST_AICORE mock" << std::endl \
-////        std::string ut_skip_precision = "false";                             \
-////        const char *ut_p = std::getenv("UT_SKIP_PRECISION");                         \
-////        if (ut_p != nullptr) {                                                \
-////          ut_skip_precision.assign(ut_p);                                     \
-////        }                                                                     \
-////        if (ut_skip_precision.compare("true") == 0 || ut_skip_precision.compare("1") == 0) { \
-////          addToLaunchRet = 0;                                                 \
-////        } else {                                                              \
-////          op::OpArgContext *opArgCtx = GetOpArgContext(op_args);              \
-////          addToLaunchRet = CreatAiCoreKernelLauncher(#KERNEL_NAME, KERNEL_NAME##OpTypeId(),\
-////                                                      executor, opArgCtx);    \
-////        }
-//      } while(0); addToLaunchRet;                                             \
-//  })
 
 #define ADD_TO_LAUNCHER_LIST_DSA(KERNEL_NAME, op_args...) \
   do { \

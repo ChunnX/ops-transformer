@@ -53,6 +53,9 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   target_link_libraries(${OP_HOST_UT_EXE} PRIVATE
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       $<$<TARGET_EXISTS:opsbase>:opsbase>
+      -Wl,--no-as-needed
+        $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
+      -Wl,--as-needed
       -Wl,--whole-archive
           ${OP_TILING_MODULE_NAME}_cases
           ${OP_INFERSHAPE_MODULE_NAME}_cases

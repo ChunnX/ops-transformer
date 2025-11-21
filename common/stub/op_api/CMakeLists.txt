@@ -22,3 +22,16 @@ target_compile_definitions(opapi PRIVATE
 target_include_directories(opapi PRIVATE
     ${OPAPI_INCLUDE}
 )
+
+if(ENABLE_TEST)
+    add_library(opapi_stub SHARED ${OP_API_FILES})
+
+    target_compile_definitions(opapi_stub PRIVATE
+        _GLIBCXX_USE_CXX11_ABI=0
+        LOG_CPP
+    )
+
+    target_include_directories(opapi_stub PRIVATE
+        ${OPAPI_INCLUDE}
+    )
+endif()

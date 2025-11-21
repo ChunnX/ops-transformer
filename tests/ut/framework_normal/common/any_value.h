@@ -57,7 +57,7 @@ public:
                 faker.Attr(item, *reinterpret_cast<float*>(valuePtr_.get()));
                 break;
             case ValueType::VT_STRING:
-                faker.Attr(item, AscendString(reinterpret_cast<std::string*>(valuePtr_.get())->c_str()));
+                faker.Attr(item, ge::AscendString(reinterpret_cast<std::string*>(valuePtr_.get())->c_str()));
                 break;
             case ValueType::VT_LIST_BOOL:
                 faker.Attr(item, *reinterpret_cast<std::vector<bool>*>(valuePtr_.get()));

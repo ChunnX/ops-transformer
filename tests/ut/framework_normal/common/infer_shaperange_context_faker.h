@@ -42,13 +42,13 @@ public:
     template <typename T>
     InferShapeRangeContextFaker& Attr(const std::string& attrName, T attr)
     {
-        OpInferShapeRangeContextBuilder::MutableOpInfo().Attr(AscendString(attrName.c_str()), attr);
+        OpInferShapeRangeContextBuilder:AppendAttr(attr);
         return *this;
     }
 
     InferShapeRangeContextFaker& Attr(const std::string& attrName, const std::string& attr)
     {
-        OpInferShapeRangeContextBuilder::MutableOpInfo().Attr(attrName.c_str(), AscendString(attr.c_str()));
+        OpInferShapeRangeContextBuilder::AppendAttr(ge::AscendString(attr.c_str()));
         return *this;
     }
 

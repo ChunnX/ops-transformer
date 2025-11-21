@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPS_MATH_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H
-#define OPS_MATH_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H
+#ifndef OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H
+#define OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H
 
 #include "tiling_context_faker.h"
 
@@ -32,4 +32,4 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
 
 bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo);
 
-#endif // OPS_MATH_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H
+#endif // OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H

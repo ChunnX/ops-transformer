@@ -44,12 +44,14 @@ public:
                       const std::string& socVersion = "Ascend910B",
                       uint64_t coreNum = 64,
                       uint64_t ubSize = 262144,
-                      uint64_t tilingDataSize = 4096) : 
+                      uint64_t tilingDataSize = 4096,
+                      const std::string socInfoString = "") : 
                       opName_(opName),
                       inputTensorDesc_(inputTensorDesc),
                       outputTensorDesc_(outputTensorDesc),
                       attrs_(attrs),
                       socVersion_(socVersion),
+                      socInfoString_(socInfoString),
                       compileInfo_(compileInfo),
                       coreNum_(coreNum),
                       ubSize_(ubSize),
@@ -62,18 +64,70 @@ public:
                       const std::string& socVersion = "Ascend910B",
                       uint64_t coreNum = 64,
                       uint64_t ubSize = 262144,
-                      uint64_t tilingDataSize = 4096) : 
+                      uint64_t tilingDataSize = 4096,
+                      const std::string socInfoString = "") : 
                       opName_(opName),
                       inputTensorDesc_(inputTensorDesc),
                       outputTensorDesc_(outputTensorDesc),
                       compileInfo_(compileInfo),
                       socVersion_(socVersion),
+                      socInfoString_(socInfoString),
+                      coreNum_(coreNum),
+                      ubSize_(ubSize),
+                      tilingDataSize_(tilingDataSize) {}
+
+    TilingContextPara(const std::string& opName,
+                      const std::vector<TensorDescription>& inputTensorDesc,
+                      const std::vector<TensorDescription>& outputTensorDesc,
+                      const std::vector<OpAttr>& attrs,
+                      const std::vector<uint32_t>& inputInstanceNum,
+                      const std::vector<uint32_t>& outputInstanceNum,
+                      void* compileInfo = nullptr,
+                      const std::string& socVersion = "Ascend910B",
+                      uint64_t coreNum = 64,
+                      uint64_t ubSize = 262144,
+                      uint64_t tilingDataSize = 4096,
+                      const std::string socInfoString = "") : 
+                      opName_(opName),
+                      inputTensorDesc_(inputTensorDesc),
+                      outputTensorDesc_(outputTensorDesc),
+                      attrs_(attrs),
+                      inputInstanceNum_(inputInstanceNum),
+                      outputInstanceNum_(outputInstanceNum),
+                      socVersion_(socVersion),
+                      socInfoString_(socInfoString),
+                      compileInfo_(compileInfo),
+                      coreNum_(coreNum),
+                      ubSize_(ubSize),
+                      tilingDataSize_(tilingDataSize) {}
+
+    TilingContextPara(const std::string& opName,
+                      const std::vector<TensorDescription>& inputTensorDesc,
+                      const std::vector<TensorDescription>& outputTensorDesc,
+                      const std::vector<uint32_t>& inputInstanceNum,
+                      const std::vector<uint32_t>& outputInstanceNum,
+                      void* compileInfo = nullptr,
+                      const std::string& socVersion = "Ascend910B",
+                      uint64_t coreNum = 64,
+                      uint64_t ubSize = 262144,
+                      uint64_t tilingDataSize = 4096,
+                      const std::string socInfoString = "") : 
+                      opName_(opName),
+                      inputTensorDesc_(inputTensorDesc),
+                      outputTensorDesc_(outputTensorDesc),
+                      inputInstanceNum_(inputInstanceNum),
+                      outputInstanceNum_(outputInstanceNum),
+                      compileInfo_(compileInfo),
+                      socVersion_(socVersion),
+                      socInfoString_(socInfoString),
                       coreNum_(coreNum),
                       ubSize_(ubSize),
                       tilingDataSize_(tilingDataSize) {}
 
 public:
     std::string opName_;
+    std::vector<uint32_t> inputInstanceNum_;
+    std::vector<uint32_t> outputInstanceNum_;
     std::vector<TensorDescription> inputTensorDesc_;
     std::vector<TensorDescription> outputTensorDesc_;
     std::vector<OpAttr> attrs_;
@@ -82,6 +136,7 @@ public:
     uint64_t tilingDataSize_ = 4096;
     void* compileInfo_ = nullptr;
     std::string socVersion_;
+    std::string socInfoString_;
 };
 
 class TilingContextFaker : public OpTilingContextBuilder {
@@ -103,39 +158,39 @@ public:
                                      ge::Format storageFormat);
 
     TilingContextFaker& Attr(const std::string& attrName, bool attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
     TilingContextFaker& Attr(const std::string& attrName, int64_t attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
     TilingContextFaker& Attr(const std::string& attrName, float attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
-    TilingContextFaker& Attr(const std::string& attrName, const AscendString& attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+    TilingContextFaker& Attr(const std::string& attrName, const ge::AscendString& attr) {
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
     TilingContextFaker& Attr(const std::string& attrName, const std::vector<bool>& attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
     TilingContextFaker& Attr(const std::string& attrName, const std::vector<int64_t>& attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
     TilingContextFaker& Attr(const std::string& attrName, const std::vector<float>& attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
-    TilingContextFaker& Attr(const std::string& attrName, const std::vector<AscendString>& attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+    TilingContextFaker& Attr(const std::string& attrName, const std::vector<ge::AscendString>& attr) {
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
     TilingContextFaker& Attr(const std::string& attrName, const std::vector<std::vector<int64_t>>& attr) {
-        OpTilingContextBuilder::MutableOpInfo().Attr(attrName.c_str(), attr);
+        OpTilingContextBuilder::AppendAttr(attr);
         return *this;
     }
 

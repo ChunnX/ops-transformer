@@ -228,12 +228,15 @@ function(add_opapi_modules)
   if (NOT TARGET ${OPHOST_NAME}_opapi_obj)
     add_library(${OPHOST_NAME}_opapi_obj OBJECT)
     set(BUILD_UT OFF CACHE BOOL "No UT Compilation" FORCE)
+    unset(OPAPI_UT_DEPEND_INC)
     if(UT_TEST_ALL OR OP_API_UT)
+      set(OPAPI_UT_DEPEND_INC ${UT_PATH}/op_api/stub)
       set(BUILD_UT ON CACHE BOOL "Build OpApi UT Compilation" FORCE)
     endif()
     target_include_directories(${OPHOST_NAME}_opapi_obj
       PRIVATE
       ${OPAPI_INCLUDE}
+      ${OPAPI_UT_DEPEND_INC}
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/aclnn>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>

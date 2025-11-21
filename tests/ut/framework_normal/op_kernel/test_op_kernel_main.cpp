@@ -26,7 +26,7 @@ public:
             return;
         }
 
-        string opKernelTilingSoPath = buildPath + string("/tests/ut/op_kernel/libtransformer_op_kernel_ut_tiling.so");
+        string opKernelTilingSoPath = buildPath + string("/tests/ut/framework_normal/op_kernel/libtransformer_op_kernel_ut_tiling.so");
         gert::OppSoDesc oppSoDesc({ge::AscendString(opKernelTilingSoPath.c_str())}, "transformer_op_kernel_ut_so");
         shared_ptr<gert::OpImplSpaceRegistryV2> opImplSpaceRegistryV2 = make_shared<gert::OpImplSpaceRegistryV2>();
         if (opImplSpaceRegistryV2->AddSoToRegistry(oppSoDesc) == ge::GRAPH_FAILED) {

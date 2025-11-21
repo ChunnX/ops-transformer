@@ -14,34 +14,32 @@ namespace gert {
 
 TilingContextFaker& TilingContextFaker::SetOpType(const std::string opType)
 {
-    OpTilingContextBuilder::MutableOpInfo().OpType(opType.c_str()).OpName(opType.c_str());
+    OpTilingContextBuilder::OpType(opType.c_str()).OpName(opType.c_str());
     return *this;
 }
 
 TilingContextFaker& TilingContextFaker::NodeIoNum(size_t inputNum, size_t outputNum)
 {
-    OpTilingContextBuilder::MutableOpInfo().IONum(inputNum, outputNum);
+    OpTilingContextBuilder::IONum(inputNum, outputNum);
     return *this;
 }
 
 TilingContextFaker& TilingContextFaker::IrInstanceNum(const std::vector<uint32_t>& inputInstanceNum,
                                                       const std::vector<uint32_t>& outputInstanceNum)
 {
-    OpTilingContextBuilder::MutableOpInfo().IOInstanceNum(inputInstanceNum, outputInstanceNum);
+    OpTilingContextBuilder::IOInstanceNum(inputInstanceNum, outputInstanceNum);
     return *this;
 }
 
 TilingContextFaker& TilingContextFaker::NodeInputTd(int32_t index, ge::DataType dtype, ge::Format originFormat,
                                                     ge::Format storageFormat)
 {
-    OpTilingContextBuilder::MutableOpInfo().SetInputTd(index, dtype, originFormat, storageFormat);
     return *this;
 }
 
 TilingContextFaker& TilingContextFaker::NodeOutputTd(int32_t index, ge::DataType dtype, ge::Format originFormat,
                                                      ge::Format storageFormat)
 {
-    OpTilingContextBuilder::MutableOpInfo().SetOutputTd(index, dtype, originFormat, storageFormat);
     return *this;
 }
 
