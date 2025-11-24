@@ -31,7 +31,7 @@ public:
 
     __aicore__ inline void Init(
         GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
-        const MoeTokenUnpermuteTilingData* __restrict tiling_data);
+        const MoeTokenUnpermuteTilingData* __restrict tiling_data, TPipe* pipe);
     __aicore__ inline void Process();
 
 protected:
@@ -44,7 +44,6 @@ protected:
     __aicore__ inline void CalToken(const float prob_value, const int64_t h_length);
     __aicore__ inline void CopyOut(const int64_t out_token_index, const int64_t h_index, const int64_t h_length);
 
-    TPipe pipe;
     TQue<QuePosition::VECIN, 1> tokens_inque, indices_inque, probs_inque;
     TBuf<TPosition::VECCALC> temp_buffer0, temp_buffer1, temp_buffer2;
     TQue<QuePosition::VECOUT, 1> outque;
@@ -77,7 +76,7 @@ protected:
 template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
-    const MoeTokenUnpermuteTilingData* __restrict tiling_data)
+    const MoeTokenUnpermuteTilingData* __restrict tiling_data, TPipe* pipe)
 {
     ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
     // row_input
@@ -137,22 +136,22 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     this->outGM.SetGlobalBuffer(
         (__gm__ T1*)unpermuted_tokens + out_block_offset, this->tokens_core_length * this->hidden_size);
 
-    this->pipe.InitBuffer(tokens_inque, tiling_data->buffer_num, hidden_splited_length_align512 * sizeof(T1));
-    this->pipe.InitBuffer(indices_inque, 1, block_splited_length * (sizeof(T2)));
-    this->pipe.InitBuffer(outque, 1, hidden_splited_length_align512 * sizeof(T1));
+    pipe->InitBuffer(tokens_inque, tiling_data->buffer_num, hidden_splited_length_align512 * sizeof(T1));
+    pipe->InitBuffer(indices_inque, 1, block_splited_length * (sizeof(T2)));
+    pipe->InitBuffer(outque, 1, hidden_splited_length_align512 * sizeof(T1));
 
     if constexpr (!IsSameType<T1, float>::value) {
-        this->pipe.InitBuffer(temp_buffer0, hidden_splited_length_align512 * sizeof(float) + 256);
-        this->pipe.InitBuffer(temp_buffer1, hidden_splited_length_align512 * sizeof(float));
+        pipe->InitBuffer(temp_buffer0, hidden_splited_length_align512 * sizeof(float) + 256);
+        pipe->InitBuffer(temp_buffer1, hidden_splited_length_align512 * sizeof(float));
         this->token_tensor0 = this->temp_buffer0.template Get<float>();
         this->token_tensor1 = this->temp_buffer1.template Get<float>();
     }
 
     if constexpr (PROBS) {
         this->probsGM.SetGlobalBuffer((__gm__ T3*)probs + block_offset, block_length);
-        this->pipe.InitBuffer(probs_inque, 1, block_splited_length * (sizeof(T3)));
+        pipe->InitBuffer(probs_inque, 1, block_splited_length * (sizeof(T3)));
         if constexpr (!IsSameType<T3, float>::value) {
-            this->pipe.InitBuffer(temp_buffer2, block_splited_length * sizeof(float));
+            pipe->InitBuffer(temp_buffer2, block_splited_length * sizeof(float));
             this->probs_tensor = this->temp_buffer2.template Get<float>();
         }
     }

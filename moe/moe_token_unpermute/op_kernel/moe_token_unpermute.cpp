@@ -20,7 +20,7 @@
         GET_TILING_DATA(tiling_data_in, tiling);                                         \
         const MoeTokenUnpermuteTilingData* __restrict tiling_data = &tiling_data_in;     \
         KernelMoeTokenUnpermute<T1, T2, T3, haveProbs> op;                               \
-        op.Init(permuted_tokens, sorted_indices, probs, unpermuted_tokens, tiling_data); \
+        op.Init(permuted_tokens, sorted_indices, probs, unpermuted_tokens, tiling_data, &pipe); \
         op.Process();                                                                    \
     } while (0)
 
@@ -28,6 +28,7 @@ extern "C" __global__ __aicore__ void moe_token_unpermute(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens, GM_ADDR workspace,
     GM_ADDR tiling)
 {
+    TPipe pipe;
 #if __CCE_AICORE__ == 200
     if (TILING_KEY_IS(2)) {
         MOE_TOKEN_UNPERMUTE_IMPL(half, int32_t, half, false);
