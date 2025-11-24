@@ -53,16 +53,16 @@ public:
         tensor[(uint32_t)BufferType::ASCEND_UB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::VECIN, 0, bufferSize[(uint32_t)BufferType::ASCEND_UB]);
 #elif __DAV_C220_CUBE__
         tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A1, 0, bufferSize[(uint32_t)BufferType::ASCEND_CB]);
-        tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0A]);
-        tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::B2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0B]);
-        tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::CO1, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0C]);
+        tensor[(uint32_t)BufferType::ASCEND_L0A] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0A]);
+        tensor[(uint32_t)BufferType::ASCEND_L0B] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::B2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0B]);
+        tensor[(uint32_t)BufferType::ASCEND_L0C] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::CO1, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0C]);
 #else
 #ifndef __clang__
         tensor[(uint32_t)BufferType::ASCEND_UB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::VECIN, 0, bufferSize[(uint32_t)BufferType::ASCEND_UB]);
         tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A1, 0, bufferSize[(uint32_t)BufferType::ASCEND_CB]);
-        tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0A]);
-        tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::B2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0B]);
-        tensor[(uint32_t)BufferType::ASCEND_CB] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::CO1, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0C]);
+        tensor[(uint32_t)BufferType::ASCEND_L0A] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0A]);
+        tensor[(uint32_t)BufferType::ASCEND_L0B] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::B2, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0B]);
+        tensor[(uint32_t)BufferType::ASCEND_L0C] = AscendC::LocalTensor<uint8_t>(AscendC::TPosition::CO1, 0, bufferSize[(uint32_t)BufferType::ASCEND_L0C]);
 #endif
 #endif
     };
