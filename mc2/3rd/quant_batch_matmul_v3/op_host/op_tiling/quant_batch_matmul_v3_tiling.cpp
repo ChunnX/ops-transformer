@@ -471,7 +471,7 @@ bool QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, con
         auto pertoken = pertokenShape->GetStorageShape();
         OP_TILING_CHECK(static_cast<uint64_t>(pertoken.GetDim(0)) != inputParams_.mSize,
                         CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                              "The pertoken shape should be equal to m[%lu] but atcual is [%lu]",
+                                              "The pertoken shape should be equal to m[%lu] but actual is [%lu]",
                                               inputParams_.mSize, pertoken.GetDim(0)), return false);
     }
     if (inputParams_.aDtype == ge::DT_INT4) {
@@ -479,7 +479,7 @@ bool QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, con
         OP_TILING_CHECK(x1Inner < 0 || x1Inner % 2 != 0 || x2Inner < 0 || x2Inner % 2 != 0,
                         CUBE_INNER_ERR_REPORT(inputParams_.opName, "if input dtype is int4, \
                                               last axis of input x1 and x2 has to be a positive even number, \
-                                              but atcually last axis of x1 is [%ld], last axis of x2 is [%ld].",
+                                              but actually last axis of x1 is [%ld], last axis of x2 is [%ld].",
                                               x1Inner, x2Inner), return false);
     }
     return true;
@@ -538,7 +538,7 @@ bool QuantBatchMatmulV3Tiling::CheckShapeInBoundary(const gert::Shape &shape, ui
 
         OP_TILING_CHECK(i == shape.GetDimNum() - LAST_FIRST_DIM_INDEX && curDim > LAST_AXIS_LIMIT,
                         CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                              "Last dimension of %s should not be larger than 65535 but atcual is %ld. \
+                                              "Last dimension of %s should not be larger than 65535 but actual is %ld. \
                                                If user is using the graph mode to call the method, please enable \
                                                the QuantBatchMatmulV3TransposeFusionPass.",
                                               dimName, curDim),
@@ -547,7 +547,7 @@ bool QuantBatchMatmulV3Tiling::CheckShapeInBoundary(const gert::Shape &shape, ui
         OP_TILING_CHECK(curDim <= 0 || curDim > static_cast<int64_t>(INT32_MAX),
                         CUBE_INNER_ERR_REPORT(inputParams_.opName,
                                               "Shape must be within the range [1, %d], \
-but atcual %zu dimension of %s is %ld.",
+but actual %zu dimension of %s is %ld.",
                                               INT32_MAX, i, dimName, curDim),
                         return false);
 
