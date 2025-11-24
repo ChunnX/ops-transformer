@@ -29,6 +29,7 @@
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "context_util.h"
+#include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -71,12 +72,6 @@ constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
 constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
 constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
 constexpr uint32_t ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
-
-constexpr uint64_t TILINGKEY_FP16 = 1000UL;
-constexpr uint64_t TILINGKEY_BF16 = 0UL;
-constexpr uint64_t TILINGKEY_MM = 100UL;
-constexpr uint64_t TILINGKEY_GMM_WEIGHT_TRANSPOSE = 10UL;
-constexpr uint64_t TILINGKEY_MM_WEIGHT_TRANSPOSE = 1UL;
 
 constexpr int64_t BEST_L1_PARTA = 256 * 1024;
 constexpr int64_t BEST_L1_PARTB = 128 * 1024;
@@ -242,7 +237,7 @@ protected:
     ge::graphStatus CalMMTiling(const gert::TilingContext* context, MMTilingParams& params) const;
     ge::graphStatus SetMMTiling(const gert::TilingContext* context, SetMMTilingParams& params) const;
     ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
-    uint64_t GetTilingKey() const;
+    uint64_t GetTilingKey(const gert::TilingContext* context) const;
 
 private:
     int32_t maxM_;
@@ -870,14 +865,35 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t AlltoAllvGmmTiling::GetTilingKey() const
+uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) const
 {
-    uint64_t tilingKey = (mmDType_ == ge::DT_FLOAT16) ? TILINGKEY_FP16 : TILINGKEY_BF16;
-    tilingKey += (tilingData->commonTilingInfo.isGmmWeightTrans == true) ? TILINGKEY_GMM_WEIGHT_TRANSPOSE : 0;
-    tilingKey += (tilingData->commonTilingInfo.isMmWeightTrans == true) ? TILINGKEY_MM_WEIGHT_TRANSPOSE : 0;
-    if (tilingData->commonTilingInfo.isNeedMM) {
-        tilingKey += TILINGKEY_MM;
+    uint32_t templateMmDType = ADD_TPL_FP16; 
+    bool tilingkeyMm = false;
+    bool tilingekyGmmTrans = false;
+    bool tilingekyMmTrans = false;
+    if (context->GetInputDesc(GMM_X_INDEX)->GetDataType() == ge::DT_FLOAT16) {
+        templateMmDType = ADD_TPL_FP16;
+    } else if (context->GetInputDesc(GMM_X_INDEX)->GetDataType() == ge::DT_BF16) {
+        templateMmDType = ADD_TPL_BP16;
     }
+    if (tilingData->commonTilingInfo.isNeedMM) { 
+        tilingkeyMm = true;
+    } else {
+        tilingkeyMm = false;
+    }
+    if (tilingData->commonTilingInfo.isGmmWeightTrans) {
+        tilingekyGmmTrans = true;
+    } else {
+        tilingekyGmmTrans = false;
+    }
+    if (tilingData->commonTilingInfo.isMmWeightTrans) {
+        tilingekyMmTrans = true;
+    } else {
+        tilingekyMmTrans = false;
+    }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm, 
+                                    tilingekyGmmTrans, tilingekyMmTrans);
+    OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);
     return tilingKey;
 }
 
@@ -938,7 +954,7 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
                               (tilingData->commonTilingInfo.A * tilingData->commonTilingInfo.H1 * mmDataTypeSize);
     tilingData->commonTilingInfo.commOut = commOut;
     workspaces[0] = libApiWorkSpaceSize_ + commOut + permuteOut;
-    uint64_t tilingKey = GetTilingKey();
+    uint64_t tilingKey = GetTilingKey(context);
     context->SetTilingKey(tilingKey);
 
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);

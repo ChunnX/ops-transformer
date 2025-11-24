@@ -257,7 +257,7 @@ TEST_P(AlltoAllvGroupedMatMulTiling, shape_size)
     } else {
         uint64_t expectTilingKey = 1000UL;
         if (test_param.test_name == "Test_no_MM") {
-            expectTilingKey = 1100UL;
+            expectTilingKey = 256UL;
         }
         ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     }

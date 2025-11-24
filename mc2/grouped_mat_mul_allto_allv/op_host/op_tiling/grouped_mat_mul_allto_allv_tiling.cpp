@@ -26,6 +26,7 @@
 #include "tiling/hccl_formulaic_tiling.h"
 #include "tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/grouped_mat_mul_allto_allv_tiling.h"
+#include "../../op_kernel/grouped_mat_mul_allto_allv_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -51,10 +52,6 @@ constexpr uint32_t ATTR_SEND_COUNTS_INDEX = 2;
 constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
 constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
 constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
-
-constexpr uint64_t TILINGKEY_COMPUTE_OPTIONAL_MATMUL = 1;
-constexpr uint64_t TILINGKEY_GROUPED_MATMUL_WEIGHT_TRANS = 10;
-constexpr uint64_t TILINGKEY_MATMUL_WEIGHT_TRANS = 100;
 
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
 constexpr uint32_t HCCL_CMD_ALLTOALLV = 8;
@@ -703,18 +700,30 @@ static ge::graphStatus SetWorkspace(gert::TilingContext* context, const GroupedM
     return ge::GRAPH_SUCCESS;
 }
 
-static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTilingData* tilingData)
+static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTilingData* tilingData, gert::TilingContext* context)
 {
-    uint64_t optionalMatmulKey = (tilingData->commonTilingInfo.isOptionalMatmul) ?
-                                     static_cast<uint64_t>(TILINGKEY_COMPUTE_OPTIONAL_MATMUL) :
-                                     static_cast<uint64_t>(0);
-    uint64_t gmmWeightTransKey = (tilingData->commonTilingInfo.isGmmWeightTrans) ?
-                                     static_cast<uint64_t>(TILINGKEY_GROUPED_MATMUL_WEIGHT_TRANS) :
-                                     static_cast<uint64_t>(0);
-    uint64_t mmWeightTransKey = (tilingData->commonTilingInfo.isMmWeightTrans) ?
-                                    static_cast<uint64_t>(TILINGKEY_MATMUL_WEIGHT_TRANS) :
-                                    static_cast<uint64_t>(0);
-    tilingKey += optionalMatmulKey + gmmWeightTransKey + mmWeightTransKey;
+    bool tilingkeyComputeMm = false;
+    bool tilingkeyGmmTrans = false;
+    bool tilingkeyMmTrans = false;
+
+    if (tilingData->commonTilingInfo.isOptionalMatmul) {
+        tilingkeyComputeMm = true;
+    } else {
+        tilingkeyComputeMm = false;
+    }
+    if (tilingData->commonTilingInfo.isGmmWeightTrans) {
+        tilingkeyGmmTrans = true;
+    } else {
+        tilingkeyGmmTrans = false;
+    }
+    if (tilingData->commonTilingInfo.isMmWeightTrans) {
+        tilingkeyMmTrans = true;
+    } else {
+        tilingkeyMmTrans = false;
+    }
+
+    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, 
+                                    tilingkeyGmmTrans, tilingkeyMmTrans);
     return;
 }
 
@@ -763,7 +772,7 @@ static ge::graphStatus GroupedMatMulAlltoAllvTilingFuncA3(gert::TilingContext* c
     // 百位表示mm的weight是否转置
     // 千位表示gmm的weight是否转置
     uint64_t tilingKey = 0;
-    UpdateTilingKey(tilingKey, tilingData);
+    UpdateTilingKey(tilingKey, tilingData, context);
     OP_LOGD(nodeName, "Computed tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     OP_LOGD("GroupedMatMulAlltoAllv", "tiling process finished successfully!!!");

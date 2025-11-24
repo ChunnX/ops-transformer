@@ -14,6 +14,7 @@
  */
 #include "kernel_operator.h"
 #include "allto_allv_grouped_mat_mul_coarse_grained.h"
+#include "allto_allv_grouped_mat_mul_tiling_key.h"
 
 using namespace AscendC;
 
@@ -26,7 +27,10 @@ using namespace AscendC;
         op.Process();                                                                                             \
     } while (0)
 
-extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul(
+template <
+    int D_T_MM, bool TILINGKEY_MM, bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, 
+    bool TILINGKEY_MM_WEIGHT_TRANSPOSE>
+__global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -42,67 +46,17 @@ extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul(
     TPipe pipe;
     GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
 
-    if (TILING_KEY_IS(0)) {
-        // BF16 + no mm + no gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<bfloat16_t, false, false, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(10)) {
-        // BF16 + no mm + gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<bfloat16_t, false, true, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(100)) {
-        // BF16 + mm + no gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<bfloat16_t, true, false, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(101)) {
-        // BF16 + mm + no gmmweight trans + mmweight trans
-        AlltoAllvGmmCoarseGrained<bfloat16_t, true, false, true> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(110)) {
-        // BF16 + mm + gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<bfloat16_t, true, true, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(111)) {
-        // BF16 + mm + gmmweight trans + mmweight trans
-        AlltoAllvGmmCoarseGrained<bfloat16_t, true, true, true> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(1000)) {
-        // FP16 + no mm + no gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<half, false, false, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(1010)) {
-        // FP16 + no mm + gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<half, false, true, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(1100)) {
-        // FP16 + mm + no gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<half, true, false, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(1101)) {
-        // FP16 + mm + no gmmweight trans + mmweight trans
-        AlltoAllvGmmCoarseGrained<half, true, false, true> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(1110)) {
-        // FP16 + mm + gmmweight trans + no mmweight trans
-        AlltoAllvGmmCoarseGrained<half, true, true, false> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    } else if (TILING_KEY_IS(1111)) {
-        // FP16 + mm + gmmweight trans + mmweight trans
-        AlltoAllvGmmCoarseGrained<half, true, true, true> op;
-        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-        return;
-    }
-
+if (D_T_MM == ADD_TPL_BP16) {
+    AlltoAllvGmmCoarseGrained<bfloat16_t, TILINGKEY_MM, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+                                TILINGKEY_MM_WEIGHT_TRANSPOSE> op;
+    INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
     return;
+}
+
+if (D_T_MM == ADD_TPL_FP16) {
+    AlltoAllvGmmCoarseGrained<half, TILINGKEY_MM, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+                                TILINGKEY_MM_WEIGHT_TRANSPOSE> op;
+    INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
+    return;
+}
 }

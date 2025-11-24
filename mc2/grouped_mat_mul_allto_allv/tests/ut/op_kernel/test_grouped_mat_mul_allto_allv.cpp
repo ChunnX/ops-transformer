@@ -16,13 +16,7 @@
 #include <gtest/gtest.h>
 #include "tikicpulib.h"
 #include "grouped_mat_mul_allto_allv_tiling_def.h"
-
-extern "C" __global__ __aicore__ void grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
-                                                                 GM_ADDR sendCountsTensorOptionalGM,
-                                                                 GM_ADDR recvCountsTensorOptionalGM,
-                                                                 GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
-                                                                 GM_ADDR yGM, GM_ADDR mmyOptionalGM,
-                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM);
+#include "../../../op_kernel/grouped_mat_mul_allto_allv.cpp"
 
 struct HcclCombinOpParam {
     uint64_t WorkSpace;
@@ -71,7 +65,18 @@ TEST_F(grouped_mat_mul_allto_allv_test, grouped_mat_mul_allto_allv_test_0)
     uint8_t* mmyOptionalGM = nullptr;
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(grouped_mat_mul_allto_allv, 20, gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
+    auto grouped_mat_mul_allto_allv_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR sendCountsTensorOptionalGM,
+                                                                 GM_ADDR recvCountsTensorOptionalGM,
+                                                                 GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
+                                                                 GM_ADDR yGM, GM_ADDR mmyOptionalGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        grouped_mat_mul_allto_allv<false, false, false>(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
+                recvCountsTensorOptionalGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(grouped_mat_mul_allto_allv_wrapper, 20, gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
                 recvCountsTensorOptionalGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);

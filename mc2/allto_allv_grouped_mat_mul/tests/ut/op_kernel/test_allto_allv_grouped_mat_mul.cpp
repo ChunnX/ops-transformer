@@ -16,12 +16,7 @@
 #include <gtest/gtest.h>
 #include "tikicpulib.h"
 #include "allto_allv_grouped_mat_mul_tiling_def.h"
-
-extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
-                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
-                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
-                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
-                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM);
+#include "../../../op_kernel/allto_allv_grouped_mat_mul.cpp"
 
 struct HcclCombinOpParam {
     uint64_t WorkSpace;
@@ -72,7 +67,19 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_0)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -112,7 +119,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_10)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(10);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -152,7 +170,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_100)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(100);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -192,7 +221,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_101)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(101);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -232,7 +272,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_110)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(110);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -272,7 +323,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_111)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(111);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -312,7 +374,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_1000)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(1000);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -352,7 +425,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_1010)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(1010);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -392,7 +476,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_1110)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(1110);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -432,7 +527,18 @@ TEST_F(allto_allv_grouped_mat_mul_test, allto_allv_grouped_mat_mul_test_1111)
     uint8_t* alltoAllvOutGM = nullptr;
 
     ICPU_SET_TILING_KEY(1111);
-    ICPU_RUN_KF(allto_allv_grouped_mat_mul, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
+    auto allto_allv_grouped_mat_mul_wrapper = [](
+                                                                 GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                                 GM_ADDR expertTokenNumGM, GM_ADDR mmxGM,
+                                                                 GM_ADDR mmweightGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                                                 GM_ADDR allGatherOutGM, GM_ADDR alltoAllvOutGM,
+                                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        allto_allv_grouped_mat_mul<0, false, false, false>(gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM,
+                                                            mmweightGM, gmmyGM, mmyGM,
+                                                            allGatherOutGM, alltoAllvOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(allto_allv_grouped_mat_mul_wrapper, 20, gmmxGM, gmmweightGM, expertTokenNumGM, mmxGM, mmweightGM, gmmyGM, mmyGM,
                 allGatherOutGM, alltoAllvOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);

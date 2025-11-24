@@ -14,6 +14,7 @@
  */
 #include "kernel_operator.h"
 #include "grouped_mat_mul_allto_allv.h"
+#include "grouped_mat_mul_allto_allv_tiling_key.h"
 
 using namespace AscendC;
 
@@ -46,7 +47,10 @@ struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
         op.Process();                                                                                    \
     } while (0)
 
-extern "C" __global__ __aicore__ void grouped_mat_mul_allto_allv(
+template <
+    bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, 
+    bool TILINGKEY_MATMUL_TRANS>
+__global__ __aicore__ void grouped_mat_mul_allto_allv(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM,
     GM_ADDR tilingGM)
@@ -68,43 +72,13 @@ extern "C" __global__ __aicore__ void grouped_mat_mul_allto_allv(
 
 #if (ORIG_DTYPE_GMM_X == DT_FLOAT16)
     using X_TYPE = half;
-    if (TILING_KEY_IS(0)) { // no mm, no trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, false, false);
-    } else if (TILING_KEY_IS(1)) { // has mm, no trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, false, false);
-    } else if (TILING_KEY_IS(10)) { // no mm, has trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, true, false);
-    } else if (TILING_KEY_IS(11)) { // has mm, has trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, true, false);
-    } else if (TILING_KEY_IS(100)) { // no mm, no trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, false, true);
-    } else if (TILING_KEY_IS(101)) { // has mm, no trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, false, true);
-    } else if (TILING_KEY_IS(110)) { // no mm, has trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, true, true);
-    } else if (TILING_KEY_IS(111)) { // has mm, has trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, true, true);
-    }
+    INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, TILINGKEY_COMPUTE_MATMUL,
+                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS);
 #endif
 
 #if (ORIG_DTYPE_GMM_X == DT_BF16)
     using X_TYPE = bfloat16_t;
-    if (TILING_KEY_IS(0)) { // no mm, no trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, false, false);
-    } else if (TILING_KEY_IS(1)) { // has mm, no trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, false, false);
-    } else if (TILING_KEY_IS(10)) { // no mm, has trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, true, false);
-    } else if (TILING_KEY_IS(11)) { // has mm, has trans GW, no trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, true, false);
-    } else if (TILING_KEY_IS(100)) { // no mm, no trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, false, true);
-    } else if (TILING_KEY_IS(101)) { // has mm, no trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, false, true);
-    } else if (TILING_KEY_IS(110)) { // no mm, has trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, false, true, true);
-    } else if (TILING_KEY_IS(111)) { // has mm, has trans GW, has trans W
-        INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, true, true, true);
-    }
+    INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, TILINGKEY_COMPUTE_MATMUL,
+                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS);
 #endif
 }
