@@ -9,7 +9,7 @@
 
 ## 功能说明
 
-- 算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+- 算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllV通信。
 - 计算公式：
 $$
 agOut = AllGatherV(X)\\
@@ -247,14 +247,14 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
   <tr>
    <td>zeroExpertNum</td>
    <td>输入</td>
-   <td>零专家数量：<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可；<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是<code>[moeExpertNum, moeExpertNum+zeroExpertNum)</code>。</td>
+   <td>零专家数量：<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可；<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是<code>[moeExpertNum, moeExpertNum + zeroExpertNum)</code>。</td>
    <td>INT64</td>
    <td>-</td>
   </tr>
   <tr>
    <td>copyExpertNum</td>
    <td>输入</td>
-   <td>拷贝专家数量：<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可；<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum+zeroExpertNum, moeExpertNum+zeroExpertNum+copyExpertNum)</code>。</td>
+   <td>拷贝专家数量：<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传0即可；<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum+zeroExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum)</code>。</td>
    <td>INT64</td>
    <td>-</td>
   </tr>
@@ -362,7 +362,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
   <tr>
    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
    <td>561002</td>
-   <td>输入和输出的shape不在支持的范围内；<br>参数的取值不在支持的范围。</td>
+   <td>输入和输出的shape不在支持的范围内；<br>参数的取值不在支持的范围内。</td>
   </tr>
  </tbody>
 </table>
@@ -438,7 +438,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
   | Bs           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：0 < Bs ≤256；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：0 < Bs ≤512。</li></ul> |
   | topK    | 表示选取topK个专家，取值范围为0 < K ≤16，且<code>0 < K ≤ moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum</code>。 |
   | serverNum    | 表示服务器节点数，仅支持2、4、8。<br>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：仅该场景的shape使用了该变量。                                                  |
-  | localExpertNum | 表示本卡专家数：<ul><li>共享专家卡=1；</li><li>MoE专家卡=<code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，>1时不支持TP通信。</li></ul> |
+  | localExpertNum | 表示本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：应满足 0 < localExpertNum * epWorldSize ≤ 2048。|
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
@@ -666,8 +666,8 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
         std::vector<int64_t> elasticInfoShape{4 + EP_WORLD_SIZE * 2};
         std::vector<int64_t> oriXShape{Bs, H};
-        std::vector<int64_t> constExpertAlpha1Shape{constExpertNum};
-        std::vector<int64_t> constExpertAlpha2Shape{constExpertNum};
+        std::vector<int64_t> constExpertAlpha1Shape{constExpertNum, H};
+        std::vector<int64_t> constExpertAlpha2Shape{constExpertNum, H};
         std::vector<int64_t> constExpertVShape{constExpertNum, H};
 
         std::vector<int64_t> xOutShape{Bs, H};
@@ -770,7 +770,6 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(constExpertVHostData, constExpertVShape, &constExpertVDeviceAddr, aclDataType::ACL_BF16, &constExpertV);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-
         ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
 

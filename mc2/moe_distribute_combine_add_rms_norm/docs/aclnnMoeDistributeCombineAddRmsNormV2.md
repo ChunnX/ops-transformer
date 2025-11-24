@@ -234,14 +234,14 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
   <tr>
    <td>constExpertAlpha1Optional</td>
    <td>输入</td>
-   <td>constExpert场景的计算系数（公式中的constExpertAlpha1Optional），constExpertNum>0时必传；传入时为1D Tensor（shape <code>constExpertNum,</code>），数据类型与expandX一致。</td>
+   <td>constExpert场景的计算系数（公式中的constExpertAlpha1Optional），constExpertNum>0时必传；传入时为2D Tensor（shape <code>constExpertNum, H</code>），数据类型与expandX一致。</td>
    <td>BFLOAT16</td>
    <td>ND（支持非连续Tensor）</td>
   </tr>
   <tr>
    <td>constExpertAlpha2Optional</td>
    <td>输入</td>
-   <td>constExpert场景的计算系数（公式中的constExpertAlpha2Optional），constExpertNum>0时必传；传入时为1D Tensor（shape <code>constExpertNum,</code>），数据类型与expandX一致。</td>
+   <td>constExpert场景的计算系数（公式中的constExpertAlpha2Optional），constExpertNum>0时必传；传入时为2D Tensor（shape <code>constExpertNum, H</code>），数据类型与expandX一致。</td>
    <td>BFLOAT16</td>
    <td>ND（支持非连续Tensor）</td>
   </tr>
@@ -454,7 +454,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
   <tr>
    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
    <td>561002</td>
-   <td>1. 输入和输出的shape不在支持的范围内；<br>2. 参数的取值不在支持的范围。</td>
+   <td>1. 输入和输出的shape不在支持的范围内；<br>2. 参数的取值不在支持的范围内。</td>
   </tr>
  </tbody>
 </table>
@@ -532,7 +532,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         - 对于MoE专家卡，localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum)，localExpertNum > 1时，不支持TP域通信。
   
 - HCCL_BUFFSIZE：
-    调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= (BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)，localExpertNum表示MoE专家卡的本卡专家数。
+    调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)，localExpertNum表示MoE专家卡的本卡专家数。
 
 - 通信域使用约束：
     - 一个模型中的aclnnMoeDistributeCombineAddRmsNormV2和aclnnMoeDistributeDispatchV3仅支持相同EP通信域，且该通信域中不允许有其他算子。
@@ -726,8 +726,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
 
         std::vector<int64_t> elasticInfoShape{4 + 2 * EP_WORLD_SIZE};
         std::vector<int64_t> oriXShape{BS, H};
-        std::vector<int64_t> constExpertAlpha1Shape{constExpertNum};
-        std::vector<int64_t> constExpertAlpha2Shape{constExpertNum};
+        std::vector<int64_t> constExpertAlpha1Shape{constExpertNum, H};
+        std::vector<int64_t> constExpertAlpha2Shape{constExpertNum, H};
         std::vector<int64_t> constExpertVShape{constExpertNum, H};
         
         std::vector<int64_t> yOutShape{BS, 1, H};
@@ -860,7 +860,6 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(constExpertVHostData, constExpertVShape, &constExpertVDeviceAddr, aclDataType::ACL_BF16, &constExpertV);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-
         ret = CreateAclTensor(yOutHostData, yOutShape, &yOutDeviceAddr, aclDataType::ACL_BF16, &yOut);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(rstdOutHostData, rstdOutShape, &rstdOutDeviceAddr, aclDataType::ACL_FLOAT, &rstdOut);

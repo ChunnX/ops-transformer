@@ -112,6 +112,7 @@ private:
     __aicore__ inline void ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal);
     __aicore__ inline void ProcessCopyExpert(uint32_t tokenIndex, float scaleVal);
     __aicore__ inline void ProcessMoeExpert(uint32_t tokenIndexOffset, uint32_t topkId, float scaleVal);
+    __aicore__ inline void CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void BuffInit();
     __aicore__ inline void SplitCoreCal();
@@ -292,10 +293,10 @@ private:
     TBuf<> xScaleMulBuf_;
 
     LocalTensor<int8_t> castLocalTensor_;
-    LocalTensor<half> fp16CastTensor_;
+    LocalTensor<half> fp16CastLocalTensor_;
     LocalTensor<float> absFloatTensor_;
     LocalTensor<float> reduceMaxFloatTensor_;
-    LocalTensor<XType> scaleDivTensor_;
+    LocalTensor<XType> scaleDivLocalTensor_;
     LocalTensor<float> scaleDivFloatTensor_;
     LocalTensor<float> scaleDupLocalTensor_;
     LocalTensor<XType> sendLocalTensor_;
@@ -595,7 +596,7 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Buff
             absFloatTensor_ = xAbsBuf_.Get<float>();
             reduceMaxFloatTensor_ = xMaxBuf_.Get<float>();
             scaleDupLocalTensor_ = xScaleMulBuf_.Get<float>();
-            fp16CastTensor_ = xAbsBuf_.Get<half>();
+            fp16CastLocalTensor_ = xAbsBuf_.Get<half>();
             Duplicate(absFloatTensor_, float(0), hFloatAlign256Cnt);  // 统一写0
         }
         if (isScalingDownFlag_) {
@@ -743,7 +744,7 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Allt
     if constexpr (IsInt8Quant) {
         scaleNumAlignSize_ = Ceil(scaleNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(xAbsBuf_, scaleNumAlignSize_);  // 2K
-        fp16CastTensor_ = mulBuf_.Get<half>();
+        fp16CastLocalTensor_ = mulBuf_.Get<half>();
         absFloatTensor_ = rowTmpFloatBuf_.Get<float>();
         scaleDupLocalTensor_ = mulBuf_.Get<float>();
         scaleDivFloatTensor_ = xAbsBuf_.Get<float>();
@@ -917,7 +918,7 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Int8
 {
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     castLocalTensor_ = sendLocalTensor_.template ReinterpretCast<int8_t>();  // 长度为int8H_Align + scaleNum
-    scaleDivTensor_ = castLocalTensor_[hAlign32Size_].template ReinterpretCast<XType>();  // 偏移前面的int8
+    scaleDivLocalTensor_ = castLocalTensor_[hAlign32Size_].template ReinterpretCast<XType>();  // 偏移前面的int8
 
     Cast(winTpSendCountFloatTensor_, gmTpSendCountTensor_, RoundMode::CAST_NONE, axisH_);
     PipeBarrier<PIPE_V>();
@@ -927,15 +928,15 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Int8
     PipeBarrier<PIPE_V>();
     Muls(reduceMaxFloatTensor_, reduceMaxFloatTensor_, scaleValFloat_, scaleNum_);  // 有效个数
     PipeBarrier<PIPE_V>();
-    Cast(scaleDivTensor_, reduceMaxFloatTensor_, RoundMode::CAST_RINT, scaleNum_);  // 有效个数
+    Cast(scaleDivLocalTensor_, reduceMaxFloatTensor_, RoundMode::CAST_RINT, scaleNum_);  // 有效个数
     PipeBarrier<PIPE_V>();
     Brcb(scaleDupLocalTensor_, reduceMaxFloatTensor_, repeatNum_, {1, BLOCK_NUM});  // 一次256
     PipeBarrier<PIPE_V>();
     Div(winTpSendCountFloatTensor_, winTpSendCountFloatTensor_, scaleDupLocalTensor_, axisH_);  // 有效个数
     PipeBarrier<PIPE_V>();
-    Cast(fp16CastTensor_, winTpSendCountFloatTensor_, RoundMode::CAST_RINT, axisH_);
+    Cast(fp16CastLocalTensor_, winTpSendCountFloatTensor_, RoundMode::CAST_RINT, axisH_);
     PipeBarrier<PIPE_V>();
-    Cast(castLocalTensor_, fp16CastTensor_, RoundMode::CAST_RINT, axisH_);
+    Cast(castLocalTensor_, fp16CastLocalTensor_, RoundMode::CAST_RINT, axisH_);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
 }
 
@@ -1109,13 +1110,13 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Int8
 {
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     castLocalTensor_ = src.template ReinterpretCast<int8_t>();
-    scaleDivTensor_ = src[hAlign32Size_ / 2];
+    scaleDivLocalTensor_ = src[hAlign32Size_ / 2];
 
     SyncFunc<AscendC::HardEvent::S_V>();
-    Cast(scaleDivFloatTensor_, scaleDivTensor_, RoundMode::CAST_NONE, scaleNum_);
-    Cast(fp16CastTensor_, castLocalTensor_, RoundMode::CAST_NONE, axisH_);
+    Cast(scaleDivFloatTensor_, scaleDivLocalTensor_, RoundMode::CAST_NONE, scaleNum_);
+    Cast(fp16CastLocalTensor_, castLocalTensor_, RoundMode::CAST_NONE, axisH_);
     PipeBarrier<PIPE_V>();
-    Cast(absFloatTensor_, fp16CastTensor_, RoundMode::CAST_NONE, axisH_);
+    Cast(absFloatTensor_, fp16CastLocalTensor_, RoundMode::CAST_NONE, axisH_);
     Brcb(scaleDupLocalTensor_, scaleDivFloatTensor_, repeatNum_, {1, BLOCK_NUM});
     PipeBarrier<PIPE_V>();
     Mul(absFloatTensor_, absFloatTensor_, scaleDupLocalTensor_, axisH_);
@@ -1124,56 +1125,90 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Int8
     PipeBarrier<PIPE_V>();
 }
 
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::CalConstExpertAlpha(
+    GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat)
+{
+    LocalTensor<ExpandXType> weightLocalTensor = moeSumQueue_.AllocTensor<ExpandXType>();
+    LocalTensor<float> weightFloatLocal = mulBuf_.Get<float>();
+    DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
+    DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
+
+    // 使用moeSumQueue_分配缓冲区来存储alpha1对应的权重矩阵Wc
+    DataCopyPad(weightLocalTensor, constExpertAlphaGM[const_expert_idx * axisH_], expandXCopyParams, copyPadExtParams);
+    moeSumQueue_.EnQue(weightLocalTensor);
+    weightLocalTensor = moeSumQueue_.DeQue<ExpandXType>();
+    Cast(weightFloatLocal, weightLocalTensor, AscendC::RoundMode::CAST_NONE, axisH_);
+    PipeBarrier<PIPE_V>();
+
+    // 计算Wc * x
+    Mul(weightFloatLocal, weightFloatLocal, rowTmpFloatLocal_, axisH_);
+    PipeBarrier<PIPE_V>();
+    uint32_t innerAlign = Ceil(axisH_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    SumParams params{1, innerAlign, axisH_};
+    Sum(weightFloatLocal, weightFloatLocal, params);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    alphaFloat = weightFloatLocal.GetValue(0);
+    moeSumQueue_.FreeTensor<ExpandXType>(weightLocalTensor);
+}
+
 // 处理常量专家
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::ProcessConstantExpert(
     uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal)
 {
     PipeBarrier<PIPE_ALL>();
-    LocalTensor<float> constVFloatLocal = mulBuf_.Get<float>();
-    LocalTensor<ExpandXType> const_v_ub = moeSumQueue_.AllocTensor<ExpandXType>();
     LocalTensor<ExpandXType> rowTmpLocal = tokenBuf_.Get<ExpandXType>();
+    LocalTensor<float> alphaFloatLocal = tokenBuf_.Get<float>();
     DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
-    // 直接从GM读取当前常量专家的alpha1和alpha2参数
-    ExpandXType alpha1 = constExpertAlpha1GM_.GetValue(const_expert_idx);
-    ExpandXType alpha2 = constExpertAlpha2GM_.GetValue(const_expert_idx);
-    float alpha1Float;
-    float alpha2Float;
-    if constexpr (std::is_same_v<ExpandXType, bfloat16_t>) {
-        alpha1Float = ToFloat(alpha1);
-        alpha2Float = ToFloat(alpha2);
-    } else {
-        alpha1Float = static_cast<float>(alpha1);
-        alpha2Float = static_cast<float>(alpha2);
-    }
-
-    // 使用moeSumQueue_分配缓冲区来存储常量专家向量v
-    DataCopyPad(const_v_ub, constExpertVGM_[const_expert_idx * axisH_], expandXCopyParams, copyPadExtParams);
-    moeSumQueue_.EnQue(const_v_ub);
-    const_v_ub = moeSumQueue_.DeQue<ExpandXType>();
+    float alpha1Float = static_cast<float>(0.0);
+    float alpha2Float = static_cast<float>(0.0);
 
     // 读取输入token
     DataCopyPad(rowTmpLocal, oriXGM_[tokenIndex * axisH_], expandXCopyParams, copyPadExtParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
-    // 计算 alpha1 * x + alpha2 * v
     Cast(rowTmpFloatLocal_, rowTmpLocal, AscendC::RoundMode::CAST_NONE, axisH_);
     PipeBarrier<PIPE_V>();
+
+    // 计算Wc * x
+    CalConstExpertAlpha(constExpertAlpha1GM_, const_expert_idx, alpha1Float);
+    CalConstExpertAlpha(constExpertAlpha2GM_, const_expert_idx, alpha2Float);
+
+    // 计算softmax(Wc * x)
+    float maxAlphaFloat = (alpha1Float > alpha2Float) ? alpha1Float : alpha2Float;
+    alphaFloatLocal.SetValue(0, alpha1Float - maxAlphaFloat);
+    alphaFloatLocal.SetValue(1, alpha2Float - maxAlphaFloat);
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Exp(alphaFloatLocal, alphaFloatLocal, 2);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    float alphaSumFloat = alphaFloatLocal.GetValue(0) + alphaFloatLocal.GetValue(1);
+    alpha1Float = alphaFloatLocal.GetValue(0) / alphaSumFloat;
+    alpha2Float = alphaFloatLocal.GetValue(1) / alphaSumFloat;
+
+    // 使用moeSumQueue_分配缓冲区来存储常量专家向量v
+    LocalTensor<float> constVFloatLocal = mulBuf_.Get<float>();
+    LocalTensor<ExpandXType> const_v_ub = moeSumQueue_.AllocTensor<ExpandXType>();
+    DataCopyPad(const_v_ub, constExpertVGM_[const_expert_idx * axisH_], expandXCopyParams, copyPadExtParams);
+    moeSumQueue_.EnQue(const_v_ub);
+    const_v_ub = moeSumQueue_.DeQue<ExpandXType>();
 
     Cast(constVFloatLocal, const_v_ub, AscendC::RoundMode::CAST_NONE, axisH_);
     PipeBarrier<PIPE_V>();
     moeSumQueue_.FreeTensor<ExpandXType>(const_v_ub);
 
-    AscendC::Muls(rowTmpFloatLocal_, rowTmpFloatLocal_, alpha1Float, axisH_);
-    AscendC::Muls(constVFloatLocal, constVFloatLocal, alpha2Float, axisH_);
+    // 计算 alpha1 * x + alpha2 * v
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Muls(rowTmpFloatLocal_, rowTmpFloatLocal_, alpha1Float, axisH_);
+    Muls(constVFloatLocal, constVFloatLocal, alpha2Float, axisH_);
     PipeBarrier<PIPE_V>();
-    AscendC::Add(rowTmpFloatLocal_, rowTmpFloatLocal_, constVFloatLocal, axisH_);
+    Add(rowTmpFloatLocal_, rowTmpFloatLocal_, constVFloatLocal, axisH_);
     PipeBarrier<PIPE_V>();
 
     // 乘以专家权重
-    AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
+    Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, axisH_);
     PipeBarrier<PIPE_V>();
-    AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
+    Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, axisH_);
     PipeBarrier<PIPE_V>();
 }
 

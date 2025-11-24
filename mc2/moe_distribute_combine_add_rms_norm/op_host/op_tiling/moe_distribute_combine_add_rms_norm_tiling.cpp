@@ -350,25 +350,13 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
     return true;
 }
 
-static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask, const bool hasElasticInfo)
+static bool CheckConstExpertInputTensorDim(const gert::TilingContext *context, const char *nodeName)
 {
-    const gert::StorageShape* oriXStorageShape = context->GetOptionalInputShape(ORI_X_INDEX);
-    if (oriXStorageShape != nullptr) {
-        OP_TILING_CHECK(
-            oriXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(
-                nodeName, "ori_x must be 2-dimension, but got %lu dim",
-                oriXStorageShape->GetStorageShape().GetDimNum()),
-            return false);
-    }
-
     const gert::StorageShape* constExpertAlpha1StorageShape =
         context->GetOptionalInputShape(CONST_EXPERT_ALPHA_1_INDEX);
     if (constExpertAlpha1StorageShape != nullptr) {
-        OP_TILING_CHECK(
-            constExpertAlpha1StorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-            OP_LOGE(
-                nodeName, "const_expert_alpha_1 must be 1-dimension, but got %lu dim",
+        OP_TILING_CHECK(constExpertAlpha1StorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE(nodeName, "const_expert_alpha_1 must be 2-dimension, but got %lu dim",
                 constExpertAlpha1StorageShape->GetStorageShape().GetDimNum()),
             return false);
     }
@@ -376,10 +364,8 @@ static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, cons
     const gert::StorageShape* constExpertAlpha2StorageShape =
         context->GetOptionalInputShape(CONST_EXPERT_ALPHA_2_INDEX);
     if (constExpertAlpha2StorageShape != nullptr) {
-        OP_TILING_CHECK(
-            constExpertAlpha2StorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-            OP_LOGE(
-                nodeName, "const_expert_alpha_2 must be 1-dimension, but got %lu dim",
+        OP_TILING_CHECK(constExpertAlpha2StorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE(nodeName, "const_expert_alpha_2 must be 2-dimension, but got %lu dim",
                 constExpertAlpha2StorageShape->GetStorageShape().GetDimNum()),
             return false);
     }
@@ -388,11 +374,25 @@ static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, cons
     if (constExpertVStorageShape != nullptr) {
         OP_TILING_CHECK(
             constExpertVStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(
-                nodeName, "const_expert_v must be 2-dimension, but got %lu dim",
+            OP_LOGE(nodeName, "const_expert_v must be 2-dimension, but got %lu dim",
                 constExpertVStorageShape->GetStorageShape().GetDimNum()),
             return false);
     }
+
+    return true;
+}
+
+static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask, const bool hasElasticInfo)
+{
+    const gert::StorageShape* oriXStorageShape = context->GetOptionalInputShape(ORI_X_INDEX);
+    if (oriXStorageShape != nullptr) {
+        OP_TILING_CHECK(oriXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE(nodeName, "ori_x must be 2-dimension, but got %lu dim", oriXStorageShape->GetStorageShape().GetDimNum()),
+            return false);
+    }
+
+    OP_TILING_CHECK(!CheckConstExpertInputTensorDim(context, nodeName),
+        OP_LOGE(nodeName, "param shape of const expert input tensor is invalid"), return false);
 
     const gert::StorageShape *tpSendCountsStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
     OP_TILING_CHECK(tpSendCountsStorageShape == nullptr, OP_LOGE(nodeName, "tpSendCounts is null."), return false);
@@ -730,167 +730,64 @@ static bool CheckTensorFormat(gert::TilingContext *context, const char *nodeName
     return true;
 }
 
-static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
-    const char *nodeName, bool isShared, bool isActiveMask, uint32_t localMoeExpertNum, const bool hasElasticInfo)
+static bool CheckConstExpertTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
+    const char *nodeName)
 {
-    // 校验输入expertIds的维度1并设k, bs已校验过
-    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
-    int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
-    int64_t expertIdsDim1 = expertIdsStorageShape->GetStorageShape().GetDim(1);
-    int64_t moeExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.moeExpertNum);
-    int64_t zeroExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.zeroExpertNum);
-    int64_t copyExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.copyExpertNum);
-    int64_t constExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum);
-    OP_TILING_CHECK((expertIdsDim1 <= 0) || (expertIdsDim1 > K_MAX || (expertIdsDim1 > moeExpertNum
-        + zeroExpertNum + copyExpertNum + constExpertNum)),
-        OP_LOGE(nodeName, "expertIds's dim1(K) should be in (0, min(%ld, moeExpertNum"
-        " + zeroExpertNum + copyExpertNum + constExpertNum = %ld)], "
-        "but got expertIds's dim1=%ld.", K_MAX, moeExpertNum
-        + zeroExpertNum + copyExpertNum + constExpertNum, expertIdsDim1), return false);
-    tilingData.moeDistributeCombineV2Info.k = static_cast<uint32_t>(expertIdsDim1);
- 
-    uint32_t A = 0U;
-    uint32_t globalBs = tilingData.moeDistributeCombineV2Info.globalBs;
-    uint32_t sharedExpertNum = tilingData.moeDistributeCombineV2Info.sharedExpertNum;
-    uint32_t sharedExpertRankNum = tilingData.moeDistributeCombineV2Info.sharedExpertRankNum;
-    uint32_t rankNumPerSharedExpert = 0;
-    uint32_t epWorldSizeU32 = tilingData.moeDistributeCombineV2Info.epWorldSize;
-    uint32_t maxBs = globalBs / epWorldSizeU32;
-    uint32_t maxSharedGroupNum = 0;
-    if ((sharedExpertNum != 0U) && (sharedExpertRankNum != 0U)) { // 除零保护
-        rankNumPerSharedExpert = sharedExpertRankNum / sharedExpertNum;
-        maxSharedGroupNum = (epWorldSizeU32 + rankNumPerSharedExpert - 1U) / rankNumPerSharedExpert;
-    } 
-    if (isShared) { // 本卡为共享专家
-        A = maxBs * maxSharedGroupNum;
-    } else { // 本卡为moe专家
-        A = globalBs * std::min(static_cast<int64_t>(localMoeExpertNum), expertIdsDim1);
-    }
-    if (hasElasticInfo) {
-        const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(ELASTIC_INFO_INDEX);
-        const int64_t elasticInfoDim0 = elasticInfoStorageShape->GetStorageShape().GetDim(0);
-        const int64_t epWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.epWorldSize);
-
-        OP_TILING_CHECK(elasticInfoDim0 != (ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * epWorldSize),
-            OP_LOGE(nodeName, "elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, "
-            "elasticInfo's dim0 is %ld, epWorldSize is %ld.",
-            elasticInfoDim0, epWorldSize), return false);
-        A = std::max( static_cast<int64_t>(maxBs * maxSharedGroupNum) , globalBs * std::min(static_cast<int64_t>(localMoeExpertNum), expertIdsDim1));
-    }
-    // 校验expandX的维度并设h
-    int64_t tpWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.tpWorldSize);
     const gert::StorageShape *expandXStorageShape = context->GetInputShape(EXPAND_X_INDEX);
-    int64_t expandXDim0 = expandXStorageShape->GetStorageShape().GetDim(0);
     int64_t expandXDim1 = expandXStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(expandXDim0 < static_cast<int64_t>(A) * tpWorldSize, OP_LOGE(nodeName,
-        "expandX's dim0 not greater than or equal to A * tpWorldSize, expandX's dim0 = %ld, A = %ld, tpWorldSize = %ld",
-        expandXDim0, static_cast<int64_t>(A), tpWorldSize), return false);
-    OP_TILING_CHECK((expandXDim1 < H_MIN) || (expandXDim1 > H_MAX),
-        OP_LOGE(nodeName, "expandX's dim1(H) should be in [%ld, %ld], but got %ld.",
-        H_MIN, H_MAX, expandXDim1), return false); // 32对齐
-    tilingData.moeDistributeCombineV2Info.h = static_cast<uint32_t>(expandXDim1);
-    tilingData.moeDistributeCombineV2Info.armAvgFactor = 1.0f / expandXDim1;
 
-    // 校验assistInfo的维度
-    const gert::StorageShape *assistInfoStorageShape = context->GetInputShape(ASSIST_INFO_INDEX);
-    int64_t assistInfoDim0 = assistInfoStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(assistInfoDim0 < static_cast<int64_t>(A * ASSIST_NUM_PER_A), OP_LOGE(nodeName,
-        "assistInfoForCombine's dim0 < A * 128, assistInfoForCombine's dim0 is %ld, A * 128 is %ld.", assistInfoDim0, static_cast<int64_t>(A * ASSIST_NUM_PER_A)),
-        return false);
-
-    // 校验epSendCount和tpSendCount的维度
-    int64_t epWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.epWorldSize);
-    int64_t moeExpertPerRankNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.moeExpertPerRankNum);
-    const gert::StorageShape *epSendCountStorageShape = context->GetInputShape(EP_SEND_COUNTS_INDEX);
-    const gert::StorageShape *tpSendCountStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
-    const int64_t epSendCountDim0 = epSendCountStorageShape->GetStorageShape().GetDim(0);
-    const int64_t tpSendCountDim0 = tpSendCountStorageShape->GetStorageShape().GetDim(0);
-    int64_t localEpSendCountSize = (isShared) ? epWorldSize : epWorldSize * moeExpertPerRankNum;
-    if (hasElasticInfo) {
-        localEpSendCountSize = std::max(epWorldSize, epWorldSize * moeExpertPerRankNum);
-    }
-    OP_TILING_CHECK(epSendCountDim0 < localEpSendCountSize * tpWorldSize, OP_LOGE(nodeName,
-        "epSendCount's dim0 not greater than or equal to localEpSendCountSize * tpWorldSize, "
-        "epSendCount's dim0 is %ld, localEpSendCountSize is %ld, tpWorldSize is %ld.",
-        epSendCountDim0, localEpSendCountSize, tpWorldSize), return false);
-    OP_TILING_CHECK(tpSendCountDim0 != tpWorldSize, OP_LOGE(nodeName,
-        "tpSendCount's dim0 not equal to tpWorldSize, tpSendCount's dim0 is %ld, tpWorldSize is %ld.",
-        tpSendCountDim0, tpWorldSize), return false);
-
-    // 校验expertScales的维度
-    const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(EXPERT_SCALES_INDEX);
-    int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
-    int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0,
-        OP_LOGE(nodeName, "expertScales's dim0 not equal to bs, expertScales's dim0 = %ld, bs = %ld",
-        expertScalesDim0, expertIdsDim0), return false);
-    OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1, OP_LOGE(nodeName,
-        "expertScales's dim1 not equal to k, expertScales's dim1 = %ld, k = %ld",
-        expertScalesDim1, expertIdsDim1), return false);
-
-    // 校验residualX的维度
-    const gert::StorageShape *residualXShape = context->GetOptionalInputShape(RESIDUAL_X_INDEX);
-    if (residualXShape != nullptr) {
-        int64_t residualXDimBs = residualXShape->GetStorageShape().GetDim(0);
-        int64_t residualXDim1 = residualXShape->GetStorageShape().GetDim(1);
-        int64_t residualXDimH = residualXShape->GetStorageShape().GetDim(TWO_DIMS);
-        OP_TILING_CHECK(residualXDimBs != expertIdsDim0,
-            OP_LOGE(nodeName, "residualX's dim0 not equal to bs, residualX's dim0 = %ld, bs = %ld",
-            residualXDimBs, expertIdsDim0), return false);
-        OP_TILING_CHECK(residualXDim1 != RESIDUAL_X_DIM2_SIZE,
-            OP_LOGE(nodeName, "residualX's dim1 not equal to %ld, residualX's dim1 = %ld",
-            RESIDUAL_X_DIM2_SIZE, residualXDim1), return false);
-        OP_TILING_CHECK(residualXDimH != expandXDim1, OP_LOGE(nodeName,
-            "residualX's dim2 not equal to h, residualX's dim2 = %ld, h = %ld",
-            residualXDimH, expandXDim1), return false);
+    const gert::StorageShape* constExpertAlpha1Shape = context->GetOptionalInputShape(CONST_EXPERT_ALPHA_1_INDEX);
+    if (constExpertAlpha1Shape != nullptr) {
+        int64_t constExpertAlpha1Dim0 = constExpertAlpha1Shape->GetStorageShape().GetDim(0);
+        int64_t constExpertAlpha1Dim1 = constExpertAlpha1Shape->GetStorageShape().GetDim(1);
+        OP_TILING_CHECK(
+            constExpertAlpha1Dim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
+            OP_LOGE(nodeName, "const_expert_alpha_1's dim0 not equal to const_expert_num, const_expert_alpha_1's dim0 = %ld, "
+                "const_expert_num = %u", constExpertAlpha1Dim0, tilingData.moeDistributeCombineV2Info.constExpertNum),
+            return false);
+        OP_TILING_CHECK(constExpertAlpha1Dim1 != expandXDim1,
+            OP_LOGE(nodeName, "const_expert_alpha_1's dim1 not equal to h, const_expert_alpha_1's dim1 = %ld, h = %ld",
+                constExpertAlpha1Dim1, expandXDim1), return false);
     }
 
-    // 校验gamma的维度
-    const gert::StorageShape *gammaShape = context->GetOptionalInputShape(GAMMA_INDEX);
-    if (gammaShape != nullptr) {
-        int64_t gammaDimH = gammaShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(gammaDimH != expandXDim1, OP_LOGE(nodeName,
-            "gamma's dim0 not equal to h, gamma's dim0 = %ld, h = %ld",
-            gammaDimH, expandXDim1), return false);
+    const gert::StorageShape* constExpertAlpha2Shape = context->GetOptionalInputShape(CONST_EXPERT_ALPHA_2_INDEX);
+    if (constExpertAlpha2Shape != nullptr) {
+        int64_t constExpertAlpha2Dim0 = constExpertAlpha2Shape->GetStorageShape().GetDim(0);
+        int64_t constExpertAlpha2Dim1 = constExpertAlpha2Shape->GetStorageShape().GetDim(1);
+        OP_TILING_CHECK(
+            constExpertAlpha2Dim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
+            OP_LOGE(nodeName, "const_expert_alpha_2's dim0 not equal to const_expert_num, const_expert_alpha_2's dim0 = %ld, "
+                "const_expert_num = %u", constExpertAlpha2Dim0, tilingData.moeDistributeCombineV2Info.constExpertNum),
+            return false);
+        OP_TILING_CHECK(constExpertAlpha2Dim1 != expandXDim1,
+            OP_LOGE(nodeName, "const_expert_alpha_2's dim1 not equal to h, const_expert_alpha_2's dim1 = %ld, h = %ld",
+                constExpertAlpha2Dim1, expandXDim1), return false);
     }
 
-    // 校验activeMask的维度
-    if (isActiveMask) {
-        const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
-        int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(xActiveMaskDim0 != expertIdsDim0,
-            OP_LOGE(nodeName, "xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is %ld, "
-            "expertIds's dim0 is %ld", xActiveMaskDim0, expertIdsDim0), return false);
-        OP_TILING_CHECK(((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
-            (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != expertIdsDim1)),
-            OP_LOGE(nodeName, "xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is %ld, "
-            "expertIds's dim1 is %ld", xActiveMaskStorageShape->GetStorageShape().GetDim(1), expertIdsDim1), return false);
+    const gert::StorageShape* constExpertVShape = context->GetOptionalInputShape(CONST_EXPERT_V_INDEX);
+    if (constExpertVShape != nullptr) {
+        int64_t constExpertVDim0 = constExpertVShape->GetStorageShape().GetDim(0);
+        int64_t constExpertVDim1 = constExpertVShape->GetStorageShape().GetDim(1);
+        OP_TILING_CHECK(
+            constExpertVDim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
+            OP_LOGE(nodeName,
+                "const_expert_v's dim0 not equal to const_expert_num, const_expert_v's dim0 = %ld, const_expert_num = %u.",
+                constExpertVDim0, tilingData.moeDistributeCombineV2Info.constExpertNum), return false);
+        OP_TILING_CHECK(constExpertVDim1 != expandXDim1,
+            OP_LOGE(nodeName, "const_expert_v's dim1 not equal to h, const_expert_v's dim1 = %ld, h = %ld.",
+                constExpertVDim1, expandXDim1), return false);
     }
+    return true;
+}
 
-    // 校验sharedExpertX的维度
-    const gert::StorageShape *sharedExpertXShape = context->GetOptionalInputShape(SHARED_EXPERT_X_INDEX);
-    tilingData.moeDistributeCombineV2Info.hasSharedExpertX = (sharedExpertXShape != nullptr);
-    if (sharedExpertXShape != nullptr) {
-        int64_t sharedExpertXDim0 = sharedExpertXShape->GetStorageShape().GetDim(0);
-        int64_t sharedExpertXDim1 = sharedExpertXShape->GetStorageShape().GetDim(1);
-        if (sharedExpertXShape->GetStorageShape().GetDimNum() == TWO_DIMS) {
-            OP_TILING_CHECK(sharedExpertXDim0 != expertIdsDim0,
-                OP_LOGE(nodeName, "sharedExpertX's dim0 not equal to bs, sharedExpertX's dim0 = %ld, bs = %ld",
-                sharedExpertXDim0, expertIdsDim0), return false);
-            OP_TILING_CHECK(sharedExpertXDim1 != expandXDim1, OP_LOGE(nodeName,
-                "sharedExpertX's dim1 not equal to h, sharedExpertX's dim1 = %ld, h = %ld",
-                sharedExpertXDim1, expandXDim1), return false);
-        } else {
-            int64_t sharedExpertXDim2 = sharedExpertXShape->GetStorageShape().GetDim(TWO_DIMS);
-            OP_TILING_CHECK(sharedExpertXDim0 * sharedExpertXDim1 != expertIdsDim0,
-                OP_LOGE(nodeName, "sharedExpertX's dim0 * sharedExpertX's dim1 not equal to bs, sharedExpertX's dim0 * sharedExpertX's dim1 = %ld, bs = %ld",
-                sharedExpertXDim0 * sharedExpertXDim1, expertIdsDim0), return false);
-            OP_TILING_CHECK(sharedExpertXDim2 != expandXDim1, OP_LOGE(nodeName,
-                "sharedExpertX's dim2 not equal to h, sharedExpertX's dim2 = %ld, h = %ld",
-                sharedExpertXDim2, expandXDim1), return false);
-        }
-    }
-
+static bool CheckOutputTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
+    const char *nodeName)
+{
+    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
+    const gert::StorageShape *expandXStorageShape = context->GetInputShape(EXPAND_X_INDEX);
+    int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
+    int64_t expandXDim1 = expandXStorageShape->GetStorageShape().GetDim(1);
+    
     // 校验y的维度
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
     int64_t yDim0 = yStorageShape->GetStorageShape().GetDim(0);
@@ -898,8 +795,7 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
     int64_t yDim2 = yStorageShape->GetStorageShape().GetDim(TWO_DIMS);
     OP_TILING_CHECK(yDim0 != expertIdsDim0, OP_LOGE(nodeName,
         "y's dim0 not equal to bs, bs = %ld, y's dim0 = %ld", expertIdsDim0, yDim0), return false);
-    OP_TILING_CHECK(yDim1 != 1, OP_LOGE(nodeName,
-        "y's dim1 not equal to 1, y's dim1 = %ld", yDim1), return false);
+    OP_TILING_CHECK(yDim1 != 1, OP_LOGE(nodeName, "y's dim1 not equal to 1, y's dim1 = %ld", yDim1), return false);
     OP_TILING_CHECK(yDim2 != expandXDim1, OP_LOGE(nodeName,
         "y's dim2 not equal to h, y's dim2 = %ld, h = %ld", yDim2, expandXDim1), return false);
 
@@ -926,71 +822,236 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
         "x's dim1 not equal to 1, x's dim1 = %ld", xDim1), return false);
     OP_TILING_CHECK(xDim2 != expandXDim1, OP_LOGE(nodeName,
         "x's dim2 not equal to h, x's dim2 = %ld, h = %ld", xDim2, expandXDim1), return false);
-
-    const gert::StorageShape* oriXShape = context->GetOptionalInputShape(ORI_X_INDEX);
-    if (oriXShape != nullptr) {
-        int64_t oriXDim0 = oriXShape->GetStorageShape().GetDim(0);
-        int64_t oriXDim1 = oriXShape->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(
-            oriXDim0 != expertIdsDim0,
-            OP_LOGE(nodeName, "ori_x's dim0 not equal to bs, ori_x's dim0 = %ld, bs = %ld", oriXDim0, expertIdsDim0),
-            return false);
-        OP_TILING_CHECK(
-            oriXDim1 != expandXDim1,
-            OP_LOGE(nodeName, "ori_x's dim1 not equal to h, ori_x's dim1 = %ld, h = %ld", oriXDim1, expandXDim1),
-            return false);
-    }
-
-    const gert::StorageShape* constExpertAlpha1Shape = context->GetOptionalInputShape(CONST_EXPERT_ALPHA_1_INDEX);
-    if (constExpertAlpha1Shape != nullptr) {
-        int64_t constExpertAlpha1Dim0 = constExpertAlpha1Shape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(
-            constExpertAlpha1Dim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
-            OP_LOGE(
-                nodeName,
-                "const_expert_alpha_1's dim0 not equal to const_expert_num, const_expert_alpha_1's dim0 = %ld, "
-                "const_expert_num = %u",
-                constExpertAlpha1Dim0, tilingData.moeDistributeCombineV2Info.constExpertNum),
-            return false);
-    }
-
-    const gert::StorageShape* constExpertAlpha2Shape = context->GetOptionalInputShape(CONST_EXPERT_ALPHA_2_INDEX);
-    if (constExpertAlpha2Shape != nullptr) {
-        int64_t constExpertAlpha2Dim0 = constExpertAlpha2Shape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(
-            constExpertAlpha2Dim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
-            OP_LOGE(
-                nodeName,
-                "const_expert_alpha_2's dim0 not equal to const_expert_num, const_expert_alpha_2's dim0 = %ld, "
-                "const_expert_num = %u",
-                constExpertAlpha2Dim0, tilingData.moeDistributeCombineV2Info.constExpertNum),
-            return false);
-    }
-
-    const gert::StorageShape* constExpertVShape = context->GetOptionalInputShape(CONST_EXPERT_V_INDEX);
-    if (constExpertVShape != nullptr) {
-        int64_t constExpertVDim0 = constExpertVShape->GetStorageShape().GetDim(0);
-        int64_t constExpertVDim1 = constExpertVShape->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(
-            constExpertVDim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
-            OP_LOGE(
-                nodeName,
-                "const_expert_v's dim0 not equal to const_expert_num, const_expert_v's dim0 = %ld, const_expert_num = "
-                "%u",
-                constExpertVDim0, tilingData.moeDistributeCombineV2Info.constExpertNum),
-            return false);
-        OP_TILING_CHECK(
-            constExpertVDim1 != expandXDim1,
-            OP_LOGE(
-                nodeName, "const_expert_v's dim1 not equal to h, const_expert_v's dim1 = %ld, h = %ld",
-                constExpertVDim1, expandXDim1),
-            return false);
-    }
     return true;
 }
 
-static bool CheckSharedAttrs(const char *nodeName,
-    const MoeDistributeCombineV2TilingData &tilingData)
+static bool CheckExpertInputShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
+    const char *nodeName, bool isActiveMask)
+{
+    // 校验输入expertIds的维度1并设k, bs已校验过
+    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
+    int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
+    int64_t expertIdsDim1 = expertIdsStorageShape->GetStorageShape().GetDim(1);
+    int64_t moeExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.moeExpertNum);
+    int64_t zeroExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.zeroExpertNum);
+    int64_t copyExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.copyExpertNum);
+    int64_t constExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum);
+    OP_TILING_CHECK((expertIdsDim1 <= 0) || (expertIdsDim1 > K_MAX || (expertIdsDim1 > moeExpertNum
+        + zeroExpertNum + copyExpertNum + constExpertNum)),
+        OP_LOGE(nodeName, "expertIds's dim1(K) should be in (0, min(%ld, moeExpertNum"
+        " + zeroExpertNum + copyExpertNum + constExpertNum = %ld)], " "but got expertIds's dim1=%ld.", K_MAX, moeExpertNum
+        + zeroExpertNum + copyExpertNum + constExpertNum, expertIdsDim1), return false);
+    tilingData.moeDistributeCombineV2Info.k = static_cast<uint32_t>(expertIdsDim1);
+
+    // 校验expertScales的维度
+    const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(EXPERT_SCALES_INDEX);
+    int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
+    int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0,
+        OP_LOGE(nodeName, "expertScales's dim0 not equal to bs, expertScales's dim0 = %ld, bs = %ld",
+        expertScalesDim0, expertIdsDim0), return false);
+    OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1, OP_LOGE(nodeName,
+        "expertScales's dim1 not equal to k, expertScales's dim1 = %ld, k = %ld",
+        expertScalesDim1, expertIdsDim1), return false);
+
+    // 校验activeMask的维度
+    if (isActiveMask) {
+        const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+        int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(xActiveMaskDim0 != expertIdsDim0,
+            OP_LOGE(nodeName, "xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is %ld, "
+            "expertIds's dim0 is %ld", xActiveMaskDim0, expertIdsDim0), return false);
+        OP_TILING_CHECK(((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
+            (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != expertIdsDim1)),
+            OP_LOGE(nodeName, "xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is %ld, "
+            "expertIds's dim1 is %ld", xActiveMaskStorageShape->GetStorageShape().GetDim(1), expertIdsDim1), return false);
+    }
+
+    return true;
+}
+
+static bool CheckXInputTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
+    const char *nodeName, uint32_t A)
+{
+    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
+    int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
+    
+    // 校验expandX的维度并设h
+    int64_t tpWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.tpWorldSize);
+    const gert::StorageShape *expandXStorageShape = context->GetInputShape(EXPAND_X_INDEX);
+    int64_t expandXDim0 = expandXStorageShape->GetStorageShape().GetDim(0);
+    int64_t expandXDim1 = expandXStorageShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(expandXDim0 < static_cast<int64_t>(A) * tpWorldSize, OP_LOGE(nodeName,
+        "expandX's dim0 not greater than or equal to A * tpWorldSize, expandX's dim0 = %ld, A = %ld, tpWorldSize = %ld",
+        expandXDim0, static_cast<int64_t>(A), tpWorldSize), return false);
+    OP_TILING_CHECK((expandXDim1 < H_MIN) || (expandXDim1 > H_MAX),
+        OP_LOGE(nodeName, "expandX's dim1(H) should be in [%ld, %ld], but got %ld.",
+        H_MIN, H_MAX, expandXDim1), return false); // 32对齐
+    tilingData.moeDistributeCombineV2Info.h = static_cast<uint32_t>(expandXDim1);
+    tilingData.moeDistributeCombineV2Info.armAvgFactor = 1.0f / expandXDim1;
+
+    // 校验sharedExpertX的维度
+    const gert::StorageShape *sharedExpertXShape = context->GetOptionalInputShape(SHARED_EXPERT_X_INDEX);
+    tilingData.moeDistributeCombineV2Info.hasSharedExpertX = (sharedExpertXShape != nullptr);
+    if (sharedExpertXShape != nullptr) {
+        int64_t sharedExpertXDim0 = sharedExpertXShape->GetStorageShape().GetDim(0);
+        int64_t sharedExpertXDim1 = sharedExpertXShape->GetStorageShape().GetDim(1);
+        if (sharedExpertXShape->GetStorageShape().GetDimNum() == TWO_DIMS) {
+            OP_TILING_CHECK(sharedExpertXDim0 != expertIdsDim0, OP_LOGE(nodeName,
+                "sharedExpertX's dim0 not equal to bs, sharedExpertX's dim0 = %ld, bs = %ld", sharedExpertXDim0, expertIdsDim0), return false);
+            OP_TILING_CHECK(sharedExpertXDim1 != expandXDim1, OP_LOGE(nodeName,
+                "sharedExpertX's dim1 not equal to h, sharedExpertX's dim1 = %ld, h = %ld", sharedExpertXDim1, expandXDim1), return false);
+        } else {
+            int64_t sharedExpertXDim2 = sharedExpertXShape->GetStorageShape().GetDim(TWO_DIMS);
+            OP_TILING_CHECK(sharedExpertXDim0 * sharedExpertXDim1 != expertIdsDim0,
+                OP_LOGE(nodeName, "sharedExpertX's dim0 * sharedExpertX's dim1 not equal to bs, sharedExpertX's dim0 * sharedExpertX's dim1 = %ld, bs = %ld",
+                sharedExpertXDim0 * sharedExpertXDim1, expertIdsDim0), return false);
+            OP_TILING_CHECK(sharedExpertXDim2 != expandXDim1, OP_LOGE(nodeName,
+                "sharedExpertX's dim2 not equal to h, sharedExpertX's dim2 = %ld, h = %ld", sharedExpertXDim2, expandXDim1), return false);
+        }
+    }
+
+    // 校验oriX的维度
+    const gert::StorageShape* oriXShape = context->GetOptionalInputShape(ORI_X_INDEX);
+    if (oriXShape != nullptr) {
+        OP_TILING_CHECK(oriXShape->GetStorageShape().GetDim(0) != expertIdsDim0, OP_LOGE(nodeName,
+            "ori_x's dim0 not equal to bs, ori_x's dim0 = %ld, bs = %ld", oriXShape->GetStorageShape().GetDim(0), expertIdsDim0), return false);
+        OP_TILING_CHECK(oriXShape->GetStorageShape().GetDim(1) != expandXDim1, OP_LOGE(nodeName, 
+            "ori_x's dim1 not equal to h, ori_x's dim1 = %ld, h = %ld", oriXShape->GetStorageShape().GetDim(1), expandXDim1), return false);
+    }
+
+    return true;
+}
+
+static bool CheckGroupInfoShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
+    const char *nodeName, bool isShared, uint32_t &A)
+{
+    uint32_t globalBs = tilingData.moeDistributeCombineV2Info.globalBs;
+    uint32_t sharedExpertNum = tilingData.moeDistributeCombineV2Info.sharedExpertNum;
+    uint32_t sharedExpertRankNum = tilingData.moeDistributeCombineV2Info.sharedExpertRankNum;
+    uint32_t rankNumPerSharedExpert = 0;
+    uint32_t epWorldSizeU32 = tilingData.moeDistributeCombineV2Info.epWorldSize;
+    uint32_t maxBs = globalBs / epWorldSizeU32;
+    uint32_t maxSharedGroupNum = 0;
+    uint32_t localMoeExpertNum = tilingData.moeDistributeCombineV2Info.moeExpertPerRankNum;
+    int64_t tpWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.tpWorldSize);
+    bool hasElasticInfo = tilingData.moeDistributeCombineV2Info.hasElasticInfo;
+    
+    if ((sharedExpertNum != 0U) && (sharedExpertRankNum != 0U)) { // 除零保护
+        rankNumPerSharedExpert = sharedExpertRankNum / sharedExpertNum;
+        maxSharedGroupNum = (epWorldSizeU32 + rankNumPerSharedExpert - 1U) / rankNumPerSharedExpert;
+    } 
+
+    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
+    int64_t expertIdsDim1 = expertIdsStorageShape->GetStorageShape().GetDim(1);
+    
+    A = isShared ? (maxBs * maxSharedGroupNum) : (globalBs * std::min(static_cast<int64_t>(localMoeExpertNum), expertIdsDim1));
+    
+    if (hasElasticInfo) {
+        const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(ELASTIC_INFO_INDEX);
+        const int64_t elasticInfoDim0 = elasticInfoStorageShape->GetStorageShape().GetDim(0);
+        const int64_t epWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.epWorldSize);
+        OP_TILING_CHECK(elasticInfoDim0 != (ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * epWorldSize),
+            OP_LOGE(nodeName, "elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, "
+            "elasticInfo's dim0 is %ld, epWorldSize is %ld.", elasticInfoDim0, epWorldSize), return false);
+        A = std::max( static_cast<int64_t>(maxBs * maxSharedGroupNum) , globalBs * std::min(static_cast<int64_t>(localMoeExpertNum), expertIdsDim1));
+    }
+
+    // 校验assistInfo的维度
+    const gert::StorageShape *assistInfoStorageShape = context->GetInputShape(ASSIST_INFO_INDEX);
+    int64_t assistInfoDim0 = assistInfoStorageShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(assistInfoDim0 < static_cast<int64_t>(A * ASSIST_NUM_PER_A), OP_LOGE(nodeName,
+        "assistInfoForCombine's dim0 < A * 128, assistInfoForCombine's dim0 is %ld, A * 128 is %ld.", assistInfoDim0, static_cast<int64_t>(A * ASSIST_NUM_PER_A)),
+        return false);
+
+    // 校验epSendCount和tpSendCount的维度
+    int64_t epWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.epWorldSize);
+    int64_t moeExpertPerRankNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.moeExpertPerRankNum);
+    const gert::StorageShape *epSendCountStorageShape = context->GetInputShape(EP_SEND_COUNTS_INDEX);
+    const gert::StorageShape *tpSendCountStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
+    const int64_t epSendCountDim0 = epSendCountStorageShape->GetStorageShape().GetDim(0);
+    const int64_t tpSendCountDim0 = tpSendCountStorageShape->GetStorageShape().GetDim(0);
+    int64_t localEpSendCountSize = (isShared) ? epWorldSize : epWorldSize * moeExpertPerRankNum;
+    if (hasElasticInfo) {
+        localEpSendCountSize = std::max(epWorldSize, epWorldSize * moeExpertPerRankNum);
+    }
+    OP_TILING_CHECK(epSendCountDim0 < localEpSendCountSize * tpWorldSize, OP_LOGE(nodeName,
+        "epSendCount's dim0 not greater than or equal to localEpSendCountSize * tpWorldSize, "
+        "epSendCount's dim0 is %ld, localEpSendCountSize is %ld, tpWorldSize is %ld.", epSendCountDim0, localEpSendCountSize, tpWorldSize), return false);
+    OP_TILING_CHECK(tpSendCountDim0 != tpWorldSize, OP_LOGE(nodeName,
+        "tpSendCount's dim0 not equal to tpWorldSize, tpSendCount's dim0 is %ld, tpWorldSize is %ld.", tpSendCountDim0, tpWorldSize), return false);
+
+    return true;
+}
+
+static bool CheckARNTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
+    const char *nodeName)
+{
+    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
+    const gert::StorageShape *expandXStorageShape = context->GetInputShape(EXPAND_X_INDEX);
+    int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
+    int64_t expandXDim1 = expandXStorageShape->GetStorageShape().GetDim(1);
+
+    // 校验residualX的维度
+    const gert::StorageShape *residualXShape = context->GetOptionalInputShape(RESIDUAL_X_INDEX);
+    if (residualXShape != nullptr) {
+        int64_t residualXDimBs = residualXShape->GetStorageShape().GetDim(0);
+        int64_t residualXDim1 = residualXShape->GetStorageShape().GetDim(1);
+        int64_t residualXDimH = residualXShape->GetStorageShape().GetDim(TWO_DIMS);
+        OP_TILING_CHECK(residualXDimBs != expertIdsDim0,
+            OP_LOGE(nodeName, "residualX's dim0 not equal to bs, residualX's dim0 = %ld, bs = %ld",
+            residualXDimBs, expertIdsDim0), return false);
+        OP_TILING_CHECK(residualXDim1 != RESIDUAL_X_DIM2_SIZE,
+            OP_LOGE(nodeName, "residualX's dim1 not equal to %ld, residualX's dim1 = %ld",
+            RESIDUAL_X_DIM2_SIZE, residualXDim1), return false);
+        OP_TILING_CHECK(residualXDimH != expandXDim1, OP_LOGE(nodeName,
+            "residualX's dim2 not equal to h, residualX's dim2 = %ld, h = %ld",
+            residualXDimH, expandXDim1), return false);
+    }
+
+    // 校验gamma的维度
+    const gert::StorageShape *gammaShape = context->GetOptionalInputShape(GAMMA_INDEX);
+    if (gammaShape != nullptr) {
+        int64_t gammaDimH = gammaShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(gammaDimH != expandXDim1, OP_LOGE(nodeName, "gamma's dim0 not equal to h, gamma's dim0 = %ld, h = %ld",
+            gammaDimH, expandXDim1), return false);
+    }
+
+    return true;
+}
+
+static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
+    const char *nodeName, bool isShared, bool isActiveMask)
+{
+    // 校验Expert相关输入的维度并设k
+    OP_TILING_CHECK(!CheckExpertInputShape(context, tilingData, nodeName, isActiveMask),
+        OP_LOGE(nodeName, "expert input param dim check failed."), return false);
+
+    // 校验GroupInfo的维度
+    uint32_t A = 0U;
+    OP_TILING_CHECK(!CheckGroupInfoShape(context, tilingData, nodeName, isShared, A),
+        OP_LOGE(nodeName, "group info param dim check failed."), return false);
+    
+    // 校验X相关输入的维度并设h
+    OP_TILING_CHECK(!CheckXInputTensorShape(context, tilingData, nodeName, A),
+        OP_LOGE(nodeName, "x input param dim check failed."), return false);
+    
+    // 校验AddRmsNorm相关输入的维度
+    OP_TILING_CHECK(!CheckARNTensorShape(context, tilingData, nodeName),
+        OP_LOGE(nodeName, "AddRmsNorm input param dim check failed."), return false);
+
+    // 校验输出Tensor的维度
+    OP_TILING_CHECK(!CheckOutputTensorShape(context, tilingData, nodeName),
+        OP_LOGE(nodeName, "output param dim check failed."), return false);
+
+    // 检查常量专家输入shape各维度
+    OP_TILING_CHECK(!CheckConstExpertTensorShape(context, tilingData, nodeName),
+        OP_LOGE(nodeName, "const expert param dim check failed."), return false);
+   
+    return true;
+}
+
+static bool CheckSharedAttrs(const char *nodeName, const MoeDistributeCombineV2TilingData &tilingData)
 {
     uint32_t sharedExpertNum = tilingData.moeDistributeCombineV2Info.sharedExpertNum;
     uint32_t sharedExpertRankNum = tilingData.moeDistributeCombineV2Info.sharedExpertRankNum;
@@ -1189,7 +1250,7 @@ static ge::graphStatus MoeDistributeCombineAddRmsNormA3TilingFuncImpl(gert::Tili
     isShared = (epRankId < sharedExpertRankNum);
 
     // 检查shape各维度并赋值h,k
-    OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, isActiveMask, localMoeExpertNum, hasElasticInfo),
+    OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, isActiveMask),
         OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
 
     // 校验win区大小
