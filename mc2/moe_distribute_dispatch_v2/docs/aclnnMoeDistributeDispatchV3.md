@@ -442,15 +442,17 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
+  
       调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
       - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
           - commAlg配置为""或nullptr：依照HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE环境变量配置，选择"fullmesh"或"hierarchy"公式。
-          - commAlg配置为"fullmesh": 要求 >= 2 \* (Bs \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)。
-          - commAlg配置为"hierarchy": 要求 >= moeExpertNum \* Bs \* (H \* sizeof(dtypeX) + 4 \* ((K + 7) / 8 \* 8) \* sizeof(uint32)) + 4MB + 100MB，不要求moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-      - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
-      - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
-      - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。
+          - commAlg配置为"fullmesh": 设置大小要求 >= 2 \* (Bs \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)。
+          - commAlg配置为"hierarchy": 设置大小要求>= moeExpertNum \* Bs \* (H \* sizeof(dtypeX) + 4 \* ((K + 7) / 8 \* 8) \* sizeof(uint32)) + 4MB + 100MB，不要求moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+          - ep通信域内，当commAlg为"fullmesh_v1"或空字符串或空指针时：设置大小要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
+          - ep通信域内，当commAlg为"fullmesh_v2"时：设置大小要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
+          - tp通信域内：设置大小要求 \>= (A \* Align512(Align32(h \* 2) + 44) + A \* Align512(h \* 2)) \* 2。
+          - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。
 
   - **HCCL_INTRA_PCIE_ENABLE**和**HCCL_INTRA_ROCE_ENABLE**：
       - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。

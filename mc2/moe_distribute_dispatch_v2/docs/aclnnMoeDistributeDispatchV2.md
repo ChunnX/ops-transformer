@@ -430,12 +430,15 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
       - 对于MoE专家卡，(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum))；当(localExpertNum > 1)时，不支持TP域通信。
 
 6. **HCCL_BUFFSIZE**：
+
    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
      - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
-     - commAlg为"fullmesh"：要求 (≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
-     - commAlg为"hierarchy"：要求 (≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB)，不要求 (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24)。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
+     - commAlg为"fullmesh"：设置大小要求 (≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
+     - commAlg为"hierarchy"：设置大小要求 (≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB)，不要求 (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24)。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+     - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
+     - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
 
 7. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
    <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。
