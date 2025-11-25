@@ -8,13 +8,13 @@
 
 
 ## 功能说明
--  **功能更新**：（相对与aclnnMlaPrologV2weightNz的差异）
+-  **功能更新**：（相对于aclnnMlaPrologV2weightNz的差异）
     -  新增query与key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
     -  预埋可选输入与参数（例如actualSeqLenOptional等）。
     -  调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
 -  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路；
-    -  首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后,再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
-    -  第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后,乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
+    -  首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
+    -  第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后，乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
     -  第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
     -  第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
     -  权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
@@ -146,7 +146,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | rmsnormGammaCkv | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\gamma$参数，Device侧的aclTensor。      | - 不支持空Tensor | BFLOAT16       | ND         | 1维：(Hckv)                        |-   |
   | ropeSin         | 输入      |  用于计算旋转位置编码的正弦参数矩阵，Device侧的aclTensor。              | - 支持B=0,S=0,T=0的空Tensor | BFLOAT16       | ND         | 2维：(T,Dr)、3维：(B,S,Dr)         |-   |
   | ropeCos         | 输入      | 用于计算旋转位置编码的余弦参数矩阵，Device侧的aclTensor。           | - 支持B=0,S=0,T=0的空Tensor  | BFLOAT16       | ND         | 2维：(T,Dr)、3维：(B,S,Dr)         |-   |
-  | kvCacheRef      | 输入      |于cache索引的aclTensor，计算结果原地更新（对应公式中的$k^C$）。  | - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持dim=0  | BFLOAT16、INT8 | ND   | 4维：(BlockNum,BlockSize,Nkv,Hckv) |-   |
+  | kvCacheRef      | 输入      |用于cache索引的aclTensor，计算结果原地更新（对应公式中的$k^C$）。  | - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持dim=0  | BFLOAT16、INT8 | ND   | 4维：(BlockNum,BlockSize,Nkv,Hckv) |-   |
   | krCacheRef      | 输入      | 用于key位置编码的cache，计算结果原地更新（对应公式中的$k^R$），Device侧的aclTensor。    | 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持dim=0| BFLOAT16、INT8 | ND         | 4维：(BlockNum,BlockSize,Nkv,Dr)   |-   |
   | cacheIndexOptional | 输入      | 用于存储kvCache和krCache的索引，Device侧的aclTensor。| - 支持B=0,S=0,T=0的空Tensor <br>- 取值范围需在[0,BlockNum*BlockSize)内| INT64   | ND  | 1维：(T)、2维：(B,S) |-   |
   | dequantScaleXOptional      | 输入      | 预留参数，当前版本暂未使用。 | - 必须传入空指针   | FLOAT          | ND         | -                                  |-   |
@@ -159,7 +159,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | actualSeqLenOptional     | 输入      |   预留接口，传入空指针即可  | --| -  | -- | --    |-   |
   | rmsnormEpsilonCq           | 输入      | 计算$c^Q$的RmsNorm公式中的$\epsilon$参数，Host侧参数。        | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型 | double         | -          | - |-   |
   | rmsnormEpsilonCkv          | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\epsilon$参数，Host侧参数。   | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型   | double         | -          | -  |-   |
-  | cacheModeOptional          | 输入      | 示kvCache的模式，Host侧参数。| - 用户未特意指定时，建议传入"PA_BSND" - 仅支持char*类型 - 可选值为"PA_BSND"、"PA_NZ" | char*          | -          | - |-   |
+  | cacheModeOptional          | 输入      | 表示kvCache的模式，Host侧参数。| - 用户未特意指定时，建议传入"PA_BSND" - 仅支持char*类型 - 可选值为"PA_BSND"、"PA_NZ" | char*          | -          | - |-   |
   | queryNormFlag     | 输入      |   预留接口，传入false即可  | --| bool  | -- | --    |-   |
   | weightQuantMode     | 输入      |   预留接口，传入0即可  | --| int  | -- | --    |-   |
   | kvQuantMode     | 输入      |   预留接口，传入0即可  | --| int  | -- | --    |-   |

@@ -35,13 +35,13 @@ c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AI
 
 MlaProlog算子有多个Matmul运算：
 
-1、MatmulCq：将BS合轴，做为M轴，HeadSizeCq为N轴，HeadSizeX为K轴，核间对HeadSizeCq按照cube核数进行切分，每个核分配一定的子块
+1、MatmulCq：将BS合轴，作为M轴，HeadSizeCq为N轴，HeadSizeX为K轴，核间对HeadSizeCq按照cube核数进行切分，每个核分配一定的子块
 
-2、MatmulCkvKr：将BS合轴，做为M轴，HeadSizeCkvKr为N轴，HeadSizeX为K轴，核间对HeadSizeCkvKr进行切分，分为64块
+2、MatmulCkvKr：将BS合轴，作为M轴，HeadSizeCkvKr为N轴，HeadSizeX为K轴，核间对HeadSizeCkvKr进行切分，分为64块
 
-3、MatmulQcQr：将BS合轴，做为M轴，HeadSizeQcQr为N轴，HeadSizeCq为K轴，核间对HeadSizeQcQr按照cube核数进行切分，每个核分配一定的子块
+3、MatmulQcQr：将BS合轴，作为M轴，HeadSizeQcQr为N轴，HeadSizeCq为K轴，核间对HeadSizeQcQr按照cube核数进行切分，每个核分配一定的子块
 
-4、MatmulQn：将BS合轴，做为M轴，HeadSizeCkv为N轴，dimHeadSizeQc为K轴
+4、MatmulQn：将BS合轴，作为M轴，HeadSizeCkv为N轴，dimHeadSizeQc为K轴
 
 ## 流水设计
 
@@ -62,7 +62,7 @@ MlaProlog融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的
 
 4、由于和RopeQr的分核策略不同，因此RopeQr计算前，也需要AIC和AIV之间的同步控制（SYNC_MMQCQR_ROPEQR）
 
-5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖与MatmulQcQrde的输出 ,因此需要做cube的全核同步（SYNC_ALL_CUBE）
+5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出 ,因此需要做cube的全核同步（SYNC_ALL_CUBE）
 
 6、Vector核运算前，需要做vector的全核同步（SYNC_ALL_VECTOR），确保数据流水搬运
 
@@ -195,7 +195,7 @@ c^{KV}k^R = x \cdot [W^{DKV}|W^{KR}] = [x \cdot W^{DKV}|x \cdot W^{KR}] \tag{7}
 $$
 
 ### RMSNormCkv
-对压缩后的$KV$矩阵按行进行RMSNorm(均方根归一化)操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的$rmsnormGammaCkv$和$rmsnormEpsilonCkv$。
+对压缩后的$KV$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的$rmsnormGammaCkv$和$rmsnormEpsilonCkv$。
 $$
 c_{norm}^{KV} = RMSNorm(c^{KV}) \tag{8}
 $$
@@ -406,7 +406,7 @@ PA场景
 
 
 ### KRCache
-在计算得到输入$x$对应的KeyRope结果后，将KeyRope结果更新到KRCache的对应位置。当前引入cacheIndex来标示计算结果在KRCache中的存储位置。
+在计算得到输入$x$对应的KeyRope结果后，将KeyRope结果更新到KRCache的对应位置。当前引入cacheIndex来标识计算结果在KRCache中的存储位置。
 
 KRCache的更新逻辑同KVCache。
 

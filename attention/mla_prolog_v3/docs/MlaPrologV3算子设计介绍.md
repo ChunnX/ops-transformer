@@ -37,13 +37,13 @@ c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AI
 
 MlaPrologV3算子有多个Matmul运算：
 
-1、MatmulCq：将BS合轴，做为M轴，HeadSizeCq为N轴，HeadSizeX为K轴，核间对HeadSizeCq按照cube核数进行切分，每个核分配一定的子块
+1、MatmulCq：将BS合轴，作为M轴，HeadSizeCq为N轴，HeadSizeX为K轴，核间对HeadSizeCq按照cube核数进行切分，每个核分配一定的子块
 
-2、MatmulCkvKr：将BS合轴，做为M轴，HeadSizeCkvKr为N轴，HeadSizeX为K轴，核间对HeadSizeCkvKr进行切分，分为64块
+2、MatmulCkvKr：将BS合轴，作为M轴，HeadSizeCkvKr为N轴，HeadSizeX为K轴，核间对HeadSizeCkvKr进行切分，分为64块
 
-3、MatmulQcQr：将BS合轴，做为M轴，HeadSizeQcQr为N轴，HeadSizeCq为K轴，核间对HeadSizeQcQr按照cube核数进行切分，每个核分配一定的子块
+3、MatmulQcQr：将BS合轴，作为M轴，HeadSizeQcQr为N轴，HeadSizeCq为K轴，核间对HeadSizeQcQr按照cube核数进行切分，每个核分配一定的子块
 
-4、MatmulQn：将BS合轴，做为M轴，HeadSizeCkv为N轴，dimHeadSizeQc为K轴
+4、MatmulQn：将BS合轴，作为M轴，HeadSizeCkv为N轴，dimHeadSizeQc为K轴
 
 ## 流水设计
 
@@ -55,18 +55,18 @@ MlaPrologV3融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧�
 ![MlaProlog流水控制图](../../../docs/figures/MlaProlog流水控制.png)
 
 1、MatmulCq计算的时候，对Hcq进行了分核，单核没有计算一个完整的token，所以在RmsNormCq计算前，
-需要做AIC与AIV之间的同步控制（SYNC_MMCQ_NOMRCQ)
+需要做AIC与AIV之间的同步控制（SYNC_MMCQ_NOMRCQ）
 
 2、MatmulCkvKr计算的时候，也是对Hcq进行了分核，单核没有计算一个完整的token，所以在RmsNormCkv计算前，也
-需要做AIC与AIV之间的同步控制（SYNC_MMCKVKR_NOMRCKV)
+需要做AIC与AIV之间的同步控制（SYNC_MMCKVKR_NORMCKV）
 
-3、由于RmsNormCq按照行切分到不同核上，因此在做MatmulQcQr计算的时候，也需要AIV与AIC的同步控制（SYNC_NOMRCQ_MMQCQR)
+3、由于RmsNormCq按照行切分到不同核上，因此在做MatmulQcQr计算的时候，也需要AIV与AIC的同步控制（SYNC_NOMRCQ_MMQCQR）
 
-4、由于和RopeQr的分核策略不同，因此RopeQr计算前，也需要AIC和AIV之间的同步控制（SYNC_MMQCQR_ROPEQR)
+4、由于和RopeQr的分核策略不同，因此RopeQr计算前，也需要AIC和AIV之间的同步控制（SYNC_MMQCQR_ROPEQR）
 
-5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖与MatmulQcQrde shuchu ,因此需要做cube的全核同步（SYNC_ALL_CUBE)
+5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出，因此需要做Cube的全核同步（SYNC_ALL_CUBE）
 
-6、Vector核运算前，需要做vector的全核同步（SYNC_ALL_VECTOR)，确保数据流水搬运
+6、Vector核运算前，需要做Vector的全核同步（SYNC_ALL_VECTOR），确保数据流水搬运
 
 ## TilingKey划分
 TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个二进制位，具体实现如下：
@@ -74,7 +74,7 @@ TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个�
 |-------|------|----|-------|
 |0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
 |4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
-|6-9|QUANT_MODE|量化场景|0-MMQcQr量化，1-MMQcQr量化+KVcache量化，2-MMcqCkvKr量化+MMQcQr量化，3-MMCqCkvkr量化+MMQcQr量化+KVcache量化|
+|6-9|QUANT_MODE|量化场景|0-MMQcQr量化，1-MMQcQr量化+KVCache量化，2-MMcqCkvKr量化+MMQcQr量化，3-MMCqCkvkr量化+MMQcQr量化+KVCache量化|
 |10|ENABLE_DEQUANT_OPTIONAL|反量化使能，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
@@ -171,7 +171,7 @@ $$
 本章节（以及后续章节）涉及的矩阵乘法模块使用AscendC Kernel API中Matmul高阶API实现。相关API使用可以参考官网[算子实现->矩阵编程（高阶API）](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0041.html)开发指南。
 
 ### RMSNormCq
-对压缩后的$Q$矩阵按行进行RMSNorm(均方根归一化)操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的 rmsnormGammaCq 和 rmsnormEpsilonCq。
+对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的 rmsnormGammaCq 和 rmsnormEpsilonCq。
 $$
 c_{\mathrm{norm}}^Q = \mathrm{RmsNorm}(c^Q) \tag{2}
 $$
@@ -198,11 +198,11 @@ c^{KV}k^R = x \cdot [W^{DKV}|W^{KR}] = [x \cdot W^{DKV}|x \cdot W^{KR}] \tag{7}
 $$
 
 ### RMSNormCkv
-对压缩后的$KV$矩阵按行进行RMSNorm(均方根归一化)操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的rmsnormGammaCkv和rmsnormEpsilonCkv。
+对压缩后的$KV$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的rmsnormGammaCkv和rmsnormEpsilonCkv。
 $$
 c_{\mathrm{norm}}^{KV} = \mathrm{RmsNorm}(c^{KV}) \tag{8}
 $$
-RmsNorm的计算参考公式（3）-（4）。
+RMSNorm的计算参考公式（3）-（4）。
 
 ### PostQuant/Dequant
 - 基本概念
@@ -402,7 +402,7 @@ PA场景
   ![KVCacheScatter_PA_ND](../../../docs/figures/KVCacheScatter_PA_ND.jpg)
 - KVCache使用NZ格式存储，其更新流程如图4所示。数据分形格式的介绍可以参考官网指南-[数据排布格式
 ](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0104.html)。
-  - 当前按NZ格式存储KVCache时，是将整个Block存储成NZ格式；小块内是以行为主(Row Major)的排布，形状如Z字型；块与块之间是以列为主的排布，形状如N字形。将完整的H(Hidden States)按32B长度的小块进行分块后，在ND格式下连续存储的小块，在NZ格式下需要需要跳$32B * BlockSize$存储，即需要设置stride为$32B * BlockSize$。
+  - 当前按NZ格式存储KVCache时，是将整个Block存储成NZ格式；小块内是以行为主(Row Major)的排布，形状如Z字型；块与块之间是以列为主的排布，形状如N字形。将完整的H(Hidden States)按32B长度的小块进行分块后，在ND格式下连续存储的小块，在NZ格式下需要跳$32B * BlockSize$存储，即需要设置stride为$32B * BlockSize$。
   - 图4 KVCacheScatter操作（PA场景-NZ格式）
   ![PA_NZ](../../../docs/figures/PA_NZ.jpg)
 
