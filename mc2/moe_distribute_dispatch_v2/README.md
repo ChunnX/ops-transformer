@@ -23,7 +23,7 @@ $$
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该算子必须与`MoeDistributeCombineV2`配套使用。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该算子必须与`MoeDistributeCombineV2`或`MoeDistributeCombineAddRmsNorm`配套使用。
 
-> 说明：aclnnMoeDistributeCombineV2、aclnnMoeDistributeCombineAddRmsNorm算子在后续文档中统称为CombineV2系列算子。
+> 说明：MoeDistributeCombineV2、MoeDistributeCombineAddRmsNorm算子在后续文档中统称为CombineV2系列算子。
 
 相较于`MoeDistributeDispatch`算子，该算子变更如下：
 
@@ -269,6 +269,7 @@ $$
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`elasticInfoOptional`。
     * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
+    * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     * 不支持`expandScalesOut`。
 ## 约束说明

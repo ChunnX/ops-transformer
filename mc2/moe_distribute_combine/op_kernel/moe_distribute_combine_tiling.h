@@ -26,6 +26,9 @@ struct MoeDistributeCombineA2Info {
     uint32_t expertSharedType;           // expert type
     uint32_t sharedExpertRankNum;        // shared expert number
     uint32_t moeExpertNum;               // moe expert number
+    uint32_t zeroExpertNum;              // zero expert number
+    uint32_t copyExpertNum;              // copy expert number
+    uint32_t constExpertNum;             // const expert number
     uint32_t globalBs;                   // globalBs = BS * worldSize
     uint32_t bs;                         // bs
     uint32_t k;                          // k
@@ -33,6 +36,7 @@ struct MoeDistributeCombineA2Info {
     uint32_t aivNum;                     // aivNum
     uint64_t totalUbSize;                // epWorldSize
     bool isTokenMask;                    // input active mask 1dims or not
+    bool isExpertMask;                   // input active mask 2dims or not
     int8_t reserved[7];                  // Pad 7 int8 for memory alignment
 };
 
