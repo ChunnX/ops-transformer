@@ -1096,7 +1096,7 @@ FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS_TEMPLATE>::ProcessVec2
         int64_t biN2GSumOffset = extraInfo.biN2GoIdx * this->s1Size * fp32BaseSize;
         int64_t sumGmOffset = bOffset + biN2GSumOffset;
         for (int64_t s1oIdx = 0; s1oIdx < extraInfo.s1Vec2OuterSize; ++s1oIdx) {
-            int sumGmRealOffset = 0;
+            int64_t sumGmRealOffset = 0;
             extraInfo.s1Vec2BaseSize = this->s1Vec2BaseSize;
             if (s1oIdx == extraInfo.s1Vec2OuterSize - 1) {
                 extraInfo.s1Vec2BaseSize = extraInfo.s1Vec2BaseTailSize;
