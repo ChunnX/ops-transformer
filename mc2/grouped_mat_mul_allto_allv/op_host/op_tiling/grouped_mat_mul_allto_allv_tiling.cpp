@@ -317,10 +317,10 @@ static bool CheckDimValue(
         !CheckSendCntAndRecvCnt(attrs, BsK, A, H, E_ep, epWorldSize),
         OP_LOGE(C_INNER_DEBUG, "CheckSendCntAndRecvCnt failed!"), return false);
 
-    std::vector<int64_t> epWorldSizeOptional{8, 16, 32, 64};
+    std::vector<int64_t> epWorldSizeOptional{8, 16, 32, 64, 128};
     OP_TILING_CHECK(
         std::find(epWorldSizeOptional.begin(), epWorldSizeOptional.end(), epWorldSize) == epWorldSizeOptional.end(),
-        OP_LOGE(C_INNER_DEBUG, "epWorldSize[%ld] should be 8\16\32\64!", epWorldSize), return false);
+        OP_LOGE(C_INNER_DEBUG, "epWorldSize[%ld] should be 8\16\32\64\128!", epWorldSize), return false);
 
     tilingData->commonTilingInfo.BsK = static_cast<uint64_t>(BsK);
     tilingData->commonTilingInfo.H = static_cast<uint64_t>(H);
