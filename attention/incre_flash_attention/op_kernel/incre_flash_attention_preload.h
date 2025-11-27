@@ -269,15 +269,15 @@ protected:
     // L0_A
     TBuf<TPosition::A2> tmpBufL0A;
     LocalTensor<KV_T> aL0TensorPingPong[2];
-    BufferManager<TPosition::A2, 2> l0aBufferManager;
+    BufferManager<TPosition::A2, 2> l0aBufferManager;   // 2:l0a buf num
     // L0_B
     TBuf<TPosition::B2> tmpBufL0B;
     LocalTensor<KV_T> bL0TensorPingPong[2];
-    BufferManager<TPosition::B2, 2> l0bBufferManager;
+    BufferManager<TPosition::B2, 2> l0bBufferManager;   // 2:l0b buf num
     // L0_C
     TBuf<TPosition::CO1> tmpBufL0C;
     LocalTensor<MM_OUT_T> cL0TensorPingPong[2];
-    BufferManager<TPosition::CO1, 2> l0cBufferManager;
+    BufferManager<TPosition::CO1, 2> l0cBufferManager;  // 2:l0c buf num
 #endif
 
     // 临时tbuf

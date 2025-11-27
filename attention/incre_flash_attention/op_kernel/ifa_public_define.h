@@ -635,8 +635,8 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
         PipeBarrier<PIPE_V>();
     }
 
-    for (uint32_t loopCount = blockCount / 2; loopCount > 0; loopCount = blockCount / 2) {
-        blockCount = (blockCount + 1) / 2;
+    for (uint32_t loopCount = blockCount / 2; loopCount > 0; loopCount = blockCount / 2) {  // 2: 二分
+        blockCount = (blockCount + 1) / 2;  // 2: 除2向上取整
         for (uint32_t j = 0; j < loopCount; j++) {
             Max(srcUb[j * dtypeMask], srcUb[j * dtypeMask], srcUb[(j + blockCount) * dtypeMask], dtypeMask,
                 dealRowCount, repeatParamsMax);
