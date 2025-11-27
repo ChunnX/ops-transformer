@@ -273,8 +273,7 @@ $$
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
     - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。 此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * 2 + 16 * Align8(`K`))B + 104MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
     - 参数约束：
-        - `epWorldSize`：取值支持[16, 256]，且保证是8的整数倍。
-            - `HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0：最大值为64。
+        - `epWorldSize`：取值支持16、32、64。
         - `moeExpertNum`：需满足`moeExpertNum` / `epWorldSize` <= 24。
             - 环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，无上述约束。
         - `globalBs`：当每个rank的`BS`数一致时，`globalBs` = `BS` * `epWorldSize` 或 `globalBs` = 0；当每个rank的`BS`数不一致时，`globalBs` = `maxBs` * `epWorldSize`或者`globalBs` = 256 * `epWorldSize`，其中`maxBs`表示表示单rank `BS`最大值，建议按`maxBs` * `epWorldSize`传入，固定按256 * `epWorldSize`传入在后续版本BS支持大于256的场景下会无法支持。

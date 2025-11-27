@@ -171,6 +171,12 @@ $$
    <td>ND</td>
   </tr>
   <tr>
+   <td>performanceInfoOptional</td>
+   <td>可选输入</td>
+   <td>表示各卡通信耗时打点信息。结合DeepXTrace工具使用，可动态记录各卡通信时间。单次算子调用各卡通信耗时会累加到该Tensor上，用户使用前按需清零。</td>
+   <td>INT64</td>
+   <td>ND</td>
+  </tr>
   <tr>
    <td>groupEp</td>
    <td>属性</td>
@@ -315,6 +321,7 @@ $$
     * 不支持常量专家场景，不支持`constExpertNum`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`和`constExpertVOptional`，使用默认值即可。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     * 不支持`expandScalesOptional`。
+    * 不支持`performanceInfoOptional`。
     * 不支持`commAlg`。
 
 ## 约束说明
@@ -353,6 +360,7 @@ $$
     - 一个模型中的`MoeDistributeCombineV2`和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - `performanceInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(`ep_world_size`,)。
     - `commAlg`：当前版本支持nullptr， ""， "fullmesh"， "hierarchy"四种输入方式，若配置"hierarchy"，建议搭配搭配25.0.RC1.1及以上版本驱动使用。
         - nullptr和""：仅在此场景下，`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`配置生效。当`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0时，调用"hierarchy"算法，否则调用"fullmesh"算法。不推荐使用该方式。
         - "fullmesh"：token数据直接通过RDMA方式发往topk个目标专家所在的卡。
@@ -364,8 +372,7 @@ $$
             - `commAlg` = "hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍。
         - `Bs`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 256]。
     - 属性约束：
-        - `epWorldSize`：取值支持[16, 256]，且保证是8的整数倍。
-            - `commAlg` = "hierarchy"：最大值为64。
+        - `epWorldSize`：依commAlg取值，"fullmesh"支持16、32、64、128、192、256；"hierarchy"支持16、32、64。
         - `moeExpertNum`：取值范围(0, 512]。
             -  还需满足`moeExpertNum` / `epWorldSize` <= 24，`commAlg` = "hierarchy"无此约束。
         - `commQuantMode`：2，开启通信int8量化，仅当`commAlg` = "hierarchy"且驱动版本不低于25.0.RC1.1时支持。
