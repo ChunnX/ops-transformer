@@ -17,12 +17,12 @@
 #include "util/math_util.h"
 #include "tiling_base/tiling_util.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "example/add_example/op_kernel/add_example_tiling_data.h"
-#include "example/add_example/op_kernel/add_example_tiling_key.h"
+#include "examples/add_example/op_kernel/add_example_tiling_data.h"
+#include "examples/add_example/op_kernel/add_example_tiling_key.h"
 
 namespace optiling {
 
-using namespace Ops::Math::OpTiling;
+using namespace Ops::Transformer::OpTiling;
 
 const uint32_t BLOCK_DIM = 8;
 const int64_t TILE_NUM = 8;

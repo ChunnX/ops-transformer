@@ -52,6 +52,7 @@ if(ENABLE_EXPERIMENTAL)
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mc2/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/experimental/examples/**/op_host/CMakeLists.txt"
         )
     else()
         file(GLOB OP_HOST_CMAKE_FILES 

@@ -8,4 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-add_modules_sources(OPTYPE add_example ACLNNTYPE aclnn)
+if (BUILD_OPEN_PROJECT)
+    target_sources(op_host_aclnn PRIVATE
+        add_example_def.cpp
+    )
+    add_modules_sources(OPTYPE add_example ACLNNTYPE aclnn)
+else()
+    add_modules_sources(OPTYPE add_example ACLNNTYPE aclnn)
+endif()

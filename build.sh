@@ -389,7 +389,7 @@ function build_example()
     
                 echo "pkg_mode:${PKG_MODE} vendor_name:${VENDOR}"
                 export CUST_LIBRARY_PATH="${ASCEND_OPP_PATH}/vendors/${VENDOR}_transformer/op_api/lib"     # 仅自定义算子需要
-                export CUST_INCLUDE_PATH="${ASCEND_OPP_PATH}/vendors/${VENDOR}_transformer/op_api/include" # 仅自定义算子需要
+                export CUST_INCLUDE_PATH="${ASCEND_OPP_PATH}/vendors/${VENDOR}_transformer/op_api/include/aclnnop" # 仅自定义算子需要
                 ABSOLUTE_EXAMPLES_PATH=$(realpath ${BUILD_PATH}/../examples/mc2)
                 ABSOLUTE_MC2_PATH=$(realpath ${BUILD_PATH}/../mc2)
                 REAL_FILE_PATH=$(realpath "$file")
