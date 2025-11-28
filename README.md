@@ -36,7 +36,6 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 │   │   ├── docs                   # 算子说明文档
 │   │   ├── examples               # 算子使用示例
 │   │   ├── op_host                # 算子信息库、Tiling、InferShape相关实现目录
-│   │   │   └── op_api             # 算子aclnn接口实现目录
 │   │   ├── op_kernel              # 算子Kernel目录
 │   │   └── README.md              # 算子说明文档
 │   ├── ...

@@ -72,9 +72,9 @@ ${op_name}                              # 替换为实际算子名的小写下�
 
 **交付件2：${op_name}_def.cpp**
 
-算子原型定义。
+算子信息库。
 
-以自定义`AddExample`算子说明为例，请参考[AddExample算子原型定义](../../examples/add_example/op_host/add_example_def.cpp)。
+以自定义`AddExample`算子说明为例，请参考[AddExample算子信息库](../../examples/add_example/op_host/add_example_def.cpp)。
 ## Tiling实现
 
 ### Tiling简介
@@ -95,28 +95,34 @@ Tiling一共需要三个交付件：`${op_name}_tiling.cpp` `${op_name}_tiling_k
 
 ```CPP
 // ${op_name}_tiling.cpp
-// 1.Tiling需要获取运行环境信息，包括可用核数、UB(Unified Buffer)大小，并将获取到的信息传递给CompileInfo
+// 1.Tiling需要获取运行环境信息，包括可用核数、UB(Unified Buffer)大小，并将获取到的信息传递给CompileInfo，自动生成aclnn不调用该函数，直接返回ge::GRAPH_SUCCESS即可。
 static ge::graphStatus TilingParse(gert::TilingParseContext* context)
 {
-    // 1.1获取环境信息
-    auto compileInfo = context->GetCompiledInfo<CompileInfo>();
-    OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
-    auto platformInfo = context->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    // 1.2获取可用核数
-    compileInfo->totalCoreNum = ascendcPlatform.GetCoreNumAiv();
-    // 1.3获取UB大小
-    uint64_t ubSizePlatForm;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
-    compileInfo->ubSize = static_cast<int64_t>(ubSizePlatForm);
-    ...
     return ge::GRAPH_SUCCESS;
+    // 若手写aclnn接口，可以按照下面步骤完善parse函数
+    // // 1.1获取环境信息
+    // auto compileInfo = context->GetCompiledInfo<CompileInfo>();
+    // OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
+    // auto platformInfo = context->GetPlatformInfo();
+    // auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    // // 1.2获取可用核数
+    // compileInfo->totalCoreNum = ascendcPlatform.GetCoreNumAiv();
+    // // 1,3获取UB大小
+    // uint64_t ubSizePlatForm;
+    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
+    // compileInfo->ubSize = static_cast<int64_t>(ubSizePlatForm);
+    // ...
+    // return ge::GRAPH_SUCCESS;
 }
 
 // 2.Tiling计算主入口
 static ge::graphStatus TilingFunc(gert::TilingContext* context){
-    // 2.1获取TilingParse中传递的环境信息
-    auto compileInfo = reinterpret_cast<const CompileInfo*>(tilingContext->GetCompileInfo());
+    // 2.1获取平台信息
+    uint64_t ubSize;
+    int64_t coreNum;
+    OP_CHECK_IF(
+        GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetPlatformInfo error"),
+        return ge::GRAPH_FAILED);
     
     // 2.2获取输入信息
     // 获取输入张量shape信息
@@ -365,13 +371,13 @@ __aicore__ inline void AddExample<T>::Process()
     # 安装run包
     ./build_out/cann-ops-transformer-${vendor_name}_linux-${arch}.run
     ```
-    自定义算子包安装在`${ASCEND_HOME_PATH}/latest/opp/vendors`路径中，`${ASCEND_HOME_PATH}`表示CANN软件安装目录，可提前在环境变量中配置。自定义算子包不支持卸载。
+    自定义算子包安装在`${ASCEND_HOME_PATH}/opp/vendors`路径中，`${ASCEND_HOME_PATH}`表示CANN软件安装目录，可提前在环境变量中配置。自定义算子包不支持卸载。
     
 
 ## 算子验证
 ```bash
     # 执行前需要导入环境变量
-    export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/latest/opp/vendors/${vendor_name}/op_api/lib:${LD_LIBRARY_PATH}
+    export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/${vendor_name}_transformer/op_api/lib:${LD_LIBRARY_PATH}
 ```
 
 1. **UT验证。**
