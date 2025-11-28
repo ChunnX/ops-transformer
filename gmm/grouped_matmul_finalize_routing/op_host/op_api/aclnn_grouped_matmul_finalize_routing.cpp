@@ -382,7 +382,7 @@ static inline std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t> GetX1X2Dim
     auto x1DimNum = x1->GetViewShape().GetDimNum();
     auto x2DimNum = x2->GetViewShape().GetDimNum();
     if (!(x1DimNum == TWO_DIM_NUM && x2DimNum == THREE_DIM_NUM)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "input x Dims is %lu, weight Dims is %lu.", x1DimNum, x2DimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "input x Dims is %zu, weight Dims is %zu.", x1DimNum, x2DimNum);
     }
 
     const op::Shape x1Shape = x1->GetViewShape();
@@ -399,8 +399,8 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool 
 {
     if (!isWeightInt4) {
         if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim && params.scale->GetViewShape().GetDim(1) == params.x2NDim)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Scale fisrt dim should equal to weight EDim %ld, but actual is %ld.\
-            Scale last dim should equal to weight NDim %ld or 1, but actual is %ld.",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Scale fisrt dim should equal to weight EDim %lld, but actual is %lld.\
+            Scale last dim should equal to weight NDim %lld or 1, but actual is %lld.",
                 params.x2EDim, params.scale->GetViewShape().GetDim(0), params.x2NDim, params.scale->GetViewShape().GetDim(1));
             return false;
         }
@@ -409,9 +409,9 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool 
         if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim
               && params.scale->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM
               && params.scale->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Scale fisrt dim should equal to weight EDim %ld, but actual is %ld,"
-                                             " Scale second dim should be 1, but actual is %ld,"
-                                             " Scale last dim should equal to weight NDim %ld or 1, but actual is %ld.",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Scale fisrt dim should equal to weight EDim %lld, but actual is %lld,"
+                                             " Scale second dim should be 1, but actual is %lld,"
+                                             " Scale last dim should equal to weight NDim %lld or 1, but actual is %lld.",
                     params.x2EDim, params.scale->GetViewShape().GetDim(0),
                     params.scale->GetViewShape().GetDim(ONE_DIM_NUM), params.x2NDim, params.scale->GetViewShape().GetDim(TWO_DIM_NUM));
             return false;
@@ -421,7 +421,7 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool 
                   && params.offset->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim 
                   && params.offset->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "w4a8 offset's dim value should equal scale,"
-                    " which is (%ld, %ld, %ld)",
+                    " which is (%lld, %lld, %lld)",
                     params.offset->GetViewShape().GetDim(0),
                     params.offset->GetViewShape().GetDim(ONE_DIM_NUM), params.offset->GetViewShape().GetDim(TWO_DIM_NUM));
             return false;
@@ -429,7 +429,7 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool 
         if (!(params.bias->GetViewShape().GetDim(0) == params.x2EDim
             && params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "w4a8 bias's dim value should be (e, n),"
-                    " which is (%ld, %ld)",
+                    " which is (%lld, %lld)",
                     params.bias->GetViewShape().GetDim(0), params.bias->GetViewShape().GetDim(ONE_DIM_NUM));
             return false;
         }
@@ -446,39 +446,39 @@ static inline bool CheckDimValue(GroupedMatmulParams &params, int64_t x2EDim, in
     }
 
     if ((params.pertokenScaleOptional != nullptr) && (!(params.pertokenScaleOptional->GetViewShape().GetDim(0) == x1MDim))) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pertokenScale fisrt dim should equal to x MDim %ld, but actual is %ld.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pertokenScale fisrt dim should equal to x MDim %lld, but actual is %lld.",
             x1MDim, params.pertokenScaleOptional->GetViewShape().GetDim(0));
         return false;
     }
 
     if (!(params.groupList->GetViewShape().GetDim(0) == x2EDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupList fisrt dim should equal to weight EDim %ld, but actual is %ld.", x2EDim,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupList fisrt dim should equal to weight EDim %lld, but actual is %lld.", x2EDim,
             params.groupList->GetViewShape().GetDim(0));
         return false;
     }
 
     if (params.shareInput != nullptr &&
         !(params.shareInput->GetViewShape().GetDim(0) <= outputBS && params.shareInput->GetViewShape().GetDim(1) == x2NDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "shareInput fisrt dim should less than or equal to outputBS %ld, but actual is %ld.\
-        shareInput last dim should equal to weight NDim %ld, but actual is %ld.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "shareInput fisrt dim should less than or equal to outputBS %lld, but actual is %lld.\
+        shareInput last dim should equal to weight NDim %lld, but actual is %lld.",
             outputBS, params.shareInput->GetViewShape().GetDim(0), x2NDim, params.shareInput->GetViewShape().GetDim(1));
         return false;
     }
 
     if (params.logit != nullptr && !(params.logit->GetViewShape().GetDim(0) == x1MDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "logit fisrt dim should equal to x MDim %ld, but actual is %ld.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "logit fisrt dim should equal to x MDim %lld, but actual is %lld.",
             x1MDim, params.logit->GetViewShape().GetDim(0));
         return false;
     }
 
     if (!(params.rowIndex->GetViewShape().GetDim(0) == x1MDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "rowIndex fisrt dim should equal to x MDim %ld, but actual is %ld.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "rowIndex fisrt dim should equal to x MDim %lld, but actual is %lld.",
             x1MDim, params.rowIndex->GetViewShape().GetDim(0));
         return false;
     }
 
     OP_CHECK(outputBS <= x1MDim,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "outputBS should be less than or equal to x MDim, but outputBS is %ld, x MDim is %ld.", outputBS,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "outputBS should be less than or equal to x MDim, but outputBS is %lld, x MDim is %lld.", outputBS,
         x1MDim),
         return false);
 
@@ -489,7 +489,7 @@ static inline bool CheckDimValue(GroupedMatmulParams &params, int64_t x2EDim, in
 
     OP_CHECK((shareInputOffset + shareInputDim) <= outputBS,
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "shareInputOffset add shareInputDim should be less than or equal to outputBS, but shareInputOffset is %ld, weight is %ld.",
+        "shareInputOffset add shareInputDim should be less than or equal to outputBS, but shareInputOffset is %lld, weight is %lld.",
         shareInputOffset + shareInputDim, outputBS),
         return false);
 
@@ -510,7 +510,7 @@ static inline bool CheckShapeForWeightNz(const aclTensor *x1, const aclTensor *x
     int64_t alignedX1K = ((x1KDim + aligneValue - 1) / aligneValue) * aligneValue;
     if (alignedX1K != x2K1Dim * aligneValue) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "AlignedK1 value %ld is not matched with k1 value times aligneValue, which is %ld.", alignedX1K,
+            "AlignedK1 value %lld is not matched with k1 value times aligneValue, which is %lld.", alignedX1K,
             x2K1Dim * aligneValue);
         return false;
     }
@@ -544,31 +544,31 @@ static inline bool CheckShape(GroupedMatmulParams &params)
     }
 
     OP_CHECK(x1KDim == x2KDim, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x1 k dim and x2 k dim should be same,"
-                " but x1 is %ld, x2 is %ld.", x1KDim, x2KDim), return false);
+                " but x1 is %lld, x2 is %lld.", x1KDim, x2KDim), return false);
 
     if (!isWeightInt4) {
         OP_CHECK(((x2KDim % NZ_K0_VALUE_INT8 == 0) && (x2NDim % NZ_K0_VALUE_INT8_TRANS == 0) && (x2NDim >= N_VALUE_256)),
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "k dim %ld and n dim %ld do not support."
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "k dim %lld and n dim %lld do not support."
                 " only support k mod 16 equal 0, n mod 32 equal 0 and n bigger or equal 256", x2KDim, x2NDim), return false);
     } else {
         int n_align = isWeightNz ? NZ_N_VALUE_ALIGN : ND_N_VALUE_ALIGN;
         OP_CHECK(((x2NDim % n_align == 0) && (x2KDim % ND_K_VALUE_ALIGN == 0) && (x2NDim > N_VALUE_64) && (x2KDim > K_VALUE_128)),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Weight k dim %ld and n dim %ld do not support."
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Weight k dim %lld and n dim %lld do not support."
             " In W4A8 mode, only support k mod 64 equal 0, n mod %d equal 0, k should bigger than 128, n should bigger than 64.", x2KDim, x2NDim, n_align),
             return false);
     }
 
     int64_t outDimNum = params.out->GetViewShape().GetDimNum();
-    OP_CHECK(outDimNum == 2, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out dim num should be equal to 2, but is %ld.", outDimNum), return false);
+    OP_CHECK(outDimNum == 2, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out dim num should be equal to 2, but is %lld.", outDimNum), return false);
     int64_t outputBS = params.out->GetViewShape().GetDim(outDimNum - PENULTIMATE_DIM);
     int64_t outNDim = params.out->GetViewShape().GetDim(outDimNum - 1);
 
     OP_CHECK(outputBS <= x1MDim && outputBS >= 0,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out 1st dim should be less than or equal to x MDim , but out 1st dim is %ld", outputBS), return false);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out 1st dim should be less than or equal to x MDim , but out 1st dim is %lld", outputBS), return false);
     OP_CHECK(outNDim == x2NDim, OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "Out 2nd dim should be equal to weight NDim, but out 2nd dim is %ld, weight NDim is %ld.", outNDim, x2NDim), return false);
+        "Out 2nd dim should be equal to weight NDim, but out 2nd dim is %lld, weight NDim is %lld.", outNDim, x2NDim), return false);
     OP_CHECK(shareInputOffset >= 0, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sharedInputOffset should bigger than or equal to 0"), return false);
-    OP_CHECK(groupListType == 1, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupListType is 1, but is %ld", groupListType), return false);
+    OP_CHECK(groupListType == 1, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupListType is 1, but is %lld", groupListType), return false);
 
     CHECK_RET(CheckDimValue(params, x2EDim, x2NDim, x1MDim, outputBS, shareInputOffset, isWeightInt4), false);
 
@@ -605,8 +605,8 @@ static inline bool CheckTuningConfig(const GroupedMatmulParams &params)
     if (tuningConfig != nullptr && tuningConfig->Size() > 0) {
         auto tuningConfigVal = (*tuningConfig)[0];
         if (tuningConfigVal < 0 || tuningConfigVal > x1Shape[0]) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting Invalid tuningConfigOptional (%ld)! It should"
-            " be a non-negative num and smaller than (%ld)", tuningConfigVal, x1Shape[0]);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting Invalid tuningConfigOptional (%lld)! It should"
+            " be a non-negative num and smaller than (%lld)", tuningConfigVal, x1Shape[0]);
             return false;
         }
     }
@@ -684,7 +684,7 @@ static op::Shape SwapLastTwoDimValue(const op::Shape tensorShape)
         swapedShape.SetDim(dimNum - 2, lastDim);
     }
     else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimNum is not supported , which is %ld.", dimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimNum is not supported , which is %lld.", dimNum);
     }
     return swapedShape;
 }
@@ -924,14 +924,14 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams& param
     }
 
     if (params.dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightNz dtype must be 0, but is %ld.", params.dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightNz dtype must be 0, but is %lld.", params.dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     int64_t viewDimNum = params.w->GetViewShape().GetDimNum();
     if (viewDimNum < MIN_DIM_NUM_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-              "GroupedMatmulFinalizeRoutingWeightNz w's view dimNum should greater than 1, but is %ld.", viewDimNum);
+              "GroupedMatmulFinalizeRoutingWeightNz w's view dimNum should greater than 1, but is %lld.", viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1101,10 +1101,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(const aclTensor *x
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd dtype must be 0, but is %ld.", dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd dtype must be 0, but is %lld.", dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd x2's view dimNum should greater than 1, but is %ld.", viewDimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd x2's view dimNum should greater than 1, but is %lld.", viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd transpose should be false");
@@ -1171,10 +1171,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(const aclTensor 
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0, but is %ld.", dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0, but is %lld.", dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd x2's view dimNum should greater than 1, but is %ld.", viewDimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd x2's view dimNum should greater than 1, but is %lld.", viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd transpose should be false");
@@ -1238,10 +1238,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
     }
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd dtype must be 0, but is %ld.", dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd dtype must be 0, but is %lld.", dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2's view dimNum should greater than 1, but is %ld.", viewDimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2's view dimNum should greater than 1, but is %lld.", viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd transpose should be false");
