@@ -62,13 +62,15 @@ struct MoeDistributeDispatchInfo {
     uint32_t bs;                         // bs
     uint32_t k;                          // k
     uint32_t h;                          // h
+    uint32_t a;                          // a
     uint32_t aivNum;                     // aivNum
     bool isQuant;                        // whether quant or not
     bool reserved1;                      // reserved
     bool reserved2;                      // reserved
     bool reserved3;                      // reserved
     uint64_t totalUbSize;                // epWorldSize
-    uint64_t totalWinSize;
+    uint64_t totalWinSizeEp;
+    uint64_t totalWinSizeTp;
     uint32_t expertTokenNumsType;        // expert token nums type, support 0: cumsum mode, 1: count mode
 };
 

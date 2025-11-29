@@ -60,9 +60,11 @@ struct MoeDistributeCombineInfo {
     uint32_t bs;
     uint32_t k;
     uint32_t h;
+    uint32_t a;
     uint32_t aivNum;
     uint64_t totalUbSize;
-    uint64_t totalWinSize;
+    uint64_t totalWinSizeEp;
+    uint64_t totalWinSizeTp;
 };
 struct MoeDistributeCombineTilingData {
     Mc2InitTiling mc2InitTiling;

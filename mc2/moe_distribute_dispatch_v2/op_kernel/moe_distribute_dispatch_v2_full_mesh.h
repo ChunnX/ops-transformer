@@ -316,7 +316,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFunc>::Ini
     aivId_ = GetBlockIdx();
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     winContext_[COMM_EP_IDX] = (__gm__ HcclOpResParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSize);
+    totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
     auto realWinSize = winContext_[COMM_EP_IDX]->winSize;
     CheckWindowSize(totalWinSize_, realWinSize, tpipe_, expandXOut);
     SetTilingDataAndCal(tilingData);

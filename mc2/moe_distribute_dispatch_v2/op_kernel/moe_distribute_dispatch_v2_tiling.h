@@ -30,13 +30,15 @@ struct MoeDistributeDispatchV2Info {
     uint32_t bs;                         // bs
     uint32_t k;                          // k
     uint32_t h;                          // h
+    uint32_t a;                          // a
     uint32_t aivNum;                     // aivNum
     bool isTokenMask;                    // input active mask 1dims or not
     bool isExpertMask;                   // input active mask 2dims or not
     bool hasElasticInfo;                 // has elasticinfo or not
     bool reserved3;                      // reserved
     uint64_t totalUbSize;                // epWorldSize
-    uint64_t totalWinSize;
+    uint64_t totalWinSizeEp;
+    uint64_t totalWinSizeTp;
     uint32_t expertTokenNumsType;        // expert token nums type, support 0: cumsum mode, 1: count mode
     int32_t zeroComputeExpertNum;       // sum of zero、copy and const expert nums
     uint32_t cumSumUBMinValue;           // Minimum value for CumSum remainder（in UB）

@@ -85,12 +85,13 @@ private:
                                        uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
     {
-        uint32_t curRankId = ctxIdx == COMM_EP_IDX ? epRankId_ : tpRankId_;
+        uint32_t curRankId = (ctxIdx == COMM_EP_IDX) ? epRankId_ : tpRankId_;
+        uint64_t winDataSizeOffset = (ctxIdx == COMM_EP_IDX) ? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
         if (curRankId == rankId) {
-            return (GM_ADDR)(winContext_[ctxIdx]->localWindowsIn) + winDataSizeOffset_;
+            return (GM_ADDR)(winContext_[ctxIdx]->localWindowsIn) + winDataSizeOffset;
         }
         return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_[ctxIdx]->remoteRes[rankId].nextDevicePtr))->windowsIn)
-                        + winDataSizeOffset_;
+                        + winDataSizeOffset;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
@@ -217,13 +218,15 @@ private:
     uint32_t recStatusNumPerCore_{0};
     int32_t reduceSumWorkNeedSize_{0};
     int32_t expertIdsCnt_{0};
-    uint64_t winDataSizeOffset_{0};
+    uint64_t winDataSizeOffsetEp_{0};
+    uint64_t winDataSizeOffsetTp_{0};
     uint64_t expertPerSizeOnWin_{0};
     uint64_t windyquantOffset_;
     bool isShareExpertRank_ = false;
     bool isQuant_ = false;
     float sumTarget_;
-    uint64_t totalWinSize_{0};
+    uint64_t totalWinSizeEp_{0};
+    uint64_t totalWinSizeTp_{0};
     uint32_t gatherCount_{0};
     uint32_t expertTokenNumsType_{1};
     uint32_t preCnt_{0};
@@ -248,11 +251,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::Init(
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         selfDataStatusTensor[aivId_ * UB_ALIGN]);
     dataState_ = selfDataStatusTensor(aivId_ * UB_ALIGN);
-    if (dataState_ == 0) {
-        selfDataStatusTensor(aivId_ * UB_ALIGN) = 1;
-    } else {
-        selfDataStatusTensor(aivId_ * UB_ALIGN) = 0;
-    }
+    selfDataStatusTensor(aivId_ * UB_ALIGN) = (dataState_ == 0);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         selfDataStatusTensor[aivId_ * UB_ALIGN]);
     PipeBarrier<PIPE_ALL>();
@@ -263,11 +262,13 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::Init(
     moeExpertNum_ = tilingData->moeDistributeDispatchInfo.moeExpertNum;
     sharedExpertRankNum_ = tilingData->moeDistributeDispatchInfo.sharedExpertRankNum;
     expertTokenNumsType_ = tilingData->moeDistributeDispatchInfo.expertTokenNumsType;
-    totalWinSize_ = tilingData->moeDistributeDispatchInfo.totalWinSize;
+    totalWinSizeEp_ = tilingData->moeDistributeDispatchInfo.totalWinSizeEp;
+    totalWinSizeTp_ = tilingData->moeDistributeDispatchInfo.totalWinSizeTp;
     moeExpertRankNum_ = epWorldSize_ - sharedExpertRankNum_;
     moeExpertNumPerRank_ = moeExpertNum_ / moeExpertRankNum_;
     expertPerSizeOnWin_ = axisMaxBS_ * axisH_ * sizeof(XType);
-    winDataSizeOffset_ = dataState_ * epWorldSize_ * expertPerSizeOnWin_ * moeExpertNumPerRank_;
+    winDataSizeOffsetEp_ = dataState_ * epWorldSize_ * expertPerSizeOnWin_ * moeExpertNumPerRank_;
+    winDataSizeOffsetTp_ = dataState_ * (totalWinSizeTp_ / 2);
     tpRankId_ = tilingData->moeDistributeDispatchInfo.tpRankId;
     windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankId_);
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankId_);
@@ -295,8 +296,8 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::Init(
         tpWindowGM_ = GetWindAddrByRankId(COMM_TP_IDX, tpGatherRankId_);
         tpStatusWindowGM_ = GetWindStateAddrByRankId(COMM_TP_IDX, tpGatherRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(tpLocalWindowGM_), totalWinSize_);
-        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(tpWindowGM_), totalWinSize_);
+        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(tpLocalWindowGM_), totalWinSizeTp_);
+        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(tpWindowGM_), totalWinSizeTp_);
         OOMCheckAddrRange<int32_t>((__gm__ int32_t*)(tpLocalStatusWindowGM_), STATE_SIZE);
         OOMCheckAddrRange<int32_t>((__gm__ int32_t*)(tpStatusWindowGM_), STATE_SIZE);
 #endif
@@ -405,7 +406,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::SendToSharedE
         GlobalTensor<ExpandXOutType> dstWinGMTensor;
         dstWinGMTensor.SetGlobalBuffer((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, moeOnShareRank) + expertPerSizeOnWin_ * epRankId_));
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, moeOnShareRank)), totalWinSize_);
+        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, moeOnShareRank)), totalWinSizeEp_);
 #endif
         if constexpr (DynamicQuant || StaticQuant) {
             xInTensor_ = xInQueue_.AllocTensor<XType>();
@@ -517,7 +518,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::SendToMoeExpe
                         + hCommuSize_ * curExpertCnt); // 计算地址偏移
         dstWinGMTensor.SetGlobalBuffer((__gm__ ExpandXOutType*)rankGM);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, tempRankId)), totalWinSize_);
+        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, tempRankId)), totalWinSizeEp_);
 #endif
         if constexpr (DynamicQuant || StaticQuant) {
             xInTensor_ = xInQueue_.AllocTensor<XType>();

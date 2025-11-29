@@ -36,13 +36,15 @@ struct MoeDistributeCombineV2Info {
     uint32_t bs;
     uint32_t k;
     uint32_t h;
+    uint32_t a;
     uint32_t aivNum;
     bool isTokenMask;              // input active mask 1dims or not
     bool isExpertMask;             // input active mask 2dims or not
     bool hasSharedExpertX;         // input shared expert x or not
     bool hasElasticInfo;           // has elasticinfo or not
     uint64_t totalUbSize;
-    uint64_t totalWinSize;
+    uint64_t totalWinSizeEp;
+    uint64_t totalWinSizeTp;
     float armAvgFactor;
     float epsilon;
 };

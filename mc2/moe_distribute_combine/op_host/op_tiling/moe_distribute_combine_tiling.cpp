@@ -40,6 +40,7 @@
 #include "tiling/moe_tiling_base.h"
 #include "moe_distribute_combine_tiling_a2a3.h"
 #include "tiling_base/tiling_templates_registry.h"
+#include "mc2_hcom_topo_info.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;
 using namespace ge;
@@ -82,6 +83,7 @@ const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MAX_EP_WORLD_SIZE = 288;
 const int64_t MAX_TP_WORLD_SIZE = 2;
 const int64_t BS_UPPER_BOUND = 512;
+constexpr uint64_t TP_WORLD_SIZE_TWO = 2;
 
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024; // Bytes
@@ -118,7 +120,8 @@ static void PrintTilingDataInfo(const char *nodeName, MoeDistributeCombineTiling
     OP_LOGD(nodeName, "h is %d.", tilingData.moeDistributeCombineInfo.h);
     OP_LOGD(nodeName, "aivNum is %d.", tilingData.moeDistributeCombineInfo.aivNum);
     OP_LOGD(nodeName, "totalUbSize is %ld.", tilingData.moeDistributeCombineInfo.totalUbSize);
-    OP_LOGD(nodeName, "totalWinSize is %ld.", tilingData.moeDistributeCombineInfo.totalWinSize);
+    OP_LOGD(nodeName, "totalWinSizeEP is %lu.", tilingData.moeDistributeCombineInfo.totalWinSizeEp);
+    OP_LOGD(nodeName, "totalWinSizeTP is %lu.", tilingData.moeDistributeCombineInfo.totalWinSizeTp);
 }
 
 static void PrintA2TilingDataInfo(MoeDistributeCombineA2Info &info)
@@ -458,6 +461,7 @@ static bool CheckTensorShape(gert::TilingContext *context, MoeDistributeCombineT
     } else { // 本卡为moe专家
         A = globalBs * std::min(static_cast<int64_t>(localExpertNum), expertIdsDim1);
     }
+    tilingData.moeDistributeCombineInfo.a = A;
 
     // 校验expandX的维度并设h
     int64_t tpWorldSize = static_cast<int64_t>(tilingData.moeDistributeCombineInfo.tpWorldSize);
@@ -467,9 +471,7 @@ static bool CheckTensorShape(gert::TilingContext *context, MoeDistributeCombineT
     OP_TILING_CHECK(expandXDim0 < tpWorldSize * static_cast<int64_t>(A),
                     OP_LOGE(nodeName,
                             "expandX's dim0 not greater than or equal to A * tpWorldSize, expandXDim0 = %ld, A = %ld, "
-                            "tpWorldSize = %ld",
-                            expandXDim0, static_cast<int64_t>(A), tpWorldSize),
-                    return false);
+                            "tpWorldSize = %ld", expandXDim0, static_cast<int64_t>(A), tpWorldSize), return false);
     OP_TILING_CHECK((expandXDim1 != 7168),
                     OP_LOGE(nodeName, "expandX dims1(H) only supports 7168, but got %ld.", expandXDim1), return false);
     tilingData.moeDistributeCombineInfo.h = static_cast<uint32_t>(expandXDim1);
@@ -640,6 +642,23 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBufferSize, const char* nodeName)
+{
+    HcclComm hcclComm;
+    OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm)
+        != HCCL_SUCCESS, OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
+    if (hcclComm == nullptr) {
+        OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetGroupLocalWindowSize(groupStr, cclBufferSize) != HCCL_SUCCESS,
+            OP_LOGE(nodeName, "GetGroupLocalWindowSize from topoInfo failed"), return ge::GRAPH_FAILED);
+        OP_LOGD(nodeName, "Get cclBufferSize from topoInfo");
+    } else {
+        OP_LOGD(nodeName, "Get cclBufferSize from HCCL");
+    }
+    OP_TILING_CHECK(*cclBufferSize == 0,
+            OP_LOGE(nodeName, "Get cclBufferSize failed, cclBufferSize is 0"), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static void SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombineTilingData *tiling,
                         const std::string groupEp, const std::string groupTp)
 {
@@ -658,6 +677,47 @@ static void SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombine
     mc2CcTilingConfig.SetOpType(opType2);
     mc2CcTilingConfig.SetAlgConfig(algConfigReduceScatterStr);
     mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+}
+
+static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistributeCombineTilingData* tilingData,
+    const char *nodeName, uint32_t localMoeExpertNum)
+{
+    auto attrs = context->GetAttrs();
+    uint64_t maxWindowSizeEp = 0;
+    auto groupEpHccl = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
+    OP_TILING_CHECK(GetCclBufferSize(groupEpHccl, &maxWindowSizeEp, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Get Ep HcclBufferSizeEP failed, HcclBufferSizeEP is %lu", maxWindowSizeEp),
+        return ge::GRAPH_FAILED);
+    uint64_t h = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.h);
+    uint64_t epWorldSize = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.epWorldSize);
+    uint64_t maxBs = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.globalBs) / epWorldSize;
+    uint64_t actualSize = epWorldSize * maxBs * h * 2UL * 2UL * static_cast<uint64_t>(localMoeExpertNum);
+    if (actualSize > maxWindowSizeEp) {
+        OP_LOGE(nodeName,
+                "HCCL_BUFFSIZE is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu, localMoeExpertNum = %u,"
+                "ep_worldsize * maxBs * h * 2 * 2 * localMoeExpertNum = %luMB, HCCL_BUFFSIZE=%luMB.",
+                maxBs, h, epWorldSize, localMoeExpertNum, actualSize / MB_SIZE + 1UL, maxWindowSizeEp / MB_SIZE);
+        return ge::GRAPH_FAILED;
+    }
+    tilingData->moeDistributeCombineInfo.totalWinSizeEp = maxWindowSizeEp;
+    OP_LOGD(nodeName, "EpwindowSize = %lu", maxWindowSizeEp);
+
+    uint64_t tpWorldSize = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.tpWorldSize);
+    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
+        uint64_t maxWindowSizeTp = 0;
+        auto groupTpHccl = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_TP_INDEX));
+        OP_TILING_CHECK(GetCclBufferSize(groupTpHccl, &maxWindowSizeTp, nodeName) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "Get Ep HcclBufferSizeTP failed, HcclBufferSizeTP is %lu", maxWindowSizeTp),
+            return ge::GRAPH_FAILED);
+        actualSize = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.a) * (h * 2UL + 128UL) * 2UL;
+        OP_TILING_CHECK((actualSize > maxWindowSizeTp),
+        OP_LOGE(nodeName, "TP HCCL_BUFFSIZE is too SMALL, A = %u, h = %lu, NEEDED_HCCL_BUFFSIZE(A * (h * 2UL + 128UL) * 2UL)"
+            " = %luMB, TP HCCL_BUFFSIZE=%luMB.", tilingData->moeDistributeCombineInfo.a, 
+            h, actualSize / MB_SIZE + 1UL, maxWindowSizeTp / MB_SIZE), return ge::GRAPH_FAILED);
+        tilingData->moeDistributeCombineInfo.totalWinSizeTp = maxWindowSizeTp;
+        OP_LOGD(nodeName, "TpwindowSize = %lu", maxWindowSizeTp);
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext *context)
@@ -697,19 +757,8 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext 
                     OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
 
     // 校验win区大小
-    uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
-    uint64_t h = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.h);
-    uint64_t epWorldSize = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.epWorldSize);
-    uint64_t maxBs = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.globalBs) / epWorldSize;
-    uint64_t actualSize = epWorldSize * maxBs * h * 2UL * 2UL * static_cast<uint64_t>(localMoeExpertNum);
-    if (actualSize > maxWindowSize) {
-        OP_LOGE(nodeName,
-                "HCCL_BUFFSIZE is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu, localMoeExpertNum = %u,"
-                "ep_worldsize * maxBs * h * 2 * 2 * localMoeExpertNum = %luMB, HCCL_BUFFSIZE=%luMB.",
-                maxBs, h, epWorldSize, localMoeExpertNum, actualSize / MB_SIZE + 1UL, maxWindowSize / MB_SIZE);
-        return ge::GRAPH_FAILED;
-    }
-    tilingData->moeDistributeCombineInfo.totalWinSize = maxWindowSize;
+    OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName, localMoeExpertNum) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),

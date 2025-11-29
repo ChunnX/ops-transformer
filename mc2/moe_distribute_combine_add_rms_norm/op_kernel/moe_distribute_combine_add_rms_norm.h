@@ -115,6 +115,7 @@ private:
     __aicore__ inline void CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void BuffInit();
+    __aicore__ inline void InitTp(GM_ADDR XOut, GM_ADDR tpSendCount, const MoeDistributeCombineV2TilingData* tilingData);
     __aicore__ inline void SplitCoreCal();
     __aicore__ inline void WaitDispatch(uint32_t tokenIndex);
     __aicore__ inline void AddRmsNormAddCompute(uint32_t tokenIndex, uint32_t tokenOffset, uint32_t numCol,
@@ -134,13 +135,13 @@ private:
                        (epRankIdOriginal_ == rankId)
                            ? epWinContext_->localWindowsIn
                            : ((HcclRankRelationResV2*)(epWinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) +
-                   winDataSizeOffset_;
+                   winDataSizeOffsetEp_;
         } else {
             return (GM_ADDR)(
                        (tpRankId_ == rankId)
                            ? tpWinContext_->localWindowsIn
                            : ((HcclRankRelationResV2*)(tpWinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) +
-                   winDataSizeOffset_;
+                   winDataSizeOffsetTp_;
         }
     }
 
@@ -233,9 +234,11 @@ private:
     uint32_t stateOffset_{0};
     uint32_t sliceH_{1};  // H切片大小
     uint64_t activeMaskBsCnt_{0};
-    uint64_t winDataSizeOffset_{0};
+    uint64_t winDataSizeOffsetEp_{0};
+    uint64_t winDataSizeOffsetTp_{0};
     uint64_t winStatusOffset_{0};
-    uint64_t totalWinSize_{0};
+    uint64_t totalWinSizeEp_{0};
+    uint64_t totalWinSizeTp_{0};
     uint32_t selfSendCnt_{0};
     uint32_t tpRemoteSendCnt_{0};
     uint32_t activeMaskAlignSize_{0};
@@ -456,7 +459,8 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Init
 
     tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
     tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
-    totalWinSize_ = tilingData->moeDistributeCombineV2Info.totalWinSize;
+    totalWinSizeEp_ = tilingData->moeDistributeCombineV2Info.totalWinSizeEp;
+    totalWinSizeTp_ = tilingData->moeDistributeCombineV2Info.totalWinSizeTp;
     isInputTokenMaskFlag_ = tilingData->moeDistributeCombineV2Info.isTokenMask;
     isInputExpertMaskFlag_ = tilingData->moeDistributeCombineV2Info.isExpertMask;
     hasSharedExpertX_ = tilingData->moeDistributeCombineV2Info.hasSharedExpertX;
@@ -493,6 +497,30 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Init
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::InitTp(GM_ADDR XOut, GM_ADDR tpSendCount,
+    const MoeDistributeCombineV2TilingData* tilingData)
+{
+    auto contextGM1 = AscendC::GetHcclContext<1>();
+    tpWinContext_ = (__gm__ HcclOpResParam*)contextGM1;
+    tpSendCountGM_.SetGlobalBuffer((__gm__ int32_t*)tpSendCount);
+    tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
+    tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
+    tpWindowGM_ = GetWinAddrByRankId(tpRankId_, TP_DOMAIN);
+    CheckWindowSize(totalWinSizeTp_, tpWinContext_->winSize, tpipe_, XOut);
+    winDataSizeOffsetTp_ =
+        static_cast<uint64_t>(dataState_) * (tilingData->moeDistributeCombineV2Info.totalWinSizeTp / 2UL);
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+    for (int temptpRankId = 0; temptpRankId < tpWorldSize_; temptpRankId++) {
+        OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(temptpRankId, TP_DOMAIN)), totalWinSizeTp_);
+        OOMCheckAddrRange<int32_t>((__gm__ int32_t*)(GetWinStateAddrByRankId(temptpRankId, TP_DOMAIN)), STATE_SIZE);
+    }
+#endif
+    tpStateOffsetOnWin_ = tpRankId_ * WIN_ADDR_ALIGN;
+    tpRankWindow_.SetGlobalBuffer((__gm__ XType*)tpWindowGM_);
+    tpRemoteSendCnt_ = tpSendCountGM_(1 - tpRankId_);
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Init(
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount, GM_ADDR residualX,
     GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
@@ -508,8 +536,7 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Init
     InitDataStatus();
 
     // 检查hcclwinsize是否越界
-    auto realWinSize = epWinContext_->winSize;
-    CheckWindowSize(totalWinSize_, realWinSize, tpipe_, XOut);
+    CheckWindowSize(totalWinSizeEp_, epWinContext_->winSize, tpipe_, XOut);
 
     InitInputAndOutput(residualX, gamma, expandX, expertIds, expandIdx, epSendCount, expertScales, xActiveMask,
                        sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
@@ -524,13 +551,13 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Init
     PipeBarrier<PIPE_ALL>();
 
     // 当前win区划分为前后两半区，连续两次dispatch，切换半区
-    winDataSizeOffset_ =
-        static_cast<uint64_t>(dataState_) * (tilingData->moeDistributeCombineV2Info.totalWinSize / 2UL);
+    winDataSizeOffsetEp_ =
+        static_cast<uint64_t>(dataState_) * (tilingData->moeDistributeCombineV2Info.totalWinSizeEp / 2UL);
     winStatusOffset_ = COMBINE_STATE_OFFSET + dataState_ * WIN_STATE_OFFSET;  // 前面的预留给dispatch使用
     epWindowGM_ = GetWinAddrByRankId(epRankIdOriginal_, EP_DOMAIN);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempepRankId = 0; tempepRankId < epWorldSize_; tempepRankId++) {
-        OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempepRankId, EP_DOMAIN)), totalWinSize_);
+        OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempepRankId, EP_DOMAIN)), totalWinSizeEp_);
         OOMCheckAddrRange<float>((__gm__ float*)(GetWinStateAddrByRankId(tempepRankId, EP_DOMAIN)), STATE_SIZE);
     }
 #endif
@@ -545,21 +572,7 @@ __aicore__ inline void MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc>::Init
     }
     SplitCoreCal();
     if constexpr (IsNeedReduceScatter) {
-        auto contextGM1 = AscendC::GetHcclContext<1>();
-        tpWinContext_ = (__gm__ HcclOpResParam*)contextGM1;
-        tpSendCountGM_.SetGlobalBuffer((__gm__ int32_t*)tpSendCount);
-        tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
-        tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
-        tpWindowGM_ = GetWinAddrByRankId(tpRankId_, TP_DOMAIN);
-#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-        for (int temptpRankId = 0; temptpRankId < tpWorldSize_; temptpRankId++) {
-            OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(temptpRankId, TP_DOMAIN)), totalWinSize_);
-            OOMCheckAddrRange<int32_t>((__gm__ int32_t*)(GetWinStateAddrByRankId(temptpRankId, TP_DOMAIN)), STATE_SIZE);
-        }
-#endif
-        tpStateOffsetOnWin_ = tpRankId_ * WIN_ADDR_ALIGN;
-        tpRankWindow_.SetGlobalBuffer((__gm__ XType*)tpWindowGM_);
-        tpRemoteSendCnt_ = tpSendCountGM_(1 - tpRankId_);
+        InitTp(XOut, tpSendCount, tilingData);
     }
     tpipe_->InitBuffer(moeQueue_, BUFFER_NUM, hExpandXAlign32Size_);  // 28K
     flagRcvCount_ = axisK_ + sharedExpertNum_;
