@@ -1,152 +1,198 @@
-## 概述
+# QuantLightningIndexer
 
-此项目是基于昇腾Atlas A3的融合算子库，当前项目中包括[SparseFlashAttention](./docs/custom-npu_sparse_flash_attention.md)、[LightningIndexer](./docs/custom-npu_lightning_indexer.md)、[QuantLightningIndexer](./docs/custom-npu_quant_lightning_indexer.md)、[SwigluClipQuant](./docs/custom-npu_swiglu_clip_quant.md)和[MLAPrologV3](./docs/custom-npu_mla_prolog_v3.md)五个算子。
+## 产品支持情况
+| 产品                                                         | 是否支持 |
+| ------------------------------------------------------------ | :------: |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   | √  |
+|<term>Atlas A2 训练系列产品</term>   | √  |
 
-## 目录结构说明
+## 功能说明
 
-融合算子代码目录结构如下：
+-   API功能：QuantLightningIndexer是推理场景下，SparseFlashAttention（SFA）前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8，获取最大收益。
 
-  ```
-  ├── cmake                                     # 项目工程编译目录
-  ├── docs                                      # 算子使用说明和资料
-  ├── examples                                  # 算子的使用示例代码
-  ├── src                                       # 算子的源代码
-  |   ├── sparse_flash_attention                # 推理SparseFlashAttention（简称sfa）算子示例代码
-  |   |   ├── op_host                           # 算子信息库、Tiling、InferShape相关实现目录
-  |   |   ├── op_kernel                         # 算子Kernel目录
-  |   ├── lightning_indexer                     # 推理LightningIndexer（简称li）算子示例代码
-  |   |   ├── op_host                           # 算子信息库、Tiling、InferShape相关实现目录
-  |   |   ├── op_kernel                         # 算子Kernel目录
-  |   ├── quant_lightning_indexer               # 推理QuantLightningIndexer（简称QLI）算子示例代码
-  |   |   ├── op_host                           # 算子信息库、Tiling、InferShape相关实现目录
-  |   |   ├── op_kernel                         # 算子Kernel目录
-  |   ├── swiglu_clip_quant                     # 推理SwigluClipQuant算子示例代码
-  |   |   ├── op_host                           # 算子信息库、Tiling、InferShape相关实现目录
-  |   |   ├── op_kernel                         # 算子Kernel目录
-  |   ├── mla_prolog_v3                         # 推理MLAPrologV3算子示例代码
-  |   |   ├── op_host                           # 算子信息库、Tiling、InferShape相关实现目录
-  |   |   ├── op_kernel                         # 算子Kernel目录
-  |
-  ├── torch_ops_extension                       # torch_ops_extension目录
-      ├── custom_ops
-      │   ├── csrc                              # 自定义算子适配层c++代码目录
-      │   └── converter                         # 自定义算子包python侧converter代码
-      ├── setup.py                              # wheel包编译文件
-      ├── build_and_install.sh                  # 自定义算子wheel包编译与安装脚本
-  |
-  ├── build.sh                                  # 项目工程编译脚本
-  ├── CMakeList.txt                             # 项目工程编译配置文件
-  ├── README.md                              
-  ├── version.info                              # 项目版本信息
-  ```
-昇腾社区Ascend C自定义算子开发资料：[Ascend C自定义算子开发](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/800alpha002/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0001.html)
+-   计算公式：
+    $$out = \text{Top-}k\left\{[1]_{1\times g}@\left[(W@[1]_{1\times S_{k}})\odot\text{ReLU}\left(\left(Scale_Q@Scale_K^T\right)\odot\left(Q_{index}^{INT8}@{\left(K_{index}^{INT8}\right)}^T\right)\right)\right]\right\}$$
+    主要计算过程为：
+    1. 将某个token对应的输入参数`query`（$Q_{index}^{INT8}\in\R^{g\times d}$）乘以给定上下文`key`（$K_{index}^{INT8}\in\R^{S_{k}\times d}$），得到相关性。
+    2. 相关性结果与`query`和`key`对应的反量化系数`query_dequant_scale`（$Scale_Q$）和`key_dequant_scale`（$Scale_K^T$）相乘，通过激活函数$ReLU$过滤无效负相关信号后，得到当前Token与所有前序Token的相关性分数向量。
+    3. 将其与权重系数`weights`（$W$）相乘后，沿g的方向，选取前$Top-k$个索引值得到输出$out$，作为SparseFlashAttention的输入。
 
+## 函数原型
 
-## 环境准备<a name="1"></a>
-### 下载源码
+```
+torch_npu.npu_quant_indexer_lightning(query, key, weights, query_dequant_scale, key_dequant_scale, *, actual_seq_lengths_query=None, actual_seq_lengths_key=None, block_table=None, query_quant_mode=0, key_quant_mode=0, layout_query='BSND', layout_key='BSND', sparse_count=2048, sparse_mode=3, pre_tokens=2^63-1, next_tokens=2^63-1) -> Tensor
+```
 
-  执行如下命令下载 cann-recipes-infer 源码。
-  ```shell
-  mkdir -p /home/code; cd /home/code/
-  git clone git@gitcode.com:cann/cann-recipes-infer.git
-  cd cann-recipes-infer
-  ```
+## 参数说明
+>**说明：**<br> 
+>
+>- query、key、weights、query_dequant_scale、key_dequant_scale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+>- 使用S1和S2分别表示query和key的输入样本序列长度，N1和N2分别表示query和key对应的多头数，k表示最后选取的索引个数。参数query中的D和参数key中的D值相等为128。
+-   **query**（`Tensor`）：必选参数，表示输入Index Query，对应公式中的$Q_{index}^{INT8}\in\R^{g\times d}$。不支持非连续，数据格式支持$ND$，数据类型支持`int8`，支持输入shape[B,S1,N1,D]、[T,N1,D]，N1仅支持64。
+    
+-   **key**（`Tensor`）：必选参数，表示输入Index Key，对应公式中的$K_{index}^{INT8}\in\R^{S_{k}\times d}$。不支持非连续，数据格式支持$ND$，数据类型支持`int8`，layout\_key为PA_BSND时shape为[block\_count, block\_size, N2, D]，其中block\_count为PageAttention时block总数，block\_size为一个block的token数，N2仅支持1。
+    
+-   **weights**（`Tensor`）：必选参数，表示权重系数，对应公式中的$W$。不支持非连续，数据格式支持$ND$，数据类型支持`float16`，支持输入shape[B,S1,N1]、[T,N1]。
 
-### 获取 docker 镜像
+-   **query_dequant_scale**（`Tensor`）：必选参数，表示Index Query的反量化系数$Scale_Q$ 。不支持非连续，数据格式支持$ND$，数据类型支持`float16`，支持输入shape[B,S1,N1]、[T,N1]。
 
-  从[ARM镜像地址](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/cann8.3.rc1.alpha002/pt2.5.1/aarch/ascendc/cann8.3.rc1.alpha002_pt2.5.1_dsv3.2_aarch_image.tar)中下载 docker 镜像，然后上传到A3服务器上，并通过命令导入镜像 `docker load -i cann8.3.rc1.alpha002_pt2.5.1_dsv3.2_aarch_image.tar`。
+-   **key_dequant_scale**（`Tensor`）：必选参数，表示Index Key的反量化系数，对应公式中的$Scale_K^T$。不支持非连续，数据格式支持$ND$，数据类型支持`float16`，layout\_key为PA_BSND时shape为[block\_count, block\_size, N2]，其中block\_count为PageAttention时block总数，block\_size为一个block的token数。
 
-### 拉起 docker 容器
+- <strong>*</strong>：代表其之前的参数是位置相关的，必须按照顺序输入；之后的参数是可选参数，位置无关，不赋值会使用默认值。
 
-  通过如下脚本拉起容器，默认容器名为 cann_recipes_infer。
-  ```
-  docker run -u root -itd --name cann_recipes_infer --ulimit nproc=65535:65535 --ipc=host \
-      --device=/dev/davinci0     --device=/dev/davinci1 \
-      --device=/dev/davinci2     --device=/dev/davinci3 \
-      --device=/dev/davinci4     --device=/dev/davinci5 \
-      --device=/dev/davinci6     --device=/dev/davinci7 \
-      --device=/dev/davinci8     --device=/dev/davinci9 \
-      --device=/dev/davinci10    --device=/dev/davinci11 \
-      --device=/dev/davinci12    --device=/dev/davinci13 \
-      --device=/dev/davinci14    --device=/dev/davinci15 \
-      --device=/dev/davinci_manager --device=/dev/devmm_svm \
-      --device=/dev/hisi_hdc \
-      -v /home/:/home \
-      -v /data:/data \
-      -v /etc/localtime:/etc/localtime \
-      -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
-      -v /etc/ascend_install.info:/etc/ascend_install.info -v /var/log/npu/:/usr/slog \
-      -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-      -v /usr/local/dcmi:/usr/local/dcmi -v /usr/local/sbin:/usr/local/sbin \
-      -v /etc/hccn.conf:/etc/hccn.conf -v /root/.pip:/root/.pip -v /etc/hosts:/etc/hosts \
-      -v /usr/bin/hostname:/usr/bin/hostname \
-      --net=host \
-      --shm-size=128g \
-      --privileged \
-      cann8.3.rc1.alpha002_pt2.5.1_dsv3.2_aarch_image:v0.1 /bin/bash
-  ```
-  通过如下命令进入容器：
-  ```
-  docker attach cann_recipes_infer
-  ```
+-   **actual\_seq\_lengths\_query**（`Tensor`）：可选参数，表示不同Batch中`query`的有效token数，数据类型支持`int32`。如果不指定seqlen可传入None，表示和`query`的shape的S长度相同。该入参中每个Batch的有效token数不超过`query`中的维度S大小。支持长度为B的一维tensor。当`query`的input\_layout为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。不能出现负值。
 
-### 设置环境变量
+-   **actual\_seq\_lengths\_key**（`Tensor`）：可选参数，表示不同Batch中`key`的有效token数，数据类型支持`int32`。如果不指定seqlen可传入None，表示和key的shape的S长度相同。支持长度为B的一维tensor。
 
-  ```bash
-  source /usr/local/Ascend/ascend-toolkit/set_env.sh
-  ```
+-   **block\_table**（`Tensor`）：可选参数，表示PageAttention中KV存储使用的block映射表，数据格式支持$ND$，数据类型支持`int32`。PageAttention场景下，block\_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq(maxBlockNumPerSeq为每个batch中最大actual\_seq\_lengths\_key对应的block数量)，支持block_size取值为16的整数倍，最大支持到1024。
 
-## 编译执行
+-   **query\_quant\_mode**（`int`）：可选参数，用于标识输入`query`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0。
 
-### 自定义融合算子编译
+-   **key\_quant\_mode**（`int`）：可选参数，用于标识输入`key`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0。
 
-执行如下命令编译所有自定义算子：
+-   **layout\_query**（`str`）：可选参数，用于标识输入`query`的数据排布格式，当前支持BSND、TND，默认值"BSND"。
 
-  ```bash
-  cd /home/code/cann-recipes-infer/ops/ascendc
-  bash build.sh
-  ```
+-   **layout\_key**（`str`）：可选参数，用于标识输入`key`的数据排布格式，当前支持PA_BSND、BSND、TND，默认值"BSND"。在非PageAttention场景下，layout\_key应与layout\_query保持一致。
 
-**说明：**
+-   **sparse\_count**（`int`）：可选参数，代表topK阶段需要保留的block数量，支持[1, 2048]，数据类型支持`int32`。
 
-若提示如下信息，则说明编译成功。
+-   **sparse\_mode**（`int`）：可选参数，表示sparse的模式，支持0/3，数据类型支持`int32`。 sparse\_mode为0时，代表defaultMask模式。sparse\_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。
 
-  ```
-  Self-extractable archive "CANN-custom_ops-<cann_version>-linux.<arch>.run" successfully created.
-  ```
+-   **pre\_tokens**（`int`）：可选参数，用于稀疏计算，表示attention需要和前几个Token计算关联。数据类型支持`int64`，仅支持默认值2^63-1。
 
-编译成功后在 `output` 目录生成自定义算子包：`CANN-custom_ops-<cann_version>-linux.<arch>.run`。其中，\<cann_version>表示软件版本号，\<arch>表示操作系统架构。
+-   **next\_tokens**（`int`）：可选参数，用于稀疏计算，表示attention需要和前几个Token计算关联。数据类型支持`int64`，仅支持默认值2^63-1。
 
-### 自定义融合算子安装
+## 返回值说明
+`Tensor`
 
-安装前，需确保所安装的自定义算子包与所安装CANN开发套件包CPU架构一致，安装命令如下：
+代表公式中的输出Out。数据格式支持$ND$，数据类型支持`int32`，支持输出shape[B,S1,N2,k]或[T,N2,k]。
 
-  ```bash
-  cd /home/code/cann-recipes-infer/ops/ascendc/output
-  chmod +x CANN-custom_ops-<cann_version>-linux.<arch>.run
-  ./CANN-custom_ops-<cann_version>-linux.<arch>.run --quiet --install-path=/usr/local/Ascend/ascend-toolkit/latest/opp
-  source /usr/local/Ascend/ascend-toolkit/latest/opp/vendors/customize/bin/set_env.bash  
-  ```
+## 约束说明
+-   该接口支持图模式。
+-   该接口要求$W \odot Scale_Q$的结果在`float16`的表示范围内。
+-   该接口的TopK过程对NAN排序是未定义行为。
 
-执行上述命令后，自定义融合算子对应的run包会安装到对应的CANN软件包目录:`/usr/local/Ascend/ascend-toolkit/latest/opp/vendors/`
+## 调用示例
 
-### torch_ops_extension算子包编译与安装
-编译与安装命令如下：
-  ```shell
-  cd /home/code/cann-recipes-infer/ops/ascendc/torch_ops_extension
-  bash build_and_install.sh
-  ```
+-   单算子模式调用
+    ```python
+    import torch
+    import torch_npu
+    import numpy as np
+    import torch.nn as nn
+    import math
 
-编译成功后在 `dist` 目录生成自定义custom-ops算子包：`custom_ops-1.0-<python_version>-<python_version>-<arch>.whl`。其中，\<python_version>表示python版本号，\<arch>表示操作系统架构。
+    n1 = 64
+    n2 = 1
+    d = 128
+    block_size = 128
+    layout_key = "PA_BSND"
+    layout_query = "BSND"
+    query_quant_mode = 0
+    key_quant_mode = 0
+    np.random.seed(0)
+    # -------------
+    b = 24
+    t = None
+    s1 = 4
+    s2 = 512
+    act_seq_q = None
+    act_seq_k = None
+    sparse_mode = 0
+    sparse_count = 2048
+    max_block_table_num = (s2 + block_size - 1) // block_size
+    block_table = torch.tensor([range(b * max_block_table_num)], dtype = torch.int32).reshape(b, -1)
+    key = torch.tensor(np.random.uniform(-128, 127, (b * max_block_table_num, block_size, n2, d))).to(torch.int8)
+    key_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b * max_block_table_num, block_size, n2)))
+    key_dequant_scale = key_dequant_scale.to(torch.float16)
+    query = torch.tensor(np.random.uniform(-128, 127, (b, s1, n1, d))).to(torch.int8)
+    query_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b, s1, n1))).to(torch.float16)
+    weights = torch.tensor(np.random.uniform(0, 0.01, (b, s1, n1))).to(torch.float16)
+    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32) \
+                                if act_seq_q is None else torch.tensor(act_seq_q).to(torch.int32)
+    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32) \
+                                if act_seq_k is None else torch.tensor(act_seq_k).to(torch.int32)
+    
+    npu_out = torch_npu.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),
+                                                    key_dequant_scale.npu(),
+                                                    actual_seq_lengths_query=actual_seq_lengths_query.npu(),
+                                                    actual_seq_lengths_key=actual_seq_lengths_key.npu(),
+                                                    block_table=block_table.npu(),
+                                                    query_quant_mode=query_quant_mode,
+                                                    key_quant_mode=key_quant_mode,
+                                                    layout_query=layout_query,
+                                                    layout_key=layout_key, sparse_count=sparse_count,
+                                                    sparse_mode=sparse_mode)
+    ```
+-   图模式调用
 
+    ```python
+    import torch
+    import torch_npu
+    import numpy as np
+    import torch.nn as nn
+    import math
 
-### examples用例运行
-examples用例运行命令如下：
-  ```shell
-  cd /home/code/cann-recipes-infer/ops/ascendc/examples
-  python3 test_npu_lightning_indexer.py
-  python3 test_npu_quant_lightning_indexer.py
-  python3 test_npu_sparse_flash_attention.py   
-  python3 test_npu_swiglu_clip_quant.py
-  python3 test_npu_mla_prolog_v3.py
-  ```
+    n1 = 64
+    n2 = 1
+    d = 128
+    block_size = 128
+    layout_key = "PA_BSND"
+    layout_query = "BSND"
+    query_quant_mode = 0
+    key_quant_mode = 0
+    np.random.seed(0)
+    # -------------
+    b = 24
+    t = None
+    s1 = 4
+    s2 = 512
+    act_seq_q = None
+    act_seq_k = None
+    sparse_mode = 0
+    sparse_count = 2048
+    max_block_table_num = (s2 + block_size - 1) // block_size
+    block_table = torch.tensor([range(b * max_block_table_num)], dtype = torch.int32).reshape(b, -1)
+    key = torch.tensor(np.random.uniform(-128, 127, (b * max_block_table_num, block_size, n2, d))).to(torch.int8)
+    key_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b * max_block_table_num, block_size, n2)))
+    key_dequant_scale = key_dequant_scale.to(torch.float16)
+    query = torch.tensor(np.random.uniform(-128, 127, (b, s1, n1, d))).to(torch.int8)
+    query_dequant_scale = torch.tensor(np.random.uniform(0, 10, (b, s1, n1))).to(torch.float16)
+    weights = torch.tensor(np.random.uniform(0, 0.01, (b, s1, n1))).to(torch.float16)
+    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32) \
+                                if act_seq_q is None else torch.tensor(act_seq_q).to(torch.int32)
+    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32) \
+                                if act_seq_k is None else torch.tensor(act_seq_k).to(torch.int32)
+    
+    class LIQuantNetwork(nn.Module):
+        def __init__(self):
+            super(LIQuantNetwork, self).__init__()
+
+        def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query=None, 
+                    actual_seq_lengths_key=None, block_table=None, query_quant_mode=0, key_quant_mode=0,
+                    layout_query='BSND', layout_key='BSND', sparse_count=2048, sparse_mode=3):
+
+            out = torch_npu.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),       
+                                                        key_dequant_scale.npu(),
+                                                        actual_seq_lengths_query=actual_seq_lengths_query.npu(),
+                                                        actual_seq_lengths_key=actual_seq_lengths_key.npu(),
+                                                        block_table=block_table.npu(),
+                                                        query_quant_mode=query_quant_mode,
+                                                        key_quant_mode=key_quant_mode,
+                                                        layout_query=layout_query,
+                                                        layout_key=layout_key, sparse_count=sparse_count,
+                                                        sparse_mode=sparse_mode)
+            return out
+    
+    from torchair.configs.compiler_config import CompilerConfig
+    config = CompilerConfig()
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+    torch._dynamo.reset()
+    npu_mode = torch.compile(LIQuantNetwork().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
+    npu_out = npu_mode(query, key, weights, query_dequant_scale, key_dequant_scale,
+                        actual_seq_lengths_query=actual_seq_lengths_query,
+                        actual_seq_lengths_key=actual_seq_lengths_key,
+                        block_table=block_table, query_quant_mode=query_quant_mode,
+                        key_quant_mode=key_quant_mode, layout_query=layout_query,
+                        layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode)
+    ```

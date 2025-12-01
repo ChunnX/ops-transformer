@@ -1,205 +1,188 @@
-#  FusedInferAttentionScore
+# LightningIndexer
 
 ## 产品支持情况
-
-<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
-<col style="width: 600px">
-<col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th style="text-align: center;">产品</th>
-    <th style="text-align: center;">是否支持</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td>昇腾910_95 AI处理器</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/500 A2 推理产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 推理系列加速卡产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 训练系列产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/300/500 推理产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-</tbody>
-</table>
+| 产品                                                         | 是否支持 |
+| ------------------------------------------------------------ | :------: |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   | √  |
+|<term>Atlas A2 训练系列产品</term>   | √  |
 
 ## 功能说明
 
-- 算子功能：适配增量&全量推理场景的FlashAttention算子，既可以支持全量计算场景（[PromptFlashAttention](../prompt_flash_attention/README.md)），也可支持增量计算场景（[IncreFlashAttention](../incre_flash_attention/README.md)）。
+-   API功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
 
-- 计算公式：
+-   计算公式：
+     $$
+     Indices=\text{Top-}k\left\{[1]_{1\times g}@\left[(W@[1]_{1\times S_{k}})\odot\text{ReLU}\left(Q_{index}@K_{index}^T\right)\right]\right\}
+     $$
+     对于某个token对应的Index Query $Q_{index}\in\R^{g\times d}$，给定上下文Index Key $K_{index}\in\R^{S_{k}\times d},W\in\R^{g\times 1}$，其中$g$为GQA对应的group size，$d$为每一个头的维度，$S_{k}$是上下文的长度。
 
-    self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
+## 函数原型
 
-    self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。公式及算子名称中的"Attention"为"self-attention"的简写。
-
-    $$
-    Attention(Q,K,V)=Score(Q,K)V
-    $$
-
-    本算子中Score函数采用Softmax函数，self-attention计算公式为：
-
-    $$
-    Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
-    $$
-
-    其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
+```
+torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None, actual_seq_lengths_key=None, block_table=None, layout_query="BSND", layout_key="BSND", sparse_count=2048, sparse_mode=3, pre_tokens=2^63-1, next_tokens=2^63-1, return_value=False) -> (Tensor, Tensor)
+```
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 900px"><colgroup>
-<col style="width: 180px">
-<col style="width: 120px">
-<col style="width: 200px">
-<col style="width: 300px">
-<col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td>query</td>
-    <td>输入</td>
-    <td>公式中的输入Q。</td>
-    <td>FLOAT16、BFLOAT16、INT8</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>key</td>
-    <td>输入</td>
-    <td>公式中的输入K。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>value</td>
-    <td>输入</td>
-    <td>公式中的输入V。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4</td>
-    <td>ND</td>
-  </tr>
-  <tr>
-    <td>attentionOut</td>
-    <td>输出</td>
-    <td>公式中的输出。</td>
-    <td>FLOAT16、BFLOAT16、INT8</td>
-    <td>ND</td>
-  </tr>
-</tbody>
-</table>
+>**说明：**<br> 
+>
+>- query、key、weights参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+>- S1表示query shape中的S，S2表示key shape中的S，T1表示query shape中的T，T2表示key shape中的T，N1表示query shape中的N，N2表示key shape中的N。
+
+-   **query**（`Tensor`）：必选参数，不支持非连续，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，N1仅支持64。
+    
+-   **key**（`Tensor`）：必选参数，不支持非连续，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，layout\_key为PA_BSND时shape为[block\_count, block\_size, N2, D]，其中block\_count为PageAttention时block总数，block\_size为一个block的token数，block\_size取值为16的整数倍，最大支持到1024，N2仅支持1。
+    
+-   **weights**（`Tensor`）：必选参数，不支持非连续，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，支持输入shape[B,S1,N1]、[T,N1]。
+    
+- <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
+
+-   **actual\_seq\_lengths\_query**（`Tensor`）：可选参数，表示不同Batch中`query`的有效token数，数据类型支持`int32`。如果不指定seqlen可传入None，表示和`query`的shape的S长度相同。
+    -   该入参中每个Batch的有效token数不超过`query`中的维度S大小。支持长度为B的一维tensor。当`query`的input\_layout为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值。不能出现负值。
+
+-   **actual\_seq\_lengths\_key**（`Tensor`）：可选参数，表示不同Batch中`key`的有效token数，数据类型支持`int32`。如果不指定seqlen可传入None，表示和key的shape的S长度相同。支持长度为B的一维tensor。
+
+-   **block\_table**（`Tensor`）：可选参数，表示PageAttention中KV存储使用的block映射表，数据格式支持$ND$，数据类型支持`int32`。
+    -   PageAttention场景下，block\_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actual\_seq\_lengths\_key对应的block数量）
+
+-   **layout\_query**（`str`）：可选参数，用于标识输入`query`的数据排布格式，当前支持BSND、TND，默认值"BSND"。
+
+-   **layout\_key**（`str`）：可选参数，用于标识输入`key`的数据排布格式，当前支持PA_BSND、BSND、TND，默认值"BSND"，在非PageAttention场景下，该参数值应与**layout\_query**值保持一致。
+
+-   **sparse\_count**（`int`）：可选参数，代表topK阶段需要保留的block数量，支持[1, 2048]，数据类型支持`int32`。
+
+-   **sparse\_mode**（`int`）：可选参数，表示sparse的模式，支持0/3，数据类型支持`int32`。
+    
+    -   sparse\_mode为0时，代表defaultMask模式。
+    -   sparse\_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。
+
+-   **pre\_tokens**（`int`）：可选参数，用于稀疏计算，表示attention需要和前几个Token计算关联。数据类型支持`int64`。仅支持默认值2^63-1。
+
+-   **next\_tokens**（`int`）：可选参数，用于稀疏计算，表示attention需要和后几个Token计算关联。数据类型支持`int64`。仅支持默认值2^63-1。
+
+-   **return\_value**（`bool`）：可选参数，表示是否输出`sparse_values`。True表示输出，False表示不输出；默认值为False。
+
+## 返回值说明
+
+-   **sparse\_indices**（`Tensor`）：公式中的Indices输出，数据类型支持`int32`,数据格式支持$ND$，当`layout_query`为"BSND"时输出shape为[B, S1, N2, sparse\_count]，当layout\_query为"TND"时输出shape为[T1, N2, sparse\_count]。
+
+-   **sparse\_values**（`Tensor`）：公式中的Indices输出对应的value值，数据类型支持`int32`,数据格式支持$ND$，输出shape与`sparse_indices`保持一致。
 
 ## 约束说明
 
-- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
+-   该接口支持图模式。
+-   参数query中的N支持64，key中的N支持1。
+-   参数query中的D和参数key中的D值相等为128。
+-   参数query、key、weights的数据类型应保持一致。
 
-- 入参为空的处理：算子内部需要判断参数query是否为空，如果是空则直接返回。参数query不为空Tensor，参数key、value为空tensor(即S2为0)，则attentionOut填充为全零。attentionOut为空Tensor时，AscendCLNN框架会处理。其余在上述参数说明中标注了"可传入nullptr"的入参为空指针时，不进行处理。
+## 调用示例
 
-- 参数key、value中对应tensor的shape需要完全一致；非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256。
+-   单算子模式调用
 
-- 当Q_S大于1时，query，key，value输入，功能使用限制如下：
-    - 支持B轴小于等于65536。
+    ```python
+    import torch
+    import torch_npu
+    import math
+    import numpy as np
+    # 生成随机数据, 并发送到npu
+    b = 1
+    s1 = 1
+    s2 = 8192
+    n1 = 64
+    n2 = 1
+    d = 128
+    block_size = 256
+    
+    query = torch.tensor(np.random.uniform(-10, 10, (b, s1, n1, d))).to(torch.bfloat16).npu()
+    key = torch.tensor(np.random.uniform(-10, 10, (b*(s2//block_size), block_size, n2, d))).to(torch.bfloat16).npu()
+    weights = torch.tensor(np.random.uniform(-1, 1, (b, s1, n1))).to(torch.bfloat16).npu()
+    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32).npu()
+    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32).npu()
+    block_table = torch.tensor([range(b*s2//block_size)], dtype=torch.int32).reshape(b, -1).npu()
+    layout_query = 'BSND'
+    layout_key = 'PA_BSND'
+    sparse_count = 2048
+    sparse_mode = 3
 
-  - 如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
+    # 调用lightning_indexer算子
+    sparse_indices, sparse_values = torch_npu.npu_lightning_indexer(
+            query, key, weights, actual_seq_lengths_query=actual_seq_lengths_query, 
+            actual_seq_lengths_key=actual_seq_lengths_key, block_table=block_table, layout_query=layout_query, 
+            layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode)
 
-  - 支持N轴小于等于256，支持D轴小于等于512。inputLayout为BSH或者BSND时，建议N*D小于65535。
+    # 执行上述代码的输出sparse_indices类似如下
+    tensor([[[[4488, 3926, 1154, ..., 3535, 8031, 8180]]]],
+            device='npu:0', dtype=torch.int32)
+    ```
 
-  - S支持小于等于20971520（20M）。部分长序列场景下，如果计算量过大可能会导致pfa算子执行超时（aicore error类型报错，errorStr为:timeout or trap error），此场景下建议做S切分处理，注：这里计算量会受B、S、N、D等的影响，值越大计算量越大。典型的会超时的长序列(即B、S、N、D的乘积较大)场景包括但不限于：
+-   图模式调用
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 550px"><colgroup>
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 200px">
-    <col style="width: 100px">
-    <col style="width: 100px">
-    <col style="width: 150px">
-    </colgroup><thead>
-    <tr>
-    <th>B</th>
-    <th>Q_N</th>
-    <th>Q_S</th>
-    <th>D</th>
-    <th>KV_N</th>
-    <th>KV_S</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-    <td>1</td>
-    <td>20</td>
-    <td>2097152</td>
-    <td>256</td>
-    <td>1</td>
-    <td>2097152</td>
-    </tr>
-    <tr>
-    <td>1</td>
-    <td>2</td>
-    <td>20971520</td>
-    <td>256</td>
-    <td>2</td>
-    <td>20971520</td>
-    </tr>
-    <tr>
-    <td>20</td>
-    <td>1</td>
-    <td>2097152</td>
-    <td>256</td>
-    <td>1</td>
-    <td>2097152</td>
-    </tr>
-    <tr>
-    <td>1</td>
-    <td>10</td>
-    <td>2097152</td>
-    <td>512</td>
-    <td>1</td>
-    <td>2097152</td>
-    </tr>
-    </tbody>
-    </table>
-    </div>
+    ```python
+    import torch
+    import torch_npu
+    import numpy as np
+    import math
+    import torchair as tng
 
-  -  D轴限制：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
+    from torchair.configs.compiler_config import CompilerConfig
+    import torch._dynamo
+    TORCHDYNAMO_VERBOSE=1
+    TORCH_LOGS="+dynamo"
 
-- 当Q_S等于1时：query，key，value输入，功能使用限制如下：
+    # 支持入图的打印宏
+    import logging
+    from torchair.core.utils import logger
+    logger.setLevel(logging.DEBUG)
+    config = CompilerConfig()
+    config.debug.graph_dump.type = "pbtxt"
+    npu_backend = tng.get_npu_backend(compiler_config=config)
+    from torch.library import Library, impl
 
-  - 支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。
-  - query、key、value输入类型均为INT8的场景暂不支持。
-  - 在INT4伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
-  - 在INT4伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
-  - key、value在特定数据数据类型下存在对于D轴的限制
-    - key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
-  
-- query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+    # 数据生成
+    b = 1
+    s1 = 1
+    s2 = 8192
+    n1 = 64
+    n2 = 1
+    d = 128
+    block_size = 256
+    
+    query = torch.tensor(np.random.uniform(-10, 10, (b, s1, n1, d))).to(torch.bfloat16).npu()
+    key = torch.tensor(np.random.uniform(-10, 10, (b*(s2//block_size), block_size, n2, d))).to(torch.bfloat16).npu()
+    weights = torch.tensor(np.random.uniform(-1, 1, (b, s1, n1))).to(torch.bfloat16).npu()
+    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32).npu()
+    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32).npu()
+    block_table = torch.tensor([range(b*s2//block_size)], dtype=torch.int32).reshape(b, -1).npu()
+    layout_query = 'BSND'
+    layout_key = 'PA_BSND'
+    sparse_count = 2048
+    sparse_mode = 3
 
-## 调用说明
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+        def forward(self):
+            return torch_npu.npu_lightning_indexer(query, key, weights, actual_seq_lengths_query=actual_seq_lengths_query, 
+                actual_seq_lengths_key=actual_seq_lengths_key, block_table=block_table, layout_query=layout_query, 
+                layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode)
+    def MetaInfershape():
+        with torch.no_grad():
+            model = Model()
+            model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
+            graph_output = model()
+        single_op = torch_npu.npu_lightning_indexer(query, key, weights, actual_seq_lengths_query=actual_seq_lengths_query, 
+            actual_seq_lengths_key=actual_seq_lengths_key, block_table=block_table, layout_query=layout_query, 
+            layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode)
+        print("single op output:", single_op[0], single_op[0].shape)
+        print("graph output:", graph_output[0], graph_output[0].shape)
+    if __name__ == "__main__":
+        MetaInfershape()
 
-| 调用方式  | 样例代码                                                     | 说明                                                         |
-| --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnn_FusedInferAttentionScoreV4](./examples/test_aclnn_fused_infer_attention_score.cpp) | 通过[aclnnFusedInferAttentionScoreV4](./docs/aclnnFusedInferAttentionScoreV4.md)调用PromptFlashAttentionV3算子 |
+    # 执行上述代码的输出类似如下
+    single op output: tensor([[[[4488, 3926, 1154, ..., 3535, 8031, 8180]]]],
+            device='npu:0', dtype=torch.int32) torch.Size([1, 1, 1, 2048])
+
+    graph output: tensor([[[[4488, 3926, 1154, ..., 3535, 8031, 8180]]]],
+            device='npu:0', dtype=torch.int32) torch.Size([1, 1, 1, 2048])
+    ```
+
