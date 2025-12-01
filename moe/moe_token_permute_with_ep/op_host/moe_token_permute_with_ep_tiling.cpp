@@ -25,6 +25,7 @@ const static int64_t NUM_FOUR = 4;
 const static int64_t MRG_LIST_NUM = 4;
 const static int64_t SORT32_ALIGN_ELEMENT = 32;
 const static int64_t ONE_BLOCK_BYTE = 32;
+const static int64_t USED_SIZE = 96;// prob outsize + prob align + index align
 const static size_t DIM_ONE = 1;
 const static size_t DIM_TWO = 2;
 const static int32_t SIZE_16 = 16;
@@ -678,7 +679,7 @@ void MoeTokenPermuteWithEpTilingBase::Tiling4IndexCopyCompute()
     int64_t coreCalcTail = GetDiv(tokenNums, realCoreNumAiv);
 
     /* 需要再减去probs的空间,按照indices空间计算*/
-    int64_t ubLeft = aicoreParams_.ubSize - PROBS_SPACE_SCALE * MAX_INDICES_NUM * INT32_DTYPE_SIZE;
+    int64_t ubLeft = aicoreParams_.ubSize - PROBS_SPACE_SCALE * MAX_INDICES_NUM * INT32_DTYPE_SIZE - ONE_BLOCK_BYTE;
     int64_t oneTokenBtypeSize = cols * tokenBtypeSize;
     int64_t oneProbBtypeSize = probsBtypeSize;
 
@@ -699,16 +700,16 @@ void MoeTokenPermuteWithEpTilingBase::Tiling4IndexCopyCompute()
     int64_t probsUB = 1;
     if (ubLeft >= BUFFER_NUM * oneTokenBtypeSizeAlign32) {
         onceUbTokenNums = GetDiv(
-            static_cast<int64_t>(aicoreParams_.ubSize),
+            static_cast<int64_t>(aicoreParams_.ubSize - USED_SIZE),
             oneTokenBtypeSizeAlign32 * BUFFER_NUM + PROBS_SPACE_SCALE * topK * BUFFER_NUM * INT32_DTYPE_SIZE);
         onceUbTokenNums = std::min(onceUbTokenNums, MAX_BLOCK_COUNT);
-        int64_t TopKUbLeft = aicoreParams_.ubSize - onceUbTokenNums * oneTokenBtypeSizeAlign32 * BUFFER_NUM;
+        int64_t TopKUbLeft = aicoreParams_.ubSize - USED_SIZE - onceUbTokenNums * oneTokenBtypeSizeAlign32 * BUFFER_NUM;
         /* Probs的UB按照indices的UB计算, 这里乘以2*/
         onceIndicesTokenMoveTimes = GetDiv(TopKUbLeft, PROBS_SPACE_SCALE * onceUbTokenNums * topK * INT32_DTYPE_SIZE);
         onceIndicesTokenNums = onceIndicesTokenMoveTimes * onceUbTokenNums;
         onceIndices = onceIndicesTokenNums * topK;
         tokenUB = onceUbTokenNums * oneTokenBtypeSizeAlign32;
-        indicesUB = UpAlign(onceIndices, ONE_BLOCK_BYTE);
+        indicesUB = UpAlign(onceIndices * INT32_DTYPE_SIZE, ONE_BLOCK_BYTE);
         probsUB = indicesUB;
     } else {
         onceIndicesTokenNums = GetDiv(MAX_INDICES_NUM, topK);

@@ -357,7 +357,7 @@ ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::GetShapeAttrsInfo()
 
     int64_t topK = numOutTokens / numTokens;
 
-    if (topK > MAX_INDICES_NUM) {
+    if (paddedMode == false && topK > MAX_INDICES_NUM) {
         OP_LOGE(
             context_->GetNodeName(), "numOutTokens / numTokens [%ld] should not large than max topK[%ld].", topK,
             MAX_INDICES_NUM);
@@ -779,7 +779,7 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4IndexCopyCompute()
         onceIndicesTokenNums = onceIndicesTokenMoveTimes * onceUbTokenNums;
         onceIndices = onceIndicesTokenNums * topK;
         tokenUB = onceUbTokenNums * oneTokenBtypeSizeAlign32;
-        indicesUB = UpAlign(onceIndices, ONE_BLOCK_BYTE);
+        indicesUB = UpAlign(onceIndices * INT32_DTYPE_SIZE, ONE_BLOCK_BYTE);
     } else {
         onceIndicesTokenNums = GetDiv(MAX_INDICES_NUM, topK);
         onceIndices = onceIndicesTokenNums * topK;

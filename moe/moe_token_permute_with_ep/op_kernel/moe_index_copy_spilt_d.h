@@ -284,8 +284,8 @@ __aicore__ inline void MoeindexCopySpiltDOp<T, probsT, ifNumOutTokens>::Init(
     }
     dstProbsGm.SetGlobalBuffer((__gm__ probsT*)dstProbs, this->numOutTokens * topK);
     pipe->InitBuffer(copyInQueue, 2, this->indexCopyTilingData->tokenUB);
-    pipe->InitBuffer(indicesQueue, 1, this->indexCopyTilingData->indicesUB * 4);
-    pipe->InitBuffer(copyProbsInQueue, 1, this->indexCopyTilingData->probsUB * 4);
+    pipe->InitBuffer(indicesQueue, 1, this->indexCopyTilingData->indicesUB);
+    pipe->InitBuffer(copyProbsInQueue, 1, this->indexCopyTilingData->probsUB);
     pipe->InitBuffer(probsTmpBuffer, 1, 32);
     onceIndicesNums = onceIndicesTokenNums * topK;
     onceProbsNums = onceIndicesNums;

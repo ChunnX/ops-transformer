@@ -587,7 +587,7 @@ void MoeTokenPermuteTilingBase::Tiling4IndexCopyCompute()
         onceIndicesTokenNums = onceIndicesTokenMoveTimes * onceUbTokenNums;
         onceIndices = onceIndicesTokenNums * topK;
         tokenUB = onceUbTokenNums * oneTokenBtypeSizeAlign32;
-        indicesUB = UpAlign(onceIndices, ONE_BLOCK_BYTE);
+        indicesUB = UpAlign(onceIndices * INT32_DTYPE_SIZE, ONE_BLOCK_BYTE);
     } else {
         onceIndicesTokenNums = GetDiv(MAX_INDICES_NUM, topK);
         onceIndices = onceIndicesTokenNums * topK;

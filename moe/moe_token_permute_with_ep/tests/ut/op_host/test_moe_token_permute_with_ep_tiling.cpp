@@ -58,7 +58,7 @@ TEST_F(MoeTokenPermuteWithEpTiling, moe_token_permute_with_ep_tiling_01)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 5; // tilngkey
-    string expectTilingData = "1 2 5 16 3 1 6 1 6 6 6 1 6 6 8160 0 0 1024 2 2 0 1 0 10 2 2 2338 4676 14028 1 1 1 1 1 0 4676 2 2338 1 1 4 1 5 74816 14048 14048 ";
+    string expectTilingData = "1 2 5 16 3 1 6 1 6 6 6 1 6 6 8160 0 0 1024 2 2 0 1 0 10 2 2 2337 4674 14022 1 1 1 1 1 0 4674 2 2337 1 1 4 1 5 74784 56096 56096 ";
     std::vector<size_t> expectWorkspaces = {16777376}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -89,7 +89,7 @@ TEST_F(MoeTokenPermuteWithEpTiling, moe_token_permute_with_ep_tiling_02)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 6; // tilngkey
-    string expectTilingData = "64 4096 5 16 3 4 3072 1 3072 3072 3072 1 3072 3072 8096 0 0 1024 64 64 0 64 64 10 2 2 2338 4676 14028 1 1 1 1 64 1 64 1 64 1 64 4096 0 4096 74816 14048 14048 ";
+    string expectTilingData = "64 4096 5 16 3 4 3072 1 3072 3072 3072 1 3072 3072 8096 0 0 1024 64 64 0 64 64 10 2 2 2337 4674 14022 1 1 1 1 64 1 64 1 64 1 64 4096 0 4096 74784 56096 56096 ";
     std::vector<size_t> expectWorkspaces = {16977920}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -120,7 +120,7 @@ TEST_F(MoeTokenPermuteWithEpTiling, moe_token_permute_with_ep_tiling_03)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 6; // tilngkey
-    string expectTilingData = "64 4096 5 16 3 4 3072 1 3072 3072 3072 1 3072 3072 8096 0 0 1024 64 64 0 64 64 10 2 2 2338 4676 14028 1 1 1 1 64 1 64 1 64 1 64 4096 0 4096 74816 14048 14048 ";
+    string expectTilingData = "64 4096 5 16 3 4 3072 1 3072 3072 3072 1 3072 3072 8096 0 0 1024 64 64 0 64 64 10 2 2 2337 4674 14022 1 1 1 1 64 1 64 1 64 1 64 4096 0 4096 74784 56096 56096 ";
     std::vector<size_t> expectWorkspaces = {16977920}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -153,7 +153,7 @@ TEST_F(MoeTokenPermuteWithEpTiling, moe_token_permute_with_ep_tiling_multi_core)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 6; // tilngkey
-    string expectTilingData = "64 16384 5 16 3 16 3072 1 3072 3072 3072 1 3072 3072 8096 0 4 1024 64 64 0 256 256 10 2 2 2338 4676 14028 1 1 1 1 256 1 256 1 256 1 256 4096 0 4096 74816 14048 14048 ";
+    string expectTilingData = "64 16384 5 16 3 16 3072 1 3072 3072 3072 1 3072 3072 8096 0 4 1024 64 64 0 256 256 10 2 2 2337 4674 14022 1 1 1 1 256 1 256 1 256 1 256 4096 0 4096 74784 56096 56096 ";
     std::vector<size_t> expectWorkspaces = {17567744}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -188,7 +188,7 @@ TEST_F(MoeTokenPermuteWithEpTiling, moe_token_permute_with_ep_tiling_long_h)
                                             },
                                             &compileInfo);
     int64_t expectTilingKey = 6; // tilngkey
-    string expectTilingData = "64 16384 32768 32768 3 16 3072 1 3072 3072 3072 1 3072 3072 8096 0 4 1024 64 64 0 256 256 65536 2 5450 1 5450 16350 1 1 1 1 256 1 256 256 1 256 1 4096 0 4096 65536 16352 16352 ";
+    string expectTilingData = "64 16384 32768 32768 3 16 3072 1 3072 3072 3072 1 3072 3072 8096 0 4 1024 64 64 0 256 256 65536 2 5446 1 5446 16338 1 1 1 1 256 1 256 256 1 256 1 4096 0 4096 65536 65376 65376 ";
     std::vector<size_t> expectWorkspaces = {17567744}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
