@@ -277,7 +277,7 @@ ge::graphStatus NCAITiling::SplitBN()
     uint32_t totalQSplitNum = 0;
     int64_t actQSeqLen = 0;
     for (uint32_t i = 0; i < batchSize_; i++) {
-        if (ncaiContext_->actualQSeqLengths.tensor != nullptr) {
+        if (ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>() != nullptr) {
             const int64_t *actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
             actQSeqLen = actualQSeqLenData[i];
         } else {
@@ -549,7 +549,7 @@ ge::graphStatus NCAITiling::GetMaxMinSeqlen()
 
 ge::graphStatus NCAITiling::GetMaxQSeqlen()
 {   
-    if (ncaiContext_->actualQSeqLengths.tensor != nullptr) {
+    if (ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>() != nullptr) {
         const int64_t *actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
         int64_t batchSizeInQSeqLen = ncaiContext_->actualQSeqLengths.tensor->GetStorageShape().GetDim(DIM_0);
         OP_CHECK_IF(ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0) != batchSizeInQSeqLen,
