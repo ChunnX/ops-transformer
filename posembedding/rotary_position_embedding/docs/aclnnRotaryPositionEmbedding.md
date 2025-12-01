@@ -293,16 +293,6 @@ aclnnStatus aclnnRotaryPositionEmbedding(
 
 ## 约束说明
 
-    用(B, S, N, D)表示四维输入x的shape，在该表示下，各参数的shape约束可以描述如下：
-    - 输入张量x、cos、sin及输出张量y的D维度大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，D必须能被2整除，对于quarter模式，D必须能被4整除。
-    - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，且必须满足下列条件之一：
-      - 前三维大小都为1，即shape为(1, 1, 1, D)。
-      - 前三维的大小和x前三维的大小完全相等，即shape为(B, S, N, D)。
-      - 前三维中，第二维和第三维中的一个大小为1，剩余的维度及第一维大小与x的对应维度相等，即shape为(B, 1, N, D)或(B, S, 1, D)。
-      - 前三维中，两个维度大小为1，剩余的一个维度大小与x的对应维度相等，即shape为(1, 1, N, D)，(1, S, 1, D)或(B, 1, 1, D)。
-    当x为空tensor时，输出也为空tensor，且不受上述shape约束限制。
-
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     
     输入张量x支持BNSD、BSND、SBND排布。
@@ -351,11 +341,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
-<<<<<<< HEAD
-    // 固定写法，AscendCL初始化
-=======
     // 固定写法，资源初始化
->>>>>>> b09f372 (aclnn资料)
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -390,11 +376,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-<<<<<<< HEAD
-    // 1. 固定写法，device/stream初始化, 参考AscendCL对外接口列表
-=======
     // 1. 固定写法，device/stream初始化, 参考acl API手册
->>>>>>> b09f372 (aclnn资料)
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
