@@ -52,9 +52,9 @@ __aicore__ inline void DequantPerTokenQc(const GlobalTensor<O> &outputGm, const 
         0};
 
     Rectangle rectangleParams {
-        (uint32_t)1,    // row
-        (uint32_t)count,// col
-        (uint32_t)count // columnStride
+        (uint32_t)1,     // row
+        (uint32_t)count, // col
+        (uint32_t)count  // columnStride
     };
 
     for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += dequantRowColStrideParams.row) {

@@ -14,22 +14,27 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         mla_prolog_v2_def.cpp
     )
+
+    if (ENABLE_STATIC)
+        add_ops_compile_options(
+            OP_NAME MlaPrologV2
+            OPTIONS --cce-auto-sync=off
+                    -Wno-deprecated-declarations
+                    -Werror
+                    -mllvm -cce-aicore-hoist-movemask=false
+        )
+    else()
+        add_ops_compile_options(
+            OP_NAME MlaPrologV2
+            OPTIONS --cce-auto-sync=off
+                    -Wno-deprecated-declarations
+                    -Werror
+                    -mllvm -cce-aicore-hoist-movemask=false
+                    --op_relocatable_kernel_binary=true
+        )
+    endif()
 endif()
 
-if (BUILD_OPS_RTY_KERNEL)
-    add_ops_compile_options(
-        OP_NAME MlaPrologV2
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
-                -Werror
-    )
-
-    add_ops_compile_options(
-        OP_NAME MlaPrologV2
-        COMPUTE_UNIT ascend310p1
-        OPTIONS -mllvm
-                -cce-aicore-jump-expand=true
-    )
-else()
+if (NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE mla_prolog_v2 ACLNNTYPE aclnn_inner)
 endif()

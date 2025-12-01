@@ -17,57 +17,57 @@ public:
     {
         this->Input("token_x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("weight_dq")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8})
             .FormatList({ge::FORMAT_FRACTAL_NZ})
             .AutoContiguous();
         this->Input("weight_uq_qr")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_FRACTAL_NZ})
             .AutoContiguous();
         this->Input("weight_uk")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("weight_dkv_kr")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8})
             .FormatList({ge::FORMAT_FRACTAL_NZ})
             .AutoContiguous();
         this->Input("rmsnorm_gamma_cq")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("rmsnorm_gamma_ckv")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("rope_sin")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("rope_cos")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("kv_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8})
+            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("kr_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cache_index")
@@ -115,21 +115,26 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("k_nope_clip_alpha")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("query_rope")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("kv_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8})
+            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND});
         this->Output("kr_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("dequant_scale_q_nope")
             .ParamType(REQUIRED)
@@ -137,7 +142,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("query_norm")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT8, ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND});
         this->Output("dequant_scale_q_norm")
             .ParamType(REQUIRED)
@@ -145,15 +150,14 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Attr("rmsnorm_epsilon_cq").AttrType(OPTIONAL).Float(1e-05f);
         this->Attr("rmsnorm_epsilon_ckv").AttrType(OPTIONAL).Float(1e-05f);
-        this->Attr("cache_mode").AttrType(OPTIONAL).String("BNSD");
+        this->Attr("cache_mode").AttrType(OPTIONAL).String("PA_BSND");
         this->Attr("query_norm_flag").AttrType(OPTIONAL).Bool(false);
         this->Attr("weight_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("kv_cache_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("query_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("ckvkr_repo_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("quant_scale_repo_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("tile_size").AttrType(OPTIONAL).Int(128); // tile_size default 128
-        this->Attr("k_nope_clip_alpha").AttrType(OPTIONAL).Float(1.0f);
+        this->Attr("tile_size").AttrType(OPTIONAL).Int(128); // 128 : set value of tile size
         this->Attr("qc_qr_scale").AttrType(OPTIONAL).Float(1.0f);
         this->Attr("kc_scale").AttrType(OPTIONAL).Float(1.0f);
         OpAICoreConfig aicore_config;
@@ -164,7 +168,6 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
-        this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
     }
 };

@@ -35,30 +35,53 @@ __aicore__ inline T CeilDivT(T num1, T num2)
     return (num1 + num2 - 1) / num2;
 }
 
+template <typename T>
+__aicore__ inline T Align(T num, T rnd)
+{
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
+}
+
 enum class CACHE_MODE : std::uint8_t {
-    BNSD = static_cast<std::uint8_t>(0),
+    ND = static_cast<std::uint8_t>(0), // BSND or TND
     PA_BSND = static_cast<std::uint8_t>(1),
     PA_NZ = static_cast<std::uint8_t>(2),
-    PA_BS = static_cast<std::uint8_t>(3)
+    PA_BLK_BSND = static_cast<std::uint8_t>(3),
+    PA_BLK_NZ = static_cast<std::uint8_t>(4),
+    PA_BS = static_cast<std::uint8_t>(5),
 };
 
 enum class SCENARIO : std::uint8_t {
     RESERVED = static_cast<std::uint8_t>(0),
     NO_QUANT = static_cast<std::uint8_t>(1),
-    QUANT    = static_cast<std::uint8_t>(2)
+    QUANT = static_cast<std::uint8_t>(2)
 };
 
 enum class QUANT_MODE : std::uint8_t {
-    PARTIAL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(0),
-    PARTIAL_QUANT_KV_QUANT    = static_cast<std::uint8_t>(1),
-    FULL_QUANT_KV_NO_QUANT    = static_cast<std::uint8_t>(2),
-    FULL_QUANT_KV_QUANT       = static_cast<std::uint8_t>(3)
+    NO_QUANT = static_cast<std::uint8_t>(0),
+    PARTIAL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(1),
+    PARTIAL_QUANT_KV_QUANT_PER_CHANNEL = static_cast<std::uint8_t>(2),
+    FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(3),
+    FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(4),
+    PARTIAL_QUANT_KV_QUANT_PERTILE = static_cast<std::uint8_t>(5),
+    FULL_QUANT_KV_QUANT_PERTILE = static_cast<std::uint8_t>(6),
+    MXFP8_FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(7),
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(8)
 };
 
 enum class EMPTY_TENSOR_MODE : std::uint8_t {
     NON_EMPTY = static_cast<std::uint8_t>(0),
     EMPTY_CACHE = static_cast<std::uint8_t>(1),
     EMPTY_QUERY = static_cast<std::uint8_t>(2),
+};
+
+enum class ACTUAL_SEQ_MODE : std::uint8_t {
+    DISABLED = static_cast<std::uint8_t>(0),
+    EN_Q_LEN = static_cast<std::uint8_t>(1),
+};
+
+enum class SPLIT_M_MODE : std::uint8_t {
+    DISABLED = static_cast<std::uint8_t>(0),
+    ENABLED  = static_cast<std::uint8_t>(1),
 };
 
 constexpr uint64_t BYTE_BLOCK = 32UL;
@@ -75,6 +98,7 @@ constexpr uint32_t QC_CORE_NUM = 8; // 算力分组方案QC占用8核
 constexpr uint32_t QR_CORE_NUM = 4; // 算力分组方案QR占用4核
 constexpr uint32_t INT8_AFULLLOAD_MAX_MSIZE = 64; // 计算mmQcQr时，int8类型的A矩阵在msize小于等于64可以全载L1
 constexpr uint32_t BF16_AFULLLOAD_MAX_MSIZE = 32; // 计算mmQcQr时，bf16类型的A矩阵在msize小于等于32可以全载L1
+constexpr uint32_t DEQUANT_SCALES_CQ_SIZE = 48; // RmsNormCq输出的动态量化系数大小
 
 constexpr int SYNC_MODE_ALL_CUBE = 0x0;
 constexpr int SYNC_MODE_CUBE_VEC = 0x2;
@@ -101,6 +125,9 @@ constexpr int FINISH_MM_QN_SPLIT_N = 0X6;
 #define DO_DUMP_DATA(srcTensor, id, len)
 #endif
 
+class NoneType {};
+using FP8E4M3 = NoneType;
+
 // mte2 <> mte1
 #define A_EVENT0 EVENT_ID4
 #define A_EVENT1 EVENT_ID5
@@ -125,31 +152,53 @@ constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
 
 
 /*
-                                非量化                半量化              半量化+kv量化         全量化(kv非量化)        全量化(kv量化)
-  mmInputType                 bfloat16_t            bfloat16_t            bfloat16_t              int8_t                int8_t
-  mmQcQrInputType             bfloat16_t              int8_t                int8_t                int8_t                int8_t
-  mmQnInputType               bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  mmCqOutputType              bfloat16_t            bfloat16_t            bfloat16_t              int32_t               int32_t
-  mmCkvKrOutputType           bfloat16_t            bfloat16_t            bfloat16_t              int32_t               int32_t
-  mmQcQrOutputType            bfloat16_t              int32_t               int32_t               int32_t               int32_t
-  mmQnOutputType              bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  rmsNormGammaType            bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  rmsNormComputType             float                 float                 float                 float                 float
-  rmsNormCqOutputType         bfloat16_t              int8_t                int8_t                int8_t                int8_t
-  rmsNormCkvOutputType        bfloat16_t            bfloat16_t              int8_t              bfloat16_t              int8_t
-  ropeSinCosType              bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  ropeComputType                float                 float                 float                 float                 float
-  ropeOutputType              bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  kvCacheType                 bfloat16_t            bfloat16_t              int8_t              bfloat16_t              int8_t
-  krCacheType                 bfloat16_t            bfloat16_t              int8_t              bfloat16_t            bfloat16_t
-  dequantScaleQNopeType         float                 float                 float                 float                 float
-  cacheMode               BNSD/PA_BSND/PA_NZ    BNSD/PA_BSND/PA_NZ    BNSD/PA_BSND/PA_NZ    BNSD/PA_BSND/PA_NZ    BNSD/PA_BSND/PA_NZ
-  enableDequantOpt              false               true/false           true/false             true/false           true/false
-  enableGroupDequantOpt         false               true/false           true/false               false                false
+                                     非量化             半量化(kv非量化)       半量化(kv量化)         全量化(kv非量化)       全量化(kv量化)      半量化(kv per-tile量化)      全量化(kv per-tile量化)
+  cacheMode                    PA_BSND/PA_BLK_BSND    PA_BSND/PA_BLK_BSND  PA_BSND/PA_BLK_BSND   PA_BSND/PA_BLK_BSND   PA_BSND/PA_BLK_BSND         PA_BSND                      PA_BSND
+                                /PA_NZ/PA_BLK_NZ       /PA_NZ/PA_BLK_NZ     /PA_NZ/PA_BLK_NZ      /PA_NZ/PA_BLK_NZ      /PA_NZ/PA_BLK_NZ
+  enableDequantOpt                    false               true/false           true/false             true/false           true/false                true                       true
+  enableGroupDequantOpt               false               true/false           true/false               false                false                   false                      false
+  quantMode(后续适配)
+  tokenXType(复用mmInputType)       bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  WdqType(复用mmInputType)          bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  WuqqrType(复用mmQcQrInputType)    bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  WukType(复用mmQnInputType)        bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  WdkvkrType(复用mmInputType)       bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  rmsNormGammaType                  bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  gammaCkvType(复用rmsNormGammaType)bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  ropeSinCosType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  cosType(复用ropeSinCosType)       bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  cacheIndexType                      int64_t               int64_t               int64_t               int64_t              int64_t                 int64_t                     int64_t
+  kvCacheType                       bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t                  int8_t                      int8_t
+  krCacheType                       bfloat16_t            bfloat16_t              int8_t              bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  deqScaleXType                         /                     /                     /                   float                float                     /                         float
+  deqScaleWdqType                       /                     /                     /                   float                float                     /                         float
+  deqScaleWuqqrType                     /                   float                 float                 float                float                   float                       float
+  deqScaleWdkvkrType                    /                     /                     /                   float                float                     /                         float
+  quantScaleCkvType                     /                     /                   float                   /                  float                     /                           /
+  quantScaleCkrType                     /                     /                   float                   /                    /                       /                           /
+  smoothScaleCqType                     /                   float                 float                 float                float                   float                       float
+  queryOutputType                   bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t                bfloat16_t                  bfloat16_t
+  ropeOutputType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  dequantScaleQNopeType                 /                     /                     /                     /                  float                     /                           /
+  queryNormType(复用mmQcQrInputType)bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  dequantScaleQNormType                 /                   float                 float                 float                float                   float                       float
+  mmInputType                       bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  mmCqOutputType                    bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t
+  mmCkvKrInputType(复用mmInputType) bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  mmCkvKrOutputType                 bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t
+  mmQcQrInputType                   bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  mmQcQrOutputType                  bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t
+  mmQnInputType                     bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  mmQnOutputType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  rmsNormComputType                   float                 float                 float                 float                float                   float                       float
+  rmsNormCqOutputType               bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  rmsNormCkvOutputType              bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t                  int8_t                      int8_t
+  ropeComputType                      float                 float                 float                 float                float                   float                       float
 */
 
 template <typename X_T, typename W_T, typename C_T, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT,
-          bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, typename... Args>
+          bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE,
+          ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
 struct MLAPType {
     using mmInputType = X_T;           // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
@@ -166,13 +215,54 @@ struct MLAPType {
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
     using kvCacheType = C_T;           // kvcache的类型
-    using krCacheType = typename std::conditional<std::is_same<X_T, int8_t>::value && std::is_same<C_T, int8_t>::value, bfloat16_t, C_T>::type; // krcache的类型
+    using krCacheType = typename std::conditional<
+        ((std::is_same<X_T, int8_t>::value && std::is_same<C_T, int8_t>::value) || IS_PERTILE),
+        bfloat16_t, C_T>::type;        // krcache的类型
     using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
+    using dequantScaleQNormType = float;      // dequantScaleQNope的类型
+    using dequantScaleType = float;
 
     static constexpr CACHE_MODE cacheMode = C_M;
     static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
     static constexpr bool enableGroupComputeOpt = ENABLE_GROUP_COMPUTE_OPT;
     static constexpr EMPTY_TENSOR_MODE emptyMode = EMPTY_MODE;
+    static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
+    static constexpr bool isPertile = IS_PERTILE;
+    static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
+};
+
+// 类模板特化，支持fp8全量化
+template <typename C_T, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT,bool ENABLE_GROUP_COMPUTE_OPT,
+          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
+struct MLAPType<FP8E4M3, FP8E4M3, C_T, C_M, ENABLE_DEQUANT_OPT,
+                ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE, IS_PERTILE, CV_RATIO, Args...> {
+    using mmInputType = FP8E4M3;           // tokenX的类型与weight的类型一致
+    using mmQcQrInputType = FP8E4M3;
+    using mmQnInputType = bfloat16_t;         // matmul计算Qn的输入类型
+    using mmCqOutputType = float; // matmul计算Cq的输出类型
+    using mmCkvKrOutputType = float; // matmul计算CkvKr的输出类型
+    using mmQcQrOutputType = float; // matmul计算QcQr的输出类型
+    using mmQnOutputType = bfloat16_t;        // matmul计算Qn的输出类型
+    using rmsNormGammaType = bfloat16_t;      // gamma的输入类型
+    using rmsNormComputType = float;
+    using rmsNormCqOutputType = FP8E4M3;
+    using rmsNormCkvOutputType = C_T;
+    using ropeSinCosType = bfloat16_t;        // sin cos的输入类型
+    using ropeComputType = float;
+    using ropeOutputType = bfloat16_t;
+    using kvCacheType = C_T;           // kvcache的类型
+    using krCacheType = bfloat16_t;        // krcache的类型
+    using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
+    using dequantScaleQNormType = float;      // dequantScaleQNope的类型
+    using dequantScaleType = fp8_e8m0_t;
+
+    static constexpr CACHE_MODE cacheMode = C_M;
+    static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
+    static constexpr bool enableGroupComputeOpt = ENABLE_GROUP_COMPUTE_OPT;
+    static constexpr EMPTY_TENSOR_MODE emptyMode = EMPTY_MODE;
+    static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
+    static constexpr bool isPertile = IS_PERTILE;
+    static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
 };
 
 struct MMParams {
@@ -208,6 +298,7 @@ struct MMBufParams {
 struct AicOffset {
   int64_t weightDqOffset = 0;
   int64_t cqResOffset = 0;
+  int64_t rmsNormCqResOffset = 0;
   int64_t weightDkvKrOffset = 0;
   int64_t ckvKrResOffset = 0;
   int64_t weightUqQrOffset = 0;
@@ -225,6 +316,7 @@ struct AivOffset {
   int64_t curVecToken = 0;
   int64_t curBlockTokenOffset = 0;
   int64_t rmsNormCqOffset = 0;
+    int64_t rmsNormCqResOffset = 0;
   int64_t rmsNormCkvOffset = 0;
   int64_t ropeKrOffset = 0;
   int64_t mmQnPreDequantOffset = 0;
@@ -236,19 +328,22 @@ struct AivOffset {
   int64_t qcScaleOffsetSplitN = 0;
 };
 
-struct UsedBlockParams{
+struct UsedBlockParams {
   uint32_t blockStartIdx;
   uint32_t blockEndIdx;
 };
 
-struct CkvkrParams{
+struct CkvkrParams {
   int64_t tokenIndex;
   int64_t offset; 
   int64_t curVecTokenIdx;
+  int64_t rowsInCurBatch;
+  int64_t cacheOffset;
+  int64_t nextBatchOffset;
 };
 
 
-struct RopeQrSplitNParams{
+struct RopeQrSplitNParams {
   int64_t ropeQrOffset;
   int64_t ropeQrResOffset;
   uint32_t inputOffsetRope;
@@ -256,9 +351,12 @@ struct RopeQrSplitNParams{
   uint32_t outputOffsetRope;
   int64_t ropeStride;
   uint32_t ropeDstStride;
+  uint32_t deQuantScaleCqOffset;
+  uint32_t sinCosOffset;
+  uint32_t ropeCnt;
 };
 
-struct DequantQcQrSplitNParams{
+struct DequantQcQrSplitNParams {
   int64_t mmQnPreDequantOffset;
   int64_t mmQnPreDequantResOffset;
   uint32_t inputOffset;
@@ -267,7 +365,7 @@ struct DequantQcQrSplitNParams{
   uint32_t dstStride;
 };
 
-constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
+constexpr MatmulConfig CFG_MDL_EXCEED_INIT {.doNorm = false,
                                            .doBasicBlock = false,
                                            .doMultiDataLoad = true,
                                            .basicM = 0,

@@ -171,7 +171,7 @@ $$
 本章节（以及后续章节）涉及的矩阵乘法模块使用AscendC Kernel API中Matmul高阶API实现。相关API使用可以参考官网[算子实现->矩阵编程（高阶API）](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0041.html)开发指南。
 
 ### RMSNormCq
-对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的 rmsnormGammaCq 和 rmsnormEpsilonCq。
+对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的rmsnormGammaCq和rmsnormEpsilonCq。
 $$
 c_{\mathrm{norm}}^Q = \mathrm{RmsNorm}(c^Q) \tag{2}
 $$
@@ -402,7 +402,7 @@ PA场景
   ![KVCacheScatter_PA_ND](../../../docs/figures/KVCacheScatter_PA_ND.jpg)
 - KVCache使用NZ格式存储，其更新流程如图4所示。数据分形格式的介绍可以参考官网指南-[数据排布格式
 ](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0104.html)。
-  - 当前按NZ格式存储KVCache时，是将整个Block存储成NZ格式；小块内是以行为主(Row Major)的排布，形状如Z字型；块与块之间是以列为主的排布，形状如N字形。将完整的H(Hidden States)按32B长度的小块进行分块后，在ND格式下连续存储的小块，在NZ格式下需要跳$32B * BlockSize$存储，即需要设置stride为$32B * BlockSize$。
+  - 当前按NZ格式存储KVCache时，是将整个Block存储成NZ格式；小块内是以行为主（Row Major）的排布，形状如Z字型；块与块之间是以列为主的排布，形状如N字形。将完整的H（Hidden States）按32B长度的小块进行分块后，在ND格式下连续存储的小块，在NZ格式下需要跳$32B * BlockSize$存储，即需要设置stride为$32B * BlockSize$。
   - 图4 KVCacheScatter操作（PA场景-NZ格式）
   ![PA_NZ](../../../docs/figures/PA_NZ.jpg)
 

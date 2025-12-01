@@ -154,7 +154,7 @@ __aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTe
  * @param colRope
  * @param qrOutputStrideRope 描述rope处理后的输出位置
  */
-template <typename T, typename C, typename O>
+template <typename T, typename C, typename O, uint32_t cvRatio = 2>
 __aicore__ inline void DynamicQuantQnWithMulQr(
     // Dynamic Quant With MulQr 输出
     const GlobalTensor<C>& scaleOutputGm, const GlobalTensor<O>& outputGm, const GlobalTensor<T>& outputGmRope,
@@ -175,6 +175,11 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     constexpr float maxInt8 = 127.0;
     // Dynamic Quant 局部变量
     uint64_t rowStepSize = 16; // 单次处理最大行数
+
+    if (cvRatio == 1 && scaleOutStride > 64) { // cv1:1场景且N > 64时，改为8行进行计算，降低UB使用
+        rowStepSize = 8;
+    }
+
     uint64_t subRow = row < rowStepSize ? row : rowStepSize;
     uint32_t computeSize = subRow * col;
     uint32_t brcbCnt = Align(subRow, computeBlockAlign);

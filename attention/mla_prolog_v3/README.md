@@ -40,7 +40,7 @@
     $$
     其中 $\alpha_q$ 是 Query 的尺度矫正参数。
 
-    对Query的进行ROPE旋转位置编码
+    对Query进行ROPE旋转位置编码
 
     $$
     q^R = \mathrm{ROPE}(c^Q \cdot W^{QR})

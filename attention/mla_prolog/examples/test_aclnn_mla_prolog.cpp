@@ -1,6 +1,6 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.|Hisilicon Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_aclnn_mla_prolog.cpp
+ * \file test_aclnn_mla_prolog_nq_bsh.cpp
  * \brief
  */
 
@@ -17,7 +17,6 @@
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_mla_prolog.h"
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -40,7 +39,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
-    // 固定写法，AscendCL初始化
+    // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -314,5 +313,5 @@ int main() {
     aclrtResetDevice(deviceId);
     aclFinalize();
 
-    _exit(0);
+    return 0;
 }

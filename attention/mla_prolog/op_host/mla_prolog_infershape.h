@@ -23,7 +23,7 @@
 using namespace ge;
 
 namespace ops {
-//input
+// INPUT
 constexpr uint32_t TOKEN_X_INDEX = 0;
 constexpr uint32_t WEIGHT_UK_INDEX = 3;
 constexpr uint32_t ROPE_SIN_INDEX = 7;
@@ -31,12 +31,12 @@ constexpr uint32_t KV_CACHE_INDEX = 10;
 constexpr uint32_t KR_CACHE_INDEX = 11;
 constexpr uint32_t KV_CACHE_INDEX_V3 = 9;
 constexpr uint32_t KR_CACHE_INDEX_V3 = 10;
-// output
+// OUTPUT
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t QUERY_ROPE_INDEX = 1;
 constexpr uint32_t KV_CACHE_OUT_INDEX = 2;
 constexpr uint32_t KR_CACHE_OUT_INDEX = 3;
-// tmp
+// TMP
 constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_2 = 2;
 constexpr uint32_t DIM_NUM_3 = 3;
@@ -46,7 +46,7 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-struct MlaProlgoProtoShapeParam {
+struct MlaPrologProtoShapeParam {
     bool isBsMerge { false };
     int64_t B { 0 };
     int64_t T { 0 };
@@ -55,12 +55,13 @@ struct MlaProlgoProtoShapeParam {
     int64_t Hckv { 0 };
     int64_t He { 0 };
     int64_t Dr { 0 };
+    int64_t Hcq { 0 };
 };
 
-ge::graphStatus GetMlaPrologShapeDim(const gert::InferShapeContext* context, MlaProlgoProtoShapeParam &shapeParam);
-ge::graphStatus SetMlaPrologShapeDim(const MlaProlgoProtoShapeParam &shapeParam, gert::InferShapeContext* context);
-ge::graphStatus InferShapeMlaProlog(gert::InferShapeContext* context);
-ge::graphStatus InferDataTypeMlaProlog(gert::InferDataTypeContext* context);
+ge::graphStatus GetMlaPrologShapeDim(const gert::InferShapeContext *context, MlaPrologProtoShapeParam &shapeParam);
+ge::graphStatus SetMlaPrologShapeDim(const MlaPrologProtoShapeParam &shapeParam, gert::InferShapeContext *context);
+ge::graphStatus InferShapeMlaProlog(gert::InferShapeContext *context);
+ge::graphStatus InferDataTypeMlaProlog(gert::InferDataTypeContext *context);
 }  // namespace ops
 
 #endif // MLA_PROLOG_INFERSHAPE_H

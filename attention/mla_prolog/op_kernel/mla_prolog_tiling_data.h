@@ -1,11 +1,11 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License. 
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -23,6 +23,8 @@ namespace optiling {
     struct MlaPrologBaseParams {
         uint32_t batchSize;                  // batch size（批大小）
         uint32_t stepBatchSize;              // batch size per step 32（每步批大小）
+        uint32_t mSubSize;
+        uint32_t mSubCoreNum;
         uint32_t stepNumHeadDequant;         // head size per step when dequant before mmqn（反量化前每步头大小）
         uint32_t tokenSize;                  // token size = batchSize * seq1Size（token总数：批大小×序列1长度）
         uint32_t seq1Size;                   // seq1（序列1长度，通常为query序列长度）
@@ -48,11 +50,17 @@ namespace optiling {
         uint32_t mm2SingleCoreN;             // single headSizeCkv+headSizeKr（单核心矩阵乘2的N维度大小，Ckv+Kr头维度之和）
         uint32_t mm3SingleCoreN;             // single headSizeQc+headSizeQr（单核心矩阵乘3的N维度大小，Qc+Qr头维度之和）
         uint32_t mm4SingleCoreBatch;         // single numHeadSize（单核心矩阵乘4的批大小，对应单个头数量）
-        uint32_t reserve_tag;                // 标识符，默认值为1
+        uint32_t dtileSize;
+        uint32_t kvQuantMode;
+        uint32_t tileSize;
+        uint32_t ckvkrRepoMode;
+        uint32_t quantScaleRepoMode;
+        uint32_t queryNormFlag;
         float reciprocalCq;                  // 1 / headSizeCq（headSizeCq的倒数，用于快速计算）
         float epsilonCq;                     // Cq计算的epsilon（数值稳定性参数）
         float reciprocalCkv;                 // 1 / headSizeCkv（headSizeCkv的倒数，用于快速计算）
         float epsilonCkv;                    // Ckv计算的epsilon（数值稳定性参数）
+        float kNopeClipAlpha;
         float qcQrScale;                     // query 的尺度矫正因子
         float kcScale;                       // kv 的尺度矫正因子
         uint16_t isQcQrScaleEnable;          // query 的尺度矫正因子是否生效（默认是1.0的时候不生效）

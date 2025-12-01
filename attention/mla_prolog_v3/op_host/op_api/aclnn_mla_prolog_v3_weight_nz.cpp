@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <cstring>
+#include <string>
 #include "graph/types.h"
 #include "aclnn_mla_prolog_v3_weight_nz.h"
 
@@ -36,37 +37,56 @@ extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
     aclTensor *kvCacheRef, aclTensor *krCacheRef, const aclTensor *cacheIndexOptional, const aclTensor *dequantScaleXOptional,
     const aclTensor *dequantScaleWDqOptional, const aclTensor *dequantScaleWUqQrOptional, const aclTensor *dequantScaleWDkvKrOptional,
     const aclTensor *quantScaleCkvOptional, const aclTensor *quantScaleCkrOptional, const aclTensor *smoothScalesCqOptional,
-    const aclTensor *actualSeqLenOptional, double rmsnormEpsilonCq, double rmsnormEpsilonCkv, char *cacheModeOptional,
+    const aclTensor *actualSeqLenOptional, const aclTensor *kNopeClipAlphaOptional, double rmsnormEpsilonCq, double rmsnormEpsilonCkv, char *cacheModeOptional,
     bool queryNormFlag, int64_t weightQuantMode, int64_t kvCacheQuantMode, int64_t queryQuantMode, int64_t ckvkrRepoMode,
-    int64_t quantScaleRepoMode, int64_t tileSize, double kNopeClipAlpha, double qcQrScale, double kcScale, const aclTensor *queryOut,
+    int64_t quantScaleRepoMode, int64_t tileSize, double qcQrScale, double kcScale, const aclTensor *queryOut,
     const aclTensor *queryRopeOut, const aclTensor *dequantScaleQNopeOut, const aclTensor *queryNormOut, const aclTensor *dequantScaleQNormOut,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerMlaPrologV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                          const aclrtStream stream);
 
-
 class TensorHolder {
 public:
-    explicit TensorHolder(const aclTensor *&output, aclDataType dataType) {
-        inner = nullptr;
+    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName) {
+        inner_ = nullptr;
+        name_ = varName;
         if (output == nullptr) {
             std::vector<int64_t> shape = {0};
             int64_t addr = 0xff;
-            inner = aclCreateTensor(shape.data(), shape.size(),
+            inner_ = aclCreateTensor(shape.data(), shape.size(),
                 dataType, shape.data(), 0, ACL_FORMAT_ND,
                 shape.data(), shape.size(), static_cast<void *>(&addr));
-            output = inner;
+            output = inner_;
         }
     }
+
     ~TensorHolder() {
-        if (inner) {
-            aclDestroyTensor(inner);
-            inner = nullptr;
+        if (inner_) {
+            aclDestroyTensor(inner_);
+            inner_ = nullptr;
         }
     }
+    
+    void CheckTensorNotNullWhen(bool conditional) const {
+        if (inner_ && conditional) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s != nullptr failed!", name_.c_str());
+        }
+    }
+    
+    void CheckTensorNullWhen(bool conditional) const {
+        if (!inner_ && conditional) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s == nullptr failed!", name_.c_str());
+        }
+    }
+
+    bool IsTensorNotNull() const {
+        return inner_ == nullptr;
+    }
+
 private:
-    const aclTensor *inner;
+    const aclTensor *inner_;
+    std::string name_;
 };
 
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
@@ -90,17 +110,16 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const aclTensor *quantScaleCkrOptional,
     const aclTensor *smoothScalesCqOptional,
     const aclTensor *actualSeqLenOptional,
+    const aclTensor *kNopeClipAlphaOptional,
     double rmsnormEpsilonCq,
     double rmsnormEpsilonCkv,
     char *cacheModeOptional,
-    bool queryNormFlag,
     int64_t weightQuantMode,
     int64_t kvCacheQuantMode,
     int64_t queryQuantMode,
     int64_t ckvkrRepoMode,
     int64_t quantScaleRepoMode,
     int64_t tileSize,
-    double kNopeClipAlpha,
     double qcQrScale,
     double kcScale,
     const aclTensor *queryOut,
@@ -111,19 +130,37 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    if (tokenX ->GetDataType() == ge::DT_INT8 && kvCacheRef ->GetDataType() == ge::DT_INT8 && dequantScaleQNopeOutOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check dequantScaleQNopeOut != nullptr failed!");
+    auto dequantScaleQNopeHolder = TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
+    aclDataType queryNormDataType = weightQuantMode == 0 ? aclDataType::ACL_BF16 : aclDataType::ACL_INT8;
+    auto queryNormHolder = TensorHolder(queryNormOutOptional, queryNormDataType, std::string("queryNormOut"));
+    auto dequantScaleQNormHolder = TensorHolder(dequantScaleQNormOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNormOut"));
+    if (dequantScaleQNopeOutOptional == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOu!");
+        return ge::GRAPH_FAILED;
     }
-    auto holder1 = TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT);
-    auto holder2 = TensorHolder(queryNormOutOptional, aclDataType::ACL_BF16);
-    auto holder3 = TensorHolder(dequantScaleQNormOutOptional, aclDataType::ACL_FLOAT);
+    if (queryNormOutOptional == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor queryNormOut!");
+        return ge::GRAPH_FAILED;
+    }
+    if (dequantScaleQNormOutOptional == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNormOut!");
+        return ge::GRAPH_FAILED;
+    }
+    // weightQuantMode == 2:全量化场景, kvCacheQuantMode == 1:KV_PER_TENSOR量化场景
+    dequantScaleQNopeHolder.CheckTensorNotNullWhen(weightQuantMode == 2 && kvCacheQuantMode == 1); 
+    dequantScaleQNopeHolder.CheckTensorNullWhen(weightQuantMode != 2 || kvCacheQuantMode != 1); 
+    bool queryNormFlag = queryNormHolder.IsTensorNotNull();
+    // weightQuantMode != 0:量化场景
+    dequantScaleQNormHolder.CheckTensorNotNullWhen(weightQuantMode != 0 && queryNormFlag);
+    // weightQuantMode == 0:非量化场景
+    dequantScaleQNormHolder.CheckTensorNullWhen(weightQuantMode == 0 || !queryNormFlag);
     return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCacheRef, krCacheRef,
         cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional, dequantScaleWUqQrOptional,
-        dequantScaleWDkvKrOptional, quantScaleCkvOptional, quantScaleCkrOptional, smoothScalesCqOptional, actualSeqLenOptional,
+        dequantScaleWDkvKrOptional, quantScaleCkvOptional, quantScaleCkrOptional, smoothScalesCqOptional, actualSeqLenOptional, kNopeClipAlphaOptional,
         rmsnormEpsilonCq, rmsnormEpsilonCkv, cacheModeOptional,
         queryNormFlag, weightQuantMode, kvCacheQuantMode, queryQuantMode, ckvkrRepoMode, quantScaleRepoMode, tileSize,
-        kNopeClipAlpha, qcQrScale, kcScale, queryOut, queryRopeOut,
+        qcQrScale, kcScale, queryOut, queryRopeOut,
         dequantScaleQNopeOutOptional, queryNormOutOptional, dequantScaleQNormOutOptional,
         workspaceSize, executor);
 }

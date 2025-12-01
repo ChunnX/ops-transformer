@@ -21,13 +21,16 @@
 namespace optiling {
 
 constexpr uint32_t MAX_B_SIZE = 65536U;
-constexpr uint32_t MAX_S1_SIZE = 16U;
+constexpr uint32_t MAX_S1_SIZE = 65536U;
 constexpr uint32_t MAX_T_SIZE = 1024U * 1024U;
 constexpr uint32_t HCQ_SIZE = 1536U;
 constexpr uint32_t HCKV_SIZE = 512U;
 constexpr uint32_t D_SIZE = 128U;
 constexpr uint32_t DR_SIZE = 64U;
 constexpr uint32_t NKV_SIZE = 1U;
+constexpr uint32_t MIN_BLOCK_SIZE = 16U;
+constexpr uint32_t MAX_BLOCK_SIZE = 1024U;
+constexpr uint32_t ALIGN_BLOCK_SIZE = 16U;
 
 constexpr int64_t  NZ_H0_SIZE = 16U;
 
@@ -50,13 +53,17 @@ constexpr char DEQUANT_SCALE_W_DKV_KR_NAME[] {"dequantScaleWDkvKr"};
 constexpr char QUANT_SCALE_CKV_NAME[] {"quantScaleCkv"};
 constexpr char QUANT_SCALE_CKR_NAME[] {"quantScaleCkr"};
 constexpr char SMOOTH_SCALES_CQ_NAME[] {"smoothScalesCq"};
+constexpr char ACTUAL_SEQ_LEN_NAME[] {"actualSeqLen"};
+constexpr char K_NOPE_CLIP_ALPHA_NAME[] {"kNopeClipAlpha"};
 constexpr char QUERY_NAME[] {"query"};
 constexpr char QUERY_ROPE_NAME[] {"queryRope"};
 constexpr char KV_CACHE_OUT_NAME[] {"kvCacheOut"};
 constexpr char KR_CACHE_OUT_NAME[] {"krCacheOut"};
 constexpr char DEQUANT_SCALE_Q_NOPE_NAME[] {"dequantScaleQNope"};
+constexpr char QUERY_NORM_NAME[] {"queryNorm"};
+constexpr char DEQUANT_SCALE_Q_NORM_NAME[] {"dequantScaleQNorm"};
 
-constexpr uint32_t PARAM_MAP_INIT_RESERVE_NUM = 24;  // 预分配所有key的个数，避免使用时动态扩容
+constexpr uint32_t PARAM_MAP_INIT_RESERVE_NUM = 28;  // 预分配所有key的个数，避免使用时动态扩容
 
 struct ParamInfo {
     ParamInfo() = default;
@@ -78,8 +85,7 @@ struct ParamInfo {
             }
         }
     }
-    explicit ParamInfo(const RequiredParaInfo &info) : ParamInfo(info.desc, info.shape) {}
-    explicit ParamInfo(const OptionalParaInfo &info) : ParamInfo(info.desc, info.shape) {}
+    explicit ParamInfo(const BaseParaInfo &info) : ParamInfo(info.desc, info.shape) {}
     explicit ParamInfo(const std::vector<uint32_t> &expectedShape)
     {
         isValid = true;
@@ -91,7 +97,7 @@ struct ParamInfo {
         }
     }
 
-    bool operator==(const ParamInfo &other) const {
+    bool operator == (const ParamInfo &other) const {
         if (!isValid && !other.isValid) {
             return true;
         }
@@ -103,7 +109,7 @@ struct ParamInfo {
         return (isValid == other.isValid && dtype == other.dtype &&
             dimNum == other.dimNum && shape == other.shape);
     }
-    bool operator!=(const ParamInfo &other) const {
+    bool operator != (const ParamInfo &other) const {
         return !(*this == other);
     }
 
@@ -125,10 +131,14 @@ public:
     ge::graphStatus CheckCacheMode() const;
     ge::graphStatus CheckDims() const;
     ge::graphStatus CheckParamByScenario();
+    ge::graphStatus CheckCkvkrRepoMode();
+    ge::graphStatus CheckScenarParam();
+    ge::graphStatus CheckAttrs() const;
 
 private:
+    bool CheckCacheModeParamShape() const;
     // ==================================单参数校验==================================
-    bool IsSingleParamValid(const RequiredParaInfo &param, const std::string &paramName,
+    bool IsSingleParamValid(const BaseParaInfo &param, const std::string &paramName,
                             const std::set<ge::DataType> &expectedDtype,
                             const std::set<ge::Format> &expectedFormat,
                             const std::set<size_t> &expectedDimNum) const;
@@ -144,18 +154,24 @@ private:
     bool CheckCacheIndex() const;
     bool CheckKvCache() const;
     bool CheckKrCache() const;
+    bool CheckActSeqLen() const;
     // ==================================单参数校验==================================
 
     // =================================全量参数校验=================================
     void GenExpectedParamInfo();
     void FillCommonParamInfo();
     void FillRequiredParamShapeWithDims();
+    void FillOptionalOutputParamShapeWithDims();
     void FillScenarioParamInfo();
     void FillNonQuantParamInfo();
     void FillPartialQuantParamInfo();
     void FillPartialKVQuantParamInfo();
+    void FillPartialKVPertileQuantParamInfo();
     void FillFullQuantParamInfo();
     void FillFullKVQuantParamInfo();
+    void FillFullKVPertileQuantParamInfo();
+    void FillMxfp8FullQuantParamInfo();
+    void FillMxfp8FullKVQuantParamInfo();
 
     void GenActualParamInfo();
     // =================================全量参数校验=================================

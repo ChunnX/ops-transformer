@@ -18,10 +18,9 @@
 
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
+#include "arch32/rope.h"
 
 namespace MlaProlog {
-
-
 /**
  * @brief RotaryPosEmbPerTensor 对一个tensor进行RotartPosEmb，tensor的维度为[row * col]
           行与行之间sin/cos公用；
@@ -70,9 +69,9 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const 
 
     if constexpr (std::is_same<T, int32_t>::value) { // 反量化
         Rectangle rectangleParams {
-            (uint32_t)1,  //row
-            (uint32_t)cnt,//col
-            (uint32_t)cnt //columnStride
+            (uint32_t)1,   // row
+            (uint32_t)cnt, // col
+            (uint32_t)cnt  // columnStride
         };
         Dequant(kFp32Local, kLocal, channelDeqScaleLocal, scale, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
@@ -176,7 +175,7 @@ template <typename T, typename O>
 __aicore__ inline void RopePostQuantPerChannel(LocalTensor<O> &outputLocal, LocalTensor<T> &inputLocal, LocalTensor<float> &quantScaleLocal,
                                                LocalTensor<uint8_t> &shareTmpUb, int64_t cnt) {
     LocalTensor<float> inFp32;
-    if constexpr (std::is_same<T,float>::value) {
+    if constexpr (std::is_same<T, float>::value) {
         inFp32 = inputLocal;
     } else {
         inFp32 = shareTmpUb.ReinterpretCast<float>()[cnt];
@@ -188,7 +187,5 @@ __aicore__ inline void RopePostQuantPerChannel(LocalTensor<O> &outputLocal, Loca
     CastFP32ToINT8(outputLocal, inFp32, shareTmpUb, cnt);
     AscendC::PipeBarrier<PIPE_V>();
 }
-
 }
-
 #endif

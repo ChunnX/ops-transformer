@@ -11,7 +11,6 @@
 /*!
  * \file service_rms_norm.h
  * \brief
- * 0924做pipe_barrier修改
  */
 
 #ifndef SERVICE_RMS_NORM_H
@@ -20,6 +19,7 @@
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
 
+#include "arch32/rms_norm.h"
 namespace MlaProlog {
 
 /**
@@ -61,7 +61,7 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         Rectangle rectangleParams {
             (uint32_t)rmsNormParams.row,
             (uint32_t)rmsNormParams.col,
-            (uint32_t)rmsNormParams.col //columnStride
+            (uint32_t)rmsNormParams.col // columnStride
         };
         Dequant(xFp32Local, xInt32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
@@ -79,11 +79,10 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
     LocalTensor<C> rmsnormShareUB = xFp32Local[rmsNormParams.col];
 
     if constexpr (std::is_same<C, O>::value) {
-        RmsNorm(outputLocal, xFp32Local, gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
+        RmsNorm(outputLocal, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
         AscendC::PipeBarrier<PIPE_V>();
     } else {
-        RmsNorm(xFp32Local, xFp32Local, gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
-    
+        RmsNorm(xFp32Local, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
         // Cast xFp32 to outputLocal
         AscendC::PipeBarrier<PIPE_V>();
         Cast(outputLocal, xFp32Local, RoundMode::CAST_RINT, cnt);
@@ -117,7 +116,7 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<int8_t>& outputLoca
                                            RmsNormParam& rmsNormParams, bool enableSmoothScalesCq = true) {
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
-    RmsNormNormal<T,GammaType,C,C>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal, shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
+    RmsNormNormal<T, GammaType, C, C>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal, shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
     AscendC::PipeBarrier<PIPE_V>();
     if (enableSmoothScalesCq) {
         Mul(xFp32Local, xFp32Local, smoothLocal, cnt);

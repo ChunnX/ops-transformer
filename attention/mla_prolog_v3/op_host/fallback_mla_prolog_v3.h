@@ -23,6 +23,8 @@ extern "C" {
 namespace fallback {
 
 constexpr size_t DEQUANT_SCALE_Q_NOPE_INDEX = 4;
+constexpr size_t QUERY_NORM_INDEX = 5;
+constexpr size_t DEQUANT_SCALE_Q_NORM_INDEX = 6;
 
 // INPUT
 constexpr size_t TOKEN_X_INDEX_V3 = 0;
@@ -44,6 +46,8 @@ constexpr size_t DEQUANT_SCALE_W_DKV_KR_INDEX_V3 = 15;
 constexpr size_t QUANT_SCALE_CKV_INDEX_V3 = 16;
 constexpr size_t QUANT_SCALE_CKR_INDEX_V3 = 17;
 constexpr size_t SMOOTH_SCALES_CQ_INDEX_V3 = 18;
+constexpr uint32_t ACTUAL_SEQ_LEN_INDEX_V3 = 19;
+constexpr uint32_t K_NOPE_CLIP_ALPHA_INDEX_V3 = 20;
 
 constexpr size_t ATTR_QUERY_NORM_FLAG_INDEX = 3;
 constexpr size_t ATTR_WEIGHT_QUANT_MODE_INDEX = 4;
@@ -52,14 +56,15 @@ constexpr size_t ATTR_QUERY_QUANT_MODE_INDEX = 6;
 constexpr size_t ATTR_CKVKR_REPO_MODE_INDEX = 7;
 constexpr size_t ATTR_QUANT_SCALE_REPO_MODE_INDEX = 8;
 constexpr size_t ATTR_TILE_SIZE_INDEX = 9;
-constexpr size_t ATTR_K_NOPE_CLIP_ALPHA_INDEX = 10;
-constexpr size_t ATTR_QC_QR_SCALE_INDEX = 11;
-constexpr size_t ATTR_KC_SCALE_INDEX = 12;
+constexpr size_t ATTR_QC_QR_SCALE_INDEX = 10;
+constexpr size_t ATTR_KC_SCALE_INDEX = 11;
 
 struct MlaPrologV3FallBackParam : MlaPrologFallBackParam {
+    const gert::Tensor *actualAeqLen = nullptr;
+    const gert::Tensor *kNopeClipAlpha = nullptr;
     const gert::Tensor *dequantScaleQNope = nullptr;
-    const gert::Tensor *queryNormOptional = nullptr;
-    const gert::Tensor *dequantScaleQNormOptional = nullptr;
+    const gert::Tensor *queryNorm = nullptr;
+    const gert::Tensor *dequantScaleQNorm = nullptr;
     bool queryNormFlag = false;
     int weightQuantMode = 0;
     int kvCacheQuantMode = 0;
@@ -67,7 +72,6 @@ struct MlaPrologV3FallBackParam : MlaPrologFallBackParam {
     int ckvkrRepoMode = 0;
     int quantScaleRepoMode = 0;
     int tileSize = 128;
-    double kNopeClipAlpha = 1.0f;
     double qcQrScale = 1.0f;
     double kcScale = 1.0f;
 };
