@@ -1591,7 +1591,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         </thead>
         <tbody>
         <tr>
-            <td colspan="2" rowspan="6">通用场景</td>
+            <td colspan="2" rowspan="5">通用场景</td>
             <td>query</td>
             <td>BFLOAT16,Q_S [1,16] Q_D=128</td>
             <td>-</td>
@@ -1609,11 +1609,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tr>
             <td>inputLayout</td>
             <td>BSH、BSND、BNSD</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>numHeads和numKeyValueHeads</td>
-            <td>(10,1)、(64,8)、(80,8)、(128,16)</td>
             <td>-</td>
         </tr>
         <tr>
