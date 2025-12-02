@@ -270,6 +270,7 @@ endforeach ()
 add_subdirectory(attention)
 if("${ASCEND_OP_NAME}" STREQUAL "add_example")
     add_subdirectory(examples)
+    list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})
 endif()
 
 list(APPEND OP_LIST ${COMPILED_OPS})
