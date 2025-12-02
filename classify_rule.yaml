@@ -46,7 +46,7 @@ gmm:
     src:
       - gmm/grouped_matmul
     options:
-      - grouped_matmul
+      # - grouped_matmul
 
 ffn:
   ffn:
