@@ -43,9 +43,16 @@ ge::graphStatus FiaTilingCheck::CheckRopeExistence() const
         OP_LOGE(opName_, "%s is null, but keyRope exists, they should be both null or exist.", QUERY_ROPE_NAME.c_str()),
         return ge::GRAPH_FAILED);
 
-    if (ropeMode_ != RopeMode::NO_ROPE) {
+    if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         OP_CHECK_IF(opParamInfo_.keyRope.desc == nullptr || opParamInfo_.queryRope.desc == nullptr,
-            OP_LOGE(opName_, "In MLA situation, desc of %s and %s should not be null",
+            OP_LOGE(opName_, "In %s situation and rope exsists, desc of %s and %s should not be null",
+                QuantModeToSerialString(quantMode_).c_str(),
+                KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()),
+            return ge::GRAPH_FAILED);
+    } else if (ropeMode_ == RopeMode::ROPE_COMBINE) {
+        OP_CHECK_IF(opParamInfo_.keyRope.desc != nullptr || opParamInfo_.queryRope.desc != nullptr,
+            OP_LOGE(opName_, "In %s situation and rope exsists, desc of %s and %s should be null",
+                QuantModeToSerialString(quantMode_).c_str(),
                 KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()),
             return ge::GRAPH_FAILED);
     }
@@ -109,7 +116,8 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagMla()
     } else if (VecContains(mlaFullquantDtypeList, actualDtypeList)) {
         quantMode_ = FiaQuantMode::FULL_QUANT;
     } else {
-        OP_LOGE(opName_, "MLA situation only supports [query_dtype, kv_dtype, query_rope_dtype, key_rope_dtype] as %s, %s, %s, but got %s",
+        OP_LOGE(opName_, "In %s situation and rope exsists, only supports [Q_dtype, kv_dtype, Q_rope_dtype, K_rope_dtype] as %s, %s, %s, but got %s",
+            QuantModeToSerialString(quantMode_).c_str(),
             DtypeDoubleListToStr(mlaNoquantDtypeList).c_str(),
             DtypeDoubleListToStr(mlaAntiquantDtypeList).c_str(),
             DtypeDoubleListToStr(mlaFullquantDtypeList).c_str(),
@@ -148,7 +156,8 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagGqa()
     } else if (VecContains(gqaFullquantDtypeList, actualDtypeList)) {
         quantMode_ = FiaQuantMode::FULL_QUANT;
     } else {
-        OP_LOGE(opName_, "GQA situation only supports [query_dtype, kv_dtype] as %s, %s, %s, but got %s",
+        OP_LOGE(opName_, "In %s situation, only supports [query_dtype, kv_dtype] as %s, %s, %s, but got %s",
+            QuantModeToSerialString(quantMode_).c_str(),
             DtypeDoubleListToStr(gqaNoquantDtypeList).c_str(),
             DtypeDoubleListToStr(gqaAntiquantDtypeList).c_str(),
             DtypeDoubleListToStr(gqaFullquantDtypeList).c_str(),
@@ -162,7 +171,7 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagGqa()
 
 ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlag()
 {
-    if (ropeMode_ != RopeMode::NO_ROPE) {
+    if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         return CheckDtypeAndSetQuantFlagMla();
     } else {
         return CheckDtypeAndSetQuantFlagGqa();
@@ -172,10 +181,8 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlag()
 ge::graphStatus FiaTilingCheck::CheckExists(const void *pointer, const std::string &name) const
 {
     OP_CHECK_IF(pointer == nullptr,
-        OP_LOGE(opName_, "In %s %s situation, %s should not be null",
-            RopeModeToSerialString(ropeMode_).c_str(),
-            QuantModeToSerialString(quantMode_).c_str(),
-            name.c_str()),
+        OP_LOGE(opName_, "In %s, %s situation, %s should not be null",
+            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), name.c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -183,10 +190,8 @@ ge::graphStatus FiaTilingCheck::CheckExists(const void *pointer, const std::stri
 ge::graphStatus FiaTilingCheck::CheckNotExists(const void *pointer, const std::string &name) const
 {
     OP_CHECK_IF(pointer != nullptr,
-        OP_LOGE(opName_, "In %s %s situation, %s should be null",
-            RopeModeToSerialString(ropeMode_).c_str(),
-            QuantModeToSerialString(quantMode_).c_str(),
-            name.c_str()),
+        OP_LOGE(opName_, "In %s, %s situation, %s should be null",
+            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), name.c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -238,9 +243,8 @@ void FiaTilingCheck::LogErrorExistenceEqual(std::map<std::string, const void *> 
         }
     }
 
-    OP_LOGE(opName_, "In %s %s situation, %s's existence status should be same",
-        RopeModeToSerialString(ropeMode_).c_str(), QuantModeToSerialString(quantMode_).c_str(),
-        oss.str().c_str());
+    OP_LOGE(opName_, "In %s situation, %s's existence status should be same",
+        QuantModeToSerialString(quantMode_).c_str(), oss.str().c_str());
 }
 
 ge::graphStatus FiaTilingCheck::CheckParaExistenceEqual(std::map<std::string, const void *> &paramMap) const
@@ -285,8 +289,7 @@ ge::graphStatus FiaTilingCheck::CheckAttrValueByMap(std::map<std::string, std::p
             std::ostringstream ossActual;
             ossActual << std::to_string(*(pointerValuePair.first));
             OP_LOGE(opName_,
-                "In %s %s situation, %s value should be %s, but got %s",
-                RopeModeToSerialString(ropeMode_).c_str(),
+                "In %s situation, %s value should be %s, but got %s", 
                 QuantModeToSerialString(quantMode_).c_str(),
                 name.c_str(),
                 ossExpect.str().c_str(),
@@ -300,7 +303,6 @@ ge::graphStatus FiaTilingCheck::CheckAttrValueByMap(std::map<std::string, std::p
 ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaNoquant() const
 {
     std::map<std::string, const void *> mlaNoquantParamExistMap = {};
-
     std::map<std::string, const void *> mlaNoquantParamNotExistMap = {
         // antiquantParam
         {ANTIQUANT_SCALE_NAME, opParamInfo_.antiquantScale.tensor},
@@ -383,7 +385,6 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaAntiquant() const
         CheckAttrValueByMap(attrDefaultValueMap) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -432,6 +433,28 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaFullquant() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus FiaTilingCheck::CheckParaExistenceGqaNoquantForFullquant() const
+{
+    std::string layout = opParamInfo_.layOut;
+    const std::vector<std::string> layoutSupportList = {
+        "BSH", "BSND", "BNSD", "BNSD_BSND"
+    };
+    if((std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) != layoutSupportList.end()) && (s1Size_ > 1) && (inputQType_ == ge::DT_INT8 || outputType_ != ge::DT_INT8)) {
+        return ge::GRAPH_SUCCESS;
+    } else {
+        std::map<std::string, const void *> gqaNoquantParamNotExistMap = {
+            // fullquantParam
+            {DEQUANT_SCALE1_NAME, opParamInfo_.deqScale1.tensor},
+            {QUANT_SCALE1_NAME, opParamInfo_.quantScale1.tensor},
+            {DEQUANT_SCALE2_NAME, opParamInfo_.deqScale2.tensor},
+        };
+        if (CheckNotExistsByMap(gqaNoquantParamNotExistMap) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaTilingCheck::CheckParaExistenceGqaNoquant() const
 {
     std::map<std::string, const void *> gqaNoquantParamExistMap = {};
@@ -446,9 +469,6 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceGqaNoquant() const
         {VALUE_ANTIQUANT_OFFSET_NAME, opParamInfo_.valueAntiquantOffset.tensor},
         {KEY_ROPE_ANTIQUANT_SCALE_NAME, opParamInfo_.keyRopeAntiquantScale.tensor},
         // fullquantParam
-        {DEQUANT_SCALE1_NAME, opParamInfo_.deqScale1.tensor},
-        {QUANT_SCALE1_NAME, opParamInfo_.quantScale1.tensor},
-        {DEQUANT_SCALE2_NAME, opParamInfo_.deqScale2.tensor},
         {DEQUANT_SCALE_QUERY_NAME, opParamInfo_.dequantScaleQuery.tensor},
     };
 
@@ -462,6 +482,11 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceGqaNoquant() const
         CheckAttrValueByMap(attrDefaultValueMap) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    if(CheckParaExistenceGqaNoquantForFullquant() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -472,24 +497,21 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceGqaAntiquantInt8Inner() const
     }
     OP_CHECK_IF(opParamInfo_.keyAntiquantOffset.tensor != nullptr,
         OP_LOGE(opName_,
-            "In %s %s situation, %s is null, but %s exists",
-            RopeModeToSerialString(ropeMode_).c_str(),
+            "In %s situation, %s is null, but %s exists", 
             QuantModeToSerialString(quantMode_).c_str(),
             KEY_ANTIQUANT_SCALE_NAME.c_str(),
             KEY_ANTIQUANT_OFFSET_NAME.c_str()),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.antiquantScale.tensor == nullptr,
         OP_LOGE(opName_,
-            "In %s %s situation, when %s is null, %s should not be null",
-            RopeModeToSerialString(ropeMode_).c_str(),
+            "In %s situation, when %s is null, %s should not be null", 
             QuantModeToSerialString(quantMode_).c_str(),
             KEY_ANTIQUANT_SCALE_NAME.c_str(),
             ANTIQUANT_SCALE_NAME.c_str()),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.keyAntiquantMode != 0) || (*opParamInfo_.valueAntiquantMode != 0),
         OP_LOGE(opName_,
-            "In %s %s situation, when %s is null, %s(%ld) and %s(%ld) should both be 0",
-            RopeModeToSerialString(ropeMode_).c_str(),
+            "In %s situation, when %s is null, %s(%ld) and %s(%ld) should both be 0", 
             QuantModeToSerialString(quantMode_).c_str(),
             KEY_ANTIQUANT_SCALE_NAME.c_str(),
             KEY_ANTIQUANT_MODE_NAME.c_str(),
@@ -535,7 +557,6 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceGqaAntiquantInt8() const
         CheckParaExistenceGqaAntiquantInt8Inner() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -650,7 +671,7 @@ ge::graphStatus FiaTilingCheck::CheckParaExistence()
         return ge::GRAPH_FAILED;
     }
 
-    if (ropeMode_ != RopeMode::NO_ROPE) {
+    if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         return CheckParaExistenceMla();
     } else {
         return CheckParaExistenceGqa();

@@ -1,6 +1,6 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@
 
 template<uint8_t Q_T, uint8_t KV_T, uint8_t OUT_T, uint8_t PAGE_ATTENTIOND, uint8_t LAYOUT_T, uint16_t KV_LAYOUT_T, uint16_t FLASH_DECODE, uint8_t ENABLE_PREFIX,
             uint8_t M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE, uint8_t M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, uint8_t M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA, uint8_t M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE,
-            uint8_t M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, uint8_t P_CVDIFF_BASE_FLAG, uint8_t P_CVDIFF_MLA_FLAG, uint8_t P_TEMPLATE_VERSION, uint8_t TEMPLATE_MODE>
+            uint8_t M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, uint8_t M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG, uint8_t P_CVDIFF_MLA_FLAG, uint8_t M_SOFTMAXBRCB_P_TEMPLATE_VERSION, uint8_t TEMPLATE_MODE>
 __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
                                                              __gm__ uint8_t* pse_shift, __gm__ uint8_t* attenMask,
                                                              __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKV,
@@ -47,7 +47,7 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
   if constexpr (TEMPLATE_MODE == 2) { // 10^18
       prompt_flash_attention_FIAS<Q_T, KV_T, OUT_T, PAGE_ATTENTIOND, LAYOUT_T, KV_LAYOUT_T, FLASH_DECODE, ENABLE_PREFIX, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE,
                     M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA, M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE,
-                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, P_TEMPLATE_VERSION, TEMPLATE_MODE>
+                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, M_SOFTMAXBRCB_P_TEMPLATE_VERSION, TEMPLATE_MODE>
                                   (query, key, value, pse_shift, attenMask, actualSeqLengths, 
                                   actualSeqLengthsKV, deq_scale1, quant_scale1,
                                   deq_scale2, quant_scale2, quant_offset2, antiquantScale, 
@@ -59,17 +59,17 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
   } else if (TEMPLATE_MODE == 0) { // 10^17
     fused_infer_attention<Q_T, KV_T, OUT_T, PAGE_ATTENTIOND, LAYOUT_T, KV_LAYOUT_T, FLASH_DECODE, ENABLE_PREFIX, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE,
                     M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA, M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE,
-                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, P_TEMPLATE_VERSION, TEMPLATE_MODE>
+                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, M_SOFTMAXBRCB_P_TEMPLATE_VERSION, TEMPLATE_MODE>
                                   (query, key, value, pse_shift, attenMask, actualSeqLengths,
                                   actualSeqLengthsKV, deq_scale1, quant_scale1, deq_scale2, quant_scale2,
                                   quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize, kvPaddingSize,
                                   keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,
                                   keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, keyRopeAntiquantScale,
-                                  attentionOut, softmaxLse, workspace, tiling);
+                                  learnableSink, attentionOut, softmaxLse, workspace, tiling);
   } else if (TEMPLATE_MODE == 1){
     incre_flash_attention_FIAS<Q_T, KV_T, OUT_T, PAGE_ATTENTIOND, LAYOUT_T, KV_LAYOUT_T, FLASH_DECODE, ENABLE_PREFIX, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE,
                     M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA, M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE,
-                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, P_TEMPLATE_VERSION, TEMPLATE_MODE>
+                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, M_SOFTMAXBRCB_P_TEMPLATE_VERSION, TEMPLATE_MODE>
                                   (query, key, value, pse_shift, attenMask, actualSeqLengths,
                                   actualSeqLengthsKV, deq_scale1, quant_scale1, deq_scale2, quant_scale2,
                                   quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize, kvPaddingSize,

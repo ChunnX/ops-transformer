@@ -79,6 +79,7 @@ void FiaTilingCheck::Init()
     ropeHeadDim_ = fiaInfo_.ropeHeadDim;
     maxBlockNumPerBatch_ = fiaInfo_.maxBlockNumPerBatch;
     qTSize_ = fiaInfo_.qTSize;
+    kTSize_ = fiaInfo_.kTSize;
     blockSize_ = fiaInfo_.blockSize;
 
     inputQType_ = fiaInfo_.inputQType;

@@ -684,58 +684,126 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
     return ret;
 }
 
-static bool IsUsingIFA(gert::TilingContext &context, const uint32_t tempD, const int64_t s)
+bool IsGqaIfa(gert::TilingContext &context, const string inputLayoutStr, const int64_t queryS, const int64_t queryD)
 {
-    const string inputLayoutStr = string(context.GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
+    if (context.GetOptionalInputTensor(QUERY_ROPE_INDEX) != nullptr) {
+        return false;
+    }
+    if ((inputLayoutStr == "TND_NTD") || (inputLayoutStr == "TND")) {
+        if (queryD == 512) { // 512: qD need 512
+            return true;
+        }
+    }
+    else if ((inputLayoutStr == "BSH") || (inputLayoutStr == "BNSD") || (inputLayoutStr == "BSND") ||
+            (inputLayoutStr == "BNSD_NBSD") || (inputLayoutStr == "BSND_NBSD") || (inputLayoutStr == "BSH_NBSD")) {
+        if (queryS == 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsGqaMtp(gert::TilingContext &context, const string inputLayoutStr, const int64_t queryS)
+{
+    if (context.GetOptionalInputTensor(QUERY_ROPE_INDEX) != nullptr) {
+        return false;
+    }
+    bool isIFALayout = (inputLayoutStr == "BSH") || (inputLayoutStr == "BNSD") || (inputLayoutStr == "BSND") ||
+            (inputLayoutStr == "BNSD_NBSD") || (inputLayoutStr == "BSND_NBSD") || (inputLayoutStr == "BSH_NBSD");
+    if (!isIFALayout) {
+        return false;
+    }
+    if (!(queryS > 1 && queryS <= 16)) { // 16: mtp
+        return false;
+    }
     auto tempK = context.GetInputShape(KEY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    bool isPageAttention = context.GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
-    bool isAntiquantKv = (context.GetInputDesc(KEY_INDEX)->GetDataType() == ge::DT_INT8) &&
-                         (context.GetInputDesc(QUERY_INDEX)->GetDataType() != ge::DT_INT8);
+    bool isNz = (tempK->GetStorageShape().GetDimNum() == 5) ? true : false;
+    if (!isNz) {
+        return false;
+    }
+    return true;
+}
+
+bool IsAtbIfa(gert::TilingContext &context, const string inputLayoutStr, const int64_t queryD)
+{
+    bool isIsAtbIfaLayout = (inputLayoutStr == "TND_NTD") || (inputLayoutStr == "TND");
+    if (!isIsAtbIfaLayout) {
+        return false;
+    }
+    if (!((context.GetInputDesc(KEY_INDEX)->GetDataType() == ge::DT_INT8) &&
+        (context.GetInputDesc(QUERY_INDEX)->GetDataType() != ge::DT_INT8))) { // KV antiquant
+        return false;
+    }
+    if (context.GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr) { // PA
+        return false;
+    }
+    if (queryD == 512) { // 512: max D limix
+        return false;
+    }
     bool isAntiquantParamFloat = (context.GetOptionalInputTensor(ANTIQUANT_SCALE_INDEX) != nullptr) &&
                                  (context.GetOptionalInputTensor(ANTIQUANT_OFFSET_INDEX) != nullptr) &&
                                  (context.GetOptionalInputDesc(ANTIQUANT_SCALE_INDEX)->GetDataType() == ge::DT_FLOAT) &&
                                  (context.GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX)->GetDataType() == ge::DT_FLOAT);
-
-    bool usingIFA = false;
-    auto qRope = context.GetOptionalInputTensor(QUERY_ROPE_INDEX);
-    if ((inputLayoutStr == "TND_NTD") || (inputLayoutStr == "TND")) {
-        if (tempD == 512U) {
-            usingIFA = true;
-        } else if (!isPageAttention) {
-            int64_t tempKD = tempK->GetStorageShape().GetDim(DIM_2);
-            int64_t tempVD = tempV->GetStorageShape().GetDim(DIM_2);
-            bool isPFADSize = (tempD == 192U && tempKD == 192 && tempVD == 192) ||
-                (tempD == 192U && tempKD == 192 && tempVD == 128) ||
-                (tempD == 128U && tempKD == 128 && tempVD == 128);
-            if (isPFADSize) {
-                usingIFA = false;
-            }
-        } else if (isPageAttention && isAntiquantKv && isAntiquantParamFloat) {
-            // TND, antiquant,IFA支持MTP
-            usingIFA = true;
-        }
-    } else {
-        bool isMlaMtp = (qRope != nullptr) && (s > 1 && s <= 16) && (tempD == 512U); // mla mtp mode
-        bool isSliding =  (*context.GetAttrs()->GetAttrPointer<uint32_t>(ATTR_SPARSE_MODE_INDEX) == 4) &&
-                          (qRope != nullptr) && (tempD == 512U); // Sliding Attention
-        bool isIFALayout = (inputLayoutStr == "BSH") || (inputLayoutStr == "BNSD") || (inputLayoutStr == "BSND") ||
-            (inputLayoutStr == "BNSD_NBSD") || (inputLayoutStr == "BSND_NBSD") || (inputLayoutStr == "BSH_NBSD");
-        uint32_t kDimNum = tempK->GetStorageShape().GetDimNum();
-        bool isGQAMtp = (s > 1 && s <= 16) && (kDimNum == 5U);
-        if (((s == 1 || isMlaMtp || isGQAMtp || isSliding) && isIFALayout)) {
-            usingIFA = true;
-        }
-        OP_LOGI(context.GetNodeName(),
-            "usingFIA is %d with inputLayoutStr[%s], Qblocksize[%ld], (qRope != nullptr)[%d]",
-            usingIFA, inputLayoutStr.c_str(), s, qRope != nullptr);
+    if (!isAntiquantParamFloat) {
+        return false;
     }
-    return usingIFA;
+    return true;
+}
+
+bool IsMlaIfaOrMtp(gert::TilingContext &context, const string inputLayoutStr, const int64_t queryS, const int64_t queryD)
+{
+    if (context.GetOptionalInputTensor(QUERY_ROPE_INDEX) == nullptr) { // mla
+        return false;
+    }
+    if ((inputLayoutStr == "TND_NTD") || (inputLayoutStr == "TND")) {
+        if (queryD == 512) { // 512: qD need 512
+            return true;
+        }
+    } else if ((inputLayoutStr == "BSH") || (inputLayoutStr == "BNSD") || (inputLayoutStr == "BSND") ||
+            (inputLayoutStr == "BNSD_NBSD") || (inputLayoutStr == "BSND_NBSD") || (inputLayoutStr == "BSH_NBSD")) {
+        if (queryS == 1)  {
+            return true;
+        }
+        if ((queryS > 1 && queryS <= 16) && (queryD == 512)) { // 16: mtp; 512: qD need 512
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsSlidingAttention(gert::TilingContext &context, const string inputLayoutStr, const int64_t queryD)
+{
+    if (context.GetOptionalInputTensor(QUERY_ROPE_INDEX) == nullptr) { // mla
+        return false;
+    }
+    if ((inputLayoutStr == "BSH") || (inputLayoutStr == "BNSD") || (inputLayoutStr == "BSND") ||
+            (inputLayoutStr == "BNSD_NBSD") || (inputLayoutStr == "BSND_NBSD") || (inputLayoutStr == "BSH_NBSD")) {
+        if (queryD != 512) { // 512: qD need 512
+            return false;
+        }
+        if (*context.GetAttrs()->GetAttrPointer<uint32_t>(ATTR_SPARSE_MODE_INDEX) == 4) { // 4: sparseMode =4
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool IsUsingIFA(gert::TilingContext &context, const string inputLayoutStr, const uint32_t queryD, 
+    const int64_t queryS)
+{
+    if (IsGqaIfa(context, inputLayoutStr, queryS, queryD) || 
+        IsGqaMtp(context, inputLayoutStr, queryS) || 
+        IsAtbIfa(context, inputLayoutStr, queryD) || 
+        IsMlaIfaOrMtp(context, inputLayoutStr, queryS, queryD) ||
+        IsSlidingAttention(context, inputLayoutStr, queryD)) {
+        return true;
+    }
+    return false;
 }
 
 static ge::graphStatus TilingProcess4IFA(gert::TilingContext *context)
 {
-    //IFA tiling path
+    // IFA tiling path
     IncreFlashAttentionTilingDataV2* ifaTilingData = context->GetTilingData<IncreFlashAttentionTilingDataV2>();
     IncreFlashAttentionContext ifaContext {};
     auto ret = ConvertContextToParamsIFA(*context, ifaContext);
@@ -744,9 +812,6 @@ static ge::graphStatus TilingProcess4IFA(gert::TilingContext *context)
         return ret;
     }
 
-    if (RouteToFia(context, ifaContext)) {
-        return TilingFusedInferAttentionScoreV3(context);
-    }
     return TilingIncreFlashAttentionAdapter(context, ifaContext, ifaTilingData);
 }
 
@@ -782,454 +847,322 @@ static ge::graphStatus CheckQKV(gert::TilingContext &context)
     return ge::GRAPH_SUCCESS;
 }
 
-static void GetBNS(gert::TilingContext &context, int64_t &b, int64_t &n, int64_t &s)
+static ge::graphStatus CheckOutShapeInDim3(gert::TilingContext *context, const string &outputLayoutStr, const gert::Shape outShape,
+    const gert::Shape exceptOutShape)
 {
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    const string inputLayoutStr = string(context.GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    if (inputLayoutStr == "BNSD" || inputLayoutStr == "BNSD_BSND" || inputLayoutStr == "BNSD_NBSD") {
-        // DIM_2: When inputLayoutStr is BNSD or BNSD_BSND, the second dimension of Q is s
-        s = tempQ->GetStorageShape().GetDim(DIM_2);
-    } else if (inputLayoutStr == "TND") {
-        auto t = tempQ->GetStorageShape().GetDim(DIM_0);
-        s = t;
-        n = tempQ->GetStorageShape().GetDim(DIM_1);
-    } else if(inputLayoutStr == "NTD_TND") {
-        auto t = tempQ->GetStorageShape().GetDim(DIM_1);
-        s = t;
-        n = tempQ->GetStorageShape().GetDim(DIM_0);
+    OP_CHECK_IF((outShape.GetDimNum() != DIM_NUM_3),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "OutputLayout is %s, Attention out shape dim should be 3, but got %zu!",
+            outputLayoutStr.c_str(), outShape.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((exceptOutShape != outShape),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                    "Except outputLayout is %s and Out shape size[%ld, %ld, %ld] does NOT match "
+                                    "Attention Out shape size[%ld, %ld, %ld]!",
+                                    outputLayoutStr.c_str(),
+                                    exceptOutShape.GetDim(DIM_0),
+                                    exceptOutShape.GetDim(DIM_1),
+                                    exceptOutShape.GetDim(DIM_2),
+                                    outShape.GetDim(DIM_0),
+                                    outShape.GetDim(DIM_1),
+                                    outShape.GetDim(DIM_2)),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckOutShapeInDim4(gert::TilingContext *context, const string &outputLayoutStr, const gert::Shape outShape,
+    const gert::Shape exceptOutShape)
+{
+    OP_CHECK_IF((outShape.GetDimNum() != DIM_NUM_4),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "OutputLayout is %s, Attention out shape dim should be 4, but got %zu!",
+            outputLayoutStr.c_str(), outShape.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((exceptOutShape != outShape),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                    "Except outputLayout is %s and Out shape size[%ld, %ld, %ld, %ld] does NOT match "
+                                    "Attention Out shape size[%ld, %ld, %ld, %ld]!",
+                                    outputLayoutStr.c_str(),
+                                    exceptOutShape.GetDim(DIM_0),
+                                    exceptOutShape.GetDim(DIM_1),
+                                    exceptOutShape.GetDim(DIM_2),
+                                    exceptOutShape.GetDim(DIM_3),
+                                    outShape.GetDim(DIM_0),
+                                    outShape.GetDim(DIM_1),
+                                    outShape.GetDim(DIM_2),
+                                    outShape.GetDim(DIM_3)),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckOutShape(gert::TilingContext *context, const string &outputLayoutStr, const gert::Shape outShape, const gert::Shape qkvShapeInfo)
+{
+    int64_t b = qkvShapeInfo.GetDim(DIM_0);
+    int64_t queryN = qkvShapeInfo.GetDim(DIM_1);
+    int64_t queryS = qkvShapeInfo.GetDim(DIM_2);
+    int64_t queryT = qkvShapeInfo.GetDim(DIM_3);
+    int64_t valueD = qkvShapeInfo.GetDim(DIM_4);
+    ge::graphStatus ret = ge::GRAPH_SUCCESS;
+    if (outputLayoutStr == "NSD") {
+        ret = CheckOutShapeInDim3(context, outputLayoutStr, outShape, gert::Shape{queryN, queryS, valueD});
+    } else if (outputLayoutStr == "BSH") {
+        ret = CheckOutShapeInDim3(context, outputLayoutStr, outShape, gert::Shape{b, queryS, valueD * queryN});
+    }else if (outputLayoutStr == "NBSD") {
+        ret = CheckOutShapeInDim4(context, outputLayoutStr, outShape, gert::Shape{queryN, b, queryS, valueD});
+    } else if (outputLayoutStr == "BSND") {
+        ret = CheckOutShapeInDim4(context, outputLayoutStr, outShape, gert::Shape{b, queryS, queryN, valueD});
+    } else if (outputLayoutStr == "BNSD") {
+        ret = CheckOutShapeInDim4(context, outputLayoutStr, outShape, gert::Shape{b, queryN, queryS, valueD});
+    } else if (outputLayoutStr == "NTD") {
+        ret = CheckOutShapeInDim3(context, outputLayoutStr, outShape, gert::Shape{queryN, queryT, valueD});
+    } else if (outputLayoutStr == "TND") {
+        ret = CheckOutShapeInDim3(context, outputLayoutStr, outShape, gert::Shape{queryT, queryN, valueD});
     } else {
-        s = tempQ->GetStorageShape().GetDim(DIM_1);
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+        "Not support outputLayout(%s)",
+        outputLayoutStr.c_str());
+        ret = ge::GRAPH_FAILED;
     }
+    return ret;
+}
+
+static ge::graphStatus GetB(gert::TilingContext *context, const string inputLayoutStr, int64_t &b)
+{
+    auto tempQ = context->GetInputShape(QUERY_INDEX);
     if (inputLayoutStr == "NSD") {
         b = 1;
+    } else {
+        b = tempQ->GetStorageShape().GetDim(DIM_0);
     }
-}
-
-static ge::graphStatus CheckOutShapeInNSD(gert::TilingContext &context, uint32_t &tempD)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-    OP_CHECK_IF((tempQ->GetStorageShape().GetDimNum() != 3), // 3: dim nsd
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Layout is NSD, queryDims must be 3! but actual value is %zu.",
-        tempQ->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-    tempD = tempQ->GetStorageShape().GetDim(DIM_2);
-    OP_CHECK_IF((tempQ->GetStorageShape() != tempOut->GetStorageShape()),
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                    "Layout is NSD and Query shape size[%ld, %ld, %ld] does NOT match "
-                                    "Attention Out shape size[%ld, %ld, %ld]!",
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                    tempQ->GetStorageShape().GetDim(DIM_2), tempOut->GetStorageShape().GetDim(0),
-                                    tempOut->GetStorageShape().GetDim(1),
-                                    tempOut->GetStorageShape().GetDim(DIM_2)),
-        return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckOutShapeInBSH(gert::TilingContext &context, const int64_t s)
+static ge::graphStatus GetQueryN(gert::TilingContext *context, const string inputLayoutStr, int64_t &queryN)
 {
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
+    auto tempQ = context->GetInputShape(QUERY_INDEX);
+    if (inputLayoutStr == "NSD" || 
+        inputLayoutStr == "NTD_TND") {
+        queryN = tempQ->GetStorageShape().GetDim(DIM_0);
+    } else if (inputLayoutStr == "BSND_NBSD" || 
+        inputLayoutStr == "BSND") {
+        queryN = tempQ->GetStorageShape().GetDim(DIM_2);
+    } else if(inputLayoutStr == "BSH" || 
+        inputLayoutStr == "BSH_NBSD") {
+        auto attrs = context->GetAttrs();
+        int64_t numHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX));
+        queryN = numHeads;
+    } else {
+        queryN = tempQ->GetStorageShape().GetDim(DIM_1);
+    }
+    OP_CHECK_IF(queryN == 0, 
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Q numhead is 0!"), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
-    auto attrs = context.GetAttrs();
-    int64_t preToken = *attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKEN_INDEX);
-
-    // ifa page attention and sliding setting
-    auto qRope = context.GetOptionalInputTensor(QUERY_ROPE_INDEX);
-    bool isPageAttention = context.GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
-    bool isUnequalKvDim = (s == 1) && (preToken > 0) && isPageAttention &&
-        (tempV->GetStorageShape().GetDimNum() == DIM_BSH) && (qRope == nullptr);
-    if (isUnequalKvDim) {
-        uint32_t tempN = *attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX);
-        uint32_t tempNKv = *attrs->GetAttrPointer<uint32_t>(ATTR_NUM_KV_HEADS_INDEX);
-        if (tempNKv == 0U) {
-            tempNKv = tempN;
+static ge::graphStatus GetQueryS(gert::TilingContext *context, const string inputLayoutStr, int64_t &queryS)
+{
+    auto tempQ = context->GetInputShape(QUERY_INDEX);
+    if (inputLayoutStr == "NSD" || 
+        inputLayoutStr == "BSH" || 
+        inputLayoutStr == "BSH_NBSD" || 
+        inputLayoutStr == "BSND_NBSD" || 
+        inputLayoutStr == "BSND") {
+        queryS = tempQ->GetStorageShape().GetDim(DIM_1);
+    } else if (inputLayoutStr == "BNSD_BSND" || 
+        inputLayoutStr == "BNSD_NBSD" || 
+        inputLayoutStr == "BNSD") {
+        queryS = tempQ->GetStorageShape().GetDim(DIM_2);
+    } else {
+        int64_t queryT = 0;
+        if (inputLayoutStr == "NTD_TND") {
+            queryT = tempQ->GetStorageShape().GetDim(DIM_1);
+        } else {
+            queryT = tempQ->GetStorageShape().GetDim(DIM_0);
         }
-        uint32_t tempVD = tempV->GetStorageShape().GetDim(2) / tempNKv;
-        int64_t expectThirdDim = static_cast<int64_t>(tempN * tempVD);
-        bool isOutputShapeInvalid =
-            (tempQ->GetStorageShape().GetDim(FIRST_DIM) != tempOut->GetStorageShape().GetDim(FIRST_DIM)) ||
-            (tempQ->GetStorageShape().GetDim(SECOND_DIM) != tempOut->GetStorageShape().GetDim(SECOND_DIM)) ||
-            (expectThirdDim != tempOut->GetStorageShape().GetDim(THIRD_DIM));
-        OP_CHECK_IF(isOutputShapeInvalid,
-            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                        "Layout is BSH expect Attention Out shape [%ld, %ld, %ld] but got "
-                                        "Attention Out shape [%ld, %ld, %ld]!",
-                                        tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                        expectThirdDim, tempOut->GetStorageShape().GetDim(0),
-                                        tempOut->GetStorageShape().GetDim(1), tempOut->GetStorageShape().GetDim(2)),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF((tempQ->GetStorageShape() != tempOut->GetStorageShape()),
-            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                        "Layout is BSH and Query shape size[%ld, %ld, %ld] does NOT match "
-                                        "Attention Out shape size[%ld, %ld, %ld]!",
-                                        tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                        tempQ->GetStorageShape().GetDim(2), tempOut->GetStorageShape().GetDim(0),
-                                        tempOut->GetStorageShape().GetDim(1),
-                                        tempOut->GetStorageShape().GetDim(2)),
-            return ge::GRAPH_FAILED);
+        queryS = queryT;
     }
-
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckOutShapeInBSHNBSD(gert::TilingContext &context, const uint32_t tempD, const uint32_t tempN)
+static ge::graphStatus GetQueryT(gert::TilingContext *context, const string inputLayoutStr, int64_t &queryT)
 {
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-    OP_CHECK_IF((tempOut->GetStorageShape().GetDimNum() != 4),
-            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Layout is BSH_NBSD, output shape dim(%zu) should be 4!",
-            tempQ->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-
-    bool inOutShapeFlag = (tempQ->GetStorageShape().GetDim(0) != tempOut->GetStorageShape().GetDim(1)) || // B
-                            (tempQ->GetStorageShape().GetDim(1) != tempOut->GetStorageShape().GetDim(DIM_2)) || // S
-                            (tempN != tempOut->GetStorageShape().GetDim(0)) || // N
-                            (tempD != tempOut->GetStorageShape().GetDim(DIM_3));   // D
-    OP_CHECK_IF(
-        inOutShapeFlag, OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                    "Layout is BSH_NBSD and Query shape size[%ld, %ld, %ld], the Query's heads num[%u],"
-                                    "expect Attention Out shape size[%u, %ld, %ld, %u],"
-                                    "but got Attention Out shape size[%ld, %ld, %ld, %ld]!",
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                    tempQ->GetStorageShape().GetDim(DIM_2), tempN, tempN,
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),tempD,
-                                    tempOut->GetStorageShape().GetDim(0), tempOut->GetStorageShape().GetDim(1),
-                                    tempOut->GetStorageShape().GetDim(DIM_2), tempOut->GetStorageShape().GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInTND(gert::TilingContext &context, const uint32_t tempD)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    auto qRope = context.GetOptionalInputTensor(QUERY_ROPE_INDEX);
-    bool ifaWithoutPA = (tempD == 512 && qRope != nullptr);
-    OP_CHECK_IF(ifaWithoutPA,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-        "Layout is TND, MLA enabled, PA must be enabled when query's D dimension is 512."), return ge::GRAPH_FAILED);
-    bool isOutputShapeInvalid =
-        (tempQ->GetStorageShape().GetDim(FIRST_DIM) != tempOut->GetStorageShape().GetDim(FIRST_DIM)) ||
-        (tempQ->GetStorageShape().GetDim(SECOND_DIM) != tempOut->GetStorageShape().GetDim(SECOND_DIM)) ||
-        (tempV->GetStorageShape().GetDim(THIRD_DIM) != tempOut->GetStorageShape().GetDim(THIRD_DIM));
-    OP_CHECK_IF(isOutputShapeInvalid,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                    "Layout is TND expect Attention Out shape [%ld, %ld, %ld] but got "
-                                    "Attention Out shape [%ld, %ld, %ld]!",
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                    tempV->GetStorageShape().GetDim(DIM_2), tempOut->GetStorageShape().GetDim(0),
-                                    tempOut->GetStorageShape().GetDim(1), tempOut->GetStorageShape().GetDim(DIM_2)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInTNDNTD(gert::TilingContext &context)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    bool inOutShapeFlag = (tempQ->GetStorageShape().GetDim(0) != tempOut->GetStorageShape().GetDim(1)) ||
-        (tempQ->GetStorageShape().GetDim(1) != tempOut->GetStorageShape().GetDim(0)) ||
-        (tempQ->GetStorageShape().GetDim(DIM_2) != tempOut->GetStorageShape().GetDim(DIM_2));
-    OP_CHECK_IF(inOutShapeFlag, OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-        "Layout is TND_NTD and Query shape size[%ld, %ld, %ld],"
-        "expect Attention Out shape size[%ld, %ld, %ld],"
-        "but got Attention Out shape size[%ld, %ld, %ld]!",
-        tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1), tempQ->GetStorageShape().GetDim(DIM_2),
-        tempQ->GetStorageShape().GetDim(1), tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(DIM_2),
-        tempOut->GetStorageShape().GetDim(0), tempOut->GetStorageShape().GetDim(1),tempOut->GetStorageShape().GetDim(DIM_2)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInNTDTND(gert::TilingContext &context)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    bool inOutShapeFlag = (tempQ->GetStorageShape().GetDim(0) != tempOut->GetStorageShape().GetDim(1)) ||
-        (tempQ->GetStorageShape().GetDim(1) != tempOut->GetStorageShape().GetDim(0)) ||
-        (tempV->GetStorageShape().GetDim(DIM_2) != tempOut->GetStorageShape().GetDim(DIM_2));
-    OP_CHECK_IF(inOutShapeFlag, OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-        "Layout is NTD_TND and Query shape size[%ld, %ld, %ld],"
-        "expect Attention Out shape size[%ld, %ld, %ld],"
-        "but got Attention Out shape size[%ld, %ld, %ld]!",
-        tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1), tempV->GetStorageShape().GetDim(DIM_2),
-        tempQ->GetStorageShape().GetDim(1), tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(DIM_2),
-        tempOut->GetStorageShape().GetDim(0),tempOut->GetStorageShape().GetDim(1), tempOut->GetStorageShape().GetDim(DIM_2)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInBNSDBSND(gert::TilingContext &context)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    OP_CHECK_IF(
-        ((tempQ->GetStorageShape().GetDim(0) != tempOut->GetStorageShape().GetDim(0)) ||
-        (tempQ->GetStorageShape().GetDim(1) != tempOut->GetStorageShape().GetDim(DIM_2)) ||
-        (tempQ->GetStorageShape().GetDim(DIM_2) != tempOut->GetStorageShape().GetDim(1)) ||
-        (tempQ->GetStorageShape().GetDim(DIM_3) != tempOut->GetStorageShape().GetDim(DIM_3))),
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                    "Layout is BNSD_BSND and Query shape size[%ld, %ld, %ld, %ld],"
-                                    "expect Attention Out shape size[%ld, %ld, %ld, %ld],"
-                                    "but got Attention Out shape size[%ld, %ld, %ld, %ld]!",
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                    tempQ->GetStorageShape().GetDim(DIM_2), tempQ->GetStorageShape().GetDim(DIM_3),
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(DIM_2),
-                                    tempQ->GetStorageShape().GetDim(1), tempQ->GetStorageShape().GetDim(DIM_3),
-                                    tempOut->GetStorageShape().GetDim(0), tempOut->GetStorageShape().GetDim(1),
-                                    tempOut->GetStorageShape().GetDim(DIM_2), tempOut->GetStorageShape().GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInBNSDNBSD(gert::TilingContext &context)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    bool inOutShapeFlag = (tempQ->GetStorageShape().GetDim(0) != tempOut->GetStorageShape().GetDim(1)) ||
-                            (tempQ->GetStorageShape().GetDim(1) != tempOut->GetStorageShape().GetDim(0)) ||
-                            (tempQ->GetStorageShape().GetDim(DIM_2) != tempOut->GetStorageShape().GetDim(DIM_2)) ||
-                            (tempQ->GetStorageShape().GetDim(DIM_3) != tempOut->GetStorageShape().GetDim(DIM_3));
-    OP_CHECK_IF(inOutShapeFlag,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                    "Layout is BNSD_NBSD and Query shape size[%ld, %ld, %ld, %ld],"
-                                    "expect Attention Out shape size[%ld, %ld, %ld, %ld],"
-                                    "but got Attention Out shape size[%ld, %ld, %ld, %ld]!",
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                    tempQ->GetStorageShape().GetDim(DIM_2), tempQ->GetStorageShape().GetDim(DIM_3),
-                                    tempQ->GetStorageShape().GetDim(1), tempQ->GetStorageShape().GetDim(0),
-                                    tempQ->GetStorageShape().GetDim(DIM_2), tempQ->GetStorageShape().GetDim(DIM_3),
-                                    tempOut->GetStorageShape().GetDim(0), tempOut->GetStorageShape().GetDim(1),
-                                    tempOut->GetStorageShape().GetDim(DIM_2), tempOut->GetStorageShape().GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInBSNDNBSD(gert::TilingContext &context)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    bool inOutShapeFlag = (tempQ->GetStorageShape().GetDim(0) != tempOut->GetStorageShape().GetDim(1)) ||
-                            (tempQ->GetStorageShape().GetDim(1) != tempOut->GetStorageShape().GetDim(DIM_2)) ||
-                            (tempQ->GetStorageShape().GetDim(DIM_2) != tempOut->GetStorageShape().GetDim(0)) ||
-                            (tempQ->GetStorageShape().GetDim(DIM_3) != tempOut->GetStorageShape().GetDim(DIM_3));
-    OP_CHECK_IF(inOutShapeFlag,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                    "Layout is BSND_NBSD and Query shape size[%ld, %ld, %ld, %ld],"
-                                    "expect Attention Out shape size[%ld, %ld, %ld, %ld],"
-                                    "but got Attention Out shape size[%ld, %ld, %ld, %ld]!",
-                                    tempQ->GetStorageShape().GetDim(0), tempQ->GetStorageShape().GetDim(1),
-                                    tempQ->GetStorageShape().GetDim(DIM_2), tempQ->GetStorageShape().GetDim(DIM_3),
-                                    tempQ->GetStorageShape().GetDim(DIM_2), tempQ->GetStorageShape().GetDim(0),
-                                    tempQ->GetStorageShape().GetDim(1), tempQ->GetStorageShape().GetDim(DIM_3),
-                                    tempOut->GetStorageShape().GetDim(0), tempOut->GetStorageShape().GetDim(1),
-                                    tempOut->GetStorageShape().GetDim(DIM_2), tempOut->GetStorageShape().GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInBNSD(gert::TilingContext &context)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    bool inOutShapeFlag = false;
-    int64_t outD = 0;
-    bool isPageAttention = context.GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
-    if (isPageAttention) {
-        inOutShapeFlag = tempQ->GetStorageShape() != tempOut->GetStorageShape();
-        outD = tempQ->GetStorageShape().GetDim(DIM_3);
-    } else {
-        inOutShapeFlag = (tempQ->GetStorageShape().GetDim(DIM_0) != tempOut->GetStorageShape().GetDim(DIM_0)) ||
-            (tempQ->GetStorageShape().GetDim(DIM_1) != tempOut->GetStorageShape().GetDim(DIM_1)) ||
-            (tempQ->GetStorageShape().GetDim(DIM_2) != tempOut->GetStorageShape().GetDim(DIM_2)) ||
-            (tempV->GetStorageShape().GetDim(DIM_3) != tempOut->GetStorageShape().GetDim(DIM_3));
-        outD = tempV->GetStorageShape().GetDim(DIM_3);
-    }
-    OP_CHECK_IF(
-        inOutShapeFlag,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-            "Layout is BNSD and Query shape [%ld, %ld, %ld, %ld] "
-            "expect Attention Out Shape [%ld, %ld, %ld, %ld] but got "
-            "Attention Out shape [%ld, %ld, %ld, %ld]!",
-            tempQ->GetStorageShape().GetDim(DIM_0), tempQ->GetStorageShape().GetDim(DIM_1),
-            tempQ->GetStorageShape().GetDim(DIM_2), tempQ->GetStorageShape().GetDim(DIM_3),
-            tempQ->GetStorageShape().GetDim(DIM_0), tempQ->GetStorageShape().GetDim(DIM_1),
-            tempQ->GetStorageShape().GetDim(DIM_2), outD,
-            tempOut->GetStorageShape().GetDim(DIM_0), tempOut->GetStorageShape().GetDim(DIM_1),
-            tempOut->GetStorageShape().GetDim(DIM_2), tempOut->GetStorageShape().GetDim(DIM_3)),
-            return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInTND4PA(gert::TilingContext &context, const int64_t n)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    auto tempInVDim = tempV->GetStorageShape().GetDim(THIRD_DIM);
-    int32_t tempNKvHeads = *context.GetAttrs()->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX);
-    int64_t tmpNKv = (tempNKvHeads != 0) ? tempNKvHeads : n;
-    if (tempV->GetStorageShape().GetDimNum() == DIM_NUM_3) {
-        tempInVDim = tempV->GetStorageShape().GetDim(THIRD_DIM) / tmpNKv;
-    } else if (tempV->GetStorageShape().GetDimNum() == DIM_NUM_4) {
-        tempInVDim = tempV->GetStorageShape().GetDim(FOURTH_DIM);
-    } else {
-        tempInVDim = tempV->GetStorageShape().GetDim(THIRD_DIM) * tempV->GetStorageShape().GetDim(FIFTH_DIM);
-    }
-    bool isOutputShapeInvalid =
-        (tempQ->GetStorageShape().GetDim(FIRST_DIM) != tempOut->GetStorageShape().GetDim(FIRST_DIM)) ||
-        (tempQ->GetStorageShape().GetDim(SECOND_DIM) != tempOut->GetStorageShape().GetDim(SECOND_DIM)) ||
-        (tempInVDim != tempOut->GetStorageShape().GetDim(THIRD_DIM));
-    OP_CHECK_IF(isOutputShapeInvalid,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-        "Layout is TND expect Attention Out shape [%ld, %ld, %ld] but got "
-        "Attention Out shape [%ld, %ld, %ld]!",
-        tempQ->GetStorageShape().GetDim(FIRST_DIM), tempQ->GetStorageShape().GetDim(SECOND_DIM),
-        tempInVDim, tempOut->GetStorageShape().GetDim(FIRST_DIM),
-        tempOut->GetStorageShape().GetDim(SECOND_DIM), tempOut->GetStorageShape().GetDim(THIRD_DIM)),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeInNTDTND4PA(gert::TilingContext &context, const int64_t n)
-{
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-
-    auto tempInVD = tempV->GetStorageShape().GetDim(THIRD_DIM);
-    int32_t tempNKvHeads = *context.GetAttrs()->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX);
-    int64_t tmpNKv = (tempNKvHeads != 0) ? tempNKvHeads : n;
-    if (tempV->GetStorageShape().GetDimNum() == DIM_NUM_3) {
-        tempInVD = tempV->GetStorageShape().GetDim(THIRD_DIM) / tmpNKv;
-    } else if (tempV->GetStorageShape().GetDimNum() == DIM_NUM_4) {
-        tempInVD = tempV->GetStorageShape().GetDim(FOURTH_DIM);
-    } else {
-        tempInVD = tempV->GetStorageShape().GetDim(THIRD_DIM) * tempV->GetStorageShape().GetDim(FIFTH_DIM);
-    }
-    bool inOutShapeFlag =
-        (tempQ->GetStorageShape().GetDim(FIRST_DIM) != tempOut->GetStorageShape().GetDim(SECOND_DIM)) ||
-        (tempQ->GetStorageShape().GetDim(SECOND_DIM) != tempOut->GetStorageShape().GetDim(FIRST_DIM)) ||
-        (tempInVD != tempOut->GetStorageShape().GetDim(THIRD_DIM));
-    OP_CHECK_IF(inOutShapeFlag,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-        "Layout is NTD_TND and Query shape size[%ld, %ld, %ld],"
-        "expect Attention Out shape size[%ld, %ld, %ld],"
-        "but got Attention Out shape size[%ld, %ld, %ld]!",
-        tempQ->GetStorageShape().GetDim(FIRST_DIM), tempQ->GetStorageShape().GetDim(SECOND_DIM), tempQ->GetStorageShape().GetDim(THIRD_DIM),
-        tempQ->GetStorageShape().GetDim(SECOND_DIM),tempQ->GetStorageShape().GetDim(FIRST_DIM), tempInVD,
-        tempOut->GetStorageShape().GetDim(FIRST_DIM),tempOut->GetStorageShape().GetDim(SECOND_DIM), tempOut->GetStorageShape().GetDim(THIRD_DIM)),
-        return ge::GRAPH_FAILED);
-        
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckOutShapeTNDs(gert::TilingContext &context, uint32_t &tempD, const int64_t n)
-{
-    ge::graphStatus ret = ge::GRAPH_SUCCESS;
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    auto tempK = context.GetInputShape(KEY_INDEX);
-    auto tempV = context.GetInputShape(VALUE_INDEX);
-    auto tempOut = context.GetOutputShape(ATTENTION_OUT_INDEX);
-    const string inputLayoutStr = string(context.GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-
-    bool isPageAttention = context.GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
-    if (!isPageAttention && (inputLayoutStr == "TND" || inputLayoutStr == "NTD_TND")) {
-        OP_CHECK_IF(((tempQ->GetStorageShape().GetDimNum() != DIM_TND) || (tempK->GetStorageShape().GetDimNum() != DIM_TND) ||
-            (tempV->GetStorageShape().GetDimNum() != DIM_TND)),
-            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-            "When layout is %s, queryDim(%zu) keyDim(%zu) valueDim(%zu) must be 3!",
-            inputLayoutStr.c_str(), tempQ->GetStorageShape().GetDimNum(), tempK->GetStorageShape().GetDimNum(),
-            tempV->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-    }
-
-    OP_CHECK_IF((tempOut->GetStorageShape().GetDimNum() != DIM_TND),
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Layout is %s Attention out shape dim should be 3, but got %zu!",
-        inputLayoutStr.c_str(), tempOut->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((tempQ->GetStorageShape().GetDimNum() != DIM_TND),
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Layout is %s, queryDims must be 3! but actual value is %zu.",
-        inputLayoutStr.c_str(), tempQ->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-
-    tempD = tempQ->GetStorageShape().GetDim(THIRD_DIM);
-    if (inputLayoutStr == "TND") {
-        // PFA has a scenario which qkv with different D，the output needs determined by valueD.
-        ret = isPageAttention ? CheckOutShapeInTND4PA(context, n) : CheckOutShapeInTND(context, tempD);
-    } else if (inputLayoutStr == "TND_NTD") {
-        ret = CheckOutShapeInTNDNTD(context);
+    auto tempQ = context->GetInputShape(QUERY_INDEX);
+    if (inputLayoutStr == "TND" || 
+        inputLayoutStr == "TND_NTD") {
+        queryT = tempQ->GetStorageShape().GetDim(DIM_0);
     } else if (inputLayoutStr == "NTD_TND") {
-        ret = isPageAttention ? CheckOutShapeInNTDTND4PA(context, n) : CheckOutShapeInNTDTND(context);
+        queryT = tempQ->GetStorageShape().GetDim(DIM_1);
     }
-
-    return ret;
+    return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckOutShape(gert::TilingContext &context, uint32_t &tempD, const int64_t n, const int64_t s)
+static ge::graphStatus GetQueryD(gert::TilingContext *context, const string inputLayoutStr, int64_t &queryD)
 {
-    ge::graphStatus ret = ge::GRAPH_SUCCESS;
-    uint32_t tempN = *context.GetAttrs()->GetAttrPointer<uint32_t>(ATTR_N_INDEX);
-    OP_CHECK_IF(tempN == 0, OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Q numhead is 0!"), return ge::GRAPH_FAILED);
-
-    auto tempQ = context.GetInputShape(QUERY_INDEX);
-    const string inputLayoutStr = string(context.GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    if (inputLayoutStr == "NSD") {
-        ret = CheckOutShapeInNSD(context, tempD);
-    } else if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD") {
-        OP_CHECK_IF((tempQ->GetStorageShape().GetDimNum() != DIM_BSH),
-            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Layout is %s, queryDims must be 3! but actual value is %zu.",
-            inputLayoutStr.c_str(), tempQ->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-        tempD = tempQ->GetStorageShape().GetDim(DIM_2) / tempN; // 2: When inputLayoutStr is BSH, the second dimension of Q divided by N is D
-        if (inputLayoutStr == "BSH") {
-            ret = CheckOutShapeInBSH(context, s);
-        } else if (inputLayoutStr == "BSH_NBSD") {
-            ret = CheckOutShapeInBSHNBSD(context, tempD, tempN);
-        }
-    } else if (inputLayoutStr == "TND" || inputLayoutStr == "TND_NTD" || inputLayoutStr == "NTD_TND") {
-        ret = CheckOutShapeTNDs(context, tempD, n);
+    auto tempQ = context->GetInputShape(QUERY_INDEX);
+    if (inputLayoutStr == "NSD" || 
+        inputLayoutStr == "TND" || 
+        inputLayoutStr == "TND_NTD" || 
+        inputLayoutStr == "NTD_TND") {
+        queryD = tempQ->GetStorageShape().GetDim(DIM_2);
+    } else if (inputLayoutStr == "BNSD_BSND" || 
+               inputLayoutStr == "BNSD_NBSD"  || 
+               inputLayoutStr == "BNSD"  || 
+               inputLayoutStr == "BSND_NBSD" || 
+               inputLayoutStr == "BSND") {
+        queryD = tempQ->GetStorageShape().GetDim(DIM_3);
     } else {
-        OP_CHECK_IF((tempQ->GetStorageShape().GetDimNum() != DIM_BNSD),
-            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Layout is %s, queryDims must be 4! but actual value is %zu.",
-            inputLayoutStr.c_str(), tempQ->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-        tempD = tempQ->GetStorageShape().GetDim(DIM_3); // 3: In other cases, the third dimension of Q is D
+        int64_t queryH = tempQ->GetStorageShape().GetDim(DIM_2);
+        auto attrs = context->GetAttrs();
+        int64_t numHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX));
+        queryD = queryH / numHeads;
+    }
+    const int64_t maxDlimit = 512;
+    OP_CHECK_IF((queryD > maxDlimit), OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+        "D should be less than or equal to 512 of Q shape! but now D = %ld. "
+        "When layout is BNSD, D is the last dimension of Q shape, and layout is BSH, D = h / n", queryD),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
-        if (inputLayoutStr == "BNSD_BSND") {
-            ret = CheckOutShapeInBNSDBSND(context);
-        } else if (inputLayoutStr == "BNSD_NBSD") {
-            ret = CheckOutShapeInBNSDNBSD(context);
-        } else if (inputLayoutStr == "BSND_NBSD") {
-            ret = CheckOutShapeInBSNDNBSD(context);
-        } else if (inputLayoutStr == "BNSD") {
-            ret = CheckOutShapeInBNSD(context);
+static ge::graphStatus GetPAValueD(gert::TilingContext *context, int64_t &valueD)
+{
+    auto tempV = context->GetInputShape(VALUE_INDEX);
+    if (tempV->GetStorageShape().GetDimNum() == DIM_BSH) { // BnBsH
+        auto attrs = context->GetAttrs();
+        int64_t numKvHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_NUM_KV_HEADS_INDEX));
+        if (numKvHeads == 0) {
+            numKvHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX));
+        }
+        valueD = tempV->GetStorageShape().GetDim(DIM_2) / numKvHeads;
+    } else if (tempV->GetStorageShape().GetDimNum() == DIM_BNSD_OR_BSND) { // BnNBsD
+        valueD = tempV->GetStorageShape().GetDim(DIM_3);
+    } else if (tempV->GetStorageShape().GetDimNum() == NUM5) { // NZ
+        valueD = tempV->GetStorageShape().GetDim(DIM_2) * tempV->GetStorageShape().GetDim(DIM_4);
+    } else {
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),"PagedAttention not support Value DimNum is %zu.\n",
+            tempV->GetStorageShape().GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus GetValueD(gert::TilingContext *context, const string inputLayoutStr, int64_t &valueD, bool isPageAttention)
+{
+    if (isPageAttention) {
+        return GetPAValueD(context, valueD);
+    }
+    auto tempV = context->GetInputShape(VALUE_INDEX);
+    if (inputLayoutStr == "NSD" || 
+        inputLayoutStr == "TND" || 
+        inputLayoutStr == "TND_NTD" || 
+        inputLayoutStr == "NTD_TND") {
+        valueD = tempV->GetStorageShape().GetDim(DIM_2);
+    } else if (inputLayoutStr == "BNSD_BSND" || 
+        inputLayoutStr == "BNSD_NBSD"  || 
+        inputLayoutStr == "BNSD"  || 
+        inputLayoutStr == "BSND_NBSD" || 
+        inputLayoutStr == "BSND") {
+        valueD = tempV->GetStorageShape().GetDim(DIM_3);
+    } else {
+        int64_t valueH = tempV->GetStorageShape().GetDim(DIM_2);
+        auto attrs = context->GetAttrs();
+        int64_t numKvHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_NUM_KV_HEADS_INDEX));
+        if (numKvHeads == 0) {
+            numKvHeads = static_cast<int64_t>(*attrs->GetAttrPointer<uint32_t>(ATTR_N_INDEX));
+        }
+        valueD = valueH / numKvHeads;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+string GetOutputLayoutStr(const string &inputLayoutStr)
+{
+    size_t underLinePos = inputLayoutStr.find_last_of('_');
+    if(underLinePos == std::string::npos) {
+        return inputLayoutStr;
+    }
+    return inputLayoutStr.substr(underLinePos + 1);
+}
+
+static ge::graphStatus IsMla(gert::TilingContext *context)
+{
+    auto qRope = context->GetOptionalInputTensor(QUERY_ROPE_INDEX);
+    auto kRope = context->GetOptionalInputTensor(KEY_ROPE_INDEX);
+    OP_CHECK_IF((qRope != nullptr && kRope == nullptr),
+        OP_LOGE(context->GetNodeName(), "KRope is null, but QRope exists, they should be both null or exist."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((qRope == nullptr && kRope != nullptr),
+        OP_LOGE(context->GetNodeName(), "QRope is null, but KRope exists, they should be both null or exist."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckInputLayoutMla(gert::TilingContext *context, const string inputLayoutStr, const int64_t queryD, const bool isPageAttention)
+{
+    // MLA support layout
+    bool isIfaMlaLayout = (inputLayoutStr == "BSH") || (inputLayoutStr == "BNSD") ||
+        (inputLayoutStr == "BSND") || (inputLayoutStr == "BNSD_NBSD") || (inputLayoutStr == "BSND_NBSD") ||
+        (inputLayoutStr == "BSH_NBSD") || (inputLayoutStr == "TND_NTD") || (inputLayoutStr == "TND");
+    OP_CHECK_IF((!isIfaMlaLayout && (inputLayoutStr != "NTD_TND")),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "inputlayout(%s) only support {BSH, BNSD, BSND, TND, BNSD_NBSD, "
+                                                            "BSND_NBSD, BSH_NBSD, TND_NTD} in mla.", inputLayoutStr.c_str()),
+        return ge::GRAPH_FAILED);
+
+    if (inputLayoutStr == "TND") {
+        bool ifaWithoutPA = ((queryD == 512)&& (!isPageAttention));
+        OP_CHECK_IF(ifaWithoutPA,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "Layout is %s, MLA enabled, PA must be enabled when query's D dimension is %ld.",
+            inputLayoutStr.c_str(), queryD),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckInputLayout(gert::TilingContext *context, const string inputLayoutStr,const int64_t queryS, const int64_t queryD, const bool isPageAttention)
+{
+    auto tempQ = context->GetInputShape(QUERY_INDEX);
+    auto tempK = context->GetInputShape(KEY_INDEX);
+    auto tempV = context->GetInputShape(VALUE_INDEX);
+    // mla check
+    auto qRope = context->GetOptionalInputTensor(QUERY_ROPE_INDEX);
+    if (IsMla(context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (qRope != nullptr) {
+        if (CheckInputLayoutMla(context, inputLayoutStr, queryD, isPageAttention) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
         }
     }
-    bool isLearnableSink = context.GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr ? true : false;
-    OP_CHECK_IF((isLearnableSink) && !(((inputLayoutStr == "TND") || (inputLayoutStr == "NTD_TND")) && ((tempD == 64) || (tempD == 128))),
-               OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Only layout TND/NTD_TND and valueD = 128/64 supported learnable_sink, but actual layout is %s and D = %u!",
-               inputLayoutStr.c_str(), tempD),
-               return ge::GRAPH_FAILED);
-
-    return ret;
+    if (inputLayoutStr == "BNSD_BSND") {
+        OP_CHECK_IF((queryS == 1), 
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),"BNSD_BSND layout is not supported when S is 1!"),
+            return ge::GRAPH_FAILED);
+    }
+    if (inputLayoutStr == "SH") {
+        OP_LOGE(context->GetNodeName(), "SH layout is not supported!");
+        return ge::GRAPH_FAILED;
+    }
+    // check Q DimNum
+    if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD" || inputLayoutStr == "TND" || 
+        inputLayoutStr == "TND_NTD" || inputLayoutStr == "NTD_TND" || inputLayoutStr == "NSD") {
+        OP_CHECK_IF((tempQ->GetStorageShape().GetDimNum() != DIM_NUM_3),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Layout is %s, queryDims must be 3! but actual value is %zu.\n",
+            inputLayoutStr.c_str(), tempQ->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    }
+    else {
+        OP_CHECK_IF((tempQ->GetStorageShape().GetDimNum() != DIM_NUM_4),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Layout is %s, queryDims must be 4! but actual value is %zu.\n",
+            inputLayoutStr.c_str(), tempQ->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    }
+    // check KV DimNum when PA
+    if (isPageAttention == false) {
+        if (inputLayoutStr == "TND" || inputLayoutStr == "NTD_TND") {
+            OP_CHECK_IF(((tempK->GetStorageShape().GetDimNum() != DIM_NUM_3) || (tempV->GetStorageShape().GetDimNum() != DIM_NUM_3)),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Layout is %s, key and value dims must be %zu! but actual value is keydim(%zu) valuedim(%zu).\n",
+                inputLayoutStr.c_str(), DIM_NUM_3, tempK->GetStorageShape().GetDimNum(), tempV->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
@@ -1239,56 +1172,51 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    if (RouteToFia(context)) {
+        return TilingFusedInferAttentionScoreV3(context);
+    }
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
-
     auto attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
         "Attributes returned from GetAttrs() is a nullptr"), return ge::GRAPH_FAILED);
     const string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    if (inputLayoutStr == "SH") {
-        OP_LOGE(context->GetNodeName(), "SH layout is not supported!");
+    // 获取关键轴信息
+    int64_t b = 0;
+    int64_t queryN = 0;
+    int64_t queryS = 0;
+    int64_t queryT = 0;
+    int64_t queryD = 1;
+    int64_t valueD = 0;
+    bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
+    if ((GetB(context, inputLayoutStr, b) != ge::GRAPH_SUCCESS) ||
+        (GetQueryN(context, inputLayoutStr, queryN) != ge::GRAPH_SUCCESS) ||
+        (GetQueryS(context, inputLayoutStr, queryS) != ge::GRAPH_SUCCESS) ||
+        (GetQueryT(context, inputLayoutStr, queryT) != ge::GRAPH_SUCCESS) ||
+        (GetValueD(context, inputLayoutStr, valueD, isPageAttention) != ge::GRAPH_SUCCESS) ||
+        (GetQueryD(context, inputLayoutStr, queryD) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
-
-    // MLA support layout
-    bool isIfaMlaLayout = (inputLayoutStr == "BSH") || (inputLayoutStr == "BNSD") ||
-        (inputLayoutStr == "BSND") || (inputLayoutStr == "BNSD_NBSD") || (inputLayoutStr == "BSND_NBSD") ||
-        (inputLayoutStr == "BSH_NBSD") || (inputLayoutStr == "TND_NTD") || (inputLayoutStr == "TND");
-    OP_CHECK_IF(((context->GetOptionalInputTensor(QUERY_ROPE_INDEX) != nullptr) && !isIfaMlaLayout && (inputLayoutStr != "NTD_TND")),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "inputlayout(%s) only support {BSH, BNSD, BSND, TND, BNSD_NBSD, "
-                                                            "BSND_NBSD, BSH_NBSD, TND_NTD} in mla.", inputLayoutStr.c_str()),
-        return ge::GRAPH_FAILED);
-
-    int64_t b = context->GetInputShape(QUERY_INDEX)->GetStorageShape().GetDim(0);
-    int64_t n = 0;
-    int64_t s = 0;
-    GetBNS(*context, b, n, s);
-
-    uint32_t tempD = 1U;
-    OP_CHECK_IF(CheckOutShape(*context, tempD, n, s) != ge::GRAPH_SUCCESS,
+    // 校验intput
+    OP_CHECK_IF(CheckInputLayout(context, inputLayoutStr, queryS, queryD, isPageAttention) != ge::GRAPH_SUCCESS,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check InputLayout failed"), return ge::GRAPH_FAILED);
+    // 校验OutShape
+    string outputLayoutStr = GetOutputLayoutStr(inputLayoutStr);
+    auto outShape = context->GetOutputShape(ATTENTION_OUT_INDEX)->GetStorageShape();
+    gert::Shape qkvShapeInfo{b, queryN, queryS, queryT, valueD};
+    OP_CHECK_IF(CheckOutShape(context, outputLayoutStr, outShape, qkvShapeInfo) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check output shape failed"), return ge::GRAPH_FAILED);
-    uint32_t maxDlimit = 512U;
-    OP_CHECK_IF((tempD > maxDlimit), OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-        "D should be less than or equal to 512 of Q/KV shape! but now D = %u. "
-        "When layout is BNSD, D is the last dimension of Q/KV shape, and layout is BSH, D = h / n", tempD),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(((s == 1) && (inputLayoutStr == "BNSD_BSND")), OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-        "BNSD_BSND layout is not supported when S is 1!"), return ge::GRAPH_FAILED);
-
-    bool usingIFA = IsUsingIFA(*context, tempD, s);
-    if (usingIFA) {
-        // IFA tiling process
+    // 是否路由到IFA
+    bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
+    if (usingIFA) { // IFA tiling process
         OP_CHECK_IF(TilingProcess4IFA(context) != ge::GRAPH_SUCCESS,
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process fo ifa failed"),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for ifa failed"),
             return ge::GRAPH_FAILED);
-    } else {
-        // PFA tiling process
-        OP_CHECK_IF(TilingProcess4PFA(context, tempD, b, s, n) != ge::GRAPH_SUCCESS,
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process fo ifa failed"),
+    } else { // PFA tiling process
+        OP_CHECK_IF(TilingProcess4PFA(context, static_cast<uint32_t>(queryD), b, queryS, queryN) != ge::GRAPH_SUCCESS,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for pfa failed"),
             return ge::GRAPH_FAILED);
     }
-
     return ge::GRAPH_SUCCESS;
 }
 

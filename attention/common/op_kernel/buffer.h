@@ -19,6 +19,7 @@
 #include"kernel_event.h"
 #include"kernel_common.h"
 #include"kernel_tpipe.h"
+using namespace AscendC;
 namespace fa_base_matmul {
 enum class BufferType {
     L1 = 0,

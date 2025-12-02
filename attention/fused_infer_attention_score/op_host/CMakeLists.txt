@@ -13,11 +13,13 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         fused_infer_attention_score_def.cpp
     )
+    
     add_ops_compile_options(
         OP_NAME FusedInferAttentionScore
         OPTIONS --cce-auto-sync=off
                 -Wno-deprecated-declarations
                 -Werror
+                -mllvm -cce-vf-remove-membar=false
                 -mllvm -cce-aicore-hoist-movemask=false
                 --op_relocatable_kernel_binary=true
     )
@@ -30,6 +32,7 @@ if(NOT BUILD_OPS_RTY_KERNEL) #
         ../../common/op_host/fia_tiling_shape.cpp
         ../../common/op_host/fia_tiling_info.cpp
         ../../common/op_host/arch32/fia_tiling_nonquant_mla.cpp
+        ../../common/op_host/arch32/fia_tiling_nonquant.cpp
         fallback_fused_infer_attention_score.cpp
     )
 endif()

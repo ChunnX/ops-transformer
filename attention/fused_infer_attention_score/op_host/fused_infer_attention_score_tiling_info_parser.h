@@ -45,15 +45,20 @@ public:
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetMaxWorkspaceFlag();
+    ge::graphStatus GetLegacyIfaFlag();
 
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
+    ge::graphStatus GetKTSize();
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetKvStorageMode();
     ge::graphStatus GetKvLayout();
     void SetFiaShape();
+    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor,
+        FiaLayout layout, int64_t &maxActualSeqLen);
+    ge::graphStatus GetS2SizeFromActualSeqLens();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetS2SizeForTensorList();
     ge::graphStatus GetMaxBlockNumPerBatch();
@@ -67,13 +72,17 @@ public:
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();
+    ge::graphStatus GetSparseMode();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetPaddingSizeFlag();
     ge::graphStatus GetActualSeqInfo();
     ge::graphStatus GetPreNextToken();
+    ge::graphStatus GetOldIfaGqaFlag();
     TilingKeyLayout MapStringToLayout(FiaLayout &layoutString) const;
     void GenerateAxisInfo(FiaTilingInfo &fiaInfo);
     void GenerateDtypeInfo(FiaTilingInfo &fiaInfo);
+    void GenerateFeatureInfo(FiaTilingInfo &fiaInfo);
+    void GenerateLayoutInfo(FiaTilingInfo &fiaInfo);
     void GenerateInfo(FiaTilingInfo &fiaInfo);
     ge::graphStatus ParseAxisInfo();
     ge::graphStatus ParseFeatureInfo();
@@ -97,6 +106,7 @@ public:
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
     uint32_t qTSize_ = 0; // 仅TND/NTD时生效
+    uint32_t kTSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
 
@@ -129,10 +139,17 @@ public:
     int64_t preToken_ = 0;
     int64_t nextToken_ = 0;
     uint32_t attenMaskSize_ = 0;
+    uint32_t attenMaskStride_ = 0;
     bool kvPaddingSizeFlag_ = false;
+    bool qPaddingSizeFlag_ = false;
+    bool pseShiftFlag_ = false;
     int64_t maxActualseq_ = 0;
     bool isMaxWorkspace_ = false;
+    bool isLegacyIfa_ = false;
 
+    bool isAccumQSeq_ = false;
+    bool isAccumKVSeq_ = false;
+    
     uint32_t actualLenQDims_ = 0;
     uint32_t actualLenDims_ = 0;
     std::vector<int64_t> kvListSeqLens_ {};

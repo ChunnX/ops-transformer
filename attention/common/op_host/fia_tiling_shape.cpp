@@ -29,10 +29,16 @@ static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::NTD, {FiaAxis::N, FiaAxis::T, FiaAxis::D}},
     {FiaLayout::BS2, {FiaAxis::B, FiaAxis::S2}},
     {FiaLayout::S1S2, {FiaAxis::S1, FiaAxis::S2}},
-    {FiaLayout::B1S2, {FiaAxis::B, FiaAxis::CONST, FiaAxis::S2}},
-    {FiaLayout::B11S2, {FiaAxis::B, FiaAxis::CONST, FiaAxis::CONST, FiaAxis::S2}},
     {FiaLayout::BnBsH, {FiaAxis::Bn, FiaAxis::Bs, FiaAxis::H}},
     {FiaLayout::BnNBsD, {FiaAxis::Bn, FiaAxis::N, FiaAxis::Bs, FiaAxis::D}},
+    {FiaLayout::BNS1S2, {FiaAxis::B, FiaAxis::N, FiaAxis::S1, FiaAxis::S2}},
+    {FiaLayout::INS1S2, {FiaAxis::CONST, FiaAxis::N, FiaAxis::S1, FiaAxis::S2}},
+    {FiaLayout::BNS11, {FiaAxis::B, FiaAxis::N, FiaAxis::S1, FiaAxis::CONST}},
+    {FiaLayout::TN1, {FiaAxis::T, FiaAxis::N, FiaAxis::CONST}},
+    {FiaLayout::BS1S2, {FiaAxis::B, FiaAxis::S1, FiaAxis::S2}},
+    {FiaLayout::B1S1S2, {FiaAxis::B, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
+    {FiaLayout::IS1S2, {FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
+    {FiaLayout::I1S1S2, {FiaAxis::CONST, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
 };
 
 static bool equal_to(const int64_t& a, const int64_t& b)
@@ -219,6 +225,36 @@ std::string FiaTilingShapeCompare::CompareTypeToSerialSymbolString(const FiaComp
     }
 }
 
+ge::graphStatus FiaTilingShapeCompare::GetExpectedShapeSpecial(gert::Shape &shapeExpected,
+    const FiaTilingShapeCompareParam &param, const std::string &funcName) const
+{
+    if (layout_ == FiaLayout::BNS1S2) {
+        shapeExpected = gert::Shape({param.B, param.N, param.S1, param.S2});
+    } else if (layout_ == FiaLayout::INS1S2) {
+        shapeExpected = gert::Shape({param.CONST, param.N, param.S1, param.S2});
+    } else if (layout_ == FiaLayout::BNS11) {
+        shapeExpected = gert::Shape({param.B, param.N, param.S1, param.CONST});
+    } else if (layout_ == FiaLayout::TN1) {
+        shapeExpected = gert::Shape({param.T, param.N, param.CONST});
+    } else if (layout_ == FiaLayout::BS2) {
+        shapeExpected = gert::Shape({param.B, param.S2});
+    } else if (layout_ == FiaLayout::S1S2) {
+        shapeExpected = gert::Shape({param.S1, param.S2});
+    } else if (layout_ == FiaLayout::BS1S2) {
+        shapeExpected = gert::Shape({param.B, param.S1, param.S2});
+    } else if (layout_ == FiaLayout::B1S1S2) {
+        shapeExpected = gert::Shape({param.B, param.CONST, param.S1, param.S2});
+    } else if (layout_ == FiaLayout::IS1S2) {
+        shapeExpected = gert::Shape({param.CONST, param.S1, param.S2});
+    } else if (layout_ == FiaLayout::I1S1S2) {
+        shapeExpected = gert::Shape({param.CONST, param.CONST, param.S1, param.S2});
+    } else {
+        OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpected,
     const FiaTilingShapeCompareParam &param, const std::string &funcName) const
 {
@@ -240,17 +276,8 @@ ge::graphStatus FiaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpect
         shapeExpected = gert::Shape({param.N, param.B, param.S, param.D});
     } else if (layout_ == FiaLayout::NTD) {
         shapeExpected = gert::Shape({param.N, param.T, param.D});
-    } else if (layout_ == FiaLayout::BS2) {
-        shapeExpected = gert::Shape({param.B, param.S2});
-    } else if (layout_ == FiaLayout::S1S2) {
-        shapeExpected = gert::Shape({param.S1, param.S2});
-    } else if (layout_ == FiaLayout::B1S2) {
-        shapeExpected = gert::Shape({param.B, param.CONST, param.S2});
-    } else if (layout_ == FiaLayout::B11S2) {
-        shapeExpected = gert::Shape({param.B, param.CONST, param.CONST, param.S2});
     } else {
-        OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
-        return ge::GRAPH_FAILED;
+        return GetExpectedShapeSpecial(shapeExpected, param, funcName);
     }
     return ge::GRAPH_SUCCESS;
 }

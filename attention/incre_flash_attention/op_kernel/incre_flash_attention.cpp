@@ -228,7 +228,7 @@ __aicore__ constexpr AMLAMODE get_amla_mode() {
 
 template<uint8_t Q_T, uint8_t KV_T, uint16_t OUT_T, uint8_t PAGE_ATTENTIOND, uint16_t LAYOUT_T,  uint16_t KV_LAYOUT_T, uint16_t FLASH_DECODE,
             uint8_t ENABLE_PREFIX, uint8_t M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE, uint8_t M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, uint8_t M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA,  uint16_t M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE, 
-            uint16_t M_FIAFLAG_P_MMTYPETMP_I_MODEVAL,   uint8_t P_CVDIFF_BASE_FLAG, uint8_t P_CVDIFF_MLA_FLAG,  uint8_t P_TEMPLATE_VERSION, uint8_t TEMPLATE_MODE>
+            uint16_t M_FIAFLAG_P_MMTYPETMP_I_MODEVAL,   uint8_t M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG, uint8_t P_CVDIFF_MLA_FLAG,  uint8_t M_SOFTMAXBRCB_P_TEMPLATE_VERSION, uint8_t TEMPLATE_MODE>
 __global__ __aicore__ void incre_flash_attention_FIAS(
     __gm__ uint8_t *query, 
     __gm__ uint8_t *key,
@@ -278,7 +278,7 @@ __global__ __aicore__ void incre_flash_attention_FIAS(
     REGISTER_TILING_DEFAULT(IncreFlashAttentionTilingDataV2);
     #endif
 #if (__CCE_AICORE__ > 200)
-    if constexpr (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && P_CVDIFF_BASE_FLAG == 1) {
+    if constexpr (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG == 1) {
         using Q_TYPE = half;
         using KV_TYPE = std::conditional_t<KV_T == 0, half,
                         std::conditional_t<KV_T == 3, int8_t,
@@ -288,7 +288,7 @@ __global__ __aicore__ void incre_flash_attention_FIAS(
         REGISTER_TILING_FOR_TILINGKEY("TRUE", IncreFlashAttentionTilingDataV2);
         INVOKE_IFA_ALL_VEC_OP_IMPL(IncreFlashAttentionAttenAllVecNew, Q_TYPE, KV_TYPE, OUT_TYPE, ORIGIN_TYPE, PAGE_ATTENTIOND, FLASH_DECODE,
                                     LAYOUT_TYPE);
-    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && P_CVDIFF_BASE_FLAG == 0) {
+    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG == 0) {
         using Q_TYPE = std::conditional_t<Q_T == 0, half,
                        std::conditional_t<Q_T == 2, bfloat16_t,
                        half>>;
@@ -307,7 +307,7 @@ __global__ __aicore__ void incre_flash_attention_FIAS(
         REGISTER_TILING_FOR_TILINGKEY("TRUE", IncreFlashAttentionTilingDataV2);
         INVOKE_IFA_GENERAL_OP_IMPL(IncreFlashAttentionAttenSplitBbn2s2Us2, Q_TYPE, KV_TYPE, OUT_TYPE, ORIGIN_TYPE, PAGE_ATTENTIOND, FLASH_DECODE,
                                     LAYOUT_TYPE, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE, false);
-    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && P_CVDIFF_BASE_FLAG == 2) {
+    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG == 2) {
         using Q_TYPE = std::conditional_t<Q_T == 0, half,
                        std::conditional_t<Q_T == 2, bfloat16_t,
                        half>>;
@@ -345,7 +345,7 @@ __global__ __aicore__ void incre_flash_attention_FIAS(
         REGISTER_TILING_FOR_TILINGKEY("TRUE", IncreFlashAttentionTilingDataV2);
         INVOKE_IFA_GENERAL_OP_IMPL(IncreFlashAttentionAttenSplitBbn2s2Us2, Q_TYPE, KV_TYPE, OUT_TYPE, ORIGIN_TYPE, PAGE_ATTENTIOND, FLASH_DECODE,
                                     LAYOUT_TYPE, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE, true);
-    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && P_CVDIFF_BASE_FLAG == 3) {
+    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG == 3) {
         using Q_TYPE = std::conditional_t<Q_T == 0, half,
                        std::conditional_t<Q_T == 2, bfloat16_t,
                        half>>;
@@ -364,14 +364,14 @@ __global__ __aicore__ void incre_flash_attention_FIAS(
         REGISTER_TILING_FOR_TILINGKEY("TRUE", IncreFlashAttentionTilingDataV2);
         INVOKE_IFA_NO_KFC_OP_IMPL(IncreFlashAttentionAttenPreload, Q_TYPE, KV_TYPE, OUT_TYPE, ORIGIN_TYPE, PAGE_ATTENTIOND, FLASH_DECODE,
                                     LAYOUT_TYPE, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE, false);
-    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && P_CVDIFF_BASE_FLAG == 6) {
+    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG == 6) {
         using Q_TYPE = half;
         using KV_TYPE = int8_t;
         using OUT_TYPE = bfloat16_t;
         using ORIGIN_TYPE = bfloat16_t;
         INVOKE_IFA_NO_KFC_OP_IMPL(IncreFlashAttentionAttenPreloadDD, Q_TYPE, KV_TYPE, OUT_TYPE, ORIGIN_TYPE, PAGE_ATTENTIOND, FLASH_DECODE,
                                     LAYOUT_TYPE, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE, false, KV_LAYOUT_TYPE, AMLA_TYPE, M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE);
-    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && P_CVDIFF_BASE_FLAG == 5) {
+    } else if (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG == 5) {
         using Q_TYPE = int8_t;
         using KV_TYPE = int8_t;
         using OUT_TYPE = bfloat16_t;
@@ -382,7 +382,7 @@ __global__ __aicore__ void incre_flash_attention_FIAS(
     } 
 #else
     REGISTER_TILING_DEFAULT(IncreFlashAttentionTilingData);
-    if constexpr (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && P_CVDIFF_BASE_FLAG == 1) {
+    if constexpr (M_FIAFLAG_P_MMTYPETMP_I_MODEVAL == 1 && M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG == 1) {
         using Q_TYPE = half;
         using KV_TYPE = std::conditional_t<KV_T == 0, half,
                         std::conditional_t<KV_T == 3, int8_t,
@@ -398,7 +398,7 @@ __global__ __aicore__ void incre_flash_attention_FIAS(
 
 template<uint8_t Q_T, uint8_t KV_T, uint8_t OUT_T, uint8_t PAGE_ATTENTIOND, uint8_t LAYOUT_T,  uint8_t KV_LAYOUT_T, uint8_t FLASH_DECODE,
             uint8_t ENABLE_PREFIX, uint8_t M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE, uint8_t M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, uint8_t M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA,  uint8_t M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE, 
-            uint8_t M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, uint8_t P_CVDIFF_BASE_FLAG, uint8_t P_CVDIFF_MLA_FLAG,  uint8_t P_TEMPLATE_VERSION, uint8_t TEMPLATE_MODE>
+            uint8_t M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, uint8_t M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG, uint8_t P_CVDIFF_MLA_FLAG,  uint8_t M_SOFTMAXBRCB_P_TEMPLATE_VERSION, uint8_t TEMPLATE_MODE>
 __global__ __aicore__ void
 incre_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
                       __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *deqScale1,
@@ -409,7 +409,7 @@ incre_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
 {
     incre_flash_attention_FIAS<Q_T, KV_T, OUT_T, PAGE_ATTENTIOND, LAYOUT_T, KV_LAYOUT_T, FLASH_DECODE, ENABLE_PREFIX, M_Q_QUANTMODE_P_MSD_MODE_I_ANTIQUANTMODE,
                                     M_OUTLAYOUT_P_TAIL_MODE_I_ORIGIN_T, M_K_QUANTMODE_P_NEWTILINGFLAG_I_AMLA, M_V_QUANTMODE_P_PRECISION_MODE_I_BALANCE,
-                                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, P_TEMPLATE_VERSION, TEMPLATE_MODE>
+                                    M_FIAFLAG_P_MMTYPETMP_I_MODEVAL, M_TEMPLATE_TYPE_P_CVDIFF_BASE_FLAG, P_CVDIFF_MLA_FLAG, M_SOFTMAXBRCB_P_TEMPLATE_VERSION, TEMPLATE_MODE>
           (query, key, value, pseShift, attenMask, nullptr, actualSeqLengths, deqScale1, quantScale1,
                                deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, blocktable, nullptr,
                                kvPaddingSize, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,

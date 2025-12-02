@@ -28,9 +28,9 @@ using AscendC::SetFlag;
 using AscendC::ShapeInfo;
 using AscendC::SoftmaxConfig;
 using AscendC::WaitFlag;
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 namespace AttentionCommon {
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 // 将isCheckTiling设置为false
 constexpr SoftmaxConfig FIA_SOFTMAX_FLASHV2_CFG = {false};
@@ -50,7 +50,8 @@ enum class FIA_LAYOUT : uint32_t
 
 template <typename Q_T, typename KV_T, typename OUT_T, typename ORIGIN_T, const bool PAGE_ATTENTION = false,
           const bool FLASH_DECODE = false, FIA_LAYOUT LAYOUT_T = FIA_LAYOUT::BSH, const uint8_t ANTIQUANT_MODE = 0,
-          const bool SHARED_PREFIX = false, FIA_LAYOUT KV_LAYOUT_T = FIA_LAYOUT::BSH, typename... Args>
+          const bool SHARED_PREFIX = false, FIA_LAYOUT KV_LAYOUT_T = FIA_LAYOUT::BSH,
+          const bool SOFTMAX_WITH_BRC = false, typename... Args>
 struct FIAType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -62,6 +63,7 @@ struct FIAType {
     static constexpr uint8_t antiquantMode = ANTIQUANT_MODE;
     static constexpr bool sharedPrefix = SHARED_PREFIX;
     static constexpr FIA_LAYOUT kvLayout = KV_LAYOUT_T;
+    static constexpr bool softmaxWithBrc = SOFTMAX_WITH_BRC;
 };
 
 struct FDparams {
@@ -77,41 +79,39 @@ struct FDparams {
 };
 
 struct RunInfo {
-    uint32_t loop;
-    uint32_t bIdx;
-    uint32_t gIdx;
-    uint32_t s1Idx;
-    uint32_t s2Idx;
-    uint32_t bn2IdxInCurCore;
-    uint32_t curSInnerLoopTimes;
-    uint64_t tndBIdxOffset;
-    uint64_t tensorAOffset;
-    uint64_t tensorBOffset;
-    uint64_t tensorARopeOffset;
-    uint64_t tensorBRopeOffset;
-    uint64_t attenOutOffset;
-    uint64_t attenMaskOffset;
-    uint32_t actualSingleProcessSInnerSize;
-    uint32_t actualSingleProcessSInnerSizeAlign;
-    bool isFirstSInnerLoop;
-    bool isChangeBatch;
-    uint32_t s2BatchOffset;
-    uint32_t gSize;
-    uint32_t s1Size;
-    uint32_t s2Size;
-    uint32_t tndIsS2SplitCore;
-    uint32_t tndCoreStartKVSplitPos;
     bool isValid = false;
+    bool isChangeBatch = false;
+    bool isFirstSInnerLoop = false;
+    bool isLastS2Loop = false;
+    uint32_t loop = 0;
 
-    static constexpr uint32_t n2Idx = 0;
-    uint64_t actS1Size = 1;
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gS1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint64_t actS1Size = 1; // 当前处理head的S1轴实际大小
+    uint64_t actS2Size = 1; // 当前处理head的S2轴实际大小
 
-    uint32_t gS1Idx;
-    uint64_t actS2Size = 1;
-    uint32_t actMBaseSize;
-    bool isLastS2Loop;
-    int32_t preTokensPerBatch = 0;
-    int32_t nextTokensPerBatch = 0;
+    uint32_t actMBaseSize = 0;
+    uint32_t actualSingleProcessSInnerSize = 0;
+    uint32_t actualSingleProcessSInnerSizeAlign = 0;
+
+    uint32_t curSInnerLoopTimes = 0;
+    uint32_t bn2IdxInCurCore = 0;
+    uint32_t s2BatchOffset = 0;
+    uint32_t tndIsS2SplitCore = 0;
+    uint32_t tndCoreStartKVSplitPos = 0;
+
+    uint64_t tensorAOffset = 0;
+    uint64_t tensorBOffset = 0;
+    uint64_t tensorARopeOffset = 0;
+    uint64_t tensorBRopeOffset = 0;
+    uint64_t attenOutOffset = 0;
+    uint64_t attenMaskOffset = 0;
+
+    int64_t preTokensPerBatch = 0;
+    int64_t nextTokensPerBatch = 0;
+    uint64_t accumTmpOutNum = 0;
 };
 
 struct ConstInfo {
@@ -131,6 +131,17 @@ struct ConstInfo {
     // FP32的0值和极大值
     static constexpr float FLOAT_ZERO = 0;
     static constexpr float FLOAT_MAX = 3.402823466e+38F;
+    static constexpr float FLOAT_INF = 3e+99;
+
+    // 整个AICORE的任务信息, 左闭右开区间[ (bN2Start, gS1Start, s2Start), (bN2End, gS1End, s2End) )
+    uint32_t bN2Start = 0U;
+    uint32_t gS1Start = 0U;
+    uint32_t s2Start = 0U;
+    uint32_t bN2End = 0U;
+    uint32_t gS1End = 0U;
+    uint32_t s2End = 0U;
+    bool headS2Split = false;
+    bool tailS2Split = false;
 
     // preLoad的总次数
     uint32_t preLoadNum = 0U;
@@ -143,46 +154,50 @@ struct ConstInfo {
     uint32_t syncC2V2 = 0U;
     uint32_t syncC2V1 = 0U;
 
+    float scaleValue = 0;
     uint32_t mmResUbSize = 0U;   // Matmul1输出结果GM上的大小
     uint32_t vec1ResUbSize = 0U; // Vector1输出结果GM上的大小
     uint32_t bmm2ResUbSize = 0U; // Matmul2输出结果GM上的大小
     uint64_t batchSize = 0ULL;
     uint64_t gSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
-    uint64_t kvHeadNum;
-    uint64_t headDim;
-    uint64_t headDimRope;
-    uint64_t headDimAlign;
+    uint64_t kvHeadNum = 0ULL;
+    uint64_t headDim = 0;
+    uint64_t headDimRope = 0;
+    uint64_t headDimAlign = 0;
     uint64_t kvSeqSize = 0ULL;        // kv最大S长度
     uint64_t qSeqSize = 1ULL;         // q最大S长度
     uint32_t kvCacheBlockSize = 0;    // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t splitKVNum = 0U;         // S2核间切分的切分份数
     FIA_LAYOUT outputLayout;          // 输出的Transpose格式
+
+    // mask
     bool attenMaskFlag = false;
     uint64_t attenMaskSize = 0ULL;
-    bool slidingFlag = false;
+    uint32_t attenMaskStride = 0ULL;
     bool needInit = false;
-    int32_t preToken = 0;
-    int32_t nextToken = 0;
+    bool isRowInvalid = false;  // 是否使能行无效
+    int64_t preToken = 0;
+    int64_t nextToken = 0;
+    uint32_t sparseMode = 0;
 
     uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度
-
-    // TND
-    uint32_t s2Start = 0U; // TND场景下，S2的起始位置
-    uint32_t s2End = 0U;   // 单核TND场景下S2循环index上限
-
-    uint32_t bN2Start = 0U;
-    uint32_t bN2End = 0U;
-    uint32_t gS1Start = 0U;
-    uint32_t gS1End = 0U;
+    bool accumQSeqFlag = false;
+    bool accumKVSeqFlag = false;
 
     uint32_t tndFDCoreArrLen = 0U;     // TNDFlashDecoding相关分核信息array的长度
     uint32_t coreStartKVSplitPos = 0U; // TNDFlashDecoding kv起始位置
 
     uint32_t mBaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
+    bool batchContinuous = true;
+    bool ropeSplitMode = false;
+
+    bool softmaxLseFlag = false;
+
+    uint32_t l2CacheOffFlag = 0;
 };
 
 struct FusedTransposeInfo {
@@ -207,11 +222,18 @@ struct MSplitInfo {
     uint32_t vecDealM = 0U;
 };
 
+enum class TASK_DEAL_MODE : uint32_t
+{
+    DEAL_ZERO = 0,
+    SKIP = 1,
+    CREATE_TASK = 2
+};
+
 template <FIA_LAYOUT LAYOUT_T>
 __aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Idx, AttentionCommon::ConstInfo &constInfo)
 {
     // GS1
-    if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD) {
+    if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD || LAYOUT_T == FIA_LAYOUT::NBSD || LAYOUT_T == FIA_LAYOUT::NTD) {
         gIdx = gS1Idx / constInfo.qSeqSize;
         s1Idx = gS1Idx % constInfo.qSeqSize;
     } else {
@@ -221,6 +243,12 @@ __aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Id
     }
 }
 
+__aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
+{
+    sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
+    sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
+    return sInnerToken;
+}
 } // namespace
 
 #endif // FIA_PUBLIC_DEFINE_H

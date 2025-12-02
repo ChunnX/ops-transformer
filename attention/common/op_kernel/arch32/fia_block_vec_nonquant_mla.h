@@ -22,8 +22,10 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "../fia_public_define.h"
 #include "../vector_common.h"
+#include "../memory_copy.h"
 
 using namespace AttentionCommon;
+using namespace fa_base_vector;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
@@ -43,6 +45,7 @@ public:
     static constexpr FIA_LAYOUT LAYOUT_T = FIAT::layout;
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
 
+    static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
     using UPDATE_T = T;
     using TMP_T = T;
     using MM1_OUT_T = float;
@@ -52,19 +55,25 @@ public:
     __aicore__ inline void ProcessVec1L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void ProcessVec2L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct AttentionCommon::ConstInfo &constInfo,
-                                      const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData);
-    __aicore__ inline void InitMm2ResInt32GmGlobalTensor(GlobalTensor<int32_t> mm2ResInt32Gm);
-    __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
-                                                GlobalTensor<bool> attenMaskBoolGm,
-                                                GlobalTensor<uint64_t> actualSeqLengthsGmQ,
-                                                GlobalTensor<uint64_t> actualSeqLengthsGm, GlobalTensor<T> lseMaxFdGm,
-                                                GlobalTensor<T> lseSumFdGm);
-    __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
-                                                GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
+    __aicore__ inline void Init(
+        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+            const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData);
+    __aicore__ inline void InitParams(const struct AttentionCommon::ConstInfo &constInfo);
+    __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> mm2ResInt32Gm);
+    __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<UPDATE_T> vec2ResGm,
+                                                GlobalTensor<MM2_OUT_T> mm2ResGm);
+    __aicore__ inline void InitFlashDecodeGlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitSoftmaxDefaultBuffer();
+
     // ================================Vector1==========================================
     __aicore__ inline void ProcessVec1SingleBuf(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm1ResBaseBlock(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -80,20 +89,6 @@ public:
     __aicore__ inline void ElewiseCompute(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb,
                                           TBuf<> &tmpBuf, uint32_t startRow, uint32_t dealRowCount,
                                           uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void AttentionMaskCompute(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
-                                                uint32_t dealRowCount, uint32_t columnCount,
-                                                uint32_t actualColumnCount);
-    __aicore__ inline void AttenMaskCopyDirectly(const AttentionCommon::RunInfo &info, LocalTensor<bool> &attenMaskUb,
-                                                 uint32_t dealRowCount, uint32_t actualColumnCount);
-    __aicore__ inline bool IsSkipAttenMask(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
-                                           uint32_t dealRowCount);
-    __aicore__ inline void AttenMaskCopyForSplitG(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                  LocalTensor<bool> &attenMaskUb, uint32_t startRow,
-                                                  uint32_t dealRowCount, bool &selectNext, bool &selectPre);
-    __aicore__ inline void AttenMaskCopyForBNSD(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                LocalTensor<bool> &attenMaskUb, uint32_t startRow,
-                                                uint32_t dealRowCount);
     __aicore__ inline void ProcessAmlaNupdate(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
                                                        LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
@@ -107,19 +102,21 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const AttentionCommon::RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2ResCopyOut(const AttentionCommon::RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
-                                          uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2CastAndCopyOut(const AttentionCommon::RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2ResCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &bmm2ResUb,
+                                          uint32_t wsMStart, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+                                          uint32_t actualColumnCount);
+    __aicore__ inline void Bmm2CastAndCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
+                                              LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t startRow,
                                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
+                                             LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t startRow,
                                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline uint64_t CalcAccumOffset(uint32_t bN2Idx, uint32_t gS1Idx);
-    template <typename RT>
-    __aicore__ inline void DealInvalidRows(const AttentionCommon::RunInfo &info, LocalTensor<RT> &attenOutUb, uint32_t wsMStart,
+    __aicore__ inline void DealInvalidRows(const AttentionCommon::RunInfo &info, LocalTensor<T> &attenOutUb, uint32_t wsMStart,
                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    template <typename RT>
-    __aicore__ inline void DealInvalidRowsBelow(const AttentionCommon::RunInfo &info, LocalTensor<RT> &attenOutUb,
-                                                uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount);
+    __aicore__ inline void DealInvalidMaskRows(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
+                                              LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
+                                              uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void GetConfusionTransposeTiling(int64_t numR, int64_t numC, const uint32_t stackBufferSize,
                                                        const uint32_t typeSize, ConfusionTransposeTiling &tiling);
 
@@ -153,9 +150,10 @@ protected:
     static constexpr uint32_t SOFTMAX_TMP_BUFFER_OFFSET = AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_1K;
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
+    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     static constexpr uint64_t kvHeadNum = 1ULL;
     static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T); // 32768/4=8096
-    static constexpr uint32_t BLOCK_ELEMENT_NUM = fa_base_vector::BYTE_BLOCK / sizeof(T); // 32/4=8
+    static constexpr uint32_t BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(T); // 32/4=8
     static constexpr T FLOAT_E_SCALAR = 8388608;
     static constexpr T LN2 = 0.6931471805599453094172;
     static constexpr T RECIP_OF_LN2 = 1 / LN2;
@@ -166,7 +164,6 @@ protected:
     static constexpr uint64_t headDimAlign = 512ULL;
     static constexpr uint64_t headDimRope = 64ULL;
     static constexpr uint64_t headDimAll = 576ULL;
-
 private:
     // ================================Local Buffer区====================================
     // queue
@@ -207,6 +204,33 @@ private:
     const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData = nullptr;
 };
 
+template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Init(
+        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+        const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData)
+{
+    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
+    // attenMaskBoolGm.SetGlobalBuffer((__gm__ bool *)attenMask); // 差异
+    if (constInfo.attenMaskFlag) {
+        attenMaskBoolGm.SetGlobalBuffer((__gm__ bool *)attenMask);
+    }
+    if (constInfo.actualLenQDims != 0) {
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+    }
+    if (constInfo.actualLenDims != 0) {
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualLenDims);
+    }
+
+    this->tilingData = tilingData;
+}
+
 template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitBuffers(TPipe *pipe)
 {
     // queue
@@ -241,50 +265,43 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::In
 
     softmaxMaxDefaultUb = softmaxMaxDefaultBuff.Get<T>();
     softmaxSumDefaultUb = softmaxSumDefaultBuff.Get<T>();
+
+    Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
+    Duplicate(softmaxSumDefaultUb, FLOAT_ZERO, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
 }
 
 template <typename FIAT>
 __aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::InitParams(const struct AttentionCommon::ConstInfo &constInfo,
-                                                 const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData)
+FiaBlockVecNonQuantMla<FIAT>::InitParams(const struct AttentionCommon::ConstInfo &constInfo)
 {
     this->constInfo = constInfo;
-    this->tilingData = tilingData;
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::InitMm2ResInt32GmGlobalTensor(GlobalTensor<int32_t> mm2ResInt32Gm)
-{
-    this->mm2ResInt32Gm = mm2ResInt32Gm;
-}
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitVec1GlobalTensor(
-    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<bool> attenMaskBoolGm,
-    GlobalTensor<uint64_t> actualSeqLengthsGmQ, GlobalTensor<uint64_t> actualSeqLengthsGm, GlobalTensor<T> lseMaxFdGm,
-    GlobalTensor<T> lseSumFdGm)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> mm2ResInt32Gm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
-    this->attenMaskBoolGm = attenMaskBoolGm;
-    this->actualSeqLengthsGmQ = actualSeqLengthsGmQ;
-    this->actualSeqLengthsGm = actualSeqLengthsGm;
-    this->lseMaxFdGm = lseMaxFdGm;
-    this->lseSumFdGm = lseSumFdGm;
+    this->mm2ResInt32Gm = mm2ResInt32Gm;
 }
 
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitVec2GlobalTensor(GlobalTensor<T> accumOutGm,
-                                                                                  GlobalTensor<UPDATE_T> vec2ResGm,
-                                                                                  GlobalTensor<MM2_OUT_T> mm2ResGm,
-                                                                                  GlobalTensor<OUT_T> attentionOutGm)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitVec2GlobalTensor(GlobalTensor<UPDATE_T> vec2ResGm,
+                                                                                  GlobalTensor<MM2_OUT_T> mm2ResGm)
 {
-    this->accumOutGm = accumOutGm;
     this->vec2ResGm = vec2ResGm;
     this->mm2ResGm = mm2ResGm;
-    this->attentionOutGm = attentionOutGm;
+}
+
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitFlashDecodeGlobalTensor(GlobalTensor<T> accumOutGm,
+                                                                                         GlobalTensor<T> lseMaxFdGm,
+                                                                                         GlobalTensor<T> lseSumFdGm)
+{
+    this->accumOutGm = accumOutGm;
+    this->lseMaxFdGm = lseMaxFdGm;
+    this->lseSumFdGm = lseSumFdGm;
 }
 
 template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::AllocEventID()
@@ -299,55 +316,13 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Al
 
 template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::FreeEventID()
 {
+    CrossCoreWaitFlag(constInfo.syncC2V1);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
-}
-
-template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitSoftmaxDefaultBuffer()
-{
-    Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
-    Duplicate(softmaxSumDefaultUb, AttentionCommon::ConstInfo::FLOAT_ZERO, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
-}
-
-template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::AttenMaskCopyDirectly(const AttentionCommon::RunInfo &info, LocalTensor<bool> &attenMaskUb,
-                                                            uint32_t dealRowCount, uint32_t actualColumnCount)
-{
-    LocalTensor<bool> maskUb = inputBuff2.Get<bool>();
-    maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-    attenMaskSizeAlign = Align(actualColumnCount, 32U);
-#if (__CCE_AICORE__ > 200)
-    if (actualColumnCount % 32 == 0) {
-        DataCopy(maskUb, attenMaskBoolGm[info.attenMaskOffset], attenMaskSizeAlign);
-    } else {
-        uint32_t typeElementSize = fa_base_vector::BYTE_BLOCK / sizeof(bool);
-        DataCopyExtParams intriParams;
-        intriParams.blockLen = actualColumnCount * sizeof(bool);
-        intriParams.blockCount = 1;
-        intriParams.dstStride = (attenMaskSizeAlign - actualColumnCount) / typeElementSize;
-        intriParams.srcStride = 0;
-        DataCopyPadExtParams<bool> padParams;
-        padParams.isPad = true;
-        padParams.leftPadding = 0;
-        padParams.rightPadding = (attenMaskSizeAlign - actualColumnCount) % typeElementSize;
-        padParams.paddingValue = 0;
-        DataCopyPad(maskUb, attenMaskBoolGm[info.attenMaskOffset], intriParams, padParams);
-    }
-#else
-    DataCopy(maskUb, attenMaskBoolGm[info.attenMaskOffset], attenMaskSizeAlign);
-#endif
-
-    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-    for (int i = 1; i < dealRowCount; i++) {
-        DataCopy(maskUb[i * attenMaskSizeAlign], maskUb, attenMaskSizeAlign);
-    }
 }
 
 template <typename FIAT>
@@ -364,12 +339,12 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
     //  dst-Shape  { B  N2, splitKV s1, G, fa_base_vector::FP32_BLOCK_ELEMENT_NUM}
     // 这里的offset计算，后续FD切G改切M时，同步改掉
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
-    size_t size = mSplitInfo.vecDealM * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
+    size_t size = mSplitInfo.vecDealM * FP32_BLOCK_ELEMENT_NUM;
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
     uint64_t offset = (accumTmpOutNum * kvHeadNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * kvHeadNum * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                      fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                        FP32_BLOCK_ELEMENT_NUM; // m轴offset
 
     LocalTensor<T> tmp = outputBuff2.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
@@ -389,216 +364,6 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::AttenMaskCopyForBNSD(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                           LocalTensor<bool> &attenMaskUb, uint32_t startRow,
-                                                           uint32_t dealRowCount)
-{
-    uint32_t gS1StartIdx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
-    uint32_t s1StartIdx = gS1StartIdx % info.actS1Size;
-
-#define ATTENMASK_STRIDE 2048U
-    uint32_t offset;
-    uint32_t s1StartCopyIdx = 0; // 第一次拷贝从s1=0开始，拷贝整个attentionmask，尚未支持s1泛化，只支持s1<=16场景
-    int32_t delta = s1StartCopyIdx - info.s2Idx * constInfo.s2BaseSize + info.actS2Size - info.actS1Size;
-    if (delta < 0) {
-        offset = (-delta) < (int32_t)info.actS1Size ? (-delta) : info.actS1Size; // min (-delta, s1Size)
-    } else {
-        offset = (delta < (int32_t)constInfo.s2BaseSize ? delta : constInfo.s2BaseSize) *
-                 ATTENMASK_STRIDE; // min(delta, s2inner)
-    }
-
-    attenMaskSizeAlign = Align(info.actualSingleProcessSInnerSize, 32U);
-
-    DataCopyParams dataCopyParams;
-    dataCopyParams.blockCount = info.actS1Size;
-    dataCopyParams.blockLen = attenMaskSizeAlign * sizeof(bool) / 32;
-    dataCopyParams.srcStride = (ATTENMASK_STRIDE - attenMaskSizeAlign) * sizeof(bool) / 32;
-    dataCopyParams.dstStride = 0;
-
-    attenMaskUb = inputBuff2.Get<bool>();
-    attenMaskUb = attenMaskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-    DataCopy(attenMaskUb, attenMaskBoolGm[offset], dataCopyParams);
-
-    LocalTensor<bool> attenMaskUbDst = attenMaskTmpBuff.Get<bool>();
-    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-
-    uint32_t headS1Count = 0;
-    if (s1StartIdx + dealRowCount > info.actS1Size) {
-        headS1Count = info.actS1Size - s1StartIdx;
-
-    } else {
-        headS1Count = dealRowCount;
-    }
-
-    // head
-    DataCopy(attenMaskUbDst, attenMaskUb[s1StartIdx * attenMaskSizeAlign], headS1Count * attenMaskSizeAlign);
-    // mid
-    uint32_t reminRowCount = dealRowCount - headS1Count;
-    uint32_t midGCount = reminRowCount / info.actS1Size;
-    uint32_t tailS1Size = reminRowCount % info.actS1Size;
-    for (uint32_t i = 0; i < midGCount; i++) {
-        DataCopy(attenMaskUbDst[(headS1Count + i * info.actS1Size) * attenMaskSizeAlign], attenMaskUb,
-                 info.actS1Size * attenMaskSizeAlign);
-    }
-    // tail
-    if (tailS1Size > 0) {
-        DataCopy(attenMaskUbDst[(headS1Count + midGCount * info.actS1Size) * attenMaskSizeAlign], attenMaskUb,
-                 tailS1Size * attenMaskSizeAlign);
-    }
-    attenMaskUb = attenMaskUbDst;
-}
-
-template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::AttenMaskCopyForSplitG(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                             LocalTensor<bool> &attenMaskUb, uint32_t startRow,
-                                                             uint32_t dealRowCount, bool &selectNext, bool &selectPre)
-{
-    uint32_t gS1StartIdx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
-    uint32_t gStartIdx, s1StartIdx;
-    GetGS1Idx<LAYOUT_T>(gS1StartIdx, gStartIdx, s1StartIdx, constInfo);
-    uint32_t gS1EndIdx = gS1StartIdx + dealRowCount - 1;
-    uint32_t s1EndIdx = gS1EndIdx / constInfo.gSize;
-    uint32_t s1Count = s1EndIdx - s1StartIdx + 1;
-
-#define ATTENMASK_STRIDE 2048U
-
-    uint32_t offset;
-    uint32_t offsetPre = 0;
-    int32_t delta = s1StartIdx - info.s2Idx * constInfo.s2BaseSize + info.nextTokensPerBatch;
-    if (delta < 0) {
-        offset = (-delta) < (int32_t)s1Count ? (-delta) : s1Count;
-    } else {
-        offset = (delta < (int32_t)constInfo.s2BaseSize ? delta : constInfo.s2BaseSize) * ATTENMASK_STRIDE;
-    }
-
-    if (constInfo.slidingFlag) {
-        int32_t sOuterOffset = offset / ATTENMASK_STRIDE;
-        int32_t sInnerOffset = offset % ATTENMASK_STRIDE;
-        selectNext = (sOuterOffset < sInnerOffset + constInfo.s2BaseSize);
-
-        delta = s1StartIdx - info.s2Idx * constInfo.s2BaseSize - info.preTokensPerBatch -1;
-        if (delta < 0) {
-            offsetPre = (-delta) < (int32_t)s1Count ? (-delta) : s1Count;
-        } else {
-            offsetPre = (delta < (int32_t)constInfo.s2BaseSize ? delta : constInfo.s2BaseSize) * ATTENMASK_STRIDE;
-        }
-        sOuterOffset = offsetPre / ATTENMASK_STRIDE;
-        sInnerOffset = offsetPre % ATTENMASK_STRIDE;
-        selectPre = (sOuterOffset > sInnerOffset - (int32_t)s1Count);
-        if (!selectPre && !selectNext) {
-            return;
-        }
-    }
-
-    attenMaskSizeAlign = Align(info.actualSingleProcessSInnerSize, 32U);
-
-    DataCopyParams dataCopyParams;
-    dataCopyParams.blockCount = s1Count;
-    dataCopyParams.blockLen = attenMaskSizeAlign * sizeof(bool) / 32;
-    dataCopyParams.srcStride = (ATTENMASK_STRIDE - attenMaskSizeAlign) * sizeof(bool) / 32;
-    dataCopyParams.dstStride = 0;
-
-    attenMaskUb = inputBuff2.Get<bool>();
-    attenMaskUb = attenMaskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-    if (selectPre && selectNext) { // preToken与nextToken对应的mask串行搬运了，待优化
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-        DataCopy(attenMaskUb, attenMaskBoolGm[offsetPre], dataCopyParams);
-        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-        LocalTensor<bool> attenMaskUbTmp = attenMaskTmpBuff.Get<bool>();
-        DataCopy(attenMaskUbTmp, attenMaskUb, s1Count * attenMaskSizeAlign / sizeof(bool));
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-    }
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-    if (selectNext) {
-        DataCopy(attenMaskUb, attenMaskBoolGm[offset], dataCopyParams);
-    }
-    if (selectPre && !selectNext) {
-        DataCopy(attenMaskUb, attenMaskBoolGm[offsetPre], dataCopyParams);
-    }
-
-    LocalTensor<int16_t> mask16 = attenMaskUb.template ReinterpretCast<int16_t>();
-    LocalTensor<int16_t> attenMaskUbDst = attenMaskTmpBuff.Get<int16_t>();
-
-    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-    if (selectPre && selectNext) {
-        AscendC::Xor(mask16, mask16, attenMaskUbDst, s1Count * attenMaskSizeAlign / sizeof(int16_t));
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-
-    uint32_t headGCount = s1Count > 1 ? (constInfo.gSize - gStartIdx) : dealRowCount;
-    uint32_t dstMaskOffset = 0;
-    uint32_t srcMaskBaseOffset = 0;
-    // head
-    SetMaskCount();
-    SetVectorMask<int16_t, MaskMode::COUNTER>(attenMaskSizeAlign / 2);
-    Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                         headGCount, {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
-    dstMaskOffset += headGCount * attenMaskSizeAlign / 2;
-    srcMaskBaseOffset += attenMaskSizeAlign / 2;
-    // mid
-    uint32_t reminRowCount = dealRowCount - headGCount;
-    uint32_t midS1Count = reminRowCount / constInfo.gSize;
-    uint32_t tailGSize = reminRowCount % constInfo.gSize;
-    for (uint32_t midIdx = 0; midIdx < midS1Count; midIdx++) {
-        Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                             constInfo.gSize, {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
-        dstMaskOffset += constInfo.gSize * attenMaskSizeAlign / 2;
-        srcMaskBaseOffset += attenMaskSizeAlign / 2;
-    }
-    // tail
-    if (tailGSize > 0) {
-        Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                             tailGSize, {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
-    }
-    SetMaskNorm();
-    ResetMask();
-    attenMaskUb = attenMaskUbDst.template ReinterpretCast<bool>();
-}
-
-template <typename FIAT>
-__aicore__ inline bool FiaBlockVecNonQuantMla<FIAT>::IsSkipAttenMask(const AttentionCommon::RunInfo &info,
-                                                                             const MSplitInfo &mSplitInfo,
-                                                                             uint32_t startRow, uint32_t dealRowCount)
-{
-    if (constInfo.slidingFlag) {
-        return false;
-    }
-    uint32_t actualSeqQ = constInfo.qSeqSize;
-    if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
-        actualSeqQ = info.actS1Size;
-    }
-
-    // s2<s1时，必然走mask
-    if (info.actS2Size < actualSeqQ) {
-        return false;
-    }
-
-    // 当前的s2位置不超过需要打标记的位置时，不需要mask
-    uint32_t s2EndPos = info.s2Idx * constInfo.s2BaseSize + info.actualSingleProcessSInnerSize;
-    if (s2EndPos <= (info.actS2Size - actualSeqQ + 1)) {
-        return true;
-    }
-
-    // BSH/BSND/TND格式切G，最后一个s1不需要mask
-    if constexpr (LAYOUT_T != FIA_LAYOUT::BNSD) {
-        uint32_t gS1StartIdx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
-        uint32_t gS1EndIdx = gS1StartIdx + dealRowCount - 1;
-        uint32_t s1StartIdx = gS1StartIdx / constInfo.gSize;
-        uint32_t s1EndIdx = gS1EndIdx / constInfo.gSize;
-        if (s1StartIdx == s1EndIdx && s1StartIdx == actualSeqQ - 1) {
-            return true;
-        }
-    }
-    return false;
-}
-
-template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
     const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
     uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
@@ -607,51 +372,50 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
 
     if (constInfo.attenMaskFlag == 1) {
         AscendC::PipeBarrier<PIPE_V>();
-        AttentionMaskCompute(info, mSplitInfo, mmResUb, tmpBuf, startRow, dealRowCount, columnCount, actualColumnCount);
-    }
-}
-
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::AttentionMaskCompute(
-    const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
-{
-    LocalTensor<bool> attenMaskUb;
-    bool selectNext = true;
-    bool selectPre = false;
-    if ((!constInfo.slidingFlag) && (constInfo.qSeqSize == 1) && (LAYOUT_T != FIA_LAYOUT::TND)) {
-        AttenMaskCopyDirectly(info, attenMaskUb, dealRowCount, actualColumnCount);
-    } else {
-        if (IsSkipAttenMask(info, mSplitInfo, startRow, dealRowCount)) {
-            return;
+        MaskInfo maskInfo;
+        maskInfo.gs1StartIdx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
+        maskInfo.gs1dealNum = dealRowCount;
+        maskInfo.s1Size = info.actS1Size;
+        maskInfo.gSize = constInfo.gSize;
+        maskInfo.s2StartIdx = info.s2Idx * constInfo.s2BaseSize;
+        maskInfo.s2dealNum = info.actualSingleProcessSInnerSize;
+        maskInfo.s2Size = info.actS2Size;
+        maskInfo.preToken = constInfo.preToken;
+        maskInfo.nextToken = constInfo.nextToken;
+        maskInfo.sparseMode = static_cast<SparseMode>(constInfo.sparseMode);
+        maskInfo.batchIdx = info.bIdx;
+        maskInfo.batchOffset = constInfo.attenMaskSize;
+        maskInfo.attenMaskStride = constInfo.attenMaskStride;
+        maskInfo.maskValue = negativeIntScalar;
+        if (constInfo.qSeqSize == 1) {
+            maskInfo.layout = S1_EQUAL1;
+        } else if (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH) {
+            maskInfo.layout = SG;
+        } else {
+            maskInfo.layout = GS;
         }
-        if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD) {
-            AttenMaskCopyForBNSD(info, mSplitInfo, attenMaskUb, startRow, dealRowCount);
-        } else { // BSH/BSND/TND
-            AttenMaskCopyForSplitG(info, mSplitInfo, attenMaskUb, startRow, dealRowCount, selectNext, selectPre);
+
+        maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
+        LocalTensor<bool> maskUb = inputBuff2.Get<bool>();
+        maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
+        LocalTensor<bool> attenMaskTmpUb = attenMaskTmpBuff.Get<bool>();
+        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
+
+        AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+        AscendC::PipeBarrier<PIPE_V>();
+        LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
+        AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
+        if (constInfo.sparseMode == BAND) {
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
+            attenMaskTmpUb = attenMaskTmpBuff.Get<bool>(); // 后续改成attenMaskTmpBuff，加上pingpong
+            maskUb = inputBuff2.Get<bool>();
+            maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
+            AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
+            AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
+            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
         }
     }
-    if (!selectPre && !selectNext) {
-        return;
-    }
-    AscendC::PipeBarrier<PIPE_V>();
-    LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-    SelectWithBytesMaskShapeInfo selectWithBytesMaskShapeInfo;
-    selectWithBytesMaskShapeInfo.firstAxis = dealRowCount;
-    selectWithBytesMaskShapeInfo.srcLastAxis = columnCount;
-    selectWithBytesMaskShapeInfo.maskLastAxis = attenMaskSizeAlign;
-    attenMaskUb.SetSize(dealRowCount * attenMaskSizeAlign); // Select接口要求mask size与参数匹配
-    mmResUb.SetSize(dealRowCount * columnCount);            // Select接口要求src size与参数匹配
-    if (selectPre) {
-        SelectWithBytesMask(mmResUb, BOOL_ATTEN_MASK_SCALAR_VALUE, mmResUb, attenMaskUb, ubWorkSpace,
-                            selectWithBytesMaskShapeInfo);
-    } else {
-        SelectWithBytesMask(mmResUb, mmResUb, BOOL_ATTEN_MASK_SCALAR_VALUE, attenMaskUb, ubWorkSpace,
-                            selectWithBytesMaskShapeInfo);
-    }
-    mmResUb.SetSize(AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T)); // mmResUb Size复原,mask不用复原,与原来一致
-    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
 }
 
 template <typename FIAT>
@@ -703,13 +467,13 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::AmlaVecCompute(
     uint32_t PreSoftmaxOutOffset = prOutIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset;
     // n(i) - n(i-1)
     if (info.isFirstSInnerLoop) {
-        Duplicate(nUpdateTmp, AttentionCommon::ConstInfo::FLOAT_ZERO, calCount); // n1=n0
+        Duplicate(nUpdateTmp, FLOAT_ZERO, calCount); // n1=n0
     } else {
         Sub(nUpdateTmp, nTmp, nValueUb[PreSoftmaxOutOffset], calCount);
     }
     AscendC::PipeBarrier<PIPE_V>();
     // update n(i), DataCopy not support when calCount is not align 32B, so use Adds
-    Adds(nValueUb[softmaxOutOffset], nTmp, AttentionCommon::ConstInfo::FLOAT_ZERO, calCount);
+    Adds(nValueUb[softmaxOutOffset], nTmp, FLOAT_ZERO, calCount);
     AscendC::PipeBarrier<PIPE_V>();
 
     // update softmax res
@@ -729,14 +493,14 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::AmlaVecCompute(
     AscendC::PipeBarrier<PIPE_V>();
     Cast(nUpdateTmp2, nTmp_KvT, RoundMode::CAST_NONE, calCount); // fp16/bf16->fp32
     AscendC::PipeBarrier<PIPE_V>();
-    if (info.s2Idx + 1 == info.curSInnerLoopTimes) {
+    if (info.isLastS2Loop) {
         Mul(aMlaSumUb[softmaxOutOffset], softmaxSumUb[softmaxOutOffset], nUpdateTmp2, calCount);
     }
 
     LocalTensor<T> nTmp3 = nTmp[6 * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T)];
     Brcb(nTmp3, nUpdateTmp2, (dealRowCount + 7) / 8, {1, 8});
     AscendC::PipeBarrier<PIPE_V>();
-    fa_base_vector::RowMuls(mmResUb, mmResUb, nTmp3, dealRowCount, columnCount, actualColumnCount);
+    RowMuls(mmResUb, mmResUb, nTmp3, dealRowCount, columnCount, actualColumnCount);
 
     Div(tmpCofUb, nTmp, nUpdateTmp2, calCount); // cof(i)=tmpS32/tmpS16
     if (info.isFirstSInnerLoop) {
@@ -749,7 +513,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::AmlaVecCompute(
     }
     AscendC::PipeBarrier<PIPE_V>();
 
-    Adds(cofValueUb[softmaxOutOffset], tmpCofUb, AttentionCommon::ConstInfo::FLOAT_ZERO, calCount); // store cof(i)
+    Adds(cofValueUb[softmaxOutOffset], tmpCofUb, FLOAT_ZERO, calCount); // store cof(i)
     Adds(epsUb, epsUb, (T)(-1.0), calCount); // cof(i - 1) / cof(i) - 1
     AscendC::PipeBarrier<PIPE_V>();
     Muls(epsUb, epsUb, (T)1.5, calCount); // (cof(i - 1) - cof(i)) / cof(i) * 1.5
@@ -775,81 +539,55 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::AmlaVecCompute(
 }
 
 template <typename FIAT>
-template <typename RT>
 __aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::DealInvalidRowsBelow(const AttentionCommon::RunInfo &info, LocalTensor<RT> &attenOutUb,
-                                                           uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount)
-{
-    // BSH and TND
-    uint32_t s1Tok = info.actS2Size + info.preTokensPerBatch;
-    uint32_t s1 = (info.gS1Idx + wsMStart) / constInfo.gSize;
-    uint32_t gIdx = (info.gS1Idx + wsMStart) % constInfo.gSize;
-    for (uint32_t i = 0; i < dealRowCount;) {
-        if (s1 >= s1Tok) {
-            uint32_t gNum = constInfo.gSize - gIdx;
-            if (i + gNum > dealRowCount) {
-                gNum = dealRowCount - i;
-            }
-            Duplicate(attenOutUb[i * columnCount], static_cast<RT>(AttentionCommon::ConstInfo::FLOAT_ZERO), columnCount * gNum);
-            i += gNum;
-            s1++;
-            gIdx = 0;
-            continue;
-        }
-        break;
-    }
-}
-
-template <typename FIAT>
-template <typename RT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::DealInvalidRows(const AttentionCommon::RunInfo &info, LocalTensor<RT> &attenOutUb,
+FiaBlockVecNonQuantMla<FIAT>::DealInvalidRows(const AttentionCommon::RunInfo &info, LocalTensor<T> &attenOutUb,
                                                       uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
                                                       uint32_t actualColumnCount)
 {
     if (!constInfo.attenMaskFlag) {
         return;
     }
-    AscendC::PipeBarrier<PIPE_V>();
-    if (constInfo.slidingFlag && (info.preTokensPerBatch < (info.actS1Size - info.actS2Size))) { // 下方存在行无效
-        DealInvalidRowsBelow(info, attenOutUb, wsMStart, dealRowCount, columnCount);
-    }
-    if (info.nextTokensPerBatch >= 0) {
+
+    if (constInfo.sparseMode == ALL_MASK || constInfo.sparseMode == LEFT_UP_CAUSAL) {
         return;
     }
-    uint32_t s1Tok = -info.nextTokensPerBatch;
-    if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD) {
-        uint32_t s1 = (info.gS1Idx + wsMStart) % info.actS1Size;
-        for (uint32_t i = 0; i < dealRowCount;) {
-            if (s1 < s1Tok) {
-                uint32_t s1Num = s1Tok - s1;
-                if (i + s1Num > dealRowCount) {
-                    s1Num = dealRowCount - i;
-                }
-                Duplicate(attenOutUb[i * columnCount], static_cast<RT>(AttentionCommon::ConstInfo::FLOAT_ZERO), columnCount * s1Num);
-            }
-            i += info.actS1Size - s1;
-            s1 = 0;
-        }
+
+    InvalidRowParams params {
+        .actS1Size = info.actS1Size,
+        .gSize = constInfo.gSize,
+        .gS1Idx = info.gS1Idx + wsMStart,
+        .dealRowCount = dealRowCount,
+        .columnCount = columnCount,
+        .preTokensPerBatch = info.preTokensPerBatch,
+        .nextTokensPerBatch = info.nextTokensPerBatch,
+    };
+
+    InvalidRows<T, GeInputUbFormat<LAYOUT_T>()> invalidRows;
+    invalidRows(attenOutUb, params);
+}
+
+template <typename FIAT>
+__aicore__ inline void
+FiaBlockVecNonQuantMla<FIAT>::DealInvalidMaskRows(const AttentionCommon::RunInfo &info,
+     const MSplitInfo &mSplitInfo, LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
+     uint32_t columnCount, uint32_t actualColumnCount)
+{
+    if (!constInfo.isRowInvalid || !constInfo.attenMaskFlag) {
         return;
     }
-    // BSH and TND
-    uint32_t s1 = (info.gS1Idx + wsMStart) / constInfo.gSize;
-    uint32_t gIdx = (info.gS1Idx + wsMStart) % constInfo.gSize;
-    for (uint32_t i = 0; i < dealRowCount;) {
-        if (s1 < s1Tok) {
-            uint32_t gNum = constInfo.gSize - gIdx;
-            if (i + gNum > dealRowCount) {
-                gNum = dealRowCount - i;
-            }
-            Duplicate(attenOutUb[i * columnCount], static_cast<RT>(AttentionCommon::ConstInfo::FLOAT_ZERO), columnCount * gNum);
-            i += gNum;
-            s1++;
-            gIdx = 0;
-            continue;
-        }
-        break;
+    if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
+        return;
     }
+    uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
+    if constexpr (SOFTMAX_WITH_BRC) {
+        baseOffset = baseOffset * (BYTE_BLOCK / sizeof(T));
+    }
+
+    uint32_t outIdx = info.loop % (constInfo.preLoadNum);
+    uint32_t softmaxOutOffset = outIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset;
+
+    InvalidMaskRows<MM2_OUT_T, T, SOFTMAX_WITH_BRC>(softmaxOutOffset, dealRowCount, columnCount,
+        softmaxMaxUb, negativeIntScalar, bmm2ResUb);
 }
 
 
@@ -1005,12 +743,14 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Pr
         // vec1 compute
         ProcessVec1SingleBuf(info, mSplitInfo);
         CrossCoreSetFlag<AttentionCommon::ConstInfo::FIA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
+
         CrossCoreWaitFlag(constInfo.syncC2V1);
         // add nUpdate to mm2ResGm
         ProcessAmlaNupdate(info, mSplitInfo);
         CrossCoreSetFlag<AttentionCommon::ConstInfo::FIA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1NupdateC2);
+
         // move lse for flash decode
-        if (info.s2Idx == info.curSInnerLoopTimes - 1) {
+        if (info.isLastS2Loop) {
             if (info.tndIsS2SplitCore) {
                 if constexpr (FLASH_DECODE) {
                     uint32_t outIdx = info.loop % (constInfo.preLoadNum);
@@ -1055,7 +795,7 @@ template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec2SingleBuf(const AttentionCommon::RunInfo &info,
                                                                                   const MSplitInfo &mSplitInfo)
 {
-    if (info.s2Idx + 1 != info.curSInnerLoopTimes) {
+    if (!info.isLastS2Loop) {
         return;
     }
     if (mSplitInfo.vecDealM == 0) {
@@ -1132,11 +872,13 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::GetConfusionTransposeTiling
 
 template <typename FIAT>
 __aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                        uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
-                                                        uint32_t actualColumnCount)
+FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, 
+                                                        LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t startRow, 
+                                                        uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     DealInvalidRows(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
+    DealInvalidMaskRows(info, mSplitInfo, bmm2ResUb, startRow, dealRowCount, columnCount, actualColumnCount);
+    AscendC::PipeBarrier<PIPE_V>();
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     DataCopy(tmp, bmm2ResUb, columnCount * dealRowCount);
@@ -1150,7 +892,7 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(dst, tmp, dataCopyParams);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1162,40 +904,71 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2DataCopyOutTrans(const AttentionCommon::RunInf
                                                            uint32_t wsMStart, uint32_t dealRowCount,
                                                            uint32_t columnCount, uint32_t actualColumnCount)
 {
-    if (constInfo.outputLayout == FIA_LAYOUT::NBSD || constInfo.outputLayout == FIA_LAYOUT::NTD) {
-        FusedTransposeInfo transInfo;
-        transInfo.n2Idx = info.n2Idx;
-        transInfo.bIdx = info.bIdx;
-        auto gS1StartIdx = info.gS1Idx + wsMStart;
-        auto gS1EndIdx = gS1StartIdx + dealRowCount - 1;
-        GetGS1Idx<LAYOUT_T>(gS1StartIdx, transInfo.gStartIdx, transInfo.s1StartIdx, constInfo);
-        GetGS1Idx<LAYOUT_T>(gS1EndIdx, transInfo.gEndIdx, transInfo.s1EndIdx, constInfo);
-        if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD) {
-            transInfo.gCount = transInfo.gEndIdx - transInfo.gStartIdx + 1;
-            fa_base_vector::Bmm2DataCopyOutNBSDGTiling(attenOutUb, transInfo, constInfo, attentionOutGm);
-        } else {
-            transInfo.s1Count = transInfo.s1EndIdx - transInfo.s1StartIdx + 1;
-            transInfo.gCount = dealRowCount;
-            fa_base_vector::Bmm2DataCopyOutNBSDMTiling<LAYOUT_T, OUT_T>(attenOutUb, transInfo, constInfo,
-                                                                        actualSeqLengthsGmQ, attentionOutGm);
-        }
-        return;
+    FaUbTensor<OUT_T> ubTensor {
+        .tensor = attenOutUb,
+        .rowCount = dealRowCount,
+        .colCount = columnCount,
+    };
+    GmCoord gmCoord {
+        .bIdx = info.bIdx,
+        .n2Idx = info.n2Idx,
+        .gS1Idx = info.gS1Idx + wsMStart,
+        .dIdx = 0,
+        .gS1DealSize = dealRowCount,
+        .dDealSize = (uint32_t)constInfo.headDim
+    };
+    if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
+        constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
+        FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
+        outGmTensor.gmTensor = attentionOutGm;
+        outGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                            constInfo.qSeqSize, constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
+        CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
+        copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+    } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
+        constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
+        FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
+        outGmTensor.gmTensor = attentionOutGm;
+        outGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                            constInfo.qSeqSize, constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
+        CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
+        copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+    } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
+        constexpr GmFormat OUT_FORMAT = GmFormat::NGBSD;
+        FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
+        outGmTensor.gmTensor = attentionOutGm;
+        outGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                            constInfo.qSeqSize, constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
+        CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
+        copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+    } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
+        constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
+        FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
+        outGmTensor.gmTensor = attentionOutGm;
+        outGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim,
+                                            actualSeqLengthsGmQ, constInfo.actualLenQDims);
+        CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
+        copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+    } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+        constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
+        FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
+        outGmTensor.gmTensor = attentionOutGm;
+        outGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim,
+                                            actualSeqLengthsGmQ, constInfo.actualLenQDims);
+        CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
+        copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
     }
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = dealRowCount;
-    dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(OUT_T));
-    dataCopyParams.dstStride = 0;
-    DataCopyPad(attentionOutGm[info.attenOutOffset + wsMStart * actualColumnCount], attenOutUb, dataCopyParams);
-    return;
 }
 
 template <typename FIAT>
 __aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::Bmm2CastAndCopyOut(const AttentionCommon::RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                         uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
-                                                         uint32_t actualColumnCount)
+FiaBlockVecNonQuantMla<FIAT>::Bmm2CastAndCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
+                                                         LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t startRow, 
+                                                         uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
+    DealInvalidRows(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
+    DealInvalidMaskRows(info, mSplitInfo, bmm2ResUb, startRow, dealRowCount, columnCount, actualColumnCount);
+    AscendC::PipeBarrier<PIPE_V>();
     LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputBuff1.Get<OUT_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
@@ -1204,7 +977,6 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2CastAndCopyOut(const AttentionCommon::RunInfo 
         Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
     }
 
-    DealInvalidRows(info, tmpBmm2ResCastTensor, wsMStart, dealRowCount, columnCount, actualColumnCount);
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     Bmm2DataCopyOutTrans(info, tmpBmm2ResCastTensor, wsMStart, dealRowCount, columnCount, actualColumnCount);
@@ -1213,18 +985,18 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2CastAndCopyOut(const AttentionCommon::RunInfo 
 
 template <typename FIAT>
 __aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::Bmm2ResCopyOut(const AttentionCommon::RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
-                                                     uint32_t dealRowCount, uint32_t columnCount,
-                                                     uint32_t actualColumnCount)
+FiaBlockVecNonQuantMla<FIAT>::Bmm2ResCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
+                                                     LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t startRow,
+                                                     uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     if constexpr (FLASH_DECODE) {
         if (info.tndIsS2SplitCore) {
-            Bmm2FDDataCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
+            Bmm2FDDataCopyOut(info, mSplitInfo, bmm2ResUb, wsMStart, startRow, dealRowCount, columnCount, actualColumnCount);
         } else {
-            Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
+            Bmm2CastAndCopyOut(info, mSplitInfo, bmm2ResUb, wsMStart, startRow, dealRowCount, columnCount, actualColumnCount);
         }
     } else {
-        Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
+        Bmm2CastAndCopyOut(info, mSplitInfo, bmm2ResUb, wsMStart, startRow, dealRowCount, columnCount, actualColumnCount);
     }
 }
 
@@ -1254,7 +1026,7 @@ FiaBlockVecNonQuantMla<FIAT>::DealBmm2ResBaseBlock(const AttentionCommon::RunInf
     LocalTensor<uint8_t> cmpMaskUb = absBmm2ResUb.template ReinterpretCast<uint8_t>();
     CompareScalar(cmpMaskUb, absBmm2ResUb, (T)1e10, CMPMODE::LE, vec2ComputeSize);
     AscendC::PipeBarrier<PIPE_V>();
-    Select(tmpBmm2ResUb, cmpMaskUb, tmpBmm2ResUb, AttentionCommon::ConstInfo::FLOAT_ZERO, SELMODE::VSEL_TENSOR_SCALAR_MODE, vec2ComputeSize);
+    Select(tmpBmm2ResUb, cmpMaskUb, tmpBmm2ResUb, FLOAT_ZERO, SELMODE::VSEL_TENSOR_SCALAR_MODE, vec2ComputeSize);
     AscendC::PipeBarrier<PIPE_V>();
 
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
@@ -1262,11 +1034,11 @@ FiaBlockVecNonQuantMla<FIAT>::DealBmm2ResBaseBlock(const AttentionCommon::RunInf
     LocalTensor<T> tmpSumUb = attenMaskTmpBuff.Get<T>(); // sumUb用临时内存 16 * 32B  = 512B
     Brcb(tmpSumUb, aMlaSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8, {1, 8});
     AscendC::PipeBarrier<PIPE_V>();
-    fa_base_vector::RowDivs(bmm2ResUb, tmpBmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
+    RowDivs(bmm2ResUb, tmpBmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
     AscendC::PipeBarrier<PIPE_V>();
 
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
-    Bmm2ResCopyOut(info, bmm2ResUb, mStart, dealRowCount, columnCount, actualColumnCount);
+    Bmm2ResCopyOut(info, mSplitInfo, bmm2ResUb, mStart, startRow, dealRowCount, columnCount, actualColumnCount);
 }
 
 #endif

@@ -35,10 +35,14 @@ public:
     uint32_t s2Size;
     uint32_t headDim;
     uint32_t headDimRope;
+    uint32_t batchContinuous;
+    uint32_t accumQSeqFlag;
+    uint32_t accumKVSeqFlag;
     uint32_t actualSeqS1Dims;
     uint32_t actualSeqS2Dims;
     float scaleValue;
     uint32_t usedCoreNum;
+    uint32_t l2CacheOffFlag;
     uint32_t outputLayout;
     uint32_t softmaxLseFlag;
     bool slidingFlag;
@@ -51,10 +55,14 @@ public:
     uint32_t get_s2Size() const { return s2Size; }
     uint32_t get_headDim() const { return headDim; }
     uint32_t get_headDimRope() const { return headDimRope; }
+    uint32_t get_batchContinuous() const { return batchContinuous; }
+    uint32_t get_accumQSeqFlag() const { return accumQSeqFlag; }
+    uint32_t get_accumKVSeqFlag() const { return accumKVSeqFlag; }
     uint32_t get_actualSeqS1Dims() const { return actualSeqS1Dims; }
     uint32_t get_actualSeqS2Dims() const { return actualSeqS2Dims; }
     float get_scaleValue() const { return scaleValue; }
     uint32_t get_usedCoreNum() const { return usedCoreNum; }
+    uint32_t get_l2CacheOffFlag() const { return l2CacheOffFlag; }
     uint32_t get_outputLayout() const { return outputLayout; }
     uint32_t get_softmaxLseFlag() const { return softmaxLseFlag; }
     bool get_slidingFlag() const { return slidingFlag; }
@@ -67,10 +75,14 @@ public:
     void set_s2Size(uint32_t s2Size) { this->s2Size = s2Size; }
     void set_headDim(uint32_t headDim) { this->headDim = headDim; }
     void set_headDimRope(uint32_t headDimRope) { this->headDimRope = headDimRope; }
+    void set_batchContinuous(uint32_t batchContinuous) { this->batchContinuous = batchContinuous; }
+    void set_accumQSeqFlag(uint32_t accumQSeqFlag) { this->accumQSeqFlag = accumQSeqFlag; }
+    void set_accumKVSeqFlag(uint32_t accumKVSeqFlag) { this->accumKVSeqFlag = accumKVSeqFlag; }
     void set_actualSeqS1Dims(uint32_t actualSeqS1Dims) { this->actualSeqS1Dims = actualSeqS1Dims; }
     void set_actualSeqS2Dims(uint32_t actualSeqS2Dims) { this->actualSeqS2Dims = actualSeqS2Dims; }
     void set_scaleValue(float scaleValue) { this->scaleValue = scaleValue; }
     void set_usedCoreNum(uint32_t usedCoreNum) { this->usedCoreNum = usedCoreNum; }
+    void set_l2CacheOffFlag(uint32_t l2CacheOffFlag) { this->l2CacheOffFlag = l2CacheOffFlag; }
     void set_outputLayout(uint32_t outputLayout) { this->outputLayout = outputLayout; }
     void set_softmaxLseFlag(uint32_t softmaxLseFlag) { this->softmaxLseFlag = softmaxLseFlag; }
     void set_slidingFlag(uint32_t slidingFlag) { this->slidingFlag = slidingFlag; }
@@ -93,6 +105,7 @@ class FiaAttentionMaskTilingParam {
 public:
     uint32_t attenMaskFlag;
     uint32_t attenMaskSize;
+    uint32_t attenMaskStride;
     int32_t preToken;
     int32_t nextToken;
     uint32_t isRowInvalid;
@@ -100,6 +113,7 @@ public:
 
     uint32_t get_attenMaskFlag() { return attenMaskFlag; }
     uint32_t get_attenMaskSize() { return attenMaskSize; }
+    uint32_t get_attenMaskStride() { return attenMaskStride; }
     int32_t get_preToken() { return preToken; }
     int32_t get_nextToken() { return nextToken; }
     uint32_t get_isRowInvalid() { return isRowInvalid; }
@@ -107,6 +121,7 @@ public:
 
     void set_attenMaskFlag(uint32_t attenMaskFlag) { this->attenMaskFlag = attenMaskFlag; }
     void set_attenMaskSize(uint32_t attenMaskSize) { this->attenMaskSize = attenMaskSize; }
+    void set_attenMaskStride(uint32_t attenMaskStride) { this->attenMaskStride = attenMaskStride; }
     void set_preToken(int32_t preToken) { this->preToken = preToken; }
     void set_nextToken(int32_t nextToken) { this->nextToken = nextToken; }
     void set_isRowInvalid(uint32_t isRowInvalid) { this->isRowInvalid = isRowInvalid; }

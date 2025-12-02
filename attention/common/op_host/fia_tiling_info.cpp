@@ -20,36 +20,32 @@ namespace optiling {
 
 std::string LayoutToSerialString(FiaLayout layout)
 {
-    switch (layout) {
-        case FiaLayout::BSH:
-            return "BSH";
-        case FiaLayout::BSND:
-            return "BSND";
-        case FiaLayout::BNSD:
-            return "BNSD";
-        case FiaLayout::NZ:
-            return "NZ";
-        case FiaLayout::TND:
-            return "TND";
-        case FiaLayout::NBSD:
-            return "NBSD";
-        case FiaLayout::NTD:
-            return "NTD";
-        case FiaLayout::S1S2:
-            return "SS";
-        case FiaLayout::BS2:
-            return "BS2";
-        case FiaLayout::B1S2:
-            return "B1S2";
-        case FiaLayout::B11S2:
-            return "B11S2";
-        case FiaLayout::BnBsH:
-            return "BnBsH";
-        case FiaLayout::BnNBsD:
-            return "BnNBsD";
-        default:
-            return "UNKNOWN";
+    const std::map<FiaLayout, std::string> layout2Str = {
+        { FiaLayout::BSH, "BSH" },
+        { FiaLayout::BSND, "BSND" },
+        { FiaLayout::BNSD, "BNSD" },
+        { FiaLayout::NZ, "NZ" },
+        { FiaLayout::TND, "TND" },
+        { FiaLayout::NBSD, "NBSD" },
+        { FiaLayout::NTD, "NTD" },
+        { FiaLayout::S1S2, "S1S2" },
+        { FiaLayout::BS2, "BS2" },
+        { FiaLayout::BnBsH, "BnBsH" },
+        { FiaLayout::BnNBsD, "BnNBsD" },
+        { FiaLayout::BNS1S2, "BNS1S2" },
+        { FiaLayout::INS1S2, "1NS1S2" },
+        { FiaLayout::BNS11, "BNS11" },
+        { FiaLayout::TN1, "TN1" },
+        { FiaLayout::BS1S2, "BS1S2" },
+        { FiaLayout::B1S1S2, "B1S1S2" },
+        { FiaLayout::IS1S2, "1S1S2" },
+        { FiaLayout::I1S1S2, "11S1S2" }
+    };
+
+    if (layout2Str.find(layout) != layout2Str.end()) {
+        return layout2Str.at(layout);
     }
+    return "UNKNOWN";
 }
 
 std::string AxisToSerialString(FiaAxis axis)
@@ -97,6 +93,15 @@ std::string QuantModeToSerialString(FiaQuantMode fiaQuantMode)
             return "FULL_QUANT";
         default:
             return "UNKNOWN";
+    }
+}
+
+std::string SituationToSerialString(RopeMode ropeMode)
+{
+    if (ropeMode == RopeMode::ROPE_SPLIT) {
+        return "qkHeadDim = vHeadDim and rope exist";
+    } else {
+        return "rope not exist";
     }
 }
 } // namespace optiling

@@ -28,6 +28,7 @@
 #endif
 
 namespace optiling {
+
 extern "C" {
 ge::graphStatus DeviceDoOpTilingIncreFlashAttention(gert::TilingContext *context);
 ge::graphStatus DeviceDoOpTilingFusedInferAttentionScore(gert::TilingContext *context);

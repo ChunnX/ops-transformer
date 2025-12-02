@@ -32,18 +32,16 @@ constexpr int64_t ANTIQUANT_PER_TOKEN_PA_MODE = 4;
 constexpr int64_t ANTIQUANT_PER_TOKEN_HEAD_PA_MODE = 5;
 constexpr int64_t ANTIQUANT_PER_CHANNEL_TOKEN_MODE = 2;
 
-constexpr int32_t SPARSE_MODE_NO_MASK = 0;
-constexpr int32_t SPARSE_MODE_ALL_MASK = 1;
-constexpr int32_t SPARSE_MODE_LEFT_UP = 2;
-constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
-constexpr int32_t SPARSE_MODE_BAND = 4;
-
 constexpr uint32_t PRETOKEN_LIMIT_2K = 2048;
 constexpr uint32_t KVS_LIMIT = 131088;
 
+constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
+
+constexpr size_t HEAD_DIM_512 = 512;
+constexpr size_t SHAPE_NUM_ONE = 1;
 
 std::string RopeModeToSerialString(const RopeMode &ropeMode);
 std::string FusedDataTypeToSerialString(ge::DataType type);
@@ -85,15 +83,26 @@ private:
         const std::string &name) const;
     ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc,
         const std::string &name) const;
-    template <typename T> void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
+    template <typename T>
+    void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name, const std::string subName) const;
-    template <typename T> void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
+    template <typename T>
+    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name) const;
-    template <typename T> void LogErrorAttrValueSupport(const std::vector<T> &expectNumberList,
+    template <typename T>
+    void LogErrorShapeNumSupport(const std::vector<T> &expectNumberList,
+        const T &actualValue, const std::string &name) const;
+    template <typename T>
+    void LogErrorAttrValueSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name) const;
     ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
         const std::vector<size_t> &expectDimNumList, const std::string &name) const;
-    template <typename T> ge::graphStatus CheckAttrValueSupport(const T *attrValue,
+    ge::graphStatus CheckDimNumSupport(const gert::Tensor *tensor,
+        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
+    ge::graphStatus CheckShapeSupport(const gert::Tensor *tensor,
+        const std::vector<int64_t> &expectShapeList, const std::string &name) const;
+    template <typename T>
+    ge::graphStatus CheckAttrValueSupport(const T *attrValue,
         const std::vector<T> &expectAttrValList, const std::string &name) const;
     void LogErrorLayoutSupport(const std::vector<FiaLayout> &expectLayoutList,
         const FiaLayout &actualLayout, const std::string &name) const;
@@ -122,7 +131,6 @@ private:
     ge::graphStatus CheckSingleParaValueAntiquantOffset() const;
     ge::graphStatus CheckSingleParaKeySharedPrefix() const;
     ge::graphStatus CheckSingleParaValueSharedPrefix() const;
-    ge::graphStatus CheckSingleParaActualSharedPrefixLen() const;
     ge::graphStatus CheckSingleParaQueryRope() const;
     ge::graphStatus CheckSingleParaKeyRope() const;
     ge::graphStatus CheckSingleParaKeyRopeAntiquantScale() const;
@@ -159,12 +167,13 @@ private:
         std::map<std::string, const void *> &notExistMap) const;
     void LogErrorExistenceEqual(std::map<std::string, const void *> &paramMap) const;
     ge::graphStatus CheckParaExistenceEqual(std::map<std::string, const void *> &paramMap) const;
-    template <typename T> ge::graphStatus CheckAttrValueByMap(
-        std::map<std::string, std::pair<const T *, T>> &attrMap) const;
+    template <typename T>
+    ge::graphStatus CheckAttrValueByMap(std::map<std::string, std::pair<const T *, T>> &attrMap) const;
     ge::graphStatus CheckParaExistenceMlaNoquant() const;
     ge::graphStatus CheckParaExistenceMlaAntiquant() const;
     ge::graphStatus CheckParaExistenceMlaFullquant() const;
     ge::graphStatus CheckParaExistenceGqaNoquant() const;
+    ge::graphStatus CheckParaExistenceGqaNoquantForFullquant() const;
     ge::graphStatus CheckParaExistenceGqaAntiquantInt8Inner() const;
     ge::graphStatus CheckParaExistenceGqaAntiquantInt8() const;
     ge::graphStatus CheckParaExistenceGqaAntiquantInt4() const;
@@ -176,7 +185,6 @@ private:
 
     ge::graphStatus CheckActualSeqLensQ() const;
     ge::graphStatus CheckActualSeqLensKv() const;
-    ge::graphStatus CheckActualSeqLensLimit();
     ge::graphStatus CheckBlockTable() const;
 
     // 特性交叉校验
@@ -189,15 +197,28 @@ private:
     ge::graphStatus CheckFeatureActualSeqLens();
     ge::graphStatus CheckFeatureMlaNoQuantShape() const;
     ge::graphStatus CheckFeatureMlaNoQuantLayout() const;
+    ge::graphStatus CheckFeatureNoQuantDtype() const;
     ge::graphStatus CheckFeatureMlaNoQuantDtype() const;
-    ge::graphStatus CheckFeatureMlaNoquantPa() const;
+    ge::graphStatus CheckFeatureMlaNoquantLse() const;
+    ge::graphStatus CheckFeatureNoquantBlockSize() const;
     ge::graphStatus CheckFeatureMlaNoquantMask() const;
+    ge::graphStatus CheckFeatureNoquantUnsupported() const;
+    ge::graphStatus CheckFeatureMlaSink() const;
     ge::graphStatus CheckFeatureMlaNoquantUnsupported() const;
-    ge::graphStatus CheckFeatureMlaNoquant() const;
+    ge::graphStatus CheckFeatureMlaNoquant();
     ge::graphStatus CheckFeatureMlaAntiquant() const;
     ge::graphStatus CheckFeatureMlaFullquant() const;
-    ge::graphStatus CheckFeatureMla() const;
-    ge::graphStatus CheckFeatureGqa() const;
+    ge::graphStatus CheckFeatureGqaNoquantUnsupported() const;
+    ge::graphStatus CheckFeatureGqaNoquantMask() const;
+    ge::graphStatus CheckFeatureGqaNoquantSink() const;
+    ge::graphStatus CheckFeatureGqaNoQuantDtype() const;
+    ge::graphStatus CheckFeatureGqaNoQuantLayout() const;
+    ge::graphStatus CheckFeatureGqaNoQuantShape() const;
+    ge::graphStatus CheckFeatureGqaNoquant();
+    ge::graphStatus CheckFeatureGqaAntiquant() const;
+    ge::graphStatus CheckFeatureGqaFullquant() const;
+    ge::graphStatus CheckFeatureMla();
+    ge::graphStatus CheckFeatureGqa();
     ge::graphStatus CheckFeature();
 
     // 多参数一致性校验
@@ -216,8 +237,16 @@ private:
     ge::graphStatus CheckKV() const;
 
     ge::graphStatus CheckAttenOut() const;
+    ge::graphStatus CheckPseShiftDType();
+    ge::graphStatus CheckPseShiftShape();
+    ge::graphStatus CheckPseShift();
     ge::graphStatus SetAttenMaskCompare();
     ge::graphStatus CheckAttentionMask();
+    ge::graphStatus CheckTokens();
+    ge::graphStatus CheckMask();
+    ge::graphStatus CheckSoftmaxLseShape();
+    ge::graphStatus CheckSoftmaxLseDType();
+    ge::graphStatus CheckSoftmaxLse();
     ge::graphStatus CheckMultiParaConsistency();
 
 private:
@@ -241,12 +270,16 @@ private:
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
     uint32_t qTSize_ = 0; // 仅TND/NTD时生效
+    uint32_t kTSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
 
     FiaLayout qLayout_ = FiaLayout::BSND;
     FiaLayout outLayout_ = FiaLayout::BSND;
     FiaLayout kvLayout_ = FiaLayout::BSND;
+    FiaLayout pseShiftLayout_ = FiaLayout::BNS1S2;
+    FiaLayout softmaxLseLayout_ = FiaLayout::BNS11;
+    FiaLayout quantScale2Layout_ = FiaLayout::BNSD;
 
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
@@ -255,6 +288,8 @@ private:
     // 局部参数, 暂存
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
+    int64_t preTokens_ = 0;
+    int64_t nextTokens_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     uint64_t l2CacheSize_ = 0;
     uint32_t actualSeqLengthsQSize_ = 0;
@@ -276,6 +311,10 @@ private:
     std::shared_ptr<FiaTilingShapeCompare> keyRopeShapeCmp_ = nullptr;
     std::shared_ptr<FiaTilingShapeCompare> attenOutShapeCmp_ = nullptr;
     std::shared_ptr<FiaTilingShapeCompare> attenMaskShapeCmp_ = nullptr;
+    std::shared_ptr<FiaTilingShapeCompare> pseShiftShapeCmp_ = nullptr;
+    std::shared_ptr<FiaTilingShapeCompare> softmaxLseShapeCmp_ = nullptr;
+    std::shared_ptr<FiaTilingShapeCompare> quantScale2ShapeCmp_ = nullptr;
+    std::shared_ptr<FiaTilingShapeCompare> quantOffset2ShapeCmp_ = nullptr;
 };
 } // namespace optiling
 #endif // FUSED_INFER_ATTENTION_SCORE_TILING_CHECK_H

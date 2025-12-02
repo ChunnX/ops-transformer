@@ -42,24 +42,30 @@ public:
 
     static constexpr bool KVINT4 = IsSameType<KV_T, int4b_t>::value;
     using MM_OUT_T = T;
+    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
+    static constexpr GmFormat KV_FORMAT = GetKVFormat<KV_LAYOUT_T, PAGE_ATTENTION>();
 
     __aicore__ inline FiaBlockCubeNonQuantMla(){};
     __aicore__ inline void InitParams(const AttentionCommon::ConstInfo &constInfo);
-    __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<Q_T> queryGm, GlobalTensor<Q_T> qRopeGm,
-                                               GlobalTensor<KV_T> keyGm, GlobalTensor<KV_T> kRopeGm,
-                                               GlobalTensor<MM_OUT_T> mm1ResGm);
-    __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<KV_T> valueGm,
-                                               GlobalTensor<MM_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
-    __aicore__ inline void InitPageAttentionInfo(GlobalTensor<int32_t> blockTableGm, uint32_t blockSize,
-                                                 uint32_t maxBlockNumPerBatch);
+    __aicore__ inline void Init(
+        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse);
+    __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<MM_OUT_T> mm1ResGm);
+    __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm,
+                                               GlobalTensor<MM_OUT_T> mm2ResGm);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void UpdateKey(GlobalTensor<KV_T> keyGm);
-    __aicore__ inline void UpdateValue(GlobalTensor<KV_T> valueGm);
 
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void ComputeMm1(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo);
-    __aicore__ inline void ComputeMm2(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo);
+    __aicore__ inline void ComputeMm1(const AttentionCommon::RunInfo &info);
+    __aicore__ inline void ComputeMm2(const AttentionCommon::RunInfo &info);
 
 protected:
     template <typename T> __aicore__ inline T Align(T num, T rnd)
@@ -82,16 +88,21 @@ protected:
         return idxMap[mIdx % 2] + k1Idx;
     }
 
+    __aicore__ inline void InitValueGm(uint32_t bIdx);
+    __aicore__ inline void InitKeyGm(uint32_t bIdx);
+    __aicore__ inline void ProcessMm1(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo);
+    __aicore__ inline void ProcessMm2(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo);
+    __aicore__ inline void UpdateKey(GlobalTensor<KV_T> keyGm);
+    __aicore__ inline void UpdateValue(GlobalTensor<KV_T> valueGm);
     __aicore__ inline void CopyGmToL1(LocalTensor<KV_T> &l1Tensor, GlobalTensor<KV_T> &gmSrcTensor, uint32_t srcN,
                                       uint32_t srcD, uint32_t srcDstride);
-    __aicore__ inline void CopyInMm1AToL1(LocalTensor<KV_T> &aL1Tensor, const AttentionCommon::RunInfo &info, uint32_t mSeqIdx,
-                                          uint32_t mSizeAct, uint32_t headSize, uint32_t headOffset);
-    __aicore__ inline void CopyInMm1ARopeToL1(LocalTensor<KV_T> &aL1Tensor, const AttentionCommon::RunInfo &info, uint32_t mSeqIdx,
-                                              uint32_t mSizeAct);
     __aicore__ inline void CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor, const AttentionCommon::RunInfo &info, uint32_t mSeqIdx,
                                           uint32_t subMSizeAct, uint32_t nSize, uint32_t nOffset);
 
 protected:
+    // key和value的TensorList原始地址
+    __gm__ uint8_t *keyPtr = nullptr;
+    __gm__ uint8_t *valuePtr = nullptr;
     // mm1
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<Q_T> qRopeGm;
@@ -107,14 +118,24 @@ protected:
     GlobalTensor<int32_t> mm2ResInt32Gm;
 
     // pageAttention
-    uint32_t kvCacheBlockSize = 0;
     uint32_t maxBlockNumPerBatch = 0;
     // block_table
     GlobalTensor<int32_t> blockTableGm;
 
     AttentionCommon::ConstInfo constInfo{};
 
+    GlobalTensor<uint64_t> actualSeqLengthsGmQ;
+    GlobalTensor<uint64_t> actualSeqLengthsGm;
 private:
+    FaGmTensor<Q_T, Q_FORMAT> queryGmTensor;
+    FaGmTensor<Q_T, Q_FORMAT> queryRopeGmTensor;
+    CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
+
+    FaGmTensor<KV_T, KV_FORMAT> keyGmTensor;
+    FaGmTensor<KV_T, KV_FORMAT> keyRopeGmTensor;
+    FaGmTensor<KV_T, KV_FORMAT> valueGmTensor;
+    CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
+
     static constexpr uint32_t M_L1_SPLIT_SIZE = 128; // m方向切分
     static constexpr uint32_t N_L1_SPLIT_SIZE = 128; // n方向切分
     static constexpr uint32_t MM1_K_L0_SPLIT_SIZE = 96;
@@ -179,41 +200,156 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
     this->constInfo = constInfo;
 }
 
+template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::Init(
+        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse)
+{
+    queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
+    qRopeGm.SetGlobalBuffer((__gm__ Q_T *)queryRope);
+    kRopeGm.SetGlobalBuffer((__gm__ KV_T *)keyRope);
+
+    keyPtr = key;
+    valuePtr = value;
+
+    if constexpr (PAGE_ATTENTION) {
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        this->blockTableGm = blockTableGm;
+    }
+
+    if (constInfo.actualLenQDims != 0) {
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+    }
+
+    if (constInfo.actualLenDims != 0) {
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualLenDims);
+    }
+
+    // init Q params
+    uint32_t qkTensorD = constInfo.ropeSplitMode ? constInfo.headDim : (constInfo.headDim + constInfo.headDimRope);
+    queryGmTensor.gmTensor = queryGm;
+    if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
+        queryGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                            constInfo.qSeqSize, qkTensorD, actualSeqLengthsGmQ,
+                                            constInfo.actualLenQDims);
+        queryRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                            constInfo.qSeqSize, constInfo.headDimRope, actualSeqLengthsGmQ,
+                                            constInfo.actualLenQDims);
+    } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
+        queryGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, qkTensorD, actualSeqLengthsGmQ,
+                                            constInfo.actualLenQDims);
+        queryRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDimRope,
+                                                actualSeqLengthsGmQ, constInfo.actualLenQDims);
+    }
+
+    // init kv params
+    if (constInfo.batchContinuous) {
+        InitKeyGm(0);
+        InitValueGm(0);
+        {
+            keyGmTensor.gmTensor = keyGm;
+            valueGmTensor.gmTensor = valueGm;
+            if constexpr (PAGE_ATTENTION) {
+                if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
+                    keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, qkTensorD,
+                                                      blockTableGm, constInfo.maxBlockNumPerBatch);
+                } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
+                    uint32_t d0 = 32 / sizeof(KV_T);
+                    uint32_t d1 = qkTensorD / d0;
+                    keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1, d0,
+                                                      blockTableGm, constInfo.maxBlockNumPerBatch);
+                }
+            } else {
+                if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
+                    keyGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
+                                                      qkTensorD);
+                } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
+                    keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, qkTensorD, actualSeqLengthsGm,
+                                                      constInfo.actualLenDims);
+                }
+            }
+        }
+        valueGmTensor.gmTensor = valueGm;
+        if constexpr (PAGE_ATTENTION) {
+            if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
+                valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize,
+                                                    constInfo.headDim, blockTableGm, constInfo.maxBlockNumPerBatch);
+            } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
+                uint32_t d0 = 32 / sizeof(KV_T);
+                uint32_t d1 = constInfo.headDim / d0;
+                valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1, d0,
+                                                    blockTableGm, constInfo.maxBlockNumPerBatch);
+            }
+        } else {
+            if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
+                valueGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
+                                                    constInfo.headDim);
+            } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
+                valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDim, actualSeqLengthsGm,
+                                                    constInfo.actualLenDims);
+            }
+        }
+    }
+
+    // init rope params
+        if (constInfo.ropeSplitMode) {
+        // query rope
+            queryRopeGmTensor.gmTensor = qRopeGm;
+            if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
+                queryRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                                        constInfo.qSeqSize, constInfo.headDimRope, actualSeqLengthsGmQ,
+                                                        constInfo.actualLenQDims);
+            } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
+                queryRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDimRope,
+                                                        actualSeqLengthsGmQ, constInfo.actualLenQDims);
+            }
+
+        // key rope
+        keyRopeGmTensor.gmTensor = kRopeGm;
+        if constexpr (PAGE_ATTENTION) {
+            if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
+                keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize,
+                                                      constInfo.headDimRope, blockTableGm,
+                                                      constInfo.maxBlockNumPerBatch);
+            } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
+                uint32_t d0 = 32 / sizeof(KV_T);
+                uint32_t d1 = constInfo.headDimRope / d0;
+                keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1, d0,
+                                                      blockTableGm, constInfo.maxBlockNumPerBatch);
+            }
+        } else {
+            if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
+                keyRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
+                                                      constInfo.headDimRope);
+            } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
+                keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDimRope,
+                                                      actualSeqLengthsGm, constInfo.actualLenDims);
+            }
+        }
+    }
+}
+
 template <typename FIAT>
 __aicore__ inline void
-FiaBlockCubeNonQuantMla<FIAT>::InitMm1GlobalTensor(GlobalTensor<Q_T> queryGm, GlobalTensor<Q_T> qRopeGm,
-                                                   GlobalTensor<KV_T> keyGm, GlobalTensor<KV_T> kRopeGm,
-                                                   GlobalTensor<MM_OUT_T> mm1ResGm)
+FiaBlockCubeNonQuantMla<FIAT>::InitMm1GlobalTensor(GlobalTensor<MM_OUT_T> mm1ResGm)
 {
     // mm1
-    this->queryGm = queryGm;
-    this->qRopeGm = qRopeGm;
-    this->keyGm = keyGm;
-    this->kRopeGm = kRopeGm;
     this->mm1ResGm = mm1ResGm;
 }
 
 template <typename FIAT>
 __aicore__ inline void
-FiaBlockCubeNonQuantMla<FIAT>::InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<KV_T> valueGm,
-                                                   GlobalTensor<MM_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm)
+FiaBlockCubeNonQuantMla<FIAT>::InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm)
 {
     // mm2
     this->vec1ResGm = vec1ResGm;
-    this->valueGm = valueGm;
     this->mm2ResGm = mm2ResGm;
-    this->attentionOutGm = attentionOutGm;
-    this->mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(mm2ResGm.GetPhyAddr(0)));
-}
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitPageAttentionInfo(GlobalTensor<int32_t> blockTableGm,
-                                                                            uint32_t blockSize,
-                                                                            uint32_t maxBlockNumPerBatch)
-{
-    this->blockTableGm = blockTableGm;
-    this->kvCacheBlockSize = blockSize;
-    this->maxBlockNumPerBatch = maxBlockNumPerBatch;
 }
 
 template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitBuffers(TPipe *pipe)
@@ -241,6 +377,22 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
     cL0TensorPingPong = tmpBufL0C.Get<MM_OUT_T>();
 }
 
+template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitKeyGm(uint32_t bIdx)
+{
+    ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
+    __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
+
+    keyGm.SetGlobalBuffer((__gm__ KV_T *)key_);
+}
+ 
+template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitValueGm(uint32_t bIdx)
+{
+    ListTensorDesc valueListTensorDesc((__gm__ void *)valuePtr);
+    __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
+
+    valueGm.SetGlobalBuffer((__gm__ KV_T *)value_);
+}
+
 template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::UpdateKey(GlobalTensor<KV_T> keyGm)
 {
     this->keyGm = keyGm;
@@ -253,6 +405,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::U
 
 template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::AllocEventID()
 {
+    CrossCoreSetFlag<ConstInfo::FIA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V1);
 #ifdef BASE_MM
 #else
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT0);
@@ -306,25 +459,6 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyGmToL1(LocalTensor<KV_
     DataCopy(l1Tensor, gmSrcTensor, nd2nzPara);
 }
 
-// info只用到了tensorAOffset, 需要修改
-template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyInMm1AToL1(LocalTensor<KV_T> &l1Tensor, const AttentionCommon::RunInfo &info,
-                                                                     uint32_t mSeqIdx, uint32_t mSizeAct,
-                                                                     uint32_t headSize, uint32_t headOffset)
-{
-    auto srcGm = queryGm[info.tensorAOffset + mSeqIdx * constInfo.headDim + headOffset];
-    CopyGmToL1(l1Tensor, srcGm, mSizeAct, headSize, constInfo.headDim);
-}
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyInMm1ARopeToL1(LocalTensor<KV_T> &l1Tensor,
-                                                                         const AttentionCommon::RunInfo &info, uint32_t mSeqIdx,
-                                                                         uint32_t mSizeAct)
-{
-    auto srcGm = qRopeGm[info.tensorARopeOffset + mSeqIdx * constInfo.headDimRope];
-    CopyGmToL1(l1Tensor, srcGm, mSizeAct, constInfo.headDimRope, constInfo.headDimRope);
-}
-
 template <typename FIAT>
 __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor, const AttentionCommon::RunInfo &info,
                                                                      uint32_t mSeqIdx, uint32_t subMSizeAct,
@@ -337,7 +471,45 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyInMm2AToL1(LocalTensor
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm1(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo)
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm1(const RunInfo &info)
+{
+    if (info.isChangeBatch) {
+        InitKeyGm(info.bIdx);
+        UpdateKey(keyGm);
+    }
+    uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
+    uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
+    for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
+        MSplitInfo mSplitInfo;
+        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
+        mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
+        ProcessMm1(info, mSplitInfo);
+        CrossCoreSetFlag<ConstInfo::FIA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC1V1);
+    }
+}
+
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm2(const RunInfo &info)
+{
+    if (info.isChangeBatch) {
+        InitValueGm(info.bIdx);
+        UpdateValue(valueGm);
+    }
+    uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
+    uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
+    for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
+        MSplitInfo mSplitInfo;
+        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
+        mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
+        CrossCoreWaitFlag(constInfo.syncV1C2);
+        ProcessMm2(info, mSplitInfo);
+        CrossCoreSetFlag<ConstInfo::FIA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V2);
+        CrossCoreSetFlag<ConstInfo::FIA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V1);
+    }
+}
+
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo)
 {
     // 最外层还需要一层m的循环
     uint32_t mSize = mSplitInfo.nBufferDealM;
@@ -388,66 +560,62 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm1(const Attention
             // 从k当中取当前的块
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
 #endif
-            if constexpr (PAGE_ATTENTION) {
-                Position startPos;
-                startPos.bIdx = info.bIdx;
-                startPos.n2Idx = info.n2Idx;
-                startPos.s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE;
-                /* 256、32等待7buf命名更改*/
-                startPos.dIdx = kL1 * 256; // mm1 右矩阵 bn2s2d, d为k轴不切; mm2 右矩阵, s2为k轴, d轴切分
-                Position ropeStartPos = startPos;
-                ropeStartPos.dIdx = kL1 * 32;
-                PAShape shape;
-                shape.blockSize = kvCacheBlockSize;
-                shape.headNum = constInfo.kvHeadNum;
-                shape.headDim = constInfo.headDim;
-                shape.actHeadDim = 256;
-                shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-                shape.copyRowNum = nL1Size;
-                shape.copyRowNumAlign = nL1SizeAlign;
-                PAShape ropeShape = shape;
-                ropeShape.headDim = constInfo.headDimRope;
-                ropeShape.actHeadDim = 32;
-                if (kL1 == 0) {
-                    DataCopyPA<KV_T, KV_LAYOUT_T>(bL1Tensor, keyGm, blockTableGm, shape, startPos);
-                    kRopeTensor = bL1Tensor[nL1SizeAlign * (BlockAlign<KV_T>(constInfo.headDim) >> 1)];
-                    DataCopyPA<KV_T, KV_LAYOUT_T>(kRopeTensor, kRopeGm, blockTableGm, ropeShape, ropeStartPos);
-                } else {
-                    kRopeTensor = bL1Tensor;
-                    DataCopyPA<KV_T, KV_LAYOUT_T>(kRopeTensor, kRopeGm, blockTableGm, ropeShape, ropeStartPos);
-                    LocalTensor<Q_T> kTmpTensor = bL1Tensor[32 * nL1SizeAlign];
-                    DataCopyPA<KV_T, KV_LAYOUT_T>(kTmpTensor, keyGm, blockTableGm, shape, startPos);
-                }
+            if (kL1 == 0) {
+                FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
+                    .tensor = bL1Tensor,
+                    .rowCount = nL1SizeAlign
+                };
+                GmKvCoord gmCoord {
+                    .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
+                    .n2Idx = info.n2Idx,
+                    .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
+                    .dIdx = kL1 * 256, // D方向上切256
+                    .s2DealSize = nL1Size,
+                    .dDealSize = 256 // D方向上切256
+                };
+                FaL1Tensor<KV_T, L1Format::NZ> dstRopeTensor {
+                    .tensor = bL1Tensor[nL1SizeAlign * (BlockAlign<KV_T>(constInfo.headDim) >> 1)],
+                    .rowCount = nL1SizeAlign
+                };
+                GmKvCoord gmCoordKRope {
+                    .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
+                    .n2Idx = info.n2Idx,
+                    .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
+                    .dIdx = kL1 * 32U, // D方向上切32
+                    .s2DealSize = nL1Size,
+                    .dDealSize = 32U // D方向上切32
+                };
+                copyKvGmToL1(dstTensor, keyGmTensor, gmCoord);
+                copyKvGmToL1(dstRopeTensor, keyRopeGmTensor, gmCoordKRope);
             } else {
-                uint64_t keyOffset = info.tensorBOffset;
-                uint64_t kRopeOffset = info.tensorBRopeOffset;
-                uint32_t srcStride = constInfo.headDim;
-                uint32_t ropeSrcStride = constInfo.headDimRope;
-                if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD) {
-                    keyOffset += (constInfo.headDim * nL1 * N_L1_SPLIT_SIZE + kL1 * 256);
-                    kRopeOffset += (constInfo.headDimRope * nL1 * N_L1_SPLIT_SIZE + kL1 * 32);
-                } else {
-                    keyOffset += (constInfo.headDim  * constInfo.kvHeadNum * nL1 * N_L1_SPLIT_SIZE + kL1 * 256);
-                    kRopeOffset += (constInfo.headDimRope * constInfo.kvHeadNum * nL1 * N_L1_SPLIT_SIZE + kL1 * 32);
-                    srcStride = constInfo.headDim * constInfo.kvHeadNum;
-                    ropeSrcStride = constInfo.headDimRope * constInfo.kvHeadNum;
-                }
-                if (kL1 == 0) {
-                    auto srcGm = keyGm[keyOffset];
-                    DataCopyGmNDToL1<KV_T>(bL1Tensor, srcGm, nL1Size, nL1SizeAlign, 256, srcStride);
-                    kRopeTensor = bL1Tensor[nL1SizeAlign * (BlockAlign<KV_T>(constInfo.headDim) >> 1)];
-                    auto srcRopeGm = kRopeGm[kRopeOffset];
-                    DataCopyGmNDToL1<KV_T>(kRopeTensor, srcRopeGm, nL1Size, nL1SizeAlign, 32, ropeSrcStride);
-                } else {
-                    auto srcRopeGm = kRopeGm[kRopeOffset];
-                    kRopeTensor = bL1Tensor;
-                    DataCopyGmNDToL1<KV_T>(kRopeTensor, srcRopeGm, nL1Size, nL1SizeAlign, 32, ropeSrcStride);
-                    LocalTensor<KV_T> kTmpTensor = bL1Tensor[32 * nL1SizeAlign];
-                    auto srcGm = keyGm[keyOffset];
-                    DataCopyGmNDToL1<KV_T>(kTmpTensor, srcGm, nL1Size, nL1SizeAlign, 256, srcStride);
-                }
-            }
+                FaL1Tensor<KV_T, L1Format::NZ> dstRopeTensor {
+                    .tensor = bL1Tensor,
+                    .rowCount = nL1SizeAlign
+                };
+                GmKvCoord gmCoordKRope {
+                    .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
+                    .n2Idx = info.n2Idx,
+                    .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
+                    .dIdx = kL1 * 32U, // D方向上切32
+                    .s2DealSize = nL1Size,
+                    .dDealSize = 32U // D方向上切32
+                };
+                copyKvGmToL1(dstRopeTensor, keyRopeGmTensor, gmCoordKRope);
 
+                FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
+                    .tensor = bL1Tensor[32U * nL1SizeAlign],
+                    .rowCount = nL1SizeAlign
+                };
+                GmKvCoord gmCoord {
+                    .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
+                    .n2Idx = info.n2Idx,
+                    .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
+                    .dIdx = kL1 * 256U, // D方向上切32
+                    .s2DealSize = nL1Size,
+                    .dDealSize = 256U // D方向上切32
+                };
+                copyKvGmToL1(dstTensor, keyGmTensor, gmCoord);
+            }
 #ifdef BASE_MM
             mm1B.Set<HardEvent::MTE2_MTE1>();
             mm1B.Wait<HardEvent::MTE2_MTE1>();
@@ -484,32 +652,59 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm1(const Attention
                 if (nL1 == 0) { // mL1=0, mL1=1两次
 #endif
                     if (kL1 == 0) {
+                        FaL1Tensor<Q_T, L1Format::NZ> dstTensor {
+                            .tensor = aL1Tensor,
+                            .rowCount = Align(mL1Size, 16U)
+                        };
+                        GmCoord gmCoord {
+                            .bIdx = info.bIdx,
+                            .n2Idx = info.n2Idx,
+                            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
+                            .dIdx = kL1 * 256,
+                            .gS1DealSize = mL1Size,
+                            .dDealSize = 256
+                        };
+                        LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256];
+                        FaL1Tensor<Q_T, L1Format::NZ> dstRopeTensor {
+                            .tensor = aL1Tensor[mL1SizeAlign * 256],
+                            .rowCount = Align(mL1Size, 16U)
+                        };
+                        GmCoord gmCoordQRope {
+                            .bIdx = info.bIdx,
+                            .n2Idx = info.n2Idx,
+                            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
+                            .dIdx = 0,
+                            .gS1DealSize = mL1Size,
+                            .dDealSize = 64
+                        };
 #ifdef BASE_MM
                         auto mm1ANextK = l1QP4Buffers.PeekNextK();
                         mm1A.Wait<HardEvent::MTE1_MTE2>();
                         mm1ANextK.Wait<HardEvent::MTE1_MTE2>(); // 这里通过mm1A越界访问mm1ANext，所以需要提前wait
-                        CopyInMm1AToL1(aL1Tensor, info, mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE, mL1Size, 256, 0);
-                        LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256]; 
-                        CopyInMm1ARopeToL1(qRopeTensor, info, mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE, mL1Size);
+                        copyQueryGmToL1(dstTensor, queryGmTensor, gmCoord);
+
+                        copyQueryGmToL1(dstRopeTensor, queryRopeGmTensor, gmCoordQRope);
 #else
                         WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka]);
                         WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka + 1]);
-                        CopyInMm1AToL1(aL1Tensor, info, mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE, mL1Size, 256, 0);
+                        copyQueryGmToL1(dstTensor, queryGmTensor, gmCoord);
                         // 由于L1里面是NZ, 这里q rope的偏移为整块q nope切k的后大小, 256为headDim的一半
-                        LocalTensor<Q_T> qRopeTensor =
-                            aL1Tensor[mL1SizeAlign * 256];
-                        CopyInMm1ARopeToL1(qRopeTensor, info, mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE, mL1Size);
+                        copyQueryGmToL1(dstRopeTensor, queryRopeGmTensor, gmCoordQRope); 
 #endif
                     } else {
-#ifdef BASE_MM
-                        LocalTensor<Q_T> qTmpTensor = aL1Tensor[mL1SizeAlign * 32]; // 32 : rope headDim的一半
-                        CopyInMm1AToL1(qTmpTensor, info, mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE, mL1Size, 256,
-                                       256);
-#else
-                        LocalTensor<Q_T> qTmpTensor = aL1Tensor[mL1SizeAlign * 32];
-                        CopyInMm1AToL1(qTmpTensor, info, mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE, mL1Size, 256,
-                                       256);
-#endif
+                        FaL1Tensor<Q_T, L1Format::NZ> dstTensor {
+                            .tensor = aL1Tensor[mL1SizeAlign * 32], // 32 : rope headDim的一半
+                            .rowCount = Align(mL1Size, 16U)
+                        };
+                        GmCoord gmCoord {
+                            .bIdx = info.bIdx,
+                            .n2Idx = info.n2Idx,
+                            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
+                            .dIdx = kL1 * 256,
+                            .gS1DealSize = mL1Size,
+                            .dDealSize = 256
+                        };
+                        copyQueryGmToL1(dstTensor, queryGmTensor, gmCoord);
                     }
 #ifdef BASE_MM
                     mm1A.Set<HardEvent::MTE2_MTE1>();
@@ -604,7 +799,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm1(const Attention
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm2(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo)
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo)
 {
     uint32_t mSize = mSplitInfo.nBufferDealM;
     uint32_t mSizeAlign = (mSize + 16 - 1) / 16;
@@ -658,52 +853,34 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm2(const Attention
             bL1Tensor = mm2A.GetTensor<KV_T>();
 #else
             kvL1BufIter++;
-            uint32_t kb = kvL1BufIter % 3;
+            uint32_t kb = kvL1BufIter % 3U;
             WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
 #endif
             uint32_t kOffset = k1 * kL0Loops;
-            kL0Size = 128;
+            kL0Size = 128U;
             // 此处必须先初始化kL0Size, 再求kL0Loops, 否则由于循环会改变kL0Size大小, 导致kL0Loops错误
-            kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
+            kL0Loops = (kL1Size + kL0Size - 1U) / kL0Size;
             kL0SizeAlign = kL0Size;
             for (uint32_t kL1 = kOffset; kL1 < kL0Loops + kOffset; kL1++) { // 128 循环搬pa
-                if (kL1 == kOffset + kL0Loops - 1) {
+                if (kL1 == kOffset + kL0Loops - 1U) {
                     // 尾块
-                    kL0Size = kL1Size - (kL0Loops - 1) * kL0Size;
+                    kL0Size = kL1Size - (kL0Loops - 1U) * kL0Size;
                     kL0SizeAlign = Align(kL0Size, 16U);
                 }
-
-                if constexpr (PAGE_ATTENTION) {
-                    Position startPos;
-                    startPos.bIdx = info.bIdx;
-                    startPos.n2Idx = info.n2Idx;
-                    startPos.s2Idx = info.s2BatchOffset + (kL1 - kOffset) * 128 + k1 * 256;
-                    startPos.dIdx = nL1 * N_L1_SPLIT_SIZE; // mm1 右矩阵 bn2s2d, d为k轴不切; mm2 右矩阵, s2为k轴, d轴切分
-                    PAShape shape;
-                    shape.blockSize = kvCacheBlockSize;
-                    shape.headNum = constInfo.kvHeadNum;
-                    shape.headDim = constInfo.headDim;
-                    shape.actHeadDim = nL1Size;
-                    shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-                    shape.copyRowNum = kL0Size;
-                    shape.copyRowNumAlign = kL0SizeAlign;
-                    subvTensor = bL1Tensor[(kL1 - kOffset) * 128 * N_L1_SPLIT_SIZE];
-                    DataCopyPA<KV_T, KV_LAYOUT_T>(subvTensor, valueGm, blockTableGm, shape, startPos);
-                } else {
-                    uint64_t valueOffset = info.tensorBOffset;
-                    uint32_t srcStride = constInfo.headDim;
-                    if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD) {
-                        valueOffset += (constInfo.headDim * ((kL1 - kOffset) * 128 + k1 * 256) + nL1 * N_L1_SPLIT_SIZE);
-                    } else {
-                        valueOffset += (constInfo.headDim * constInfo.kvHeadNum *
-                            ((kL1 - kOffset) * 128 + k1 * 256) + nL1 * N_L1_SPLIT_SIZE);
-                        srcStride = constInfo.headDim * constInfo.kvHeadNum;
-                    }
-                    auto srcGm = valueGm[valueOffset];
-                    subvTensor = bL1Tensor[(kL1 - kOffset) * 128 * N_L1_SPLIT_SIZE];
-                    DataCopyGmNDToL1<KV_T>(subvTensor, srcGm, kL0Size, kL0SizeAlign, nL1Size, srcStride);
-                }
+                FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
+                    .tensor = bL1Tensor[(kL1 - kOffset) * 128U * N_L1_SPLIT_SIZE],
+                    .rowCount = kL0SizeAlign
+                };
+                GmKvCoord gmCoord {
+                    .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
+                    .n2Idx = info.n2Idx,
+                    .s2Idx = info.s2BatchOffset + (kL1 - kOffset) * 128U + k1 * 256U,
+                    .dIdx = nL1 * N_L1_SPLIT_SIZE,
+                    .s2DealSize = kL0Size,
+                    .dDealSize = N_L1_SPLIT_SIZE
+                };
+                copyKvGmToL1(dstTensor, valueGmTensor, gmCoord);
             }
 #ifdef BASE_MM
             mm2A.Set<HardEvent::MTE2_MTE1>();

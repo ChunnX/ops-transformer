@@ -148,6 +148,8 @@ public:
 
     std::string CompareTypeToSerialString(const FiaCompareType compareType) const;
     std::string CompareTypeToSerialSymbolString(const FiaCompareType &compareType) const;
+    ge::graphStatus GetExpectedShapeSpecial(gert::Shape &shapeExpected,
+        const FiaTilingShapeCompareParam &param, const std::string &funcName) const;
     ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected,
         const FiaTilingShapeCompareParam &param, const std::string &funcName) const;
     FiaCompareType GetCompareType(const std::map<FiaAxis, FiaCompareType> &compareTypeMap,
