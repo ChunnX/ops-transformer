@@ -64,7 +64,6 @@ macro(add_modules_sources)
     add_infer_modules()
     target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPINFER_SRCS})
   else()
-    add_infer_modules()
     if (NOT TARGET ${OPHOST_NAME}_infer_obj)
       add_library(${OPHOST_NAME}_infer_obj OBJECT)
       add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/proto_stub.cpp

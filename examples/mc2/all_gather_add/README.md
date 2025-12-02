@@ -82,6 +82,7 @@
       <td>输出</td>
       <td>算子AllGather通信部分的中间输出。</td>
       <td>FLOAT16</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>group</td>
@@ -153,7 +154,17 @@
 
 - **执行算子样例**
 
-    - 完成自定义算子包安装后，执行命令如下：
+    - 本示例算子目前仅支持基于单算子API执行方式调用算子，即[两段式aclnn接口](../../../docs/context/两段式接口.md)调用，本示例的aclnn接口定义在[op_api](../all_gather_add/op_host/op_api)路径下。
+      
+      如需执行该样例算子，需按以下步骤操作：
+
+      1.将自定义算子包安装在默认路径下，参考**安装自定义算子包**章节；
+      
+      2.编写算子执行代码，通过调用[aclnn_all_gather_add.h](../all_gather_add/op_host/op_api/aclnn_all_gather_add.h)文件中的两段式接口aclnnAllGatherAddGetWorkspaceSize和aclnnAllGatherAdd来完成算子调用。此处需注意，算子执行代码需放置在算子的[examples](../all_gather_add/examples/)路径下，且文件名称需遵循"test_aclnn_[算子名称].cpp"格式，[测试工程运行脚本](../../../build.sh)会根据算子名称匹配对应的执行文件并运行。
+
+      本示例的算子执行样例代码：[test_aclnn_all_gather_add.cpp](examples/test_aclnn_all_gather_add.cpp)。该代码首先按照固定shape随机生成测试数据作为输入，同时在cpu侧对输入数据进行拼接和相加来模拟AllGather、Add的运算并生成golden数据，然后将生成的测试数据转化为Tensor拷贝到设备侧，最后依次调用[本示例aclnn文件](../all_gather_add/op_host/op_api/aclnn_all_gather_add.h)中的两段式接口完成单算子API调用。
+
+      完成自定义算子包的安装和算子执行代码的编写后，执行如下命令：
         ```bash
         bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--vendor_name=${vendor_name}]
         # 执行命令示例:
@@ -165,7 +176,6 @@
         - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。         
         - \$\{vendor\_name\}（名称可自定义）：与构建的自定义算子包设置一致，默认名为custom。
 
-        如需执行算子样例，需将自定义算子包安装在默认路径下。执行算子样例代码[test_aclnn_all_gather_add.cpp](examples/test_aclnn_all_gather_add.cpp)，该测试样例代码会按照固定shape随机生成测试数据作为输入，同时在cpu侧对输入数据进行拼接和相加来模拟AllGather、Add的运算并生成golden数据，最后通过**aclnnAllGatherAdd**接口方式调用算子。
         算子执行结束后，测试样例会将算子的执行结果拷贝到主机侧与golden进行精度对比，本示例算子的精度要求为千分之一。
         运行结果示例如下：
     
@@ -175,3 +185,22 @@
         device_0 aclnnAllGatherAdd golden compare successfully.
         device_1 aclnnAllGatherAdd golden compare successfully.
         ```
+
+- **注意事项**
+    - 本示例算子仅接受固定shape的tensor为参数，且仅支持在2个昇腾AI处理器上执行。
+
+      本算子执行代码[test_aclnn_all_gather_add.cpp](examples/test_aclnn_all_gather_add.cpp)中的rankId为昇腾AI处理器的逻辑ID，代码中的rankId被赋值为0，1使得算子在ID为：0、1的昇腾AI处理器上执行算子，实际执行过程中可能存在多个进程竞争处理器0、1的问题，导致如下错误：
+        ```bash
+        [ERROR] HcclCommInit failed. ret = 4
+        ```
+
+      此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
+      
+        ```bash
+        # 查看各Device运行情况
+        npu-smi info
+        # 若处理器6，7空闲，则指定仅6，7对当前进程可见：
+        export ASCEND_RT_VISIBLE_DEVICES=6,7 
+        ```
+        此时，当前进程仅可见6，7两个处理器，则6，7对于当前进程的逻辑ID为0，1。
+        重新执行算子即可。
