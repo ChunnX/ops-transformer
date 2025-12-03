@@ -286,8 +286,9 @@
     - 仅量化场景 (pertoken)、反量化场景支持激活函数计算。
 
     - <a id="groupType-constraints"></a>不同group_type支持场景：
-      - 伪量化仅支持group_type为-1和0场景。
-      - 量化仅支持group_type为0场景。
+      - A16W8、A16W4场景仅支持group_type为-1和0场景。
+      - A8W8、A8W4、A4W4场景量化仅支持group_type为0场景。
+      - 量化pertoken场景，x输入不支持多tensor。
       - x、weight、y的输入类型为aclTensorList，表示一个aclTensor类型的数组对象。下面表格支持场景用"单"表示由一个aclTensor组成的aclTensorList，"多"表示由多个aclTensor组成的aclTensorList。例如"单多单"，分别表示x为单tensor、weight为多tensor、y为单tensor。
 
       | group_type | 支持场景 | split_item| group_list | 转置 | 其余场景限制 |
