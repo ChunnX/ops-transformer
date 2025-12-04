@@ -8,20 +8,17 @@
  # See LICENSE in the root of the software repository for the full text of the License.
 
 if (BUILD_OPEN_PROJECT)
-target_sources(op_host_aclnn PRIVATE
-    moe_token_permute_with_ep_def.cpp
-)
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
+    target_sources(op_host_aclnn PRIVATE
+        moe_token_permute_with_ep_def.cpp
+    )
     add_ops_compile_options(
         OP_NAME MoeTokenPermuteWithEp
         OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
     )
-else()
-    add_modules_sources(OPTYPE moe_token_permute_with_ep ACLNNTYPE aclnn)
 endif()
-else()
-add_modules_sources(OPTYPE moe_token_permute_with_ep ACLNNTYPE aclnn)
+
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_modules_sources(OPTYPE moe_token_permute_with_ep ACLNNTYPE aclnn)
 endif()

@@ -11,15 +11,14 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
        moe_init_routing_quant_v2_def.cpp
     )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME MoeInitRoutingQuantV2
         OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
     )
-else()
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE moe_init_routing_quant_v2 ACLNNTYPE aclnn )
 endif()

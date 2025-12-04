@@ -12,16 +12,15 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         grouped_matmul_def.cpp
     )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME GroupedMatmul
         OPTIONS --cce-auto-sync=off
                 -Wno-deprecated-declarations
                 -Werror
     )
-else()
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE grouped_matmul ACLNNTYPE aclnn_exclude)
 endif()
 

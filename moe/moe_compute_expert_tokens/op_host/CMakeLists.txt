@@ -6,19 +6,18 @@
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
-if (BUILD_OPEN_PROJECT)
+if (BUILD_OPEN_PROJECT) # 回黄kernel
     target_sources(op_host_aclnn PRIVATE
         moe_compute_expert_tokens_def.cpp
     )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME MoeComputeExpertTokens
         OPTIONS --cce-auto-sync=off
                 -Wno-deprecated-declarations
                 -Werror
     )
-else()
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE moe_compute_expert_tokens ACLNNTYPE aclnn)
 endif()

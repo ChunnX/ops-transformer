@@ -12,16 +12,14 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
     moe_token_unpermute_def.cpp
     )
-    if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
-        add_ops_compile_options(
-                OP_NAME MoeTokenUnpermute
-                OPTIONS --cce-auto-sync=on
-                        -Wno-deprecated-declarations
-                        -Werror
-        )
-    else() # custom
-        add_modules_sources(OPTYPE moe_token_unpermute ACLNNTYPE aclnn_inner)
-    endif()
-else() # 回黄host
+    add_ops_compile_options(
+            OP_NAME MoeTokenUnpermute
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+    )
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE moe_token_unpermute ACLNNTYPE aclnn_inner)
 endif()

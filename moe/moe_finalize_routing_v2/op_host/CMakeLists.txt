@@ -11,9 +11,6 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         moe_finalize_routing_v2_def.cpp
     )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend910_95")
         add_ops_compile_options(
             OP_NAME MoeFinalizeRoutingV2
@@ -27,7 +24,8 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
             OPTIONS --cce-auto-sync=off
         )
     endif()
+endif()
 
-else()
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE moe_finalize_routing_v2 ACLNNTYPE aclnn_inner)
 endif()

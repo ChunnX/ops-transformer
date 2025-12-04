@@ -12,16 +12,14 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         moe_finalize_routing_def.cpp
     )
-    if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
-        add_ops_compile_options(
+    add_ops_compile_options(
                 OP_NAME MoeFinalizeRouting
                 OPTIONS --cce-auto-sync=on
                         -Wno-deprecated-declarations
                         -Werror
-        )
-    else() # custom
-        add_modules_sources(OPTYPE moe_finalize_routing ACLNNTYPE aclnn)
-    endif()
-else() # 回黄host
+    )
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE moe_finalize_routing ACLNNTYPE aclnn)
 endif()

@@ -12,15 +12,14 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         rope_quant_kvcache_def.cpp
     )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME RopeQuantKvcache
         OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
     )
-else()
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE rope_quant_kvcache ACLNNTYPE aclnn)
 endif()
