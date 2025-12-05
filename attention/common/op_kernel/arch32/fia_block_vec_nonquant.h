@@ -465,19 +465,21 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
 
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
         LocalTensor<bool> maskUb;
-        maskUb = inputQue2.AllocTensor<bool>();
-        LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-        
-        AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
-        AscendC::PipeBarrier<PIPE_V>();
+        LocalTensor<bool> attenMaskTmpUb;
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-        AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
-        inputQue2.FreeTensor(maskUb);
-        if (constInfo.sparseMode == BAND) {
+        if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+            maskUb = inputQue2.AllocTensor<bool>();
+            attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
+            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+            AscendC::PipeBarrier<PIPE_V>();
+            fa_base_vector::AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
+            inputQue2.FreeTensor(maskUb);
+        }
+        if (!fa_base_vector::IsSkipAttentionmaskForPre(maskInfo)) {
             maskUb = inputQue2.AllocTensor<bool>();
             attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2]; 
-            AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
-            AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
+            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
+            fa_base_vector::AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
             inputQue2.FreeTensor(maskUb);
         }
     }

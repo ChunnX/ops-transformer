@@ -909,7 +909,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
 }
 
 template <typename T, typename U>
-__aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo info, bool isPre = false)
+__aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     uint32_t s1StartIdx = info.gs1StartIdx / info.gSize;
     uint32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) / info.gSize;
@@ -954,6 +954,50 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     SetMaskNorm();
     ResetMask();
     attenMaskUb = attenMaskUbDst.template ReinterpretCast<bool>();
+}
+
+__aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
+{
+    if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
+        return false;
+    }
+
+    int32_t s1StartIdx = info.layout == GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    if (info.layout == GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
+        return false;
+    }
+
+    int64_t nextToken = 0; // sparse2 本身远点就在左上角
+    if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
+        nextToken = static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为远点计算Token
+    } else if (info.sparseMode == BAND) { // 4
+        nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
+    }
+
+    if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) <= static_cast<int64_t>(s1StartIdx) + nextToken) {
+        return true;
+    }
+    return false;
+}
+
+__aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
+{
+    if (info.sparseMode != BAND) {
+        return true;
+    }
+
+    int32_t s1StartIdx = info.layout == GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    if (info.layout == GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
+        return false;
+    }
+
+    int64_t preToken = info.preToken + static_cast<uint64_t>(info.s1Size)-static_cast<uint64_t>(info.s2Size); // 统一以左上角为原点计算Token
+    int32_t s1EndIdx = info.layout == GS ? s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
+
+    if (static_cast<int64_t>(info.s2StartIdx) + preToken >= static_cast<int64_t>(s1EndIdx)) {
+        return true;
+    }
+    return false;
 }
 
 template <typename T, typename U>
