@@ -13,7 +13,7 @@
 
 图1 计算流程图：
 
-![IFA图](../../../docs/figures/IncreFlashAttention.png)
+![IFA图](../../../docs/zh/figures/IncreFlashAttention.png)
 
 
 

@@ -254,7 +254,7 @@ aclnnStatus aclnnMoeGatingTopK(
 
 -   **返回值：**
 
-    <p>aclnnStatus：返回状态码，具体参见<a href="../../../docs/context/aclnn返回码.md">aclnn返回码</a>。</p>
+    <p>aclnnStatus：返回状态码，具体参见<a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。</p>
     <p>第一段接口完成入参校验，出现以下场景报错：</p>
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">
@@ -333,7 +333,7 @@ aclnnStatus aclnnMoeGatingTopK(
 
 -   **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
   * 输入shape限制：
@@ -346,7 +346,7 @@ aclnnStatus aclnnMoeGatingTopK(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp
 #include "acl/acl.h"
