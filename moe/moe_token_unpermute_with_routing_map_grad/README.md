@@ -29,11 +29,11 @@
     - paddedMode为false时
   
   $$
-  probsGradOut = masked\_scatter(routingMapOptional.T,probsGradExpertOrder)
+  probsGradOut = masked\_scatter(routingMapOptional^T,probsGradExpertOrder)
   $$
   
   $$
-  permutedProbs = probsOptional.T.masked\_select(routingMapOptional.T)
+  permutedProbs = probsOptional^T.masked\_select(routingMapOptional^T)
   $$
 
   $$
@@ -63,68 +63,23 @@
   2. paddedMode等于true时，每个专家固定能够处理capacity个token。输入routingMapOptional的第1维是experts_num，即专家个数，输入outIndex的第0维是experts_num * capacity，根据这两个维度可以算出capacity。
   3. paddedMode等于false时，每个token固定被topK_num个专家处理。输入unpermutedTokensGrad的第0维是tokens_num，即token的个数，输入outIndex的第0维是tokens_num * capacity，根据这两个维度可以算出topK_num。
 
-
-  
-  $$
-  dequantX = Dequant(x,weightScaleOptional,activationScaleOptional,biasOptional)
-  $$
-  
-  $$
-  q,k,vOut = SplitTensor(dequantX,dim=-1,`sizeSplits`)
-  $$
-  
-  $$
-  qOut,kOut = ApplyRotaryPosEmb(q,k,cos,sin)
-  $$
-  
-  $$
-  quantK = Quant(kOut,scaleK,offsetKOptional)
-  $$
-  
-  $$
-  quantV = Quant(vOut,scaleV,offsetVOptional)
-  $$
-  
-  如果cacheModeOptional为contiguous则：
-  
-  $$
-  kCacheRef[i][indice[i]]=quantK[i]
-  $$
-  
-  $$
-  vCacheRef[i][indice[i]]=quantV[i]
-  $$
-  
-  如果cacheModeOptional为page则：
-  
-  $$
-  kCacheRefView=kCacheRef.view(-1,kCacheRef[-2],kCacheRef[-1])
-  $$
-  
-  $$
-  vCacheRefView=vCacheRef.view(-1,vCacheRef[-2],vCacheRef[-1])
-  $$
-  
-  $$
-  kCacheRefView[indices[i]]=quantK[i]
-  $$
-  
-  $$
-  vCacheRefView[indices[i]]=quantV[i]
-  $$
-
 ## 参数说明
 
-<table style="table-layout: auto; width: 100%">
+<table style="undefined;table-layout: fixed; width: 1296px"><colgroup>
+<col style="width: 212px">
+<col style="width: 151px">
+<col style="width: 541px">
+<col style="width: 273px">
+<col style="width: 119px">
+  </colgroup>
   <thead>
     <tr>
-      <th style="white-space: nowrap">参数名</th>
-      <th style="white-space: nowrap">输入/输出/属性</th>
-      <th style="white-space: nowrap">描述</th>
-      <th style="white-space: nowrap">数据类型</th>
-      <th style="white-space: nowrap">数据格式</th>
-    </tr>
-  </thead>
+      <th>参数名</th>
+      <th>输入/输出/属性</th>
+      <th>描述</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+    </tr></thead>
   <tbody>
     <tr>
       <td>unpermutedTokensGrad</td>
@@ -179,7 +134,7 @@
       <td>restoreShapeOptional</td>
       <td>属性</td>
       <td>host侧的aclIntArray。</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
@@ -200,7 +155,8 @@
 
 ## 约束说明
 
--   topkNum <= 512。
+- 当输入probsOptional非空，且paddedMode为false时，要求topK_num <= 512且topK_num <= experts_num。
+- 当输入probsOptional非空，且paddedMode为true时，要求capacity <= tokens_num。
 
 ## 调用说明
 
