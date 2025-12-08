@@ -1,10 +1,11 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -17,12 +18,12 @@
 #include "util/math_util.h"
 #include "tiling_base/tiling_util.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "examples/add_example/op_kernel/add_example_tiling_data.h"
-#include "examples/add_example/op_kernel/add_example_tiling_key.h"
+#include "../op_kernel/add_example_tiling_data.h"
+#include "../op_kernel/add_example_tiling_key.h"
 
 namespace optiling {
 
-using namespace Ops::Transformer::OpTiling;
+using namespace Ops::Math::OpTiling;
 
 const uint32_t BLOCK_DIM = 8;
 const int64_t TILE_NUM = 8;
@@ -34,8 +35,7 @@ constexpr uint32_t INDEXONE = 1;
 constexpr uint32_t INDEXTWO = 2;
 constexpr uint32_t INDEXTHREE = 3;
 
-struct AddExampleCompileInfo {
-};
+struct AddExampleCompileInfo {};
 
 // 获取平台信息如ubSize, coreNum
 static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& ubSize, int64_t& coreNum)

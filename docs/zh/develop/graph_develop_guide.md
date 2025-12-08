@@ -70,7 +70,7 @@ IMPL_OP_INFERSHAPE(AddExample).
     .InferDataType(InferDataTypeAddExample);
 ```
 
-完整代码请参考`examples/add_example/op_host`目录下[add_example_infershape.cpp](../../examples/add_example/op_host/add_example_infershape.cpp)。   
+完整代码请参考`examples/add_example/op_host`目录下[add_example_infershape.cpp](../../../examples/add_example/op_host/add_example_infershape.cpp)。   
 
 ### 算子原型配置
 图模式调用需要将算子原型注册到[Graph Engine](https://www.hiascend.com/cann/graph-engine)（简称GE）中，以便GE能够识别该类型算子的输入、输出及属性信息。注册通过`REG_OP`接口完成，开发者需要定义算子的输入、输出张量类型及数量等基本信息。
@@ -85,4 +85,4 @@ REG_OP(AddExample)
     .OP_END_FACTORY_REG(AddExample)
 ```
 
-完整代码请参考`examples/add_example/op_graph`目录下[add_example_proto.h](../../examples/add_example/op_graph/add_example_proto.h)。
+完整代码请参考`examples/add_example/op_graph`目录下[add_example_proto.h](../../../examples/add_example/op_graph/add_example_proto.h)。

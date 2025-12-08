@@ -68,13 +68,13 @@ ${op_name}                              # 替换为实际算子名的小写下�
 
 开发算子前需要先确定目标算子的功能和计算逻辑。
 
-以自定义`AddExample`算子说明为例，请参考[AddExample算子说明](../../examples/add_example/README.md)。
+以自定义`AddExample`算子说明为例，请参考[AddExample算子说明](../../../examples/add_example/README.md)。
 
 **交付件2：${op_name}_def.cpp**
 
 算子信息库。
 
-以自定义`AddExample`算子说明为例，请参考[AddExample算子信息库](../../examples/add_example/op_host/add_example_def.cpp)。
+以自定义`AddExample`算子说明为例，请参考[AddExample算子信息库](../../../examples/add_example/op_host/add_example_def.cpp)。
 ## Tiling实现
 
 ### Tiling简介
@@ -91,7 +91,7 @@ Tiling一共需要三个交付件：`${op_name}_tiling.cpp` `${op_name}_tiling_k
 
 实现Tiling主要切分逻辑。
 
-如需查看详细实现，请参考[add_example_tiling.cpp](../../examples/add_example/op_host/add_example_tiling.cpp)。
+如需查看详细实现，请参考[add_example_tiling.cpp](../../../examples/add_example/op_host/add_example_tiling.cpp)。
 
 ```CPP
 // ${op_name}_tiling.cpp
@@ -164,7 +164,7 @@ IMPL_OP_OPTILING(${op_name}).Tiling(TilingFunc).TilingParse<CompileInfo>(TilingP
 
 TilingKey是一个算子内为了区分不同的实现而将kernel代码进行区分的方法，kernel侧可以通过TilingKey来选择不同的算法逻辑。
 
-如需查看详细实现，请参考[add_example_tiling_key.h](../../examples/add_example/op_kernel/add_example_tiling_key.h)。
+如需查看详细实现，请参考[add_example_tiling_key.h](../../../examples/add_example/op_kernel/add_example_tiling_key.h)。
 
 ```CPP
 // ${op_name}_tiling_key.h
@@ -178,7 +178,7 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
 **交付件3：${op_name}_tiling_data.h**
 
 声明TilingData结构体用于存储Tiling的参数，比如总数据量大小、每个核数据切块数量。
-如需查看详细实现，请参考[add_example_tiling_data.h](../../examples/add_example/op_kernel/add_example_tiling_data.h)。
+如需查看详细实现，请参考[add_example_tiling_data.h](../../../examples/add_example/op_kernel/add_example_tiling_data.h)。
 
 ```CPP
 // ${op_name}_tiling_data.h
@@ -220,7 +220,7 @@ graph LR
 
 Kernel入口文件，包含主函数和调度逻辑。
 
-如需查看详细实现，请参考[add_example.cpp](../../examples/add_example/op_kernel/add_example.cpp)。
+如需查看详细实现，请参考[add_example.cpp](../../../examples/add_example/op_kernel/add_example.cpp)。
 
 ```CPP
 // 1、核函数定义
@@ -248,7 +248,7 @@ __global__ __aicore__ void add_example(GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR 
 
 定义Kernel头文件，包含函数声明、结构定义、逻辑实现等。
 
-如需查看详细实现，请参考[add_example.h](../../examples/add_example/op_kernel/add_example.h)。
+如需查看详细实现，请参考[add_example.h](../../../examples/add_example/op_kernel/add_example.h)。
 
 ```C++
 // 2、定义Kernel类
@@ -334,9 +334,9 @@ __aicore__ inline void AddExample<T>::Process()
 
 1. 在`examples/add_example/op_host`目录新建`config/${soc_version}`文件夹，用于存放配置文件。
 
-2. 在`${soc_version}`目录新建json文件，命名为`${op_name}_binary.json`，用于描述算子相关信息，包括二进制文件名称(命名无要求，当前是以`${op_type}`_哈希码命名)及算子输入、输出、shape、data type、format等信息，完整定义请参考[add_example_binary.json](../../examples/add_example/op_host/config/ascend910b/add_example_binary.json)。
+2. 在`${soc_version}`目录新建json文件，命名为`${op_name}_binary.json`，用于描述算子相关信息，包括二进制文件名称(命名无要求，当前是以`${op_type}`_哈希码命名)及算子输入、输出、shape、data type、format等信息，完整定义请参考[add_example_binary.json](../../../examples/add_example/op_host/config/ascend910b/add_example_binary.json)。
 
-3. 在`${soc_version}`目录新建ini文件，命名为`${op_name}_simplified_key.ini`，与二进制匹配逻辑相关，默认是0，示例参考[add_example_simplified_key.ini](../../examples/add_example/op_host/config/ascend910b/add_example_simplified_key.ini)。
+3. 在`${soc_version}`目录新建ini文件，命名为`${op_name}_simplified_key.ini`，与二进制匹配逻辑相关，默认是0，示例参考[add_example_simplified_key.ini](../../../examples/add_example/op_host/config/ascend910b/add_example_simplified_key.ini)。
 
 ## 编译部署
 
@@ -348,7 +348,7 @@ __aicore__ inline void AddExample<T>::Process()
 
 2. **编译自定义算子包。** 
 
-    以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../examples/add_example)目录。
+    以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example)目录。
 
     进入项目根目录，执行如下编译命令：
 

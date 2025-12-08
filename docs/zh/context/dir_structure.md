@@ -4,8 +4,8 @@
 
 > ### 本章罗列的部分目录是可选的，请以实际交付件为准。尤其**单算子目录**，不同场景下交付件有差异，具体说明如下：
 >
-> - 若缺少op_host目录，可能是调用了其他算子op_host实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../CONTRIBUTING.md)补充贡献该算子。
-> - 若缺少op_kernel目录，可能是调用了其他算子op_kernel实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../CONTRIBUTING.md)补充贡献该算子。
+> - 若缺少op_host目录，可能是调用了其他算子op_host实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../../CONTRIBUTING.md)补充贡献该算子。
+> - 若缺少op_kernel目录，可能是调用了其他算子op_kernel实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../../CONTRIBUTING.md)补充贡献该算子。
 > - 若缺少op_api目录，说明该算子暂不支持aclnn调用。
 > - 若缺少op_graph目录，说明该算子暂不支持图模式调用。
 
