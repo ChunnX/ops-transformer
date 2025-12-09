@@ -24,7 +24,6 @@
 #include "../memory_copy.h"
 
 using namespace AttentionCommon;
-using namespace fa_base_vector;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
@@ -151,7 +150,7 @@ protected:
     ConstInfo constInfo = {};
     MSplitInfo mSplitInfo = {};
     
-    uint16_t brcbNum = (BYTE_BLOCK / sizeof(COMPUTE_T));
+    uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
     bool learnableSinkFlag = false;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_T>(); 
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_T, PAGE_ATTENTION>(); 
@@ -313,7 +312,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -354,12 +353,12 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
                 Brcb(lseMaxUb, maxTensor[mSplitInfo.nBufferStartM / 2], (mSplitInfo.vecDealM + brcbNum - 1) / brcbNum, 
                     {1, brcbNum});
                 AscendC::PipeBarrier<PIPE_V>();
-                ComputeSoftMaxLse(totalLseUb, lseSumUb, lseMaxUb, mSplitInfo.vecDealM);
+                fa_base_vector::ComputeSoftMaxLse(totalLseUb, lseSumUb, lseMaxUb, mSplitInfo.vecDealM);
             } else {
-                ComputeSoftMaxLse(totalLseUb, sumTensor, maxTensor, mSplitInfo.vecDealM);
+                fa_base_vector::ComputeSoftMaxLse(totalLseUb, sumTensor, maxTensor, mSplitInfo.vecDealM);
             }
 
-            bool isInvalidRows = IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
+            bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
                 constInfo.sparseMode, constInfo.attenMaskFlag, constInfo.isRowInvalid);
 
             if (isInvalidRows) { // 存在行无效场景
@@ -439,7 +438,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
 
     if (constInfo.attenMaskFlag == 1) {
         AscendC::PipeBarrier<PIPE_V>();
-        MaskInfo maskInfo;
+        fa_base_vector::MaskInfo maskInfo;
         maskInfo.gs1StartIdx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
         maskInfo.gs1dealNum = dealRowCount;
         maskInfo.s1Size = info.actS1Size;
@@ -449,21 +448,21 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
         maskInfo.s2Size = info.actS2Size;
         maskInfo.preToken = constInfo.preToken;
         maskInfo.nextToken = constInfo.nextToken;
-        maskInfo.sparseMode = static_cast<SparseMode>(constInfo.sparseMode);
+        maskInfo.sparseMode = static_cast<fa_base_vector::SparseMode>(constInfo.sparseMode);
         maskInfo.batchIdx = info.bIdx;
         maskInfo.batchOffset = constInfo.attenMaskSize;
         maskInfo.attenMaskStride = constInfo.attenMaskStride;
         maskInfo.maskValue = negativeIntScalar;
 
         if (constInfo.qSeqSize == 1) {
-            maskInfo.layout = S1_EQUAL1;
+            maskInfo.layout = fa_base_vector::S1_EQUAL1;
         } else if (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH) {
-            maskInfo.layout = SG;
+            maskInfo.layout = fa_base_vector::SG;
         } else {
-            maskInfo.layout = GS;
+            maskInfo.layout = fa_base_vector::GS;
         }
 
-        maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
+        maskInfo.attenMaskType = fa_base_vector::MASK_BOOL; // compatible with int8/uint8
         LocalTensor<bool> maskUb;
         LocalTensor<bool> attenMaskTmpUb;
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
@@ -528,7 +527,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDimAlign;
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -578,14 +577,14 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealBmm2ResBaseBlock(
         uint32_t idx = info.loop % (constInfo.preLoadNum);
 
         if constexpr (SOFTMAX_WITH_BRC) {
-            RowMuls<COMPUTE_T>(bmm2ResPreUb, bmm2ResPreUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
+            fa_base_vector::RowMuls<COMPUTE_T>(bmm2ResPreUb, bmm2ResPreUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
                 dealRowCount, columnCount, actualColumnCount);
         } else {
             LocalTensor<COMPUTE_T> tmpExpBrcbResUb = tmpBuff1.Get<COMPUTE_T>();
             Brcb(tmpExpBrcbResUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
                 (dealRowCount + this->brcbNum - 1) / this->brcbNum, {1, this->brcbNum});
             AscendC::PipeBarrier<PIPE_V>();
-            RowMuls<COMPUTE_T>(bmm2ResPreUb, bmm2ResPreUb, tmpExpBrcbResUb, dealRowCount, columnCount, actualColumnCount);
+            fa_base_vector::RowMuls<COMPUTE_T>(bmm2ResPreUb, bmm2ResPreUb, tmpExpBrcbResUb, dealRowCount, columnCount, actualColumnCount);
         }
 
         AscendC::PipeBarrier<PIPE_V>();
@@ -599,14 +598,14 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealBmm2ResBaseBlock(
         uint32_t idx = info.loop % (constInfo.preLoadNum);
 
         if constexpr (SOFTMAX_WITH_BRC) {
-            RowDivs<COMPUTE_T>(bmm2ResUb, bmm2ResUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
+            fa_base_vector::RowDivs<COMPUTE_T>(bmm2ResUb, bmm2ResUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
                 dealRowCount, columnCount, actualColumnCount);
         } else {
             LocalTensor<COMPUTE_T> tmpSumBrcbResUb = tmpBuff1.Get<COMPUTE_T>();
             Brcb(tmpSumBrcbResUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
                 (dealRowCount + this->brcbNum - 1) / this->brcbNum, {1, this->brcbNum});
             AscendC::PipeBarrier<PIPE_V>();
-            RowDivs<COMPUTE_T>(bmm2ResUb, bmm2ResUb, tmpSumBrcbResUb, dealRowCount, columnCount, actualColumnCount);
+            fa_base_vector::RowDivs<COMPUTE_T>(bmm2ResUb, bmm2ResUb, tmpSumBrcbResUb, dealRowCount, columnCount, actualColumnCount);
         }
 
         AscendC::PipeBarrier<PIPE_V>();
@@ -645,9 +644,6 @@ template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb,
     uint32_t wsMStart, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    DealInvalidRows(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
-    DealInvalidMaskRows(info, bmm2ResUb, wsMStart, startRow, dealRowCount, columnCount, actualColumnCount);
-    AscendC::PipeBarrier<PIPE_V>();
     LocalTensor<MM2_OUT_T> tmp = outputQue1.AllocTensor<MM2_OUT_T>();
     DataCopy(tmp, bmm2ResUb, columnCount * dealRowCount);
     outputQue1.EnQue(tmp);
@@ -659,7 +655,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2FDDataCopyOut(const RunInf
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;      
     DataCopyPad(dst, tmp, dataCopyParams);
     outputQue1.FreeTensor(tmp);
@@ -672,18 +668,18 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidMaskRows(const RunI
     if (!constInfo.isRowInvalid || !constInfo.attenMaskFlag) {
         return;
     }
-    if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
+    if (constInfo.sparseMode != fa_base_vector::DEFAULT_MASK && constInfo.sparseMode != fa_base_vector::ALL_MASK) {
         return;
     }
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
     if constexpr (SOFTMAX_WITH_BRC) {
-        baseOffset = baseOffset * (BYTE_BLOCK / sizeof(T));
+        baseOffset = baseOffset * (fa_base_vector::BYTE_BLOCK / sizeof(T));
     }
 
     uint32_t outIdx = info.loop % (constInfo.preLoadNum);
     uint32_t softmaxOutOffset = outIdx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(T) + baseOffset;
 
-    InvalidMaskRows<MM2_OUT_T, T, SOFTMAX_WITH_BRC>(softmaxOutOffset, dealRowCount, columnCount,
+    fa_base_vector::InvalidMaskRows<MM2_OUT_T, T, SOFTMAX_WITH_BRC>(softmaxOutOffset, dealRowCount, columnCount,
         softmaxMaxUb, negativeIntScalar, bmm2ResUb);
 }
 
@@ -786,7 +782,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ComputeLogSumExpAndCopyToGm(co
     uint64_t offset = (info.accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                        FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                        fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
     if constexpr (SOFTMAX_WITH_BRC) {              
         DataCopy(lseSumFdGm[offset], softmaxSumUb[baseOffset], size);
         DataCopy(lseMaxFdGm[offset], softmaxMaxUb[baseOffset], size);       
@@ -815,11 +811,11 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidRows(const RunInfo 
         return;
     }
 
-    if (constInfo.sparseMode == ALL_MASK || constInfo.sparseMode == LEFT_UP_CAUSAL) {
+    if (constInfo.sparseMode == fa_base_vector::ALL_MASK || constInfo.sparseMode == fa_base_vector::LEFT_UP_CAUSAL) {
         return;
     }
 
-    InvalidRowParams params {
+    fa_base_vector::InvalidRowParams params {
         .actS1Size = info.actS1Size,
         .gSize = constInfo.gSize,
         .gS1Idx = info.gS1Idx + wsMStart,
@@ -829,7 +825,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidRows(const RunInfo 
         .nextTokensPerBatch = info.nextTokensPerBatch,
     };
 
-    InvalidRows<T, GeInputUbFormat<LAYOUT_T>()> invalidRows;
+    fa_base_vector::InvalidRows<T, fa_base_vector::GeInputUbFormat<LAYOUT_T>()> invalidRows;
     invalidRows(attenOutUb, params);
 }
 
@@ -866,7 +862,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
         }
     }
 
-    if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
+    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
         return;
     }
 
@@ -888,7 +884,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo
     LocalTensor<COMPUTE_T> sinkBuf = tmpBuff1.GetWithOffset<COMPUTE_T>(BUFFER_SIZE_BYTE_8K, BUFFER_SIZE_BYTE_8K * 2);
     SinkCopyIn(info, sinkBuf);
 
-    bool isInvalidRows = IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
+    bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
         constInfo.sparseMode, constInfo.attenMaskFlag, constInfo.isRowInvalid);
 
     for (int64_t row = 0; row < dealRowCount; ++row) {

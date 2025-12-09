@@ -33,7 +33,6 @@
 using namespace optiling;
 using namespace matmul;
 using namespace AttentionCommon;
-using namespace fa_base_vector;
 using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -197,8 +196,6 @@ protected:
     // ================================Tool============================================
     __aicore__ inline uint32_t GetBIdx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetN2Idx(uint32_t bN2Idx);
-    __aicore__ inline void GetSafeActToken(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &safePreToken,
-                                           int64_t &safeNextToken);
     // ================================Process functions================================
     __aicore__ inline void FlashAttention();
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo &info);
@@ -253,7 +250,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitTilingData()
 
     constInfo.headDim = tilingData->baseParams.headDim;
     constInfo.headDimRope = tilingData->baseParams.headDimRope;
-    constInfo.headDimAlign = Align(constInfo.headDim, (uint64_t)BYTE_BLOCK);
+    constInfo.headDimAlign = Align(constInfo.headDim, (uint64_t)fa_base_vector::BYTE_BLOCK);
 
     constInfo.mmResUbSize = tilingData->workspaceParams.mm1ResSize;
     constInfo.bmm2ResUbSize = tilingData->workspaceParams.mm2ResSize;
@@ -527,23 +524,6 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcAccumOffset(RunInfo &info)
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::GetSafeActToken(int64_t actSeqLensQ, int64_t actSeqLensKv,
-                                                           int64_t &safePreToken, int64_t &safeNextToken) 
-{
-    if (constInfo.sparseMode == DEFAULT_MASK) {
-        safePreToken = Max(-actSeqLensKv, safePreToken);
-        safePreToken = Min(safePreToken, actSeqLensQ);
-        safeNextToken = Max(-actSeqLensQ, safeNextToken);
-        safeNextToken = Min(safeNextToken, actSeqLensKv);
-    } else if (constInfo.sparseMode == BAND) {
-        safePreToken = Max(-actSeqLensQ, safePreToken);
-        safePreToken = Min(safePreToken, actSeqLensKv);
-        safeNextToken = Max(-actSeqLensKv, safeNextToken);
-        safeNextToken = Min(safeNextToken, actSeqLensQ);
-    }
-}
-
-template <typename FIAT>
 __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                                       RunInfo &info)
 {
@@ -567,7 +547,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcParams(uint64_t loop, uint32
         info.actualSingleProcessSInnerSize = info.actS2Size - s2Cur * constInfo.s2BaseSize;
     }
     info.actualSingleProcessSInnerSizeAlign =
-        Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)BYTE_BLOCK);
+        Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)fa_base_vector::BYTE_BLOCK);
 
     if (constInfo.batchContinuous) {
         info.isChangeBatch = false;
@@ -581,12 +561,13 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcParams(uint64_t loop, uint32
 
     int64_t safePreToken = constInfo.preToken;
     int64_t safeNextToken = constInfo.nextToken;
-    GetSafeActToken(info.actS1Size, info.actS2Size, safePreToken, safeNextToken);
-    if (constInfo.sparseMode == BAND) {
+    fa_base_vector::GetSafeActToken(info.actS1Size, info.actS2Size, safePreToken, safeNextToken, constInfo.sparseMode);
+
+    if (constInfo.sparseMode == fa_base_vector::BAND) {
         info.preTokensPerBatch = safePreToken;
         info.nextTokensPerBatch =
             static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) + safeNextToken;
-    } else if ((constInfo.sparseMode == DEFAULT_MASK) && constInfo.attenMaskFlag) {
+    } else if ((constInfo.sparseMode == fa_base_vector::DEFAULT_MASK) && constInfo.attenMaskFlag) {
         info.nextTokensPerBatch = safeNextToken;
         info.preTokensPerBatch = 
             static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) + safePreToken;
@@ -900,15 +881,15 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcCurS2StartEnd(uint32_t bN2Cu
     uint32_t s2Start = bN2Cur == constInfo.bN2Start ? constInfo.s2Start : 0;
     int64_t safePreToken = constInfo.preToken;
     int64_t safeNextToken = constInfo.nextToken;
-    GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken);
+    fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken, constInfo.sparseMode);
 
-    int64_t preTokenLeftUp = (constInfo.sparseMode != BAND) ? safePreToken :
+    int64_t preTokenLeftUp = (constInfo.sparseMode != fa_base_vector::BAND) ? safePreToken :
         (static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + safePreToken);
     int64_t nextTokenLeftUp;
-    if (constInfo.sparseMode == DEFAULT_MASK || constInfo.sparseMode == ALL_MASK 
-        || constInfo.sparseMode == LEFT_UP_CAUSAL) {
+    if (constInfo.sparseMode == fa_base_vector::DEFAULT_MASK || constInfo.sparseMode == fa_base_vector::ALL_MASK 
+        || constInfo.sparseMode == fa_base_vector::LEFT_UP_CAUSAL) {
         nextTokenLeftUp = safeNextToken;
-    } else if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
+    } else if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
         nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
     } else {
         nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + safeNextToken;

@@ -59,6 +59,22 @@ __aicore__ inline bool IsExistInvalidRows(int64_t nextTokensPerBatch, int64_t pr
     return false;
 }
  
+ __aicore__ inline void GetSafeActToken(int64_t actSeqLensQ, int64_t actSeqLensKv,
+                                              int64_t &safePreToken, int64_t &safeNextToken, uint32_t mode)
+{
+    if (mode == DEFAULT_MASK) {
+        safePreToken = Max(-actSeqLensKv, safePreToken);
+        safePreToken = Min(safePreToken, actSeqLensQ);
+        safeNextToken = Max(-actSeqLensQ, safeNextToken);
+        safeNextToken = Min(safeNextToken, actSeqLensKv);
+    } else if (mode == BAND) {
+        safePreToken = Max(-actSeqLensQ, safePreToken);
+        safePreToken = Min(safePreToken, actSeqLensKv);
+        safeNextToken = Max(-actSeqLensKv, safeNextToken);
+        safeNextToken = Min(safeNextToken, actSeqLensQ);
+    }
+}
+
 __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
                                  uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -1111,7 +1127,7 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(Loca
         int32_t s1BottomPos = params.actS1Size + params.preTokensPerBatch - 1;
         int32_t s1End = (params.gS1Idx + params.dealRowCount - 1) % params.actS1Size;
 
-        for (int32_t s1RealEnd = params.dealRowCount - 1; s1RealEnd > 0;) {
+        for (int32_t s1RealEnd = params.dealRowCount - 1; s1RealEnd >= 0;) {
             if (s1End > s1BottomPos) {
                 int32_t s1Num = s1End - s1BottomPos;
                 if (s1RealEnd - s1Num < 0) {
