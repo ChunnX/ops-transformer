@@ -59,7 +59,7 @@
 | moe         | [moe_init_routing_quant_v2](../../moe/moe_init_routing_quant_v2/README.md) | AI Core | MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理 |
 | moe         | [moe_init_routing_v2](../../moe/moe_init_routing_v2/README.md) | AI Core | 以MoeGatingTopKSoftmax算子的输出x和expert_idx作为输入，并输出Routing矩阵expanded_x等结果供后续计算使用 |
 | moe         | [moe_init_routing_v2_grad](../../moe/moe_init_routing_v2_grad/README.md) | AI Core | [aclnnMoeInitRoutingV2](../../moe/moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)的反向传播，完成tokens的加权求和 |
-| moe         | [moe_init_routing_v3](../../moe/moe_init_routing_v3/README.md) | AI Core | MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](README.md)的计算结果做routing处理，支持不量化和动态量化模式 |
+| moe         | [moe_init_routing_v3](../../moe/moe_init_routing_v3/README.md) | AI Core | MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化和动态量化模式 |
 | moe         | [moe_re_routing](../../moe/moe_re_routing/README.md) | AI Core | MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列 |
 | moe         | [moe_token_permute](../../moe/moe_token_permute/README.md) | AI Core | MoE的permute计算，根据索引indices将tokens广播并排序 |
 | moe         | [moe_token_permute_grad](../../moe/moe_token_permute_grad/README.md) | AI Core | aclnnMoeTokenPermute的反向传播计算 |

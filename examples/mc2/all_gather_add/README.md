@@ -149,7 +149,7 @@
 
 **本地验证** 
 
-通过项目根目录build.sh脚本，可快速调用算子和UT用例，验证项目功能是否正常，build参数介绍参见[build参数说明](../context/build.md)。
+通过项目根目录build.sh脚本，可快速调用算子和UT用例，验证项目功能是否正常，build参数介绍参见[build参数说明](../../../docs/zh/context/build.md)。
 
 
 - **执行算子样例**
