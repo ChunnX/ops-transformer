@@ -949,7 +949,7 @@ static ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBuffe
     return ge::GRAPH_SUCCESS;
 }
 
-static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData *tiling)
+static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData *tiling, const uint32_t tpWorldSize)
 {
     auto attrs = context->GetAttrs();
     auto groupEpPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
@@ -957,7 +957,7 @@ static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatc
     std::string groupTp = std::string(groupTpPtr);
     std::string groupEp = std::string(groupEpPtr);
     const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "MoeDistributeDispatchV2 groupEp = %s, groupTp = %s", groupEp.c_str(), groupTp.c_str());
+    OP_LOGD(nodeName, "MoeDistributeDispatchV2 groupEp = %s", groupEp.c_str());
     uint32_t opType1 = OP_TYPE_ALL_TO_ALL;
     uint32_t opType2 = OP_TYPE_ALL_GATHER;
     std::string algConfigAllToAllStr = "AlltoAll=level0:fullmesh;level1:pairwise";
@@ -967,10 +967,13 @@ static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatc
     mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1);
 
-    mc2CcTilingConfig.SetGroupName(groupTp);
-    mc2CcTilingConfig.SetOpType(opType2);
-    mc2CcTilingConfig.SetAlgConfig(algConfigAllGatherStr);
-    mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+    if (tpWorldSize > 1) {
+        OP_LOGD(nodeName, "MoeDistributeDispatchV2 groupTp = %s", groupTp.c_str());
+        mc2CcTilingConfig.SetGroupName(groupTp);
+        mc2CcTilingConfig.SetOpType(opType2);
+        mc2CcTilingConfig.SetAlgConfig(algConfigAllGatherStr);
+        mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+    }
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
@@ -1133,10 +1136,9 @@ static ge::graphStatus MoeDistributeDispatchA3TilingFuncImpl(gert::TilingContext
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
-    SetHcommCfg(context, tilingData);
-
     uint64_t tilingKey = INIT_TILINGKEY;
     uint32_t tpWorldSize = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
+    SetHcommCfg(context, tilingData, tpWorldSize);
     CalTilingKey(tilingKey, isScales, quantMode, tpWorldSize, isSetCommAlg);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);

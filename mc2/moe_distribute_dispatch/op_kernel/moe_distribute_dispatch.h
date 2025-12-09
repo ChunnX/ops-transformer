@@ -243,7 +243,6 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::Init(
     aivId_ = GetBlockIdx();
     epRankId_ = tilingData->moeDistributeDispatchInfo.epRankId;
     winContext_[COMM_EP_IDX] = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    winContext_[COMM_TP_IDX] = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<1>(); // 没有相关公共宏
 
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(winContext_[COMM_EP_IDX]->localWindowsExp);
@@ -290,6 +289,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::Init(
     windowInstatusTensor_.SetGlobalBuffer((__gm__ int32_t*)(statusSpaceGm_));
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
     if constexpr (IsNeedAllgather) {
+        winContext_[COMM_TP_IDX] = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<1>(); // 没有相关公共宏
         tpLocalWindowGM_ = GetWindAddrByRankId(COMM_TP_IDX, tpRankId_);
         tpLocalStatusWindowGM_ = GetWindStateAddrByRankId(COMM_TP_IDX, tpRankId_);
 

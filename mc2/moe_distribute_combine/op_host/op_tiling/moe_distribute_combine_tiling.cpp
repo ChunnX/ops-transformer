@@ -660,10 +660,10 @@ static ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBuffe
 }
 
 static void SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombineTilingData *tiling,
-                        const std::string groupEp, const std::string groupTp)
+                        const std::string groupEp, const std::string groupTp, const uint32_t tpWorldSize)
 {
     const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "MoeDistributeCombine groupEp = %s, groupTp = %s", groupEp.c_str(), groupTp.c_str());
+    OP_LOGD(nodeName, "MoeDistributeCombine groupEp = %s", groupEp.c_str());
     uint32_t opType1 = OP_TYPE_ALL_TO_ALL;
     uint32_t opType2 = OP_TYPE_REDUCE_SCATTER;
     std::string algConfigAllToAllStr = "AlltoAll=level0:fullmesh;level1:pairwise";
@@ -673,10 +673,13 @@ static void SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombine
     mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1);
 
-    mc2CcTilingConfig.SetGroupName(groupTp);
-    mc2CcTilingConfig.SetOpType(opType2);
-    mc2CcTilingConfig.SetAlgConfig(algConfigReduceScatterStr);
-    mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+    if (tpWorldSize > 1) {
+        OP_LOGD(nodeName, "MoeDistributeCombine groupTp = %s", groupTp.c_str());
+        mc2CcTilingConfig.SetGroupName(groupTp);
+        mc2CcTilingConfig.SetOpType(opType2);
+        mc2CcTilingConfig.SetAlgConfig(algConfigReduceScatterStr);
+        mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+    }
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistributeCombineTilingData* tilingData,
@@ -764,9 +767,8 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext 
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
                     return ge::GRAPH_FAILED);
 
-    SetHCommCfg(context, tilingData, groupEp, groupTp);
-
     uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
+    SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize);
     uint64_t tilingKey = INIT_TILINGKEY_TP_2;
     if (tpWorldSize != MAX_TP_WORLD_SIZE) {
         tilingKey = INIT_TILINGKEY_TP_1;

@@ -409,10 +409,10 @@ static void CalTilingKey(uint64_t &tilingKey, const bool isScales, const uint32_
 }
 
 static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatchTilingData *tiling,
-    const std::string groupEp, const std::string groupTp)
+    const std::string groupEp, const std::string groupTp, const uint32_t tpWorldSize)
 {
     const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "MoeDistributeDispatch groupEp = %s, groupTp = %s", groupEp.c_str(), groupTp.c_str());
+    OP_LOGD(nodeName, "MoeDistributeDispatch groupEp = %s", groupEp.c_str());
     uint32_t opType1 = OP_TYPE_ALL_TO_ALL;
     uint32_t opType2 = OP_TYPE_ALL_GATHER;
     std::string algConfigAllToAllStr = "AlltoAll=level0:fullmesh;level1:pairwise";
@@ -422,10 +422,13 @@ static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatc
     mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1);
 
-    mc2CcTilingConfig.SetGroupName(groupTp);
-    mc2CcTilingConfig.SetOpType(opType2);
-    mc2CcTilingConfig.SetAlgConfig(algConfigAllGatherStr);
-    mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+    if (tpWorldSize > 1) {
+        OP_LOGD(nodeName, "MoeDistributeDispatch groupTp = %s", groupTp.c_str());
+        mc2CcTilingConfig.SetGroupName(groupTp);
+        mc2CcTilingConfig.SetOpType(opType2);
+        mc2CcTilingConfig.SetAlgConfig(algConfigAllGatherStr);
+        mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+    }
 }
 
 static ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBufferSize, const char* nodeName)
@@ -551,8 +554,8 @@ static ge::graphStatus MoeDistributeDispatchA3TilingFuncImpl(gert::TilingContext
 
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
-    SetHcommCfg(context, tilingData, groupEp, groupTp);
     uint32_t tpWorldSize = tilingData->moeDistributeDispatchInfo.tpWorldSize;
+    SetHcommCfg(context, tilingData, groupEp, groupTp, tpWorldSize);
     uint64_t tilingKey = INIT_TILINGKEY;
     CalTilingKey(tilingKey, isScales, quantMode, tpWorldSize);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
