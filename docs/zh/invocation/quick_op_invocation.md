@@ -30,7 +30,7 @@
 
 1. **安装社区版CANN toolkit包**
 
-    根据实际环境，下载对应`Ascend-cann-toolkit_${cann_version}_linux-${arch}.run`包，下载链接为[toolkit x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/Ascend-cann-toolkit_8.5.0.alpha001_linux-x86_64.run)、[toolkit aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/Ascend-cann-toolkit_8.5.0.alpha001_linux-aarch64.run)。
+    根据实际环境，下载对应`Ascend-cann-toolkit_${cann_version}.alpha001_linux-${arch}.run`包，下载链接为[toolkit x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/Ascend-cann-toolkit_8.5.0.alpha001_linux-x86_64.run)、[toolkit aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/Ascend-cann-toolkit_8.5.0.alpha001_linux-aarch64.run)。
     
     ```bash
     # 确保安装包具有可执行权限
@@ -46,10 +46,10 @@
 
     运行算子时必须安装本包，若仅编译算子，可跳过本操作。
 
-    根据产品型号和环境架构，下载对应`cann-${soc_name}-opp_legacy-${cann_version}-linux-${arch}.run`包，下载链接如下：
+    根据产品型号和环境架构，下载对应`cann-${soc_name}-opp_legacy-${cann_version}.alpha001-linux-${arch}.run`包，下载链接如下：
 
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：[legacy x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910b-ops-legacy_8.5.0.alpha001_linux-86_64.run)、[legacy aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910b-ops-legacy_8.5.0.alpha001_linux-aarch64.run)。
-    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：[legacy x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910_93-ops-legacy_8.5.0.alpha001_linux-x86_64.run)、[legacy aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910_93-ops-legacy_8.5.0.alpha001_linux-aarch64.run)。
+    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：[legacy x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910b-ops-legacy_8.5.0.alpha001_linux-x86_64.run)、[legacy aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910b-ops-legacy_8.5.0.alpha001_linux-aarch64.run)。
+    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：[legacy x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910_93-ops-legacy_8.5.0.alpha001_linux-x86_64.run)、[legacy aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910_93-ops-legacy_8.5.0.alpha001_linux-aarch64.run)。
 
     ```bash
     # 确保安装包具有可执行权限
@@ -65,10 +65,10 @@
 
     如需本地运行项目算子，需额外安装此包，否则跳过本操作。
 
-    根据产品型号和环境架构，下载对应`cann-${soc_name}-ops-math_${cann_version}_linux-${arch}.run`包，下载链接如下：
+    根据产品型号和环境架构，下载对应`cann-${soc_name}-ops-math_${cann_version}.alpha001_linux-${arch}.run`包，下载链接如下：
 
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：[ops-math x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910b-ops-math_8.3.RC1_linux-x86_64.run)、[ops-math aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910b-ops-math_8.3.RC1_linux-aarch64.run)。
-    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：[ops-math x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910_93-ops-math_8.3.RC1_linux-x86_64.run)、[ops-math aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910_93-ops-math_8.3.RC1_linux-aarch64.run)。
+    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：[ops-math x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910b-ops-math_8.5.0.alpha001_linux-x86_64.run)、[ops-math aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910b-ops-math_8.5.0.alpha001_linux-aarch64.run)。
+    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：[ops-math x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910_93-ops-math_8.5.0.alpha001_linux-x86_64.run)、[ops-math aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/ops/cann-910_93-ops-math_8.5.0.alpha001_linux-aarch64.run)。
 
     ```bash
     # 确保安装包具有可执行权限
