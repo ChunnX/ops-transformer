@@ -43,15 +43,6 @@ protected:
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_bf16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 64 bfloat16_t bfloat16_t True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case0");
-
     size_t permutedTokensByteSize = 10 * 3 * 64 * sizeof(bfloat16_t);
     size_t unpermutedOutputDByteSize = 10 * 64 * sizeof(bfloat16_t);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -94,15 +85,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_bf16)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_bf16_fp32)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 64 bfloat16_t float32 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case0");
-
     size_t permutedTokensByteSize = 10 * 3 * 64 * sizeof(bfloat16_t);
     size_t unpermutedOutputDByteSize = 10 * 64 * sizeof(bfloat16_t);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -144,15 +126,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_bf16_fp32)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_fp16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 64 float16 float16 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case0");
-
     size_t permutedTokensByteSize = 10 * 3 * 64 * sizeof(half);
     size_t unpermutedOutputDByteSize = 10 * 64 * sizeof(half);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -195,15 +168,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_fp16)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_fp16_bf16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 64 float16 bfloat16_t True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case0");
-
     size_t permutedTokensByteSize = 10 * 3 * 64 * sizeof(half);
     size_t unpermutedOutputDByteSize = 10 * 64 * sizeof(half);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -246,15 +210,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_fp16_bf16)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_fp32)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 64 float32 float32 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case0");
-
     size_t permutedTokensByteSize = 10 * 3 * 64 * sizeof(float);
     size_t unpermutedOutputDByteSize = 10 * 64 * sizeof(float);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -297,15 +252,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_fp32)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_fp32_bf16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 64 float32 bfloat16_t True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case0");
-
     size_t permutedTokensByteSize = 10 * 3 * 64 * sizeof(float);
     size_t unpermutedOutputDByteSize = 10 * 64 * sizeof(float);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -527,15 +473,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_none_fp32)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_bf16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 8192 bfloat16_t bfloat16_t True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case2");
-
     size_t permutedTokensByteSize = 10 * 3 * 8192 * sizeof(bfloat16_t);
     size_t unpermutedOutputDByteSize = 10 * 8192 * sizeof(bfloat16_t);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -578,15 +515,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_bf16)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_bf16_fp16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 8192 bfloat16_t float16 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case2");
-
     size_t permutedTokensByteSize = 10 * 3 * 8192 * sizeof(bfloat16_t);
     size_t unpermutedOutputDByteSize = 10 * 8192 * sizeof(bfloat16_t);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -629,15 +557,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_bf16_fp16)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_fp16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 8192 float16 float16 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case2");
-
     size_t permutedTokensByteSize = 10 * 3 * 8192 * sizeof(half);
     size_t unpermutedOutputDByteSize = 10 * 8192 * sizeof(half);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -680,15 +599,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_fp16)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_fp16_fp32)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 8192 float16 float32 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case2");
-
     size_t permutedTokensByteSize = 10 * 3 * 8192 * sizeof(half);
     size_t unpermutedOutputDByteSize = 10 * 8192 * sizeof(half);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -731,15 +641,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_fp16_fp32)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_fp32)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 8192 float32 float32 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case2");
-
     size_t permutedTokensByteSize = 10 * 3 * 8192 * sizeof(float);
     size_t unpermutedOutputDByteSize = 10 * 8192 * sizeof(float);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);
@@ -782,15 +683,6 @@ TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_fp32)
 
 TEST_F(moe_token_unpermute_grad_test, test_case_prob_not_none_split_h_fp32_fp16)
 {
-    system(
-        "cp -rf "
-        "../../../../../../../ops/built-in/tests/ut/fast_op_test/moe_token_unpermute_grad/gen_data "
-        "./");
-    system("chmod -R 755 ./gen_data/");
-    // token_num, topk, hiddensize, dtype, flag
-    system("cd ./gen_data/ && python3 gen_data.py 10 3 8192 float32 float32 True");
-    system("cd ./moe_token_unpermute_grad_data/ && python3 gen_tiling.py case2");
-
     size_t permutedTokensByteSize = 10 * 3 * 8192 * sizeof(float);
     size_t unpermutedOutputDByteSize = 10 * 8192 * sizeof(float);
     size_t sortedIndicesByteSize = 10 * 3 * sizeof(int32_t);

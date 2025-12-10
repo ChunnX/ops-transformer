@@ -9,6 +9,7 @@
 # ======================================================================================================================
 
 if (BUILD_OPEN_PROJECT)
+    set(moe_token_unpermute_grad_depends moe/moe_finalize_routing_v2_grad CACHE INTERNAL "Dependencies for moe_token_unpermute_grad")
     target_sources(op_host_aclnnInner PRIVATE
         moe_token_unpermute_grad_def.cpp
     )
