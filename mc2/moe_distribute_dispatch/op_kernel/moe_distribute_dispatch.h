@@ -272,7 +272,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateMC2TypeFunc>::Init(
     windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankId_);
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(windowGM_), totalWinSize_);
+    OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(windowGM_), totalWinSizeEp_);
     OOMCheckAddrRange<int32_t>((__gm__ int32_t*)(statusSpaceGm_), STATE_SIZE);
 #endif
     tpGatherRankId_ = tpRankId_ == 0 ? 1 : 0;
