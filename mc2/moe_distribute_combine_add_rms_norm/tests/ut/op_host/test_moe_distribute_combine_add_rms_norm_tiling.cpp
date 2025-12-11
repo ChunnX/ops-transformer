@@ -132,7 +132,7 @@ TEST_P(MoeDistributeCombineAddRmsNormTilingTest, common_test)
         ExecuteTestCase(tilingContextPara);
     }
     else {
-        uint64_t expectTilingKey = 10000UL;
+        uint64_t expectTilingKey = 0UL;
         ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }

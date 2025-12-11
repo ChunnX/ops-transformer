@@ -34,10 +34,12 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
+#include "../../../moe_distribute_combine_add_rms_norm/op_kernel/moe_distribute_combine_add_rms_norm_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
 
 using namespace AscendC;
 using namespace ge;
+using namespace Mc2Tiling;
 
 namespace {
     constexpr uint32_t EXPAND_X_INDEX = 0;
@@ -1178,14 +1180,19 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
     return ge::GRAPH_SUCCESS;
 }
 
-static void CalTilingKey(uint64_t &tilingKey, const uint64_t tpWorldSize, uint32_t commQuantMode)
+static uint64_t CalTilingKey(const uint64_t tpWorldSize, uint32_t commQuantMode)
 {
-    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
-        tilingKey += TILINGKEY_TP_WORLD_SIZE;
+    bool tilingKeyTpWorldSize = false;
+    uint32_t quantMode = TILINGKEY_NO_QUANT;
+    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
+        tilingKeyTpWorldSize = true;
     }
     if (commQuantMode == INT8_COMM_QUANT) {
-        tilingKey += TILINGKEY_INT8_COMM_QUANT;
+        quantMode = TILINGKEY_INT8_QUANT;
     }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(static_cast<uint32_t>(tilingKeyTpWorldSize), 
+                                            static_cast<uint32_t>(quantMode));
+    return tilingKey;
 }
 
 static void SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombineV2TilingData *tiling,
@@ -1337,8 +1344,7 @@ static ge::graphStatus MoeDistributeCombineAddRmsNormA3TilingFuncImpl(gert::Tili
 
     uint64_t tpWorldSize = static_cast<uint64_t>(tilingData->moeDistributeCombineV2Info.tpWorldSize);
     SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize);
-    uint64_t tilingKey = INIT_TILINGKEY;
-    CalTilingKey(tilingKey, tpWorldSize, commQuantMode);
+    uint64_t tilingKey = CalTilingKey(tpWorldSize, commQuantMode);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     uint32_t blockDim = 1U;
