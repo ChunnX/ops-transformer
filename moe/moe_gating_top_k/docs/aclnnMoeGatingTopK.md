@@ -9,18 +9,21 @@
 
 ## 功能说明
 
--   算子功能：MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
+- 算子功能：MoE计算中，对输入x做Sigmoid或者SoftMax计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
 -   计算公式：
 
-    对输入做sigmoid：
+    对输入做Sigmoid或者SoftMax：
     $$
-    normOut=sigmoid(x)
+    if normType==1:
+        normOut=Sigmoid(x)
+    else:
+        normOut=SoftMax(x)
     $$
     如果bias不为空：
     $$
     normOut = normOut + bias
     $$
-    对计算结果按照groupCount进行分组，每组按照topk2的sum值对group进行排序，取前kGroup个组：
+    对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
     $$
     groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
     $$
