@@ -15,11 +15,8 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_update_expert_tiling_def.h"
-
-extern "C" __global__ __aicore__ void moe_update_expert(
-    GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
-    GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
-
+#include "../../../op_kernel/moe_update_expert.cpp"
+#define GM_ADDR uint8_t*
 class moe_update_expert_test : public testing::Test
 {
 protected:
@@ -57,8 +54,12 @@ TEST_F(moe_update_expert_test, moe_update_expert_test_lb_by_rank)
     uint8_t* balancedActiveMaskOutGM = (uint8_t*)AscendC::GmAlloc(tiling_data->bs * tiling_data->k * sizeof(bool));
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(
-        moe_update_expert, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+    auto moe_update_expert_wrapper = [] (GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
+    GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_update_expert<TILINGKEY_FLOAT, RANK_ID_BALANCING_MODE>(expertIdsGM,  eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+        balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(moe_update_expert_wrapper, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
         balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -96,8 +97,12 @@ TEST_F(moe_update_expert_test, moe_update_expert_test_lb_by_token_float)
     uint8_t* balancedActiveMaskOutGM = (uint8_t*)AscendC::GmAlloc(tiling_data->bs * tiling_data->k * sizeof(bool));
 
     ICPU_SET_TILING_KEY(1);
-    ICPU_RUN_KF(
-        moe_update_expert, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+    auto moe_update_expert_wrapper = [] (GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
+    GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_update_expert<TILINGKEY_FLOAT, TOKEN_ID_BALANCING_MODE>(expertIdsGM,  eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+        balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(moe_update_expert_wrapper, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
         balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -135,8 +140,12 @@ TEST_F(moe_update_expert_test, moe_update_expert_test_lb_by_token_half)
     uint8_t* balancedActiveMaskOutGM = (uint8_t*)AscendC::GmAlloc(tiling_data->bs * tiling_data->k * sizeof(bool));
 
     ICPU_SET_TILING_KEY(11);
-    ICPU_RUN_KF(
-        moe_update_expert, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+    auto moe_update_expert_wrapper = [] (GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
+    GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_update_expert<TILINGKEY_HALF, TOKEN_ID_BALANCING_MODE>(expertIdsGM,  eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+        balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(moe_update_expert_wrapper, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
         balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
@@ -174,8 +183,12 @@ TEST_F(moe_update_expert_test, moe_update_expert_test_lb_by_token_bfloat16_t)
     uint8_t* balancedActiveMaskOutGM = (uint8_t*)AscendC::GmAlloc(tiling_data->bs * tiling_data->k * sizeof(bool));
 
     ICPU_SET_TILING_KEY(21);
-    ICPU_RUN_KF(
-        moe_update_expert, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+    auto moe_update_expert_wrapper = [] (GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
+    GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_update_expert<TILINGKEY_BFLOAT16, TOKEN_ID_BALANCING_MODE>(expertIdsGM,  eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
+        balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspaceGM, tilingGM);
+    };   
+    ICPU_RUN_KF(moe_update_expert_wrapper, 48, expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM,
         balancedExpertIdsOutGM, balancedActiveMaskOutGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
