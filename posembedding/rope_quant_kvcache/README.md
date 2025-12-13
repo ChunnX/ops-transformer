@@ -9,7 +9,7 @@
 
 ## 功能说明
 
-- 算子功能：对输入张量的尾轴进行切分，划分为q、k、v，对q、k进行旋转位置编码，生成q与k，之后对k与v进行量化并按照indices更新到kCacheRef和vCacheRef上。
+- 算子功能：对输入张量的尾轴进行切分，划分为q、k、v，对q、k进行旋转位置编码，生成q与k，之后对k与v进行量化并按照indices更新到kCacheRef和vCacheRef上。该算子目前只支持图模式。
 
 ## 参数说明
 
