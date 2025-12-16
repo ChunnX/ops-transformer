@@ -15,8 +15,9 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 若您希望快速体验算子的调用和开发过程，请访问如下文档获取简易教程。
 
 - [算子列表](docs/zh/op_list.md)：介绍项目提供的全量算子信息，方便快速查询。
-- [算子调用](docs/zh/invocation/quick_op_invocation.md)：介绍调用算子的基本步骤，快速搭建环境，实现算子编译执行。
-- [算子开发](docs/zh/develop/aicore_develop_guide.md)：介绍开发算子的基本流程，一键创建算子工程目录，实现Tiling、Kernel核心交付件。
+- [环境部署](docs/zh/context/quick_install.md)：介绍项目基础环境的搭建，包括软件包和第三方依赖的获取和安装。
+- [算子调用](docs/zh/invocation/quick_op_invocation.md)：环境部署后，介绍如何快速调用算子，包括编译执行算子包和UT等。
+- [算子开发](docs/zh/develop/aicore_develop_guide.md)：环境部署后，介绍如何快速开发算子，包括创建算子工程、实现Tiling和Kernel核心交付件等。
 
 ## 📖学习教程
 
