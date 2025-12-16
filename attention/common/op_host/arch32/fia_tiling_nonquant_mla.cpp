@@ -329,6 +329,7 @@ void FiaTilingNonQuantMla::FillTilingBaseParams()
     tilingData_->baseParams.set_slidingFlag(fiaInfo_->slidingFlag);
     tilingData_->baseParams.set_needInit(fiaInfo_->needInit);
     tilingData_->baseParams.set_usedCoreNum(usedCoreNum_);
+    tilingData_->baseParams.set_softmaxLseFlag(fiaInfo_->softmaxLseFlag ? 1 : 0);
 }
 
 void FiaTilingNonQuantMla::FillTilingPageAttenParams()

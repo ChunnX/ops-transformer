@@ -211,6 +211,7 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
     constInfo.mBaseSize = tilingData->innerSplitParams.mBaseSize;
     constInfo.s2BaseSize = tilingData->innerSplitParams.s2BaseSize;
     constInfo.batchContinuous = tilingData->baseParams.batchContinuous;
+    constInfo.softmaxLseFlag = tilingData->baseParams.softmaxLseFlag;
 
     constInfo.headDim = tilingData->baseParams.headDim;
     constInfo.headDimRope = tilingData->baseParams.headDimRope;
@@ -379,6 +380,9 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
             fdService.InitParams(constInfo);
             fdService.InitGlobalTensor(lseMaxFdGm, lseSumFdGm, accumOutGm, attentionOutGm,
                                        actualSeqLengthsGmQ, actualSeqLengthsGm);
+            if (constInfo.softmaxLseFlag) {
+                fdService.InitSoftmaxLseGm(softmaxLseGm);
+            }
         }
         vectorService.InitParams(constInfo);
         vectorService.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths,

@@ -1386,7 +1386,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                 <td>queryRopeOptional和keyRopeOptional的d为64</td>
             </tr>
             <tr>
-                <td colspan="3">不支持开启SoftMaxLse、左padding、tensorlist、pse、prefix、伪量化、全量化、后量化。</td>
+                <td colspan="3">不支持左padding、tensorlist、pse、prefix、伪量化、全量化、后量化。</td>
             </tr>
             <tr>
                 <td rowspan="7">当query的d不等于512时</td>
@@ -1544,7 +1544,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>-</td>
         </tr>
         <tr>
-            <td colspan="4">不支持开启SoftMaxLse、左padding、tensorlist、pse、prefix、伪量化、后量化</td>
+            <td colspan="4">不支持左padding、tensorlist、pse、prefix、伪量化、后量化</td>
         </tr>
         <tr>
             <td rowspan="5">query d=128</td>
