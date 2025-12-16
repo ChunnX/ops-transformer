@@ -53,6 +53,7 @@ function(gen_ophost_symbol)
             rt2_registry_static
             -Wl,--no-whole-archive
             tiling_api
+            -Wl,-Bsymbolic
     )
 
   target_link_directories(${OPHOST_NAME}
@@ -82,6 +83,7 @@ function(gen_opgraph_symbol)
             -Wl,--whole-archive
             rt2_registry_static
             -Wl,--no-whole-archive
+            -Wl,-Bsymbolic
     )
 
   target_link_directories(${OPGRAPH_NAME}
