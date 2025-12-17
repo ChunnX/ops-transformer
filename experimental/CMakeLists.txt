@@ -138,7 +138,7 @@ set(PARENT_DIRS attention ffn gmm mc2 moe posembedding)
 set(OPERATOR_TARGETS "")
 
 foreach(DIR_NAME ${PARENT_DIRS})
-    set(PARENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../${DIR_NAME}")
+    set(PARENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${DIR_NAME}")
 
     if(IS_DIRECTORY ${PARENT_DIR})
         message(STATUS "Scanning ${DIR_NAME} directory ...")
