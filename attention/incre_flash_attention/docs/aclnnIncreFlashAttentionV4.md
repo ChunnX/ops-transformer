@@ -472,6 +472,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
   - page attention使能场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
   - 使能 Attention mask，例如 mask shape为 (B, 1, 1, S)。
   - 使能 pseShift，例如 pseShift shape为(B, N, 1, S)。
+  - 使能 kvPaddingSize，例如 kvPaddingSize shape为(1), 并且要求 S 大于等于 kvPaddingSize 加 每个Batch中最大actualSeqLengthsKv的和。
 
 ## 调用示例
 
