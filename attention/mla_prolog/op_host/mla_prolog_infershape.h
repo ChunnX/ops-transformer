@@ -37,6 +37,7 @@ constexpr uint32_t QUERY_ROPE_INDEX = 1;
 constexpr uint32_t KV_CACHE_OUT_INDEX = 2;
 constexpr uint32_t KR_CACHE_OUT_INDEX = 3;
 // TMP
+constexpr uint32_t DIM_NUM_0 = 0;
 constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_2 = 2;
 constexpr uint32_t DIM_NUM_3 = 3;

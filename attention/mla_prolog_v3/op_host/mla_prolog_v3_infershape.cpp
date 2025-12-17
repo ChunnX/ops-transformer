@@ -48,10 +48,10 @@ ge::graphStatus SetMlaPrologV3ShapeDim(const MlaPrologProtoShapeParam &shapePara
         dequantScaleQNopeShape->SetDimNum(DIM_NUM_3);                   // (B*S, N, 1) | (T, N, 1)
         dequantScaleQNopeShape->SetDim(DIM_INDEX_0, shapeParam.isBsMerge ? shapeParam.T : shapeParam.B * shapeParam.S);
         dequantScaleQNopeShape->SetDim(DIM_INDEX_1, shapeParam.N);
-        dequantScaleQNopeShape->SetDim(DIM_INDEX_2, 1);                 // 1: Fix dim 1
+        dequantScaleQNopeShape->SetDim(DIM_INDEX_2, DIM_NUM_1);                 // 1: Fix dim 1
     } else {
         dequantScaleQNopeShape->SetDimNum(DIM_NUM_1);
-        dequantScaleQNopeShape->SetDim(DIM_INDEX_0, DIM_NUM_1);
+        dequantScaleQNopeShape->SetDim(DIM_INDEX_0, DIM_NUM_0);
     }
 
     // queryNorm
@@ -82,7 +82,7 @@ ge::graphStatus SetMlaPrologV3ShapeDim(const MlaPrologProtoShapeParam &shapePara
 
         if (weightQuantMode == WEIGHT_QUANT_MODE_NO_QUANT) {
             dequantScaleQNormShape->SetDimNum(DIM_NUM_1);
-            dequantScaleQNormShape->SetDim(DIM_INDEX_0, DIM_NUM_1);
+            dequantScaleQNormShape->SetDim(DIM_INDEX_0, DIM_NUM_0);
         } else {
             dequantScaleQNormShape->SetDimNum(DIM_NUM_2);
             dequantScaleQNormShape->SetDim(DIM_INDEX_0, shapeParam.T);
@@ -90,9 +90,9 @@ ge::graphStatus SetMlaPrologV3ShapeDim(const MlaPrologProtoShapeParam &shapePara
         }
     } else {
         queryNormShape->SetDimNum(DIM_NUM_1);
-        queryNormShape->SetDim(DIM_INDEX_0, DIM_NUM_1);
+        queryNormShape->SetDim(DIM_INDEX_0, DIM_NUM_0);
         dequantScaleQNormShape->SetDimNum(DIM_NUM_1);
-        dequantScaleQNormShape->SetDim(DIM_INDEX_0, DIM_NUM_1);
+        dequantScaleQNormShape->SetDim(DIM_INDEX_0, DIM_NUM_0);
     }
 
     return GRAPH_SUCCESS;

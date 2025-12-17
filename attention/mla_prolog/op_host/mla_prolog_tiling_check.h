@@ -136,6 +136,8 @@ public:
     ge::graphStatus CheckAttrs() const;
 
 private:
+    bool CheckAttrsNotNull() const;
+    bool CheckAttrsRange() const;
     bool CheckCacheModeParamShape() const;
     // ==================================单参数校验==================================
     bool IsSingleParamValid(const BaseParaInfo &param, const std::string &paramName,

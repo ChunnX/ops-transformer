@@ -68,14 +68,10 @@ public:
         }
     }
     
-    void CheckTensorNotNullWhen(bool conditional) const {
+    void CheckTensorConditionalNotNull(bool conditional) const {
         if (inner_ && conditional) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s != nullptr failed!", name_.c_str());
-        }
-    }
-    
-    void CheckTensorNullWhen(bool conditional) const {
-        if (!inner_ && conditional) {
+        } else if (!inner_ && !conditional) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s == nullptr failed!", name_.c_str());
         }
     }
@@ -147,13 +143,10 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     }
     // weightQuantMode == 2:全量化场景, kvCacheQuantMode == 1:KV_PER_TENSOR量化场景
-    dequantScaleQNopeHolder.CheckTensorNotNullWhen(weightQuantMode == 2 && kvCacheQuantMode == 1); 
-    dequantScaleQNopeHolder.CheckTensorNullWhen(weightQuantMode != 2 || kvCacheQuantMode != 1); 
+    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(weightQuantMode == 2 && kvCacheQuantMode == 1); 
     bool queryNormFlag = queryNormHolder.IsTensorNotNull();
     // weightQuantMode != 0:量化场景
-    dequantScaleQNormHolder.CheckTensorNotNullWhen(weightQuantMode != 0 && queryNormFlag);
-    // weightQuantMode == 0:非量化场景
-    dequantScaleQNormHolder.CheckTensorNullWhen(weightQuantMode == 0 || !queryNormFlag);
+    dequantScaleQNormHolder.CheckTensorConditionalNotNull(weightQuantMode != 0 && queryNormFlag);
     return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCacheRef, krCacheRef,
         cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional, dequantScaleWUqQrOptional,

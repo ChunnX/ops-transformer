@@ -115,16 +115,16 @@ constexpr char V2_OP_NAME[] {"MlaPrologV2"};
 constexpr char V3_OP_NAME[] {"MlaPrologV3"};
 
 
-constexpr uint32_t CACHE_MODE_LEN = std::max({sizeof(CACHE_MODE_BSND) - 1, 
-                                              sizeof(CACHE_MODE_TND) - 1, 
-                                              sizeof(CACHE_MODE_PA_BSND) - 1,
-                                              sizeof(CACHE_MODE_PA_NZ) - 1,
-                                              sizeof(CACHE_MODE_PA_BLK_BSND) - 1,
-                                              sizeof(CACHE_MODE_PA_BLK_NZ) - 1});
+constexpr uint32_t CACHE_MODE_LEN = std::max({sizeof(CACHE_MODE_BSND), 
+                                              sizeof(CACHE_MODE_TND), 
+                                              sizeof(CACHE_MODE_PA_BSND),
+                                              sizeof(CACHE_MODE_PA_NZ),
+                                              sizeof(CACHE_MODE_PA_BLK_BSND),
+                                              sizeof(CACHE_MODE_PA_BLK_NZ)});
 
-constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME) - 1, 
-                                            sizeof(V2_OP_NAME) - 1, 
-                                            sizeof(V3_OP_NAME) - 1});
+constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
+                                            sizeof(V2_OP_NAME), 
+                                            sizeof(V3_OP_NAME)});
 
 struct MlaPrologBaseShapeInfo {
     uint32_t bSize = 0;         // B

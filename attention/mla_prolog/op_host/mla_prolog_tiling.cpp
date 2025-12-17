@@ -77,14 +77,13 @@ ge::graphStatus MlaPrologTiling::GetNpuInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-
 QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
 {
     if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::NO_QUANT)) {
             if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::NO_QUANT;
             } else {
-                OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d", *(context_->kvQuantMode)); 
+                OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d.", *(context_->kvQuantMode)); 
             }
     } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::PARTIAL_QUANT)) {
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
@@ -94,7 +93,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
         } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d", *(context_->kvQuantMode)); 
+            OP_LOGE(context_->opName, "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d.", *(context_->kvQuantMode)); 
         }
     } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FULL_QUANT)) {
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
@@ -104,18 +103,10 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
         } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d", *(context_->kvQuantMode)); 
-        }
-    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
-        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
-                return QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
-                return QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR;
-        } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 3, kvQuantMode must be within {0, 1}, actually is %d", *(context_->kvQuantMode)); 
+            OP_LOGE(context_->opName, "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode)); 
         }
     } else {
-        OP_LOGE(context_->opName, "weightQuantMode must be within {0, 1, 2}, actually is %d", *(context_->weightQuantMode));
+        OP_LOGE(context_->opName, "WeightQuantMode must be within {0, 1, 2}, actually is %d", *(context_->weightQuantMode));
     }
     return QUANT_MODE::ERROR_MODE;
 }
@@ -225,6 +216,10 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
 
     if (scenarioInfo_.batchSeqFusedFlag_ && 
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
+        OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
+            OP_LOGE(context_->opName, 
+                "When cacheMode is PA_BLK_BSND or PA_BLK_NZ and tokenX shape dim num is 2,"
+                    "actualSeqLen should not be null."), return GRAPH_FAILED);
         baseShapeInfo_.bSize = context_->actualSeqLen.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::EN_Q_LEN;
     } else {
@@ -548,6 +543,12 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
             static_cast<uint8_t>(scenarioInfo_.splitMFlag_),
             cvMode
         );
+        OP_LOGI(context_->opName, "MlaProlog tilingKey args: "
+            "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
+            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u",
+            static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
+            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
     }
     OP_LOGI(context_->opName, "MlaProlog tilingKey:%lu", context_->tilingKey);
 
@@ -613,10 +614,8 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
 
 ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, MlaPrologContext &mlaPrologContext)
 {
-    if (context.GetNodeName() == nullptr) {
-        OP_LOGE(V1_OP_NAME, "opName got from TilingContext is nullptr");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(context.GetNodeName() == nullptr,
+        OP_LOGE(V1_OP_NAME, "OpName got from TilingContext is nullptr."), return ge::GRAPH_FAILED);
 
     mlaPrologContext.opName = context.GetNodeName();
     mlaPrologContext.opType = context.GetNodeType();
@@ -626,8 +625,8 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
     ConvertOptionalParams(context, mlaPrologContext);
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from ge is nullptr"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr, 
+        OP_LOGE(context.GetNodeName(), "Attrs got from ge is nullptr."), return ge::GRAPH_FAILED);
     mlaPrologContext.rmsNormEspilonCq = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CQ_ATTR_INDEX);
     mlaPrologContext.rmsNormEspilonCkv = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CKV_ATTR_INDEX);
     mlaPrologContext.cacheMode = attrs->GetStr(CACHE_MODE_ATTR_INDEX);
@@ -755,19 +754,18 @@ void MlaPrologTiling::ConvertOptionalParams(gert::TilingContext &context, MlaPro
 
 MLA_EXTERN_C ge::graphStatus TilingMlaProlog(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR(V1_OP_NAME, "Context is nullptr."),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, 
+        OPS_REPORT_VECTOR_INNER_ERR(V1_OP_NAME, "Context is nullptr."), return ge::GRAPH_FAILED);
 
     MlaPrologContext mlaPrologContext{};
-    if (MlaPrologTiling::ConvertContext(*context, mlaPrologContext) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to MlaProlog context");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(MlaPrologTiling::ConvertContext(*context, mlaPrologContext) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to MlaProlog context."),
+            return ge::GRAPH_FAILED);
 
     MlaPrologTiling mlaPrologTiling;
     MlaPrologTilingData* tilingData = context->GetTilingData<MlaPrologTilingData>();
     OP_CHECK_IF(tilingData == nullptr,
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "TilingData is nullptr."),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "TilingData is nullptr."),
             return ge::GRAPH_FAILED);
     if (mlaPrologTiling.RunBigKernelTiling(mlaPrologContext, tilingData) == ge::SUCCESS) {
         context->SetTilingKey(mlaPrologContext.tilingKey);

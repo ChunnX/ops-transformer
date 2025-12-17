@@ -67,15 +67,11 @@ public:
         }
     }
     
-    void CheckTensorNotNullWhen(bool conditional) const {
+    void CheckTensorConditionalNotNull(bool conditional) const {
         if (inner_ && conditional) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s != nullptr failed!", name_.c_str());
-        }
-    }
-    
-    void CheckTensorNullWhen(bool conditional) const {
-        if (!inner_ && conditional) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s == nullptr failed!", name_.c_str());
+            OP_LOGW("Check %s != nullptr failed!", name_.c_str());
+        } else if (!inner_ && !conditional) {
+            OP_LOGW("Check %s == nullptr failed!", name_.c_str());
         }
     }
 
@@ -122,8 +118,7 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOut!");
         return ge::GRAPH_FAILED;
     }
-    dequantScaleQNopeHolder.CheckTensorNotNullWhen(tokenX ->GetDataType() == ge::DT_INT8 && kvCacheRef ->GetDataType() == ge::DT_INT8); 
-    dequantScaleQNopeHolder.CheckTensorNullWhen(tokenX ->GetDataType() != ge::DT_INT8 || kvCacheRef ->GetDataType() != ge::DT_INT8); 
+    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(tokenX ->GetDataType() == ge::DT_INT8 && kvCacheRef ->GetDataType() == ge::DT_INT8); 
 
     return aclnnInnerMlaPrologV2GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
