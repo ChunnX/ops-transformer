@@ -22,7 +22,6 @@ if (BUILD_OPS_RTY_KERNEL)
                 -Werror
                 -mllvm -cce-vf-remove-membar=false
                 -mllvm -cce-aicore-hoist-movemask=false
-                --op_relocatable_kernel_binary=true
     )
 else()
     add_modules_sources(OPTYPE lightning_indexer ACLNNTYPE aclnn)

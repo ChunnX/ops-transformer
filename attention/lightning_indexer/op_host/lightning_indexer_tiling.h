@@ -88,7 +88,7 @@ TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
-TILING_DATA_FIELD_DEF(bool, returnValue)
+TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexer, LITilingData)
 
@@ -163,7 +163,7 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                        const std::string &actualSeqLenName);
+                                        const std::string &actualSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();

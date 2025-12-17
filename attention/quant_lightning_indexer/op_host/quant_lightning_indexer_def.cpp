@@ -12,8 +12,6 @@
  * \file quant_lightning_indexer_def.cpp
  * \brief
  */
-#include <cstdint>
-
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -76,8 +74,7 @@ public:
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
+            .PrecisionReduceFlag(true);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
     }

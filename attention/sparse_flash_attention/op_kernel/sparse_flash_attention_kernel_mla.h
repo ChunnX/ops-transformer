@@ -691,8 +691,6 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
             info.actualSingleProcessSInnerSize = tempLoopInfo.curActualSeqLen - sInnerOffsetDataSize;
             info.actualSingleProcessSInnerSize = info.actualSingleProcessSInnerSize > constInfo.s2BaseSize ?
                                                 constInfo.s2BaseSize : info.actualSingleProcessSInnerSize;
-            info.actualSingleProcessSInnerSize =
-                SFAAlign((int64_t)info.actualSingleProcessSInnerSize, (int64_t)constInfo.sparseBlockSize);
         } else {
             info.actualSingleProcessSInnerSize = 0;
         }

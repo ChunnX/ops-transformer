@@ -233,6 +233,9 @@ template <typename LIT>
 __aicore__ inline uint32_t LIPreload<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
                                                                    uint32_t actS2Size)
 {
+    if (actS2Size == 0) {
+        return 0;
+    }
     uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
     int32_t validS2LenBase = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size);
     int32_t validS2Len = s1Offset + validS2LenBase + constInfo.s1BaseSize;
@@ -568,9 +571,21 @@ __aicore__ inline void LIPreload<LIT>::ProcessInvalid()
             GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
             AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
             if (constInfo.returnValue) {
-                GlobalTensor<K_T> valueOut = valueOutGm[baseSize];
-                K_T invalidValue = 0;
-                AscendC::InitGlobalMemory(valueOut, dealSize, invalidValue);
+                event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+
+                GlobalTensor<uint16_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
+
+                uint16_t negInf = 0;
+                if constexpr(std::is_same<K_T, float16_t>::value) {
+                    negInf = 0xFC00;
+                } else {
+                    negInf = 0xFF80;
+                }
+                AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
             }
         }
     }

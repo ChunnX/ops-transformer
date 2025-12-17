@@ -26,6 +26,8 @@ constexpr uint32_t KEY_INDEX = 1;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
 constexpr uint32_t ATTR_KV_LAYOUT_INDEX = 3;
 constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 4;
+constexpr uint32_t DIM_NUM_3 = 3;
+constexpr uint32_t DIM_NUM_4 = 4;
 
 static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *context)
 {
@@ -55,14 +57,15 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
         return GRAPH_FAILED;
     }
 
-    outShape->SetDimNum(queryShape->GetDimNum());
     int64_t keyHeadNum = (inputLayoutKeyPtrStr == "TND") ? keyShape->GetDim(1) : keyShape->GetDim(2);
     if (inputLayoutQueryPtrStr == "BSND") {
+        outShape->SetDimNum(DIM_NUM_4);
         outShape->SetDim(0, queryShape->GetDim(0));  // 0:Dim B
         outShape->SetDim(1, queryShape->GetDim(1));  // 1:Dim S
         outShape->SetDim(2, keyHeadNum);             // 2:Dim N
         outShape->SetDim(3, *sparse_count);          // 3:Dim K
     } else {
+        outShape->SetDimNum(DIM_NUM_3);
         outShape->SetDim(0, queryShape->GetDim(0));  // 0:Dim T
         outShape->SetDim(1, keyHeadNum);             // 1:output shape's N Dim, 2: key shape's N Dim
         outShape->SetDim(2, *sparse_count);          // 2:Dim K

@@ -95,6 +95,7 @@ public:
                                                        LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
     __aicore__ inline void CopyFALseToGm(const RunInfo &info, const MSplitInfo &mSplitInfo, 
                                         LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
+    __aicore__ inline void SetBmm2FirstSInnerBias(const RunInfo &info, const MSplitInfo &mSplitInfo);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -354,20 +355,26 @@ __aicore__ inline void SFAVectorService<SFAT>::CopyFALseToGm(const RunInfo &info
     }
 
     if (info.actualSingleProcessSInnerSize != 0) {
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = sizeof(T) * size;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        size_t alignedSize = (sizeof(T) * size + 31) / 32 * 32 / sizeof(T);
         LocalTensor<T> tmp = outputBuff2.Get<T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
-        DataCopy(tmp, softmaxMaxUb[baseOffset], size);
+        DataCopy(tmp, softmaxMaxUb[baseOffset], alignedSize);
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
-        DataCopy(softmaxMaxGm[offset], tmp, size);
+        DataCopyPad(softmaxMaxGm[offset], tmp, dataCopyParams);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 
         tmp = outputBuff2.Get<T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
-        DataCopy(tmp, softmaxSumUb[baseOffset], size);
+        DataCopy(tmp, softmaxSumUb[baseOffset], alignedSize);
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
-        DataCopy(softmaxSumGm[offset], tmp, size);
+        DataCopyPad(softmaxSumGm[offset], tmp, dataCopyParams);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
     } else {
         matmul::InitOutput<T>(softmaxSumGm[offset], size, ConstInfo::FLOAT_ZERO);
@@ -685,12 +692,31 @@ __aicore__ inline void SFAVectorService<SFAT>::DealBmm1ResBaseBlock(
 }
 
 template <typename SFAT>
+__aicore__ inline void SFAVectorService<SFAT>::SetBmm2FirstSInnerBias(const RunInfo &info, const MSplitInfo &mSplitInfo)
+{
+    uint32_t mSplitSize = 16U;
+    uint64_t baseoffset = (info.bn2IdxInCurCore % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + 
+                            (mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) * constInfo.headDim;
+    WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+    LocalTensor<int32_t> tmpTensor = outputBuff1.Get<int32_t>();
+    Duplicate(tmpTensor, static_cast<int32_t>(394264576), mSplitSize * constInfo.headDim);  // 394264576 : fp32下2^(-80)的二进制表示对应的int32数值
+    SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+    WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+    uint32_t loopCount = (mSplitInfo.vecDealM + mSplitSize - 1) / mSplitSize;
+    for (uint32_t loop = 0; loop < loopCount; loop++) {
+        DataCopy(mm2ResInt32Gm[baseoffset + loop * mSplitSize * constInfo.headDim], tmpTensor, mSplitSize * constInfo.headDim);
+    }
+    SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+}
+
+template <typename SFAT>
 __aicore__ inline void SFAVectorService<SFAT>::ProcessAmlaNupdate(const RunInfo &info, const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
     if (info.isFirstSInnerLoop) {
+        SetBmm2FirstSInnerBias(info, mSplitInfo);
         return;
     }
 

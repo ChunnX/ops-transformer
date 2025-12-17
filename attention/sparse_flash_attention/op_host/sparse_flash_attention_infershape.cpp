@@ -106,6 +106,8 @@ ge::graphStatus InferDataTypeSparseFlashAttention(gert::InferDataTypeContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(SparseFlashAttention).InferShape(InferShapeSparseFlashAttention).InferDataType(InferDataTypeSparseFlashAttention);
+IMPL_OP_INFERSHAPE(SparseFlashAttention)
+    .InferShape(InferShapeSparseFlashAttention)
+    .InferDataType(InferDataTypeSparseFlashAttention);
 } // namespace ops
   

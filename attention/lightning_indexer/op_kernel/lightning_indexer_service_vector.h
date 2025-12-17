@@ -212,15 +212,21 @@ __aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset
     valueULocal = outQueue_.DeQue<float>();
     LIServiceVec::CopyOut(indiceOutGm[invalidS1offset], idxULocal1, constInfo_.sparseCount);
     outQueue_.FreeTensor(valueULocal);
-
+    
     if (constInfo_.returnValue) {
-        K_T invalidValue = 0;
-        LocalTensor<float> valueULocal = outQueue_.AllocTensor<float>();
-        LocalTensor<K_T> valULocal1 = valueULocal.template ReinterpretCast<K_T>();
-        Duplicate(valULocal1, invalidValue, constInfo_.sparseCount);
-        outQueue_.EnQue<float>(valueULocal);
-        valueULocal = outQueue_.DeQue<float>();
-        LIServiceVec::CopyOut(valueOutGm[invalidS1offset], valULocal1, constInfo_.sparseCount);
+        uint16_t negInf = 0;
+        if constexpr(std::is_same<K_T, float16_t>::value) {
+            negInf = 0xFC00;
+        } else {
+            negInf = 0xFF80;
+        }
+        LocalTensor<uint16_t> valueULocal = outQueue_.AllocTensor<uint16_t>();
+        Duplicate(valueULocal, negInf, constInfo_.sparseCount);
+        outQueue_.EnQue<uint16_t>(valueULocal);
+        valueULocal = outQueue_.DeQue<uint16_t>();
+        GlobalTensor<uint16_t> valueOutGmTmp;
+        valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
+        LIServiceVec::CopyOut(valueOutGmTmp[invalidS1offset], valueULocal, constInfo_.sparseCount);
         outQueue_.FreeTensor(valueULocal);
     }
 }

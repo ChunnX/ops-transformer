@@ -1088,9 +1088,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                         CrossCoreWaitFlag(constInfo.syncV1NupdateC2);
                     }
 
-                    if (!info.isFirstSInnerLoop) {
-                        SetAtomicAdd<MM_OUT_T>();
-                    }
+                    SetAtomicAdd<MM_OUT_T>();
                     // ND
                     FixpipeParamsV220 fixParams;
                     fixParams.nSize = nL1SizeAlign;
@@ -1103,9 +1101,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                     uint64_t mm2Offset = (mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE) * nSize + nL1 * N_SPLIT_SIZE;
                     Fixpipe(mm2ResGm[(info.bn2IdxInCurCore % (constInfo.preLoadNum)) *
                             constInfo.bmm2ResUbSize + mm2Offset], cL0Tensor, fixParams);
-                    if (!info.isFirstSInnerLoop) {
-                        SetAtomicNone();
-                    }
+                    SetAtomicNone();
                 }
 
                 if (mL1Loops == 2) {

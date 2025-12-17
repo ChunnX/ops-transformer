@@ -728,8 +728,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_
         info.actualSingleProcessSInnerSize = tempLoopInfo.curActualSeqLen - sInnerOffsetDataSize;
         info.actualSingleProcessSInnerSize = info.actualSingleProcessSInnerSize > constInfo.s2BaseSize ?
                                              constInfo.s2BaseSize : info.actualSingleProcessSInnerSize;
-        info.actualSingleProcessSInnerSize =
-                QSFAAlign((int64_t)info.actualSingleProcessSInnerSize, (int64_t)constInfo.sparseBlockSize);
     } else {
         info.actualSingleProcessSInnerSize = 0;
     }

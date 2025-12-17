@@ -179,19 +179,19 @@ std::string QSFALayoutToSerialString(QSFALayout layout)
     }
 }
 
-ge::graphStatus QSFAMlaTiling::SetBlockDim(uint32_t blockDim)
+ge::graphStatus QSFAMlaTiling::SetBlockDim(uint32_t blockDim) const
 {
     context_->SetBlockDim(blockDim);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAMlaTiling::SetTilingKey(uint64_t tilingKey)
+ge::graphStatus QSFAMlaTiling::SetTilingKey(uint64_t tilingKey) const
 {
     context_->SetTilingKey(tilingKey);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAMlaTiling::SetWorkspaceSize(uint64_t workspaceSize)
+ge::graphStatus QSFAMlaTiling::SetWorkspaceSize(uint64_t workspaceSize) const
 {
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "workSpaceSize got from ge is nullptr"),
@@ -201,7 +201,7 @@ ge::graphStatus QSFAMlaTiling::SetWorkspaceSize(uint64_t workspaceSize)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAMlaTiling::SetTilingData(TilingDef &tilingData)
+ge::graphStatus QSFAMlaTiling::SetTilingData(TilingDef &tilingData) const
 {
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "RawTilingData got from GE context is nullptr."),
@@ -239,7 +239,7 @@ void QSFAMlaTiling::GenTilingKey()
     OP_LOGI(sfaaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
 
-void QSFAMlaTiling::ZeroTensorProcess()
+void QSFAMlaTiling::ZeroTensorProcess() const
 {
     if (sfaaInfo_->s2Size == 0) {
         /*
@@ -256,7 +256,7 @@ void QSFAMlaTiling::InitParams()
     perfMode_ = QSFAPerfMode::V_TEMPLATE_MODE;
     coreNum_ = aicNum_;
 
-    headDimAlign_ = Align(sfaaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
+    headDimAlign_ = Align(sfaaInfo_->qHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
     ZeroTensorProcess();
 }
 
@@ -369,7 +369,7 @@ void QSFAMlaTiling::FillTiling()
     FillTilingSingleCoreTensorSizeMla();
 }
 
-uint32_t QSFAMlaTiling::CalcBalanceFDParamNums(const uint32_t actCoreNum)
+uint32_t QSFAMlaTiling::CalcBalanceFDParamNums(const uint32_t actCoreNum) const
 {
     return actCoreNum * 2 * sfaaInfo_->n2Size * mBaseSize_; // 2:每个核可能有头规约和尾规约，一共两份规约信息
 }
@@ -475,7 +475,7 @@ ge::graphStatus TilingKvQuantSparseFlashAttention(gert::TilingContext *context)
     return tiling.DoOpTiling(&sfaaInfo);
 }
 
-ge::graphStatus TilingPrepareForKvQuantSparseFlashAttention(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForKvQuantSparseFlashAttention(gert::TilingParseContext* const context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -680,8 +680,10 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
-    OP_CHECK_IF((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16),
-        OP_LOGE(opName_, "sparseBlockSize should be in range [1, 16], but got: %ld.", *opParamInfo_.sparseBlockSize),
+    OP_CHECK_IF(((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
+        (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
+        OP_LOGE(opName_, "sparseBlockSize should be in range [1, 16] and be a power of 2, but got: %ld.",
+            *opParamInfo_.sparseBlockSize),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -720,54 +722,6 @@ ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::CheckExists(const void *pointer, const std::string &name) const
-{
-    OP_CHECK_IF(pointer == nullptr,
-        OP_LOGE(opName_, "%s should not be null", name.c_str()),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QSFATilingCheck::CheckNotExists(const void *pointer, const std::string &name) const
-{
-    OP_CHECK_IF(pointer != nullptr,
-        OP_LOGE(opName_, "%s should be null", name.c_str()),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QSFATilingCheck::CheckExistsByMap(const std::map<std::string, const void *> &paramMap) const
-{
-    for (const auto& kv : paramMap) {
-        if (CheckExists(kv.second, kv.first) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QSFATilingCheck::CheckNotExistsByMap(const std::map<std::string, const void *> &paramMap) const
-{
-    for (const auto& kv : paramMap) {
-        if (CheckNotExists(kv.second, kv.first) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QSFATilingCheck::CheckExistenceByMap(std::map<std::string, const void *> &existMap,
-    std::map<std::string, const void *> &notExistMap) const
-{
-    if (CheckExistsByMap(existMap) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (CheckNotExistsByMap(notExistMap) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 template <typename T>
 ge::graphStatus QSFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::pair<const T *, T>> &attrMap) const
 {
@@ -797,16 +751,19 @@ ge::graphStatus QSFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::
 
 ge::graphStatus QSFATilingCheck::CheckParaExistenceMlaAntiquant() const
 {
-    if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
+    if (kvLayout_ == QSFALayout::BSND) {
         return ge::GRAPH_SUCCESS;
-    }
-    std::map<std::string, const void *> mlaAntiquantParamExistMap = {
-        {"actualSeqLengths", opParamInfo_.actualSeqLengths.tensor},
-        {"blockTable", opParamInfo_.blockTable.tensor},
-    };
-    std::map<std::string, const void *> mlaAntiquantParamNotExistMap = {};
-    if (CheckExistenceByMap(mlaAntiquantParamExistMap, mlaAntiquantParamNotExistMap) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+    } else if (kvLayout_ == QSFALayout::TND) {
+        OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
+                   OP_LOGE(opName_, "when layout_kv is TND, actualSeqLengthsKv must not be null"),
+                   return ge::GRAPH_FAILED);
+    } else if (kvLayout_ == QSFALayout::PA_BSND) {
+        OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
+                   OP_LOGE(opName_, "when layout_kv is PA_BSND, actualSeqLengthsKv must not be null"),
+                   return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+                   OP_LOGE(opName_, "when layout_kv is PA_BSND, blockTable must not be null"),
+                   return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -826,11 +783,11 @@ ge::graphStatus QSFATilingCheck::CheckParaExistence()
 }
 
 ge::graphStatus QSFATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-    const QSFALayout &layoutQuery, const std::string &name)
+    const QSFALayout &layout, const std::string &name) const
 {
     if (tensor == nullptr) {
         OP_LOGE(opName_, "when layout of query is %s, %s must be provided.",
-            QSFALayoutToSerialString(layoutQuery).c_str(), name.c_str());
+            QSFALayoutToSerialString(layout).c_str(), name.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
@@ -1128,8 +1085,12 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
         OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qkHeadDim_ - ropeHeadDim_ != 512, // 512:当前不泛化
-        OP_LOGE(opName_, "qk_head_dim only support 512, but got %u", qkHeadDim_),
+    OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
+        OP_LOGE(opName_, "q_head_dim only support 576, but got %u", qHeadDim_),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(kHeadDim_ != 656, // 656:当前不泛化
+        OP_LOGE(opName_, "k_head_dim only support 656, but got %u", kHeadDim_),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1196,7 +1157,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ropeHeadDim_ != 64, // 64:当前不泛化
-        OP_LOGE(opName_, "rope_head_dim should be 64, but got %u",
+        OP_LOGE(opName_, "rope_head_dim should be 64, but got %d",
         ropeHeadDim_),
         return ge::GRAPH_FAILED);
 
@@ -1260,7 +1221,8 @@ void QSFATilingCheck::Init()
     s1Size_ = sfaaInfo_.s1Size;
     s2Size_ = sfaaInfo_.s2Size;
     gSize_ = sfaaInfo_.gSize;
-    qkHeadDim_ = sfaaInfo_.qkHeadDim;
+    qHeadDim_ = sfaaInfo_.qHeadDim;
+    kHeadDim_ = sfaaInfo_.kHeadDim;
     vHeadDim_ = sfaaInfo_.vHeadDim;
     ropeHeadDim_ = sfaaInfo_.ropeHeadDim;
     maxBlockNumPerBatch_ = sfaaInfo_.maxBlockNumPerBatch;
@@ -1389,7 +1351,7 @@ ge::graphStatus QSFAInfoParser::CheckRequiredParaExistence() const
 }
 
 ge::graphStatus QSFAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-    QSFALayout &layout, const std::string &name)
+    QSFALayout &layout, const std::string &name) const
 {
     if ((tensor == nullptr)) {
         OP_LOGE(opName_, "when layout of query is %s, %s must be provided.",
@@ -1435,7 +1397,7 @@ ge::graphStatus QSFAInfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     if (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_);
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
 
@@ -1546,11 +1508,19 @@ ge::graphStatus QSFAInfoParser::GetKVTSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAInfoParser::GetQkHeadDim()
+ge::graphStatus QSFAInfoParser::GetQHeadDim()
 {
-    // 获取qkHeadDim基准值
+    // 获取qHeadDim基准值
     // 以query的D维度为基准
-    qkHeadDim_ = GetAxisNum(queryShape_, QSFAAxis::D, qLayout_);
+    qHeadDim_ = GetAxisNum(queryShape_, QSFAAxis::D, qLayout_);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFAInfoParser::GetKHeadDim()
+{
+    // 获取kHeadDim基准值
+    // 以key的D维度为基准
+    kHeadDim_ = GetAxisNum(keyShape_, QSFAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1759,7 +1729,8 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.s1Size = s1Size_;
     sfaaInfo.s2Size = s2Size_;
     sfaaInfo.gSize = gSize_;
-    sfaaInfo.qkHeadDim = qkHeadDim_;
+    sfaaInfo.qHeadDim = qHeadDim_;
+    sfaaInfo.kHeadDim = kHeadDim_;
     sfaaInfo.vHeadDim = vHeadDim_;
     sfaaInfo.qTSize = qTSize_;
     sfaaInfo.kvTSize = kvTSize_;
@@ -1833,7 +1804,8 @@ ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &sfaaInfo)
         ge::GRAPH_SUCCESS != GetQTSize() ||
         ge::GRAPH_SUCCESS != GetKVTSize() ||
         ge::GRAPH_SUCCESS != GetS1Size() ||
-        ge::GRAPH_SUCCESS != GetQkHeadDim() ||
+        ge::GRAPH_SUCCESS != GetQHeadDim() ||
+        ge::GRAPH_SUCCESS != GetKHeadDim() ||
         ge::GRAPH_SUCCESS != GetS2Size() ||
         ge::GRAPH_SUCCESS != GetValueHeadDim() ||
         ge::GRAPH_SUCCESS != GetSparseBlockCount()) {

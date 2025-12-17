@@ -351,9 +351,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo &i
         uint64_t s2ValidSizeFirstPart = v0ValidSizeUb_.GetValue(128 + info.loop % MERGE_CACHE_GM_BUF_NUM);
         uint64_t s2ValidSizeSecondPart = v0ValidSizeUb_.GetValue(256 + info.loop % MERGE_CACHE_GM_BUF_NUM);
 
-        int64_t s2ProcessSize = info.s2Idx * constInfo.s2BaseSize + constInfo.s2BaseSize > info.actS2Size ?
-                                    info.actS2Size - info.s2Idx * constInfo.s2BaseSize :
-                                    constInfo.s2BaseSize;
+        int64_t s2ProcessSize = info.actualSingleProcessSInnerSize;
         int64_t s2Pair = CeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
         int64_t s2Mid = CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
         if (s2Mid > s2ProcessSize) {
@@ -792,9 +790,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
 {
-    int64_t s2ProcessSize = runInfo.s2Idx * constInfo.s2BaseSize + constInfo.s2BaseSize > runInfo.actS2Size ?
-                                runInfo.actS2Size - runInfo.s2Idx * constInfo.s2BaseSize :
-                                constInfo.s2BaseSize;
+    int64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
     int64_t s2Pair = CeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
     int64_t topkGmBaseOffset = 0;
 
@@ -845,6 +841,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
     }
 
     if (unlikely(s2GmStartOffset + mte2Size < s2GmLimit)) {
+        uint64_t blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;
         SetFlag<AscendC::HardEvent::MTE3_V>(0);
         WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx & 1);
@@ -854,18 +851,18 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
         WaitFlag<AscendC::HardEvent::V_MTE3>(0);
 
         DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = 1;
-        dataCopyParams.blockLen = constInfo.headDim * sizeof(K_ROPE_T);
+        dataCopyParams.blockCount = constInfo.headDim / blockElementNum;
+        dataCopyParams.blockLen = blockElementNum * sizeof(K_ROPE_T);
         dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
+        dataCopyParams.dstStride = (constInfo.s2BaseSize - 1) * blockElementNum * sizeof(K_ROPE_T);
         for (int64_t s2GmOffset = s2GmStartOffset + mte2Size; s2GmOffset < s2GmLimit; s2GmOffset++) {
-            DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + s2GmOffset * constInfo.headDim],
+            DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + s2GmOffset * blockElementNum],
                         mergeUb, dataCopyParams);
         }
-        dataCopyParams.blockLen = constInfo.headDimRope * sizeof(K_ROPE_T);
+        dataCopyParams.blockCount = constInfo.headDimRope / blockElementNum;
         for (int64_t s2GmOffset = s2GmStartOffset + mte2Size; s2GmOffset < s2GmLimit; s2GmOffset++) {
             DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + 512 * constInfo.headDim +
-                                   s2GmOffset * constInfo.headDimRope],
+                                   s2GmOffset * blockElementNum],
                         mergeUb, dataCopyParams);
         }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx & 1);

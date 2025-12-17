@@ -27,6 +27,8 @@ constexpr uint32_t DIM_INDEX_0 = 0;
 constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
+constexpr uint32_t DIM_NUM_3 = 3;
+constexpr uint32_t DIM_NUM_4 = 4;
 
 ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *context)
 {
@@ -45,6 +47,7 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
 
     *attentionOutShape = *queryShape;
     if (inputLayoutQueryPtrStr == "BSND") {
+        attentionOutShape->SetDimNum(DIM_NUM_4);
         attentionOutShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
         attentionOutShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_1));
         attentionOutShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_2)); // 2:dim2
@@ -52,6 +55,7 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
             attentionOutShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_3) - ropeHeadDim); // 3:dim3
         }
     } else { // TND
+        attentionOutShape->SetDimNum(DIM_NUM_3);
         attentionOutShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
         attentionOutShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_1));
         if(queryShape->GetDim(DIM_INDEX_2) != -1){

@@ -294,16 +294,16 @@ public:
     ge::graphStatus DoOpTiling(SFATilingInfo *sfaInfo);
 
 private:
-    ge::graphStatus SetBlockDim(uint32_t blockDim);
-    ge::graphStatus SetTilingKey(uint64_t tilingKey);
-    ge::graphStatus SetWorkspaceSize(uint64_t workspaceSize);
-    ge::graphStatus SetTilingData(TilingDef &tilingData);
+    ge::graphStatus SetBlockDim(uint32_t blockDim) const;
+    ge::graphStatus SetTilingKey(uint64_t tilingKey) const;
+    ge::graphStatus SetWorkspaceSize(uint64_t workspaceSize) const;
+    ge::graphStatus SetTilingData(TilingDef &tilingData) const;
     gert::TilingContext *context_ = nullptr;
     ge::graphStatus GetPlatformInfo();
     void GenTilingKey();
     bool DealSameSeqEachBatch();
 
-    void ZeroTensorProcess();
+    void ZeroTensorProcess() const;
     void InitParams();
 
     void Split();
@@ -327,7 +327,7 @@ private:
     void CalcFDWorkSpace(const uint32_t actCoreNum);
     void GetWorkspaceSize();
 
-    uint32_t CalcBalanceFDParamNums(const uint32_t actCoreNum);
+    uint32_t CalcBalanceFDParamNums(const uint32_t actCoreNum) const;
 
     void CalcBlockDim();
 
@@ -421,7 +421,7 @@ private:
     ge::graphStatus CheckParaExistenceMla() const;
     ge::graphStatus CheckParaExistence();
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        const SFALayout &layout, const std::string &name);
+        const SFALayout &layout, const std::string &name) const;
     void SetSFAShapeCompare();
     ge::graphStatus CheckQRope();
     ge::graphStatus CheckQRopeShape();
@@ -518,7 +518,7 @@ public:
     ge::graphStatus CheckRequiredParaExistence() const;
 
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        SFALayout &layout, const std::string &name);
+        SFALayout &layout, const std::string &name) const;
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();

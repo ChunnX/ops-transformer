@@ -228,6 +228,9 @@ template <typename QLIT>
 __aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
                                                                      uint32_t actS2Size)
 {
+    if (actS2Size == 0) {
+        return 0;
+    }
     uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
     int32_t validS2LenBase = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size);
     int32_t validS2Len = s1Offset + validS2LenBase + constInfo.s1BaseSize;
