@@ -82,8 +82,10 @@ if(UT_TEST_ALL OR OP_HOST_UT)
     )
     target_sources(${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE ${OP_INFERSHAPE_UT_COMMON_SRC})
     target_include_directories(
-      ${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE ${ASCEND_DIR}/include/base/context_builder
-      )
+      ${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE 
+      ${ASCEND_DIR}/include/base/context_builder
+      ${ASCEND_DIR}/pkg_inc
+    )
     target_link_libraries(
       ${OP_INFERSHAPE_MODULE_NAME}_common_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> json gtest c_sec
       )
@@ -302,6 +304,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
                 ${PROJECT_SOURCE_DIR}/common/include
                 ${ASCEND_DIR}/include/experiment 
                 ${ASCEND_DIR}/include/experiment/metadef/common/util
+                ${ASCEND_DIR}/include
         )
       target_compile_definitions(${opName}_${socVersion}_tiling_tmp PRIVATE LOG_CPP _GLIBCXX_USE_CXX11_ABI=0)
       target_link_libraries(

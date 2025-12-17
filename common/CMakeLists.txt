@@ -63,6 +63,9 @@ if (BUILD_OPEN_PROJECT)
       ${OPS_TRANSFORMER_DIR}/common/include
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/profiling
     )
 
     target_link_libraries(${COMMON_NAME}_obj

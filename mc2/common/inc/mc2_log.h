@@ -23,11 +23,15 @@
 #include <vector>
 
 #include "base/err_msg.h"
-#include "error_manager/error_manager.h"
 #include "log/log.h"
 #include "securec.h"
 #include "tiling/mc2_tiling_struct.h"
 #include "tiling/tiling_api.h"
+#if __has_include("error_manager/error_manager.h")
+#include "error_manager/error_manager.h"
+#else
+#include "err_mgr.h"
+#endif
 
 template <typename T>
 std::string ConcatString(const T &arg) {
@@ -159,10 +163,10 @@ inline const char *get_cstr(const std::string &str) { return str.c_str(); }
     if (!(exp)) {                                               \
       auto msg = CreateErrorMsg(__VA_ARGS__);                   \
       if (msg.empty()) {                                        \
-        REPORT_INNER_ERROR("E19999", "Assert %s failed", #exp); \
+        REPORT_INNER_ERR_MSG("E19999", "Assert %s failed", #exp); \
         return ge::FAILED;                                      \
       } else {                                                  \
-        REPORT_INNER_ERROR("E19999", "%s", msg.data());         \
+        REPORT_INNER_ERR_MSG("E19999", "%s", msg.data());         \
         return ge::FAILED;                                      \
       }                                                         \
       return ::ErrorResult();                                   \
@@ -202,7 +206,7 @@ namespace ops {
       std::stringstream ss;                                   \
       ss << "Assert (" << #x << " == " << #y <<               \
             ")failed, expect " << yv << " actual " << xv;     \
-      REPORT_INNER_ERROR("E19999", "%s", ss.str().c_str());   \
+      REPORT_INNER_ERR_MSG("E19999", "%s", ss.str().c_str());   \
       return ::ErrorResult();                                 \
     }                                                         \
   } while (0)

@@ -17,6 +17,7 @@ include(FindPackageHandleStandardArgs)
 set(MSPROF_HEAD_SEARCH_PATHS
   ${ASCEND_DIR}/${SYSTEM_PREFIX}/include/experiment/msprof/
   ${TOP_DIR}/abl/msprof/inc            # compile with ci
+  ${ASCEND_DIR}/${SYSTEM_PREFIX}/pkg_inc
 )
 
 find_path(MSPROF_INC_DIR
@@ -27,10 +28,11 @@ find_path(MSPROF_INC_DIR
 set(CCE_HEAD_SEARCH_PATHS
   ${ASCEND_DIR}/${SYSTEM_PREFIX}/include/experiment/
   ${TOP_DIR}/ace/comop/inc            # compile with ci
+  ${ASCEND_DIR}/${SYSTEM_PREFIX}/pkg_inc
 )
 
 find_path(CCE_INC_DIR
-  NAMES cce/aicpu_engine_struct.h
+  NAMES cce/aicpu_engine_struct.h aicpu/aicpu_engine_struct.h
   PATHS ${CCE_HEAD_SEARCH_PATHS}
 )
 

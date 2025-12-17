@@ -72,6 +72,9 @@ if (BUILD_OPEN_PROJECT)
     ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu_common/context/utils
     ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu_common/context/cpu_proto
     ${ASCEND_CANN_PACKAGE_PATH}/include/toolchain
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
   )
 else ()
   target_include_directories(opmaster PRIVATE

@@ -32,6 +32,7 @@ message(STATUS "Found source acl include dir:  ${ACL_INC_DIR}")
 set(RUNTIME_SEARCH_PATH
   ${ASCEND_DIR}/${SYSTEM_PREFIX}/include/experiment/runtime
   ${TOP_DIR}/ace/npuruntime/inc            # compile with ci
+  ${ASCEND_DIR}/${SYSTEM_PREFIX}/pkg_inc/runtime
 )
 find_path(RUNTIME_INC_DIR
   NAMES runtime/rt.h
