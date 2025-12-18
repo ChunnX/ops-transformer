@@ -101,7 +101,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>数据类型与key/value的数据类型一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[BNSD]、[BSH]、[SBH]</td>
+        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -111,7 +111,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>数据类型与query/value的数据类型一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[BNSD]、[BSH]、[SBH]</td>
+        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -121,17 +121,17 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>数据类型与query/key的数据类型一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[BNSD]、[BSH]、[SBH]</td>
+        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>realShiftOptional</td>
         <td>可选输入</td>
-        <td>Device侧的aclTensor，公式中的pse。</td>
-        <td>数据类型与query的数据类型一致。</td>
+        <td>公式中的pse。</td>
+        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,S,S]、[B,N,1,Skv]、[1,N,S,S]</td>
+        <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -147,7 +147,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
       <tr>
         <td>attenMaskOptional</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，公式中的atten_mask。</td>
+        <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
         <td>ND</td>
@@ -281,7 +281,7 @@ aclnnStatus aclnnFlashAttentionScoreV2(
         <td>数据类型和shape类型与query保持一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[BNSD]、[BSH]、[SBH]</td>
+        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -398,6 +398,11 @@ aclnnStatus aclnnFlashAttentionScoreV2(
     -   S：取值范围为1\~1M。
     -   D：取值范围为1\~768。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+  - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
+  - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
+  - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 - innerPrecise: 当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - pseType 各个取值含义
     | pseType     | 含义                              |      备注   |
@@ -495,7 +500,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

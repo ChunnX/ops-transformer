@@ -164,7 +164,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
       <tr>
         <td>attenMaskOptional</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，公式中的atten_mask。</td>
+        <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
         <td>ND</td>
@@ -315,20 +315,20 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
         <td>softmaxMaxOut</td>
         <td>输出</td>
         <td>Softmax计算的Max中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]。</td>
+        <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>softmaxSumOut</td>
         <td>输出</td>
         <td>Softmax计算的Sum中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]。</td>
+        <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -553,7 +553,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

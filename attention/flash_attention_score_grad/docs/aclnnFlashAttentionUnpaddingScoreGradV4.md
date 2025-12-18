@@ -132,7 +132,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>数据类型与keyIn/value一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -142,7 +142,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>数据类型与query/value一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -152,7 +152,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>数据类型与query/keyIn一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -162,17 +162,17 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>-</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>pseShiftOptional</td>
         <td>可选输入</td>
-        <td>公式中的pse，位置编码。</td>
-        <td>支持[B,N,H,S]、[1,N,H,S]；alibi场景需配置preTokens/nextTokens下三角。</td>
+        <td>公式中的pse。</td>
+        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[B,N,1024,Skv]、[1,N,1024,Skv]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -190,24 +190,19 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>输入</td>
         <td>预留参数。</td>
         <td>调用时需传空。</td>
-        <td>UINT8、BOOL</td>
-        <td>ND</td>
-        <td>0、2、4</td>
-        <td>√</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>可选输入</td>
-        <td>注意力mask。</td>
-        <td>
-          <ul>
-            <li>1表示不参与计算，0表示参与计算。</li>
-            <li>支持[B,N,S,S]、[B,1,S,S]、[1,1,S,S]、[S,S]。</li>
-          </ul>
-        </td>
+        <td>输入</td>
+        <td>公式中的atten_mask。</td>
+        <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
         <td>ND</td>
-        <td>0、2、4</td>
+        <td>[B,N,Sq,Skv]、[B,1,Sq,Skv]、[1,1,Sq,Skv]、[Sq,Skv] </td>
         <td>√</td>
       </tr>
       <tr>
@@ -217,7 +212,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[T,N,8]、[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -227,18 +222,18 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[T,N,8]、[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>softmaxInOptional</td>
         <td>输入</td>
-        <td>softmax计算输入。</td>
-        <td>预留参数，暂未使用。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>0、3、4</td>
-        <td>√</td>
+        <td>正向softmax的中间输出。</td>
+        <td>暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>attentionInOptional</td>
@@ -247,13 +242,13 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>与query数据类型、shape一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>prefixOptional</td>
         <td>可选输入</td>
-        <td>Host侧aclIntArray，prefix稀疏场景每个Batch的N。</td>
+        <td>prefix稀疏场景每个Batch的N。</td>
         <td>不使用可传nullptr。</td>
         <td>INT64</td>
         <td>ND</td>
@@ -263,7 +258,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       <tr>
         <td>actualSeqQLenOptional</td>
         <td>输入</td>
-        <td>Host侧aclIntArray，实际Query序列长度。</td>
+        <td>实际Query序列长度。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
@@ -273,7 +268,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       <tr>
         <td>actualSeqKvLenOptional</td>
         <td>输入</td>
-        <td>Host侧aclIntArray，实际Key/Value序列长度。</td>
+        <td>实际Key/Value序列长度。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
@@ -287,7 +282,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>-</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -297,7 +292,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>-</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -307,18 +302,18 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>-</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>0、3、4</td>
+        <td>[TND]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>dpseOut</td>
         <td>输出</td>
         <td>d(pse)梯度。</td>
-        <td>暂未使用，但在pseShiftOptional不为空时shape和类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>0、4</td>
-        <td>√</td>
+        <td>暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>scaleValue</td>
@@ -524,9 +519,13 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
     -   B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
     -   N：取值范围为1\~256。
     -   S：取值范围为1\~1M。
-    -   D：取值范围为1\~512。
+    -   D：取值范围为1\~768。
     -   KeepProb: 取值范围为(0, 1]。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+  - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
+  - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - 如不使用该参数可传入nullptr。
 - sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
@@ -624,7 +623,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;

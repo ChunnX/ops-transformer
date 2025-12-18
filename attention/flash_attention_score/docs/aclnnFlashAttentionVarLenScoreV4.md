@@ -121,10 +121,10 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
         <td>realShiftOptional</td>
         <td>可选输入</td>
         <td>公式中的pse。</td>
-        <td>数据类型与query的数据类型一致。</td>
+        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]</td>
+        <td>[B,N,1024,Skv]、[1,N,1024,Skv]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -271,20 +271,20 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
         <td>softmaxMaxOut</td>
         <td>输出</td>
         <td>Softmax计算的Max中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]或[T,N,8]。</td>
+        <td>输出的shape类型由softmaxOutLayout决定。</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]或[T,N,8]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>softmaxSumOut</td>
         <td>输出</td>
         <td>Softmax计算的Sum中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]或[T,N,8]。</td>
+        <td>输出的shape类型由softmaxOutLayout决定。</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]或[T,N,8]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -411,11 +411,15 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。当Nq/Nkv > 1时，即为GQA（grouped-query attention）；当Nkv=1时，即为MQA（multi-query attention）。本文如无特殊说明，N表示的是Nq。
 - 关于数据shape的约束，其中：
   - T(B*S)：取值范围为1\~1M。
-  - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+  - B：取值范围为1\~20000。带prefixOptional的时候B最大支持1K。
   - N：取值范围为1\~256。
   - S：取值范围为1\~1M。
   - D：取值范围为1\~768。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+  - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
+  - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - 如不使用该参数可传入nullptr。  
 - sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3、5、6时，用户配置的preTokens、nextTokens不会生效；
@@ -516,7 +520,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;

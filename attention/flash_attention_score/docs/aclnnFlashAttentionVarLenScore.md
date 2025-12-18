@@ -119,10 +119,10 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
         <td>realShiftOptional</td>
         <td>可选输入</td>
         <td>公式中的pse。</td>
-        <td>数据类型与query的数据类型一致。</td>
+        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]</td>
+        <td>[B,N,1024,Skv]、[1,N,1024,Skv]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -259,20 +259,20 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
         <td>softmaxMaxOut</td>
         <td>输出</td>
         <td>Softmax计算的Max中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]。</td>
+        <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>softmaxSumOut</td>
         <td>输出</td>
         <td>Softmax计算的Sum中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]。</td>
+        <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -400,6 +400,10 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
     - T：取值范围为1\~1M。
     - N：取值范围为1\~256。
     - D：取值范围为1\~768。
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+  - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
+  - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - 如不使用该参数可传入nullptr。
 - sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3、5、6时，用户配置的preTokens、nextTokens不会生效；
@@ -499,7 +503,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;

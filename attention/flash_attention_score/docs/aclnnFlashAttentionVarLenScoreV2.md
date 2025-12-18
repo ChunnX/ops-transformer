@@ -126,10 +126,10 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
         <td>realShiftOptional</td>
         <td>可选输入</td>
         <td>公式中的pse。</td>
-        <td>数据类型与query的数据类型一致。</td>
+        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]</td>
+        <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -296,20 +296,20 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
         <td>softmaxMaxOut</td>
         <td>输出</td>
         <td>Softmax计算的Max中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]。</td>
+        <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>softmaxSumOut</td>
         <td>输出</td>
         <td>Softmax计算的Sum中间结果，用于反向计算。</td>
-        <td>输出的shape类型为[N,T,8]。</td>
+        <td>-</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>[N,T,8]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -432,6 +432,11 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
     -   N：取值范围为1\~256。
     -   D：取值范围为1\~768。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+  - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
+  - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
+  - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType各个取值含义
     | pseType     | 含义                              |      备注   |
     | ----------- | --------------------------------- | ----------|
@@ -534,7 +539,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
