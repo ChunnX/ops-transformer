@@ -753,8 +753,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
     } else if (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBSND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
-                               qActSeqLensParser, info.bIdx);
+        DataCopySoftmaxLseBSND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
     } else {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;

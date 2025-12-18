@@ -225,10 +225,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMlaNoquantUnsupported() const
         if (CheckFeatureNoquantUnsupported() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-        OP_CHECK_IF(fiaInfo_.softmaxLseFlag,
-            OP_LOGE(opName_, "In %s situation, rope exsists and Q/K head dim = %u, %s output is not supported.",
-                QuantModeToSerialString(quantMode_).c_str(), qkHeadDim_, SOFTMAX_LSE_NAME.c_str()),
-            return ge::GRAPH_FAILED);
         if (kvStorageMode_ == KvStorageMode::TENSOR_LIST) {
             OP_LOGE(opName_, "In %s situation, rope exsists and Q/K head dim = %u, the K/V's storage mode not support tensor list",
                 QuantModeToSerialString(quantMode_).c_str(), qkHeadDim_);
