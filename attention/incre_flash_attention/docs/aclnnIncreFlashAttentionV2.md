@@ -254,7 +254,7 @@ aclnnStatus aclnnIncreFlashAttentionV2(
         <td>numKeyValueHeads</td>
         <td>输入</td>
         <td>key、value中head个数。</td>
-        <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，默认为0，表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+        <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，传入0表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
