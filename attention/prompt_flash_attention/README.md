@@ -80,7 +80,6 @@
 </table>
 
 - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持FLOAT16、BFLOAT16、INT8。
-- Atlas 推理系列加速卡产品：仅支持FLOAT16。
 
 ## 约束说明
 
