@@ -46,13 +46,6 @@
     
     自定义算子包安装路径为`${ASCEND_HOME_PATH}/opp/vendors`，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/latest/opp。注意自定义算子包不支持卸载，如需卸载，请删除vendors\/\$\{vendor\_name}目录，并删除vendors/config.ini中load_priority对应\$\{vendor\_name\}的配置项。
 
-3. **（可选）卸载自定义算子包**
-
-    自定义算子包安装后在`${ASCEND_HOME_PATH}/vendors/custom_transformer/scripts`目录会生成`uninstall.sh`脚本，通过执行该脚本可卸载自定义算子包，具体命令如下：
-    ```bash
-    bash ${ASCEND_HOME_PATH}/vendors/custom_transformer/scripts/uninstall.sh
-    ```
-
 ### ops-transformer包
 
 1. **编译ops-transformer包**
