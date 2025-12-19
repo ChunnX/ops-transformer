@@ -321,6 +321,13 @@ def get_cann_version(version_dir: str) -> str:
         return render_cann_version(
             int(matched.group(1)), int(matched.group(2)), None, None, None, None
         )
+    beta_pattern = re.compile(r'(\d+)\.(\d+)\.(\d+)\-[a-z]*\.(\d+)', re.IGNORECASE)
+    matched = beta_pattern.fullmatch(version_dir)
+    if matched:
+        return render_cann_version(
+            int(matched.group(1)), int(matched.group(2)), int(matched.group(3)), None, None,
+            int(matched.group(4))
+        )
 
     raise IllegalVersionDir(version_dir)
 
@@ -1028,7 +1035,7 @@ def read_version_info() -> Tuple[str, str]:
         line2 = file.readline().strip()
     version = line1.split("=")[1]
     version_dir = line2.split("=")[1]
-    m = re.match(r'[.a-zA-Z0-9]+$', version)
+    m = re.match(r'[.a-zA-Z0-9]+$', version) or re.match(r'[-a-zA-Z.0-9]+$', version)
     if not m:
         raise VersionFormatNotMatch()
     
