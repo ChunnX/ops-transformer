@@ -51,6 +51,25 @@ function(pack_custom)
   endif()
 endfunction()
 
+function(pack_tiling_sink)
+  ExternalProject_Get_Property(tiling_sink_task BINARY_DIR)
+
+  if(ENABLE_BUILT_IN)
+    set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libtiling_device_transformer.so)
+    set(INSTALL_DIR "ops_transformer/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
+  else()
+    set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libcust_opmaster.so)
+    set(INSTALL_DIR "packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/op_master_device/lib")
+  endif()
+  install(CODE "
+    if(EXISTS \"${TRANSFORMER_OPMASTER_SO}\")
+      file(
+        INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_DIR}\"
+        TYPE FILE FILES \"${TRANSFORMER_OPMASTER_SO}\")
+    endif()
+  ")
+endfunction()
+
 function(pack_built_in)
   #### built-in package ####
   message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
@@ -150,24 +169,7 @@ function(pack_built_in)
   endif()
 
   message(STATUS "current compute_unit is: ${compute_unit}")
-  ExternalProject_Get_Property(tiling_sink_task BINARY_DIR)
-  set(310P_OPMASTER_SO ${BINARY_DIR}/Ascend310P-v${SYS_VERSION}-libopmaster.so)
-  install(CODE "
-    if(EXISTS \"${310P_OPMASTER_SO}\")
-      file(
-        INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/ops_transformer/built-in/op_impl/ai_core/tbe/op_master_device/lib\"
-        TYPE FILE FILES \"${310P_OPMASTER_SO}\")
-    endif()
-  ")
-
-  set(OTHER_OPMASTER_SO ${BINARY_DIR}/Ascend-v${SYS_VERSION}-libopmaster.so)
-  install(CODE "
-    if(EXISTS \"${OTHER_OPMASTER_SO}\")
-      file(
-        INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/ops_transformer/built-in/op_impl/ai_core/tbe/op_master_device/lib\"
-        TYPE FILE FILES \"${OTHER_OPMASTER_SO}\")
-    endif()
-  ")
+  pack_tiling_sink()
 
   # ============= CPack =============
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")

@@ -98,27 +98,26 @@ endif()
 
 if (NOT BUILD_OPS_RTY_KERNEL)
     if (BUILD_OPEN_PROJECT)
-        if (ENABLE_BUILT_IN)
-            ExternalProject_Add(tiling_sink_task
-                SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_sink
-                CONFIGURE_COMMAND ${CMAKE_COMMAND}
-                    -G ${CMAKE_GENERATOR}
-                    -DBUILD_OPEN_PROJECT=${BUILD_OPEN_PROJECT}
-                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                    -DASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH}
-                    -DCMAKE_C_COMPILER=${ASCEND_CANN_PACKAGE_PATH}/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-gcc
-                    -DCMAKE_CXX_COMPILER=${ASCEND_CANN_PACKAGE_PATH}/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++
-                    -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
-                    -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
-                    -DSYS_VERSION=${SYS_VERSION}
-                    -DOPS_ADV_CMAKE_DIR=${OPS_ADV_CMAKE_DIR}
-                    -DPRODUCT_SIDE=device
-                    <SOURCE_DIR>
-                INSTALL_COMMAND ""
-                BUILD_ALWAYS TRUE
-                BUILD_BYPRODUCTS
-            )
-        endif()
+        ExternalProject_Add(tiling_sink_task
+            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_sink
+            CONFIGURE_COMMAND ${CMAKE_COMMAND}
+                -G ${CMAKE_GENERATOR}
+                -DBUILD_OPEN_PROJECT=${BUILD_OPEN_PROJECT}
+                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                -DASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH}
+                -DCMAKE_C_COMPILER=${ASCEND_CANN_PACKAGE_PATH}/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-gcc
+                -DCMAKE_CXX_COMPILER=${ASCEND_CANN_PACKAGE_PATH}/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++
+                -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+                -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
+                -DSYS_VERSION=${SYS_VERSION}
+                -DOPS_ADV_CMAKE_DIR=${OPS_ADV_CMAKE_DIR}
+                -DPRODUCT_SIDE=device
+                -DENABLE_BUILT_IN=${ENABLE_BUILT_IN}
+                <SOURCE_DIR>
+            INSTALL_COMMAND ""
+            BUILD_ALWAYS TRUE
+            BUILD_BYPRODUCTS
+        )
     else()
         add_subdirectory(src/tiling_sink)
     endif()

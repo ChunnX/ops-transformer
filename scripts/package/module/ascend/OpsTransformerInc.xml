@@ -11,6 +11,11 @@
         install_path="ops_transformer/built-in/op_impl/ai_core/" install_type="all">
         <file value="tbe" install_mod="555" entity="true"/>
     </file_info>
+    <file_info copy_type="delivery" src_path=""
+        dst_path="built-in/op_impl/ai_core/tbe"
+        install_path="opp/built-in/op_impl/ai_core/tbe" install_type="all">
+        <file value="op_tiling_device" optional="true" install_mod="550"/>
+    </file_info>
     <file_info copy_type="delivery" src_path="build/autogen/"
         dst_path="built-in/op_graph/inc"
         install_path="ops_transformer/built-in/op_graph/inc" install_type="all">

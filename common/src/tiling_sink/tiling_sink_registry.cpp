@@ -9,16 +9,14 @@
  */
 
 /*!
- * \file tiling_sink_kernel.h
+ * \file tiling_sink_registry.cpp
  * \brief
  */
 
-#ifndef OP_TILING_TILING_SINK_KERNEL_H
-#define OP_TILING_TILING_SINK_KERNEL_H
-#include <cstdint>
-
-extern "C" {
-__attribute__((visibility("default"))) uint32_t RunAicpuRpcSrvLaunch(void *args);
-}
-
-#endif
+ #include "register/device_op_impl_registry.h"
+ #include "fused_infer_attention_score_tiling.h"
+ 
+ #ifndef ASCEND_OPTILING_UT
+ DEVICE_IMPL_OP_OPTILING(FusedInferAttentionScore).Tiling(optiling::DeviceDoOpTilingFusedInferAttentionScore);
+ DEVICE_IMPL_OP_OPTILING(IncreFlashAttention).Tiling(optiling::DeviceDoOpTilingIncreFlashAttention);
+ #endif
