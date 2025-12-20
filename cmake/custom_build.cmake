@@ -1,21 +1,20 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 if (BUILD_OPEN_PROJECT)
-    set(CMAKE_MODULE_PATH
-        ${CMAKE_MODULE_PATH}
+    set(CMAKE_MODULE_PATH 
+        ${CMAKE_MODULE_PATH} 
         ${CMAKE_CURRENT_LIST_DIR}/cmake/modules
     )
 
-    set(CMAKE_PREFIX_PATH
-        ${CMAKE_PREFIX_PATH}
+    set(CMAKE_PREFIX_PATH 
+        ${CMAKE_PREFIX_PATH} 
         ${ASCEND_CANN_PACKAGE_PATH}
     )
 
@@ -28,12 +27,10 @@ if (BUILD_OPEN_PROJECT)
 
     find_package(alog MODULE)
 
-    find_package(unified_dlog MODULE)
-
     if(NOT ${alog_FOUND})
         add_definitions(-DALOG_NOT_FOUND)
     endif()
-
+    
     add_library(op_host_aclnn SHARED EXCLUDE_FROM_ALL)
     target_link_libraries(op_host_aclnn PRIVATE
             ${_op_host_aclnn_link}
@@ -60,9 +57,9 @@ if (BUILD_OPEN_PROJECT)
 
     # op api
     add_library(cust_opapi SHARED)
-    # When compiling a specified operator, there is an operator without aclnn src.
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/cust_opapi_stub.cpp
-            COMMAND touch ${CMAKE_CURRENT_BINARY_DIR}/cust_opapi_stub.cpp
+    # When compiling a specified operator, there is an operator without aclnn src.	
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/cust_opapi_stub.cpp	
+            COMMAND touch ${CMAKE_CURRENT_BINARY_DIR}/cust_opapi_stub.cpp	
     )
     target_sources(cust_opapi PRIVATE
             ${CMAKE_CURRENT_BINARY_DIR}/cust_opapi_stub.cpp
@@ -169,8 +166,6 @@ if (BUILD_OPEN_PROJECT)
             platform
             register
             error_manager
-            ascendalog
-            unified_dlog
             -Wl,--as-needed
             -Wl,--whole-archive
             tiling_api
@@ -250,6 +245,10 @@ if (BUILD_OPEN_PROJECT)
             add_subdirectory(tests/ut/framework_special)
             add_definitions(-Wno-builtin-macro-redefined)
         endif()
+
+        if (UT_TEST_ALL OR OP_HOST_UT OR OP_API_UT OR OP_KERNEL_UT OR OP_GRAPH_UT)
+            add_subdirectory(tests/ut/framework_normal)
+        endif()
     endif ()
    if (TESTS_EXAMPLE_OPS_TEST)
        add_subdirectory(examples)
@@ -269,14 +268,14 @@ foreach (OP_DIR ${OP_DIR_LIST})
 endforeach ()
 
 add_subdirectory(attention)
-
-if (UT_TEST_ALL OR OP_HOST_UT OR OP_API_UT OR OP_KERNEL_UT OR OP_GRAPH_UT)
-        add_subdirectory(tests/ut/framework_normal)
-endif()
-
 if("${ASCEND_OP_NAME}" STREQUAL "add_example")
     add_subdirectory(examples)
     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})
+endif()
+
+if("${ASCEND_OP_NAME}" STREQUAL "all_gather_add")
+    add_subdirectory(examples/mc2)
+    list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/mc2/${ASCEND_OP_NAME})
 endif()
 
 list(APPEND OP_LIST ${COMPILED_OPS})
@@ -307,13 +306,12 @@ op_add_depend_directory(
         OP_LIST ${OP_LIST}
         OP_DIR_LIST OP_DEPEND_DIR_LIST
 )
+
 # 仅针对被依赖的算子重新add_subdirectory
 foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
     get_filename_component(SUB_DIR ${OP_DEPEND_DIR} NAME)
     if ("${ASCEND_OP_NAME}" STREQUAL "all" OR "${ASCEND_OP_NAME}" STREQUAL "ALL")
-        if ( "${OP_DEPEND_DIR}" MATCHES ".*attention.*")
-            continue()
-        endif()
+        break()
     endif()
     if (NOT ${SUB_DIR} IN_LIST ASCEND_OP_NAME)
         list(APPEND ASCEND_OP_NAME ${SUB_DIR})
@@ -323,9 +321,6 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
             add_subdirectory(${OP_DEPEND_DIR})
         endif()
     endif ()
-    if ( "${OP_DEPEND_DIR}" MATCHES ".*moe_inplace_index_add_with_sorted.*")
-       list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_inplace_index_add_with_sorted)
-    endif()
 endforeach ()
 
 # ------------------------------------------------ aclnn ------------------------------------------------
@@ -429,25 +424,13 @@ if (BUILD_OPEN_PROJECT)
     add_library(ops_aclnn STATIC
             ${ops_aclnn_src}
     )
-    target_include_directories(ops_aclnn PRIVATE
-            ${PROJECT_SOURCE_DIR}/common/include/common
-            ${PROJECT_SOURCE_DIR}/common/include/static
-    )
     target_compile_options(ops_aclnn PRIVATE
             $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++1z>
     )
     target_link_libraries(ops_aclnn PRIVATE
             $<BUILD_INTERFACE:intf_pub>
     )
-    if (ENABLE_STATIC)
-        add_custom_target(opbuild_gen_aclnn_static
-                COMMAND python3 ${PROJECT_SOURCE_DIR}/scripts/util/modify_gen_aclnn.py ${CMAKE_BINARY_DIR}
-                DEPENDS opbuild_gen_default opbuild_gen_inner opbuild_gen_exc
-        )
-        add_dependencies(ops_aclnn opbuild_gen_default opbuild_gen_inner opbuild_gen_aclnn_static)
-    else()
-        add_dependencies(ops_aclnn opbuild_gen_default opbuild_gen_inner)
-    endif()
+    add_dependencies(ops_aclnn opbuild_gen_default opbuild_gen_inner)
 
     set_source_files_properties(${generate_proto_srcs}
             PROPERTIES GENERATED TRUE
@@ -456,7 +439,7 @@ if (BUILD_OPEN_PROJECT)
             ${generate_proto_srcs}
     )
     add_dependencies(cust_proto ops_transformer_proto_headers)
-
+    
     if (NOT ENABLE_BUILT_IN)
         install(FILES ${generate_proto_headers}
                 DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_proto/inc OPTIONAL
@@ -520,7 +503,7 @@ else()
             SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     )
 endif ()
-target_sources(cust_opapi PRIVATE
+target_sources(cust_opapi PRIVATE 
     $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>)
 target_link_libraries(
     cust_opapi
@@ -538,7 +521,7 @@ target_link_libraries(
 )
 
 target_link_libraries(
-    cust_proto
+    cust_proto 
     PUBLIC ${OPHOST_NAME}_infer_obj
     PRIVATE $<$<TARGET_EXISTS:opsbase>:opsbase>
 )
@@ -591,14 +574,12 @@ endif ()
 
 # ------------------------------------------------ opbuild ------------------------------------------------
 if (BUILD_OPEN_PROJECT)
-    string(REPLACE ";" "\;" OPS_PRODUCT_NAME "${ASCEND_COMPUTE_UNIT}")
     if (generate_aclnn_srcs)
         add_custom_command(OUTPUT ${generate_aclnn_srcs} ${generate_aclnn_headers}
                 COMMAND mkdir -p ${base_aclnn_binary_dir}
                 COMMAND OPS_PROTO_SEPARATE=1
                 OPS_ACLNN_GEN=1
                 OPS_PROJECT_NAME=aclnn
-                OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnn>
                 ${base_aclnn_binary_dir}
@@ -615,7 +596,6 @@ if (BUILD_OPEN_PROJECT)
                 COMMAND OPS_PROTO_SEPARATE=1
                 OPS_ACLNN_GEN=1
                 OPS_PROJECT_NAME=aclnnInner
-                OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnnInner>
                 ${base_aclnn_binary_dir}/inner
@@ -632,7 +612,6 @@ if (BUILD_OPEN_PROJECT)
                 COMMAND OPS_PROTO_SEPARATE=1
                 OPS_ACLNN_GEN=0
                 OPS_PROJECT_NAME=aclnnExc
-                OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnnExc>
                 ${base_aclnn_binary_dir}/exc
@@ -669,54 +648,62 @@ install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/
         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
 )
 
-install(DIRECTORY ${OPS_ADV_DIR}/common/act
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-install(DIRECTORY ${OPS_ADV_DIR}/common/catlass
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-install(DIRECTORY ${OPS_ADV_DIR}/common/tla
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/inc/kernel
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/inc
-)
-
-install(DIRECTORY ${OPS_ADV_DIR}/mc2/3rd/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd
-)
-        
 foreach (op_dir ${OP_DIR_LIST})
     get_filename_component(_op_name "${op_dir}" NAME)
-    set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
-    file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
-    filter_copy_files(SELECTED_FILES SELECTED_DIRS)
-    install(FILES ${SELECTED_FILES}
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
-        OPTIONAL
+
+    if (EXISTS "${op_dir}/op_kernel")
+        file(GLOB KERNEL_FILES
+            ${op_dir}/op_kernel/*.cpp
+            ${op_dir}/op_kernel/*.h
+            ${op_dir}/op_kernel/arch32/*.cpp
+            ${op_dir}/op_kernel/arch32/*.h
+        )
+        if (EXISTS "${op_dir}/op_kernel/arch35")
+            install(DIRECTORY ${op_dir}/op_kernel/arch35
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                OPTIONAL
+            )
+        endif()
+    else()
+        file(GLOB KERNEL_FILES
+            ${op_dir}/*.cpp
+            ${op_dir}/*.h
     )
-    install(DIRECTORY ${SELECTED_DIRS}
+    endif()
+
+    install(FILES ${KERNEL_FILES}
         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
         OPTIONAL
     )
 
     foreach (op_depend_dir ${${_op_name}_depends})
-        set(CURRENT_KERNEL_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
-        file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
         get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
-        filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
-        install(FILES ${SELECTED_DEPEND_FILES}
+        if (EXISTS "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
+                file(GLOB DEPEND_KERNEL_FILES
+                ${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel/*.cpp
+                ${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel/*.h
+        )
+        else()
+                file(GLOB DEPEND_KERNEL_FILES
+                ${OPS_TRANSFORMER_DIR}/${op_depend_dir}/*.cpp
+                ${OPS_TRANSFORMER_DIR}/${op_depend_dir}/*.h
+        )
+        endif()
+        install(FILES ${DEPEND_KERNEL_FILES}
                 DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
                 OPTIONAL
-        )
-        install(DIRECTORY ${SELECTED_DEPEND_DIRS}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                OPTIONAL
-        )
+        )  
     endforeach ()
+    
+    install(DIRECTORY ${op_dir}/regbase/opkernel
+        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/regbase
+        OPTIONAL
+    )
+
+    install(DIRECTORY ${op_dir}/910_95
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
+    )
 endforeach ()
 
 # ------------------------------------------------ generate compile cmd ------------------------------------------------
@@ -761,14 +748,9 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     )
 
     # modify VENDOR_NAME in install.sh and upgrade.sh
-    if (EXISTS ${ASCEND_PROJECT_DIR}/scripts)
-        set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${ASCEND_PROJECT_DIR}/scripts)
-    else()
-        set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)
-    endif()
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh ${CMAKE_CURRENT_BINARY_DIR}/scripts/upgrade.sh
             COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/scripts
-            COMMAND cp -r ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/* ${CMAKE_CURRENT_BINARY_DIR}/scripts/
+            COMMAND cp -r ${ASCEND_PROJECT_DIR}/scripts/* ${CMAKE_CURRENT_BINARY_DIR}/scripts/
             COMMAND chmod +w ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
             COMMAND sed -i "s/vendor_name=customize/vendor_name=${VENDOR_NAME}_transformer/g" ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
     )
@@ -813,12 +795,7 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
     set(CPACK_EXTERNAL_ENABLE_STAGING TRUE)
     if (ENABLE_BUILD_PKG)
-      if (EXISTS ${ASCEND_CMAKE_DIR}/makeself.cmake)
-        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_CMAKE_DIR}/makeself.cmake)
-      else()
-        set(CPACK_MAKESELF_PATH ${OPS_TRANSFORMER_DIR}/third_party/makeself)
-        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${CMAKE_SOURCE_DIR}/cmake/makeself_custom.cmake)
-      endif()
+      set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_CMAKE_DIR}/makeself.cmake)
     endif()
     set(CPACK_EXTERNAL_BUILT_PACKAGES ${CPACK_PACKAGE_DIRECTORY}/_CPack_Packages/Linux/External/${CPACK_PACKAGE_FILE_NAME}/${CPACK_PACKAGE_FILE_NAME})
     include(CPack)

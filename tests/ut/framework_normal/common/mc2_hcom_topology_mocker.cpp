@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mock_mc2_hcom_topo_info.cpp
@@ -22,7 +22,7 @@ MC2HcomTopologyMocker& MC2HcomTopologyMocker::GetInstance()
     return instance;
 }
 
-void MC2HcomTopologyMocker::SetValue(const char* key, uint64_t value)
+void MC2HcomTopologyMocker::SetValue(const char* key, uint32_t value)
 {
     mockValue_[key] = value;
 }
@@ -34,7 +34,7 @@ void MC2HcomTopologyMocker::SetValues(const MockValues& values)
     }
 }
 
-uint64_t MC2HcomTopologyMocker::GetValue(const char* key, uint64_t defaultValue) const
+uint32_t MC2HcomTopologyMocker::GetValue(const char* key, uint32_t defaultValue) const
 {
     auto it = mockValue_.find(key);
     if (it == mockValue_.end()) {
@@ -48,77 +48,45 @@ void MC2HcomTopologyMocker::Reset()
     mockValue_.clear();
 }
 
-// mock mc2/common/inc/mc2_hcom_topo_info.h ----------------------------------------------------------------------------
-constexpr static uint64_t DEFAULT_RANK_NUM = 8;
-constexpr static uint64_t DEFAULT_CCL_BUFFER_SIZE = 6000ULL * 1024ULL * 1024ULL;
-
-// class MC2HcomTopology
-// public:
-HcclResult MC2HcomTopology::CommGetInstSizeByGroup([[maybe_unused]] const char *group, uint32_t *rankNum)
+MC2HcomTopology::MC2HcomTopology(const char *libPath)
 {
-    *rankNum = static_cast<uint32_t>(MC2HcomTopologyMocker::GetInstance().GetValue("rankNum", DEFAULT_RANK_NUM));
-    return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::TryGetGroupTopoType([[maybe_unused]] const char *group, [[maybe_unused]] uint32_t *topoType)
-{
-    return HCCL_SUCCESS;
-}
-
-HcclResult MC2HcomTopology::CommGetCclBufferSizeByGroup([[maybe_unused]] const char *group, uint64_t *cclBufferSize, 
-                                                        [[maybe_unused]] HcclComm *hcclComm)
-{
-    *cclBufferSize = MC2HcomTopologyMocker::GetInstance().GetValue("cclBufferSize", DEFAULT_CCL_BUFFER_SIZE);
-    return HCCL_SUCCESS;
-}
-
-HcclResult MC2HcomTopology::CommGetGroupLocalWindowSize([[maybe_unused]] const char *group, uint64_t* cclBufferSize)
-{
-    *cclBufferSize = MC2HcomTopologyMocker::GetInstance().GetValue("cclBufferSize", DEFAULT_CCL_BUFFER_SIZE);
-    return HCCL_SUCCESS;
-}
-
-// private:
 MC2HcomTopology &MC2HcomTopology::GetInstance()
 {
     static MC2HcomTopology instance("");
     return instance;
 }
 
-MC2HcomTopology::MC2HcomTopology([[maybe_unused]] const char *libPath)
-{
-}
-
-HcclResult MC2HcomTopology::CallHcomGetCommHandleByGroup([[maybe_unused]] const char *group, 
-                                                         [[maybe_unused]] HcclComm *commHandle)
+HcclResult MC2HcomTopology::CallHcomGetCommHandleByGroup(const char *group, HcclComm *commHandle)
 {
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::CallCommGetNetLayers([[maybe_unused]] HcclComm comm, [[maybe_unused]] uint32_t **netLayers, 
-                                                 [[maybe_unused]] uint32_t *netLayerNum)
+HcclResult MC2HcomTopology::CallCommGetNetLayers(HcclComm comm, uint32_t **netLayers, uint32_t *netLayerNum)
 {
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::CallCommGetInstTopoTypeByNetLayer([[maybe_unused]] HcclComm comm, 
-                                                              [[maybe_unused]] uint32_t netLayer, 
-                                                              [[maybe_unused]] uint32_t *topoType)
+HcclResult MC2HcomTopology::CallCommGetInstTopoTypeByNetLayer(HcclComm comm, uint32_t netLayer, uint32_t *topoType)
 {
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::CallCommGetInstSizeByNetLayer([[maybe_unused]] HcclComm comm, 
-                                                          [[maybe_unused]] uint32_t netLayer, 
-                                                          [[maybe_unused]] uint32_t *rankNum)
+HcclResult MC2HcomTopology::CallCommGetInstSizeByNetLayer(HcclComm comm, uint32_t netLayer, uint32_t *rankNum)
 {
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::CallCommGetCCLBufSizeCfg([[maybe_unused]] HcclComm comm, uint64_t *cclBufferSize)
+HcclResult MC2HcomTopology::CommGetInstSizeByGroup(const char *group, uint32_t *rankNum)
 {
-    *cclBufferSize = MC2HcomTopologyMocker::GetInstance().GetValue("cclBufferSize", DEFAULT_CCL_BUFFER_SIZE);
+    constexpr static uint32_t DEFAULT_RANK_NUM = 8;
+    *rankNum = MC2HcomTopologyMocker::GetInstance().GetValue("rankNum", DEFAULT_RANK_NUM);
     return HCCL_SUCCESS;
 }
 
+HcclResult MC2HcomTopology::TryGetGroupTopoType(const char *group, uint32_t *topoType)
+{
+    return HCCL_SUCCESS;
+}
 }  // namespace Mc2Hcom

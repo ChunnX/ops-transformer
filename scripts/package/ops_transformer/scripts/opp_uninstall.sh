@@ -1,13 +1,13 @@
 #!/bin/bash
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 OPERATE_FAILED="0x0001"
 PARAM_INVALID="0x0002"
@@ -29,19 +29,15 @@ OPP_PLATFORM_DIR=ops_transformer
 OPP_PLATFORM_UPPER=$(echo "${OPP_PLATFORM_DIR}" | tr '[:lower:]' '[:upper:]')
 FILELIST_FILE="${CURR_PATH}/filelist.csv"
 COMMON_PARSER_FILE="${CURR_PATH}/install_common_parser.sh"
-
 TARGET_INSTALL_PATH=""
-TARGET_VERSION_DIR="${CURR_PATH}/../../../.."
+TARGET_VERSION_DIR="${CURR_PATH}/../.."
 TARGET_VERSION_DIR=$(readlink -f ${TARGET_VERSION_DIR})     # TARGET_INSTALL_PATH + PKG_VERSION_DIR
 TARGET_MOULDE_DIR=${TARGET_VERSION_DIR}/${OPP_PLATFORM_DIR} # TARGET_INSTALL_PATH + PKG_VERSION_DIR + OPP_PLATFORM_DIR
-TARGET_OPP_BUILT_IN=${TARGET_VERSION_DIR}/opp/built-in
-TARGET_SHARED_INFO_DIR=${TARGET_VERSION_DIR}/share/info
-
 ASCEND_INSTALL_INFO="ascend_install.info"
 # init log file path
-INSTALL_INFO_FILE="${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/${ASCEND_INSTALL_INFO}"
+INSTALL_INFO_FILE="${TARGET_MOULDE_DIR}/${ASCEND_INSTALL_INFO}"
 
-VERSION_INFO_FILE="${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/version.info"
+VERSION_INFO_FILE="${TARGET_MOULDE_DIR}/version.info"
 
 # keys of infos in ascend_install.info
 KEY_INSTALLED_UNAME="USERNAME"
@@ -116,12 +112,13 @@ check_installed_files() {
 
   check_file_exist "${COMMON_PARSER_FILE}"
 
-  check_file_exist "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/bin/setenv.bash"
+  check_file_exist "${TARGET_MOULDE_DIR}/bin/setenv.bash"
 
-  check_file_exist "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/bin/setenv.csh"
+  check_file_exist "${TARGET_MOULDE_DIR}/bin/setenv.csh"
 
-  check_file_exist "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/bin/setenv.fish"
+  check_file_exist "${TARGET_MOULDE_DIR}/bin/setenv.fish"
 
+  check_directory_exist "${TARGET_MOULDE_DIR}"
 }
 
 check_installed_type() {
@@ -135,7 +132,7 @@ check_installed_type() {
 }
 
 unsetenv() {
-  logandprint "[INFO]: Unset the environment path [ export ASCEND_OPP_PATH=${relative_path_val}/opp ]."
+  logandprint "[INFO]: Unset the environment path [ export ASCEND_OPS_TRANSFORMER_PATH=${relative_path_val}/${OPP_PLATFORM_DIR}]."
   if [ "${IS_DOCKER_INSTALL}" = y ]; then
     UNINSTALL_OPTION="--docker-root=${DOCKER_ROOT}"
   else
@@ -167,31 +164,41 @@ get_installed_param() {
 }
 
 remove_module() {
-  chmod u+w ${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/scene.info
+  local module_sub_dir_list="built-in script lib64 bin include"
+  for module_sub_dir in ${module_sub_dir_list}; do
+    if [ "$(id -u)" != 0 ] && [ ! -w "${TARGET_MOULDE_DIR}/${module_sub_dir}" ]; then
+      chmod u+w -R "${TARGET_MOULDE_DIR}/${module_sub_dir}" 2>/dev/null
+    fi
+  done
+  chmod u+w ${TARGET_MOULDE_DIR}/scene.info
 
   logandprint "[INFO]: Delete the installed opp source files in (${TARGET_VERSION_DIR})."
 
-  bash "${COMMON_PARSER_FILE}" --package="${OPP_PLATFORM_DIR}" --uninstall --remove-install-info \
+  bash "${COMMON_PARSER_FILE}" --package="${OPP_PLATFORM_DIR}" --uninstall --recreate-softlink \
     --username="${TARGET_USERNAME}" --usergroup="${TARGET_USERGROUP}" --version=$RUN_PKG_VERSION \
-    --use-share-info --version-dir=$PKG_VERSION_DIR ${UNINSTALL_OPTION} "${INSTALLED_TYPE}" "${TARGET_INSTALL_PATH}" \
+    --version-dir=$PKG_VERSION_DIR ${UNINSTALL_OPTION} "${INSTALLED_TYPE}" "${TARGET_INSTALL_PATH}" \
     "${FILELIST_FILE}" "${IN_FEATURE}" --recreate-softlink
   log_with_errorlevel "$?" "error" "[ERROR]: ERR_NO:${OPERATE_FAILED};ERR_DES:Uninstall opp module failed."
+
+  local pyc_path=$(find "${TARGET_MOULDE_DIR}/built-in/op_impl/ai_core/tbe/impl" -name "__pycache__" 2>/dev/null)
+  for var in ${pyc_path}; do
+    rm -rf -d "${var}" 2>/dev/null
+  done
+
+  # remove empty dir, even though has softlink
+  local remain_dir_list=$(find ${TARGET_MOULDE_DIR} -mindepth 1 -maxdepth 1 -type d)
+  for remain_dir in ${remain_dir_list}; do
+    if [ "$(find "${remain_dir}" -type f 2>&1)" = "" ]; then
+      rm -rf ${remain_dir}
+    fi
+  done
 }
 
-remove_init_py() {
-  local built_in_impl_path=${TARGET_OPP_BUILT_IN}/op_impl/ai_core/tbe/impl/ops_transformer
-
-  [ -e ${built_in_impl_path}/__init__.py ] && rm ${built_in_impl_path}/__init__.py > /dev/null 2>&1
-
-  [ -e ${built_in_impl_path}/dynamic/__init__.py ] && rm ${built_in_impl_path}/dynamic/__init__.py > /dev/null 2>&1
-}
-
-remove_ops_transformer() {
-  if [ "$(id -u)" != 0 ] && [ ! -w "${TARGET_OPP_BUILT_IN}" ]; then
-    chmod u+w -R "${TARGET_OPP_BUILT_IN}" 2>/dev/null
+remove_opp() {
+  local ori_mod=$(stat -c %a ${TARGET_MOULDE_DIR})
+  if [ "$(id -u)" != 0 ] && [ ! -w "${TARGET_MOULDE_DIR}" ]; then
+    chmod u+w "${TARGET_MOULDE_DIR}" 2>/dev/null
   fi
-
-  remove_init_py
 
   remove_module
 
@@ -200,6 +207,37 @@ remove_ops_transformer() {
     rm -f "${INSTALL_INFO_FILE}"
     log_with_errorlevel "$?" "warn" "[WARNING] Delete ops install info file failed, please delete it by yourself."
   fi
+
+  for file in $(ls -A ${TARGET_MOULDE_DIR}/* 2>/dev/null); do
+    logandprint "[WARNING]: ${file}, has files changed by users, cannot be delete."
+  done
+
+  chmod ${ori_mod} ${TARGET_MOULDE_DIR}
+}
+
+remote_all_soft_link() {
+  local lib_dir=${TARGET_INSTALL_PATH}/latest/${ARCH_INFO}-linux/lib64/
+  local ori_mod=$(stat -c %a ${lib_dir})
+  if [ "$(id -u)" != 0 ] && [ ! -w "${lib_dir}" ]; then
+    chmod u+w "${lib_dir}" 2>/dev/null
+  fi
+
+  local ops_transformer_lib_files="opapi_transformer opgraph_transformer ophost_transformer common_transformer"
+  for lib_name in ${ops_transformer_lib_files}; do
+    local so_name=${lib_dir}/lib${lib_name}.so
+    remove_softlink "${so_name}"
+  done
+
+  chmod ${ori_mod} ${lib_dir}
+  # remove aclnn_kernels
+  local arch_include_dir=${TARGET_INSTALL_PATH}/latest/${ARCH_INFO}-linux/include
+  ori_mod=$(stat -c %a ${arch_include_dir})
+  if [ "$(id -u)" != 0 ] && [ ! -w "${arch_include_dir}" ]; then
+    chmod u+w -R "${arch_include_dir}" 2>/dev/null
+  fi
+  [ -d ${arch_include_dir}/aclnn_kernels ] && rm -rf "${arch_include_dir}/aclnn_kernels"
+  # remove all softlink
+  find ${TARGET_INSTALL_PATH}/latest/ -type l -lname "*/${OPP_PLATFORM_DIR}/*" -delete
 }
 
 logandprint "[INFO]: Begin uninstall the opp module."
@@ -217,7 +255,9 @@ main() {
 
   unsetenv
 
-  remove_ops_transformer
+  remove_opp
+
+  remote_all_soft_link
 
   if [ "${UNINSTALL_MODE}" != "upgrade" ]; then
     remove_dir_if_empty ${TARGET_VERSION_DIR}

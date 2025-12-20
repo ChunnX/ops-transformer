@@ -1,13 +1,12 @@
 #!/bin/bash
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 CPU_NUM=$(($(cat /proc/cpuinfo | grep "^processor" | wc -l)*2))
 JOB_NUM="-j${CPU_NUM}"
@@ -74,14 +73,6 @@ while [[ $# -gt 0 ]]; do
         OP_DEBUG_CONFIG="$2"
         shift 2
         ;;
-    --build_type)
-        BUILD_TYPE="$2"
-        shift 2
-        ;;
-    --version)
-        VERSION="$2"
-        shift 2
-        ;;
     --build_ops_rty_kernel)
         BUILD_OPS_RTY_KERNEL="$2"
         shift 2
@@ -90,20 +81,8 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILT_IN="$2"
         shift 2
         ;;
-    --enable_static)
-        ENABLE_STATIC="$2"
-        shift 2
-        ;;
     --enable_ccache)
         ENABLE_CCACHE="$2"
-        shift 2
-        ;;
-    --enable_oom)
-        ENABLE_OOM="$2"
-        shift 2
-        ;;
-    --cann_3rd_lib_path)
-        CANN_3RD_LIB_PATH="$(realpath $2)"
         shift 2
         ;;
     *)
@@ -154,12 +133,7 @@ function build() {
         -DENABLE_CCACHE=${ENABLE_CCACHE} \
         -DBUILD_OPS_RTY_KERNEL=${BUILD_OPS_RTY_KERNEL} \
         -DENABLE_BUILT_IN=${ENABLE_BUILT_IN} \
-        -DENABLE_STATIC=${ENABLE_STATIC} \
-        -DOP_DEBUG_CONFIG=${OP_DEBUG_CONFIG} \
-        -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH} \
-        -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-        -DVERSION=${VERSION} \
-        -DENABLE_OOM=${ENABLE_OOM}
+        -DOP_DEBUG_CONFIG=${OP_DEBUG_CONFIG}
 
     make ${JOB_NUM} prepare_build
 }

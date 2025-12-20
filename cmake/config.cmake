@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 ########################################################################################################################
 # 环境检查
@@ -49,9 +48,6 @@ set(OP_DEBUG_CONFIG               "false"                         CACHE   STRING
 get_filename_component(OPS_ADV_DIR                  "${CMAKE_CURRENT_SOURCE_DIR}"           REALPATH)
 get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"                  REALPATH)
 get_filename_component(OPS_ADV_UTILS_KERNEL_INC     "${OPS_ADV_DIR}/common/include/kernel"   REALPATH)
-get_filename_component(OPS_ADV_ACT                  "${OPS_ADV_DIR}/common/act"          REALPATH)
-get_filename_component(OPS_ADV_CATLASS              "${OPS_ADV_DIR}/common/catlass"      REALPATH)
-get_filename_component(OPS_ADV_TLA                  "${OPS_ADV_DIR}/common/tla"          REALPATH)
 
 
 #   构建树相关路径
@@ -88,11 +84,7 @@ else()
     set(OPS_STATIC_TYPES         infer train)
     set(OPS_STATIC_SCRIPT        ${TOP_DIR}/asl/ops/cann/ops/built-in/kernel/binary_script/build_opp_kernel_static.py)
 endif ()
-if (EXISTS ${OPS_ADV_CMAKE_DIR}/scripts/util)
-    set(ASCENDC_CMAKE_UTIL_DIR       ${OPS_ADV_CMAKE_DIR}/scripts/util)
-else()
-    set(ASCENDC_CMAKE_UTIL_DIR       ${ASCEND_CMAKE_DIR}/util)
-endif()
+set(ASCENDC_CMAKE_UTIL_DIR       ${ASCEND_CMAKE_DIR}/util)
 set(CUSTOM_DIR         ${CMAKE_BINARY_DIR}/custom)
 set(TILING_CUSTOM_DIR  ${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling)
 set(TILING_CUSTOM_FILE ${TILING_CUSTOM_DIR}/liboptiling.so)
@@ -125,16 +117,6 @@ if (BUILD_OPEN_PROJECT)
     #           1. 单配置生成器(Single-configuration generator)场景下，如果构建类型(CMAKE_BUILD_TYPE)未指定，则默认为 Debug ;
     #           2. 多配置生成器(Multi-configuration generator)场景下，如果构建阶段可选的构建类型(CMAKE_CONFIGURATION_TYPES)未指定，
     #              则默认将其指定为CMake允许的构建类型全集 [Debug;Release;MinSizeRel;RelWithDebInfo]
-    if (NOT BUILD_OPS_RTY_KERNEL)
-        if (ENABLE_TEST)
-            set(DEFAULT_BUILD_TYPE "Debug")
-        else()
-            set(DEFAULT_BUILD_TYPE "Release")
-        endif()
-        if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-            set(CMAKE_BUILD_TYPE "${DEFAULT_BUILD_TYPE}" CACHE STRING "Choose the build type: Release/Debug" FORCE)
-        endif()
-    endif()
     get_property(GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
     if (GENERATOR_IS_MULTI_CONFIG)
         if (NOT CMAKE_CONFIGURATION_TYPES)
@@ -191,8 +173,6 @@ if (BUILD_OPEN_PROJECT)
     message(STATUS "TILING_KEY=${TILING_KEY}")
     message(STATUS "TESTS_UT_OPS_TEST=${TESTS_UT_OPS_TEST}")
     message(STATUS "TESTS_EXAMPLE_OPS_TEST=${TESTS_EXAMPLE_OPS_TEST}")
-    message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
-    message(STATUS "VERSION=${VERSION}")
 endif ()
 
 ########################################################################################################################
@@ -259,12 +239,7 @@ if (BUILD_OPEN_PROJECT)
                 --op_debug_config ${OP_DEBUG_CONFIG}
                 --build_ops_rty_kernel ${BUILD_OPS_RTY_KERNEL}
                 --enable_built_in ${ENABLE_BUILT_IN}
-                --enable_static ${ENABLE_STATIC}
                 --enable_ccache ${ENABLE_CCACHE}
-                --cann_3rd_lib_path ${CANN_3RD_LIB_PATH}
-                --build_type ${BUILD_TYPE}
-                --version ${VERSION}
-                --enable_oom ${ENABLE_OOM}
                 RESULT_VARIABLE result
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 OUTPUT_VARIABLE PREPARE_BUILD_OUTPUT_VARIABLE)

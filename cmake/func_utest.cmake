@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 ########################################################################################################################
 # 预定义变量
@@ -24,8 +23,6 @@ target_compile_options(_OpsTestUt_OpApi_Wno
             -Wno-extra
             -Wno-redundant-decls
 )
-
-add_definitions(-DNOT_DYNAMIC_COMPILE)
 
 # 缓存所有算子 UTest 场景 OpProto 动态库相关信息
 set(_OpsTestUt_OpProtoSources            "" CACHE INTERNAL "" FORCE)  # Sources
@@ -160,8 +157,6 @@ function(OpsTest_AddOpApiShared)
             PRIVATE
                 ${OPAPI_INCLUDE}
                 ${_OpsTestUt_OpApiPrivateIncludesExt}
-                ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc
-                ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc/profiling
     )
     target_compile_options(${_Target}
             PRIVATE
@@ -451,14 +446,6 @@ function(OpsTest_Level1_AddOpKernelStatic)
     set(_PrivateIncludeDirectories
             ${_OpsTest_GenDirInc}
             ${TMP_PRIVATE_INCLUDES_EXT}
-            <ASCEND_CANN_PACKAGE_PATH>/${SYSTEM_PREFIX}/ascendc/include/basic_api
-            <ASCEND_CANN_PACKAGE_PATH>/${SYSTEM_PREFIX}/ascendc/include/basic_api/impl
-            <ASCEND_CANN_PACKAGE_PATH>/${SYSTEM_PREFIX}/ascendc/include/basic_api/interface
-            <ASCEND_CANN_PACKAGE_PATH>/tools/tikicpulib/lib/include
-            <ASCEND_CANN_PACKAGE_PATH>/include/ascendc
-            <ASCEND_CANN_PACKAGE_PATH>/x86_64-linux/include/ascendc/highlevel_api
-            <ASCEND_CANN_PACKAGE_PATH>/pkg_inc/runtime/runtime
-            <ASCEND_CANN_PACKAGE_PATH>/runtime/pkg_inc
     )
     get_filename_component(_Inc "${OPS_ADV_DIR}/${TMP_SUB_SYSTEM}/${TMP_SNAKE}" REALPATH)
     if (EXISTS "${_Inc}")
@@ -1008,16 +995,19 @@ function(OpsTest_GenerateCoverage)
             else ()
                 get_filename_component(SYS_ROOT "${_SUFFIX}/usr/include" REALPATH)
             endif ()
+            set(_FilterCmds
+                    "-f=${SYS_ROOT}"
+                    "-f=${GTEST_GTEST_INC}"
+                    "-f=${OPS_ADV_DIR}/tests"
+                    "-f=${ASCEND_CANN_PACKAGE_PATH_PARENT}"
+            )
+            foreach (_dir ${TMP_FILTER_DIRECTORIES})
+                list(APPEND _FilterCmds "-f=${_dir}")
+            endforeach ()
             list(REMOVE_DUPLICATES _FilterCmds)
             add_custom_command(
                     TARGET ${TMP_TARGET} POST_BUILD
-                    COMMAND ${HI_PYTHON} ${GEN_COV_PY}
-                        "-s=${OPS_ADV_DIR}"
-                        "-c=${GEM_COV_DATA_DIR}"
-                        "-f=/tmp/*"
-                        "-f=/usr/include/*"
-                        "-f=${ASCEND_CANN_PACKAGE_PATH_PARENT}/*"
-                        "-y=${OPS_ADV_DIR}/tests/test_config.yaml"
+                    COMMAND ${HI_PYTHON} ${GEN_COV_PY} "-s=${OPS_ADV_DIR}" "-c=${GEM_COV_DATA_DIR}" ${_FilterCmds}
                     COMMENT "Generate coverage for ${TMP_TARGET}"
             )
         endif ()
@@ -1093,13 +1083,19 @@ function(OpsTest_AddLaunch)
     endif ()
 
     # UTest 用例可执行程序(Aclnn)
+    set(_ACLNN_UTEST_SUPPORTED OFF)
     set(_param
             "--cann_path=${ASCEND_CANN_PACKAGE_PATH}"
             "--cann_package_name=opp"
             "get_package_version"
     )
 
-    if (_OpsTestUt_UTestAclnnCaseLibraries)
+    string(TOLOWER "${_UTEST_OPP_CANN_VERSION}" _UTEST_OPP_CANN_VERSION)
+    string(REPLACE "t" "" _UTEST_OPP_CANN_VERSION "${_UTEST_OPP_CANN_VERSION}")
+    if ("${_UTEST_OPP_CANN_VERSION}" VERSION_GREATER "7.3.10.0")
+        set(_ACLNN_UTEST_SUPPORTED ON)
+    endif()
+    if (_OpsTestUt_UTestAclnnCaseLibraries AND _ACLNN_UTEST_SUPPORTED)
         # 支持按算子分离可执行文件, 便于彼此冲突的 Kernel 侧编译宏设置
         foreach (_OpsTestUt_UTestAclnnCaseLibrary ${_OpsTestUt_UTestAclnnCaseLibraries})
             # 获取算子工程名

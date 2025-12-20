@@ -1,14 +1,31 @@
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 function(gen_common_symbol)
+  add_library(${COMMON_NAME} SHARED
+    $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
+  )
+
+  target_link_libraries(${COMMON_NAME}
+    PRIVATE
+    c_sec
+    -Wl,--no-as-needed
+    register
+    -Wl,--as-needed
+    exe_graph
+    tiling_api
+  )
+
+  install(TARGETS ${COMMON_NAME}
+    LIBRARY DESTINATION ${COMMON_LIB_INSTALL_DIR}
+  )
   install(DIRECTORY ${OPS_TRANSFORMER_COMMON_INC_HEADERS}
     DESTINATION ${COMMON_INC_INSTALL_DIR}
   )
@@ -101,7 +118,6 @@ function(gen_opapi_symbol)
     ge_common_base
     ascend_dump
     ascendalog
-    opapi
     dl
   )
 endfunction()
@@ -197,82 +213,6 @@ function(gen_cust_proto_symbol)
   )
 endfunction()
 
-function(gen_cust_aicpu_json_symbol)
-  get_property(ALL_AICPU_JSON_FILES GLOBAL PROPERTY AICPU_JSON_FILES)
-  if(NOT ALL_AICPU_JSON_FILES)
-    message(STATUS "No aicpu json files to merge, skipping.")
-    return()
-  endif()
-
-  set(MERGED_JSON ${CMAKE_BINARY_DIR}/cust_aicpu_kernel.json)
-  add_custom_command(
-    OUTPUT ${MERGED_JSON}
-    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/util/merge_aicpu_info_json.sh ${CMAKE_SOURCE_DIR} ${MERGED_JSON} ${ALL_AICPU_JSON_FILES}
-    DEPENDS ${ALL_AICPU_JSON_FILES}
-    COMMENT "Merging Json files into ${MERGED_JSON}"
-    VERBATIM
-  )
-  add_custom_target(merge_aicpu_json ALL DEPENDS ${MERGED_JSON})
-  install(
-    FILES ${MERGED_JSON}
-    DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/config
-    OPTIONAL
-  )
-endfunction()
-
-function(gen_cust_aicpu_kernel_symbol)
-  if(NOT AICPU_CUST_OBJ_TARGETS)
-    message(STATUS "No aicpu cust obj targets found, skipping.")
-    return()
-  endif()
-
-  set(ARM_CXX_COMPILER ${ASCEND_DIR}/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++)
-  set(ARM_SO_OUTPUT ${CMAKE_BINARY_DIR}/libcust_aicpu_kernels.so)
-
-  set(ALL_OBJECTS "")
-  foreach(tgt IN LISTS AICPU_CUST_OBJ_TARGETS)
-    list(APPEND ALL_OBJECTS $<TARGET_OBJECTS:${tgt}>)
-  endforeach()
-
-  message(STATUS "Linking cust_aicpu_kernels with ARM toolchain: ${ARM_CXX_COMPILER}")
-  message(STATUS "Objects: ${ALL_OBJECTS}")
-  message(STATUS "Output: ${ARM_SO_OUTPUT}")
-
-  if(EXISTS ${ASCEND_DIR}/ops_base/lib64/libaicpu_context.a)
-    set(LIBAICPU_CONTEXT_PATH ${ASCEND_DIR}/ops_base/lib64/libaicpu_context.a)
-  else()
-    set(LIBAICPU_CONTEXT_PATH ${ASCEND_DIR}/lib64/libaicpu_context.a)
-  endif()
-
-  if(EXISTS ${ASCEND_DIR}/ops_base/lib64/libbase_ascend_protobuf.a)
-    set(LIBBASE_ASCEND_PROTOBUF_PATH ${ASCEND_DIR}/ops_base/lib64/libbase_ascend_protobuf.a)
-  else()
-    set(LIBBASE_ASCEND_PROTOBUF_PATH ${ASCEND_DIR}/lib64/libbase_ascend_protobuf.a)
-  endif()
-
-  add_custom_command(
-    OUTPUT ${ARM_SO_OUTPUT}
-    COMMAND ${ARM_CXX_COMPILER} -shared ${ALL_OBJECTS}
-      -Wl,--whole-archive
-      ${LIBAICPU_CONTEXT_PATH}
-      ${LIBBASE_ASCEND_PROTOBUF_PATH}
-      -Wl,--no-whole-archive
-      -Wl,-Bsymbolic
-      -Wl,--exclude-libs=libbase_ascend_protobuf.a
-      -s
-      -o ${ARM_SO_OUTPUT}
-    DEPENDS ${AICPU_CUST_OBJ_TARGETS}
-    COMMENT "Linking cust_aicpu_kernels.so using ARM toolchain"
-  )
-  add_custom_target(cust_aicpu_kernels ALL DEPENDS ${ARM_SO_OUTPUT})
-
-  install(
-    FILES ${ARM_SO_OUTPUT}
-    DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/aicpu_kernel/impl
-    OPTIONAL
-  )
-endfunction()
-
 function(gen_norm_symbol)
   gen_common_symbol()
 
@@ -294,8 +234,4 @@ function(gen_cust_symbol)
   gen_cust_optiling_symbol()
 
   gen_cust_proto_symbol()
-
-  gen_cust_aicpu_json_symbol()
-
-  gen_cust_aicpu_kernel_symbol()
 endfunction()

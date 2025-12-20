@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 # Custom 包场景, Host 侧各 Target 公共编译配置
 # 注意: 为保证与 built-in 包编译流程兼容, intf_pub 名称不可变更
@@ -37,7 +36,7 @@ target_compile_options(intf_pub
             -Wdelete-non-virtual-dtor -Wduplicated-cond
             -Wtrampolines -Wsized-deallocation -Wlogical-op -Wsuggest-attribute=format
             -Wduplicated-branches
-            -Wformat-signedness
+            -Wmissing-include-dirs -Wformat-signedness
             -Wreturn-local-addr -Wextra
             -Wredundant-decls -Wfloat-conversion
             -Wno-write-strings -Wall -Wno-dangling-else -Wno-comment -Wno-conversion-null -Wno-return-type
@@ -60,7 +59,6 @@ target_compile_options(intf_pub
             $<$<COMPILE_LANGUAGE:C>:-Wnested-externs>
             $<$<CONFIG:Debug>:-g>
             $<IF:$<VERSION_GREATER:${CMAKE_C_COMPILER_VERSION},4.8.5>,-fstack-protector-strong,-fstack-protector-all>
-            $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>
 )
 target_compile_definitions(intf_pub
         INTERFACE
@@ -74,8 +72,6 @@ target_link_options(intf_pub
             -Wl,-z,relro
             -Wl,-z,now
             -Wl,-z,noexecstack
-            $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>
-
 )
 
 # intf_pub_cxx14 for c++14
@@ -84,9 +80,7 @@ target_compile_options(intf_pub_cxx14 INTERFACE
   -Wall
   -fPIC
   $<IF:$<VERSION_GREATER:${CMAKE_C_COMPILER_VERSION},4.8.5>,-fstack-protector-strong,-fstack-protector-all>
-  $<$<CONFIG:Debug>:-g>
   $<$<COMPILE_LANGUAGE:CXX>:-std=c++14>
-  $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>
 )
 target_compile_definitions(intf_pub_cxx14 INTERFACE
   _GLIBCXX_USE_CXX11_ABI=0
@@ -99,25 +93,20 @@ target_link_options(intf_pub_cxx14 INTERFACE
   -Wl,-z,relro
   -Wl,-z,now
   -Wl,-z,noexecstack
-  $<$<CONFIG:Release>:-s>
   $<$<CONFIG:Release>:-Wl,--build-id=none>
-  $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage> 
 )
 target_link_directories(intf_pub_cxx14 INTERFACE)
 target_link_libraries(intf_pub_cxx14 INTERFACE
   -lpthread
 )
 
-# intf_pub_cxx17 for c++17
+# intf_pub_cxx14 for c++17
 add_library(intf_pub_cxx17 INTERFACE)
 target_compile_options(intf_pub_cxx17 INTERFACE
     -Wall
     -fPIC
     $<IF:$<VERSION_GREATER:${CMAKE_C_COMPILER_VERSION},4.8.5>,-fstack-protector-strong,-fstack-protector-all>
-    $<$<CONFIG:Debug>:-g>
-    $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>
-    $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>  
-  )
+    $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>)
 target_compile_definitions(intf_pub_cxx17 INTERFACE
     _GLIBCXX_USE_CXX11_ABI=0
     $<$<CONFIG:Release>:CFG_BUILD_NDEBUG>
@@ -128,10 +117,7 @@ target_link_options(intf_pub_cxx17 INTERFACE
     -Wl,-z,relro
     -Wl,-z,now
     -Wl,-z,noexecstack
-    $<$<CONFIG:Release>:-s>
-    $<$<CONFIG:Release>:-Wl,--build-id=none>
-    $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>   
-  )
+    $<$<CONFIG:Release>:-Wl,--build-id=none>)
 target_link_directories(intf_pub_cxx17 INTERFACE)
 target_link_libraries(intf_pub_cxx17 INTERFACE
   -lpthread)
@@ -142,9 +128,7 @@ target_compile_options(intf_pub_aicpu INTERFACE
   -Wall
   -fPIC
   $<IF:$<VERSION_GREATER:${CMAKE_C_COMPILER_VERSION},4.8.5>,-fstack-protector-strong,-fstack-protector-all>
-  $<$<CONFIG:Debug>:-g>
   $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>
-  $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage> 
 )
 target_compile_definitions(intf_pub_aicpu INTERFACE
   $<$<NOT:$<STREQUAL:${PRODUCT_SIDE},device>>:_GLIBCXX_USE_CXX11_ABI=0>
@@ -159,7 +143,6 @@ target_link_options(intf_pub_aicpu INTERFACE
   -Wl,-z,now
   -Wl,-z,noexecstack
   $<$<CONFIG:Release>:-Wl,--build-id=none>
-  $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>
 )
 target_link_directories(intf_pub_aicpu INTERFACE)
 target_link_libraries(intf_pub_aicpu INTERFACE

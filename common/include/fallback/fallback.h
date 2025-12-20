@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fallback.h
@@ -175,8 +175,6 @@ inline aclDataType GetConvertType(const gert::Tensor* ge_tensor) {
     dataType = aclDataType::ACL_UINT8;
   } else if (dataType_ge == DT_INT4) {
     dataType = aclDataType::ACL_INT4;
-  } else if (dataType_ge == DT_FLOAT8_E4M3FN) {
-    dataType = aclDataType::ACL_FLOAT8_E4M3FN;
   } else {
     dataType = aclDataType::ACL_FLOAT16;
   }
@@ -378,8 +376,8 @@ auto call(Function f, Tuple t) -> int {
 template <typename Tuple, size_t... I>
 auto ConvertToOpApiFunc(const Tuple& params, void* opApiAddr, std_utils::index_sequence<I...>)
     -> int (*)(typename std::decay<decltype(std::get<I>(params))>::type...) {
-    using LocalOpApiFunc = int (*)(typename std::decay<decltype(std::get<I>(params))>::type...);
-    auto func = reinterpret_cast<LocalOpApiFunc>(opApiAddr);
+    using OpApiFunc = int (*)(typename std::decay<decltype(std::get<I>(params))>::type...);
+    auto func = reinterpret_cast<OpApiFunc>(opApiAddr);
     return func;
 }
 
@@ -483,7 +481,7 @@ using ResetCacheThreadLocal = void (*)();
         ReleaseConvertTypes(converted_params);                                                                       \
         host_api_ctx->FreeWorkspace();                                                                               \
         if (api_ret_inner != 0) {                                                                                          \
-          OP_LOGE("aclnnfallback", "call %s allocate workspace failed api_ret_inner: %d", #aclnn_api, api_ret_inner);           \
+          OP_LOGE("aclnnfallback", "call %s allocate workspace failed api_ret_inner: %d", #aclnn_api, api_ret_inner);            \
           return GRAPH_FAILED;                                                                                       \
         }                                                                                                            \
         return api_ret_inner;                                                                                              \

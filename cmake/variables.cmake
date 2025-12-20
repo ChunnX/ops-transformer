@@ -1,16 +1,15 @@
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 set(COMMON_NAME common_${PKG_NAME})
 set(OPHOST_NAME ophost_${PKG_NAME})
-set(OPSTATIC_NAME cann_${PKG_NAME}_static)
 set(OPAPI_NAME opapi_${PKG_NAME})
 set(OPGRAPH_NAME opgraph_${PKG_NAME})
 set(GRAPH_PLUGIN_NAME graph_plugin_${PKG_NAME})
@@ -46,26 +45,24 @@ if(NOT DEFINED ASCEND_PYTHON_EXECUTABLE)
   set(ASCEND_PYTHON_EXECUTABLE python3 CACHE STRING "")
 endif()
 
-set(BIN_STATIC_INSTALL_DIR          packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/static)
 if (ENABLE_BUILT_IN)
   set(ACLNN_INC_INSTALL_DIR           ops_transformer/built-in/op_impl/ai_core/tbe/op_api/include/aclnnop)
   set(ACLNN_INC_LEVEL2_INSTALL_DIR    ops_transformer/built-in/op_impl/ai_core/tbe/op_api/include/aclnnop/level2)
   set(ACLNN_LIB_INSTALL_DIR           ops_transformer/built-in/op_impl/ai_core/tbe/op_api/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
   set(OPS_INFO_INSTALL_DIR            ops_transformer/built-in/op_impl/ai_core/tbe/config)
-  set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer/ascendc)
-  set(IMPL_DYNAMIC_INSTALL_DIR        ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer/dynamic)
+  set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ascendc)
+  set(IMPL_DYNAMIC_INSTALL_DIR        ops_transformer/built-in/op_impl/ai_core/tbe/impl/dynamic)
   set(BIN_KERNEL_INSTALL_DIR          ops_transformer/built-in/op_impl/ai_core/tbe/kernel)
   set(BIN_KERNEL_CONFIG_INSTALL_DIR   ops_transformer/built-in/op_impl/ai_core/tbe/kernel/config)
-  set(BIN_STATIC_INSTALL_DIR          ops_transformer/built-in/op_impl/ai_core/tbe/static)
-  set(OPHOST_INC_INSTALL_PATH         ops_transformer/built-in/op_impl/ai_core/tbe/op_host/include)
-  set(OPHOST_LIB_INSTALL_PATH         ops_transformer/built-in/op_impl/ai_core/tbe/op_host/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
+  set(OPHOST_INC_INSTALL_PATH         ops_transformer/built-in/op_impl/ai_core/tbe/op_tiling/include)
+  set(OPHOST_LIB_INSTALL_PATH         ops_transformer/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
   set(OPTILING_LIB_INSTALL_DIR        ${OPHOST_LIB_INSTALL_PATH})
   set(OPGRAPH_INC_INSTALL_DIR         ops_transformer/built-in/op_graph/inc)
   set(OPGRAPH_LIB_INSTALL_DIR         ops_transformer/built-in/op_graph/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
   set(COMMON_INC_INSTALL_DIR          ops_transformer/include)
   set(COMMON_LIB_INSTALL_DIR          ops_transformer/lib)
   set(VERSION_INFO_INSTALL_DIR        ops_transformer)
-  set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
+  set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl)
 endif()
 
 if (ENABLE_TEST)
@@ -110,13 +107,10 @@ set(OPAPI_INCLUDE
   ${OPS_TRANSFORMER_DIR}/
   ${OPS_TRANSFORMER_DIR}/common/include
   ${OPS_TRANSFORMER_DIR}/common/include/external
-  ${OPS_TRANSFORMER_DIR}/common/include/common
-  ${OPS_TRANSFORMER_DIR}/common/include/static
   ${OPS_TRANSFORMER_DIR}/common/stub/op_api
   $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:${TOP_DIR}/output/${PRODUCT}/aclnnop_resource>
 
   ${OPS_TRANSFORMER_DIR}/mc2/common/inc
-  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
   ${OPS_TRANSFORMER_DIR}/mc2/3rd
   ${OPS_TRANSFORMER_DIR}/mc2
 )
@@ -135,13 +129,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
-    ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
-    ${TOP_DIR}/ops-base/pkg_inc
+    ${TOP_DIR}/ops-base/include/op_common/op_host
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
   )
-else()
-  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS})
 endif()
 
 set(OP_TILING_INCLUDE
@@ -161,7 +152,6 @@ set(OP_TILING_INCLUDE
   
   ${OPS_TRANSFORMER_DIR}/mc2/common
   ${OPS_TRANSFORMER_DIR}/mc2/common/inc
-  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
   ${OPS_TRANSFORMER_DIR}/mc2/3rd
   ${OPS_TRANSFORMER_DIR}/mc2
   ${NNOPBASE_INCLUDE_DIRS}
@@ -189,8 +179,7 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/built-in
 
     ${TOP_DIR}/asl/ops/cann/ops/mc2/communication_and_computation
-    ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
-    ${TOP_DIR}/ops-base/pkg_inc
+    ${TOP_DIR}/ops-base/include/op_common/op_host
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
 
@@ -215,7 +204,6 @@ set(OP_PROTO_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/include
 
   ${OPS_TRANSFORMER_DIR}/mc2/common/inc
-  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
   ${OPS_TRANSFORMER_DIR}/mc2/3rd
   ${OPS_TRANSFORMER_DIR}/mc2
 )
@@ -239,12 +227,47 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
-    ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
-    ${TOP_DIR}/ops-base/pkg_inc
+    ${TOP_DIR}/ops-base/include/op_common/op_host
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
   )
 endif()
+
+set(AICPU_INCLUDE
+  ${OPBASE_INC_DIRS}
+  ${AICPU_INC_DIRS}
+  ${OPS_INCLUDE}
+  ${C_SEC_INCLUDE}
+  ${RUNTIME_INCLUDE}
+  ${NNOPBASE_INCLUDE}
+  ${METADEF_DIR}
+  ${METADEF_DIR}/inc
+  ${METADEF_DIR}/inc/external
+  ${METADEF_DIR}/external
+  ${ACL_EXTERNAL_INCLUDE}
+  ${HCCL_EXTERNAL_INCLUDE}
+  ${ACL_EXTERNAL_INC_INCLUDE}
+  # todo ops-base replaced later
+  ${OPS_TRANSFORMER_DIR}/mc2/3rd
+  ${TOP_DIR}/inc/aicpu/cpu_kernels
+  ${TOP_DIR}/inc/aicpu/aicpu_schedule/aicpu_sharder
+  ${TOP_DIR}/inc/external/aicpu
+  ${TOP_DIR}/open_source/eigen
+  ${TOP_DIR}/inc
+  ${TOP_DIR}/inc/driver
+  ${TOP_DIR}/libc_sec/include
+  ${TOP_DIR}/abl/libc_sec/include
+  ${METADEF_INCLUDE}
+  ${METADEF_INCLUDE}/inc
+  ${METADEF_INCLUDE}/exe_graph
+  ${METADEF_INCLUDE}/external
+  ${METADEF_DIR}/inc/external/exe_graph
+  ${METADEF_DIR}/inc/external/graph
+  ${GRAPHENGINE_INCLUDE}
+  ${GRAPHENGINE_INCLUDE}/external
+  ${CMAKE_CURRENT_SOURCE_DIR}/kernels/device/hashmap
+  ${TOP_DIR}/asl/ops/cann/ops/matmul
+)
 
 if (NOT BUILD_OPEN_PROJECT)
   list(APPEND AICPU_INCLUDE
@@ -256,24 +279,13 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/built-in/aicpu/context/common/*.h
     ${TOP_DIR}/ace/comop/inc
     ${TOP_DIR}/ops-base/include
-    ${TOP_DIR}/ops-base/pkg_inc
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
   )
 endif()
 
-set(AICPU_INCLUDE
-  ${OPBASE_INC_DIRS}
-  ${AICPU_INC_DIRS}
-  ${C_SEC_INCLUDE}
-  ${NNOPBASE_INCLUDE_DIRS}
-  ${HCCL_EXTERNAL_INCLUDE}
-  ${OPS_TRANSFORMER_DIR}/common/inc/common
-  ${METADEF_INCLUDE_DIRS}
-)
-
 set(AICPU_DEFINITIONS
   -O2
-  -std=c++17
+  -std=c++14
   -fstack-protector-all
   -fvisibility-inlines-hidden
   -fvisibility=hidden
@@ -287,6 +299,22 @@ set(AICPU_DEFINITIONS
   -DEigen=ascend_Eigen
   -fno-common
   -fPIC
+)
+
+set(AICPU_LINK
+  -Wl,--whole-archive
+  # todo ops-base
+  cpu_kernels_context_static
+  -Wl,--no-whole-archive
+  ascend_protobuf_static
+  -Wl,--no-as-needed
+  $<IF:$<STREQUAL:${x86_aarch64_host},x86_or_aarch64_on_host>,alog,slog>
+  c_sec
+  -ldl
+  $<$<STREQUAL:${PRODUCT_SIDE},host>:ascend_hal_stub>
+  $<$<STREQUAL:${PRODUCT_SIDE},device>:ascend_hal>
+  -Wl,--as-needed
+  $<$<STREQUAL:${PRODUCT_SIDE},device>:malblas_static>
 )
 
 if(EXISTS ${TOP_DIR}/build/product/onetrack/sys_version/sys_version.conf)

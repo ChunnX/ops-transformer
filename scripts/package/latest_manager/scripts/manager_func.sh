@@ -1,13 +1,13 @@
 #!/bin/sh
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 USERNAME="$(id -un)"
 USERGROUP="$(id -gn)"
@@ -161,6 +161,11 @@ package_create_softlink() {
     get_install_for_all "install_for_all"
     ret="$?" && [ $ret -ne 0 ] && return $ret
     INSTALL_FOR_ALL="$install_for_all"
+
+    # 版本兼容性检查
+    check_compatiable_in_multi_version_install "$install_path" "$USERNAME" "" \
+        "$version" "$version_dir" "$package"
+    ret="$?" && [ $ret -ne 0 ] && return $ret
 
     do_create_package_softlink_to_latest "$install_path" "$package" "$version" "$version_dir" "$LATEST_DIR" \
         "$USERNAME" "$USERGROUP" "$install_for_all" "$docker_root"
@@ -447,23 +452,15 @@ do_create_package_softlink_to_latest() {
 
     pack_feature_param "feature_param" "${feature_type}" "n" "${chip_type}"
 
+    # 创建公共目录到latest目录下的软链接
     create_common_dirs_softlink_to_latest "${install_type}" "${install_path}" "${package}" "${version_dir}" "${latest_dir}" \
         "${filelist_path}" "${feature_param}" "${username}" "${usergroup}" "${install_for_all}"
     ret="$?" && [ $ret -ne 0 ] && return $ret
 
-    # 创建公共目录到latest目录下的软链接
-    if [ "${USE_SHARE_INFO}" != "y" ]; then
-        # 创建版本包到latest目录下的软链接
-        create_package_dir_softlink_to_latest "${install_path}" "${version_dir}" "${latest_dir}" "${package}" \
-            "${username}" "${usergroup}" "${install_for_all}"
-        check_ret_error "$?" "Create $package $version_dir $latest_dir package dirs softlink to latest failed!"
-        ret="$?" && [ $ret -ne 0 ] && return $ret
-    else
-        if [ ! -d "${install_path}/${latest_dir}/share" ]; then
-            ln -srf "${install_path}/${version_dir}/share" "${install_path}/${latest_dir}/share"
-            ret="$?" && [ $ret -ne 0 ] && return $ret
-        fi
-    fi
+    # 创建版本包到latest目录下的软链接
+    create_package_dir_softlink_to_latest "${install_path}" "${version_dir}" "${latest_dir}" "${package}" \
+        "${username}" "${usergroup}" "${install_for_all}"
+    ret="$?" && [ $ret -ne 0 ] && return $ret
 
     # latest目录下公共脚本添加条目
     add_latest_common_script "${install_path}/${latest_dir}" "${package}" "${username}" "${usergroup}" "${docker_root}"
@@ -558,6 +555,7 @@ do_del_package_softlink_in_latest() {
 
     pack_feature_param "feature_param" "${feature_type}" "n" "${chip_type}"
 
+    # latest目录下公共脚本删除条目
     del_latest_common_script "${install_path}/${latest_dir}" "${package}" "${username}" "${docker_root}"
     ret="$?" && [ $ret -ne 0 ] && return $ret
 
@@ -566,18 +564,9 @@ do_del_package_softlink_in_latest() {
         "${filelist_path}" "${feature_param}"
     ret="$?" && [ $ret -ne 0 ] && return $ret
 
-    # latest目录下公共脚本删除条目
-    if [ "${USE_SHARE_INFO}" != "y" ]; then
-        # 删除版本包到latest目录下的软链接
-        del_package_dir_softlink_in_latest "${install_path}" "${latest_dir}" "${package}"
-        check_ret_error "$?" "Delete $package package dir softlink in latest in del package softlink in latest failed!"
-        ret="$?" && [ $ret -ne 0 ] && return $ret
-    else
-        if [ -L "${install_path}/${latest_dir}/share" ]; then
-            rm -f "${install_path}/${latest_dir}/share"
-            ret="$?" && [ $ret -ne 0 ] && return $ret
-        fi
-    fi
+    # 删除版本包到latest目录下的软链接
+    del_package_dir_softlink_in_latest "${install_path}" "${latest_dir}" "${package}"
+    ret="$?" && [ $ret -ne 0 ] && return $ret
 
     # 删除latest下tools空目录。toolkit包创建latest软链时，latest下存在软链tools/simulator -> ${arch}-linux/simulator
     # 通过filelist.csv文件，无法删除tools目录
@@ -877,12 +866,9 @@ create_common_dirs_softlink_to_latest() {
     local username="$8"
     local usergroup="$9"
     local install_for_all="${10}"
+    local custom_create_softlink="${install_path}/${version_dir}/${package}/script/${package}_custom_create_softlink.sh"
     local db_info_path="$install_path/$latest_dir/var/ascend_package_db.info"
-    local ret package_dirpath custom_create_softlink db_info
-
-    get_package_dirpath "package_dirpath" "$package"
-
-    custom_create_softlink="${install_path}/${version_dir}/${package_dirpath}/script/${package}_custom_create_softlink.sh"
+    local ret db_info
 
     migrate_conf_files_from_latest_to_version "${install_type}" "${install_path}" "${version_dir}" "${latest_dir}" \
         "${filelist_path}" "${feature_param}"
@@ -1014,11 +1000,9 @@ del_common_dirs_softlink_from_latest() {
     local latest_dir="$5"
     local filelist_path="$6"
     local feature_param="$7"
+    local custom_remove_softlink="${install_path}/${version_dir}/${package}/script/${package}_custom_remove_softlink.sh"
     local db_info_path="$install_path/$latest_dir/var/ascend_package_db.info"
-    local ret db_info_origin db_info diff_result blocks_to_remove package_dirpath custom_remove_softlink
-
-    get_package_dirpath "package_dirpath" "$package"
-    custom_remove_softlink="${install_path}/${version_dir}/${package_dirpath}/script/${package}_custom_remove_softlink.sh"
+    local ret db_info_origin db_info diff_result blocks_to_remove
 
     if [ -f "$db_info_path" ]; then
         db_info_origin="$(cat "$db_info_path")""\n"
@@ -1103,10 +1087,6 @@ del_latest_common_script() {
     local username="$3"
     local docker_root="$4"
     local ret
-
-    if [ ! -d "${latest_path}/bin" ]; then
-        return 0
-    fi
 
     # 保存bin目录的权限
     get_file_mod "mod" "-L" "${latest_path}/bin"

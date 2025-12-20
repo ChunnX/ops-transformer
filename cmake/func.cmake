@@ -1,34 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
-
-function(filter_copy_files SELECTED_FILES SELECTED_DIRS)
-    set(_selected_files "")
-    set(_selected_dirs "")
-    foreach(item ${KERNEL_SUB_DIRS})
-        set(path "${CURRENT_KERNEL_DIR}/${item}")
-        if(IS_DIRECTORY "${path}")
-            if(item MATCHES "^arch")
-                list(FIND ARCH_DIRECTORY "${item}" idx)
-                if(idx EQUAL -1)
-                    continue()
-                endif()
-            endif()
-            list(APPEND _selected_dirs "${path}")
-        else()
-            list(APPEND _selected_files "${path}")
-        endif()
-    endforeach()
-
-    set(${SELECTED_FILES} "${_selected_files}" PARENT_SCOPE)
-    set(${SELECTED_DIRS} "${_selected_dirs}" PARENT_SCOPE)
-endfunction()
+# ======================================================================================================================
 
 function(add_target_source)
     cmake_parse_arguments(ADD "" "BASE_TARGET;SRC_DIR" "TARGET_NAME" ${ARGN})
@@ -66,7 +43,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
     set(_OP_LIST)
     set(_OP_DIR_LIST)
 
-    if(ENABLE_EXPERIMENTAL)
+if(ENABLE_EXPERIMENTAL)
         message(STATUS "Build experimental module")
         file(GLOB OP_HOST_CMAKE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/attention/**/op_host/CMakeLists.txt"
@@ -77,16 +54,16 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
         )
     else()
-        file(GLOB OP_HOST_CMAKE_FILES
+        file(GLOB OP_HOST_CMAKE_FILES 
         "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/CMakeLists.txt"
         )
         if(BUILD_OPEN_PROJECT AND (NOT BUILD_OPS_RTY_KERNEL))
-            file(GLOB CANNDEV_OPS_HOST_CMAKE_FILES
+            file(GLOB CANNDEV_OPS_HOST_CMAKE_FILES 
                 "${CMAKE_CURRENT_SOURCE_DIR}/posembedding/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/op_host/CMakeLists.txt"
-                #"${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
+                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
             )
             List(APPEND OP_HOST_CMAKE_FILES ${CANNDEV_OPS_HOST_CMAKE_FILES})
         endif()
@@ -116,13 +93,15 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         endif ()
 
         if (ENABLE_TEST)
-            file(READ "${OP_DIR}/tests/CMakeLists.txt" CML_CONTENT)
-            if (CML_CONTENT MATCHES "OpsTest_Level2_AddOp")
-                set(UTEST_FRAMEWORK_OLD TRUE CACHE BOOL "UTEST_FRAMEWORK_OLD" FORCE)
-            else()
-                set(UTEST_FRAMEWORK_NEW TRUE CACHE BOOL "UTEST_FRAMEWORK_NEW" FORCE)
+            if(EXISTS "${OP_DIR}/tests/CMakeLists.txt")
+                file(READ "${OP_DIR}/tests/CMakeLists.txt" CML_CONTENT)
+                if (CML_CONTENT MATCHES "OpsTest_Level2_AddOp")
+                    set(UTEST_FRAMEWORK_OLD TRUE CACHE BOOL "UTEST_FRAMEWORK_OLD" FORCE)
+                else()
+                    set(UTEST_FRAMEWORK_NEW TRUE CACHE BOOL "UTEST_FRAMEWORK_NEW" FORCE)
+                endif()
             endif()
-        endif()
+        endif()  
 
         list(APPEND _OP_LIST ${OP_NAME})
         list(APPEND _OP_DIR_LIST ${OP_DIR})
@@ -315,31 +294,27 @@ function(add_opc_config)
         return()
     endif()
 
+    if(NOT OP_COMPILE_CONFIG)
+        return()
+    endif()
+
+    string(REPLACE "," ";" OP_COMPILE_CONFIG_LIST "${OP_COMPILE_CONFIG}")
+
     set(_OPC_CONFIG)
 
-    if(NOT OP_COMPILE_CONFIG)
-        list(APPEND _OPC_CONFIG "-DNOT_DYNAMIC_COMPILE")
-    else()
-        string(REPLACE "," ";" OP_COMPILE_CONFIG_LIST "${OP_COMPILE_CONFIG}")
-        list(APPEND _OPC_CONFIG "-DNOT_DYNAMIC_COMPILE")
-
-        foreach(_option ${OP_COMPILE_CONFIG_LIST})
-            if("${_option}" STREQUAL "ccec_g")
-                list(APPEND _OPC_CONFIG "-g")
-            elseif("${_option}" STREQUAL "ccec_O0")
-                list(APPEND _OPC_CONFIG "-O0")
-            elseif("${_option}" STREQUAL "sanitizer")
-                list(APPEND _OPC_CONFIG "-sanitizer")
-            elseif("${_option}" STREQUAL "dump_cce")
-                list(APPEND _OPC_CONFIG "--save-temp-files")
-            endif()
-        endforeach()
-    endif()
-
-    if(ENABLE_OOM)
-        list(APPEND _OPC_CONFIG "--oom")
-        list(APPEND _OPC_CONFIG "-ffunction-sections -fdata-sections")
-    endif()
+    foreach(_option ${OP_COMPILE_CONFIG_LIST})
+        if("${_option}" STREQUAL "ccec_g")
+            list(APPEND _OPC_CONFIG "-g")
+        elseif("${_option}" STREQUAL "ccec_O0")
+            list(APPEND _OPC_CONFIG "-O0")
+        elseif("${_option}" STREQUAL "oom")
+            list(APPEND _OPC_CONFIG "--oom")
+        elseif("${_option}" STREQUAL "sanitizer")
+            list(APPEND _OPC_CONFIG "-sanitizer")
+        elseif("${_option}" STREQUAL "dump_cce")
+            list(APPEND _OPC_CONFIG "--save-temp-files")
+        endif()
+    endforeach()
 
     if(_OPC_CONFIG)
         add_ops_compile_options(
@@ -359,13 +334,7 @@ function(add_ops_src_copy)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
             add_custom_command(OUTPUT ${OPS_UTILS_INC_KERNEL_DIR}
                     COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/regbase
-                    COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/act
-                    COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/catlass
-                    COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/tla
                     COMMAND cp -rf ${OPS_ADV_UTILS_KERNEL_INC}/*.* ${OPS_UTILS_INC_KERNEL_DIR}
-                    COMMAND cp -rf ${OPS_ADV_ACT}/* ${OPS_UTILS_INC_KERNEL_DIR}/act
-                    COMMAND cp -rf ${OPS_ADV_CATLASS}/* ${OPS_UTILS_INC_KERNEL_DIR}/catlass
-                    COMMAND cp -rf ${OPS_ADV_TLA}/* ${OPS_UTILS_INC_KERNEL_DIR}/tla
             )
 
             add_custom_target(${OPS_UTILS_INC_KERNEL_TARGET}
@@ -375,9 +344,7 @@ function(add_ops_src_copy)
     endif ()
 
     set(MC2_OPS_LIST "matmul_reduce_scatter;"
-        "matmul_reduce_scatter_v2;"
         "grouped_mat_mul_allto_allv;"
-        "grouped_mat_mul_all_reduce;"
         "batch_mat_mul_reduce_scatter_allto_all;"
         "allto_allv_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
@@ -389,17 +356,9 @@ function(add_ops_src_copy)
         "moe_distribute_combine_v2;"
         "moe_update_expert;"
         "all_gather_matmul;"
-        "all_gather_matmul_v2;"
         "matmul_all_reduce;"
         "matmul_all_reduce_add_rms_norm;"
-        "inplace_matmul_all_reduce_add_rms_norm;"
-        "quant_reduce_scatter;"
-        "quant_all_reduce;"
-        "matmul_allto_all;"
-        "allto_all_matmul;"
-        "attention_to_ffn;"
-        "ffn_to_attention;"
-    ) # mc2算子列表
+        "inplace_matmul_all_reduce_add_rms_norm;") # mc2算子列表
 
     get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)
     list(FIND MC2_OPS_LIST "${FOLDER_NAME}" INDEX)
@@ -473,7 +432,6 @@ function(add_bin_compile_target)
     foreach(_op_info ${BINARY_OP_INFO})
         get_filename_component(_op_name "${_op_info}" NAME)
         set(${_op_name}_dir ${_op_info})
-        set(${_op_name}_apt_dir ${_op_info})
     endforeach()
 
     set(_ops_target_list)
@@ -556,21 +514,13 @@ function(add_bin_compile_target)
                     DEPENDS ${OP_BIN_OUT_DIR}
             )
 
-            if (ENABLE_BUILT_IN)
-                install(DIRECTORY ${OP_BIN_OUT_DIR}
-                        DESTINATION ${_INSTALL_DIR}/${BINARY_COMPUTE_UNIT}/ops_transformer OPTIONAL
-                )
-                install(FILES ${BIN_OUT_DIR}/${op_file}.json
-                        DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT}/ops_transformer OPTIONAL
-                )
-            else()
-                install(DIRECTORY ${OP_BIN_OUT_DIR}
-                        DESTINATION ${_INSTALL_DIR}/${BINARY_COMPUTE_UNIT} OPTIONAL
-                )
-                install(FILES ${BIN_OUT_DIR}/${op_file}.json
-                        DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT} OPTIONAL
-                )
-            endif()
+            install(DIRECTORY ${OP_BIN_OUT_DIR}
+                    DESTINATION ${_INSTALL_DIR}/${BINARY_COMPUTE_UNIT} OPTIONAL
+            )
+
+            install(FILES ${BIN_OUT_DIR}/${op_file}.json
+                    DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT} OPTIONAL
+            )
         endif ()
 
         set(_group "1-0")
@@ -647,7 +597,6 @@ function(add_bin_compile_target)
     if (_ops_target_list)
         set(OPS_CONFIG_TARGET ops_config_${BINARY_COMPUTE_UNIT})
         set(BINARY_INFO_CONFIG_FILE ${BIN_OUT_DIR}/binary_info_config.json)
-        set(RELOCATABLE_KERNEL_INFO_CONFIG_FILE ${BIN_OUT_DIR}/relocatable_kernel_info_config.json)
 
         add_custom_command(OUTPUT ${BINARY_INFO_CONFIG_FILE}
                 COMMAND ${HI_PYTHON} ${ASCENDC_CMAKE_UTIL_DIR}/ascendc_ops_config.py -p ${BIN_OUT_DIR} -s ${BINARY_COMPUTE_UNIT}
@@ -663,21 +612,9 @@ function(add_bin_compile_target)
             add_dependencies(${OPS_CONFIG_TARGET} ${_op_target})
         endforeach()
 
-        if (ENABLE_BUILT_IN)
-            install(FILES ${BINARY_INFO_CONFIG_FILE}
-                    DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT}/ops_transformer OPTIONAL
-            )
-            install(FILES ${RELOCATABLE_KERNEL_INFO_CONFIG_FILE}
-                    DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT}/ops_transformer OPTIONAL
-            )
-        else()
-            install(FILES ${RELOCATABLE_KERNEL_INFO_CONFIG_FILE}
-                    DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT} OPTIONAL
-            )
-            install(FILES ${BINARY_INFO_CONFIG_FILE}
-                    DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT} OPTIONAL
-            )
-        endif()
+        install(FILES ${BINARY_INFO_CONFIG_FILE}
+                DESTINATION ${_INSTALL_DIR}/config/${BINARY_COMPUTE_UNIT} OPTIONAL
+        )
     endif ()
 endfunction()
 
