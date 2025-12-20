@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file mat_mul_multi_core_splitk_kernel.h
  * \brief
@@ -16,7 +16,7 @@
 
 #include "mat_mul_deterministic_splitk_kernel.h"
 
-namespace MatmulV3 {
+namespace Mc2MatmulV3 {
 
 template <class C_T>
 __aicore__ inline void ClearOutput(GlobalTensor<C_T>& cGlobal, const TCubeTiling& tiling, TPipe &pipe)
@@ -46,7 +46,7 @@ __aicore__ inline void ClearOutput(GlobalTensor<C_T>& cGlobal, const TCubeTiling
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void MatMulBlockMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
+__aicore__ inline void Mc2MatMulBlockMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
     const TCubeTiling& tiling)
 {
     using A_T = typename A_TYPE::T;
@@ -103,18 +103,18 @@ __aicore__ inline void MatMulBlockMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_A
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
-__aicore__ inline void MatMulMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
-                                             const MatmulTilingData& matmulTilingData, GM_ADDR workspaceGM)
+__aicore__ inline void Mc2MatMulMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
+                                             const Mc2MatmulV3TilingData& matmulTilingData, GM_ADDR workspaceGM)
 {
     if ASCEND_IS_AIV {
         return;
     }
     const TCubeTiling& tiling = matmulTilingData.matmulTiling;
     if ASCEND_IS_AIC {
-        MatMulBlockMultiCoreSplitK<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(aGM, bGM, cGM, biasGM, tiling);
+        Mc2MatMulBlockMultiCoreSplitK<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(aGM, bGM, cGM, biasGM, tiling);
         return;
     }
 }
-} // namespace MatmulV3
+} // namespace Mc2MatmulV3
 
 #endif // __OP_KERNEL_MATMUL_V3_MULTI_CORE_SPLITK_KERNEL_H__

@@ -1,19 +1,19 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3_bf16_basic.h
  * \brief
  */
-#ifndef QUANT_BATCH_MATMUL_V3_BF16_BASIC_H
-#define QUANT_BATCH_MATMUL_V3_BF16_BASIC_H
+#ifndef MC2_QUANT_BATCH_MATMUL_V3_BF16_BASIC_H
+#define MC2_QUANT_BATCH_MATMUL_V3_BF16_BASIC_H
 
 #include "quant_batch_matmul_v3_block.h"
 #include "quant_batch_matmul_v3_update.h"
@@ -24,7 +24,7 @@ class BmmBasicDequantBf16 {
 public:
     __aicore__ inline BmmBasicDequantBf16() {}
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale, GM_ADDR bias, GM_ADDR y, GM_ADDR workSpace,
-                                const QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe)
+                                const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe)
     {
         blockIdx = GetBlockIdx();
         blockIdx /= GetTaskRation();
@@ -79,7 +79,7 @@ public:
     }
 
 private:
-    __aicore__ inline void InitTilingData(const QuantBatchMatmulV3TilingData *tilingData)
+    __aicore__ inline void InitTilingData(const Mc2QuantBatchMatmulV3TilingData *tilingData)
     {
         isPerTensor_ = tilingData->params.isPerTensor;
 
@@ -403,7 +403,7 @@ private:
     uint64_t offsetWorkspaceC_ = 0;
     uint64_t loop_ = 0;
 
-    QuantBatchMatmulV3BaseBlock block_;
+    Mc2QuantBatchMatmulV3BaseBlock block_;
     UPDATE_TYPE update_; // 量化mm或mc2的更新计算大小和地址的接口
     QBmmBlockOffset offset_;
 

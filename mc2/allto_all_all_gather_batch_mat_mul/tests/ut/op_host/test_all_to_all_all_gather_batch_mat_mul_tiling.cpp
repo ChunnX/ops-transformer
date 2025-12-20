@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
  
 #include <iostream>
 #include <map>
@@ -14,8 +14,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tiling_context_faker.h"
-#include "tiling_case_executor.h"
+#include "mc2_tiling_case_executor.h"
 
 using namespace std;
 
@@ -56,8 +55,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000001UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xshard_0) {
@@ -84,8 +84,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_0_invalid_H) {
@@ -113,7 +114,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_0_unequal_H) {
@@ -141,7 +143,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_1_weight_trans) {
@@ -168,8 +171,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000011UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xShard_1_actType_1) {
@@ -196,8 +200,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000001UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xShard_1_actType_4) {
@@ -224,8 +229,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000001UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_invalid_E) {
@@ -252,7 +258,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard) {
@@ -279,8 +286,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000001UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_invalid_EOverep_intercept) {
@@ -307,7 +315,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias) {
@@ -335,8 +344,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000101UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_bf16) {
@@ -364,8 +374,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000101UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_0) {
@@ -392,7 +403,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_1) {
@@ -419,7 +431,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_1_test1) {
@@ -446,7 +459,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test1) {
@@ -474,7 +488,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test2) {
@@ -502,7 +517,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test3) {
@@ -530,7 +546,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test4) {
@@ -558,7 +575,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test5) {
@@ -586,7 +604,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test6) {
@@ -614,7 +633,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test7) {
@@ -642,7 +662,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test8) {
@@ -670,7 +691,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test9) {
@@ -698,7 +720,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test10) {
@@ -726,7 +749,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test11) {
@@ -754,7 +778,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_shard_with_bias_test12) {
@@ -782,7 +807,8 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xshard_0_ep2) {
@@ -809,8 +835,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xshard_0_cut_e) {
@@ -837,8 +864,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xshard_0_cut_c) {
@@ -865,8 +893,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xshard_0_tile_short) {
@@ -893,8 +922,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xshard_0_multi_e) {
@@ -921,8 +951,9 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tiling_float16_xshard_0_local_tail_e) {
@@ -949,6 +980,7 @@ TEST_F(AlltoAllAllGatherBmmTiling, all_to_all_all_gather_batch_matmul_test_tilin
         coreNum,
         ubSize,
         tilingDataSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }

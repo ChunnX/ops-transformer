@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file unquant_matmul_all_reduce_tiling_310.h
@@ -15,7 +15,7 @@
 #ifndef UNQUANT_MATMUL_ALL_REDUCE_TILING_310_H
 #define UNQUANT_MATMUL_ALL_REDUCE_TILING_310_H
 
-#include "../matmul_all_reduce_tiling.h"
+#include "../matmul_all_reduce_tiling_base.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 
 namespace optiling {
@@ -23,21 +23,26 @@ namespace optiling {
 BEGIN_TILING_DATA_DEF(UnQuantMatmulAllReduceTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(Mc2Msg, msg);
 TILING_DATA_FIELD_DEF_STRUCT(RCSTiling, param);
-TILING_DATA_FIELD_DEF_STRUCT(MatmulTilingData, tilematmulTiling);
-TILING_DATA_FIELD_DEF_STRUCT(MatmulTilingData, tailmatmulTiling);
+TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulV3TilingData, tilematmulTiling);
+TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulV3TilingData, tailmatmulTiling);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_10000000000000002000, UnQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_10000000000000002001, UnQuantMatmulAllReduceTilingData);
+REGISTER_TILING_DATA_CLASS(MatmulAllReduce_134217729, UnQuantMatmulAllReduceTilingData);
+REGISTER_TILING_DATA_CLASS(MatmulAllReduce_134217985, UnQuantMatmulAllReduceTilingData);
+REGISTER_TILING_DATA_CLASS(MatmulAllReduce_134217745, UnQuantMatmulAllReduceTilingData);
+
+struct Matmul310TPLParam{
+    uint64_t disableMixNd2nz{65535};
+};
 
 class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase
 {
-    class UnQuantTilingTransferHelper : public matmul_v3::MatmulV3BaseTiling
+    class UnQuantTilingTransferHelper : public mc2_matmul_v3::Mc2MatmulV3BaseTiling
     {
     public:
         UnQuantTilingTransferHelper(
-            UnQuantMatmulAllReduceTiling310& unquantMatmulAllReduceTiling, MatmulTilingData& data)
-            : MatmulV3BaseTiling(unquantMatmulAllReduceTiling.context_, &data),
+            UnQuantMatmulAllReduceTiling310& unquantMatmulAllReduceTiling, Mc2MatmulV3TilingData& data)
+            : Mc2MatmulV3BaseTiling(unquantMatmulAllReduceTiling.context_, &data),
               tilingProcesser_(unquantMatmulAllReduceTiling)
         {}
 
@@ -82,6 +87,13 @@ class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase
             return ge::GRAPH_SUCCESS;
         }
 
+        Matmul310TPLParam GetMatmulTPLParam()
+        {
+            Matmul310TPLParam param;
+            param.disableMixNd2nz = static_cast<uint64_t>(GetMixNd2nzType());
+            // 1: disable mix nd2nz 0: enable mix nd2nz
+            return param;
+        }
     private:
         UnQuantMatmulAllReduceTiling310& tilingProcesser_;
     };
@@ -117,6 +129,7 @@ protected:
 private:
     UnQuantMatmulAllReduceTilingData unquantMatmulAllReduceTilingData_;
     uint64_t myWorkSpaceSize_{0U};
+    Matmul310TPLParam matmulTPLParam_;
 };
 } // namespace optiling
 #endif // UNQUANT_MATMUL_ALL_REDUCE_TILING_310_H

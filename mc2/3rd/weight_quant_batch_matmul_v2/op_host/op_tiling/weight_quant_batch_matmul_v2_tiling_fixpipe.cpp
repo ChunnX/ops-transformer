@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_fixpipe.cpp
@@ -17,12 +17,13 @@
 
 #include "weight_quant_batch_matmul_v2_tiling_key.h"
 #include "common/op_host/math_util.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h"
 
 namespace optiling {
 
 constexpr uint64_t INT8_BLOCK_CUBE_TRANSPOSE = 32UL;
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingFixpipe::PostTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::PostTiling()
 {
     OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
 
@@ -40,7 +41,7 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingFixpipe::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-bool WeightQuantBatchMatmulV2TilingFixpipe::IsCapable()
+bool Mc2WeightQuantBatchMatmulV2TilingFixpipe::IsCapable()
 {
     OP_LOGD(
         opName_,
@@ -66,7 +67,7 @@ bool WeightQuantBatchMatmulV2TilingFixpipe::IsCapable()
     return true;
 }
 
-bool WeightQuantBatchMatmulV2TilingFixpipe::CheckDtypeIsCapable() const
+bool Mc2WeightQuantBatchMatmulV2TilingFixpipe::CheckDtypeIsCapable() const
 {
     // 仅支持输出fp16
     OP_TILING_CHECK(
@@ -98,7 +99,7 @@ bool WeightQuantBatchMatmulV2TilingFixpipe::CheckDtypeIsCapable() const
     return true;
 }
 
-bool WeightQuantBatchMatmulV2TilingFixpipe::CheckShapeIsCapable() const
+bool Mc2WeightQuantBatchMatmulV2TilingFixpipe::CheckShapeIsCapable() const
 {
     // 仅支持n轴\k轴都是64的倍数
     OP_TILING_CHECK(
@@ -136,16 +137,16 @@ bool WeightQuantBatchMatmulV2TilingFixpipe::CheckShapeIsCapable() const
 
     // 只支持perchannel场景
     OP_TILING_CHECK(
-        matmulInfoPtr_->antiQuantType != QuantType::PER_CHANNEL,
+        matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL,
         OP_LOGI(opName_, "the Fixpipe template only support per channel."), return false);
     return true;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingFixpipe::InstantiateTilingData()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::InstantiateTilingData()
 {
     if (tilingData_ == nullptr) {
-        tilingData_ = std::unique_ptr<WeightQuantBatchMatmulV2FixpipeTilingData>(
-            new (std::nothrow) WeightQuantBatchMatmulV2FixpipeTilingData());
+        tilingData_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2FixpipeTilingData>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2FixpipeTilingData());
     }
     OP_TILING_CHECK(
         tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
@@ -159,7 +160,7 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingFixpipe::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingFixpipe::DoOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::DoOpTiling()
 {
     OP_TILING_CHECK(
         InstantiateTilingData() == ge::GRAPH_FAILED,
@@ -204,31 +205,37 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingFixpipe::DoOpTiling()
 }
 
 // 5、计算TilingKey
-uint64_t WeightQuantBatchMatmulV2TilingFixpipe::GetTilingKey() const
-{
-    TilingKeyConfigure tilingKeyConfigure;
-    // 平台类型占2位(平台大类， 平台小类)，平台大类在高位，需要乘10
-    tilingKeyConfigure.socVersionType = static_cast<uint8_t>(SocVersionType::SUPPORT_L0C_TO_OUT) * 10;
-    tilingKeyConfigure.quantizationScenario = static_cast<uint8_t>(QuantizationScenario::DEFAULT);
-    // 算法类型占2位(算法大类，算法小类)，算法大类在高位，需要乘10
-    tilingKeyConfigure.algorithm = static_cast<uint8_t>(OptimizationAlgorithmCategory::FIXPIPE_ANTIQUANT) * 10;
-    tilingKeyConfigure.transposeSituation =
-        (static_cast<uint16_t>(matmulInfoPtr_->transA) << 1) | static_cast<uint16_t>(matmulInfoPtr_->transB);
-    tilingKeyConfigure.antiquantType = static_cast<uint8_t>(matmulInfoPtr_->antiQuantType);
-    tilingKeyConfigure.quantType = static_cast<uint8_t>(QuantType::NONE);
-    tilingKeyConfigure.optionInputSituation =
-        ((static_cast<uint16_t>(matmulInfoPtr_->hasAntiQuantOffset) << 1) |
-         static_cast<uint16_t>(matmulInfoPtr_->hasBias));
-    tilingKeyConfigure.weightFormat = static_cast<uint8_t>(WeightFormat::ND);
-
-    tilingKeyConfigure.templateCustom = static_cast<uint8_t>(
-        aFullLoad_ ? FixpipeConfiguration::A_SINGLE_M_SINGLE_K_FULL_LOAD : FixpipeConfiguration::A_NORMAL_LOAD);
-    tilingKeyConfigure.apiConstexpr = 0;
-    return tilingKeyConfigure.GenTilingKey();
+uint64_t Mc2WeightQuantBatchMatmulV2TilingFixpipe::GetTilingKey() const
+{   
+    uint64_t socVersionType = static_cast<uint64_t>(Mc2SocVersionType::SUPPORT_L0C_TO_OUT);
+    uint64_t subSocVersionType = 0UL;
+    uint64_t antiquantScenario = static_cast<uint64_t>(Mc2QuantizationScenario::DEFAULT);
+    uint64_t algorithm = static_cast<uint64_t>(Mc2OptimizationAlgorithmCategory::FIXPIPE_ANTIQUANT);
+    uint64_t subAlgorithm = 0UL;
+    uint64_t subAlgorithmCustom = 0UL;
+    uint64_t innerPrecise = 0UL;
+    uint64_t templateCustom = aFullLoad_ ? static_cast<uint64_t>(Mc2FixpipeConfiguration::A_SINGLE_M_SINGLE_K_FULL_LOAD) : static_cast<uint64_t>(Mc2FixpipeConfiguration::A_NORMAL_LOAD);
+    uint64_t apiConstexpr = 0UL;
+    bool transA = matmulInfoPtr_->transA;
+    bool transB = matmulInfoPtr_->transB;
+    uint64_t antiquantType = static_cast<uint64_t>(matmulInfoPtr_->antiQuantType);
+    uint64_t quantType = static_cast<uint64_t>(Mc2QuantType::NONE);
+    bool hasAntiquantOffset = matmulInfoPtr_->hasAntiQuantOffset;
+    bool hasBias = matmulInfoPtr_->hasBias;
+    bool isBiasFp32 = false;
+    bool isWeightNz = false; // Mc2WeightFormat::ND
+    uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t batch = 0UL;
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    return tilingKey_;
 }
 
 // 6、计算Workspace 大小
-ge::graphStatus WeightQuantBatchMatmulV2TilingFixpipe::GetWorkspaceSize()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::GetWorkspaceSize()
 {
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OPS_CHECK_NULL_WITH_CONTEXT(context_, workspaces);

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce.cpp
@@ -16,23 +16,42 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "common.h"
+#include "matmul_all_reduce_tiling_key.h"
 
+#if __CCE_AICORE__ == 220
 #ifdef MC2_QUANT
-#include "matmul_all_reduce_quant.h"
-#include "matmul_all_reduce_quant_pertoken_comm_int8.h"
+#include "arch32/matmul_all_reduce_quant.h"
+#include "arch32/matmul_all_reduce_quant_pertoken_comm_int8.h"
 #ifdef MC2_QUANT_FP16
-#include "matmul_all_reduce_quant_fp16_comm_int8.h"
+#include "arch32/matmul_all_reduce_quant_fp16_comm_int8.h"
 #else
-#include "matmul_all_reduce_quant_bf16_comm_int8.h"
+#include "arch32/matmul_all_reduce_quant_bf16_comm_int8.h"
 #endif
 #else
-#include "matmul_all_reduce_empty_tensor_k_general.h"
+#include "arch32/matmul_all_reduce_empty_tensor_k_general.h"
 #ifdef MC2_WEIGHT_QUANT
-#include "matmul_all_reduce_weight_quant.h"
+#include "arch32/matmul_all_reduce_weight_quant.h"
 #else
-#include "matmul_all_reduce_910_general.h"
+#include "arch32/matmul_all_reduce_910_general.h"
 #endif
 #endif
+#else
+#ifdef __CCE_KT_TEST__
+#include "../tests/ut/op_kernel/rac_server_stub.h"
+#else
+#include "arch31/rac_server.h"
+#endif
+#if (ORIG_DTYPE_X1 == DT_INT8 && ORIG_DTYPE_X2 == DT_INT8)
+#include "arch31/matmul_all_reduce_quant_bmm.h"
+// 310p归一化weightNZ非量化
+#elif (ORIG_DTYPE_X1 != DT_INT8 && ORIG_DTYPE_X2 != DT_INT8 && FORMAT_X2 != FORMAT_ND)
+#include "arch31/matmul_all_reduce_unquant_310.h"
+#elif (ORIG_DTYPE_X1 != DT_INT8 && (ORIG_DTYPE_X2 == DT_INT8) && FORMAT_X2 != FORMAT_ND)
+#include "arch31/matmul_all_reduce_weight_quant_310.h"
+#else
+#include "arch31/matmul_all_reduce_310_general.h"
+#endif // ORIG_DTYPE_X1 == DT_INT8 && ORIG_DTYPE_X2 == DT_INT8
+#endif // __CCE_AICORE__ == 220
 
 #if ((ORIG_DTYPE_X1 == DT_INT8) && (ORIG_DTYPE_Y == DT_BF16))
 #define INVOKE_QUANT_BATCH_MATMUL_DEQUANT_BF16_IMPL_COMM_INT8(templateClass, opTile, opTail, ...)                   \
@@ -42,9 +61,9 @@
             GET_TILING_DATA_WITH_STRUCT(QuantMatmulAllReduceTilingData, tilingData, tilingGM);                      \
             templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, int8_t, __VA_ARGS__> matmul;  \
             const QuantMatmulAllReduceTilingData* QuantMatmulAllReduceTiling = &tilingData;                         \
-            const QuantBatchMatmulV3TilingData* qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling); \
+            const Mc2QuantBatchMatmulV3TilingData* qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling); \
             const TCubeTiling* mmTilingTile = &(qBmmV3TilingData->matmulTiling);                                    \
-            const QuantBatchMatmulV3TilingData* qBmmV3TilingDataTail =                                              \
+            const Mc2QuantBatchMatmulV3TilingData* qBmmV3TilingDataTail =                                              \
                 &(QuantMatmulAllReduceTiling->tailmatmulTiling);                                                    \
             const TCubeTiling* mmTilingTail = &(qBmmV3TilingDataTail->matmulTiling);                                \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTile, opTail.mm, mmTilingTail);      \
@@ -76,9 +95,9 @@
             GET_TILING_DATA_WITH_STRUCT(QuantMatmulAllReduceTilingData, tilingData, tilingGM);                       \
             templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, scaleType, DTYPE_Y, int8_t, __VA_ARGS__> matmul; \
             const QuantMatmulAllReduceTilingData* QuantMatmulAllReduceTiling = &tilingData;                          \
-            const QuantBatchMatmulV3TilingData* qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling);  \
+            const Mc2QuantBatchMatmulV3TilingData* qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling);  \
             const TCubeTiling* mmTilingTile = &(qBmmV3TilingData->matmulTiling);                                     \
-            const QuantBatchMatmulV3TilingData* qBmmV3TilingDataTail =                                               \
+            const Mc2QuantBatchMatmulV3TilingData* qBmmV3TilingDataTail =                                               \
                 &(QuantMatmulAllReduceTiling->tailmatmulTiling);                                                     \
             const TCubeTiling* mmTilingTail = &(qBmmV3TilingDataTail->matmulTiling);                                 \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTile, opTail.mm, mmTilingTail);       \
@@ -96,15 +115,227 @@ namespace MatmulAllReduceImpl {}
 using namespace AscendC;
 using namespace MatmulAllReduceImpl;
 
-extern "C" __global__ __aicore__ void matmul_all_reduce(
+template<int MM_TYPE, TPL_PARAMS_COMM, TPL_PARAMS_SHARE_MM, TPL_PARAMS_FP_MM>
+__global__ __aicore__ void fp_matmul_all_reduce(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
+    GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe &tPipe, GM_ADDR userWS)
+{
+#if __CCE_AICORE__ == 220
+#if defined(MC2_QUANT_FP16)
+#elif defined(MC2_QUANT_BF16)
+#elif defined(MC2_WEIGHT_QUANT)
+#else
+    if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM_CUBE_ONLY) {
+        INVOKE_MC2_910_OP_IMPL(Mc2MatmulBaseKernel, Mc2CoreType::ON_CUBE);
+    } else if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM && EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T) {
+        INVOKE_MC2_EMPTY_TENSOR_OP_IMPL();
+    } else if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        INVOKE_MC2_910_OP_IMPL(Mc2MatmulBaseKernel, Mc2CoreType::ON_CUBE_AND_VECTOR);
+    } else if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM && MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        INVOKE_MC2_910_OP_IMPL(Mc2MatmulBaseUnAlignedKernel, Mc2CoreType::ON_CUBE_AND_VECTOR);
+    }
+#endif
+#endif
+}
+
+template<int MM_TYPE, TPL_PARAMS_COMM, TPL_PARAMS_SHARE_MM, TPL_PARAMS_QUANT_MM>
+__global__ __aicore__ void quant_matmul_allreduce(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
+    GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe &tPipe, GM_ADDR userWS)
+{
+#if __CCE_AICORE__ == 220
+#if defined(MC2_QUANT_FP16)
+    if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 0
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, false, int32_t, uint64_t, DTYPE_Y, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 1
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, false, int32_t, uint64_t, DTYPE_Y, false, true);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 16
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, float, DTYPE_Y, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 17
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, float, DTYPE_Y, false, true);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 10
+        INVOKE_QUANT_BMM_DEQUANT_FP16_IMPL_COMM_INT8(MatmulAllReduceQuantFP16CommInt8, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 11
+        INVOKE_QUANT_BMM_DEQUANT_FP16_IMPL_COMM_INT8(MatmulAllReduceQuantFP16CommInt8, false, true);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 26 // pertoken 适配 int8 通信
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, false, true> opTile;
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, false, true> opTail;
+        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
+            MatmulAllReduceQuantPertokenInt8, float, opTile, opTail, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 27// pertoken 适配 int8 通信
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, true, true> opTile;
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, true, true> opTail;
+        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
+            MatmulAllReduceQuantPertokenInt8, float, opTile, opTail, false, true);
+    }
+#elif defined(MC2_QUANT_BF16)
+    if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 0
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, false, DTYPE_Y, DTYPE_Y, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 1
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, false, DTYPE_Y, DTYPE_Y, false, true);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 16
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, DTYPE_Y, DTYPE_Y, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 17
+        INVOKE_MC2_QUANT_910_OP_IMPL(
+            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, DTYPE_Y, DTYPE_Y, false, true);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 10
+        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTile;
+        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTail;
+        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_BF16_IMPL_COMM_INT8(
+            MatmulAllReduceQuantBF16CommInt8, opTile, opTail, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
+            // 11
+        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTile;
+        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTail;
+        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_BF16_IMPL_COMM_INT8(
+            MatmulAllReduceQuantBF16CommInt8, opTile, opTail, false, true);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 26
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTile;
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTail;
+        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
+            MatmulAllReduceQuantPertokenInt8, DTYPE_Y, opTile, opTail, false, false);
+    } else if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_T && TRANS == QUANT_BATCH_MATMUL_V3_B_TRANS &&
+        PERTOKEN == QUANT_BATCH_MATMUl_V3_IS_PERTOKEN) {
+            // 27
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTile;
+        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTail;
+        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
+            MatmulAllReduceQuantPertokenInt8, DTYPE_Y, opTile, opTail, false, true);
+    }
+#endif
+#endif
+}
+
+template<int MM_TYPE, TPL_PARAMS_COMM, TPL_PARAMS_SHARE_MM, TPL_PARAMS_WEIGHT_QUANT_MM>
+__global__ __aicore__ void weight_quant_matmul_allreduce(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
+    GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe &tPipe, GM_ADDR userWS)
+{
+#if __CCE_AICORE__ == 220
+#if defined(MC2_WEIGHT_QUANT)
+    if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T &&
+        MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL) {
+        // empty tensor
+        INVOKE_MC2_EMPTY_TENSOR_OP_IMPL();
+    } else {
+        if constexpr(SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 0 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && TRANS_B == 0) {
+            // 310100
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_TENSOR, false);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 0 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && TRANS_B == 1) {
+            // 310110
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_TENSOR, false);
+        } else if constexpr(SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 0 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && TRANS_B == 0) {
+            // 310200
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_CHANNEL, false);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 0 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && TRANS_B == 1) {
+            // 310210
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_CHANNEL, false);
+        } else if constexpr(SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 0 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_GROUP && TRANS_B == 0) {
+            // 310300
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_GROUP, false);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 0 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_GROUP && TRANS_B == 1) {
+            // 310310
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_GROUP, false);
+        } else if constexpr(SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 1 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && TRANS_B == 0) {
+            // 311100
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_TENSOR, true);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 1 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && TRANS_B == 1) {
+            // 311110
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_TENSOR, true);
+        } else if constexpr(SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 1 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && TRANS_B == 0) {
+            // 311200
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_CHANNEL, true);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 1 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && TRANS_B == 1) {
+            // 311210
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_CHANNEL, true);
+        } else if constexpr(SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 1 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_GROUP && TRANS_B == 0) {
+            // 311300
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_GROUP, true);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_CUSTOM_ANTIQUANT && HAS_ANTIQUANT_OFFSET == 1 &&
+            ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_GROUP && TRANS_B == 1) {
+            // 311310
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_GROUP, true);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_WEIGHT_NZ && HAS_ANTIQUANT_OFFSET == 0 &&
+        TRANS_B == 0) {
+            // 810200
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_CHANNEL, false);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_WEIGHT_NZ && HAS_ANTIQUANT_OFFSET == 0 &&
+        TRANS_B == 1) {
+            // 810210
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_CHANNEL, false);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_WEIGHT_NZ && HAS_ANTIQUANT_OFFSET == 1 &&
+        TRANS_B == 0) {
+            // 811200
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_CHANNEL, true);
+        } else if constexpr (SUB_ALGORITHM_CUSTOM == WQBMMV2_SUB_ALGO_WEIGHT_NZ && HAS_ANTIQUANT_OFFSET == 1 &&
+        TRANS_B == 1) {
+            // 811210
+                INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_CHANNEL, true);
+        }
+    }
+#endif // defined(MC2_WEIGHT_QUANT)
+#endif
+}
+
+template<int AICORE_TYPE, int MM_TYPE, TPL_PARAMS_COMM, TPL_PARAMS_SHARE_MM, TPL_PARAMS_FP_MM, TPL_PARAMS_QUANT_MM, TPL_PARAMS_WEIGHT_QUANT_MM>
+__global__ __aicore__ void matmul_all_reduce(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,
     GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    #ifdef __CCE_KT_TEST__
-        REGISTER_TILING_DEFAULT(MatmulAllReduce910TilingData);
-    #endif
-    
+#ifdef __CCE_KT_TEST__
+    REGISTER_TILING_DEFAULT(MatmulAllReduce910TilingData);
+#endif // __CCE_KT_TEST__
     if (workspaceGM == nullptr) {
         return;
     }
@@ -115,133 +346,210 @@ extern "C" __global__ __aicore__ void matmul_all_reduce(
     }
 
     TPipe tPipe;
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-#if defined(MC2_QUANT_FP16)
-    if (TILING_KEY_IS(1)) {
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, false, int32_t, uint64_t, DTYPE_Y, false, true);
-    } else if (TILING_KEY_IS(0)) {
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, false, int32_t, uint64_t, DTYPE_Y, false,
-            false);
-    } else if (TILING_KEY_IS(10000)) {
-        KERNEL_TASK_TYPE(10000, KERNEL_TYPE_MIX_AIC_1_1);
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, float, DTYPE_Y, false, false);
-    } else if (TILING_KEY_IS(10001)) {
-        KERNEL_TASK_TYPE(10001, KERNEL_TYPE_MIX_AIC_1_1);
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, float, DTYPE_Y, false, true);
-    } else if (TILING_KEY_IS(11)) {
-        INVOKE_QUANT_BMM_DEQUANT_FP16_IMPL_COMM_INT8(MatmulAllReduceQuantFP16CommInt8, false, true);
-    } else if (TILING_KEY_IS(10)) {
-        INVOKE_QUANT_BMM_DEQUANT_FP16_IMPL_COMM_INT8(MatmulAllReduceQuantFP16CommInt8, false, false);
-    } else if (TILING_KEY_IS(10010)) { // pertoken 适配 int8 通信
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, false, true> opTile;
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, false, true> opTail;
-        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
-            MatmulAllReduceQuantPertokenInt8, float, opTile, opTail, false, false);
-    } else if (TILING_KEY_IS(10011)) { // pertoken 适配 int8 通信
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, true, true> opTile;
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, float, DTYPE_Y, false, true, true> opTail;
-        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
-            MatmulAllReduceQuantPertokenInt8, float, opTile, opTail, false, true);
-    }
-#elif defined(MC2_QUANT_BF16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-    if (TILING_KEY_IS(0)) {
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, false, DTYPE_Y, DTYPE_Y, false, false);
-    } else if (TILING_KEY_IS(1)) {
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, false, DTYPE_Y, DTYPE_Y, false, true);
-    } else if (TILING_KEY_IS(10000)) {
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, DTYPE_Y, DTYPE_Y, false, false);
-    } else if (TILING_KEY_IS(10001)) {
-        INVOKE_MC2_QUANT_910_OP_IMPL(
-            BmmDequantPertoken, Mc2CoreType::ON_VECTOR, REG_MM_OBJ, true, DTYPE_Y, DTYPE_Y, false, true);
-    } else if (TILING_KEY_IS(10)) {
-        KERNEL_TASK_TYPE(10, KERNEL_TYPE_MIX_AIC_1_2);
-        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTile;
-        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTail;
-        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_BF16_IMPL_COMM_INT8(
-            MatmulAllReduceQuantBF16CommInt8, opTile, opTail, false, false);
-    } else if (TILING_KEY_IS(11)) {
-        KERNEL_TASK_TYPE(11, KERNEL_TYPE_MIX_AIC_1_2);
-        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTile;
-        BmmDequantBf16<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTail;
-        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_BF16_IMPL_COMM_INT8(
-            MatmulAllReduceQuantBF16CommInt8, opTile, opTail, false, true);
-    } else if (TILING_KEY_IS(10010)) {
-        KERNEL_TASK_TYPE(10010, KERNEL_TYPE_MIX_AIC_1_2);
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTile;
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, false, true> opTail;
-        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
-            MatmulAllReduceQuantPertokenInt8, DTYPE_Y, opTile, opTail, false, false);
-    } else if (TILING_KEY_IS(10011)) {
-        KERNEL_TASK_TYPE(10011, KERNEL_TYPE_MIX_AIC_1_2);
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTile;
-        BmmDequantPertoken<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, false, true, true> opTail;
-        INVOKE_QUANT_BATCH_MATMUL_DEQUANT_PERTOKEN_COMM_INT8_IMPL(
-            MatmulAllReduceQuantPertokenInt8, DTYPE_Y, opTile, opTail, false, true);
-    }
-#elif defined(MC2_WEIGHT_QUANT)
-    if (TILING_KEY_IS(310100UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, QuantType::PER_TENSOR, false);
-    } else if (TILING_KEY_IS(311100UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, QuantType::PER_TENSOR, true);
-    } else if (TILING_KEY_IS(310110UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, QuantType::PER_TENSOR, false);
-    } else if (TILING_KEY_IS(311110UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, QuantType::PER_TENSOR, true);
-#if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
-    } else if (TILING_KEY_IS(810200UL)) {
-#else
-    } else if (TILING_KEY_IS(310200UL)) {
-#endif
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, QuantType::PER_CHANNEL, false);
-#if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
-    } else if (TILING_KEY_IS(811200UL)) {
-#else
-    } else if (TILING_KEY_IS(311200UL)) {
-#endif
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, QuantType::PER_CHANNEL, true);
-#if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
-    } else if (TILING_KEY_IS(810210UL)) {
-#else
-    } else if (TILING_KEY_IS(310210UL)) {
-#endif
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, QuantType::PER_CHANNEL, false);
-#if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
-    } else if (TILING_KEY_IS(811210UL)) {
-#else
-    } else if (TILING_KEY_IS(311210UL)) {
-#endif
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, QuantType::PER_CHANNEL, true);
-    } else if (TILING_KEY_IS(310300UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, QuantType::PER_GROUP, false);
-    } else if (TILING_KEY_IS(310310UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, QuantType::PER_GROUP, false);
-    } else if (TILING_KEY_IS(311300UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(false, QuantType::PER_GROUP, true);
-    } else if (TILING_KEY_IS(311310UL)) {
-        INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(true, QuantType::PER_GROUP, true);
-    } else if (TILING_KEY_IS(10000000000000000008UL)) {
-        KERNEL_TASK_TYPE(10000000000000000008UL, KERNEL_TYPE_MIX_AIV_1_0);
-        INVOKE_MC2_EMPTY_TENSOR_OP_IMPL();
+#if __CCE_AICORE__ == 220
+    if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM || MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM_CUBE_ONLY) {
+        fp_matmul_all_reduce<MM_TYPE, PARAMS_COMM, PARAMS_SHARE_MM, PARAMS_FP_MM>(
+            aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM,
+            commQuantScale1GM, commQuantScale2GM, cGM, workspaceGM, tilingGM, tPipe, userWS);
+    } else if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_QUANT_MATMUL){
+        quant_matmul_allreduce<MM_TYPE, PARAMS_COMM, PARAMS_SHARE_MM, PARAMS_QUANT_MM>(
+            aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM,
+            commQuantScale1GM, commQuantScale2GM, cGM, workspaceGM, tilingGM, tPipe, userWS);
+    } else if constexpr(MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL){
+        weight_quant_matmul_allreduce<MM_TYPE, PARAMS_COMM, PARAMS_SHARE_MM, PARAMS_WEIGHT_QUANT_MM>(
+            aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM,
+            commQuantScale1GM, commQuantScale2GM, cGM, workspaceGM, tilingGM, tPipe, userWS);
     }
 #else
-    if (TILING_KEY_IS(10000000000000001100UL)) {
-        KERNEL_TASK_TYPE(10000000000000001100UL, KERNEL_TYPE_MIX_AIC_1_0);
-        INVOKE_MC2_910_OP_IMPL(MatmulBaseKernel, Mc2CoreType::ON_CUBE);
-    } else if (TILING_KEY_IS(65536UL)) {
-        INVOKE_MC2_910_OP_IMPL(MatmulBaseKernel, Mc2CoreType::ON_CUBE_AND_VECTOR);
-    } else if (TILING_KEY_IS(0UL)) {
-        INVOKE_MC2_910_OP_IMPL(MatmulBaseUnAlignedKernel, Mc2CoreType::ON_CUBE_AND_VECTOR);
-    } else if (TILING_KEY_IS(10000000000000000009UL)) {
-        KERNEL_TASK_TYPE(10000000000000000009UL, KERNEL_TYPE_MIX_AIV_1_0);
-        INVOKE_MC2_EMPTY_TENSOR_OP_IMPL();
+    // 310P
+    HcclServer hcclServer;
+#if (ORIG_DTYPE_X1 == DT_INT8 && ORIG_DTYPE_X2 == DT_INT8) // 归一化310p weightNZ全量化
+    if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_QUANT_MATMUL) {
+        INVOKE_QUANT_BMM_OP_IMPL(MatmulAllReduceQuantBmm, false, true);
     }
-#endif // ORIG_DTYPE_X1 == DT_INT8 && ORIG_DTYPE_Y == DT_FLOAT16
+#elif (ORIG_DTYPE_X1 == DT_FLOAT16 && ORIG_DTYPE_X2 == DT_INT8 && FORMAT_X2 != FORMAT_ND) // 归一化310p weightNZ伪量化
+    if constexpr (TRANS_A == 0 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && HAS_ANTIQUANT_OFFSET == 0) { // 80010
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, false, true, Mc2QuantType::PER_TENSOR, false);
+    } else if constexpr (TRANS_A == 1 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && HAS_ANTIQUANT_OFFSET == 0) {   // 80011
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, true, true, Mc2QuantType::PER_TENSOR, false);
+    } else if constexpr (TRANS_A == 0 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && HAS_ANTIQUANT_OFFSET == 0) {   // 80020
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, false, true, Mc2QuantType::PER_CHANNEL, false);
+    } else if constexpr (TRANS_A == 1 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && HAS_ANTIQUANT_OFFSET == 0) {   // 80021
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, true, true, Mc2QuantType::PER_CHANNEL, false);
+    } else if constexpr (TRANS_A == 0 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && HAS_ANTIQUANT_OFFSET == 1) {   // 80110
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, false, true, Mc2QuantType::PER_TENSOR, true);
+    } else if constexpr (TRANS_A == 1 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR && HAS_ANTIQUANT_OFFSET == 1) {   // 80111
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, true, true, Mc2QuantType::PER_TENSOR, true);
+    } else if constexpr (TRANS_A == 0 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && HAS_ANTIQUANT_OFFSET == 1) {   // 80120
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, false, true, Mc2QuantType::PER_CHANNEL, true);
+    } else if constexpr (TRANS_A == 1 && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL && HAS_ANTIQUANT_OFFSET == 1) {   // 80121
+        INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, true, true, Mc2QuantType::PER_CHANNEL, true);
+    } else if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T && FORMAT_B == FORMAT_B_NZ) { // 空kernel
+        GET_TILING_DATA_WITH_STRUCT(WeightQuantMatmulAllReduceNzTilingData, tilingData, tilingGM);
+        WeightQuantEmptyTensorKernel(biasGM, cGM, workspaceGM, &tilingData, &hcclServer);
+    }
+#elif (ORIG_DTYPE_X1 != DT_INT8 && ORIG_DTYPE_X2 != DT_INT8 && FORMAT_X2 != FORMAT_ND) // 310p归一化weightNZ非量化
+    if constexpr (MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
+        INVOKE_UNQUANT_BMM_OP_IMPL_310(MatmulAllReduceUnquant310);
+    } else if constexpr (MIXND2NZ == MAT_MUL_V3_MIXND2NZ_FALSE) {
+        INVOKE_UNQUANT_BMM_OP_IMPL_310(MatmulAllReduceUnquant310);
+    } else if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T && FORMAT_B == FORMAT_B_NZ) {
+        // k==0 伪量化NZ
+        GET_TILING_DATA_WITH_STRUCT(UnQuantMatmulAllReduceTilingData, tilingData, tilingGM);
+        MatMulEmptyTensorKernelUnquantNz(biasGM, cGM, workspaceGM, &tilingData, &hcclServer);
+    }
+#else  // 310p weightND(非归一化 非量化 伪量化)
+    // L2cache, transB, isWeightQuant, AntiQuantType, hasAntiQuantOffset, 310Version
+    if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_NONE &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 0) {
+        // 开启L2cache, 非量化ND，非量化-不涉及antiQuantType，非量化-不涉及antiQuantOffset
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, false, AntiQuantType::NONE, false);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_NONE &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 0) {
+        // 关闭L2cache, 非量化ND，非量化-不涉及antiQuantType，非量化-不涉及antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, false, AntiQuantType::NONE, false);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 1) {
+        // 关闭L2cache, 伪量化ND，perTensor，无antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_TENSOR, false);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 1) {
+        // 打开L2cache, 伪量化ND，perTensor，无antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_TENSOR, false);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 1) {
+        // 关闭L2cache, 伪量化ND，perChannel，无antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_CHANNEL, false);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 1) {
+        // 打开L2cache, 伪量化ND，perChannel，无antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_CHANNEL, false);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 1) {
+        // 关闭L2cache, 伪量化ND，perTensor，带antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_TENSOR, true);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 1) {
+        // 打开L2cache, 伪量化ND，perTensor，带antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_TENSOR, true);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 1) {
+        // 关闭L2cache, 伪量化ND，perChannel，带antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_CHANNEL, true);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 1) {
+        // 打开L2cache, 伪量化ND，perChannel，带antiQuantOffset，weight转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, true>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_CHANNEL, true);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 0) {
+        // 关闭L2cache, 伪量化ND，perTensor，无antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_TENSOR, false);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 0) {
+        // 打开L2cache, 伪量化ND，perTensor，无antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_TENSOR, false);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 0) {
+        // 关闭L2cache, 伪量化ND，perChannel，无antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_CHANNEL, false);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 0 && TRANS_A == 1 && TRANS_B == 0) {
+        // 打开L2cache, 伪量化ND，perChannel，无antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_CHANNEL, false);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 0) {
+        // 关闭L2cache, 伪量化ND，perTensor，带antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_TENSOR, true);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_TENSOR &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 0) {
+        // 打开L2cache, 伪量化ND，perTensor，带antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_TENSOR, true);
+    } else if constexpr (ENABLE_L2_CACHE == 0 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 0) {
+        // 关闭L2cache, 伪量化ND，perChannel，带antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, false, true, AntiQuantType::PER_CHANNEL, true);
+    } else if constexpr (ENABLE_L2_CACHE == 1 && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL && ANTIQUANT_TYPE == WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL &&
+        HAS_ANTIQUANT_OFFSET == 1 && TRANS_A == 1 && TRANS_B == 0) {
+        // 打开L2cache, 伪量化ND，perChannel，带antiQuantOffset，weight非转置
+        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, true>;
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, false>;
+        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, half>;
+        INVOKE_MATMUL_ALL_REDUCE_OP_IMPL(MatmulAllReduce310General, true, true, AntiQuantType::PER_CHANNEL, true);
+    } else if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM && 
+        FORMAT_B == FORMAT_B_ND) {
+        // k==0 伪量化ND
+        GET_TILING_DATA(tilingData, tilingGM);
+        MatMulEmptyTensorKernel(biasGM, cGM, workspaceGM, &tilingData, &hcclServer);
+    }
+#endif // ORIG_DTYPE_X1 == DT_INT8
+#endif // __CCE_AICORE__ == 220
 }

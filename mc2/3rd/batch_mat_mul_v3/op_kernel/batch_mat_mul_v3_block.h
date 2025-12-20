@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file batch_mat_mul_v3_block.h
@@ -22,14 +22,14 @@
 using namespace AscendC;
 using namespace matmul;
 
-struct MulMultiBatchBaseBlockOffset {
+struct Mc2MulMultiBatchBaseBlockOffset {
     uint64_t offsetA;
     uint64_t offsetB;
     uint64_t offsetC;
     uint64_t offsetBias;
 };
 
-struct MulMultiBatchBaseBlockArgs {
+struct Mc2MulMultiBatchBaseBlockArgs {
     uint64_t singleASize;
     uint64_t singleASizeL1;
     uint64_t singleBSize;
@@ -54,9 +54,9 @@ struct MulMultiBatchBaseBlockArgs {
     bool isHf32;
 };
 
-class BatchMatMulMultiBatchFullLoadBlock {
+class Mc2BatchMatMulMultiBatchFullLoadBlock {
 public:
-    __aicore__ inline BatchMatMulMultiBatchFullLoadBlock() {}
+    __aicore__ inline Mc2BatchMatMulMultiBatchFullLoadBlock() {}
     __aicore__ inline void Init(const void *tilingData);
     __aicore__ inline void SetC0(uint64_t c0Size) {
       c0Size_ = c0Size;
@@ -65,16 +65,16 @@ public:
     __aicore__ inline void CalcGMOffset();
 
 public:
-    MulMultiBatchBaseBlockOffset offset_;
-    MulMultiBatchBaseBlockArgs params_;
-    const BatchMatmulTilingData *batchMatmulTilingData_;
+    Mc2MulMultiBatchBaseBlockOffset offset_;
+    Mc2MulMultiBatchBaseBlockArgs params_;
+    const Mc2BatchMatmulTilingData *batchMatmulTilingData_;
 protected:
     uint64_t c0Size_;
 };
 
-__aicore__ inline void BatchMatMulMultiBatchFullLoadBlock::Init(const void *tilingData)
+__aicore__ inline void Mc2BatchMatMulMultiBatchFullLoadBlock::Init(const void *tilingData)
 {
-    batchMatmulTilingData_ = static_cast<const BatchMatmulTilingData *>(tilingData);
+    batchMatmulTilingData_ = static_cast<const Mc2BatchMatmulTilingData *>(tilingData);
     params_.isTransposeA = batchMatmulTilingData_->matmulTiling.matmulRunInfo.transA;
     params_.isTransposeB = batchMatmulTilingData_->matmulTiling.matmulRunInfo.transB;
     params_.isHf32 = batchMatmulTilingData_->matmulTiling.matmulRunInfo.isHf32;
@@ -100,18 +100,18 @@ __aicore__ inline void BatchMatMulMultiBatchFullLoadBlock::Init(const void *tili
     params_.singleASizeL1 = innerA * outterA;
 
     params_.singleBiasSize = static_cast<uint64_t>(batchMatmulTilingData_->matmulTiling.matmulTiling.N);
-    params_.useCoreNum = batchMatmulTilingData_->multiBatchInfo.batchUsedCoreNum;
+    params_.useCoreNum = batchMatmulTilingData_->Mc2multiBatchInfo.batchUsedCoreNum;
 
     // 每次循环往L1搬入的A矩阵batch数和B矩阵的batch数
-    params_.mainLoopPreCoreBatchNum = batchMatmulTilingData_->multiBatchInfo.aBatch;
-    params_.mainLoopBatchNum = batchMatmulTilingData_->multiBatchInfo.aBatch * params_.useCoreNum;
-    params_.mainLoopPreCoreBatchNumB = batchMatmulTilingData_->multiBatchInfo.bBatch;
-    params_.mainLoopBatchNumB = batchMatmulTilingData_->multiBatchInfo.bBatch * params_.useCoreNum;
+    params_.mainLoopPreCoreBatchNum = batchMatmulTilingData_->Mc2multiBatchInfo.aBatch;
+    params_.mainLoopBatchNum = batchMatmulTilingData_->Mc2multiBatchInfo.aBatch * params_.useCoreNum;
+    params_.mainLoopPreCoreBatchNumB = batchMatmulTilingData_->Mc2multiBatchInfo.bBatch;
+    params_.mainLoopBatchNumB = batchMatmulTilingData_->Mc2multiBatchInfo.bBatch * params_.useCoreNum;
 
     // 计算外层循环次数
-    params_.loopTimes = MMV3DivCeil(batchMatmulTilingData_->multiBatchInfo.cBatchDimAll, params_.mainLoopBatchNum);
+    params_.loopTimes = MMV3DivCeil(batchMatmulTilingData_->Mc2multiBatchInfo.cBatchDimAll, params_.mainLoopBatchNum);
 
-    params_.lastLoopAllBatchNum = batchMatmulTilingData_->multiBatchInfo.cBatchDimAll % params_.mainLoopBatchNum;
+    params_.lastLoopAllBatchNum = batchMatmulTilingData_->Mc2multiBatchInfo.cBatchDimAll % params_.mainLoopBatchNum;
     params_.lastLoopAllBatchNum =
         params_.lastLoopAllBatchNum == 0 ? params_.mainLoopBatchNum: params_.lastLoopAllBatchNum;
 
@@ -126,7 +126,7 @@ __aicore__ inline void BatchMatMulMultiBatchFullLoadBlock::Init(const void *tili
 }
 
 // 更新每次循环中，需要处理的batch数，以及每个batch在所有batch中的索引
-__aicore__ inline void BatchMatMulMultiBatchFullLoadBlock::GetMultiBatchInfo(uint64_t loopIndex)
+__aicore__ inline void Mc2BatchMatMulMultiBatchFullLoadBlock::GetMultiBatchInfo(uint64_t loopIndex)
 {
     // main loop
     if (loopIndex + 1 < params_.loopTimes) {
@@ -149,7 +149,7 @@ __aicore__ inline void BatchMatMulMultiBatchFullLoadBlock::GetMultiBatchInfo(uin
     }
 }
 
-__aicore__ inline void BatchMatMulMultiBatchFullLoadBlock::CalcGMOffset()
+__aicore__ inline void Mc2BatchMatMulMultiBatchFullLoadBlock::CalcGMOffset()
 {
     offset_.offsetA = params_.batchIndex * params_.singleASize + params_.batchOffsetA * params_.singleASize;
     offset_.offsetB = params_.batchIndex * params_.singleBSize + params_.batchOffsetB * params_.singleBSize;
@@ -157,22 +157,22 @@ __aicore__ inline void BatchMatMulMultiBatchFullLoadBlock::CalcGMOffset()
     offset_.offsetBias = params_.batchIndex * params_.singleBiasSize + params_.batchOffset * params_.singleBiasSize;
 }
 
-class BatchMatMulMultiBatchBaseBlock {
+class Mc2BatchMatMulMultiBatchBaseBlock {
 public:
-    __aicore__ inline BatchMatMulMultiBatchBaseBlock() {}
+    __aicore__ inline Mc2BatchMatMulMultiBatchBaseBlock() {}
     __aicore__ inline void Init(const void *tilingData);
     __aicore__ inline void GetMultiBatchInfo(uint64_t loopIndex);
     __aicore__ inline void CalcGMOffset();
 
 public:
-    MulMultiBatchBaseBlockOffset offset_;
-    MulMultiBatchBaseBlockArgs params_;
-    const BatchMatmulTilingData *batchMatmulTilingData_;
+    Mc2MulMultiBatchBaseBlockOffset offset_;
+    Mc2MulMultiBatchBaseBlockArgs params_;
+    const Mc2BatchMatmulTilingData *batchMatmulTilingData_;
 };
 
-__aicore__ inline void BatchMatMulMultiBatchBaseBlock::Init(const void *tilingData)
+__aicore__ inline void Mc2BatchMatMulMultiBatchBaseBlock::Init(const void *tilingData)
 {
-    batchMatmulTilingData_ = static_cast<const BatchMatmulTilingData *>(tilingData);
+    batchMatmulTilingData_ = static_cast<const Mc2BatchMatmulTilingData *>(tilingData);
     params_.isTransposeA = batchMatmulTilingData_->matmulTiling.matmulRunInfo.transA;
     params_.isTransposeB = batchMatmulTilingData_->matmulTiling.matmulRunInfo.transB;
     params_.isHf32 = batchMatmulTilingData_->matmulTiling.matmulRunInfo.isHf32;
@@ -184,13 +184,13 @@ __aicore__ inline void BatchMatMulMultiBatchBaseBlock::Init(const void *tilingDa
     params_.singleCSize =
         static_cast<uint64_t>(batchMatmulTilingData_->matmulTiling.matmulTiling.M) * batchMatmulTilingData_->matmulTiling.matmulTiling.N;
     params_.singleBiasSize = static_cast<uint64_t>(batchMatmulTilingData_->matmulTiling.matmulTiling.N);
-    params_.useCoreNum = batchMatmulTilingData_->multiBatchInfo.batchUsedCoreNum;
-    params_.mainLoopPreCoreBatchNum = batchMatmulTilingData_->multiBatchInfo.iterBatch;
+    params_.useCoreNum = batchMatmulTilingData_->Mc2multiBatchInfo.batchUsedCoreNum;
+    params_.mainLoopPreCoreBatchNum = batchMatmulTilingData_->Mc2multiBatchInfo.iterBatch;
     params_.mainLoopBatchNum = params_.mainLoopPreCoreBatchNum * params_.useCoreNum;
 
-    params_.loopTimes = MMV3DivCeil(batchMatmulTilingData_->multiBatchInfo.cBatchDimAll, params_.mainLoopBatchNum);
+    params_.loopTimes = MMV3DivCeil(batchMatmulTilingData_->Mc2multiBatchInfo.cBatchDimAll, params_.mainLoopBatchNum);
 
-    params_.lastLoopAllBatchNum = batchMatmulTilingData_->multiBatchInfo.cBatchDimAll % params_.mainLoopBatchNum;
+    params_.lastLoopAllBatchNum = batchMatmulTilingData_->Mc2multiBatchInfo.cBatchDimAll % params_.mainLoopBatchNum;
     params_.lastLoopAllBatchNum =
         params_.lastLoopAllBatchNum == 0 ? params_.mainLoopBatchNum: params_.lastLoopAllBatchNum;
 
@@ -204,7 +204,7 @@ __aicore__ inline void BatchMatMulMultiBatchBaseBlock::Init(const void *tilingDa
     params_.batchOffsetB = 0;
 }
 
-__aicore__ inline void BatchMatMulMultiBatchBaseBlock::GetMultiBatchInfo(uint64_t loopIndex)
+__aicore__ inline void Mc2BatchMatMulMultiBatchBaseBlock::GetMultiBatchInfo(uint64_t loopIndex)
 {
     // main loop
     if (loopIndex + 1 < params_.loopTimes) {
@@ -227,7 +227,7 @@ __aicore__ inline void BatchMatMulMultiBatchBaseBlock::GetMultiBatchInfo(uint64_
     }
 }
 
-__aicore__ inline void BatchMatMulMultiBatchBaseBlock::CalcGMOffset()
+__aicore__ inline void Mc2BatchMatMulMultiBatchBaseBlock::CalcGMOffset()
 {
     offset_.offsetA = params_.batchIndex * params_.singleASize + params_.batchOffsetA * params_.singleASize;
     offset_.offsetB = params_.batchIndex * params_.singleBSize + params_.batchOffsetB * params_.singleBSize;
@@ -236,9 +236,9 @@ __aicore__ inline void BatchMatMulMultiBatchBaseBlock::CalcGMOffset()
 }
 
 
-class BatchMatMulUnalignedMultiBatchBaseBlock : public BatchMatMulMultiBatchBaseBlock {
+class Mc2BatchMatMulUnalignedMultiBatchBaseBlock : public Mc2BatchMatMulMultiBatchBaseBlock {
    public:
-    __aicore__ inline BatchMatMulUnalignedMultiBatchBaseBlock() {
+    __aicore__ inline Mc2BatchMatMulUnalignedMultiBatchBaseBlock() {
     }
     __aicore__ inline void Init(const void* tilingData);
     __aicore__ inline void SetC0(uint64_t c0Size) {
@@ -255,8 +255,8 @@ class BatchMatMulUnalignedMultiBatchBaseBlock : public BatchMatMulMultiBatchBase
     int32_t nd2nzFlag_;
 };
 
-__aicore__ inline void BatchMatMulUnalignedMultiBatchBaseBlock::Init(const void* tilingData) {
-    BatchMatMulMultiBatchBaseBlock::Init(tilingData);
+__aicore__ inline void Mc2BatchMatMulUnalignedMultiBatchBaseBlock::Init(const void* tilingData) {
+    Mc2BatchMatMulMultiBatchBaseBlock::Init(tilingData);
 
     uint32_t innerA = batchMatmulTilingData_->matmulTiling.matmulRunInfo.transA
                             ? batchMatmulTilingData_->matmulTiling.matmulTiling.M
@@ -283,10 +283,10 @@ __aicore__ inline void BatchMatMulUnalignedMultiBatchBaseBlock::Init(const void*
         params_.singleASize = innerA * outterA;
         params_.singleBSize = innerB * outterB;
     }
-    CalculateLoopTimes(batchMatmulTilingData_->multiBatchInfo.batchTileBlock);
+    CalculateLoopTimes(batchMatmulTilingData_->Mc2multiBatchInfo.batchTileBlock);
 }
 
-__aicore__ inline void BatchMatMulUnalignedMultiBatchBaseBlock::CalculateLoopTimes(uint64_t nd2nzBatchNum) {
+__aicore__ inline void Mc2BatchMatMulUnalignedMultiBatchBaseBlock::CalculateLoopTimes(uint64_t nd2nzBatchNum) {
     params_.loopTimes = MMV3DivCeil(nd2nzBatchNum,
         params_.mainLoopPreCoreBatchNum * params_.useCoreNum);
 
@@ -300,21 +300,21 @@ __aicore__ inline void BatchMatMulUnalignedMultiBatchBaseBlock::CalculateLoopTim
     params_.lastLoopBlockNum = params_.lastLoopAllBatchNum % params_.useCoreNum;
 }
 
-__aicore__ inline void BatchMatMulUnalignedMultiBatchBaseBlock::CalculateBatchOffset(uint64_t loopIndex, bool alignedA, bool alignedB) {
-    params_.batchOffset = loopIndex * batchMatmulTilingData_->multiBatchInfo.batchTileBlock;
+__aicore__ inline void Mc2BatchMatMulUnalignedMultiBatchBaseBlock::CalculateBatchOffset(uint64_t loopIndex, bool alignedA, bool alignedB) {
+    params_.batchOffset = loopIndex * batchMatmulTilingData_->Mc2multiBatchInfo.batchTileBlock;
     params_.batchOffsetA = params_.batchOffset;
     params_.batchOffsetB = params_.batchOffset;
     if (((nd2nzFlag_ == static_cast<int32_t>(ND2NZ_SELECT::ONLY_A)) ||
          (nd2nzFlag_ == static_cast<int32_t>(ND2NZ_SELECT::BOTH_AB))) &&
         !alignedA) {
         //loopIndex % 2 == 1,pong时在workspace偏移一个batchTileBlock
-        params_.batchOffsetA = batchMatmulTilingData_->multiBatchInfo.batchTileBlock * (loopIndex % 2);
+        params_.batchOffsetA = batchMatmulTilingData_->Mc2multiBatchInfo.batchTileBlock * (loopIndex % 2);
     }
     if (((nd2nzFlag_ == static_cast<int32_t>(ND2NZ_SELECT::ONLY_B)) ||
          (nd2nzFlag_ == static_cast<int32_t>(ND2NZ_SELECT::BOTH_AB))) &&
         !alignedB) {
         //loopIndex % 2 == 1,pong时在workspace偏移一个batchTileBlock
-        params_.batchOffsetB = batchMatmulTilingData_->multiBatchInfo.batchTileBlock * (loopIndex % 2);
+        params_.batchOffsetB = batchMatmulTilingData_->Mc2multiBatchInfo.batchTileBlock * (loopIndex % 2);
     }
 }
 

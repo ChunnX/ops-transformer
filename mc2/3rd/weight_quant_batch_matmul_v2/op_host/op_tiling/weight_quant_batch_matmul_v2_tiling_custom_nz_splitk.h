@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.h
@@ -26,7 +26,7 @@
 
 namespace optiling {
 
-BEGIN_TILING_DATA_DEF(WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
+BEGIN_TILING_DATA_DEF(Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
 
 TILING_DATA_FIELD_DEF(uint8_t, hasBias);
 TILING_DATA_FIELD_DEF(uint8_t, reverse1);
@@ -70,19 +70,19 @@ TILING_DATA_FIELD_DEF(uint64_t, kSizeAlign); // 输入k的对齐后大小
 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(
-    WeightQuantBatchMatmulV2_1000010001000012021, WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
+    Mc2WeightQuantBatchMatmulV2_367514450137089, Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
 REGISTER_TILING_DATA_CLASS(
-    WeightQuantBatchMatmulV2_1000010001000012001, WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
+    Mc2WeightQuantBatchMatmulV2_367239572230145, Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
 REGISTER_TILING_DATA_CLASS(
-    WeightQuantBatchMatmulV2_1000010000000012021, WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
+    Mc2WeightQuantBatchMatmulV2_367514445942785, Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
 REGISTER_TILING_DATA_CLASS(
-    WeightQuantBatchMatmulV2_1000010000000012001, WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
+    Mc2WeightQuantBatchMatmulV2_367239568035841, Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData)
 
-class WeightQuantBatchMatmulV2CustomNzSplitK : public WeightQuantBatchMatmulV2Tiling
+class Mc2WeightQuantBatchMatmulV2CustomNzSplitK : public Mc2WeightQuantBatchMatmulV2Tiling
 {
 public:
-    explicit WeightQuantBatchMatmulV2CustomNzSplitK(gert::TilingContext* context)
-        : WeightQuantBatchMatmulV2Tiling(context)
+    explicit Mc2WeightQuantBatchMatmulV2CustomNzSplitK(gert::TilingContext* context)
+        : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
     }
@@ -91,13 +91,13 @@ public:
         TilingBaseClass::Reset(context);
         Reset();
     }
-    ~WeightQuantBatchMatmulV2CustomNzSplitK() override = default;
+    ~Mc2WeightQuantBatchMatmulV2CustomNzSplitK() override = default;
 
 protected:
     uint64_t cubeSingleN_;
     bool al1FullLoad_;
-    std::unique_ptr<WeightQuantBatchMatmulV2CustomNzSplitKTilingData> tilingData_;
-    // std::unique_ptr<WeightQuantBatchMatmulV2CompileInfo> compileInfoPtr_;
+    std::unique_ptr<Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData> tilingData_;
+    // std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo> compileInfoPtr_;
 
     void Reset();
     ge::graphStatus PostTiling() override;

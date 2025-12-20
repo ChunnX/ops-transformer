@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_fixpipe.h
@@ -25,7 +25,7 @@
 #include "weight_quant_batch_matmul_v2_tiling.h"
 
 namespace optiling {
-BEGIN_TILING_DATA_DEF(WeightQuantBatchMatmulV2FixpipeTilingData)
+BEGIN_TILING_DATA_DEF(Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
 TILING_DATA_FIELD_DEF(uint8_t, hasBias);
 TILING_DATA_FIELD_DEF(uint8_t, nBlockNum);
 TILING_DATA_FIELD_DEF(uint16_t, baseK);
@@ -37,20 +37,20 @@ TILING_DATA_FIELD_DEF(uint64_t, mSize);
 TILING_DATA_FIELD_DEF(uint64_t, kSize);
 TILING_DATA_FIELD_DEF(uint64_t, nSize);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200000000012000, WeightQuantBatchMatmulV2FixpipeTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200001000012000, WeightQuantBatchMatmulV2FixpipeTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200000000012010, WeightQuantBatchMatmulV2FixpipeTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200001000012010, WeightQuantBatchMatmulV2FixpipeTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200000000012020, WeightQuantBatchMatmulV2FixpipeTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200001000012020, WeightQuantBatchMatmulV2FixpipeTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200000000012030, WeightQuantBatchMatmulV2FixpipeTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_1000200001000012030, WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365040544776705, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365040548971009, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365590300590593, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365590304784897, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365315422683649, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365315426877953, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365865178497537, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365865182691841, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
 
-class WeightQuantBatchMatmulV2TilingFixpipe : public WeightQuantBatchMatmulV2Tiling
+class Mc2WeightQuantBatchMatmulV2TilingFixpipe : public Mc2WeightQuantBatchMatmulV2Tiling
 {
 public:
-    explicit WeightQuantBatchMatmulV2TilingFixpipe(gert::TilingContext* context)
-        : WeightQuantBatchMatmulV2Tiling(context)
+    explicit Mc2WeightQuantBatchMatmulV2TilingFixpipe(gert::TilingContext* context)
+        : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
     };
@@ -59,11 +59,11 @@ public:
         TilingBaseClass::Reset(context);
         Reset();
     }
-    ~WeightQuantBatchMatmulV2TilingFixpipe() override = default;
+    ~Mc2WeightQuantBatchMatmulV2TilingFixpipe() override = default;
 
 protected:
     uint64_t aFullLoad_;
-    std::unique_ptr<WeightQuantBatchMatmulV2FixpipeTilingData> tilingData_;
+    std::unique_ptr<Mc2WeightQuantBatchMatmulV2FixpipeTilingData> tilingData_;
 
     void Reset()
     {

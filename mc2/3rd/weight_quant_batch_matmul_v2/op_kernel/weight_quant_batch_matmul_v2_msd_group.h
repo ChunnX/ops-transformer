@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_msd_group.h
@@ -48,12 +48,12 @@ using AscendC::WaitFlag;
 using matmul::MatmulImpl;
 using matmul::MatmulType;
 
-namespace WeightQuantBatchMatmulV2 {
+namespace Mc2WeightQuantBatchMatmulV2 {
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-class WeightQuantBatchMatMulV2MsdGroupKernel
+class Mc2WeightQuantBatchMatMulV2MsdGroupKernel
 {
     static constexpr int32_t SYNC_VECTOR_CUBE_P_FLAG = 2;
     static constexpr int32_t SYNC_VECTOR_CUBE_Q_FLAG = 3;
@@ -61,12 +61,12 @@ class WeightQuantBatchMatMulV2MsdGroupKernel
     static constexpr uint64_t GROUP_DIM = 32;
 
 public:
-    __aicore__ inline WeightQuantBatchMatMulV2MsdGroupKernel()
+    __aicore__ inline Mc2WeightQuantBatchMatMulV2MsdGroupKernel()
     {}
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
         GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const WeightQuantBatchMatmulV2MsdGroupTilingData* tilingData, TPipe* tPipe);
+        const Mc2WeightQuantBatchMatmulV2MsdGroupTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -191,7 +191,7 @@ private:
     MatmulImpl<InputXType, InputWType, OutputYType, InputBiasType> mmObj;
 
     TPipe* pipe_;
-    const WeightQuantBatchMatmulV2MsdGroupTilingData* tiling_;
+    const Mc2WeightQuantBatchMatmulV2MsdGroupTilingData* tiling_;
 
     // int8系数默认取127,254，且只需要展开两次
     float multiFactor1_ = 127;
@@ -260,9 +260,9 @@ private:
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::
     InitGlobalBuffer(
@@ -304,15 +304,15 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::
     Init(
         GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
         GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const WeightQuantBatchMatmulV2MsdGroupTilingData* tilingData, TPipe* tPipe)
+        const Mc2WeightQuantBatchMatmulV2MsdGroupTilingData* tilingData, TPipe* tPipe)
 {
     tiling_ = tilingData;
     pipe_ = tPipe;
@@ -346,9 +346,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::InitVector1Tensor()
 {
@@ -367,9 +367,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::InitVector3ToV5Tensor()
 {
@@ -428,9 +428,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::CopyInBL1(uint64_t wOffset, uint64_t singleCoreRealN, Nd2NzParams& nd2nzParams)
 {
@@ -452,9 +452,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::
     CopyInBL1Nz(
@@ -475,9 +475,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::CopyInAL1(uint64_t realSingleCoreK, uint64_t kOffset)
 {
@@ -507,9 +507,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::CopyInVector1(uint32_t m, uint32_t k)
 {
@@ -527,9 +527,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::ProcessVector1(uint32_t m, uint32_t k)
 {
@@ -568,9 +568,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::
     ComputeAMatrixSum(
@@ -611,9 +611,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::
     ComputeAMatrixMax(
@@ -653,9 +653,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::UnfoldAMatrix(uint32_t m, uint32_t k)
 {
@@ -700,9 +700,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::CopyOutVector1(uint32_t m, uint32_t k)
 {
@@ -717,9 +717,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::LaunchMatmul(uint64_t singleCoreRealN, uint64_t cOffset, uint64_t kOffset)
 {
@@ -741,9 +741,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::CopyInVector3(int32_t vecSingleCoreN, uint32_t groupIdx, uint32_t nBaseOffset, uint32_t taskId)
 {
@@ -768,9 +768,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::MulOffsetVector3(int32_t vecSingleCoreN, uint32_t groupIdx, uint32_t taskId)
 {
@@ -799,9 +799,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::
     ProcessVector3(
@@ -828,9 +828,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::ProcessVector4MaxScale(int64_t vecSingleCoreN, uint64_t groupIdx)
 {
@@ -869,9 +869,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::
     CopyInAndProcessVector4(
@@ -930,9 +930,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::ProcessMatmulResultHalf(uint64_t cOffset, uint64_t v4EndM, int64_t vecSingleCoreN)
 {
@@ -964,9 +964,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::ProcessMatmulResult(uint64_t cOffset, uint64_t v4BaseM, uint64_t v4EndM, int64_t vecSingleCoreN)
 {
@@ -1020,9 +1020,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::CopyOutVector4(int32_t singleCoreRealN, uint32_t groupIdx, uint32_t groupLimit)
 {
@@ -1052,9 +1052,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::ProcessVector5(int32_t singleCoreRealN)
 {
@@ -1107,9 +1107,9 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, CubeFormat weightFormat,
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
     typename preciseType>
-__aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
+__aicore__ inline void Mc2WeightQuantBatchMatMulV2MsdGroupKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::Process()
 {
@@ -1245,6 +1245,6 @@ __aicore__ inline void WeightQuantBatchMatMulV2MsdGroupKernel<
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vector3EventIdVToMTE21);
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vector3EventIdVToMTE22);
 }
-} // namespace WeightQuantBatchMatmulV2
+} // namespace Mc2WeightQuantBatchMatmulV2
 
 #endif // WEIGHT_QUANT_BATCH_MATMUL_V2_MSD_GROUP_H

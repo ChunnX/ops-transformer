@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_matmul_full_mesh.h
@@ -25,7 +25,7 @@ class AllGatherMatmulFullMesh : public AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYP
 public:
     __aicore__ inline AllGatherMatmulFullMesh() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM,
-        GM_ADDR workspaceGM, GM_ADDR contextGM, AllGatherMatmulTilingData *tilingData, __gm__ void* mc2InitTiling,
+        GM_ADDR workspaceGM, GM_ADDR contextGM, Mc2Tiling::AllGatherMatmulTilingData *tilingData, __gm__ void* mc2InitTiling,
         __gm__ void* mc2CcTiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -33,11 +33,11 @@ private:
     __aicore__ inline void HcclPrepare();
     __aicore__ inline void InnerProcess();
 
-    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, TileL2Tiling &l2Tiling,
+    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
         HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void MatmulKernelComputeL2Cache(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
-        TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
-    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, TileL2Tiling &l2Tiling,
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
+    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
         HcclHandle &handleId, uint32_t tileCnt);
 
     __aicore__ inline void HcclFinalize();
@@ -51,7 +51,7 @@ private:
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void AllGatherMatmulFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::Init(GM_ADDR aGM,
     GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM, GM_ADDR workspaceGM, GM_ADDR contextGM,
-    AllGatherMatmulTilingData *tilingData, __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe *tPipe)
+    Mc2Tiling::AllGatherMatmulTilingData *tilingData, __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe *tPipe)
 {
     this->InitBase(aGM, bGM, biasGM, cGM, gatherGM, workspaceGM, contextGM, tilingData, tPipe);
     hccl_.Init(contextGM, mc2InitTiling);
@@ -124,7 +124,7 @@ __aicore__ inline void AllGatherMatmulFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void
 AllGatherMatmulFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::MatmulKernelCompute(GM_ADDR aGM,
-    GM_ADDR cGM, TCubeTiling &tiling, TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
+    GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
 {
     using A_T = typename A_TYPE::T;
     using C_T = typename C_TYPE::T;
@@ -169,7 +169,7 @@ AllGatherMatmulFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void
 AllGatherMatmulFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::MatmulKernelComputeL2Cache(GM_ADDR aGM,
-    GM_ADDR cGM, TCubeTiling &tiling, TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
+    GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
 {
     using A_T = typename A_TYPE::T;
     using C_T = typename C_TYPE::T;
@@ -201,7 +201,7 @@ AllGatherMatmulFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void
 AllGatherMatmulFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::MatmulKernelGather(GM_ADDR aGM,
-    GM_ADDR cGM, TCubeTiling &tiling, TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
+    GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
 {
     if (GetBlockIdx() >= tiling.usedCoreNum) {
         return;

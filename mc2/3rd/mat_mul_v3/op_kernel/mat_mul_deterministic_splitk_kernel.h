@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mat_mul_deterministic_splitk_kernel.h
@@ -449,7 +449,7 @@ __aicore__ inline void ReduceKNzInUb(GM_ADDR cGM, GM_ADDR mmGM, uint64_t coreSiz
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void MatMulMultiCoreSplitKDivide(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR mmOffsetGM,
+__aicore__ inline void Mc2MatMulMultiCoreSplitKDivide(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR mmOffsetGM,
                                                    uint64_t singleSize, bool isHf32, TPipe *que,
                                                    const TCubeTiling& tiling, bool isBias)
 {
@@ -1047,7 +1047,7 @@ __aicore__ inline void ReduceKInUbL2cache(GM_ADDR cGM, GM_ADDR mmGM, uint64_t co
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void MatMulMultiCoreSplitKDivideL2cache(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR mmOffsetGM,
+__aicore__ inline void Mc2MatMulMultiCoreSplitKDivideL2cache(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR mmOffsetGM,
                                                    uint64_t singleSize, bool isHf32, TPipe *que,
                                                    const TCubeTiling& tiling, bool isBias)
 {
@@ -1283,8 +1283,8 @@ __aicore__ inline void MatMulMultiCoreSplitKDivideL2cache(GM_ADDR aGM, GM_ADDR b
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, FIXPIPE_OPT_SELECT FIXPIPE_OPT = FIXPIPE_OPT_SELECT::BASE>
-__aicore__ inline void MatMulKernelDeterministicSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
-                                                       const MatmulTilingData& matmulTilingData, GM_ADDR workspaceGM)
+__aicore__ inline void Mc2MatMulKernelDeterministicSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
+                                                       const Mc2MatmulV3TilingData& matmulTilingData, GM_ADDR workspaceGM)
 {
     const TCubeTiling& tiling = matmulTilingData.matmulTiling;
     TPipe que;
@@ -1370,45 +1370,45 @@ __aicore__ inline void MatMulKernelDeterministicSplitK(GM_ADDR aGM, GM_ADDR bGM,
         using cType = MatmulType<C_TYPE::pos, C_TYPE::format, float, C_TYPE::isTrans>;
         if (isL2cacheSplit) {
             if (!matmulTilingData.matmulRunInfo.isNzA && !matmulTilingData.matmulRunInfo.isNzB) {
-                MatMulMultiCoreSplitKDivideL2cache<A_TYPE, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivideL2cache<A_TYPE, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             } else if (matmulTilingData.matmulRunInfo.isNzA && !matmulTilingData.matmulRunInfo.isNzB) {
                 using aType = MatmulType<A_TYPE::pos, CubeFormat::NZ, typename A_TYPE::T, A_TYPE::isTrans>;
-                MatMulMultiCoreSplitKDivideL2cache<aType, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivideL2cache<aType, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             } else if (!matmulTilingData.matmulRunInfo.isNzA && matmulTilingData.matmulRunInfo.isNzB) {
                 using bType = MatmulType<B_TYPE::pos, CubeFormat::NZ, typename B_TYPE::T, B_TYPE::isTrans>;
-                MatMulMultiCoreSplitKDivideL2cache<A_TYPE, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivideL2cache<A_TYPE, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             } else {
                 using aType = MatmulType<A_TYPE::pos, CubeFormat::NZ, typename A_TYPE::T, A_TYPE::isTrans>;
                 using bType = MatmulType<B_TYPE::pos, CubeFormat::NZ, typename B_TYPE::T, B_TYPE::isTrans>;
-                MatMulMultiCoreSplitKDivideL2cache<aType, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivideL2cache<aType, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             }
         } else {
             if (!matmulTilingData.matmulRunInfo.isNzA && !matmulTilingData.matmulRunInfo.isNzB) {
-                MatMulMultiCoreSplitKDivide<A_TYPE, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivide<A_TYPE, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             } else if (matmulTilingData.matmulRunInfo.isNzA && !matmulTilingData.matmulRunInfo.isNzB) {
                 using aType = MatmulType<A_TYPE::pos, CubeFormat::NZ, typename A_TYPE::T, A_TYPE::isTrans>;
-                MatMulMultiCoreSplitKDivide<aType, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivide<aType, B_TYPE, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             } else if (!matmulTilingData.matmulRunInfo.isNzA && matmulTilingData.matmulRunInfo.isNzB) {
                 using bType = MatmulType<B_TYPE::pos, CubeFormat::NZ, typename B_TYPE::T, B_TYPE::isTrans>;
-                MatMulMultiCoreSplitKDivide<A_TYPE, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivide<A_TYPE, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             } else {
                 using aType = MatmulType<A_TYPE::pos, CubeFormat::NZ, typename A_TYPE::T, A_TYPE::isTrans>;
                 using bType = MatmulType<B_TYPE::pos, CubeFormat::NZ, typename B_TYPE::T, B_TYPE::isTrans>;
-                MatMulMultiCoreSplitKDivide<aType, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
+                Mc2MatMulMultiCoreSplitKDivide<aType, bType, cType, BIAS_TYPE>(aGM, bGM, biasGM, mmOffsetGM, singleSize,
                                                                     matmulTilingData.matmulRunInfo.isHf32,
                                                                     &que, tiling, tiling.isBias);
             }

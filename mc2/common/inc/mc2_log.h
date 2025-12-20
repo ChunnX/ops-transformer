@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_log.h
@@ -26,16 +26,19 @@
 #include "log/log.h"
 #include "securec.h"
 #include "tiling/mc2_tiling_struct.h"
+#include "kernel/mc2_tiling_struct.h"
 #include "tiling/tiling_api.h"
 #if __has_include("error_manager/error_manager.h")
 #include "error_manager/error_manager.h"
 #else
 #include "err_mgr.h"
 #endif
+#include "quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
+#include "mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 
 template <typename T>
 std::string ConcatString(const T &arg) {
-  std::ostringstream oss;
+  std::ostringstream oss; 
   oss << arg;
   return oss.str();
 }
@@ -56,8 +59,18 @@ void PrintTCubeTilingData(const std::string &opName,
 void PrintRCSTilingData(const std::string &opName,
                         optiling::RCSTiling &rcsTiling);
 void PrintMc2MsgData(const std::string &opName, optiling::Mc2Msg &msg);
-void PrintTileL2TilingData(const std::string &opName,
-                           optiling::TileL2Tiling &tileL2Tiling);
+void PrintTileL2TilingData(const std::string &opName, optiling::TileL2Tiling &tileL2Tiling);
+
+void PrintMMV3TilingData(const std::string &opName, Mc2Tiling::MC2MatmulV3TilingData &tiling);
+
+void PrintRCSTilingData(const std::string &opName, Mc2Tiling::RCSTiling& rcsTiling);
+void PrintTileL2TilingData(const std::string &opName, Mc2Tiling::TileL2Tiling& tileL2Tiling);
+void PrintMc2MsgData(const std::string &opName, Mc2Tiling::Mc2Msg& msg);
+void PrintTCubeTilingData(const std::string &opName, ::TCubeTiling &tiling);
+void PrintTCubeTilingWindowParam(const std::string &opName, DequantBmm::Mc2SlidingWindowParams &tiling);
+void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTileParams &tiling);
+void PrintTCubeTilingParams(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3DataParams &tiling);
+void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling);
 }  // namespace Mc2Log
 
 struct ErrorResult {
@@ -110,7 +123,7 @@ inline std::vector<char> CreateErrorMsg(const char *format, ...){
 
 inline std::vector<char> CreateErrorMsg() { return {}; }
 
-inline const char *get_cstr(const std::string &str) { return str.c_str(); }
+inline const char *ConvertStringToCstr(const std::string &str) { return str.c_str(); }
 
 #if !defined(__ANDROID__) && !defined(ANDROID)
 #define OPS_ERR_IF(COND, LOG_FUNC, EXPR) \
@@ -147,7 +160,7 @@ inline const char *get_cstr(const std::string &str) { return str.c_str(); }
   do {                                                            \
     D_OP_LOGE(op_name, err_msg, ##__VA_ARGS__);                   \
     REPORT_INNER_ERR_MSG("E69999", "op[%s], " err_msg,            \
-                         get_cstr(Ops::Base::GetOpInfo(op_name)), \
+                         ConvertStringToCstr(Ops::Base::GetOpInfo(op_name)), \
                          ##__VA_ARGS__);                          \
   } while (0)
 #define OP_LOGI_IF_RETURN(condition, returnValue, opName, fmt, ...)                                             \
@@ -172,6 +185,7 @@ inline const char *get_cstr(const std::string &str) { return str.c_str(); }
       return ::ErrorResult();                                   \
     }                                                           \
   } while (false)
+#define CUBE_CALL_ERR_REPORT(op_name, err_msg, ...)
 
 namespace ops {
 #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                         \
@@ -213,7 +227,7 @@ namespace ops {
 
 #define VECTOR_INFER_SHAPE_INNER_ERR_REPORT(op_name, err_msg)                  \
   do {                                                                         \
-    OP_LOGE_WITHOUT_REPORT(op_name, "%s", get_cstr(err_msg));                  \
+    OP_LOGE_WITHOUT_REPORT(op_name, "%s", ConvertStringToCstr(err_msg));                  \
     std::string errorStr = "E89999";                                           \
     REPORT_INNER_ERR_MSG(errorStr.c_str(), "%s",                               \
                          ConcatString("op[", op_name, "],", err_msg).c_str()); \
@@ -226,7 +240,7 @@ namespace optiling {
   do {                                                            \
     OP_LOGE_WITHOUT_REPORT(op_name, err_msg, ##__VA_ARGS__);      \
     REPORT_INNER_ERR_MSG("E89999", "op[%s], " err_msg,            \
-                         get_cstr(Ops::Base::GetOpInfo(op_name)), \
+                         ConvertStringToCstr(Ops::Base::GetOpInfo(op_name)), \
                          ##__VA_ARGS__);                          \
   } while (0)
 #define OP_TILING_CHECK(cond, log_func, expr) \
@@ -252,6 +266,7 @@ namespace optiling {
 #define GE_ASSERT_NOTNULL(v, ...)
 #define OPS_REPORT_VECTOR_INNER_ERR(opName, ...)
 #define OPS_REPORT_CUBE_INNER_ERR(opName, ...)
+#define CUBE_CALL_ERR_REPORT(op_name, err_msg, ...)
 namespace optiling {
 #define VECTOR_INNER_ERR_REPORT_TILING(opName, err_msg, ...)
 #define OP_TILING_CHECK(cond, log_func, expr)

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file mc2_gen_task_ops_utils.cpp
  * \brief
@@ -57,7 +57,7 @@ int64_t Mc2GenTaskOpsUtils::GetAttachStreamIdByContext(const gert::ExeResGenerat
     return stream_id;
 }
 
-ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(gert::ExeResGenerationContext *context,
+ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(const gert::ExeResGenerationContext *context,
                                                          const ge::AscendString &name,
                                                          const ge::AscendString &reuse_key)
 {
@@ -102,12 +102,14 @@ ge::Status Mc2GenTaskOpsUtils::InsertHiddenInputsForAicoreTask(
         argDescInfos.insert(argDescInfos.begin() + insert_idx,
                             ge::ArgDescInfo::CreateHiddenInput(ge::HiddenInputSubType::kHcom));
     }
-    auto args_format_str = ge::ArgsFormatSerializer::Serialize(argDescInfos).GetString();
-    if (aicore_task.SetArgsFormat(args_format_str) != ge::GRAPH_SUCCESS) {
+
+    auto argDescInfosSerialize = ge::ArgsFormatSerializer::Serialize(argDescInfos);
+    std::string argsFormatSerializeStr = std::string(argDescInfosSerialize.GetString(), argDescInfosSerialize.GetLength());
+    if (aicore_task.SetArgsFormat(argsFormatSerializeStr.c_str()) != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(context->GetNodeName(), "Failed to set args format for aicore task.");
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_I(context->GetNodeName(), "aicore ArgsFormat: %s", args_format_str);
+    OPS_LOG_I(context->GetNodeName(), "aicore ArgsFormat: %s", argsFormatSerializeStr.c_str());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -187,14 +189,14 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(const gert::ExeResGenerationC
     /* wait aicpu record [aicore] wait */
     // wait task
     ge::KernelLaunchInfo aicpu_wait_for_aicore_task = ge::KernelLaunchInfo::CreateHcomWaitTask(context);
-    aicpu_wait_for_aicore_task.SetStreamId(attach_stream_id);
+    aicpu_wait_for_aicore_task.SetStreamId(static_cast<uint32_t>(attach_stream_id));
     tasks.insert(tasks.begin() + aicore_idx, aicpu_wait_for_aicore_task.Serialize());
     ++aicore_idx;
 
     // aicpu task
     ge::KernelLaunchInfo aicpu_task =
         ge::KernelLaunchInfo::CreateAicpuKfcTask(context, SO_NAME.c_str(), KERNEL_NAME_V1.c_str());
-    aicpu_task.SetStreamId(attach_stream_id);
+    aicpu_task.SetStreamId(static_cast<uint32_t>(attach_stream_id));
     GE_ASSERT_SUCCESS(CreateAicpuTaskV1(context, aicpu_task)); // 之后换一个名称可能清晰一点，上面已经有create了
     tasks.insert(tasks.begin() + aicore_idx, aicpu_task.Serialize());
     ++aicore_idx;

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_weight_nz_tiling.h
@@ -27,7 +27,7 @@
 
 namespace optiling {
 
-BEGIN_TILING_DATA_DEF(WeightQuantBatchMatmulV2NzTilingData)
+BEGIN_TILING_DATA_DEF(Mc2WeightQuantBatchMatmulV2NzTilingData)
 TILING_DATA_FIELD_DEF(uint8_t, cubeBlockDimN);
 TILING_DATA_FIELD_DEF(uint8_t, cubeBlockDimM);
 TILING_DATA_FIELD_DEF(uint16_t, AL1Pingpong);
@@ -63,35 +63,33 @@ TILING_DATA_FIELD_DEF(uint64_t, batchY3);
 TILING_DATA_FIELD_DEF(uint32_t, biasWithBatch);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80010, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80011, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80020, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80021, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80030, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80031, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80110, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80111, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80120, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80121, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80130, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80131, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_80000, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180010, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180011, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180020, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180021, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180030, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180031, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180110, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180111, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180120, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180121, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180130, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180131, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2_180000, WeightQuantBatchMatmulV2NzTilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2NzTilingDataOp, WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13195213800193, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13195482235649, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13196287542017, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13196555977473, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13197361283841, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13197629719297, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13470091707137, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13470360142593, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13471165448961, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13471433884417, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13472239190785, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_13472507626241, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139095120642817, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139095389078273, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139096194384641, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139096462820097, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139097268126465, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139097536561921, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139369998549761, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139370266985217, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139371072291585, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139371340727041, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139372146033409, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_1139372414468865, Mc2WeightQuantBatchMatmulV2NzTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2NzTilingDataOp, Mc2WeightQuantBatchMatmulV2NzTilingData)
 
-class MmTilingInput
+class Mc2MmTilingInput
 {
 public:
     matmul_tiling::TPosition aPosition;
@@ -108,24 +106,24 @@ public:
     matmul_tiling::DataType cDtype = matmul_tiling::DataType::DT_FLOAT16;
 };
 
-class WeightQuantBatchMatmulV2WeightNz : public TilingBaseClass
+class Mc2WeightQuantBatchMatmulV2WeightNz : public TilingBaseClass
 {
 public:
-    explicit WeightQuantBatchMatmulV2WeightNz(gert::TilingContext* context) : TilingBaseClass(context)
+    explicit Mc2WeightQuantBatchMatmulV2WeightNz(gert::TilingContext* context) : TilingBaseClass(context)
     {
         Reset();
         if (context->GetCompileInfo() == nullptr) {
             InitCompileInfo();
         }
     }
-    explicit WeightQuantBatchMatmulV2WeightNz(gert::TilingContext* context, WeightQuantBatchMatmulV2NzTilingData* out)
+    explicit Mc2WeightQuantBatchMatmulV2WeightNz(gert::TilingContext* context, Mc2WeightQuantBatchMatmulV2NzTilingData* out)
         : TilingBaseClass(context)
     {
         Reset();
         tilingData_ = out;
         InitCompileInfo();
     }
-    ~WeightQuantBatchMatmulV2WeightNz() override = default;
+    ~Mc2WeightQuantBatchMatmulV2WeightNz() override = default;
     void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
@@ -163,7 +161,7 @@ protected:
     // 6、计算Workspace 大小
     ge::graphStatus GetWorkspaceSize() override;
 
-    bool GetMmTilingInput(MmTilingInput& mmTilingInput);
+    bool GetMmTilingInput(Mc2MmTilingInput& mmTilingInput);
     bool CheckUBSize();
     bool GetMatMulTiling();
     ge::graphStatus CheckContext() const;
@@ -196,10 +194,10 @@ protected:
     uint64_t CalCubFactorTiling(uint64_t cubNz2NdCanUseSize);
     void PrintCVTilingData(bool debugLevel);
     ge::graphStatus PostTiling() override;
-    WeightQuantBatchMatmulInfo inputParams_;
-    std::unique_ptr<WeightQuantBatchMatmulV2NzTilingData> tilingDataManager_;
-    std::unique_ptr<WeightQuantBatchMatmulV2CompileInfo> compileInfoPtr_;
-    WeightQuantBatchMatmulV2NzTilingData* tilingData_ = nullptr;
+    Mc2WeightQuantBatchMatmulInfo inputParams_;
+    std::unique_ptr<Mc2WeightQuantBatchMatmulV2NzTilingData> tilingDataManager_;
+    std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo> compileInfoPtr_;
+    Mc2WeightQuantBatchMatmulV2NzTilingData* tilingData_ = nullptr;
     const char* opName_;
     bool InvokeCacheTiling();
     virtual bool GetTilingFromCache();

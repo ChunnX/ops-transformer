@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine_tiling_helper.cc
@@ -18,7 +18,8 @@
 using namespace ge;
 
 namespace optiling {
-inline bool MoeDistributeCombineTilingHelper::CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName)
+inline bool MoeDistributeCombineTilingHelper::CheckInputTensorDim(const gert::TilingContext *context,
+                                                                  const char *nodeName)
 {
     const gert::StorageShape *expandXStorageShape = context->GetInputShape(EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXStorageShape == nullptr, OP_LOGE(nodeName, "expandX is null."), return false);
@@ -95,7 +96,8 @@ inline bool MoeDistributeCombineTilingHelper::CheckInputExpertScalesTensorDim(co
     return true;
 }
 
-inline bool MoeDistributeCombineTilingHelper::CheckOutputTensorDim(const gert::TilingContext *context, const char *nodeName)
+inline bool MoeDistributeCombineTilingHelper::CheckOutputTensorDim(const gert::TilingContext *context,
+                                                                   const char *nodeName)
 {
     const gert::StorageShape *xStorageShape = context->GetOutputShape(OUTPUT_X_INDEX);
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(nodeName, "x is null."), return false);
@@ -111,16 +113,43 @@ inline bool MoeDistributeCombineTilingHelper::CheckOutputTensorDim(const gert::T
 bool MoeDistributeCombineTilingHelper::CheckTensorDim(gert::TilingContext *context, const char *nodeName)
 {
     OP_TILING_CHECK(!CheckInputTensorDim(context, nodeName) || !CheckInputSendCountsTensorDim(context, nodeName) ||
-                        !CheckInputExpertScalesTensorDim(context, nodeName) || !CheckOutputTensorDim(context, nodeName),
+                    !CheckInputExpertScalesTensorDim(context, nodeName) || !CheckOutputTensorDim(context, nodeName),
                     OP_LOGE(nodeName, "Input param shape is invalid."), return false);
 
     // x_active_mask当前不支持传入
-    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
-    OP_TILING_CHECK(xActiveMaskStorageShape != nullptr, OP_LOGE(nodeName, "x_active_mask only support input None."),
-                    return false);
+    // A3/A5 v1接口的x_active_mask不支持传入
+    if (OpVersionManager::GetInstance().GetVersion() == OP_VERSION_1) {
+        const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+        OP_TILING_CHECK(xActiveMaskStorageShape != nullptr, OP_LOGE(nodeName, "x_active_mask only support input None."),
+            return false);
+    }
 
     OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName), OP_LOGE(nodeName, "Output param shape is invalid."),
                     return false);
+
+    return true;
+}
+
+inline bool MoeDistributeCombineTilingHelper::CheckActiveMask(const gert::TilingContext *context, const char *nodeName)
+{
+    // Check Dim/DType/Format
+    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+    OP_TILING_CHECK(xActiveMaskStorageShape == nullptr, OP_LOGE(nodeName, "xActiveMaskStorageShape is null."),
+                    return false);
+    const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
+    OP_TILING_CHECK(xActiveMaskDimNums != ONE_DIM,
+                    OP_LOGE(nodeName, "xActiveMask must be 1-dim, but current dim num is %ld.",
+                            xActiveMaskDimNums),
+                    return false);
+    auto xActiveMaskDesc = context->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
+    OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE(nodeName, "xActiveMaskDesc is null."), return false);
+    OP_TILING_CHECK(xActiveMaskDesc->GetDataType() != ge::DT_BOOL,
+                    OP_LOGE(nodeName, "xActiveMask datatype is invalid, datatype should be bool, but is %s.",
+                            Ops::Base::ToString(xActiveMaskDesc->GetDataType()).c_str()),
+                    return false);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat())) ==
+                        ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName, "xActiveMask format is invalid."), return false);
 
     return true;
 }
@@ -234,4 +263,5 @@ ge::graphStatus MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombin
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
+
 } // namespace optiling

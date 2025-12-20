@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_compute_matmul_tiling.cpp
@@ -27,8 +27,8 @@ constexpr int32_t BASEK_256 = 256;
 constexpr int32_t DEPTHB1_4 = 4;
 constexpr int32_t STEPKB_2 = 2;
 
-bool ComputeMatmulTiling::GetTiling(
-    TCubeTiling& matmulTiling, MatmulMultiCoreResult& multiCoreResult, const MatmulParams& params,
+bool Mc2ComputeMatmulTiling::GetTiling(
+    TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
     const AiCoreParams& aicoreParams, gert::TilingContext* context)
 {
     bool getTilingResult = false;
@@ -42,18 +42,18 @@ bool ComputeMatmulTiling::GetTiling(
 
     if (!getTilingResult) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "can not get tiling from SimpleIncreTiling/MsdA16W8CommonTiling. try to get tiling from cache tiling");
         return GetCacheTiling(matmulTiling, multiCoreResult, params, context);
     }
     return getTilingResult;
 }
 
-bool ComputeMatmulTiling::GetCacheTiling(
-    TCubeTiling& matmulTiling, MatmulMultiCoreResult& multiCoreResult, const MatmulParams& params,
+bool Mc2ComputeMatmulTiling::GetCacheTiling(
+    TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
     gert::TilingContext* context)
 {
-    int32_t reduceSize = static_cast<int32_t>(GetBlockAlignSizeByDataType(params.aDtype));
+    int32_t reduceSize = static_cast<int32_t>(Mc2GetBlockAlignSizeByDataType(params.aDtype));
     bool weightNz = params.format_b == ge::FORMAT_FRACTAL_NZ;
     BatchmatmulCompileParas compileParams;
     compileParams.binary_mode_flag = true;
@@ -73,7 +73,7 @@ bool ComputeMatmulTiling::GetCacheTiling(
     runParams.format_a = params.format_a;
     runParams.format_b = params.format_b;
     runParams.format_out = params.format_out;
-    runParams.reserved_bool = (params.quantType > QuantType::PER_TENSOR);
+    runParams.reserved_bool = (params.quantType > Mc2QuantType::PER_TENSOR);
     runParams.nd_flag = runParams.format_a_nd && runParams.format_b_nd;
     runParams.used_aligned_pattern = alignedMKN && runParams.nd_flag;
     runParams.bias_flag = params.hasBias;
@@ -99,7 +99,7 @@ bool ComputeMatmulTiling::GetCacheTiling(
     runParams.is_weight_quant_batch_matmul_v2 = true;
     CacheTilingData tiling;
     tiling.tiling_id = std::numeric_limits<uint64_t>::max();
-    bool ret = GenTiling("WeightQuantBatchMatmulV2", compileParams, runParams, tiling, context);
+    bool ret = GenTiling("Mc2WeightQuantBatchMatmulV2", compileParams, runParams, tiling, context);
     if (tiling.tiling_id == std::numeric_limits<uint64_t>::max() || !ret) {
         return false;
     }
@@ -107,15 +107,15 @@ bool ComputeMatmulTiling::GetCacheTiling(
     return true;
 }
 
-bool ComputeMatmulTiling::MsdA16W8CommonTiling(
-    TCubeTiling& matmulTiling, MatmulMultiCoreResult& multiCoreResult, const MatmulParams& params,
+bool Mc2ComputeMatmulTiling::MsdA16W8CommonTiling(
+    TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
     const AiCoreParams& aicoreParams)
 {
     // weight为NZ-NK/ND-KN暂不支持
     if (((params.transB) && (params.format_b == ge::FORMAT_FRACTAL_NZ)) ||
         ((!params.transB) && (params.format_b == ge::FORMAT_ND))) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "MsdA16W8CommonTiling only support b is transposed and b is ND, "
             "or b is not transposed and b is NZ, current transB:[%s], formatB:[%s]",
             params.transB ? "true" : "false", (params.format_b == ge::FORMAT_ND) ? "FORMAT_ND" : "FORMAT_FRACTAL_NZ");
@@ -158,12 +158,12 @@ bool ComputeMatmulTiling::MsdA16W8CommonTiling(
     return true;
 }
 
-void ComputeMatmulTiling::CalcMsdBufferSize(TCubeTiling& matmulTiling, const MatmulParams& params)
+void Mc2ComputeMatmulTiling::CalcMsdBufferSize(TCubeTiling& matmulTiling, const Mc2MatmulParams& params)
 {
     int32_t a1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), params.aDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), params.aDtype));
     int32_t b1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), params.bDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), params.bDtype));
     int32_t c1Length = matmulTiling.get_baseN() * matmulTiling.get_baseM() * sizeof(float);
     int32_t aL1Size = a1Length * matmulTiling.get_depthA1();
     int32_t bL1Size = b1Length * matmulTiling.get_depthB1();
@@ -172,8 +172,8 @@ void ComputeMatmulTiling::CalcMsdBufferSize(TCubeTiling& matmulTiling, const Mat
     matmulTiling.set_shareL0CSize(c1Length);
 }
 
-void ComputeMatmulTiling::CalcCommonTiling(
-    TCubeTiling& matmulTiling, const MatmulParams& params, const AiCoreParams& aicoreParams)
+void Mc2ComputeMatmulTiling::CalcCommonTiling(
+    TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams)
 {
     uint64_t baseM = ops::CeilAlign(params.mSize, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t baseK = 128;
@@ -225,13 +225,13 @@ void ComputeMatmulTiling::CalcCommonTiling(
     matmulTiling.set_stepKb(stepKb);
 }
 
-bool ComputeMatmulTiling::SimpleIncreTiling(
-    TCubeTiling& matmulTiling, MatmulMultiCoreResult& multiCoreResult, const MatmulParams& params,
+bool Mc2ComputeMatmulTiling::SimpleIncreTiling(
+    TCubeTiling& matmulTiling, Mc2MatmulMultiCoreResult& multiCoreResult, const Mc2MatmulParams& params,
     const AiCoreParams& aicoreParams)
 {
     if (params.aDtype != ge::DT_INT4 || params.bDtype != ge::DT_INT4) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "SimpleIncreTiling only support int4 matmul case. cur a dtype: [%s], b dtype: [%s]",
             ge::TypeUtils::DataTypeToAscendString(params.aDtype).GetString(),
             ge::TypeUtils::DataTypeToAscendString(params.bDtype).GetString());
@@ -240,7 +240,7 @@ bool ComputeMatmulTiling::SimpleIncreTiling(
 
     if (params.transA || !params.transB) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "Int4IncreTiling only support a is not transposed, and b is transposed. transA:[%s], transB: [%s]",
             params.transA ? "true" : "false", params.transB ? "true" : "false");
         return false;
@@ -276,9 +276,9 @@ bool ComputeMatmulTiling::SimpleIncreTiling(
     return false;
 }
 
-void ComputeMatmulTiling::Convert2AscendCTiling(
-    const CacheTilingData& tbeTiling, TCubeTiling& matmulTiling, const MatmulParams& params,
-    MatmulMultiCoreResult& multiCoreResult)
+void Mc2ComputeMatmulTiling::Convert2AscendCTiling(
+    const CacheTilingData& tbeTiling, TCubeTiling& matmulTiling, const Mc2MatmulParams& params,
+    Mc2MatmulMultiCoreResult& multiCoreResult)
 {
     auto mDim = ops::CeilDiv(params.mSize, ops::CeilDiv(params.mSize, static_cast<uint64_t>(tbeTiling.m_dim)));
     auto nDim = ops::CeilDiv(params.nSize, ops::CeilDiv(params.nSize, static_cast<uint64_t>(tbeTiling.n_dim)));
@@ -301,7 +301,7 @@ void ComputeMatmulTiling::Convert2AscendCTiling(
     matmulTiling.set_baseN(tbeTiling.n_l0 * BLOCK_CUBE);
     matmulTiling.set_singleCoreK(params.kSize);
     matmulTiling.set_baseM(tbeTiling.m_l0 * BLOCK_CUBE);
-    int32_t reduceSize = static_cast<int32_t>(GetBlockAlignSizeByDataType(params.aDtype));
+    int32_t reduceSize = static_cast<int32_t>(Mc2GetBlockAlignSizeByDataType(params.aDtype));
     matmulTiling.set_baseK(tbeTiling.k_l0 * reduceSize);
     matmulTiling.set_depthA1(ops::CeilDiv(tbeTiling.kal1_16, tbeTiling.k_l0) * tbeTiling.m_al1 * tbeTiling.db_al1);
     matmulTiling.set_depthB1(ops::CeilDiv(tbeTiling.kbl1_16, tbeTiling.k_l0) * tbeTiling.n_bl1 * tbeTiling.db_bl1);
@@ -310,9 +310,9 @@ void ComputeMatmulTiling::Convert2AscendCTiling(
     matmulTiling.set_stepKa(ops::CeilDiv(tbeTiling.kal1_16, tbeTiling.k_l0));
     matmulTiling.set_stepKb(ops::CeilDiv(tbeTiling.kbl1_16, tbeTiling.k_l0));
     int32_t a1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), params.aDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), params.aDtype));
     int32_t b1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), params.aDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), params.aDtype));
     int32_t c1Length = matmulTiling.get_baseN() * matmulTiling.get_baseM() * sizeof(float); // L0C
 
     matmulTiling.set_isBias(params.hasBias ? 1 : 0);
@@ -329,7 +329,7 @@ void ComputeMatmulTiling::Convert2AscendCTiling(
     matmulTiling.set_dbL0C(tbeTiling.db_l0c);
     int32_t aL1Size = a1Length * matmulTiling.get_depthA1();
     int32_t biasL1Size =
-        params.hasBias ? GetShapeSizeWithDataType(matmulTiling.get_baseN(), params.biasDtype) * tbeTiling.n_bl1 : 0;
+        params.hasBias ? Mc2GetShapeSizeWithDataType(matmulTiling.get_baseN(), params.biasDtype) * tbeTiling.n_bl1 : 0;
     int32_t bL1Size = b1Length * matmulTiling.get_depthB1();
     int32_t quantScaleL1Size =
         params.cDtype == ge::DT_INT8 ? matmulTiling.get_baseN() * tbeTiling.n_bl1 * sizeof(uint64_t) : 0;
@@ -346,11 +346,11 @@ void ComputeMatmulTiling::Convert2AscendCTiling(
     multiCoreResult.batchDim = tbeTiling.batch_dim;
 }
 
-MatrixTraverse ComputeMatmulTiling::GetIteratorOrder(
+MatrixTraverse Mc2ComputeMatmulTiling::GetIteratorOrder(
     const CacheTilingData& tbeTiling, int32_t singleCoreM, int32_t singleCoreN, int32_t singleCoreK,
     ge::DataType aDtype)
 {
-    int32_t reduceSize = static_cast<int32_t>(GetBlockAlignSizeByDataType(aDtype));
+    int32_t reduceSize = static_cast<int32_t>(Mc2GetBlockAlignSizeByDataType(aDtype));
     bool fullkAL1Load = !((static_cast<float>(singleCoreK) / (tbeTiling.kal1_16 * reduceSize)) > 1.0);
     bool fullkBL1Load = !((static_cast<float>(singleCoreK) / (tbeTiling.kbl1_16 * reduceSize)) > 1.0);
 
@@ -371,8 +371,8 @@ MatrixTraverse ComputeMatmulTiling::GetIteratorOrder(
     }
 }
 
-bool ComputeMatmulTiling::tryComputeSimpleTiling(
-    TCubeTiling& matmulTiling, const MatmulParams& params, const AiCoreParams& aicoreParams)
+bool Mc2ComputeMatmulTiling::tryComputeSimpleTiling(
+    TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams)
 {
     // 当前只适配baseK大于等于256场景，baseK将划分成1024/512/256三档
     uint64_t baseKOption1024 = 1024;
@@ -385,7 +385,7 @@ bool ComputeMatmulTiling::tryComputeSimpleTiling(
     // 考虑l0 开db和int4场景，l0a实际可用size即原始l0a大小
     uint64_t baseKMax = mAlign > 0 ? aicoreParams.l0aSize / mAlign : 0;
     if (baseKMax < baseKOption256) {
-        OP_LOGW("WeightQuantBatchMatmulV2", "SimpleIncreTiling can not compute tiling. baseKMax:[%lu] ", baseKMax);
+        OP_LOGW("Mc2WeightQuantBatchMatmulV2", "SimpleIncreTiling can not compute tiling. baseKMax:[%lu] ", baseKMax);
         return false;
     }
     uint64_t baseK = 0;
@@ -404,15 +404,15 @@ bool ComputeMatmulTiling::tryComputeSimpleTiling(
     uint64_t realL0cSize = static_cast<uint64_t>(matmulTiling.get_baseM()) * matmulTiling.get_baseN() * sizeof(int32_t);
     if (realL0cSize > aicoreParams.l0cSize) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "SimpleIncreTiling can not compute norm load tiling. realL0cSize:[%lu], l0cSize:[%lu]", realL0cSize,
             aicoreParams.l0cSize);
         return false;
     }
     int32_t a1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), params.aDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), params.aDtype));
     int32_t b1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), params.bDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), params.bDtype));
     int32_t c1Length = matmulTiling.get_baseN() * matmulTiling.get_baseM() * sizeof(float) * matmulTiling.get_stepN();
     matmulTiling.set_transLength(std::max(std::max(a1Length, b1Length), c1Length));
     // MatrixTraverse枚举值和matmul api使用的枚举值相差1
@@ -424,8 +424,8 @@ bool ComputeMatmulTiling::tryComputeSimpleTiling(
     return true;
 }
 
-bool ComputeMatmulTiling::tryAFullLoad(
-    TCubeTiling& matmulTiling, const MatmulParams& params, const AiCoreParams& aicoreParams)
+bool Mc2ComputeMatmulTiling::tryAFullLoad(
+    TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams)
 {
     uint64_t kAlign = ops::CeilAlign(params.kSize, INT4_BLK_SIZE);
     uint64_t stepKa = ops::CeilDiv(kAlign, static_cast<uint64_t>(matmulTiling.get_baseK()));
@@ -433,7 +433,7 @@ bool ComputeMatmulTiling::tryAFullLoad(
     uint64_t aL1Size = matmulTiling.get_baseM() * (matmulTiling.get_baseK() >> 1) * stepKa;
     if (aL1Size >= aicoreParams.l1Size) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "SimpleIncreTiling can not compute A full load tiling. aL1Size:[%lu], l1Size:[%lu]", aL1Size,
             aicoreParams.l1Size);
         return false;
@@ -462,14 +462,14 @@ bool ComputeMatmulTiling::tryAFullLoad(
         aicoreParams.l0cSize / (matmulTiling.get_baseM() * sizeof(int32_t) * stepN), static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t baseN = std::min(std::min(std::min(l1bMaxBaseN, l0bMaxBaseN), l0cMaxBaseN), nAlign);
     if (baseN < BLOCK_CUBE) {
-        OP_LOGW("WeightQuantBatchMatmulV2", "SimpleIncreTiling can not compute A full load tiling. baseN:[%lu]", baseN);
+        OP_LOGW("Mc2WeightQuantBatchMatmulV2", "SimpleIncreTiling can not compute A full load tiling. baseN:[%lu]", baseN);
         return false;
     }
 
     uint64_t bL1Size = baseN * stepN * (singleCoreKb >> 1);
     if (aL1Size + DOUBLE_BUFFER_FACTOR * bL1Size > aicoreParams.l1Size) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "SimpleIncreTiling can not compute A full load tiling. aL1Size:[%lu], bL1Size:[%lu], l1Size:[%lu]", aL1Size,
             bL1Size, aicoreParams.l1Size);
         return false;
@@ -484,8 +484,8 @@ bool ComputeMatmulTiling::tryAFullLoad(
     return true;
 }
 
-bool ComputeMatmulTiling::trySimpleTilingNormalLoad(
-    TCubeTiling& matmulTiling, const MatmulParams& params, const AiCoreParams& aicoreParams)
+bool Mc2ComputeMatmulTiling::trySimpleTilingNormalLoad(
+    TCubeTiling& matmulTiling, const Mc2MatmulParams& params, const AiCoreParams& aicoreParams)
 {
     // a不能全载，尽量减少aL1的空间，扩大b的载入量，可以减少a的重复载入
     uint64_t kAlign = ops::CeilAlign(params.kSize, INT4_BLK_SIZE);
@@ -497,7 +497,7 @@ bool ComputeMatmulTiling::trySimpleTilingNormalLoad(
         matmulTiling.get_baseM() * (std::min(matmulTiling.get_baseK() * stepKaMin, kAlign) >> 1) * DOUBLE_BUFFER_FACTOR;
     if (aL1SizeMin >= aicoreParams.l1Size) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "SimpleIncreTiling can not compute norm load tiling. aL1SizeMin:[%lu], l1Size:[%lu]", aL1SizeMin,
             aicoreParams.l1Size);
         return false;
@@ -513,7 +513,7 @@ bool ComputeMatmulTiling::trySimpleTilingNormalLoad(
         ops::FloorAlign((aicoreParams.l1Size - aL1SizeMin) / singleCoreKb, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t baseN = std::min(std::min(std::min(l1bMaxBaseN, l0bMaxBaseN), l0cMaxBaseN), nAlign);
     if (baseN < ONE_BLK_SIZE) {
-        OP_LOGW("WeightQuantBatchMatmulV2", "SimpleIncreTiling can not compute normal load tiling. baseN:[%lu]", baseN);
+        OP_LOGW("Mc2WeightQuantBatchMatmulV2", "SimpleIncreTiling can not compute normal load tiling. baseN:[%lu]", baseN);
         return false;
     }
     // 根据bl1size来反推al1Size最大空间
@@ -522,7 +522,7 @@ bool ComputeMatmulTiling::trySimpleTilingNormalLoad(
     uint64_t stepKa = ops::CeilDiv(singleCoreKaMax, static_cast<uint64_t>(matmulTiling.get_baseK()));
     if (stepKa < stepKb) {
         OP_LOGW(
-            "WeightQuantBatchMatmulV2",
+            "Mc2WeightQuantBatchMatmulV2",
             "SimpleIncreTiling can not compute norm load tiling. stepKa:[%lu], stepKb:[%lu]", stepKa, stepKb);
         return false;
     }

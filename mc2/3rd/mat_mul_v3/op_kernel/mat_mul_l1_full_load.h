@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file mat_mul_l1_full_load.h
@@ -21,7 +21,7 @@
 using namespace AscendC;
 using namespace matmul;
 
-namespace MatmulV3 {
+namespace Mc2MatmulV3 {
 
 struct CallBackContext {
     bool isFirst;
@@ -52,7 +52,7 @@ __aicore__ inline void DataCopy2L1(const LocalTensor<int8_t> &matrix, const __gm
 
 __aicore__ inline void DataCopyL1FullLoad(bool isAl1FullLoad, const LocalTensor<int8_t> &matrix,
                                           const __gm__ void *gm, uint64_t useM, uint64_t useK, uint64_t useN,
-                                          const MatmulTilingData &tilingData)
+                                          const Mc2MatmulV3TilingData &tilingData)
 {
     const bool isFp32 = ctx.inputDtypeSize == sizeof(float);
     const uint64_t c0 = BLOCK_BYTE_SIZE / ctx.inputDtypeSize;
@@ -89,7 +89,7 @@ __aicore__ inline void DataCopyL1FullLoad(bool isAl1FullLoad, const LocalTensor<
 __aicore__ inline void CopyAL1(const LocalTensor<int8_t> &aMatrix, const __gm__ void *gm, int row, int col,
                               int useM, int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
-    MatmulTilingData* tilingDataPtr = reinterpret_cast<MatmulTilingData*>(tilingPtr);
+    Mc2MatmulV3TilingData* tilingDataPtr = reinterpret_cast<Mc2MatmulV3TilingData*>(tilingPtr);
     if (tilingDataPtr == nullptr || !ctx.isFirst) {
         return;
     }
@@ -101,7 +101,7 @@ __aicore__ inline void CopyAL1(const LocalTensor<int8_t> &aMatrix, const __gm__ 
 __aicore__ inline void CopyBL1(const LocalTensor<int8_t> &bMatrix, const __gm__ void *gm, int row, int col,
                               int useK, int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
-    MatmulTilingData* tilingDataPtr = reinterpret_cast<MatmulTilingData*>(tilingPtr);
+    Mc2MatmulV3TilingData* tilingDataPtr = reinterpret_cast<Mc2MatmulV3TilingData*>(tilingPtr);
     if (tilingDataPtr == nullptr || !ctx.isFirst) {
         return;
     }
@@ -110,11 +110,11 @@ __aicore__ inline void CopyBL1(const LocalTensor<int8_t> &bMatrix, const __gm__ 
     ctx.isFirst = false;
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = MatmulBaseBlock,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = Mc2MatmulBaseBlock,
     const MatmulConfig &MM_CFG = MM_CFG_MDL>
-class MatmulBaseKernelAL1FullLoad {
+class Mc2MatmulBaseKernelAL1FullLoad {
 public:
-    __aicore__ inline MatmulBaseKernelAL1FullLoad() {}
+    __aicore__ inline Mc2MatmulBaseKernelAL1FullLoad() {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
         GM_ADDR workspaceGM, const void *tilingData, TPipe *pipe);
@@ -136,12 +136,12 @@ protected:
     TPipe *pipe_;
 
 private:
-    __aicore__ inline void CopyInA1(const MatmulTilingData &matmulTilingData, LocalTensor<A_T> al1Local);
+    __aicore__ inline void CopyInA1(const Mc2MatmulV3TilingData &matmulTilingData, LocalTensor<A_T> al1Local);
 };
 
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Init(
+__aicore__ inline void Mc2MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM,
     const void *tilingData, TPipe *pipe)
 {
@@ -158,7 +158,7 @@ __aicore__ inline void MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
+__aicore__ inline void Mc2MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
     Process(uint64_t index, uint8_t enAtomic)
 {
     if ASCEND_IS_AIV {
@@ -204,8 +204,8 @@ __aicore__ inline void MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
-    CopyInA1(const MatmulTilingData &matmulTilingData, LocalTensor<A_T> al1Local)
+__aicore__ inline void Mc2MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
+    CopyInA1(const Mc2MatmulV3TilingData &matmulTilingData, LocalTensor<A_T> al1Local)
 {
     Nd2NzParams nd2nzParams;
     nd2nzParams.ndNum = 1;
@@ -224,11 +224,11 @@ __aicore__ inline void MatmulBaseKernelAL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
     InQueueAL1_.EnQue(al1Local);
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = MatmulBaseBlock,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = Mc2MatmulBaseBlock,
     const MatmulConfig &MM_CFG = MM_CFG_NO_PRELOAD>
-class MatmulBaseKernelBL1FullLoad : public MatmulBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG> {
+class Mc2MatmulBaseKernelBL1FullLoad : public Mc2MatmulBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG> {
 public:
-    __aicore__ inline MatmulBaseKernelBL1FullLoad() {}
+    __aicore__ inline Mc2MatmulBaseKernelBL1FullLoad() {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
         GM_ADDR workspaceGM, const void *tilingData, TPipe *pipe);
@@ -250,14 +250,14 @@ protected:
     TPipe *pipe_;
 
 private:
-    __aicore__ inline void CopyInB1(const MatmulTilingData &matmulTilingData, LocalTensor<B_T> bl1Local);
+    __aicore__ inline void CopyInB1(const Mc2MatmulV3TilingData &matmulTilingData, LocalTensor<B_T> bl1Local);
     __aicore__ inline void SetOrgShapeFull();
     __aicore__ inline void ProcessRound(uint64_t mTileIndex, uint64_t nTileIndex, uint8_t enAtomic);
 };
 
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Init(
+__aicore__ inline void Mc2MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM,
     const void *tilingData, TPipe *pipe)
 {
@@ -279,7 +279,7 @@ __aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
+__aicore__ inline void Mc2MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
     SetOrgShapeFull()
 {
     if constexpr (A_TYPE::format == CubeFormat::NZ && B_TYPE_NEW::format == CubeFormat::NZ) {
@@ -303,7 +303,7 @@ __aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
+__aicore__ inline void Mc2MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
     ProcessRound(uint64_t mTileIndex, uint64_t nTileIndex, uint8_t enAtomic)
 {
     for (uint64_t j = 0; j < this->block_.params_.realRound; j++) {
@@ -329,7 +329,7 @@ __aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
+__aicore__ inline void Mc2MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
     Process(uint64_t index, uint8_t enAtomic)
 {
     if ASCEND_IS_AIV {
@@ -362,7 +362,7 @@ __aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
 }
 
 template <class B_TYPE>
-__aicore__ inline void CalCopyBL1Nd2NzParams(const MatmulTilingData &matmulTilingData, Nd2NzParams& nd2nzParams,
+__aicore__ inline void CalCopyBL1Nd2NzParams(const Mc2MatmulV3TilingData &matmulTilingData, Nd2NzParams& nd2nzParams,
                                              uint64_t instrN)
 {
     nd2nzParams.ndNum = 1;
@@ -377,7 +377,7 @@ __aicore__ inline void CalCopyBL1Nd2NzParams(const MatmulTilingData &matmulTilin
 }
 
 template <class B_TYPE, class B_T, class BLOCK_TYPE>
-__aicore__ inline void CalCopyBL1Nz2NzParams(const BLOCK_TYPE& block, const MatmulTilingData &matmulTilingData,
+__aicore__ inline void CalCopyBL1Nz2NzParams(const BLOCK_TYPE& block, const Mc2MatmulV3TilingData &matmulTilingData,
                                              bool isNMultiCore, DataCopyParams& dataCopyParams, uint64_t instrN)
 {
     if (B_TYPE::isTrans && isNMultiCore) {
@@ -399,8 +399,8 @@ __aicore__ inline void CalCopyBL1Nz2NzParams(const BLOCK_TYPE& block, const Matm
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
-    CopyInB1(const MatmulTilingData &matmulTilingData, LocalTensor<B_T> bl1Local)
+__aicore__ inline void Mc2MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::
+    CopyInB1(const Mc2MatmulV3TilingData &matmulTilingData, LocalTensor<B_T> bl1Local)
 {
     bool isNMultiCore = matmulTilingData.matmulTiling.singleCoreN <
                         matmulTilingData.matmulTiling.N;
@@ -419,29 +419,29 @@ __aicore__ inline void MatmulBaseKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_
 }
 
 // Current Kernel support only nd2nzA. No need to do nd2nz for B.
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = MatmulBaseBlock,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = Mc2MatmulBaseBlock,
           const MatmulConfig &MM_CFG = MM_CFG_NO_PRELOAD, class MM_CB = MatmulCallBackFunc<nullptr, nullptr, nullptr>>
-class MatmulBaseUnAlignedKernelBL1FullLoad
-    : public MatmulBaseUnAlignedKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG> {
+class Mc2MatmulBaseUnAlignedKernelBL1FullLoad
+    : public Mc2MatmulBaseUnAlignedKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG> {
  public:
-    __aicore__ inline MatmulBaseUnAlignedKernelBL1FullLoad() {}
+    __aicore__ inline Mc2MatmulBaseUnAlignedKernelBL1FullLoad() {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
-                                GM_ADDR workspaceGM, const MatmulTilingData *tilingData, TPipe *pipe);
+                                GM_ADDR workspaceGM, const Mc2MatmulV3TilingData *tilingData, TPipe *pipe);
 
     __aicore__ inline void Process(uint64_t index = 0, uint8_t enAtomic = 0);
 
  protected:
     using aType = MatmulType<A_TYPE::pos, CubeFormat::NZ, typename A_TYPE::T, A_TYPE::isTrans>;
-    MatmulBaseKernelBL1FullLoad<aType, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG> mma_;
+    Mc2MatmulBaseKernelBL1FullLoad<aType, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG> mma_;
 };
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
                                                                                        class MM_CB>
 __aicore__ inline void
-MatmulBaseUnAlignedKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Init(
+Mc2MatmulBaseUnAlignedKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM,
-    const MatmulTilingData *matmulTilingData, TPipe *pipe)
+    const Mc2MatmulV3TilingData *matmulTilingData, TPipe *pipe)
 {
     this->pipe_ = pipe;
     this->pipe_->InitBuffer(this->ubBuf_, TOTAL_UB_SIZE);
@@ -460,12 +460,12 @@ MatmulBaseUnAlignedKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TY
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
                                                                                        class MM_CB>
 __aicore__ inline void
-MatmulBaseUnAlignedKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Process(
+Mc2MatmulBaseUnAlignedKernelBL1FullLoad<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Process(
     uint64_t index, uint8_t enAtomic)
 {
     this->ProcessNDtoNZ();
     mma_.Process(index, enAtomic);
 }
 
-}  // namespace MatmulV3
+}  // namespace Mc2MatmulV3
 #endif  // MMV3_MATMUL_BL1_FULL_LOAD_H

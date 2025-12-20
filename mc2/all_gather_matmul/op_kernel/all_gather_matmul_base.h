@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_matmul_base.h
@@ -34,7 +34,7 @@ class AllGatherMatmulBase {
 public:
     __aicore__ inline AllGatherMatmulBase() {}
     __aicore__ inline void InitBase(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM,
-        GM_ADDR workspaceGM, GM_ADDR contextGM, AllGatherMatmulTilingData *tilingData, TPipe *tPipe);
+        GM_ADDR workspaceGM, GM_ADDR contextGM, Mc2Tiling::AllGatherMatmulTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Nd2NzBiasCast();
     __aicore__ inline void MatmulLocalCompute(GM_ADDR aGM, GM_ADDR cGM);
     __aicore__ inline void MatmulLocalComputeL2Cache(GM_ADDR aGM, GM_ADDR cGM);
@@ -47,7 +47,7 @@ protected:
     GM_ADDR cGM_;
     GM_ADDR gatherGM_;
     GM_ADDR workspaceGM_;
-    AllGatherMatmulTilingData *tilingData_;
+    Mc2Tiling::AllGatherMatmulTilingData *tilingData_;
     TPipe *tPipe_;
     uint32_t rankId_{ 0 };
     uint32_t rankDim_{ 8 };
@@ -57,7 +57,7 @@ protected:
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::InitBase(GM_ADDR aGM,
     GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM, GM_ADDR workspaceGM, GM_ADDR contextGM,
-    AllGatherMatmulTilingData *tilingData, TPipe *tPipe)
+    Mc2Tiling::AllGatherMatmulTilingData *tilingData, TPipe *tPipe)
 {
     aGM_ = aGM;
     bGM_ = bGM;

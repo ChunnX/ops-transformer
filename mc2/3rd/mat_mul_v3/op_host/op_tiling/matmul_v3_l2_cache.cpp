@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_v3_l2_cache.cc
@@ -16,18 +16,18 @@
 #include "tiling_base/tiling_key.h"
 #include "common/op_host/math_util.h"
 
-using namespace optiling::matmul_v3;
+using namespace optiling::mc2_matmul_v3;
 using Ops::Transformer::MathUtil;
 
 namespace optiling {
-namespace matmul_v3 {
+namespace mc2_matmul_v3 {
 constexpr uint32_t ALL_L2_ENABLE_BIT = 0;
 constexpr uint32_t A_L2_DISABLE_BIT = 1;
 constexpr uint32_t B_L2_DISABLE_BIT = 2;
 constexpr uint32_t BIAS_L2_DISABLE_BIT = 3;
 constexpr uint32_t C_L2_DISABLE_BIT = 4;
 
-void L2Cache::SetL2CacheFlagBase(bool &aEnableL2Cache, bool &bEnableL2Cache) const
+void Mc2L2Cache::SetL2CacheFlagBase(bool &aEnableL2Cache, bool &bEnableL2Cache) const
 {
     auto &tileL2cache = tilingData_.tileL2cacheTiling;
     if (tileL2cache.get_mTileCntL2() > 1 || tileL2cache.get_nTileCntL2() > 1) {
@@ -57,7 +57,7 @@ void L2Cache::SetL2CacheFlagBase(bool &aEnableL2Cache, bool &bEnableL2Cache) con
     }
 }
 
-void L2Cache::SetL2CacheFlagSingleCoreSplitK(bool &aEnableL2Cache, bool &bEnableL2Cache) const
+void Mc2L2Cache::SetL2CacheFlagSingleCoreSplitK(bool &aEnableL2Cache, bool &bEnableL2Cache) const
 {
     auto &matmulTiling = tilingData_.matmulTiling;
     // m切多核
@@ -75,7 +75,7 @@ void L2Cache::SetL2CacheFlagSingleCoreSplitK(bool &aEnableL2Cache, bool &bEnable
     }
 }
 
-void L2Cache::SetL2CacheFlagMultiCoreSplitK(bool &aEnableL2Cache, bool &bEnableL2Cache) const
+void Mc2L2Cache::SetL2CacheFlagMultiCoreSplitK(bool &aEnableL2Cache, bool &bEnableL2Cache) const
 {
     auto &matmulTiling = tilingData_.matmulTiling;
     // m切多核
@@ -95,7 +95,7 @@ void L2Cache::SetL2CacheFlagMultiCoreSplitK(bool &aEnableL2Cache, bool &bEnableL
     }
 }
 
-void L2Cache::SetL2CacheFlag(bool aEnableL2Cache, bool bEnableL2Cache, bool cEnableL2Cache,
+void Mc2L2Cache::SetL2CacheFlag(bool aEnableL2Cache, bool bEnableL2Cache, bool cEnableL2Cache,
                              bool biasEnableL2Cache, uint32_t &l2CacheFlag)
 {
     if (aEnableL2Cache && bEnableL2Cache && cEnableL2Cache && biasEnableL2Cache) {
@@ -123,7 +123,7 @@ void L2Cache::SetL2CacheFlag(bool aEnableL2Cache, bool bEnableL2Cache, bool cEna
     OP_LOGI(args_.opName, "l2CacheFlag: %u", l2CacheFlag);
 }
 
-void L2Cache::SetL2CacheFlag(TilingEnable tilingEnable, uint64_t l2Size, uint32_t &l2CacheFlag)
+void Mc2L2Cache::SetL2CacheFlag(Mc2TilingEnable tilingEnable, uint64_t l2Size, uint32_t &l2CacheFlag)
 {
     bool aEnableL2Cache = false;
     bool bEnableL2Cache = false;
@@ -149,14 +149,14 @@ void L2Cache::SetL2CacheFlag(TilingEnable tilingEnable, uint64_t l2Size, uint32_
     cEnableL2Cache = sizeC <= l2Size;
 
     switch (tilingEnable.tilingEnableSplitCore) {
-        case TilingEnableSplitCore::BASE:
+        case Mc2TilingEnableSplitCore::BASE:
             SetL2CacheFlagBase(aEnableL2Cache, bEnableL2Cache);
             break;
-        case TilingEnableSplitCore::SINGLE_CORE_SPLIT_K:
+        case Mc2TilingEnableSplitCore::SINGLE_CORE_SPLIT_K:
             cEnableL2Cache = true;
             SetL2CacheFlagSingleCoreSplitK(aEnableL2Cache, bEnableL2Cache);
             break;
-        case TilingEnableSplitCore::DETERMINISTIC_SPLIT_K:
+        case Mc2TilingEnableSplitCore::DETERMINISTIC_SPLIT_K:
             cEnableL2Cache = true;
             SetL2CacheFlagMultiCoreSplitK(aEnableL2Cache, bEnableL2Cache);
             break;

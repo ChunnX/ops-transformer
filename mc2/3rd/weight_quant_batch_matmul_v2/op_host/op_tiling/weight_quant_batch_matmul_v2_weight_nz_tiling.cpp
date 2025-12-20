@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_weight_nz_tiling.cpp
@@ -18,6 +18,8 @@
 #include "common/op_host/math_util.h"
 #include "common/op_host/op_tiling/debug_tiling.h"
 #include "tiling_base/tiling_key.h"
+#include "platform/platform_infos_def.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h"
 
 using Ops::Transformer::OpTiling::RecursiveSum;
 
@@ -52,12 +54,12 @@ constexpr uint64_t THREE_BATCH_SHAPE_DIM = 5;
 constexpr uint64_t FOUR_BATCH_SHAPE_DIM = 6;
 constexpr uint64_t ND_NZ_DIM_DIFF = 2;
 
-class WhiteListShape
+class Mc2WhiteListShape
 {
 public:
-    bool operator<(const WhiteListShape& right) const
+    bool operator<(const Mc2WhiteListShape& right) const
     {
-        return memcmp(this, &right, sizeof(WhiteListShape)) < 0;
+        return memcmp(this, &right, sizeof(Mc2WhiteListShape)) < 0;
     }
 
     uint64_t mSize_;
@@ -65,7 +67,7 @@ public:
     uint64_t kSize_;
 };
 
-class WeightNzTilingCache
+class Mc2WeightNzTilingCache
 {
 public:
     uint8_t cubeBlockDimN_;
@@ -115,7 +117,7 @@ public:
     int32_t dbL0C_;
 };
 
-const std::map<WhiteListShape, WeightNzTilingCache> WEIGHT_NZ_TILING_CACHE = {
+const std::map<Mc2WhiteListShape, Mc2WeightNzTilingCache> WEIGHT_NZ_TILING_CACHE = {
     // 125.6
     {{4, 2048, 4096},
      {8,   1,  2,   1,   4096, 4,   4096, 2048, 64, 256, 128, 128,   64, 256, 64, 256, 256, 256, 0, 64, 256, 256,
@@ -203,7 +205,7 @@ const std::map<WhiteListShape, WeightNzTilingCache> WEIGHT_NZ_TILING_CACHE = {
 } // namespace
 namespace optiling {
 
-bool WeightQuantBatchMatmulV2WeightNz::IsCapable()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::IsCapable()
 {
     // 判断weight矩阵是否是4维
     auto weightShape = context_->GetInputShape(1);
@@ -225,7 +227,7 @@ bool WeightQuantBatchMatmulV2WeightNz::IsCapable()
     return true;
 }
 
-void WeightQuantBatchMatmulV2WeightNz::SetMatmulTiling()
+void Mc2WeightQuantBatchMatmulV2WeightNz::SetMatmulTiling()
 {
     auto& mmtiling = tilingData_->matmulTiling;
     uint32_t minKL1 = std::min(tilingData_->get_kBL1Size(), tilingData_->get_kAL1Size());
@@ -257,7 +259,7 @@ void WeightQuantBatchMatmulV2WeightNz::SetMatmulTiling()
     tilingData_->set_cubeBlockDimM(mDim);
 }
 
-void WeightQuantBatchMatmulV2WeightNz::GetubFactorTiling()
+void Mc2WeightQuantBatchMatmulV2WeightNz::GetubFactorTiling()
 {
     auto& mmtiling = tilingData_->matmulTiling;
     uint64_t mmUsedUbSize = mmtiling.get_baseM() * mmtiling.get_baseN() * GetSizeByDataType(ge::DT_FLOAT16);
@@ -272,15 +274,15 @@ void WeightQuantBatchMatmulV2WeightNz::GetubFactorTiling()
         mmUsedUbSize, bubUsedSize, aubUsedSize, cubNz2NdCanUseSize);
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2WeightNz::GetPlatformInfo()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::GetPlatformInfo()
 {
     auto compileInfoPtr = compileInfoPtr_ ?
                               compileInfoPtr_.get() :
-                              reinterpret_cast<const WeightQuantBatchMatmulV2CompileInfo*>(context_->GetCompileInfo());
+                              reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo*>(context_->GetCompileInfo());
     OP_LOGE_IF(compileInfoPtr == nullptr, ge::GRAPH_FAILED, context_->GetNodeName(), "compileInfoPtr is null");
     if (compileInfoPtr_ == nullptr) {
-        compileInfoPtr_ = std::unique_ptr<WeightQuantBatchMatmulV2CompileInfo>(
-            new (std::nothrow) WeightQuantBatchMatmulV2CompileInfo());
+        compileInfoPtr_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2CompileInfo());
         OP_LOGE_IF(compileInfoPtr_ == nullptr, ge::GRAPH_FAILED, context_->GetNodeName(), "compileInfoPtr_ is null");
         compileInfoPtr_->workspaceNum = compileInfoPtr->workspaceNum;
     }
@@ -298,7 +300,7 @@ ge::graphStatus WeightQuantBatchMatmulV2WeightNz::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2WeightNz::CheckContext() const
+ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::CheckContext() const
 {
     auto attrs = context_->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -332,7 +334,7 @@ ge::graphStatus WeightQuantBatchMatmulV2WeightNz::CheckContext() const
     return ge::GRAPH_SUCCESS;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasDtype(const gert::CompileTimeTensorDesc* biasDesc)
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasDtype(const gert::CompileTimeTensorDesc* biasDesc)
 {
     if (biasDesc != nullptr) {
         inputParams_.biasDtype = biasDesc->GetDataType();
@@ -349,7 +351,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasDtype(const gert::CompileTimeT
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeDtype()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeDtype()
 {
     size_t idx = 0;
     inputParams_.aDtype = context_->GetInputDesc(idx++)->GetDataType();
@@ -382,7 +384,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeDtype()
     return AnalyzeBiasDtype(biasDesc) && AnalyzeAntiQuantDtype(antiQuantScaleDtype, antiQuantOffsetDesc);
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantDtype(
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantDtype(
     ge::DataType antiQuantScaleDtype, const gert::CompileTimeTensorDesc* antiQuantOffsetDesc) const
 {
     OP_TILING_CHECK(
@@ -406,7 +408,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantDtype(
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeAttrs()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
     size_t idx = 0;
@@ -428,7 +430,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeAttrs()
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::SetAntiQuantType(const gert::StorageShape* antiQuantScaleShape)
+bool Mc2WeightQuantBatchMatmulV2WeightNz::SetAntiQuantType(const gert::StorageShape* antiQuantScaleShape)
 {
     // antiQuantScaleShape nullptr is impossible
     size_t antiQuantScaleShapeSize = static_cast<size_t>(antiQuantScaleShape->GetStorageShape().GetShapeSize());
@@ -440,9 +442,9 @@ bool WeightQuantBatchMatmulV2WeightNz::SetAntiQuantType(const gert::StorageShape
         return false);
 
     if (antiQuantScaleShapeSize == 1) {
-        inputParams_.antiQuantType = QuantType::PER_TENSOR;
+        inputParams_.antiQuantType = Mc2QuantType::PER_TENSOR;
     } else if (inputParams_.groupSize > 0) {
-        inputParams_.antiQuantType = QuantType::PER_GROUP;
+        inputParams_.antiQuantType = Mc2QuantType::PER_GROUP;
     } else {
         OP_TILING_CHECK(
             antiQuantScaleShapeSize != inputParams_.nSize,
@@ -450,12 +452,12 @@ bool WeightQuantBatchMatmulV2WeightNz::SetAntiQuantType(const gert::StorageShape
                 inputParams_.opName, "antiquant_scale %s shape size should same as N[%lu]",
                 Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(), inputParams_.nSize),
             return false);
-        inputParams_.antiQuantType = QuantType::PER_CHANNEL;
+        inputParams_.antiQuantType = Mc2QuantType::PER_CHANNEL;
     }
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasShape(const gert::StorageShape* outShape)
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasShape(const gert::StorageShape* outShape)
 {
     auto biasShape = context_->GetOptionalInputShape(BIAS_INDEX);
     if (biasShape != nullptr) {
@@ -517,7 +519,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasShape(const gert::StorageShape
             bool biasBatchValid = biasWithBatch3 == inputParams_.batchY3 && biasWithBatch2 == inputParams_.batchY2 &&
                                   biasWithBatch1 == inputParams_.batchY1 && biasWithBatch0 == inputParams_.batchY0;
             if (!biasBatchValid) {
-                OP_LOGE("[WeightQuantBatchMatmulV2]", "Batch of Bias  must be equal to Out !");
+                OP_LOGE("[Mc2WeightQuantBatchMatmulV2]", "Batch of Bias  must be equal to Out !");
                 return false;
             }
         }
@@ -525,7 +527,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasShape(const gert::StorageShape
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeInputs()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeInputs()
 {
     size_t idx = 0;
     auto xShape = context_->GetInputShape(idx++);
@@ -539,7 +541,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeInputs()
            AnalyzeBiasShape(outShape);
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeInputShape(
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeInputShape(
     const gert::StorageShape* xShape, const gert::StorageShape* weightShape, const gert::StorageShape* outShape)
 {
     auto xStorageShape = xShape->GetStorageShape();
@@ -601,13 +603,13 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeInputShape(
     bool batch0Invalid = inputParams_.batchX0 != inputParams_.batchWeight0 && inputParams_.batchX0 != 1 &&
                          inputParams_.batchWeight0 != 1;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
-        OP_LOGE("[WeightQuantBatchMatmulV2]", "x and weight batch broadcast failed!");
+        OP_LOGE("[Mc2WeightQuantBatchMatmulV2]", "x and weight batch broadcast failed!");
         return false;
     }
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantShape(
+bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantShape(
     const gert::StorageShape* antiQuantScaleShape, const gert::StorageShape* antiQuantOffsetShape)
 {
     if (inputParams_.groupSize > 0) {
@@ -633,7 +635,7 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantShape(
             return false);
     }
 
-    if (CheckOptionalInputByShape(antiQuantOffsetShape)) {
+    if (Mc2CheckOptionalInputByShape(antiQuantOffsetShape)) {
         OP_TILING_CHECK(
             antiQuantScaleShape->GetStorageShape() != antiQuantOffsetShape->GetStorageShape(),
             OP_LOGE(
@@ -646,14 +648,14 @@ bool WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantShape(
     return true;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2WeightNz::GetShapeAttrsInfo()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::GetShapeAttrsInfo()
 {
     inputParams_.opName = context_->GetNodeName();
     // OP_LOG_FULL
     OPS_LOG_I(inputParams_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
     auto compileInfoPtr = compileInfoPtr_ ?
                               compileInfoPtr_.get() :
-                              context_->GetCompileInfo<WeightQuantBatchMatmulV2CompileInfo>();
+                              context_->GetCompileInfo<Mc2WeightQuantBatchMatmulV2CompileInfo>();
     OP_LOGE_IF(compileInfoPtr == nullptr, ge::GRAPH_FAILED, context_->GetNodeName(), "compileInfoPtr is null");
     // OP_LOG_FULL
     OPS_LOG_D(inputParams_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
@@ -685,11 +687,11 @@ ge::graphStatus WeightQuantBatchMatmulV2WeightNz::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2WeightNz::InstantiateTilingData()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::InstantiateTilingData()
 {
     if (tilingData_ == nullptr) {
-        tilingDataManager_ = std::unique_ptr<WeightQuantBatchMatmulV2NzTilingData>(
-            new (std::nothrow) WeightQuantBatchMatmulV2NzTilingData());
+        tilingDataManager_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2NzTilingData>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2NzTilingData());
         tilingData_ = tilingDataManager_.get();
     }
     OP_TILING_CHECK(
@@ -705,7 +707,7 @@ ge::graphStatus WeightQuantBatchMatmulV2WeightNz::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2WeightNz::DoOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::DoOpTiling()
 {
     OP_TILING_CHECK(
         InstantiateTilingData() == ge::GRAPH_FAILED,
@@ -719,7 +721,7 @@ ge::graphStatus WeightQuantBatchMatmulV2WeightNz::DoOpTiling()
         return ge::GRAPH_SUCCESS;
     }
 
-    uint64_t weightBlockAlignSize = GetBlockAlignSizeByDataType(inputParams_.bDtype);
+    uint64_t weightBlockAlignSize = Mc2GetBlockAlignSizeByDataType(inputParams_.bDtype);
     if (inputParams_.transB) {
         tilingData_->set_kAlign(ops::CeilAlign(inputParams_.kSize, weightBlockAlignSize));
         tilingData_->set_nAlign(inputParams_.nSize);
@@ -759,19 +761,40 @@ ge::graphStatus WeightQuantBatchMatmulV2WeightNz::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t WeightQuantBatchMatmulV2WeightNz::GetTilingKey() const
+uint64_t Mc2WeightQuantBatchMatmulV2WeightNz::GetTilingKey() const
 {
     uint64_t batch = 1;
     if (inputParams_.batchY3 == 1 && inputParams_.batchY2 == 1 && inputParams_.batchY1 == 1 &&
         inputParams_.batchY0 == 1) {
         batch = 0;
     }
-    return RecursiveSum(
-        inputParams_.transA, inputParams_.antiQuantType, inputParams_.hasAntiQuantOffset, L1FullloadMode_,
-        KernelTemplateType::WEIGHT_NZ, batch);
+    uint64_t socVersionType = 1UL; // 1 means SUPPORT_L0C_TO_OUT
+    uint64_t subSocVersionType = 0UL;
+    uint64_t antiquantScenario = 0UL;
+    uint64_t algorithm = 3UL; // 3 means CUSTOM tilingkey algorithm
+    uint64_t subAlgorithm = 0UL;
+    uint64_t subAlgorithmCustom = static_cast<uint64_t>(Mc2KernelTemplateType::WEIGHT_NZ);
+    uint64_t innerPrecise = 0UL;
+    uint64_t templateCustom = 0UL;
+    uint64_t apiConstexpr = 0UL;
+    bool transA = inputParams_.transA;
+    bool transB = false;
+    uint64_t antiquantType = static_cast<uint64_t>(inputParams_.antiQuantType);
+    uint64_t quantType = static_cast<uint64_t>(Mc2QuantType::NONE);
+    bool hasAntiquantOffset = inputParams_.hasAntiQuantOffset;
+    bool hasBias = false;
+    bool isBiasFp32 = false;
+    bool isWeightNz = false;
+    uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+    uint64_t fullLoadMode = static_cast<uint64_t>(L1FullloadMode_);
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    return tilingKey_;
 }
 
-void WeightQuantBatchMatmulV2WeightNz::Reset()
+void Mc2WeightQuantBatchMatmulV2WeightNz::Reset()
 {
     inputParams_.transA = false;
     inputParams_.transB = false;
@@ -802,12 +825,12 @@ void WeightQuantBatchMatmulV2WeightNz::Reset()
     inputParams_.biasDtype = ge::DT_FLOAT16;
     aFormat = ge::FORMAT_ND;
     bFormat = ge::FORMAT_ND;
-    inputParams_.antiQuantType = QuantType::NONE;
-    inputParams_.quantType = QuantType::PER_TENSOR; // set default value as per tensor, kernel can detect ydtype firstly
+    inputParams_.antiQuantType = Mc2QuantType::NONE;
+    inputParams_.quantType = Mc2QuantType::PER_TENSOR; // set default value as per tensor, kernel can detect ydtype firstly
     inputParams_.opName = nullptr;
 }
 
-void WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
+void Mc2WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
@@ -816,7 +839,7 @@ void WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     compileInfoPtr_ =
-        std::unique_ptr<WeightQuantBatchMatmulV2CompileInfo>(new (std::nothrow) WeightQuantBatchMatmulV2CompileInfo());
+        std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo>(new (std::nothrow) Mc2WeightQuantBatchMatmulV2CompileInfo());
     OP_TILING_CHECK(
         compileInfoPtr_ == nullptr,
         OP_LOGE(context_->GetNodeName(), "failed to instantiate compile info"), return);
@@ -830,12 +853,15 @@ void WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfoPtr_->l0bSize);
     compileInfoPtr_->workspaceNum = ascendcPlatform.GetLibApiWorkSpaceSize();
     compileInfoPtr_->socVersion = ascendcPlatform.GetSocVersion();
+    std::string mmad;
+    bool res = platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_mmad", mmad);
+    compileInfoPtr_->supportMmadS8S4 = res && mmad.find("s8s4") != std::string::npos;
 
     TilingPrepareForOpCache(context_);
     OP_LOGD(context_->GetNodeName(), "MatmulAllReduce Init Quant Tiling Compile Info Success");
 }
 
-static void GetMatmulTilingFromCache(TCubeTiling& matmulTiling, const WeightNzTilingCache& weightNzTilingCache)
+static void GetMatmulTilingFromCache(TCubeTiling& matmulTiling, const Mc2WeightNzTilingCache& weightNzTilingCache)
 {
     matmulTiling.set_M(weightNzTilingCache.m_);
     matmulTiling.set_N(weightNzTilingCache.n_);
@@ -867,9 +893,9 @@ static void GetMatmulTilingFromCache(TCubeTiling& matmulTiling, const WeightNzTi
     matmulTiling.set_singleBatchN(1);
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::GetTilingFromCache()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::GetTilingFromCache()
 {
-    WhiteListShape shape({inputParams_.mSize, inputParams_.nSize, inputParams_.kSize});
+    Mc2WhiteListShape shape({inputParams_.mSize, inputParams_.nSize, inputParams_.kSize});
     auto it = WEIGHT_NZ_TILING_CACHE.find(shape);
     if (it == WEIGHT_NZ_TILING_CACHE.end()) {
         OP_LOGI(inputParams_.opName, "not find weightNz tiling from cache");
@@ -922,16 +948,16 @@ bool WeightQuantBatchMatmulV2WeightNz::GetTilingFromCache()
     return true;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2WeightNz::GetWorkspaceSize()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::GetWorkspaceSize()
 {
     workspaceSize_ = compileInfoPtr_->workspaceNum;
     return ge::GRAPH_SUCCESS;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::GetMmTilingInput(MmTilingInput& mmTilingInput)
+bool Mc2WeightQuantBatchMatmulV2WeightNz::GetMmTilingInput(Mc2MmTilingInput& mmTilingInput)
 {
-    mmTilingInput.aDtype = GetMatmulTilingDtype(inputParams_.aDtype);
-    mmTilingInput.bDtype = GetMatmulTilingDtype(inputParams_.aDtype); // same to a
+    mmTilingInput.aDtype = Mc2GetMatmulTilingDtype(inputParams_.aDtype);
+    mmTilingInput.bDtype = Mc2GetMatmulTilingDtype(inputParams_.aDtype); // same to a
     if (aFormat == ge::FORMAT_ND || aFormat == ge::FORMAT_FRACTAL_NZ) {
         mmTilingInput.aPosition = matmul_tiling::TPosition::GM;
     } else {
@@ -950,7 +976,7 @@ bool WeightQuantBatchMatmulV2WeightNz::GetMmTilingInput(MmTilingInput& mmTilingI
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::CheckUBSize()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::CheckUBSize()
 {
     auto& mmtiling = tilingData_->matmulTiling;
     uint64_t mmUsedUbSize = mmtiling.get_baseM() * mmtiling.get_baseN() * GetSizeByDataType(ge::DT_FLOAT16);
@@ -968,7 +994,7 @@ bool WeightQuantBatchMatmulV2WeightNz::CheckUBSize()
     return mmUsedUbSize + cubNz2NdCanUseSize < aicoreParams_.ubSize;
 }
 
-MatrixTraverse WeightQuantBatchMatmulV2WeightNz::GetIteratorOrder(
+MatrixTraverse Mc2WeightQuantBatchMatmulV2WeightNz::GetIteratorOrder(
     const CacheTilingData& tbeTiling, int32_t singleCoreM, int32_t singleCoreN, int32_t singleCoreK) const
 {
     int32_t reduceSize = static_cast<int32_t>((inputParams_.aDtype));
@@ -992,7 +1018,7 @@ MatrixTraverse WeightQuantBatchMatmulV2WeightNz::GetIteratorOrder(
     }
 }
 
-void WeightQuantBatchMatmulV2WeightNz::Convert2AscendCTiling(
+void Mc2WeightQuantBatchMatmulV2WeightNz::Convert2AscendCTiling(
     const CacheTilingData& tbeTiling, TCubeTiling& matmulTiling)
 {
     auto mDim =
@@ -1009,7 +1035,7 @@ void WeightQuantBatchMatmulV2WeightNz::Convert2AscendCTiling(
     matmulTiling.set_singleCoreN(static_cast<int32_t>(ops::CeilDiv(inputParams_.nSize, nDim)));
     matmulTiling.set_baseN(tbeTiling.n_l0 * BLOCK_CUBE);
     matmulTiling.set_baseM(tbeTiling.m_l0 * BLOCK_CUBE);
-    int32_t reduceSize = static_cast<int32_t>(GetBlockAlignSizeByDataType(inputParams_.aDtype));
+    int32_t reduceSize = static_cast<int32_t>(Mc2GetBlockAlignSizeByDataType(inputParams_.aDtype));
     matmulTiling.set_baseK(tbeTiling.k_l0 * reduceSize);
     auto depthA1 = std::max(ops::CeilDiv(tbeTiling.kal1_16, tbeTiling.k_l0) * tbeTiling.m_al1 * tbeTiling.db_al1, 2L);
     auto depthB1 = std::max(ops::CeilDiv(tbeTiling.kbl1_16, tbeTiling.k_l0) * tbeTiling.n_bl1 * tbeTiling.db_bl1, 2L);
@@ -1020,9 +1046,9 @@ void WeightQuantBatchMatmulV2WeightNz::Convert2AscendCTiling(
     matmulTiling.set_stepKa(ops::CeilDiv(tbeTiling.kal1_16, tbeTiling.k_l0));
     matmulTiling.set_stepKb(ops::CeilDiv(tbeTiling.kbl1_16, tbeTiling.k_l0));
     int32_t a1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), inputParams_.aDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseM() * matmulTiling.get_baseK(), inputParams_.aDtype));
     int32_t b1Length = static_cast<int32_t>(
-        GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), inputParams_.aDtype));
+        Mc2GetShapeSizeWithDataType(matmulTiling.get_baseN() * matmulTiling.get_baseK(), inputParams_.aDtype));
     int32_t c1Length = matmulTiling.get_baseN() * matmulTiling.get_baseM() * sizeof(float); // L0C
 
     matmulTiling.set_transLength(std::max(std::max(a1Length, b1Length), c1Length));
@@ -1036,7 +1062,7 @@ void WeightQuantBatchMatmulV2WeightNz::Convert2AscendCTiling(
     int32_t aL1Size = a1Length * matmulTiling.get_depthA1();
     int32_t biasL1Size =
         inputParams_.hasBias ?
-            GetShapeSizeWithDataType(matmulTiling.get_baseN(), inputParams_.biasDtype) * tbeTiling.n_bl1 :
+            Mc2GetShapeSizeWithDataType(matmulTiling.get_baseN(), inputParams_.biasDtype) * tbeTiling.n_bl1 :
             0;
     int32_t bL1Size = b1Length * matmulTiling.get_depthB1();
     matmulTiling.set_shareL1Size(aL1Size + bL1Size + biasL1Size);
@@ -1045,7 +1071,7 @@ void WeightQuantBatchMatmulV2WeightNz::Convert2AscendCTiling(
     SetAscendCTiling(matmulTiling);
 }
 
-void WeightQuantBatchMatmulV2WeightNz::SetAscendCTiling(TCubeTiling& matmulTiling)
+void Mc2WeightQuantBatchMatmulV2WeightNz::SetAscendCTiling(TCubeTiling& matmulTiling)
 {
     matmulTiling.set_singleCoreK(inputParams_.kSize);
     matmulTiling.set_M(inputParams_.mSize);
@@ -1067,7 +1093,7 @@ void WeightQuantBatchMatmulV2WeightNz::SetAscendCTiling(TCubeTiling& matmulTilin
     matmulTiling.set_Kb(tilingData_->get_kAlign());
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::InvokeCacheTiling()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::InvokeCacheTiling()
 {
     BatchmatmulCompileParas compileParams;
     compileParams.binary_mode_flag = true;
@@ -1106,7 +1132,7 @@ bool WeightQuantBatchMatmulV2WeightNz::InvokeCacheTiling()
     runParams.vector_pre_conv_mode = inputParams_.cDtype == ge::DT_INT8;
     CacheTilingData tiling;
     tiling.tiling_id = std::numeric_limits<uint64_t>::max();
-    GenTiling("WeightQuantBatchMatmulV2", compileParams, runParams, tiling, context_);
+    GenTiling("Mc2WeightQuantBatchMatmulV2", compileParams, runParams, tiling, context_);
     OP_LOGI_IF_RETURN(
         tiling.tiling_id == std::numeric_limits<uint64_t>::max(), false, inputParams_.opName,
         "cannot get tiling from cachetiling, mnk[%lu, %lu, %lu]", inputParams_.mSize, inputParams_.nSize,
@@ -1116,7 +1142,7 @@ bool WeightQuantBatchMatmulV2WeightNz::InvokeCacheTiling()
     return true;
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::GetMatMulTiling()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::GetMatMulTiling()
 {
     if (InvokeCacheTiling() && CheckUBSize()) {
         OP_LOGD(inputParams_.opName, "invoke cache tiling success");
@@ -1125,7 +1151,7 @@ bool WeightQuantBatchMatmulV2WeightNz::GetMatMulTiling()
     return false;
 }
 
-void WeightQuantBatchMatmulV2WeightNz::GetBaseMKNByTrans(matmul_tiling::MatmulApiTiling& mmTiling) const
+void Mc2WeightQuantBatchMatmulV2WeightNz::GetBaseMKNByTrans(matmul_tiling::MatmulApiTiling& mmTiling) const
 {
     if (aFormat != ge::FORMAT_ND && bFormat != ge::FORMAT_ND) {
         return;
@@ -1134,7 +1160,7 @@ void WeightQuantBatchMatmulV2WeightNz::GetBaseMKNByTrans(matmul_tiling::MatmulAp
     mmTiling.SetSplitRange(defaultValue_, defaultValue_, defaultValue_, defaultValue_, defaultValue_, cubeSingleMinK_);
 }
 
-bool WeightQuantBatchMatmulV2WeightNz::GetLoopOrder()
+bool Mc2WeightQuantBatchMatmulV2WeightNz::GetLoopOrder()
 {
     uint64_t mteWeight = 1;
     uint64_t vecWeight = 1;
@@ -1157,7 +1183,7 @@ bool WeightQuantBatchMatmulV2WeightNz::GetLoopOrder()
 }
 
 // 判断A/B在L1是否开DB_BUFFER
-void WeightQuantBatchMatmulV2WeightNz::GetL1Pingpong()
+void Mc2WeightQuantBatchMatmulV2WeightNz::GetL1Pingpong()
 {
     auto mmtiling = tilingData_->matmulTiling;
     uint64_t loopM = static_cast<uint64_t>(ops::CeilDiv(mmtiling.get_singleCoreM(), mmtiling.get_baseM()));
@@ -1195,7 +1221,7 @@ void WeightQuantBatchMatmulV2WeightNz::GetL1Pingpong()
     }
 }
 
-void WeightQuantBatchMatmulV2WeightNz::GetL1tiling()
+void Mc2WeightQuantBatchMatmulV2WeightNz::GetL1tiling()
 {
     auto mmtiling = tilingData_->matmulTiling;
     tilingData_->set_mAL1Size(tilingData_->matmulTiling.get_baseM());
@@ -1206,17 +1232,17 @@ void WeightQuantBatchMatmulV2WeightNz::GetL1tiling()
     L1FullloadMode_ = FullLoadMode::NONE_AB_K;
 }
 
-uint64_t WeightQuantBatchMatmulV2WeightNz::GetBubSize(uint64_t bubN, uint64_t bubD) const
+uint64_t Mc2WeightQuantBatchMatmulV2WeightNz::GetBubSize(uint64_t bubN, uint64_t bubD) const
 {
     return BUB_BUF_NUM * bubN * ops::CeilAlign(bubD, BUB_SIZE_ALIGN);
 }
 
-uint64_t WeightQuantBatchMatmulV2WeightNz::GetAubSize(uint64_t aubN, uint64_t aubD) const
+uint64_t Mc2WeightQuantBatchMatmulV2WeightNz::GetAubSize(uint64_t aubN, uint64_t aubD) const
 {
     return AUB_BUF_NUM * ops::CeilAlign(aubN * aubD, AUB_SIZE_ALIGN);
 }
 
-uint64_t WeightQuantBatchMatmulV2WeightNz::CalBubFactorTiling(uint64_t bubCanUseUbSize)
+uint64_t Mc2WeightQuantBatchMatmulV2WeightNz::CalBubFactorTiling(uint64_t bubCanUseUbSize)
 {
     auto mmtiling = tilingData_->matmulTiling;
     auto minKL1 = std::min(tilingData_->get_kBL1Size(), tilingData_->get_kAL1Size());
@@ -1249,7 +1275,7 @@ uint64_t WeightQuantBatchMatmulV2WeightNz::CalBubFactorTiling(uint64_t bubCanUse
     return bubUsedSize;
 }
 
-uint64_t WeightQuantBatchMatmulV2WeightNz::CalAubFactorTiling(uint64_t aubCanUseUbSize)
+uint64_t Mc2WeightQuantBatchMatmulV2WeightNz::CalAubFactorTiling(uint64_t aubCanUseUbSize)
 {
     auto mmtiling = tilingData_->matmulTiling;
     auto minKL1 = std::min(tilingData_->get_kBL1Size(), tilingData_->get_kAL1Size());
@@ -1283,7 +1309,7 @@ uint64_t WeightQuantBatchMatmulV2WeightNz::CalAubFactorTiling(uint64_t aubCanUse
     return aubUsedSize;
 }
 
-uint64_t WeightQuantBatchMatmulV2WeightNz::CalCubFactorTiling(uint64_t cubNz2NdCanUseSize)
+uint64_t Mc2WeightQuantBatchMatmulV2WeightNz::CalCubFactorTiling(uint64_t cubNz2NdCanUseSize)
 {
     uint64_t cubM = tilingData_->matmulTiling.get_baseM();
     uint64_t cubN = tilingData_->matmulTiling.get_baseN();
@@ -1312,7 +1338,7 @@ uint64_t WeightQuantBatchMatmulV2WeightNz::CalCubFactorTiling(uint64_t cubNz2NdC
     return cubUsedSize;
 }
 
-void WeightQuantBatchMatmulV2WeightNz::PrintCVTilingData(bool debugLevel)
+void Mc2WeightQuantBatchMatmulV2WeightNz::PrintCVTilingData(bool debugLevel)
 {
     if (debugLevel && CheckLogLevel(OP, DLOG_DEBUG) != 1) {
         return;
@@ -1344,7 +1370,7 @@ void WeightQuantBatchMatmulV2WeightNz::PrintCVTilingData(bool debugLevel)
     }
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2WeightNz::PostTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::PostTiling()
 {
     OP_LOGD(inputParams_.opName, "final tiling data size: %zu", tilingData_->GetDataSize());
     OP_CHECK_IF(

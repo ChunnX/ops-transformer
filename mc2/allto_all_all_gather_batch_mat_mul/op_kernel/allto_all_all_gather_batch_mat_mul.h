@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file allto_all_all_gather_batch_mat_mul.h
@@ -123,9 +123,9 @@ private:
     GlobalTensor<DataType1> allgatherNonLocalOutGM;
     GlobalTensor<DataType1> transposeOutGM; //每轮地址复用
     GlobalTensor<DataType1> bmmOutGM;
-    Mc2MatmulTilingData *bmmLocalTiling;
-    Mc2MatmulTilingData *bmmNonLocalTileTiling;
-    Mc2MatmulTilingData *bmmNonLocalTailTiling;
+    NewMc2MatmulTilingData *bmmLocalTiling;
+    NewMc2MatmulTilingData *bmmNonLocalTileTiling;
+    NewMc2MatmulTilingData *bmmNonLocalTailTiling;
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hcclAlltoall;
     Hccl<HCCL_SERVER_TYPE_AICPU> hcclAllgather;
@@ -350,7 +350,7 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMul<DataType1, DataType2, ShardT
 
         // bmm
         tpipe->Reset();
-        BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmv3;
+        Mc2BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmv3;
         bmmv3.Init(bmmInGm, wGM, (__gm__ uint8_t*)bmmOutGM.GetPhyAddr(), nullptr, nullptr, nullptr, &bmmLocalTiling->bmmTilingData, tpipe);
         bmmv3.Process();
         SyncAll<false>();
@@ -569,7 +569,7 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMul<DataType1, DataType2, ShardT
 
             // bmm
             tpipe->Reset();
-            BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmv3;
+            Mc2BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmv3;
             if (isCTail) {
                 allgatherRecvTensor = allgatherRecvTensor[allgatherRecvBufOffsetTail];
                 bmmv3.Init((__gm__ uint8_t*)transposeOutGM.GetPhyAddr(), wGM, (__gm__ uint8_t*)bmmOutGM.GetPhyAddr(), nullptr, nullptr, nullptr, &bmmNonLocalTailTiling->bmmTilingData, tpipe);

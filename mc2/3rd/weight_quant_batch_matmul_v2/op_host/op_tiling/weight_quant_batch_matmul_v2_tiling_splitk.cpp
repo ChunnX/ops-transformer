@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_splitk.cpp
@@ -18,21 +18,22 @@
 #include "weight_quant_batch_matmul_v2_compute_matmul_tiling.h"
 #include "weight_quant_batch_matmul_v2_white_list.h"
 #include "tiling_base/tiling_key.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h"
 
 using Ops::Transformer::OpTiling::RecursiveSum;
 
 namespace optiling {
 
-const std::set<WhiteListShape> MIX_SPLIT_K_WHITE_LIST = {
+const std::set<Mc2WhiteListShape> MIX_SPLIT_K_WHITE_LIST = {
     // JYXC
     {24, 12288, 1792, false, false, false, 1},
     {24, 12288, 7808, false, false, false, 1},
     {24, 3904, 12288, false, false, false, 1},
     {24, 1536, 12288, false, false, false, 1}};
 
-void WeightQuantBatchMatmulV2TilingSplitK::Reset()
+void Mc2WeightQuantBatchMatmulV2TilingSplitK::Reset()
 {
-    WeightQuantBatchMatmulV2Tiling::Reset();
+    Mc2WeightQuantBatchMatmulV2Tiling::Reset();
     OP_TILING_CHECK(memset_s(
                         context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                         context_->GetRawTilingData()->GetCapacity()) != EOK,
@@ -44,7 +45,7 @@ The function is limite of splitK
 1. bf16*int8=>bf16 without antiquantoffset
 2. JYXC white case in pergroup and weightND
 */
-bool WeightQuantBatchMatmulV2TilingSplitK::IsCapable()
+bool Mc2WeightQuantBatchMatmulV2TilingSplitK::IsCapable()
 {
     OP_LOGI(opName_, "Begin check SplitK");
     // ND切K模板不支持确定性
@@ -66,8 +67,8 @@ bool WeightQuantBatchMatmulV2TilingSplitK::IsCapable()
         matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64 || matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64,
         OP_LOGI(opName_, "SplitK done not support antiquant scale dtype is uint64 or int64"), return false);
     // only support jyxc case
-    if (matmulInfoPtr_->antiQuantType == QuantType::PER_GROUP && matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ) {
-        WhiteListShape shape(
+    if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP && matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ) {
+        Mc2WhiteListShape shape(
             {matmulInfoPtr_->mSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias,
              matmulInfoPtr_->transA, matmulInfoPtr_->transB, 1});
         OP_TILING_CHECK(
@@ -82,15 +83,15 @@ bool WeightQuantBatchMatmulV2TilingSplitK::IsCapable()
     return false;
 }
 
-bool WeightQuantBatchMatmulV2TilingSplitK::GetMatMulTiling()
+bool Mc2WeightQuantBatchMatmulV2TilingSplitK::GetMatMulTiling()
 {
-    matmul_tiling::DataType mmInputDtype = GetMatmulTilingDtype(matmulInfoPtr_->aDtype);
+    matmul_tiling::DataType mmInputDtype = Mc2GetMatmulTilingDtype(matmulInfoPtr_->aDtype);
     matmul_tiling::MatmulApiTiling mmTiling;
     mmTiling.SetAType(
         matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmInputDtype, matmulInfoPtr_->transA);
     mmTiling.SetBType(
         matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmInputDtype, matmulInfoPtr_->transB);
-    mmTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, GetMatmulTilingDtype(ge::DT_FLOAT));
+    mmTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, Mc2GetMatmulTilingDtype(ge::DT_FLOAT));
     mmTiling.SetBias(matmulInfoPtr_->hasBias);
     mmTiling.SetOrgShape(matmulInfoPtr_->mSize, matmulInfoPtr_->nSize, matmulInfoPtr_->kSize);
 
@@ -109,14 +110,14 @@ bool WeightQuantBatchMatmulV2TilingSplitK::GetMatMulTiling()
     return true;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::DoOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::DoOpTiling()
 {
     OP_TILING_CHECK(
         InstantiateTilingData() == ge::GRAPH_FAILED,
         OP_LOGE(opName_, "Unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
 
     tilingData_->set_groupSize(matmulInfoPtr_->groupSize);
-    uint64_t weightBlockAlignSize = GetBlockAlignSizeByDataType(matmulInfoPtr_->bDtype);
+    uint64_t weightBlockAlignSize = Mc2GetBlockAlignSizeByDataType(matmulInfoPtr_->bDtype);
     if (matmulInfoPtr_->transB) {
         tilingData_->set_kAlign(ops::CeilAlign(matmulInfoPtr_->kSize, weightBlockAlignSize));
         tilingData_->set_nAlign(matmulInfoPtr_->nSize);
@@ -168,10 +169,10 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::InstantiateTilingData()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::InstantiateTilingData()
 {
     if (tilingData_ == nullptr) {
-        tilingData_ = std::make_unique<WeightQuantBatchMatmulV2TilingData>();
+        tilingData_ = std::make_unique<Mc2WeightQuantBatchMatmulV2TilingData>();
     }
     OP_TILING_CHECK(
         tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
@@ -185,20 +186,20 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::DoLibApiTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::DoLibApiTiling()
 {
     tilingData_->set_cubeSingleNTailLoop(
         ops::CeilDiv(
             matmulInfoPtr_->nSize % tilingData_->matmulTiling.get_singleCoreN(),
             static_cast<uint64_t>(tilingData_->matmulTiling.get_singleCoreN())));
     tilingData_->set_cubeTailM(
-        CalcTailSize(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_singleCoreM())));
+        Mc2CalcTailSize(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_singleCoreM())));
     tilingData_->set_cubeTailN(
-        CalcTailSize(matmulInfoPtr_->nSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_baseN())));
+        Mc2CalcTailSize(matmulInfoPtr_->nSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_baseN())));
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::GetWorkspaceSize()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::GetWorkspaceSize()
 {
     uint64_t weightWorkspacesNum = 4;
     uint64_t nF16AlignTo512bSize = ops::CeilDiv(tilingData_->get_nSize(), 256UL) * 256;
@@ -211,7 +212,7 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::PostTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingSplitK::PostTiling()
 {
     OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
 
@@ -231,11 +232,33 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingSplitK::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t WeightQuantBatchMatmulV2TilingSplitK::GetTilingKey() const
-{
-    return RecursiveSum(
-        matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-        matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, KernelTemplateType::MIX_SPLIT_K);
+uint64_t Mc2WeightQuantBatchMatmulV2TilingSplitK::GetTilingKey() const
+{   
+    uint64_t socVersionType = 1UL; // 1 means SUPPORT_L0C_TO_OUT
+    uint64_t subSocVersionType = 0UL;
+    uint64_t antiquantScenario = 0UL;
+    uint64_t algorithm = 3UL; // 3 means CUSTOM tilingkey algorithm
+    uint64_t subAlgorithm = 0UL;
+    uint64_t subAlgorithmCustom = static_cast<uint64_t>(Mc2KernelTemplateType::MIX_SPLIT_K);
+    uint64_t innerPrecise = 0UL;
+    uint64_t templateCustom = 0UL;
+    uint64_t apiConstexpr = 0UL;
+    bool transA = matmulInfoPtr_->transA;
+    bool transB = matmulInfoPtr_->transB;
+    uint64_t antiquantType = static_cast<uint64_t>(matmulInfoPtr_->antiQuantType);
+    uint64_t quantType = static_cast<uint64_t>(matmulInfoPtr_->quantType);
+    bool hasAntiquantOffset = matmulInfoPtr_->hasAntiQuantOffset;
+    bool hasBias = false;
+    bool isBiasFp32 = false;
+    bool isWeightNz = false;
+    uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t batch = 0UL;
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    return tilingKey_;
 }
 
 } // namespace optiling

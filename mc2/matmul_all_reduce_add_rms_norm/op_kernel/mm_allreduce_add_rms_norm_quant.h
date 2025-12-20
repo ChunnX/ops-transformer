@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mm_allreduce_add_rms_norm_quant.h
@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "../matmul_all_reduce/common.h"
-#include "../matmul_all_reduce/matmul_all_reduce_quant.h"
+#include "../matmul_all_reduce/arch32/matmul_all_reduce_quant.h"
 #include "add_rms_norm_kernel.h"
 
 namespace MatmulAllReduceAddRmsNormImpl {
@@ -63,8 +63,8 @@ public:
 
 private:
     AddRMSNormTilingeKeyData* arnTilineKey_;
-    AddRMSNormTilingData* arnTile_;
-    AddRMSNormTilingData* arnTail_;
+    MC2AddRMSNormTilingData* arnTile_;
+    MC2AddRMSNormTilingData* arnTail_;
 };
 
 #define REG_MM_OBJ_FOR_ARN(opTile, opTail)                                                     \

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_distribute_barrier.cpp
@@ -16,12 +16,13 @@
 #include <thread>
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
-#include "../../moe_distribute_dispatch_v2/op_api/aclnn_moe_distribute_dispatch_v2.h"
-#include "../op_api/aclnn_distribute_barrier.h"
-#include "../../moe_distribute_combine_v2/op_api/aclnn_moe_distribute_combine_v2.h"
+#include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
+#include "aclnnop/aclnn_distribute_barrier.h"
+#include "aclnnop/aclnn_moe_distribute_combine_v2.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -390,6 +391,7 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
 
 int main(int argc, char *argv[])
 {
+    // 本样例基于Atlas A3实现，必须在Atlas A3上运行
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtInit failed, ret = %d\n", ret); return ret);
 

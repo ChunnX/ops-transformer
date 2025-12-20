@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_custom.h
@@ -20,16 +20,16 @@
 #include "weight_quant_batch_matmul_v2_tiling_data.h"
 
 namespace optiling {
-class WeightQuantBatchMatmulV2TilingCustom : public WeightQuantBatchMatmulV2Tiling
+class Mc2WeightQuantBatchMatmulV2TilingCustom : public Mc2WeightQuantBatchMatmulV2Tiling
 {
 public:
-    explicit WeightQuantBatchMatmulV2TilingCustom(gert::TilingContext* context)
-        : WeightQuantBatchMatmulV2Tiling(context)
+    explicit Mc2WeightQuantBatchMatmulV2TilingCustom(gert::TilingContext* context)
+        : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
     }
-    WeightQuantBatchMatmulV2TilingCustom(gert::TilingContext* context, WeightQuantBatchMatmulV2TilingData* out)
-        : WeightQuantBatchMatmulV2Tiling(context)
+    Mc2WeightQuantBatchMatmulV2TilingCustom(gert::TilingContext* context, Mc2WeightQuantBatchMatmulV2TilingData* out)
+        : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
         tilingData_ = out;
@@ -41,11 +41,11 @@ public:
         TilingBaseClass::Reset(context);
         Reset();
     }
-    ~WeightQuantBatchMatmulV2TilingCustom() override = default;
+    ~Mc2WeightQuantBatchMatmulV2TilingCustom() override = default;
 
 protected:
-    WeightQuantBatchMatmulV2TilingData* tilingData_ = nullptr;
-    std::unique_ptr<WeightQuantBatchMatmulV2TilingData> tilingDataManager_;
+    Mc2WeightQuantBatchMatmulV2TilingData* tilingData_ = nullptr;
+    std::unique_ptr<Mc2WeightQuantBatchMatmulV2TilingData> tilingDataManager_;
     // mc2信息
     bool isOutTilingData_ = false;
     uint64_t cubeBaseN_;

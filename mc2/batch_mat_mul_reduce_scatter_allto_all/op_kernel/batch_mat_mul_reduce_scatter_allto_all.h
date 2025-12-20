@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file batch_mat_mul_reduce_scatter_allto_all.h
@@ -54,7 +54,7 @@ public:
     using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, IS_TRANS>;
     using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, false>;
     using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, BIAS_T, false>;
-    BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmV3;
+    Mc2BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmV3;
 
 private:
     __aicore__ inline void InitTilingData();
@@ -93,10 +93,10 @@ private:
 
     TPipe* pipe = nullptr;
     const BatchMatMulReduceScatterAlltoAllTilingData* tilingData = nullptr;
-    BatchMatmulTilingData localTileTiling;
-    BatchMatmulTilingData localTailTiling;
-    BatchMatmulTilingData nonLocalTileTiling;
-    BatchMatmulTilingData nonLocalTailTiling;
+    Mc2BatchMatmulTilingData localTileTiling;
+    Mc2BatchMatmulTilingData localTailTiling;
+    Mc2BatchMatmulTilingData nonLocalTileTiling;
+    Mc2BatchMatmulTilingData nonLocalTailTiling;
 
     uint64_t tmpBlockIdx = 0U;
     uint64_t E_ep = 0U;

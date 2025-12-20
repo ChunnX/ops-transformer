@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_tiling_utils.cpp
@@ -17,6 +17,7 @@
 
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
+#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
 #include "mc2_log.h"
 #include "tiling/mc2_tiling_utils.h"
 
@@ -171,6 +172,10 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
     return COMM_ALG_DEFAULT;
   }
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+  if (ascendcPlatform.GetSocVersion() ==
+      platform_ascendc::SocVersion::ASCEND910_95) {
+    return COMM_ALG_FULL_MESH;
+  }
 
   auto debugCommAlg = mc2tiling::Mc2TilingUtils::GetDebugCommAlg();
   if (rankDim == 2) {  // 如果是2p
@@ -181,6 +186,10 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
       return COMM_ALG_DEFAULT;
     }
     return COMM_ALG_FULL_MESH;
+  } else if (rankDim <= 0) {
+    OP_LOGE(context->GetNodeName(),
+              "Invalid rank dimension %lld. Rank dimension must be positive.", rankDim);
+    return COMM_ALG_DEFAULT;
   }
 
   uint32_t commSets = 0;
@@ -213,7 +222,7 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
     }
     return debugCommAlg;
   }
-  if ((mValue % CHECK_VALUE_ODD != 0) || (mValue % rankDim != 0)) {
+  if ((mValue % CHECK_VALUE_ODD != 0) || (mValue % static_cast<uint64_t>(rankDim) != 0)) {
     OP_LOGW(context->GetNodeName(),
             " m value is odd or cannot be divided by rankDim.");
     return COMM_ALG_DEFAULT;
@@ -227,6 +236,8 @@ bool CheckRankSize(const platform_ascendc::SocVersion socVersion,
       SUPPORT_RANK_SIZE_SET = {
           {platform_ascendc::SocVersion::ASCEND310P, {1, 2, 4}},
           {platform_ascendc::SocVersion::ASCEND910B, {1, 2, 4, 8}},
+          {platform_ascendc::SocVersion::ASCEND910_95,
+           {1, 2, 4, 8, 16, 32, 64}},
       };
   auto it = SUPPORT_RANK_SIZE_SET.find(socVersion);
   if (it != SUPPORT_RANK_SIZE_SET.end()) {
@@ -240,6 +251,47 @@ bool CheckDataTypeVaild(ge::DataType type,
                         std::initializer_list<ge::DataType> supportDtypeList) {
   return std::find(supportDtypeList.begin(), supportDtypeList.end(), type) !=
          supportDtypeList.end();
+}
+
+void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args,
+                        const TilingArgs &args, const char *opName) {
+  mmV3Args.opName = opName;
+  mmV3Args.isATrans = args.isATrans;
+  mmV3Args.isBTrans = args.isBTrans;
+  mmV3Args.isHf32 = false;
+  mmV3Args.hasBias = args.isBias;
+  mmV3Args.aType = args.geAType;
+  mmV3Args.bType = args.geBType;
+  mmV3Args.cType = args.geCType;
+  mmV3Args.biasType = args.geBiasType;
+  mmV3Args.aFormat = ge::FORMAT_ND;
+  mmV3Args.bFormat = ge::FORMAT_ND;
+  mmV3Args.outFormat = ge::FORMAT_ND;
+  mmV3Args.mValue = args.mValue;
+  mmV3Args.nValue = args.nValue;
+  mmV3Args.kValue = args.kValue;
+  mmV3Args.aDtypeSize = GetDataTypeSize(opName, mmV3Args.aType);
+  mmV3Args.bDtypeSize = GetDataTypeSize(opName, mmV3Args.bType);
+}
+
+ge::graphStatus GetMatmulV3PriorityPolicy(
+    const platform_ascendc::SocVersion socVersion,
+    std::vector<int32_t> &priorities, const char *opName) {
+  const static std::map<platform_ascendc::SocVersion, std::vector<int32_t>>
+      MATMUL_V3_PRIOR_MAP = {
+          {platform_ascendc::SocVersion::ASCEND910_95,
+           {optiling::mc2_matmul_v3_advanced::strategy::BASE}},
+      };
+  if (MATMUL_V3_PRIOR_MAP.find(socVersion) != MATMUL_V3_PRIOR_MAP.end()) {
+    priorities = MATMUL_V3_PRIOR_MAP.at(socVersion);
+  }
+
+  if (priorities.empty()) {
+    OP_LOGE(opName, "version %u can't find suitable matmul priorities",
+            static_cast<uint32_t>(socVersion));
+    return ge::GRAPH_FAILED;
+  }
+  return ge::GRAPH_SUCCESS;
 }
 
 uint32_t Mc2TilingUtils::GetCommSets(const char *group) {

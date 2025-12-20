@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_v3_tiling.cc
@@ -16,12 +16,9 @@
 
 #include <type_traits>
 
-#include "runtime/tiling_context.h"
-#include "platform/platform_infos_def.h"
-#include "tiling/platform/platform_ascendc.h"
-#include "exe_graph/runtime/tiling_context.h"
-#include "exe_graph/runtime/tiling_parse_context.h"
-#include "op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
+#include "arch35/matmul_v3_compile_info_advanced.h"
+#include "arch35/matmul_v3_tiling_advanced.h"
 #include "matmul_v3_base_tiling.h"
 #include "matmul_v3_compile_info.h"
 #include "matmul_v3_simplifiedkey.h"
@@ -29,7 +26,7 @@
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 
-using namespace optiling::matmul_v3;
+using namespace optiling::mc2_matmul_v3;
 using Ops::Transformer::OpTiling::TilingRegistry;
 
 namespace {
@@ -42,20 +39,26 @@ static const int32_t BIAS_INDEX = 2;
 
 namespace optiling {
 
-REGISTER_TILING_TEMPLATE("MatMulV3", MatmulV3BaseTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatmulV3BaseTiling, 0);
 
-static ge::graphStatus MatmulV3TilingFunc(gert::TilingContext *context) {
-  OP_TILING_CHECK(context == nullptr, CUBE_INNER_ERR_REPORT("MatMulV3", "context is null"), return ge::GRAPH_FAILED);
+static ge::graphStatus Mc2MatmulV3TilingFunc(gert::TilingContext *context) {
+  OP_TILING_CHECK(context == nullptr, CUBE_INNER_ERR_REPORT("Mc2MatMulV3", "context is null"), return ge::GRAPH_FAILED);
+  if (Mc2IsAdvancedSocVersion(context)) {
+      return mc2_matmul_v3_advanced::Mc2MatMulV3Tiling(context).DoTiling();
+  }
   return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-static ge::graphStatus TilingPrepareForMatmulV3(gert::TilingParseContext *context) {
-  OP_TILING_CHECK(context == nullptr, CUBE_INNER_ERR_REPORT("MatMulV3", "context is null"), return ge::GRAPH_FAILED);
+static ge::graphStatus Mc2TilingPrepareForMatmulV3(gert::TilingParseContext *context) {
+  if (Mc2IsAdvancedSocVersion(context)) {
+      return mc2_matmul_v3_advanced::InitCompileInfo(context);
+  }
+  OP_TILING_CHECK(context == nullptr, CUBE_INNER_ERR_REPORT("Mc2MatMulV3", "context is null"), return ge::GRAPH_FAILED);
   fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
   OP_TILING_CHECK(platformInfo == nullptr, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "platformInfoPtr is null"),
                   return ge::GRAPH_FAILED);
 
-  auto compileInfoPtr = context->GetCompiledInfo<MatmulV3CompileInfo>();
+  auto compileInfoPtr = context->GetCompiledInfo<Mc2MatmulV3CompileInfo>();
   OP_TILING_CHECK(compileInfoPtr == nullptr, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "compileInfoPtr is null"),
                   return ge::GRAPH_FAILED);
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -88,8 +91,8 @@ static ge::graphStatus TilingPrepareForMatmulV3(gert::TilingParseContext *contex
   return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(MatMulV3)
-    .Tiling(MatmulV3TilingFunc)
-    .TilingParse<MatmulV3CompileInfo>(TilingPrepareForMatmulV3)
-    .GenSimplifiedKey(GenSimplifiedKey);
+IMPL_OP_OPTILING(Mc2MatMulV3)
+    .Tiling(Mc2MatmulV3TilingFunc)
+    .TilingParse<Mc2MatmulV3CompileInfo>(Mc2TilingPrepareForMatmulV3)
+    .GenSimplifiedKey(Mc2GenSimplifiedKey);
 }

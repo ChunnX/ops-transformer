@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.cpp
@@ -17,6 +17,7 @@
 #include "weight_quant_batch_matmul_v2_tiling_tool.h"
 #include "weight_quant_batch_matmul_v2_tiling_key.h"
 #include "weight_quant_batch_matmul_v2_white_list.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h"
 
 namespace optiling {
 
@@ -34,7 +35,7 @@ constexpr uint64_t VEC_CUBE_RATIO = 2;
 constexpr uint64_t DEFAULT_SINGLE_CORE_SIZE = 1024;
 constexpr uint64_t L2_SIZE = 67108864;
 
-const std::set<WhiteListShape> NETWORK_UNALIGN_WHITE_LIST = {
+const std::set<Mc2WhiteListShape> NETWORK_UNALIGN_WHITE_LIST = {
     // m和核数为1，表示该维度不参与匹配
     {1, 8192, 13750, false, false, true, 1},
     {1, 6144, 20708, false, false, true, 1},
@@ -42,9 +43,9 @@ const std::set<WhiteListShape> NETWORK_UNALIGN_WHITE_LIST = {
     {1, 3696, 8192, false, false, true, 1},
     {1, 8192, 7392, true, false, true, 1}};
 
-void WeightQuantBatchMatmulV2CustomNzSplitK::Reset()
+void Mc2WeightQuantBatchMatmulV2CustomNzSplitK::Reset()
 {
-    WeightQuantBatchMatmulV2Tiling::Reset();
+    Mc2WeightQuantBatchMatmulV2Tiling::Reset();
     cubeSingleN_ = 128UL;
     al1FullLoad_ = false;
 
@@ -54,7 +55,7 @@ void WeightQuantBatchMatmulV2CustomNzSplitK::Reset()
                     OP_LOGE(opName_, "fail to memset tiling data"), return;);
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::PostTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::PostTiling()
 {
     OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
 
@@ -70,7 +71,7 @@ ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-bool WeightQuantBatchMatmulV2CustomNzSplitK::IsCapable()
+bool Mc2WeightQuantBatchMatmulV2CustomNzSplitK::IsCapable()
 {
     OP_LOGI(opName_, "Start to check Custom SplitK template");
     // NZ切K模板不支持确定性
@@ -83,7 +84,7 @@ bool WeightQuantBatchMatmulV2CustomNzSplitK::IsCapable()
             matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64,
         OP_LOGI(opName_, "Custom splitK not support quant or antiquant uint64"), return false);
     OP_TILING_CHECK(
-        matmulInfoPtr_->antiQuantType != QuantType::PER_CHANNEL,
+        matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL,
         OP_LOGI(opName_, "Custom SplitK only support per-channel"), return false);
     OP_TILING_CHECK(
         matmulInfoPtr_->transA || !matmulInfoPtr_->transB,
@@ -92,7 +93,7 @@ bool WeightQuantBatchMatmulV2CustomNzSplitK::IsCapable()
         matmulInfoPtr_->mSize < M_MIN_LIMIT || matmulInfoPtr_->mSize > M_MAX_LIMIT ||
             matmulInfoPtr_->kSize > MAX_SHAPE_DIM || matmulInfoPtr_->nSize > MAX_SHAPE_DIM,
         OP_LOGI(opName_, "Custom SplitK only support 64 < m <= 256 and n < 65536 and k < 65536"), return false);
-    WhiteListShape shape(
+    Mc2WhiteListShape shape(
         {1, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias, matmulInfoPtr_->transA,
          matmulInfoPtr_->transB, 1});
     OP_TILING_CHECK(
@@ -106,11 +107,11 @@ bool WeightQuantBatchMatmulV2CustomNzSplitK::IsCapable()
     return true;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::InstantiateTilingData()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::InstantiateTilingData()
 {
     if (tilingData_ == nullptr) {
-        tilingData_ = std::unique_ptr<WeightQuantBatchMatmulV2CustomNzSplitKTilingData>(
-            new (std::nothrow) WeightQuantBatchMatmulV2CustomNzSplitKTilingData());
+        tilingData_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData());
     }
     OP_TILING_CHECK(
         tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
@@ -124,7 +125,7 @@ ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::DoOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::DoOpTiling()
 {
     OP_TILING_CHECK(
         InstantiateTilingData() == ge::GRAPH_FAILED,
@@ -135,7 +136,7 @@ ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::DoOpTiling()
     tilingData_->set_mSize(matmulInfoPtr_->mSize);
     tilingData_->set_nSizeAlign(ops::CeilAlign(matmulInfoPtr_->nSize, static_cast<uint64_t>(BLOCK_CUBE)));
     tilingData_->set_kSizeAlign(
-        ops::CeilAlign(matmulInfoPtr_->kSize, GetBlockAlignSizeByDataType(matmulInfoPtr_->bDtype)));
+        ops::CeilAlign(matmulInfoPtr_->kSize, Mc2GetBlockAlignSizeByDataType(matmulInfoPtr_->bDtype)));
     tilingData_->set_hasBias(matmulInfoPtr_->hasBias);
     GetMatMulTiling();
     tilingData_->set_vecBlockDimN(tilingData_->get_cubeBlockDimN() * VEC_CUBE_RATIO);
@@ -164,36 +165,43 @@ ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::DoOpTiling()
 }
 
 // 4、计算高阶API的TilingData
-ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::DoLibApiTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // 5、计算TilingKey
-uint64_t WeightQuantBatchMatmulV2CustomNzSplitK::GetTilingKey() const
-{
-    TilingKeyConfigure tilingKeyConfigure;
-    // 平台类型占2位(平台大类， 平台小类)，平台大类在高位，需要乘10
-    tilingKeyConfigure.socVersionType = static_cast<uint8_t>(SocVersionType::SUPPORT_L0C_TO_OUT) * 10;
-    tilingKeyConfigure.quantizationScenario = static_cast<uint8_t>(QuantizationScenario::DEFAULT);
-    // 算法类型占2位(算法大类，算法小类)，算法大类在高位，需要乘10
-    tilingKeyConfigure.algorithm = static_cast<uint8_t>(OptimizationAlgorithmCategory::VECTOR_ANTIQUANT) * 10 +
-                                   static_cast<uint8_t>(OptimizationAlgorithmSubCategory::SPLIT_K);
-    tilingKeyConfigure.transposeSituation =
-        (static_cast<uint16_t>(matmulInfoPtr_->transA) << 1) | static_cast<uint16_t>(matmulInfoPtr_->transB);
-    tilingKeyConfigure.antiquantType = static_cast<uint8_t>(matmulInfoPtr_->antiQuantType);
-    tilingKeyConfigure.quantType = static_cast<uint8_t>(QuantType::NONE);
-    tilingKeyConfigure.optionInputSituation = (static_cast<uint16_t>(matmulInfoPtr_->hasAntiQuantOffset) << 1);
-    tilingKeyConfigure.weightFormat = static_cast<uint8_t>(WeightFormat::FRACTAL_NZ);
-
-    tilingKeyConfigure.templateCustom = static_cast<uint8_t>(
-        al1FullLoad_ ? CustomSplitKConfiguration::A_MK_FULL_LOAD : CustomSplitKConfiguration::A_NORMAL_LOAD);
-    tilingKeyConfigure.apiConstexpr = 0;
-    return tilingKeyConfigure.GenTilingKey();
+uint64_t Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetTilingKey() const
+{   
+    uint64_t socVersionType = static_cast<uint64_t>(Mc2SocVersionType::SUPPORT_L0C_TO_OUT);
+    uint64_t subSocVersionType = 0UL;
+    uint64_t antiquantScenario = static_cast<uint64_t>(Mc2QuantizationScenario::DEFAULT);
+    uint64_t algorithm = static_cast<uint64_t>(Mc2OptimizationAlgorithmCategory::VECTOR_ANTIQUANT);
+    uint64_t subAlgorithm = static_cast<uint64_t>(Mc2OptimizationAlgorithmSubCategory::SPLIT_K);
+    uint64_t subAlgorithmCustom = 0UL;
+    uint64_t innerPrecise = 0UL;
+    uint64_t templateCustom = al1FullLoad_ ? static_cast<uint64_t>(Mc2CustomSplitKConfiguration::A_MK_FULL_LOAD) : static_cast<uint64_t>(Mc2CustomSplitKConfiguration::A_NORMAL_LOAD);
+    uint64_t apiConstexpr = 0UL;
+    bool transA = matmulInfoPtr_->transA;
+    bool transB = matmulInfoPtr_->transB;
+    uint64_t antiquantType = static_cast<uint64_t>(matmulInfoPtr_->antiQuantType);
+    uint64_t quantType = static_cast<uint64_t>(Mc2QuantType::NONE);
+    bool hasAntiquantOffset = matmulInfoPtr_->hasAntiQuantOffset;
+    bool hasBias = false;
+    bool isBiasFp32 = false;
+    bool isWeightNz = true; // Mc2WeightFormat::FRACTAL_NZ
+    uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t batch = 0UL;
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    return tilingKey_;
 }
 
 // 6、计算Workspace 大小
-ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::GetWorkspaceSize()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetWorkspaceSize()
 {
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(
@@ -207,7 +215,7 @@ ge::graphStatus WeightQuantBatchMatmulV2CustomNzSplitK::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-void WeightQuantBatchMatmulV2CustomNzSplitK::GetMatMulTiling()
+void Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetMatMulTiling()
 {
     uint64_t singleCoreK = DEFAULT_SINGLE_CORE_SIZE;
     uint64_t cubeBlockDimK = std::min(

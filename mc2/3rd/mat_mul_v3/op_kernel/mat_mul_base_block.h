@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file mat_mul_base_block.h
@@ -67,9 +67,9 @@ struct BaseBlockArgs {
     uint32_t isHf32;
 };
 
-class MatmulBaseBlock {
+class Mc2MatmulBaseBlock {
 public:
-    __aicore__ inline MatmulBaseBlock() {}
+    __aicore__ inline Mc2MatmulBaseBlock() {}
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void Init(const void *tilingData);
     __aicore__ inline void UpdateBlockCnt(uint64_t mTileIndex, uint64_t nTileIndex);
@@ -83,15 +83,15 @@ public:
 public:
     BlockOffset offset_;
     BaseBlockArgs params_;
-    const MatmulTilingData *matmulTilingData_;
+    const Mc2MatmulV3TilingData *matmulTilingData_;
     bool indexInit_ = false;
 };
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void MatmulBaseBlock::Init(const void *tilingData)
+__aicore__ inline void Mc2MatmulBaseBlock::Init(const void *tilingData)
 {
-    matmulTilingData_ = static_cast<const MatmulTilingData *>(tilingData);
-    const L2cacheTilePara &tilingL2 = matmulTilingData_->tileL2cacheTiling;
+    matmulTilingData_ = static_cast<const Mc2MatmulV3TilingData *>(tilingData);
+    const Mc2L2cacheTilePara &tilingL2 = matmulTilingData_->tileL2cacheTiling;
 
     params_.isTransposeA = matmulTilingData_->matmulRunInfo.transA;
     params_.isTransposeB = matmulTilingData_->matmulRunInfo.transB;
@@ -158,7 +158,7 @@ __aicore__ inline void MatmulBaseBlock::Init(const void *tilingData)
     }
 }
 
-__aicore__ inline void MatmulBaseBlock::UpdateBlockCnt(uint64_t mTileIndex, uint64_t nTileIndex)
+__aicore__ inline void Mc2MatmulBaseBlock::UpdateBlockCnt(uint64_t mTileIndex, uint64_t nTileIndex)
 {
     params_.mTileAddrOffset = mTileIndex * params_.mCnt * matmulTilingData_->matmulTiling.singleCoreM;
     params_.nTileAddrOffset = nTileIndex * params_.nCnt * matmulTilingData_->matmulTiling.singleCoreN;
@@ -188,7 +188,7 @@ __aicore__ inline void MatmulBaseBlock::UpdateBlockCnt(uint64_t mTileIndex, uint
     }
 }
 
-__aicore__ inline void MatmulBaseBlock::UpdateBasicIndex(const uint64_t roundIdx)
+__aicore__ inline void Mc2MatmulBaseBlock::UpdateBasicIndex(const uint64_t roundIdx)
 {
     uint64_t newBlockIdx = (GetCurrentBlockIdx() + matmulTilingData_->matmulTiling.usedCoreNum - params_.blockIdxStart) %
         matmulTilingData_->matmulTiling.usedCoreNum +
@@ -202,7 +202,7 @@ __aicore__ inline void MatmulBaseBlock::UpdateBasicIndex(const uint64_t roundIdx
 }
 
 
-__aicore__ inline void MatmulBaseBlock::InitBlockIndex(uint64_t index)
+__aicore__ inline void Mc2MatmulBaseBlock::InitBlockIndex(uint64_t index)
 {
     if (indexInit_) {
         params_.blockIdxStart = params_.blockIdxEnd; // 开始运算时，首核的索引
@@ -262,7 +262,7 @@ __aicore__ inline void MatmulBaseBlock::InitBlockIndex(uint64_t index)
     }
 }
 
-__aicore__ inline void MatmulBaseBlock::UpdateBlockParams(uint64_t mTileIndex, uint64_t nTileIndex)
+__aicore__ inline void Mc2MatmulBaseBlock::UpdateBlockParams(uint64_t mTileIndex, uint64_t nTileIndex)
 {
     if ((mTileIndex == (params_.mTileCntL2 - 1)) && (nTileIndex == (params_.nTileCntL2 - 1)) &&
         (params_.index == (params_.totalTileCnt - 1))) {
@@ -281,7 +281,7 @@ __aicore__ inline void MatmulBaseBlock::UpdateBlockParams(uint64_t mTileIndex, u
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void MatmulBaseBlock::CalcGMOffset(uint64_t mTileIndex, uint64_t nTileIndex)
+__aicore__ inline void Mc2MatmulBaseBlock::CalcGMOffset(uint64_t mTileIndex, uint64_t nTileIndex)
 {
     uint64_t mCntIndex = params_.index / params_.nCntUse;
     uint64_t nCntIndex = params_.index % params_.nCntUse;
@@ -332,7 +332,7 @@ __aicore__ inline void MatmulBaseBlock::CalcGMOffset(uint64_t mTileIndex, uint64
     }
 }
 
-__aicore__ inline void MatmulBaseBlock::UpdateBlockIndex()
+__aicore__ inline void Mc2MatmulBaseBlock::UpdateBlockIndex()
 {
     if (params_.rowOrder == ROW_FIRST) {
         params_.index += 1;

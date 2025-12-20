@@ -1,20 +1,20 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3_tiling_base.h
  * \brief
  */
 
-#ifndef QUANT_BATCH_MATMUL_V3_TILING_BASE_H
-#define QUANT_BATCH_MATMUL_V3_TILING_BASE_H
+#ifndef MC2_QUANT_BATCH_MATMUL_V3_TILING_BASE_H
+#define MC2_QUANT_BATCH_MATMUL_V3_TILING_BASE_H
 #include <memory>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
@@ -28,7 +28,7 @@ namespace optiling {
 constexpr uint64_t BASIC_ALIGN_16 = 16;
 
 /**
- * QuantBatchMatmulInfo 增改参数规则：
+ * Mc2QuantBatchMatmulInfo 增改参数规则：
  *   1. 新增参数需要初始化
  *   2. 检查mc2依赖文件,清单列表:
  *     ops/built-in/op_tiling/runtime/matmul_all_reduce/quant_matmul_all_reduce_tiling.h
@@ -38,7 +38,7 @@ constexpr uint64_t BASIC_ALIGN_16 = 16;
  *     ops/built-in/op_tiling/runtime/quant_batch_matmul_v3/quant_batch_matmul_v3_tiling.cc
  *   3. 增加新参数需要和MC2开发者说明
  */
-struct QuantBatchMatmulInfo {
+struct Mc2QuantBatchMatmulInfo {
 public:
     uint64_t GetMatmulApiMSize() const;  // mm api单次计算的M
     uint64_t GetTotalMatmulApiMSize(uint64_t baseM) const;
@@ -95,7 +95,7 @@ public:
     ge::Format cFormat = ge::FORMAT_ND;  // 新增数据成员要修改Reset函数
 };
 
-enum class QuantBatchMatmulV3Trans : uint32_t{
+enum class Mc2QuantBatchMatmulV3Trans : uint32_t{
     NO_TRANS = 0, // transA 0 transB 0
     A_TRANS = 1,  // transA 1 transB 0
     B_TRANS = 2,  // transA 0 transB 1
@@ -111,10 +111,10 @@ enum class BasicQuantMode : uint32_t {
     PERBLOCK_MODE = 0x1U << 4,
 };
 
-class QuantBatchMatmulV3TilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class Mc2QuantBatchMatmulV3TilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit QuantBatchMatmulV3TilingBase(gert::TilingContext *context, bool isTilingOut);
-    ~QuantBatchMatmulV3TilingBase() override = default;
+    explicit Mc2QuantBatchMatmulV3TilingBase(gert::TilingContext *context, bool isTilingOut);
+    ~Mc2QuantBatchMatmulV3TilingBase() override = default;
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -156,14 +156,8 @@ protected:
     void AnalyzeBatchInfo(const gert::Shape &oriShapeA, const gert::Shape &oriShapeB);
     void DoBatchFusion(uint64_t fusedDimValue);
     bool CheckShapeInRangeForMandtoryInputs(size_t x1ShapeLen, size_t x2ShapeLen) const;
-    void SetTransAttr(QuantBatchMatmulV3Trans &trans) const;
-    bool SetPlatformInfoForTiling();
-
-    virtual bool CheckSupportConditionQbmm(
-        QbmmType /*type*/, QuantBatchMatmulRunParas& /*inputParams*/, uint64_t /*aicNum*/, bool /*supportL0c2Out*/)
-    {
-        return false;
-    }
+    void SetTransAttr(Mc2QuantBatchMatmulV3Trans &trans) const;
+    virtual bool SetPlatformInfoForTiling();
 
     template<typename T>
     inline bool CheckNumberIsValid(const T &num, const std::string &opName, const std::string &description) const {
@@ -212,12 +206,12 @@ protected:
     static constexpr uint32_t COL_FIRST = 2;
     static constexpr uint64_t NUM_DB = 2;
 
-    // 新增数据成员请注意：如果是在GetShapeAttrsInfo函数过程中获取的，请放到QuantBatchMatmulInfo结构体中，或者保证在DoOpTiling赋值
-    QuantBatchMatmulInfo &inputParams_;
+    // 新增数据成员请注意：如果是在GetShapeAttrsInfo函数过程中获取的，请放到Mc2QuantBatchMatmulInfo结构体中，或者保证在DoOpTiling赋值
+    Mc2QuantBatchMatmulInfo &inputParams_;
     bool isBf16Opt_ = false;
     bool isUbQuant_ = false;
     CacheTilingData tbeTiling_;
-    QuantBatchMatmulV3CompileInfo compileInfo_;
+    Mc2QuantBatchMatmulV3CompileInfo compileInfo_;
     bool compileInfoInit_ = false;
     bool isTilingOut_ = false;
     size_t tilingDataSize_ = 0;

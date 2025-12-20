@@ -1,17 +1,16 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <iostream>
 #include <gtest/gtest.h>
 #include "../../../op_host/op_tiling/grouped_mat_mul_allto_allv_tiling.h"
-#include "tiling_context_faker.h"
-#include "tiling_case_executor.h"
+#include "mc2_tiling_case_executor.h"
 
 namespace GroupedMatMulAlltoAllvUT {
 struct TestParam {
@@ -144,10 +143,12 @@ TEST_P(GroupedMatMulAlltoAllvTiling, shape_size)
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
     if (test_param.status == ge::GRAPH_FAILED){
-        ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
     } else {
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", tiling_params.ep_world_size}};
         uint64_t expectTilingKey = 1UL;
-        ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey); 
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }
 
@@ -222,7 +223,8 @@ TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_1
             {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_2)
@@ -255,7 +257,8 @@ TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_2
             {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_3)
@@ -288,7 +291,8 @@ TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_3
             {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_4)
@@ -322,7 +326,8 @@ TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_4
             {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_5)
@@ -356,7 +361,8 @@ TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_5
             {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_6)
@@ -390,7 +396,8 @@ TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_dim_6
             {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_transMmWeight_invalid)
@@ -423,6 +430,7 @@ TEST_F(GroupedMatMulAlltoAllvTiling, grouped_matmul_allto_allv_tiling_test_trans
             {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    ExecuteTestCase(tilingContextPara);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 } // grouped_mat_mul_allto_allv_ut

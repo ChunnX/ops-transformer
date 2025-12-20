@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file batch_matmul_reduce_scatter_all_to_all_tiling.h
@@ -20,6 +20,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling/mc2_tiling_struct.h"
+#include "tiling/new_mc2_tiling_struct.h"
 #include "../../../3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "mc2_log.h"
 #include "tiling/matmul_formulaic_tiling.h"
@@ -94,19 +95,19 @@ BEGIN_TILING_DATA_DEF(BatchMatMulReduceScatterAlltoAllTilingData)
     TILING_DATA_FIELD_DEF_STRUCT(Mc2HcommCfg, hcommCfgRS);                          // 通信域1：reducescatter
     TILING_DATA_FIELD_DEF_STRUCT(Mc2HcommCfg, hcommCfgATA);                         // 通信域2：allToall
     TILING_DATA_FIELD_DEF_STRUCT(Mc2RSATATiling, commonTiling);                     // kernel侧需要的通用tiling
-    TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, localTiling);                 // local块的matmul tiling数据
-    TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, domesticTiling);              // 非local块的matmul tiling数据
-    TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, localTailTiling);             // local尾块的matmul tiling数据
-    TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, domesticTailTiling);          // 非local尾块的matmul tiling数据
+    TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, localTiling);                 // local块的matmul tiling数据
+    TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, domesticTiling);              // 非local块的matmul tiling数据
+    TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, localTailTiling);             // local尾块的matmul tiling数据
+    TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, domesticTailTiling);          // 非local尾块的matmul tiling数据
 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(BatchMatMulReduceScatterAlltoAll, BatchMatMulReduceScatterAlltoAllTilingData);
 
-class BatchMatMulReduceScatterAlltoAllTiling : public batch_mat_mul_v3::BatchMatmulV3BaseTiling{
+class BatchMatMulReduceScatterAlltoAllTiling : public Mc2batch_mat_mul_v3::Mc2BatchMatmulV3BaseTiling{
     public:
-        BatchMatMulReduceScatterAlltoAllTiling(gert::TilingContext *context, BatchMatmulTilingData &bmmTilingData,
+        BatchMatMulReduceScatterAlltoAllTiling(gert::TilingContext *context, Mc2BatchMatmulTilingData &bmmTilingData,
                                     ReduceScatterAlltoAllBatchInfo &BMMV3BatchInfo, ReduceScatterAlltoAllMatmulInfo &MMV3ArgsInfo)
-            : BatchMatmulV3BaseTiling(context, bmmTilingData), BMMV3BatchInfo_(BMMV3BatchInfo), MMV3ArgsInfo_(MMV3ArgsInfo) {}
+            : Mc2BatchMatmulV3BaseTiling(context, bmmTilingData), BMMV3BatchInfo_(BMMV3BatchInfo), MMV3ArgsInfo_(MMV3ArgsInfo) {}
 
         ge::graphStatus GetShapeAttrsInfo() override {
             args_.opName = MMV3ArgsInfo_.opName;

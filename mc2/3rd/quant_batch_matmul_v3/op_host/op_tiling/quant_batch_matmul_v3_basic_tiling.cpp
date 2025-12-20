@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3_basic_tiling.cc
@@ -27,6 +27,7 @@
 #include "tiling_base/tiling_templates_registry.h"
 #include "common/op_host/op_tiling/tiling_type.h"
 #include "mc2_log.h"
+#include "../../op_kernel/quant_batch_matmul_v3_tiling_key.h"
 
 using AscendC::BLOCK_CUBE;    // uint32_t 16
 using AscendC::ONE_BLK_SIZE;  // uint32_t 32
@@ -90,15 +91,15 @@ const std::vector<uint64_t> K_BASE = {1024, 512, 256, 128, 64, 32};
 
 namespace optiling {
 
-bool QuantBatchMatmulV3BasicTiling::IsCapable() { return true; }
+bool Mc2QuantBatchMatmulV3BasicTiling::IsCapable() { return true; }
 
-ge::graphStatus QuantBatchMatmulV3BasicTiling::GetShapeAttrsInfo()
+ge::graphStatus Mc2QuantBatchMatmulV3BasicTiling::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
-    return QuantBatchMatmulV3Tiling::GetShapeAttrsInfo();
+    return Mc2QuantBatchMatmulV3Tiling::GetShapeAttrsInfo();
 }
 
-ge::graphStatus QuantBatchMatmulV3BasicTiling::DoOpTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3BasicTiling::DoOpTiling()
 {
     isUbQuant_ = inputParams_.cDtype == ge::DT_BF16 || inputParams_.isPertoken;
     SetTransAttr(trans_);  // mc2流程中不对trans_赋值，这里要补一下
@@ -125,12 +126,12 @@ ge::graphStatus QuantBatchMatmulV3BasicTiling::DoOpTiling()
 }
 
 // tbe tiling只有ND进算法，基本块算法在增量场景下相较老模板无收益点，但可以专项求解B NZ的tiling
-bool QuantBatchMatmulV3BasicTiling::IsNetBNZTrans() const
+bool Mc2QuantBatchMatmulV3BasicTiling::IsNetBNZTrans() const
 {
     return !inputParams_.transA && (!inputParams_.transB && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ);
 }
 
-bool QuantBatchMatmulV3BasicTiling::IsNetBNZDecode() const
+bool Mc2QuantBatchMatmulV3BasicTiling::IsNetBNZDecode() const
 {
     // 增量场景:在允许不多的重复加载AL1全载矩阵下，走进基本块模板，适合网络shape，可调tiling
     bool isNetDecode = inputParams_.mSize <= BASIC_BLOCK_SIZE_64;  // 64: 大部分增量m在64以下
@@ -141,7 +142,7 @@ bool QuantBatchMatmulV3BasicTiling::IsNetBNZDecode() const
 
 // 当前只处理部分增量B NZ场景，通过tiling获取收益，而不是通过模板收益
 // NZ无meta问题，可以不受固定的NZ的base块约束
-bool QuantBatchMatmulV3BasicTiling::CanProcessNetDecode() const
+bool Mc2QuantBatchMatmulV3BasicTiling::CanProcessNetDecode() const
 {
     // 当前仅处理部分weight nz的纯cube增量场景
     if (!IsNetBNZDecode() || inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ) {
@@ -171,7 +172,7 @@ bool QuantBatchMatmulV3BasicTiling::CanProcessNetDecode() const
     return false;
 }
 
-bool QuantBatchMatmulV3BasicTiling::IsPertokenBasicSwitchCondition() const
+bool Mc2QuantBatchMatmulV3BasicTiling::IsPertokenBasicSwitchCondition() const
 {
     uint32_t  M_LOWER_1_2 = 12544;
     uint32_t  N_LOWER_1_2 = 1280;
@@ -195,7 +196,7 @@ bool QuantBatchMatmulV3BasicTiling::IsPertokenBasicSwitchCondition() const
     return pertokenBasicSwitch;
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckNotFullLoadForMutliIterate(uint64_t m, uint64_t n, uint64_t k) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckNotFullLoadForMutliIterate(uint64_t m, uint64_t n, uint64_t k) const
 {
     // 增量场景:在允许不多的重复加载AL1全载矩阵下，走进基本块模板，适合网络shape B NZ，可调tiling
     // 在增量场景下，基本块模板相较老模板无任何优势反而每次iterate都需重新加载，因此只能处理B NZ，从tiling上获取收益
@@ -239,7 +240,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckNotFullLoadForMutliIterate(uint64_t m, 
     return true;
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckIfUseBasicInMix(uint64_t m, uint64_t /* n */, uint64_t /* k */) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckIfUseBasicInMix(uint64_t m, uint64_t /* n */, uint64_t /* k */) const
 {
     // mix增量优化模板未接入basic tiling；mix没有使能L2cache切分，不支持过大shape，否则会因为L2cache命中率降低而劣化
     if (isUbQuant_) {
@@ -250,13 +251,13 @@ bool QuantBatchMatmulV3BasicTiling::CheckIfUseBasicInMix(uint64_t m, uint64_t /*
     return true;
 }
 
-void QuantBatchMatmulV3BasicTiling::GetSocVersion()
+void Mc2QuantBatchMatmulV3BasicTiling::GetSocVersion()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     socVersion = ascendcPlatform.GetSocVersion();
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckInBasicBenefitsRange(uint64_t m, uint64_t n, uint64_t k) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckInBasicBenefitsRange(uint64_t m, uint64_t n, uint64_t k) const
 {
     // 基本块方案实测有收益的场景
     bool ret = false;
@@ -279,12 +280,12 @@ bool QuantBatchMatmulV3BasicTiling::CheckInBasicBenefitsRange(uint64_t m, uint64
 }
 
 // 小shape进basic模板无收益点，暂不进
-bool QuantBatchMatmulV3BasicTiling::CheckMNSmallShape(uint64_t m, uint64_t n) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckMNSmallShape(uint64_t m, uint64_t n) const
 {
     return std::min(m, n) <= BASIC_BLOCK_SIZE_512 && std::max(m, n) <= KB_SIZE;
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
 {
     QuantBatchMatmulRunParas runParams_;
     SetQuantBatchMatmulRunParas(runParams_, inputParams_);
@@ -343,7 +344,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
     return !CheckMNSmallShape(inputParams_.mSize, inputParams_.nSize);
 }
 
-uint64_t QuantBatchMatmulV3BasicTiling::GetTotalCnt(uint64_t baseM, uint64_t baseN) const
+uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTotalCnt(uint64_t baseM, uint64_t baseN) const
 {
     uint64_t totalCnt = 1;  // 1 最少核数即最少计算一个base块
     OP_TILING_CHECK(
@@ -358,7 +359,7 @@ uint64_t QuantBatchMatmulV3BasicTiling::GetTotalCnt(uint64_t baseM, uint64_t bas
     return totalCnt;
 }
 
-void QuantBatchMatmulV3BasicTiling::DivisibleCoreLayout(uint64_t mCnt, uint64_t nCnt, uint64_t &calcOrder,
+void Mc2QuantBatchMatmulV3BasicTiling::DivisibleCoreLayout(uint64_t mCnt, uint64_t nCnt, uint64_t &calcOrder,
                                                         uint64_t round) const
 {
     bool rowFirstDivisible = false;
@@ -380,7 +381,7 @@ void QuantBatchMatmulV3BasicTiling::DivisibleCoreLayout(uint64_t mCnt, uint64_t 
     return;
 }
 
-std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> QuantBatchMatmulV3BasicTiling::CalcCoreDistribution(
+std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> Mc2QuantBatchMatmulV3BasicTiling::CalcCoreDistribution(
     uint64_t mCnt, uint64_t nCnt, uint64_t calcOrder, uint64_t round, uint64_t usedCoreNum) const
 {
     uint64_t allCnt = mCnt * nCnt;
@@ -429,7 +430,7 @@ k is same for the same case, and the formula is simplified as
 loadSize = m * ceil(N / baseN) + n * ceil(M / baseM)
 calcSingleCoreMN = (baseM * baseN) * round
 */
-int8_t QuantBatchMatmulV3BasicTiling::CheckLoadAndCalcSize(uint64_t baseM, uint64_t baseN, uint64_t bestRound,
+int8_t Mc2QuantBatchMatmulV3BasicTiling::CheckLoadAndCalcSize(uint64_t baseM, uint64_t baseN, uint64_t bestRound,
                                                            uint64_t round, uint64_t &bestLoadSize) const
 {
     uint64_t curLoadSize = inputParams_.mSize * ops::CeilDiv(inputParams_.nSize, baseN) +
@@ -451,11 +452,11 @@ int8_t QuantBatchMatmulV3BasicTiling::CheckLoadAndCalcSize(uint64_t baseM, uint6
     uint64_t oriBestLoadSize = bestLoadSize;
     bestLoadSize = std::min(bestLoadSize, curLoadSize);
     // m/n都在低轴时，直接返回加载量小的
-    isUpdate = CheckTrans(trans_ == QuantBatchMatmulV3Trans::A_TRANS, curLoadSize < oriBestLoadSize);
+    isUpdate = CheckTrans(trans_ == Mc2QuantBatchMatmulV3Trans::A_TRANS, curLoadSize < oriBestLoadSize);
     // m/n只有一个在低轴时，优先选择256对齐的
     isUpdate = isUpdate ||
-               CheckTrans(trans_ == QuantBatchMatmulV3Trans::AB_TRANS, curLoadSize < oriBestLoadSize, baseM) ||
-               CheckTrans(trans_ == QuantBatchMatmulV3Trans::NO_TRANS && inputParams_.bFormat == ge::FORMAT_ND,
+               CheckTrans(trans_ == Mc2QuantBatchMatmulV3Trans::AB_TRANS, curLoadSize < oriBestLoadSize, baseM) ||
+               CheckTrans(trans_ == Mc2QuantBatchMatmulV3Trans::NO_TRANS && inputParams_.bFormat == ge::FORMAT_ND,
                           curLoadSize < oriBestLoadSize, baseN);
     if (isUpdate) {
         return 1;
@@ -472,7 +473,7 @@ int8_t QuantBatchMatmulV3BasicTiling::CheckLoadAndCalcSize(uint64_t baseM, uint6
     return static_cast<int8_t>(-1);
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckTrans(bool isCheckTrans, bool isSmallerLoadSize, uint64_t base) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckTrans(bool isCheckTrans, bool isSmallerLoadSize, uint64_t base) const
 {
     if (!isCheckTrans) {
         return false;
@@ -486,7 +487,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckTrans(bool isCheckTrans, bool isSmaller
     return false;
 }
 
-void QuantBatchMatmulV3BasicTiling::Int4LowerAxisAlign(uint64_t &baseM, uint64_t &baseN) const
+void Mc2QuantBatchMatmulV3BasicTiling::Int4LowerAxisAlign(uint64_t &baseM, uint64_t &baseN) const
 {
     if (inputParams_.aDtype != ge::DT_INT4) {
         return;
@@ -500,7 +501,7 @@ void QuantBatchMatmulV3BasicTiling::Int4LowerAxisAlign(uint64_t &baseM, uint64_t
     return;
 }
 
-void QuantBatchMatmulV3BasicTiling::ModifyBase(uint64_t &baseM, uint64_t &baseN) const
+void Mc2QuantBatchMatmulV3BasicTiling::ModifyBase(uint64_t &baseM, uint64_t &baseN) const
 {
     if (baseM > inputParams_.GetMatmulApiMSize()) {
         uint64_t m0 = inputParams_.transA ? ONE_BLK_SIZE : BLOCK_CUBE;
@@ -517,7 +518,7 @@ void QuantBatchMatmulV3BasicTiling::ModifyBase(uint64_t &baseM, uint64_t &baseN)
 // 2.在计算访存比相同情况下，同地址访问冲突可接受的情况下，L2缓存数据量少更新
 // 3.m,n差不多大时，选择baseM大的，减少MTE1
 // basicMetrics: round数，coreClash, firstL2Load, minL1LoadSize
-void QuantBatchMatmulV3BasicTiling::CompareBase(std::vector<uint64_t> &basicMetrics, uint64_t baseM, uint64_t baseN)
+void Mc2QuantBatchMatmulV3BasicTiling::CompareBase(std::vector<uint64_t> &basicMetrics, uint64_t baseM, uint64_t baseN)
 {
     // 遍历base候选解有可能相同，剪枝
     if (baseM == basicTiling_.baseM && baseN == basicTiling_.baseN) {
@@ -574,7 +575,7 @@ void QuantBatchMatmulV3BasicTiling::CompareBase(std::vector<uint64_t> &basicMetr
 
 // 计算访存比：越大越好
 // 原有公式= (baseM * baseN * baseK) / (16 * 16 * 32) /  (baseK * (baseM + baseN)) -> baseM * baseN / (baseM + baseN)
-bool QuantBatchMatmulV3BasicTiling::CheckCalcAndMemRatio(uint64_t baseM, uint64_t baseN) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckCalcAndMemRatio(uint64_t baseM, uint64_t baseN) const
 {
     double basicRatio = (basicTiling_.baseM * basicTiling_.baseN * 1.0) / (basicTiling_.baseM + basicTiling_.baseN);
     double curRatio = (baseM * baseN * 1.0) / (baseM + baseN);
@@ -582,7 +583,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckCalcAndMemRatio(uint64_t baseM, uint64_
 }
 
 // MTE2 bound场景下，是否需要减少第一轮L2加载量而交换baseM/N
-bool QuantBatchMatmulV3BasicTiling::CheckL2Load(std::vector<uint64_t> &basicMetrics, uint64_t coreClash,
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckL2Load(std::vector<uint64_t> &basicMetrics, uint64_t coreClash,
                                                 uint64_t firstL2Load) const
 {
     // base从小到大遍历，因此走进该函数时，当前baseM > baseN
@@ -611,14 +612,14 @@ bool QuantBatchMatmulV3BasicTiling::CheckL2Load(std::vector<uint64_t> &basicMetr
 
 // L0A的写速度是L0B的2倍，L1->L0读写并行，但是两个L0A/L0B写不并行，当M,N相近时，让baseM更大收益会更好
 // 待完善：若cube bound场景下，baseM > baseN能加快MTE1，提高流水并行度
-bool QuantBatchMatmulV3BasicTiling::CheckMTE1(uint64_t baseM, uint64_t baseN) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckMTE1(uint64_t baseM, uint64_t baseN) const
 {
     bool isMNClose = std::abs(static_cast<int64_t>(inputParams_.GetMatmulApiMSize() - inputParams_.nSize)) <
                      MN_CLOSE_RATIO * inputParams_.nSize;
     return (baseM < baseN && isMNClose);
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckBiasAndScale(uint64_t baseN, uint64_t dbL0c) const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckBiasAndScale(uint64_t baseN, uint64_t dbL0c) const
 {
     // bias int32(BT 1024B)对baseN的影响，不超过256; 开DB不超过128
     // scale uint64(FB 2048B)目前对baseN无影响，api会对超256的scale再做tiling
@@ -630,7 +631,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckBiasAndScale(uint64_t baseN, uint64_t d
     return !(isBiasInvalid || isScaleInvalid);
 }
 
-uint64_t QuantBatchMatmulV3BasicTiling::GetMaxBaseN() const
+uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetMaxBaseN() const
 {
     // bias int32(BT 1024B)对baseN的影响，不超过256; 开DB不超过128
     // scale uint64(FB 2048B)目前对baseN无影响，api会对超256的scale再做tiling
@@ -640,7 +641,7 @@ uint64_t QuantBatchMatmulV3BasicTiling::GetMaxBaseN() const
     return BASIC_BLOCK_SIZE_512;
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckDbL0c() const
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckDbL0c() const
 {
     // dataDtype of l0c is int32_t
     uint64_t dbBaseMN = compileInfo_.l0cSize / NUM_DB / sizeof(int32_t);
@@ -648,7 +649,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckDbL0c() const
     return (basicTiling_.baseM * basicTiling_.baseN <= dbBaseMN) && CheckBiasAndScale(basicTiling_.baseN, NUM_DB);
 }
 
-bool QuantBatchMatmulV3BasicTiling::GetBaseK(uint64_t baseM, uint64_t baseN)
+bool Mc2QuantBatchMatmulV3BasicTiling::GetBaseK(uint64_t baseM, uint64_t baseN)
 {
     // baseN最大为512, baseK至少为64，满足S8/S4
     uint64_t baseKa =
@@ -667,7 +668,7 @@ bool QuantBatchMatmulV3BasicTiling::GetBaseK(uint64_t baseM, uint64_t baseN)
     return false;
 }
 
-void QuantBatchMatmulV3BasicTiling::CalcClashAndFirstL2Load(uint64_t &coreClash, uint64_t &firstL2Load, uint64_t mCnt,
+void Mc2QuantBatchMatmulV3BasicTiling::CalcClashAndFirstL2Load(uint64_t &coreClash, uint64_t &firstL2Load, uint64_t mCnt,
                                                             uint64_t nCnt, uint64_t round) const
 {
     uint64_t calcOrder = GetCalcOrder(mCnt, nCnt, inputParams_.GetTotalMatmulApiMSize(basicTiling_.baseM),
@@ -678,7 +679,7 @@ void QuantBatchMatmulV3BasicTiling::CalcClashAndFirstL2Load(uint64_t &coreClash,
     firstL2Load = std::get<2>(coreDist) * basicTiling_.baseM + std::get<3>(coreDist) * basicTiling_.baseN;
 }
 
-void QuantBatchMatmulV3BasicTiling::InitBasicMetrics(std::vector<uint64_t> &basicMetrics)
+void Mc2QuantBatchMatmulV3BasicTiling::InitBasicMetrics(std::vector<uint64_t> &basicMetrics)
 {
     uint64_t mCnt = inputParams_.GetTotalBaseMCnt(basicTiling_.baseM);
     uint64_t nCnt = ops::CeilDiv(inputParams_.nSize, basicTiling_.baseN);
@@ -689,7 +690,7 @@ void QuantBatchMatmulV3BasicTiling::InitBasicMetrics(std::vector<uint64_t> &basi
 }
 
 // m,n都为外轴时，核是否用满，适合m,n都不大但超过256的场景
-bool QuantBatchMatmulV3BasicTiling::IsMNSmallForMultiCores(uint64_t coreNum) const
+bool Mc2QuantBatchMatmulV3BasicTiling::IsMNSmallForMultiCores(uint64_t coreNum) const
 {
     if (inputParams_.transA || (!inputParams_.transB && inputParams_.bFormat == ge::FORMAT_ND)) {
         return false;
@@ -709,7 +710,7 @@ bool QuantBatchMatmulV3BasicTiling::IsMNSmallForMultiCores(uint64_t coreNum) con
     return true;
 }
 
-void QuantBatchMatmulV3BasicTiling::ModifyNZBase(uint64_t &baseN, uint64_t coreNum) const
+void Mc2QuantBatchMatmulV3BasicTiling::ModifyNZBase(uint64_t &baseN, uint64_t coreNum) const
 {
     // 小m时尽可能用满核，缩短fixp
     if (inputParams_.mSize <= BLOCK_CUBE) {
@@ -728,7 +729,7 @@ void QuantBatchMatmulV3BasicTiling::ModifyNZBase(uint64_t &baseN, uint64_t coreN
 }
 
 // 处理网络中A非转置B非转置NZ的增量场景，NZ无meta问题，可以不设置固定的base
-bool QuantBatchMatmulV3BasicTiling::ProcessBNZDecode()
+bool Mc2QuantBatchMatmulV3BasicTiling::ProcessBNZDecode()
 {
     basicTiling_.baseM = ops::CeilAlign(inputParams_.mSize, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t coreNum = aicoreParams_.aicNum;
@@ -764,7 +765,7 @@ bool QuantBatchMatmulV3BasicTiling::ProcessBNZDecode()
     return true;
 }
 
-void QuantBatchMatmulV3BasicTiling::ProcessMNSmallShape(uint64_t baseM, uint64_t baseN, uint64_t coreNum)
+void Mc2QuantBatchMatmulV3BasicTiling::ProcessMNSmallShape(uint64_t baseM, uint64_t baseN, uint64_t coreNum)
 {
     // 1轮，尽可能用多的核
     uint64_t totalCnt = GetTotalCnt(baseM, baseN);
@@ -777,7 +778,7 @@ void QuantBatchMatmulV3BasicTiling::ProcessMNSmallShape(uint64_t baseM, uint64_t
     }
 }
 
-bool QuantBatchMatmulV3BasicTiling::SetBase(const std::vector<uint64_t> &mBases, const std::vector<uint64_t> &nBases)
+bool Mc2QuantBatchMatmulV3BasicTiling::SetBase(const std::vector<uint64_t> &mBases, const std::vector<uint64_t> &nBases)
 {
     // default base in milan, 也用于大shape下剪枝小base块
     basicTiling_.baseM = BASIC_BLOCK_SIZE_128;
@@ -828,7 +829,7 @@ bool QuantBatchMatmulV3BasicTiling::SetBase(const std::vector<uint64_t> &mBases,
     return true;
 }
 
-void QuantBatchMatmulV3BasicTiling::SetCalcOrderinMNClashCase(uint64_t mTotalCnt, uint64_t nTotalCnt)
+void Mc2QuantBatchMatmulV3BasicTiling::SetCalcOrderinMNClashCase(uint64_t mTotalCnt, uint64_t nTotalCnt)
 {
     if (basicTiling_.usedCoreNum >= HALF_FACTOR) {  // 除0保护
         basicTiling_.isMclash = mTotalCnt % (basicTiling_.usedCoreNum / HALF_FACTOR) == 0;
@@ -845,7 +846,7 @@ void QuantBatchMatmulV3BasicTiling::SetCalcOrderinMNClashCase(uint64_t mTotalCnt
     }
 }
 
-void QuantBatchMatmulV3BasicTiling::DetermineCalcOrder()
+void Mc2QuantBatchMatmulV3BasicTiling::DetermineCalcOrder()
 {
     uint64_t mTotalCnt = inputParams_.GetTotalBaseMCnt(basicTiling_.baseM);
     uint64_t nTotalCnt = ops::CeilDiv(inputParams_.nSize, basicTiling_.baseN);
@@ -877,14 +878,14 @@ void QuantBatchMatmulV3BasicTiling::DetermineCalcOrder()
     }
 }
 
-bool QuantBatchMatmulV3BasicTiling::CalcL0Tiling()
+bool Mc2QuantBatchMatmulV3BasicTiling::CalcL0Tiling()
 {
     bool ret = false;
     switch (trans_) {
-        case QuantBatchMatmulV3Trans::B_TRANS:
+        case Mc2QuantBatchMatmulV3Trans::B_TRANS:
             ret = SetBase(ALL_BASE, ALL_BASE);
             break;
-        case QuantBatchMatmulV3Trans::NO_TRANS:
+        case Mc2QuantBatchMatmulV3Trans::NO_TRANS:
             if (IsNetBNZDecode()) {
                 ret = ProcessBNZDecode();
             } else {
@@ -892,14 +893,14 @@ bool QuantBatchMatmulV3BasicTiling::CalcL0Tiling()
                               inputParams_.bFormat == ge::FORMAT_ND ? INNER_AXIS_ND_BASE : INNER_AXIS_ALIGN_NZ_BASE);
             }
             break;
-        case QuantBatchMatmulV3Trans::A_TRANS:
+        case Mc2QuantBatchMatmulV3Trans::A_TRANS:
             if (inputParams_.mSize >= inputParams_.nSize || inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
                 ret = SetBase(INNER_AXIS_ND_BASE, INNER_AXIS_ALIGN_NZ_BASE);
             } else {
                 ret = SetBase(INNER_AXIS_ALL_ND_BASE, INNER_AXIS_ALL_ND_BASE);
             }
             break;
-        case QuantBatchMatmulV3Trans::AB_TRANS:
+        case Mc2QuantBatchMatmulV3Trans::AB_TRANS:
             ret = SetBase(INNER_AXIS_ND_BASE, ALL_BASE);
         default:
             break;
@@ -914,7 +915,7 @@ bool QuantBatchMatmulV3BasicTiling::CalcL0Tiling()
     return true;
 }
 
-uint64_t QuantBatchMatmulV3BasicTiling::CalcL1SizeForBiasAndScale()
+uint64_t Mc2QuantBatchMatmulV3BasicTiling::CalcL1SizeForBiasAndScale()
 {
     uint64_t reservedL1Size = 0;
     if (inputParams_.hasBias && (inputParams_.biasDtype == ge::DT_INT32)) {
@@ -926,7 +927,7 @@ uint64_t QuantBatchMatmulV3BasicTiling::CalcL1SizeForBiasAndScale()
     return reservedL1Size;
 }
 
-bool QuantBatchMatmulV3BasicTiling::CalcL1Tiling()
+bool Mc2QuantBatchMatmulV3BasicTiling::CalcL1Tiling()
 {
     // 不切K
     basicTiling_.singleCoreK = inputParams_.kSize;
@@ -956,7 +957,7 @@ bool QuantBatchMatmulV3BasicTiling::CalcL1Tiling()
     return true;
 }
 
-bool QuantBatchMatmulV3BasicTiling::GetStepK(uint64_t &stepKa, uint64_t &stepKb) const
+bool Mc2QuantBatchMatmulV3BasicTiling::GetStepK(uint64_t &stepKa, uint64_t &stepKb) const
 {
     OP_TILING_CHECK(stepKa == 0 || stepKb == 0,
                     CUBE_INNER_ERR_REPORT(inputParams_.opName, "stepKa(%lu) or stepKb(%lu) is 0", stepKa, stepKb),
@@ -987,7 +988,7 @@ bool QuantBatchMatmulV3BasicTiling::GetStepK(uint64_t &stepKa, uint64_t &stepKb)
     return true;
 }
 
-void QuantBatchMatmulV3BasicTiling::ModifyStepKForKOuter(uint64_t &stepKa, uint64_t &stepKb) const
+void Mc2QuantBatchMatmulV3BasicTiling::ModifyStepKForKOuter(uint64_t &stepKa, uint64_t &stepKb) const
 {
     if (std::min(stepKa, stepKb) % HALF_FACTOR != 0) {  // 保证调整完还是倍数关系
         return;
@@ -1015,7 +1016,7 @@ void QuantBatchMatmulV3BasicTiling::ModifyStepKForKOuter(uint64_t &stepKa, uint6
     }
 }
 
-void QuantBatchMatmulV3BasicTiling::CorrectStepK(uint64_t &bigStepK, uint64_t &smallStepK, uint64_t minStepK) const
+void Mc2QuantBatchMatmulV3BasicTiling::CorrectStepK(uint64_t &bigStepK, uint64_t &smallStepK, uint64_t minStepK) const
 {
     smallStepK = minStepK;
     uint64_t times = bigStepK / smallStepK;
@@ -1028,7 +1029,7 @@ void QuantBatchMatmulV3BasicTiling::CorrectStepK(uint64_t &bigStepK, uint64_t &s
     bigStepK = times * smallStepK;
 }
 
-uint64_t QuantBatchMatmulV3BasicTiling::GetTotalSize(uint64_t m, uint64_t k, uint64_t n) const
+uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTotalSize(uint64_t m, uint64_t k, uint64_t n) const
 {
     uint64_t sizeA = GetSizeWithDataType(m * k, inputParams_.aDtype);
     uint64_t sizeB = GetSizeWithDataType(k * n, inputParams_.bDtype);
@@ -1036,7 +1037,7 @@ uint64_t QuantBatchMatmulV3BasicTiling::GetTotalSize(uint64_t m, uint64_t k, uin
     return sizeA + sizeB + sizeC;
 }
 
-bool QuantBatchMatmulV3BasicTiling::IsTileClash(uint64_t outSplit, uint64_t innerSplit,
+bool Mc2QuantBatchMatmulV3BasicTiling::IsTileClash(uint64_t outSplit, uint64_t innerSplit,
                                                 std::tuple<uint64_t, uint64_t> &tileClash,
                                                 const std::tuple<uint64_t, uint64_t, uint64_t> &params) const
 {
@@ -1065,7 +1066,7 @@ bool QuantBatchMatmulV3BasicTiling::IsTileClash(uint64_t outSplit, uint64_t inne
     return false;
 }
 
-uint64_t QuantBatchMatmulV3BasicTiling::GetCalcOrder(uint64_t mCnt, uint64_t nCnt, uint64_t mSize, uint64_t nSize,
+uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetCalcOrder(uint64_t mCnt, uint64_t nCnt, uint64_t mSize, uint64_t nSize,
                                                      uint64_t usedCoreNum) const
 {
     uint64_t calcOrder = nSize / SELECT_COL_ROW_FIRST_MULTI > mSize ? COL_FIRST : ROW_FIRST;
@@ -1079,7 +1080,7 @@ uint64_t QuantBatchMatmulV3BasicTiling::GetCalcOrder(uint64_t mCnt, uint64_t nCn
     return calcOrder;
 }
 
-void QuantBatchMatmulV3BasicTiling::CalcTileCnt(uint64_t outOriShape, uint64_t innerOriShape, uint64_t outBase,
+void Mc2QuantBatchMatmulV3BasicTiling::CalcTileCnt(uint64_t outOriShape, uint64_t innerOriShape, uint64_t outBase,
                                                 uint64_t innerBase,
                                                 std::vector<std::tuple<uint64_t, uint64_t>> &tileCnt) const
 {
@@ -1106,7 +1107,7 @@ void QuantBatchMatmulV3BasicTiling::CalcTileCnt(uint64_t outOriShape, uint64_t i
     return;
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckTileTail(uint64_t outTail, uint64_t innerTail, uint64_t outL2SplitTmp,
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckTileTail(uint64_t outTail, uint64_t innerTail, uint64_t outL2SplitTmp,
                                                   uint64_t innerL2SplitTmp) const
 {
     if ((outTail != 0 && outTail < outL2SplitTmp * L2_TILE_TAIL_RATIO) ||
@@ -1116,7 +1117,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckTileTail(uint64_t outTail, uint64_t inn
     return false;
 }
 
-bool QuantBatchMatmulV3BasicTiling::CheckTileClash(const std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> &tileInfo,
+bool Mc2QuantBatchMatmulV3BasicTiling::CheckTileClash(const std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> &tileInfo,
                                                    const std::tuple<uint64_t, uint64_t, uint64_t> &params,
                                                    std::vector<std::tuple<uint64_t, uint64_t>> &tileClash) const
 {
@@ -1131,7 +1132,7 @@ bool QuantBatchMatmulV3BasicTiling::CheckTileClash(const std::tuple<uint64_t, ui
            IsTileClash(outTail, innerTail, tileClash[L2_TAIL_INDEX], params);
 }
 
-uint64_t QuantBatchMatmulV3BasicTiling::CalcTile(uint64_t &outTile, uint64_t &innerTile, uint64_t &outL2Split,
+uint64_t Mc2QuantBatchMatmulV3BasicTiling::CalcTile(uint64_t &outTile, uint64_t &innerTile, uint64_t &outL2Split,
                                                  uint64_t &innerL2Split,
                                                  const std::tuple<uint64_t, uint64_t, double> &params) const
 {
@@ -1200,7 +1201,7 @@ uint64_t QuantBatchMatmulV3BasicTiling::CalcTile(uint64_t &outTile, uint64_t &in
     return realCalcOrder;
 }
 
-void QuantBatchMatmulV3BasicTiling::DoL2CacheTiling()
+void Mc2QuantBatchMatmulV3BasicTiling::DoL2CacheTiling()
 {
     uint64_t mSize = inputParams_.GetTotalMatmulApiMSize(basicTiling_.baseM);
     uint64_t sizeA = GetSizeWithDataType(mSize * inputParams_.kSize, inputParams_.aDtype);
@@ -1252,9 +1253,9 @@ void QuantBatchMatmulV3BasicTiling::DoL2CacheTiling()
 // 纯cube和mix cv冰雪在增量场景下baseN不同。
 // 小shape场景可能L0C可以开DB，需判断并设置
 // L0的计算访存比，防止大shape下选到差距大的base块
-bool QuantBatchMatmulV3BasicTiling::DoBasicTiling()
+bool Mc2QuantBatchMatmulV3BasicTiling::DoBasicTiling()
 {
-    QuantBatchMatmulV3HashItem hashValue(inputParams_, aicoreParams_);
+    Mc2QuantBatchMatmulV3HashItem hashValue(inputParams_, aicoreParams_);
     uint32_t tilingKey = Ops::Transformer::MurmurHash(&(hashValue.input()), sizeof(hashValue.input()));
     static MMBasicTilingHash tilingHashCache;
     if (tilingHashCache.Get(tilingKey, hashValue.input(), hashValue)) {
@@ -1283,14 +1284,14 @@ bool QuantBatchMatmulV3BasicTiling::DoBasicTiling()
     return true;
 }
 
-void QuantBatchMatmulV3BasicTiling::ResetBase(const uint64_t l0CSize)
+void Mc2QuantBatchMatmulV3BasicTiling::ResetBase(const uint64_t l0CSize)
 {
     basicTiling_.baseM = (l0CSize == L0C_SIZE_256_KB) ? BASIC_BLOCK_SIZE_256 : BASIC_BLOCK_SIZE_128;
     basicTiling_.baseN = BASIC_BLOCK_SIZE_256;
     basicTiling_.baseK = BASIC_BLOCK_SIZE_64;
 }
 
-bool QuantBatchMatmulV3BasicTiling::IsTilingDataInvalid() const
+bool Mc2QuantBatchMatmulV3BasicTiling::IsTilingDataInvalid() const
 {
     return (CheckNumberIsValid(basicTiling_.usedCoreNum, inputParams_.opName, "usedCoreNum") ||
             CheckNumberIsValid(basicTiling_.singleCoreK, inputParams_.opName, "singleCoreK") ||
@@ -1311,7 +1312,7 @@ bool QuantBatchMatmulV3BasicTiling::IsTilingDataInvalid() const
             CheckNumberIsValid(basicTiling_.nTileBlock, inputParams_.opName, "nTileBlock"));
 }
 
-void QuantBatchMatmulV3BasicTiling::SetMatmulTilingFromBasicTiling()
+void Mc2QuantBatchMatmulV3BasicTiling::SetMatmulTilingFromBasicTiling()
 {
     tilingData_.matmulTiling.set_M(inputParams_.GetTotalMatmulApiMSize(basicTiling_.baseM));
     tilingData_.matmulTiling.set_N(inputParams_.nSize);
@@ -1346,7 +1347,7 @@ void QuantBatchMatmulV3BasicTiling::SetMatmulTilingFromBasicTiling()
     tilingData_.params.set_biasThreeDim(static_cast<uint32_t>(inputParams_.batchBias > 1));
 }
 
-ge::graphStatus QuantBatchMatmulV3BasicTiling::DoLibApiTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3BasicTiling::DoLibApiTiling()
 {
     OP_TILING_CHECK(IsTilingDataInvalid(),
                     CUBE_INNER_ERR_REPORT(inputParams_.opName, "check tilingData invalid failed"),
@@ -1356,17 +1357,20 @@ ge::graphStatus QuantBatchMatmulV3BasicTiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t QuantBatchMatmulV3BasicTiling::GetTilingKey() const
+uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTilingKey() const
 {
     if (inputParams_.cDtype == ge::DT_BF16 && IsPertokenBasicSwitchCondition()) {
-        return RecursiveSum(
-            inputParams_.transB, inputParams_.transA, true, isBf16Opt_,
-            inputParams_.isPertoken, false, isAicAiv1_2);
+        uint64_t trans =
+            (static_cast<uint64_t>(inputParams_.transA) << 1) | static_cast<uint64_t>(inputParams_.transB);
+        bool isBasicTiling = true;
+        uint64_t kernelTemplateType = (static_cast<uint64_t>(isBf16Opt_) << 1) | static_cast<uint64_t>(isBasicTiling);
+        uint64_t optionAttrs = static_cast<uint64_t>(isAicAiv1_2) << 1;
+        return GET_TPL_TILING_KEY(trans, kernelTemplateType, static_cast<uint64_t>(inputParams_.isPertoken), optionAttrs);
     }
-    return QuantBatchMatmulV3Tiling::GetTilingKey(true);
+    return Mc2QuantBatchMatmulV3Tiling::GetTilingKey(true);
 }
 
-void QuantBatchMatmulV3BasicTiling::PrintBasicTiling() const
+void Mc2QuantBatchMatmulV3BasicTiling::PrintBasicTiling() const
 {
     if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
         return;
@@ -1387,12 +1391,12 @@ void QuantBatchMatmulV3BasicTiling::PrintBasicTiling() const
     OPS_LOG_D(inputParams_.opName, "basic tiling %s", ss.str().c_str());
 }
 
-ge::graphStatus QuantBatchMatmulV3BasicTiling::CalcUbTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3BasicTiling::CalcUbTiling()
 {
-    return QuantBatchMatmulV3Tiling::CalcUbTiling(basicTiling_.baseN, basicTiling_.baseM);
+    return Mc2QuantBatchMatmulV3Tiling::CalcUbTiling(basicTiling_.baseN, basicTiling_.baseM);
 }
 
-bool QuantBatchMatmulV3BasicTiling::GetUbDequantExtreSpace()
+bool Mc2QuantBatchMatmulV3BasicTiling::GetUbDequantExtreSpace()
 {
     uint64_t usedWorkSpaceSize = sizeof(int32_t) * static_cast<uint64_t>(tilingData_.matmulTiling.get_baseM()) *
                                  tilingData_.matmulTiling.get_baseN() * tilingData_.matmulTiling.get_usedCoreNum() *
@@ -1403,5 +1407,5 @@ bool QuantBatchMatmulV3BasicTiling::GetUbDequantExtreSpace()
     return true;
 }
 
-REGISTER_TILING_TEMPLATE("QuantBatchMatmulV3", QuantBatchMatmulV3BasicTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(Mc2QuantBatchMatmulV3, Mc2QuantBatchMatmulV3BasicTiling, 0);
 }  // namespace optiling

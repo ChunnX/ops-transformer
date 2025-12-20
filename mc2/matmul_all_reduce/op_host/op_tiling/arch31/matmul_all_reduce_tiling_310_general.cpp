@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_tiling_310_general.cc
@@ -14,12 +14,10 @@
  */
 #include "matmul_all_reduce_tiling_310_general.h"
 #include "op_mc2.h"
+#include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
 namespace optiling {
 bool MatmulAllReduceTiling310General::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND310P) {
-        return false;
-    }
     OP_LOGI(opName_, "start with MatmulAllReduceTiling310General tiling.");
     return true;
 }
@@ -76,20 +74,46 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
 uint64_t MatmulAllReduceTiling310General::GetTilingKey() const
 {
     if (isKZero_) {
-        const uint64_t emptyTensorKey = 2100000;
-        OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu", emptyTensorKey);
+        const uint64_t emptyTensorKey = GET_TPL_TILING_KEY(
+            static_cast<uint64_t>(ASCEND_310P),
+            static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_FP_MM),
+            static_cast<uint64_t>(isKZero_),
+            MATMUL_ALLREDUCE_INT8_COMM_F,
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            SET_NOT_USE_FM_MM_TPL_TILING,
+            SET_NOT_USE_QUANT_MM_TPL_TILING,
+            SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING);
+        OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu, isKZero_ %lu", emptyTensorKey, isKZero_);
         return emptyTensorKey;
     }
-    // L2cache, transB, isWeightQuant, AntiQuantType, hasAntiQuantOffset, 310Version
-    const uint64_t tilingKey = RecursiveSum(
-        enableL2Cache_, isTransB_, isWeightQuant_, static_cast<int32_t>(antiQuantT_), hasAntiQuantOffset_, isKZero_,
-        static_cast<uint64_t>(MatmulAllReduceTiling::ALL_REDUCE_GENERAL_310));
-    OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu", tilingKey);
+
+    uint64_t matmulAllReduceType = isWeightQuant_ ?
+        MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL : MATMUL_ALLREDUCE_MM_TYPE_FP_MM;
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        static_cast<uint64_t>(ASCEND_310P),
+        static_cast<uint64_t>(matmulAllReduceType),
+        MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+        MATMUL_ALLREDUCE_INT8_COMM_F,
+        static_cast<uint64_t>(enableL2Cache_),
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        SET_NOT_USE_FM_MM_TPL_TILING,
+        SET_NOT_USE_QUANT_MM_TPL_TILING,
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        static_cast<uint64_t>(hasAntiQuantOffset_),
+        static_cast<uint64_t>(antiQuantT_),
+        1UL,
+        static_cast<uint64_t>(isTransB_),
+        static_cast<uint64_t>(FORMAT_B_ND));
+
+    OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu. antiQuantT_ %lu, hasAntiQuantOffset_ %lu, isTransB_ %lu,     \
+        enableL2Cache_ %lu, isWeightQuant_ %lu, isKZero_ %lu", tilingKey, antiQuantT_, hasAntiQuantOffset_, isTransB_, enableL2Cache_,\
+        isWeightQuant_, isKZero_);
     return tilingKey;
 }
 
 void MatmulAllReduceTiling310General::DoMatmulTiling310(
-    matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling, L2cacheTilePara& l2cacheTiling)
+    matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling, Mc2L2cacheTilePara& l2cacheTiling)
 {
     DoMatmulTiling(mm1, cubeTiling);
     SetTransLength(mm1, cubeTiling);
@@ -156,4 +180,7 @@ void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMat
     cubeTiling.set_transLength(ubTransLen);
     cubeTiling.set_shareUbSize(0);
 }
+
+//注册Tiling类
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,MatmulAllReduceTiling310General,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P),3);
 } // namespace optiling

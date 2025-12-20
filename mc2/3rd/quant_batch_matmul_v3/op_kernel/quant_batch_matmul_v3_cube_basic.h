@@ -1,33 +1,33 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file quant_batch_matmul_v3_cube_basic.h
  * \brief
  */
-#ifndef QUANT_BATCH_MATMUL_V3_CUBE_BASIC_H
-#define QUANT_BATCH_MATMUL_V3_CUBE_BASIC_H
+#ifndef MC2_QUANT_BATCH_MATMUL_V3_CUBE_BASIC_H
+#define MC2_QUANT_BATCH_MATMUL_V3_CUBE_BASIC_H
 
 #include "quant_batch_matmul_v3_block.h"
 #include "quant_batch_matmul_v3_update.h"
 
 namespace AscendC {
 template <TemplateBasicType>
-class QuantBatchMatmulV3BaseKernel {  // 纯cube kernel，无pertoken，输出int8/fp16/int32
+class Mc2QuantBatchMatmulV3BaseKernel {  // 纯cube kernel，无pertoken，输出int8/fp16/int32
 public:
-    __aicore__ inline QuantBatchMatmulV3BaseKernel() {}
+    __aicore__ inline Mc2QuantBatchMatmulV3BaseKernel() {}
 
     __aicore__ inline void InitInputs(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale, GM_ADDR bias, GM_ADDR y);
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale, GM_ADDR bias, GM_ADDR y, GM_ADDR workSpace,
-                                const QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe);
+                                const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe);
 
     __aicore__ inline void Process();
     __aicore__ inline UPDATE_TYPE &GetUpdateObj() { return update_; }
@@ -36,7 +36,7 @@ protected:
     __aicore__ inline void MMCompute();
     __aicore__ inline void OneTileCompute(uint64_t mTileIndex, uint64_t nTileIndex);
 
-    QuantBatchMatmulV3BaseBlock block_;
+    Mc2QuantBatchMatmulV3BaseBlock block_;
     UPDATE_TYPE update_;  // 量化mm或mc2的更新计算大小和地址的接口
     QBmmBlockOffset offset_;
     using A_TYPE = matmul::MatmulType<TPosition::GM, DequantBmm::GetFormat(x1Format), x1Type, aTrans>;
@@ -55,9 +55,9 @@ protected:
 };
 
 template <TemplateBasicType>
-__aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Init(
+__aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR scale, GM_ADDR bias, GM_ADDR y, GM_ADDR workSpace,
-    const QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe)
+    const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData, TPipe *tPipe)
 {
     block_.Init(tilingData);
     update_.template Init<x1Format, x2Format, aTrans, bTrans>(&tilingData->matmulTiling, block_.params_);
@@ -70,7 +70,7 @@ __aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Init(
 }
 
 template <TemplateBasicType>
-__aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::InitInputs(GM_ADDR x1, GM_ADDR x2,
+__aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::InitInputs(GM_ADDR x1, GM_ADDR x2,
                                                                                     GM_ADDR scale, GM_ADDR bias,
                                                                                     GM_ADDR y)
 {
@@ -89,7 +89,7 @@ __aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::InitInp
 }
 
 template <TemplateBasicType>
-__aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Process()
+__aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Process()
 {
     if ASCEND_IS_AIV {
         return;
@@ -114,7 +114,7 @@ __aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::Process
 }
 
 template <TemplateBasicType>
-__aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::OneTileCompute(uint64_t mTileIndex,
+__aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::OneTileCompute(uint64_t mTileIndex,
                                                                                         uint64_t nTileIndex)
 {
     for (uint64_t j = 0; j < block_.realRound_; j++) {
@@ -128,7 +128,7 @@ __aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::OneTile
 }
 
 template <TemplateBasicType>
-__aicore__ inline void QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::MMCompute()
+__aicore__ inline void Mc2QuantBatchMatmulV3BaseKernel<TemplateBasicValue>::MMCompute()
 {
     mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN,
                        block_.matmulTilingData_->singleCoreK);

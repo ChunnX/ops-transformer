@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_tiling_helper.cpp
@@ -148,15 +148,17 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(
 }
 
 bool MoeDistributeDispatchTilingHelper::CheckTensorDim(gert::TilingContext *context, const char *nodeName,
-    const bool isScales, const uint32_t quantMode)
+    const bool isScales, const uint32_t quantMode, const uint32_t opVersion)
 {
     OP_TILING_CHECK(!CheckInputTensorDim(context, nodeName, isScales, quantMode), 
         OP_LOGE(nodeName, "Input param shape is invalid."), return false);
 
-    // x_active_mask当前不支持传入
-    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
-    OP_TILING_CHECK(xActiveMaskStorageShape != nullptr, OP_LOGE(nodeName, "x_active_mask only support input None."),
-        return false);
+    // A3/A5 v1接口的x_active_mask不支持传入
+    if (opVersion == OP_VERSION_1) {
+        const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+        OP_TILING_CHECK(xActiveMaskStorageShape != nullptr, OP_LOGE(nodeName, "x_active_mask only support input None."),
+            return false);
+    }
 
     OP_TILING_CHECK((!CheckOutputTensorDim(context, nodeName, quantMode)) 
         || (!CheckEpTpRecvTensorDim(context, nodeName)), 
@@ -435,7 +437,7 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
 ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
     const bool isScales, const uint32_t quantMode)
 {
-    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, quantMode),
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, quantMode, OP_VERSION_1),
         OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorDataType(context, nodeName, isScales, quantMode),
         OP_LOGE(nodeName, "params dataType is invalid."), return ge::GRAPH_FAILED);
@@ -445,16 +447,43 @@ ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispa
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context, const char *nodeName,
-    const bool isScales, const uint32_t quantMode)
+ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context,
+    const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask, const uint32_t opVersion)
 {
-    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, quantMode),
+    // nodeName已在调用处判空
+    const char *nodeName = context->GetNodeName();
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, quantMode, opVersion),
         OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorDataTypeA5(context, nodeName, isScales, quantMode),
         OP_LOGE(nodeName, "params dataType is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, isScales, quantMode),
         OP_LOGE(nodeName, "params format is invalid."), return ge::GRAPH_FAILED);
-
+    if ((opVersion != OP_VERSION_1) && (isTokenMask != 0)) {
+        OP_TILING_CHECK(!CheckTokenMask(context, nodeName), OP_LOGE(nodeName, "xActiveMask is invalid."), return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
+}
+
+bool MoeDistributeDispatchTilingHelper::CheckTokenMask(gert::TilingContext *context, const char *nodeName)
+{
+    // Check Dim/DType/Format
+    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+    OP_TILING_CHECK(xActiveMaskStorageShape == nullptr, OP_LOGE(nodeName, "xActiveMaskStorageShape is null."),
+                    return false);
+    OP_TILING_CHECK(xActiveMaskStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+                    OP_LOGE(nodeName, "xActiveMask must be 1-dim, but current dim num is %lu.",
+                            xActiveMaskStorageShape->GetStorageShape().GetDimNum()),
+                    return false);
+    auto xActiveMaskDesc = context->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
+    OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE(nodeName, "xActiveMaskDesc is null."), return false);
+    OP_TILING_CHECK(xActiveMaskDesc->GetDataType() != ge::DT_BOOL,
+                    OP_LOGE(nodeName, "xActiveMask datatype is invalid, datatype should be bool, but is %s.",
+                            Ops::Base::ToString(xActiveMaskDesc->GetDataType()).c_str()),
+                    return false);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat())) ==
+                        ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName, "xActiveMask format is invalid."), return false);
+
+    return true;
 }
 }

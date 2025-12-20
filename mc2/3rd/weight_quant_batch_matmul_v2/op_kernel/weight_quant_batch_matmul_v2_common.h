@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_common.h
@@ -37,7 +37,6 @@ using AscendC::DEFAULT_BLK_STRIDE;
 using AscendC::DEFAULT_REPEAT_STRIDE;
 using AscendC::GetBlockIdx;
 using AscendC::GlobalTensor;
-using AscendC::InitDump;
 using AscendC::int4b_t;
 using AscendC::LocalTensor;
 using AscendC::MAX_REPEAT_TIMES;
@@ -58,7 +57,7 @@ using AscendC::UnaryRepeatParams;
 using matmul::MatmulImpl;
 using matmul::MatmulType;
 
-namespace WeightQuantBatchMatmulV2 {
+namespace Mc2WeightQuantBatchMatmulV2 {
 struct AntiquantLoopParams {
     uint8_t repeatRemain = 0;
     uint8_t maskRemain = 0;
@@ -81,26 +80,26 @@ struct WeightSplitInfo {
 };
 
 template <class T>
-struct AntiQuantCalType {
+struct Mc2AntiQuantCalType {
     using type = float;
 };
 
 template <>
-struct AntiQuantCalType<half> {
+struct Mc2AntiQuantCalType<half> {
     using type = half;
 };
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-class WeightQuantBatchMatmulV2Common
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+class Mc2WeightQuantBatchMatmulV2Common
 {
 public:
-    __aicore__ inline WeightQuantBatchMatmulV2Common(){};
+    __aicore__ inline Mc2WeightQuantBatchMatmulV2Common(){};
 
 protected:
-    using antiQuantCalType = typename AntiQuantCalType<biasType>::type;
-    __aicore__ inline void BaseInit(const WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe);
+    using antiQuantCalType = typename Mc2AntiQuantCalType<biasType>::type;
+    __aicore__ inline void BaseInit(const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void InitInput(
         GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
         GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y);
@@ -177,7 +176,7 @@ protected:
     static constexpr uint32_t FP16_ALIGN_SIZE = (ONE_BLK_SIZE / sizeof(half));
     static constexpr uint32_t FRACTAL_SIZE_F16 = 256;
     TPipe* pipe_;
-    const WeightQuantBatchMatmulV2TilingData* tiling_;
+    const Mc2WeightQuantBatchMatmulV2TilingData* tiling_;
 
     bool biasFlag_ = false;
 
@@ -215,7 +214,7 @@ protected:
     LocalTensor<antiQuantCalType> offsetComputeTensor_;
     LocalTensor<antiQuantCalType> scaleComputeTensor_;
 
-    AntiQuantTensorShape tensorShape_;
+    Mc2AntiQuantTensorShape tensorShape_;
 
     /*
     A矩阵类型关联的buffer分配方式(包括dtype, 以w8为例):
@@ -259,10 +258,10 @@ protected:
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::BaseInit(const WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe)
+    quantType>::BaseInit(const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe)
 {
     tiling_ = tilingData;
     pipe_ = tPipe;
@@ -271,8 +270,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::InitWorkSpace(GM_ADDR workspace)
 {
@@ -281,8 +280,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::ComputeConstexpr()
 {
     cubeNDimIdx_ = curBlockIdx_ % tiling_->cubeBlockDimN;
@@ -324,7 +323,7 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
     // per channel/per tensor场景，可以近似等价为groupNum_为1的per group场景，因此可以赋默认值1
     groupNum_ = 1;
 
-    if constexpr (antiQuantType == QuantType::PER_GROUP) {
+    if constexpr (antiQuantType == Mc2QuantType::PER_GROUP) {
         groupNum_ = CeilDiv(tiling_->kSize, tiling_->groupSize);
         if constexpr (bTrans) {
             if (tiling_->vecSingleK >= tiling_->kSize) {
@@ -341,8 +340,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::
     InitInput(
         GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
@@ -358,7 +357,7 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
     scaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(antiquantScale), tiling_->matmulTiling.N);
     quantScaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(quantScale), tiling_->matmulTiling.N);
 
-    if constexpr (antiQuantType == QuantType::PER_TENSOR) {
+    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {
         if constexpr (IsSameType<xType, bfloat16_t>::value) {
             scaleValue_ = ToFloat(scaleGlobal_.GetValue(0));
             if constexpr (hasAntiQuantOffset) {
@@ -375,8 +374,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::InitBuffer()
 {
     // offset/scale的shape需要按照32Byte对齐看
@@ -391,7 +390,7 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
     // 需要broadcast的场景：
     // (1) ND的转置场景[包括per-group和per-channel] (2) Nz的per-channel场景 (3) Nz的per-group转置场景
     if ((bTrans && wFormat_ == static_cast<int32_t>(CubeFormat::ND)) ||
-        (wFormat_ == static_cast<int32_t>(CubeFormat::NZ) && (antiQuantType == QuantType::PER_CHANNEL || bTrans))) {
+        (wFormat_ == static_cast<int32_t>(CubeFormat::NZ) && (antiQuantType == Mc2QuantType::PER_CHANNEL || bTrans))) {
         // 尾轴broadCast至32Byte对齐；Nz场景16元素对齐
         antiquantBroadCastSize = antiquantShape * ONE_BLK_SIZE * broadCastFactor_;
     }
@@ -434,12 +433,12 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline int64_t WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline int64_t Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::ComputeAntiquantShape()
 {
-    if constexpr (antiQuantType != QuantType::PER_GROUP) {
+    if constexpr (antiQuantType != Mc2QuantType::PER_GROUP) {
         return CeilDiv(tiling_->vecSingleN * groupNum_, ONE_BLK_SIZE / sizeof(xType)) * (ONE_BLK_SIZE / sizeof(xType));
     } else if constexpr (bTrans) {
         // 全载场景
@@ -461,8 +460,8 @@ __aicore__ inline int64_t WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::AntiquantWeight(uint64_t cubeNLoopIdx, uint64_t nBaseOffset, uint64_t nRealSize, uint64_t nLoopLimit)
 {
@@ -491,7 +490,7 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
             weightSplitInfo.vecSingleN = nRealSize - weightSplitInfo.splitNOffset;
         }
 
-        if constexpr (antiQuantType == QuantType::PER_CHANNEL) {
+        if constexpr (antiQuantType == Mc2QuantType::PER_CHANNEL) {
             CopyInAntiquantParams(weightSplitInfo);
         }
 
@@ -505,7 +504,7 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
                 weightSplitInfo.vecSingleK = tiling_->kSize - weightSplitInfo.kOffset;
             }
 
-            if constexpr (antiQuantType == QuantType::PER_GROUP) {
+            if constexpr (antiQuantType == Mc2QuantType::PER_GROUP) {
                 CopyInAntiquantParams(weightSplitInfo);
             }
 
@@ -518,12 +517,12 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::CopyInAntiquantParams(WeightSplitInfo& weightSplitInfo)
 {
-    if constexpr (antiQuantType == QuantType::PER_TENSOR) {
+    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {
         // pertensor场景直接return
         return;
     }
@@ -551,12 +550,12 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::SetAntiquantCopyInParams(uint64_t& antiquantOffset, WeightSplitInfo& weightSplitInfo)
 {
-    if constexpr (antiQuantType != QuantType::PER_GROUP) {
+    if constexpr (antiQuantType != Mc2QuantType::PER_GROUP) {
         // 非group场景，每次搬运n个数
         antiquantCopyinParams_.blockLen = weightSplitInfo.vecSingleN * sizeof(xType);
     } else {
@@ -586,20 +585,20 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::SetAntiquantTensorShape(WeightSplitInfo& weightSplitInfo)
 {
-    if constexpr (antiQuantType == QuantType::PER_GROUP) {
+    if constexpr (antiQuantType == Mc2QuantType::PER_GROUP) {
         SetAntiquantTensorShapeWithGroup(weightSplitInfo);
     }
 }
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::SetAntiquantTensorShapeWithGroup(WeightSplitInfo& weightSplitInfo)
 {
@@ -634,12 +633,12 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::BroadCastAntiquantParams(LocalTensor<antiQuantCalType>& dstTensor, LocalTensor<xType>& srcTensor)
 {
-    if constexpr (antiQuantType == QuantType::PER_TENSOR) {
+    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {
         return;
     }
     if constexpr (bTrans) {
@@ -654,7 +653,7 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
             Brcb(dstTensor, srcTensor, srcTensor.GetSize() / (ONE_BLK_FLOAT_NUM), brcbParams_);
         }
     } else {
-        if (wFormat_ == static_cast<int32_t>(CubeFormat::NZ) && antiQuantType == QuantType::PER_CHANNEL) {
+        if (wFormat_ == static_cast<int32_t>(CubeFormat::NZ) && antiQuantType == Mc2QuantType::PER_CHANNEL) {
             UnaryRepeatParams unaryRepeatParams;
             unaryRepeatParams.dstBlkStride = 1;
             unaryRepeatParams.srcBlkStride = 1;
@@ -694,8 +693,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::WeightCopyInAndCast(WeightSplitInfo& weightSplitInfo)
 {
@@ -750,8 +749,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::AntiQuantCompute(WeightSplitInfo& weightSplitInfo)
 {
@@ -788,11 +787,11 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
         tensorShape_.srcOrigK = static_cast<uint32_t>(weightSplitInfo.vecSingleK);
         tensorShape_.srcOrigN = static_cast<uint32_t>(weightSplitInfo.vecSingleN);
     }
-    if constexpr (antiQuantType == QuantType::PER_TENSOR) {
-        AntiQuant<antiQuantCalType, antiQuantCalType, antiQuantCalType, bTrans, hasAntiQuantOffset>(
+    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {
+        Mc2AntiQuant<antiQuantCalType, antiQuantCalType, antiQuantCalType, bTrans, hasAntiQuantOffset>(
             antiquantWeightTensor, antiquantWeightTensor, scaleValue_, offsetValue_, sharedTmpBuffer_);
     } else {
-        AntiQuant<antiQuantCalType, antiQuantCalType, antiQuantCalType, bTrans, hasAntiQuantOffset>(
+        Mc2AntiQuant<antiQuantCalType, antiQuantCalType, antiQuantCalType, bTrans, hasAntiQuantOffset>(
             antiquantWeightTensor, antiquantWeightTensor, scaleComputeTensor_, offsetComputeTensor_, tensorShape_,
             sharedTmpBuffer_, tiling_->groupSize);
     }
@@ -801,8 +800,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::
     AntiQuantAdd(
         const LocalTensor<antiQuantCalType>& srcTensor, const LocalTensor<antiQuantCalType>& offsetComputeBuf,
@@ -829,8 +828,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::
     AntiQuantAddAtMask(
         const LocalTensor<antiQuantCalType>& srcTensor, const LocalTensor<antiQuantCalType>& offsetComputeBuf,
@@ -850,8 +849,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::
     AntiQuantMul(
         const LocalTensor<antiQuantCalType>& srcTensor, const LocalTensor<antiQuantCalType>& scaleComputeBuf,
@@ -878,8 +877,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::
     AntiQuantMulAtMask(
         const LocalTensor<antiQuantCalType>& srcTensor, const LocalTensor<antiQuantCalType>& scaleComputeBuf,
@@ -899,8 +898,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType>
-__aicore__ inline void WeightQuantBatchMatmulV2Common<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2Common<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::WeightCopyOut(WeightSplitInfo& weightSplitInfo)
 {
@@ -941,5 +940,5 @@ __aicore__ inline void WeightQuantBatchMatmulV2Common<
     DataCopyPad(weightCache_[wDstOffset], weightOutput, copyoutParams);
     weightOutputQueue_.FreeTensor(weightOutput);
 }
-} // namespace WeightQuantBatchMatmulV2
+} // namespace Mc2WeightQuantBatchMatmulV2
 #endif // WEIGHT_QUANT_BATCHMATMUL_V2_COMMON_H

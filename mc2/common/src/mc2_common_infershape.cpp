@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_common_infershape.cpp
@@ -20,7 +20,7 @@ using namespace ge;
 namespace ops {
 // infershape 公共函数
 ge::graphStatus CommonParamCheck(
-    gert::InferShapeContext* context, const size_t isTransAIndex, const size_t isTransBIndex, CommParas& commParas)
+    const gert::InferShapeContext* context, const size_t isTransAIndex, const size_t isTransBIndex, CommParas& commParas)
 {
     commParas.x1MatrixShape = context->GetInputShape(0);
     OPS_CHECK_NULL_WITH_CONTEXT(context, commParas.x1MatrixShape);
@@ -73,9 +73,9 @@ ge::graphStatus CommonParamCheck(
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus InferShapeAllGatherMatmulCommon(gert::InferShapeContext* context)
+
+ge::graphStatus AllGatherMatmulInferYShape(gert::InferShapeContext* context, CommParas& commParas)
 {
-    CommParas commParas;
     OP_LOGE_IF(
         CommonParamCheck(context, AG_IS_TRANS_A, AG_IS_TRANS_B, commParas) != GRAPH_SUCCESS, GRAPH_FAILED,
         context->GetNodeName(), "CommonParamCheck excute failed.");
@@ -94,7 +94,17 @@ ge::graphStatus InferShapeAllGatherMatmulCommon(gert::InferShapeContext* context
     yShape->SetDimNum(SUPPORT_DIM_SIZE);
     yShape->SetDim(0, commParas.dimM * commParas.rankSize);
     yShape->SetDim(1, commParas.dimN);
-    const bool* isGatherOut = context->GetAttrs()->GetAttrPointer<bool>(GATHER_OUT);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllGatherMatmulInferGatherOutShape(gert::InferShapeContext* context, const CommParas& commParas,
+                                                   const size_t gatherIndex)
+{
+    if (context->GetAttrs() == nullptr) {
+        OP_LOGE(context->GetNodeName(), "get attrs failed.");
+        return ge::GRAPH_FAILED;
+    }
+    const bool* isGatherOut = context->GetAttrs()->GetAttrPointer<bool>(gatherIndex);
     OPS_CHECK_NULL_WITH_CONTEXT(context, isGatherOut);
     gert::Shape* gatherOutShape = context->GetOutputShape(1);
     OPS_CHECK_NULL_WITH_CONTEXT(context, gatherOutShape);
@@ -106,6 +116,20 @@ ge::graphStatus InferShapeAllGatherMatmulCommon(gert::InferShapeContext* context
         gatherOutShape->SetDimNum(1);
         gatherOutShape->SetDim(0, 0);
     }
+    return GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllGatherMatmulCommonInferShape(gert::InferShapeContext* context, const size_t gatherIndex)
+{
+    CommParas commParas;
+    OP_LOGE_IF(
+        AllGatherMatmulInferYShape(context, commParas) != GRAPH_SUCCESS, GRAPH_FAILED,
+        context->GetNodeName(), "InferShapeAllGatherMatmul inferYshape excute failed.");
+    
+    OP_LOGE_IF(
+        AllGatherMatmulInferGatherOutShape(context, commParas, gatherIndex) != GRAPH_SUCCESS, GRAPH_FAILED,
+        context->GetNodeName(), "InferShapeAllGatherMatmul inferYshape excute failed.");
+
     return GRAPH_SUCCESS;
 }
 

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3_tiling.cc
@@ -14,18 +14,19 @@
  */
 
 #include "quant_batch_matmul_v3_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include <map>
 #include <numeric>
 
-#include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_type.h"
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
 #include "register/op_impl_registry.h"
-#include "adaptive_sliding_window_tiling.h"
+#include "arch35/adaptive_sliding_window_tiling.h"
 #include "mc2_log.h"
 #include "platform/platform_infos_def.h"
+#include "../../op_kernel/quant_batch_matmul_v3_tiling_key.h"
 
 using AscendC::BLOCK_CUBE;    // uint32_t 16
 using AscendC::ONE_BLK_SIZE;  // uint32_t 32
@@ -41,7 +42,7 @@ constexpr uint32_t WORKSPACE_LIMIT = 50U * 1024U * 1024U; // workspaca limit 50M
 constexpr int32_t BANK_LEN = 512;
 constexpr int64_t LAST_AXIS_LIMIT = 65535;
 
-// QuantBatchMatmulV3 input index, mc2 is not same
+// Mc2QuantBatchMatmulV3 input index, mc2 is not same
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
 constexpr uint32_t SCALE_INDEX = 2;
@@ -95,14 +96,14 @@ std::string DType2Str(const ge::DataType dataType)
 }  // namespace
 
 namespace optiling {
-QuantBatchMatmulV3Tiling::QuantBatchMatmulV3Tiling(gert::TilingContext *context)
-    : QuantBatchMatmulV3TilingBase(context, false), tilingData_(tilingDataSelf_)
+Mc2QuantBatchMatmulV3Tiling::Mc2QuantBatchMatmulV3Tiling(gert::TilingContext *context)
+    : Mc2QuantBatchMatmulV3TilingBase(context, false), tilingData_(tilingDataSelf_)
 {
     Reset();
 }
 
-QuantBatchMatmulV3Tiling::QuantBatchMatmulV3Tiling(gert::TilingContext *context, QuantBatchMatmulV3TilingData *out)
-    : QuantBatchMatmulV3TilingBase(context, true),
+Mc2QuantBatchMatmulV3Tiling::Mc2QuantBatchMatmulV3Tiling(gert::TilingContext *context, Mc2QuantBatchMatmulV3TilingData *out)
+    : Mc2QuantBatchMatmulV3TilingBase(context, true),
       tilingData_(*out)
 {
     Reset();
@@ -110,7 +111,7 @@ QuantBatchMatmulV3Tiling::QuantBatchMatmulV3Tiling(gert::TilingContext *context,
     inputParams_.Reset();
 }
 
-void QuantBatchMatmulV3Tiling::Reset()
+void Mc2QuantBatchMatmulV3Tiling::Reset()
 {
     isBf16Opt_ = false;
     isUbQuant_ = false;
@@ -123,18 +124,18 @@ void QuantBatchMatmulV3Tiling::Reset()
     }
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::GetPlatformInfo()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::GetPlatformInfo()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::GetShapeAttrsInfo()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::GetShapeAttrsInfo()
 {
     tilingDataSize_ = tilingData_.GetDataSize();
-    return QuantBatchMatmulV3TilingBase::GetShapeAttrsInfo();
+    return Mc2QuantBatchMatmulV3TilingBase::GetShapeAttrsInfo();
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2ub() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2ub() const
 {
     OP_TILING_CHECK(
         inputParams_.aDtype != ge::DT_INT8 || inputParams_.bDtype != ge::DT_INT8,
@@ -174,7 +175,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2ub() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForSupportedList() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForSupportedList() const
 {
     // x1 x2 scale bias y 合法dtype
     OP_TILING_CHECK(
@@ -206,7 +207,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForSupportedList() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForA4W4() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForA4W4() const
 {
     // int4
     if (inputParams_.aDtype == ge::DT_INT4) {
@@ -246,7 +247,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForA4W4() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForPertoken() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForPertoken() const
 {
     if (context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX) != nullptr &&
         context_->GetOptionalInputShape(PERTOKEN_SCALE_INDEX) != nullptr) {
@@ -302,7 +303,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForPertoken() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForX1NZ() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForX1NZ() const
 {
     // 当y为int8时，x1必须为ND
     auto x1Desc = context_->GetInputDesc(X1_INDEX);
@@ -323,7 +324,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForX1NZ() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForUnclassified() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForUnclassified() const
 {
     // dtype 约束条件
     // 当bias为BF16时，y必须为BF16
@@ -374,7 +375,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForUnclassified() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2out() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2out() const
 {
     // 对可选类型进行校验
     if (!CheckDtypeOnOnlyL0c2outForSupportedList()) {
@@ -393,7 +394,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2out() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckShapeInRangeForOptionalInputs(const gert::StorageShape *biasShape,
+bool Mc2QuantBatchMatmulV3Tiling::CheckShapeInRangeForOptionalInputs(const gert::StorageShape *biasShape,
                                                                   const gert::StorageShape *pertokenShape) const
 {
     if (biasShape != nullptr) {
@@ -413,7 +414,7 @@ bool QuantBatchMatmulV3Tiling::CheckShapeInRangeForOptionalInputs(const gert::St
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::BiasShapeCheck(const gert::Shape &biasShape) const
+bool Mc2QuantBatchMatmulV3Tiling::BiasShapeCheck(const gert::Shape &biasShape) const
 {
     auto biasDimNum = biasShape.GetDimNum();
     if (biasDimNum == 1) {
@@ -445,7 +446,7 @@ but it is %zu while n is %lu.",
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, const gert::StorageShape *biasShape,
+bool Mc2QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, const gert::StorageShape *biasShape,
                                              const gert::StorageShape *pertokenShape,
                                              const std::vector<int64_t> &dimValueOfMKN) const
 {
@@ -485,7 +486,7 @@ bool QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, con
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckShape(const std::vector<gert::Shape *> &mandtoryShape,
+bool Mc2QuantBatchMatmulV3Tiling::CheckShape(const std::vector<gert::Shape *> &mandtoryShape,
                                           const gert::StorageShape *biasShape,
                                           const gert::StorageShape *pertokenShape,
                                           const std::vector<int64_t> &dimValueOfMKN) const
@@ -511,7 +512,7 @@ bool QuantBatchMatmulV3Tiling::CheckShape(const std::vector<gert::Shape *> &mand
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckDtype() const
+bool Mc2QuantBatchMatmulV3Tiling::CheckDtype() const
 {
     //无芯片差异的公共校验
     OP_TILING_CHECK(
@@ -528,7 +529,7 @@ bool QuantBatchMatmulV3Tiling::CheckDtype() const
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::CheckShapeInBoundary(const gert::Shape &shape, uint32_t shapeIdx) const
+bool Mc2QuantBatchMatmulV3Tiling::CheckShapeInBoundary(const gert::Shape &shape, uint32_t shapeIdx) const
 {
     int64_t mul = 1;
     int64_t mulBound = 1;
@@ -540,7 +541,7 @@ bool QuantBatchMatmulV3Tiling::CheckShapeInBoundary(const gert::Shape &shape, ui
                         CUBE_INNER_ERR_REPORT(inputParams_.opName,
                                               "Last dimension of %s should not be larger than 65535 but actual is %ld. \
                                                If user is using the graph mode to call the method, please enable \
-                                               the QuantBatchMatmulV3TransposeFusionPass.",
+                                               the Mc2QuantBatchMatmulV3TransposeFusionPass.",
                                               dimName, curDim),
                         return false);
 
@@ -562,7 +563,7 @@ but actual %zu dimension of %s is %ld.",
     return true;
 }
 
-void QuantBatchMatmulV3Tiling::SetQuantBatchMatmulRunParas(QuantBatchMatmulRunParas& runParams, const optiling::QuantBatchMatmulInfo& inputParams) {
+void Mc2QuantBatchMatmulV3Tiling::SetQuantBatchMatmulRunParas(QuantBatchMatmulRunParas& runParams, const optiling::Mc2QuantBatchMatmulInfo& inputParams) {
     runParams.mSize = inputParams.mSize;
     runParams.kSize = inputParams.kSize;
     runParams.nSize = inputParams.nSize;
@@ -578,7 +579,7 @@ void QuantBatchMatmulV3Tiling::SetQuantBatchMatmulRunParas(QuantBatchMatmulRunPa
     runParams.batchC = inputParams.batchC;
 }
 
-void QuantBatchMatmulV3Tiling::ProcessMSmall()
+void Mc2QuantBatchMatmulV3Tiling::ProcessMSmall()
 {
     QuantBatchMatmulRunParas runParams_;
     SetQuantBatchMatmulRunParas(runParams_, inputParams_);
@@ -603,7 +604,7 @@ void QuantBatchMatmulV3Tiling::ProcessMSmall()
     }
 }
 
-void QuantBatchMatmulV3Tiling::UpdateSmallMTbeTiling()
+void Mc2QuantBatchMatmulV3Tiling::UpdateSmallMTbeTiling()
 {
     // 通常有24个核，但是micro batch场景可能会使用16核
     bool isValidAicNum = aicoreParams_.aicNum == 24 || aicoreParams_.aicNum == 16;
@@ -668,7 +669,7 @@ void QuantBatchMatmulV3Tiling::UpdateSmallMTbeTiling()
     UpdateSmallMTbeTiling(baseM, baseN, baseK);
 }
 
-void QuantBatchMatmulV3Tiling::UpdateSmallMTbeTiling(uint64_t baseM, uint64_t baseN, uint64_t baseK)
+void Mc2QuantBatchMatmulV3Tiling::UpdateSmallMTbeTiling(uint64_t baseM, uint64_t baseN, uint64_t baseK)
 {
     constexpr uint64_t enableDoubleBuffer = 2UL;
     auto blockNum = ops::CeilDiv(inputParams_.nSize, baseN);
@@ -712,7 +713,7 @@ void QuantBatchMatmulV3Tiling::UpdateSmallMTbeTiling(uint64_t baseM, uint64_t ba
     }
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::DoOpTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::DoOpTiling()
 {
     isUbQuant_ = inputParams_.cDtype == ge::DT_BF16 || inputParams_.isPertoken;
     // 需要给aicoreParams_ 和libApiWorkSpaceSize赋值
@@ -739,7 +740,7 @@ ge::graphStatus QuantBatchMatmulV3Tiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::InitTilingData(matmul_tiling::MatmulApiTilingBase &mm, bool fallback)
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::InitTilingData(matmul_tiling::MatmulApiTilingBase &mm, bool fallback)
 {
     auto aFormat = inputParams_.aFormat == ge::FORMAT_ND ? matmul_tiling::CubeFormat::ND : matmul_tiling::CubeFormat::NZ;
     auto bFormat = inputParams_.bFormat == ge::FORMAT_ND ? matmul_tiling::CubeFormat::ND : matmul_tiling::CubeFormat::NZ;
@@ -773,13 +774,13 @@ ge::graphStatus QuantBatchMatmulV3Tiling::InitTilingData(matmul_tiling::MatmulAp
     }
     mm.SetBufferSpace(compileInfo_.l1Size, compileInfo_.l0cSize, compileInfo_.ubSize);
     if (mm.GetTiling(tilingData_.matmulTiling) == -1) {
-        OP_LOGE(inputParams_.opName, "Quant MatmulV3 Get Tiling Failed!");
+        OP_LOGE(inputParams_.opName, "Quant Mc2MatmulV3 Get Tiling Failed!");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantBatchMatmulV3Tiling::ConstructCacheParams(BatchmatmulCompileParas &compileParams,
+void Mc2QuantBatchMatmulV3Tiling::ConstructCacheParams(BatchmatmulCompileParas &compileParams,
                                                     BatchmatmulRunParas &runParams) const
 {
     compileParams.binary_mode_flag = true;
@@ -848,7 +849,7 @@ void QuantBatchMatmulV3Tiling::ConstructCacheParams(BatchmatmulCompileParas &com
 // 需要在传入TBE Tiling前对batch轴解除多核的绑定
 // 使得M/N轴上能有更多的核数参与tiling
 // 避免singleCoreM/N超过INT32_MAX
-void QuantBatchMatmulV3Tiling::ModifyCacheParams(BatchmatmulRunParas &runParams) const
+void Mc2QuantBatchMatmulV3Tiling::ModifyCacheParams(BatchmatmulRunParas &runParams) const
 {
     if (runParams.m * static_cast<int64_t>(BLOCK_CUBE) > static_cast<int64_t>(INT32_MAX) ||
         runParams.n * static_cast<int64_t>(BLOCK_CUBE) > static_cast<int64_t>(INT32_MAX)) {
@@ -864,7 +865,7 @@ void QuantBatchMatmulV3Tiling::ModifyCacheParams(BatchmatmulRunParas &runParams)
     }
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::DoLibApiTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::DoLibApiTiling()
 {
     OP_TILING_CHECK(!SetMatmulTilingFromTbeTiling(),
                 CUBE_INNER_ERR_REPORT(inputParams_.opName, "Failed to get tbe tiling!"), return ge::GRAPH_FAILED);
@@ -879,26 +880,26 @@ ge::graphStatus QuantBatchMatmulV3Tiling::DoLibApiTiling()
  *  2.2 inplace_matmul_all_reduce_add_rms_norm.cpp
  *  2.3 matmul_all_reduce.cpp
  *  2.4 quant_matmul_all_reduce_tiling.h
- * 3.如何搜索：tiling文件搜索：quant_batch_matmul_v3_tiling.h, matmul_all_reduce_tiling.h
+ * 3.如何搜索：tiling文件搜索：quant_batch_matmul_v3_tiling.h, matmul_all_reduce_tiling_base.h
  */
-uint64_t QuantBatchMatmulV3Tiling::GetTilingKey(bool isBasicTiling) const
+uint64_t Mc2QuantBatchMatmulV3Tiling::GetTilingKey(bool isBasicTiling) const
 {
-    // 新增特性应往后添加,相同特性应在同bit位
-    if (inputParams_.cDtype == ge::DT_BF16) {
-        return RecursiveSum(inputParams_.transB, inputParams_.transA, isBasicTiling,
-                            isBf16Opt_, inputParams_.isPertoken, false);
-    } else {
-        return RecursiveSum(inputParams_.transB, inputParams_.transA, isBasicTiling,
-                            isBf16Opt_, inputParams_.isPertoken, NeedAtomiClean());
+    uint64_t trans =
+        (static_cast<uint64_t>(inputParams_.transA) << 1) | static_cast<uint64_t>(inputParams_.transB);
+    uint64_t kernelTemplateType = (static_cast<uint64_t>(isBf16Opt_) << 1) | static_cast<uint64_t>(isBasicTiling);
+    uint64_t optionAttrs = 0;
+    if (inputParams_.cDtype != ge::DT_BF16) {
+        optionAttrs = NeedAtomiClean();
     }
+    return GET_TPL_TILING_KEY(trans, kernelTemplateType, static_cast<uint64_t>(inputParams_.isPertoken), optionAttrs);
 }
 
-uint64_t QuantBatchMatmulV3Tiling::GetTilingKey() const
+uint64_t Mc2QuantBatchMatmulV3Tiling::GetTilingKey() const
 {
     return GetTilingKey(false);
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::GetWorkspaceSize()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::GetWorkspaceSize()
 {
     workspaceSize_ = inputParams_.libApiWorkSpaceSize;
     if (isUbQuant_) {
@@ -914,7 +915,7 @@ ge::graphStatus QuantBatchMatmulV3Tiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::PostTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::PostTiling()
 {
     OP_LOGD(inputParams_.opName, "Final tiling data size: %zu.", tilingData_.GetDataSize());
 
@@ -935,7 +936,7 @@ ge::graphStatus QuantBatchMatmulV3Tiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-bool QuantBatchMatmulV3Tiling::GetTbeTiling()
+bool Mc2QuantBatchMatmulV3Tiling::GetTbeTiling()
 {
     // 在TilingParse回调函数中初始化的(编译态传过来的compile_info): GemmParseFunc->AnalyzeCompileInfo->AnalyzeExtendInfo
     BatchmatmulCompileParas compileParams;
@@ -943,10 +944,10 @@ bool QuantBatchMatmulV3Tiling::GetTbeTiling()
     ConstructCacheParams(compileParams, runParams);
 
     tbeTiling_.tiling_id = std::numeric_limits<uint64_t>::max();
-    return GenTiling("QuantBatchMatmulV3", compileParams, runParams, tbeTiling_, context_);
+    return GenTiling("Mc2QuantBatchMatmulV3", compileParams, runParams, tbeTiling_, context_);
 }
 
-int32_t QuantBatchMatmulV3Tiling::GetIteratorOrder()
+int32_t Mc2QuantBatchMatmulV3Tiling::GetIteratorOrder()
 {
     const int32_t singleCoreM = tilingData_.matmulTiling.get_singleCoreM();
     const int32_t singleCoreN = tilingData_.matmulTiling.get_singleCoreN();
@@ -979,7 +980,7 @@ int32_t QuantBatchMatmulV3Tiling::GetIteratorOrder()
     }
 }
 
-bool QuantBatchMatmulV3Tiling::SetBlockDimsAndSingleCore(TCubeTiling &mt)
+bool Mc2QuantBatchMatmulV3Tiling::SetBlockDimsAndSingleCore(TCubeTiling &mt)
 {
     auto mFactor = (inputParams_.transA && inputParams_.mSize >= static_cast<uint64_t>(mt.get_baseM())
                         ? static_cast<uint64_t>(mt.get_baseM())
@@ -1028,7 +1029,7 @@ bool QuantBatchMatmulV3Tiling::SetBlockDimsAndSingleCore(TCubeTiling &mt)
     return true;
 }
 
-bool QuantBatchMatmulV3Tiling::SetMatmulTilingFromTbeTiling()
+bool Mc2QuantBatchMatmulV3Tiling::SetMatmulTilingFromTbeTiling()
 {
     TCubeTiling &mt = tilingData_.matmulTiling;
     mt.set_M(inputParams_.mSize);
@@ -1084,7 +1085,7 @@ bool QuantBatchMatmulV3Tiling::SetMatmulTilingFromTbeTiling()
     return true;
 }
 
-uint32_t QuantBatchMatmulV3Tiling::GetABankConflictSize() {
+uint32_t Mc2QuantBatchMatmulV3Tiling::GetABankConflictSize() {
     TCubeTiling &mt = tilingData_.matmulTiling;
     uint32_t ret = 0;
     if (inputParams_.transA) {
@@ -1097,7 +1098,7 @@ uint32_t QuantBatchMatmulV3Tiling::GetABankConflictSize() {
     return ret;
 }
 
-bool QuantBatchMatmulV3Tiling::CalcUsedL1AndUBSize(int32_t aL1Size, int32_t bL1Size, bool &fallback)
+bool Mc2QuantBatchMatmulV3Tiling::CalcUsedL1AndUBSize(int32_t aL1Size, int32_t bL1Size, bool &fallback)
 {
     TCubeTiling &mt = tilingData_.matmulTiling;
     int32_t biasL1Size = (inputParams_.hasBias && (inputParams_.biasDtype == ge::DT_INT32))
@@ -1148,7 +1149,7 @@ bool QuantBatchMatmulV3Tiling::CalcUsedL1AndUBSize(int32_t aL1Size, int32_t bL1S
     return true;
 }
 
-int32_t QuantBatchMatmulV3Tiling::CalcND2NZSpace() const {
+int32_t Mc2QuantBatchMatmulV3Tiling::CalcND2NZSpace() const {
     TCubeTiling &mt = tilingData_.matmulTiling;
     auto aDtypeSize = ge::GetSizeByDataType(inputParams_.aDtype);
     int32_t nd2nzSpace = mt.get_baseM() * mt.get_baseK() * mt.get_stepM() * mt.get_stepKa() * aDtypeSize;
@@ -1161,7 +1162,7 @@ int32_t QuantBatchMatmulV3Tiling::CalcND2NZSpace() const {
     return nd2nzSpace;
 }
 
-void QuantBatchMatmulV3Tiling::PrintTilingData()
+void Mc2QuantBatchMatmulV3Tiling::PrintTilingData()
 {
     if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
         return;
@@ -1186,7 +1187,7 @@ void QuantBatchMatmulV3Tiling::PrintTilingData()
        << " singleBatchN: " << tiling.get_singleBatchN();
 }
 
-void QuantBatchMatmulV3Tiling::PrintTbeTiling()
+void Mc2QuantBatchMatmulV3Tiling::PrintTbeTiling()
 {
     if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
         return;
@@ -1221,13 +1222,13 @@ void QuantBatchMatmulV3Tiling::PrintTbeTiling()
        << " datatype_bf16: " << tiling.datatype_bf16 << " deq_scale_var: " << tiling.deq_scale_var;
 }
 
-void QuantBatchMatmulV3Tiling::PrintTilingParams() const
+void Mc2QuantBatchMatmulV3Tiling::PrintTilingParams() const
 {
     if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
         return;
     }
 
-    optiling::QuantBatchMatmulV3Params& params = tilingData_.params;
+    optiling::Mc2QuantBatchMatmulV3Params& params = tilingData_.params;
     std::stringstream ss;
     ss << " batchA: " << params.get_batchA() << " batchB: " << params.get_batchB() << " batchC: " << params.get_batchC()
         << " singleCoreBatch: " << params.get_singleCoreBatch() << " isPerTensor: " << params.get_isPerTensor()
@@ -1236,10 +1237,10 @@ void QuantBatchMatmulV3Tiling::PrintTilingParams() const
         << " needUbBuffer: " << params.get_needUbBuffer() << " realSingleCoreM: " << params.get_realSingleCoreM()
         << " realSingleCoreN: " << params.get_realSingleCoreN() << " biasDtype: " << params.get_biasDtype()
         << " ubSize: " << params.get_ubSize();
-    OPS_LOG_D(inputParams_.opName, "QuantBatchMatmulV3Params params: %s", ss.str().c_str());
+    OPS_LOG_D(inputParams_.opName, "Mc2QuantBatchMatmulV3Params params: %s", ss.str().c_str());
 }
 
-void QuantBatchMatmulV3Tiling::SpiltSingleCore(int32_t &singleCoreM, int32_t &singleCoreN)
+void Mc2QuantBatchMatmulV3Tiling::SpiltSingleCore(int32_t &singleCoreM, int32_t &singleCoreN)
 {
     // 任意m,n方向无循环，KFC mm计算分区内不会S型计算，可以确定每次计算的起始点
     if (tilingData_.matmulTiling.get_baseM() >= singleCoreM || tilingData_.matmulTiling.get_baseN() >= singleCoreN) {
@@ -1266,7 +1267,7 @@ void QuantBatchMatmulV3Tiling::SpiltSingleCore(int32_t &singleCoreM, int32_t &si
 }
 
 
-void QuantBatchMatmulV3Tiling::SpiltForWorkSpaceLimit(int32_t singleCoreM, int32_t singleCoreN, int32_t blockDim)
+void Mc2QuantBatchMatmulV3Tiling::SpiltForWorkSpaceLimit(int32_t singleCoreM, int32_t singleCoreN, int32_t blockDim)
 {
     int32_t maxSingleCoreM = std::max(singleCoreM, tilingData_.matmulTiling.get_baseM());
     int32_t maxSingleCoreN = std::max(singleCoreN, tilingData_.matmulTiling.get_baseN());
@@ -1311,7 +1312,7 @@ void QuantBatchMatmulV3Tiling::SpiltForWorkSpaceLimit(int32_t singleCoreM, int32
     inputParams_.bf16ExtreWorkSpaceSize = newSingleM * newSingleN * sizeof(int32_t) * blockDim;
 }
 
-bool QuantBatchMatmulV3Tiling::GetUbDequantExtreSpace()
+bool Mc2QuantBatchMatmulV3Tiling::GetUbDequantExtreSpace()
 {
     int32_t singleCoreM = tilingData_.params.get_realSingleCoreM();
     int32_t singleCoreN = tilingData_.params.get_realSingleCoreN();
@@ -1324,7 +1325,7 @@ bool QuantBatchMatmulV3Tiling::GetUbDequantExtreSpace()
     return true;
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::CalcPertokenOptUbTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::CalcPertokenOptUbTiling()
 {
     uint64_t ubSize = aicoreParams_.ubSize;
     uint64_t baseM = tbeTiling_.m_l0 * BLOCK_CUBE;
@@ -1365,7 +1366,7 @@ ge::graphStatus QuantBatchMatmulV3Tiling::CalcPertokenOptUbTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::CalcUbTiling()
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::CalcUbTiling()
 {
     if (isBf16Opt_ && inputParams_.isPertoken) {
         return CalcPertokenOptUbTiling();
@@ -1374,7 +1375,7 @@ ge::graphStatus QuantBatchMatmulV3Tiling::CalcUbTiling()
                         static_cast<uint32_t>(tbeTiling_.m_l0) * BLOCK_CUBE);
 }
 
-ge::graphStatus QuantBatchMatmulV3Tiling::CalcUbTiling(uint32_t baseN, uint32_t baseM)
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::CalcUbTiling(uint32_t baseN, uint32_t baseM)
 {
     uint64_t ubSize = aicoreParams_.ubSize;
     uint64_t needUbSize = 0;
@@ -1425,7 +1426,7 @@ ge::graphStatus QuantBatchMatmulV3Tiling::CalcUbTiling(uint32_t baseN, uint32_t 
     return ge::GRAPH_SUCCESS;
 }
 
-bool QuantBatchMatmulV3Tiling::NeedAtomiClean() const {
+bool Mc2QuantBatchMatmulV3Tiling::NeedAtomiClean() const {
     if (!compileInfo_.supportL0c2Out) {
         uint32_t alignSize = ONE_BLK_SIZE / ge::GetSizeByDataType(inputParams_.cDtype);
 
@@ -1444,13 +1445,13 @@ bool QuantBatchMatmulV3Tiling::NeedAtomiClean() const {
     }
 }
 
-REGISTER_TILING_TEMPLATE("QuantBatchMatmulV3", QuantBatchMatmulV3Tiling, 1);
-REGISTER_TILING_TEMPLATE("QuantBatchMatmulV3", AdaptiveSlidingWindowTiling, 2);
+REGISTER_OPS_TILING_TEMPLATE(Mc2QuantBatchMatmulV3, Mc2QuantBatchMatmulV3Tiling, 1);
+REGISTER_OPS_TILING_TEMPLATE(Mc2QuantBatchMatmulV3, Mc2AdaptiveSlidingWindowTiling, 2);
 
-static ge::graphStatus QuantBatchMatmulV3TilingFunc(gert::TilingContext *context)
+static ge::graphStatus Mc2QuantBatchMatmulV3TilingFunc(gert::TilingContext *context)
 {
-    OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "QuantBatchMatmulV3", "TilingContext is null!");
-    auto compileInfoPtr = context->GetCompileInfo<QuantBatchMatmulV3CompileInfo>();
+    OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "Mc2QuantBatchMatmulV3", "TilingContext is null!");
+    auto compileInfoPtr = context->GetCompileInfo<Mc2QuantBatchMatmulV3CompileInfo>();
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {2};
         OP_LOGD("NO_OP_NAME", "Adaptive sliding window tiling process.");
@@ -1463,11 +1464,11 @@ static ge::graphStatus QuantBatchMatmulV3TilingFunc(gert::TilingContext *context
 
 static ge::graphStatus TilingParseForQuantBatchMatmulV3(gert::TilingParseContext *context)
 {
-    OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "QuantBatchMatmulV3", "TilingParseContext is null!");
+    OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "Mc2QuantBatchMatmulV3", "TilingParseContext is null!");
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_LOGE_IF(platformInfoPtr == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "The platformInfoPtr is null!");
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    auto compileInfoPtr = context->GetCompiledInfo<QuantBatchMatmulV3CompileInfo>();
+    auto compileInfoPtr = context->GetCompiledInfo<Mc2QuantBatchMatmulV3CompileInfo>();
     OP_LOGE_IF(compileInfoPtr == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "The compileInfoPtr is null!");
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2Size);
@@ -1493,7 +1494,7 @@ static ge::graphStatus TilingParseForQuantBatchMatmulV3(gert::TilingParseContext
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(QuantBatchMatmulV3)
-    .Tiling(QuantBatchMatmulV3TilingFunc)
-    .TilingParse<QuantBatchMatmulV3CompileInfo>(TilingParseForQuantBatchMatmulV3);
+IMPL_OP_OPTILING(Mc2QuantBatchMatmulV3)
+    .Tiling(Mc2QuantBatchMatmulV3TilingFunc)
+    .TilingParse<Mc2QuantBatchMatmulV3CompileInfo>(TilingParseForQuantBatchMatmulV3);
 }  // namespace optiling

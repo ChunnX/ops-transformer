@@ -1,34 +1,35 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file batch_mat_mul_v3_base_tiling.cc
  * \brief
  */
 #include "batch_mat_mul_v3_base_tiling.h"
+#include "batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_key.h"
 #include "util/math_util.h"
 #include "log/log.h"
 #include "tiling_base/tiling_key.h"
 #include "mc2_log.h"
-#include "op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "runtime_kb_api.h"
 #include "common/op_host/math_util.h"
 #include "common/op_host/op_tiling/debug_tiling.h"
 #include "platform/platform_infos_def.h"
 
-using namespace optiling::batch_mat_mul_v3;
+using namespace optiling::Mc2batch_mat_mul_v3;
 using Ops::Transformer::OpTiling::GET_TILINGKEY;
 using Ops::Transformer::MathUtil;
 
 namespace optiling {
-namespace batch_mat_mul_v3 {
+namespace Mc2batch_mat_mul_v3 {
 const std::vector<uint64_t> SUPPORT_ND2NZ_GM2L0_WITHOUT32B = {64, 96, 128, 160, 192, 224, 256, 384};
 constexpr uint64_t BLOCK_CUBE = 16;
 constexpr uint64_t NO_BATCH_SHAPE_DIM = 2;
@@ -75,9 +76,9 @@ static inline uint64_t NextPower2(uint64_t n)
     return (n == lastPower2) ? lastPower2 : (lastPower2 << 1);
 }
 
-ge::graphStatus BatchMatmulV3BaseTiling::GetShapeAttrsInfo() // 检查输入属性是否支持
+ge::graphStatus Mc2BatchMatmulV3BaseTiling::GetShapeAttrsInfo() // 检查输入属性是否支持
 {
-    auto ret = MatmulV3BaseTiling::GetShapeAttrsInfo();
+    auto ret = Mc2MatmulV3BaseTiling::GetShapeAttrsInfo();
     if (!GetBatchInfo()) {
         return ge::GRAPH_FAILED;
     }
@@ -85,7 +86,7 @@ ge::graphStatus BatchMatmulV3BaseTiling::GetShapeAttrsInfo() // 检查输入属�
     return ret;
 }
 
-bool BatchMatmulV3BaseTiling::GetBatchInfo()
+bool Mc2BatchMatmulV3BaseTiling::GetBatchInfo()
 {
     auto aShape = context_->GetInputShape(0)->GetOriginShape();
     auto bShape = context_->GetInputShape(1)->GetOriginShape();
@@ -124,13 +125,13 @@ bool BatchMatmulV3BaseTiling::GetBatchInfo()
     bool batch1Invalid = batchInfo_.batchA1 != batchInfo_.batchB1 && batchInfo_.batchA1 != 1UL && batchInfo_.batchB1 != 1UL;
     bool batch0Invalid = batchInfo_.batchA0 != batchInfo_.batchB0 && batchInfo_.batchA0 != 1UL && batchInfo_.batchB0 != 1UL;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
-        OP_LOGE("[BatchMatMulV3]", "Is M broadcast to N situation, do not support!");
+        OP_LOGE("[Mc2BatchMatMulV3]", "Is M broadcast to N situation, do not support!");
         return false;
     }
     return GetBiasWithBatchInfo();
 }
 
-bool BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
+bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
 {
     batchInfo_.biasWithBatch = false;
     if (!args_.hasBias) {
@@ -142,14 +143,14 @@ bool BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
         return true;
     }
     if (biasDims == NO_BATCH_SHAPE_DIM) {
-        OP_LOGE("[BatchMatMulV3]", " Dim number of bias must not be 2 !");
+        OP_LOGE("[Mc2BatchMatMulV3]", " Dim number of bias must not be 2 !");
         return false;
     }
 
     batchInfo_.biasWithBatch = true;
     uint64_t biasMValue = biasShape[biasDims - NO_BATCH_SHAPE_DIM];
     if (biasMValue != 1UL) {
-        OP_LOGE("[BatchMatMulV3]", "M of Bias must be 1 !");
+        OP_LOGE("[Mc2BatchMatMulV3]", "M of Bias must be 1 !");
         return false;
     }
 
@@ -164,13 +165,13 @@ bool BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
     bool biasBatchValid = batchBias3 == batchInfo_.batchC3 && batchBias2 == batchInfo_.batchC2
         && batchBias1 == batchInfo_.batchC1 && batchBias0 == batchInfo_.batchC0;
     if (batchInfo_.biasWithBatch && !biasBatchValid) {
-        OP_LOGE("[BatchMatMulV3]", "Batch of Bias  must be equal to C !");
+        OP_LOGE("[Mc2BatchMatMulV3]", "Batch of Bias  must be equal to C !");
         return false;
     }
     return true;
 }
 
-void BatchMatmulV3BaseTiling::MergeBatchAndMAxis()
+void Mc2BatchMatmulV3BaseTiling::MergeBatchAndMAxis()
 {
     if (!compileInfo_.supportL0c2out || batchInfo_.biasWithBatch) {
         return;
@@ -178,7 +179,7 @@ void BatchMatmulV3BaseTiling::MergeBatchAndMAxis()
     if (batchInfo_.batchB == 1 && !args_.isATrans) {
         // when BatchB == 1, adjust M = batchA * M, batchA = 1
         if (batchInfo_.batchA * args_.mValue > MAX_INT32_VALUE) {
-            OP_LOGI("BatchMatMulV3", "m value will exceed int32 max value after merge axis, stop merging !");
+            OP_LOGI("Mc2BatchMatMulV3", "m value will exceed int32 max value after merge axis, stop merging !");
             return;
         }
         args_.mValue = batchInfo_.batchA * args_.mValue;
@@ -196,25 +197,25 @@ void BatchMatmulV3BaseTiling::MergeBatchAndMAxis()
     return;
 }
 
-bool BatchMatmulV3BaseTiling::CheckBMMTilingDataIsVaild() const {
-  return (optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchA3, args_.opName, "batchInfo_.batchA3") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchA2, args_.opName, "batchInfo_.batchA2") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchA1, args_.opName, "batchInfo_.batchA1") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchA0, args_.opName, "batchInfo_.batchA0") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchB3, args_.opName, "batchInfo_.batchB3") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchB2, args_.opName, "batchInfo_.batchB2") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchB1, args_.opName, "batchInfo_.batchB1") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchB0, args_.opName, "batchInfo_.batchB0") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchC3, args_.opName, "batchInfo_.batchC3") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchC2, args_.opName, "batchInfo_.batchC2") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchC1, args_.opName, "batchInfo_.batchC1") ||
-          optiling::matmul_v3::CheckNumberIsValid(batchInfo_.batchC0, args_.opName, "batchInfo_.batchC0") ||
-          optiling::matmul_v3::CheckNumberIsValid(aBatchDimAll_, args_.opName, "batchInfo_.aBatchDimAll") ||
-          optiling::matmul_v3::CheckNumberIsValid(bBatchDimAll_, args_.opName, "batchInfo_.bBatchDimAll") ||
-          optiling::matmul_v3::CheckNumberIsValid(cBatchDimAll_, args_.opName, "batchInfo_.cBatchDimAll"));
+bool Mc2BatchMatmulV3BaseTiling::CheckBMMTilingDataIsVaild() const {
+  return (optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchA3, args_.opName, "batchInfo_.batchA3") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchA2, args_.opName, "batchInfo_.batchA2") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchA1, args_.opName, "batchInfo_.batchA1") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchA0, args_.opName, "batchInfo_.batchA0") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchB3, args_.opName, "batchInfo_.batchB3") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchB2, args_.opName, "batchInfo_.batchB2") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchB1, args_.opName, "batchInfo_.batchB1") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchB0, args_.opName, "batchInfo_.batchB0") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchC3, args_.opName, "batchInfo_.batchC3") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchC2, args_.opName, "batchInfo_.batchC2") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchC1, args_.opName, "batchInfo_.batchC1") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(batchInfo_.batchC0, args_.opName, "batchInfo_.batchC0") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(aBatchDimAll_, args_.opName, "batchInfo_.aBatchDimAll") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(bBatchDimAll_, args_.opName, "batchInfo_.bBatchDimAll") ||
+          optiling::mc2_matmul_v3::CheckNumberIsValid(cBatchDimAll_, args_.opName, "batchInfo_.cBatchDimAll"));
 }
 
-void BatchMatmulV3BaseTiling::CheckandSetDiagonalConflict(uint64_t mCnt, uint64_t nCnt, uint64_t batch, uint64_t usedCoreNum, uint64_t transConflict, uint64_t newMcnt)
+void Mc2BatchMatmulV3BaseTiling::CheckandSetDiagonalConflict(uint64_t mCnt, uint64_t nCnt, uint64_t batch, uint64_t usedCoreNum, uint64_t transConflict, uint64_t newMcnt)
 {
     // 行优先最大冲突数
     uint64_t oneCoreBlock = ops::CeilDiv(batch * mCnt * nCnt, usedCoreNum);
@@ -229,7 +230,7 @@ void BatchMatmulV3BaseTiling::CheckandSetDiagonalConflict(uint64_t mCnt, uint64_
     bmmTilingData_.matmulTiling.tileL2cacheTiling.set_calOrder(0);
 }
 
-void BatchMatmulV3BaseTiling::DoL2CacheAndCalOrderTiling()
+void Mc2BatchMatmulV3BaseTiling::DoL2CacheAndCalOrderTiling()
 {
     uint64_t usedCoreNum = bmmTilingData_.matmulTiling.matmulTiling.get_usedCoreNum();
     args_.l2Ratio = 1.0 * compileInfo_.l2Size / L2_SIZE_2;
@@ -262,7 +263,14 @@ void BatchMatmulV3BaseTiling::DoL2CacheAndCalOrderTiling()
         isL2Tile = true;
     }
     // 使用全载tilingkey作为判断标准
-    bool isFullLoad = ((tilingKey_ == 10000000000000000101UL) || (tilingKey_ == 10000000000000000201UL));
+    bool isFullLoad =
+        ((tilingEnable_.tilingEnableMultiBatchL1FullLoad == Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE) &&
+         (tilingEnable_.tilingEnableMultiBatch == Mc2TilingEnableMultiBatch::IS_FALSE) &&
+         ((tilingEnable_.tilingEnableLoadMode == Mc2TilingEnableLoadMode::AL1_FULL_LOAD) ||
+          (tilingEnable_.tilingEnableLoadMode == Mc2TilingEnableLoadMode::BL1_FULL_LOAD)) &&
+         (tilingEnable_.tilingEnableMultiBatchOut == Mc2TilingEnableMultiBatchOut::IS_FALSE) &&
+         (tilingEnable_.tilingEnableMixNd2Nz == Mc2TilingEnableMixNd2Nz::IS_FALSE)
+        );
     if (!isFullLoad) {
         if (isL2Tile) {
             bmmTilingData_.matmulTiling.tileL2cacheTiling.set_mTileCntL2(
@@ -281,53 +289,56 @@ void BatchMatmulV3BaseTiling::DoL2CacheAndCalOrderTiling()
     }
 }
 
-ge::graphStatus BatchMatmulV3BaseTiling::DoLibApiTiling()
+ge::graphStatus Mc2BatchMatmulV3BaseTiling::DoLibApiTiling()
 {
-    auto ret = MatmulV3BaseTiling::DoLibApiTiling();
-    bmmTilingData_.multiBatchInfo.set_batchUsedCoreNum(bmmTilingData_.matmulTiling.matmulTiling.get_usedCoreNum());
-    bmmTilingData_.multiBatchInfo.set_aBatchDim3(static_cast<uint32_t>(batchInfo_.batchA3));
-    bmmTilingData_.multiBatchInfo.set_aBatchDim2(static_cast<uint32_t>(batchInfo_.batchA2));
-    bmmTilingData_.multiBatchInfo.set_aBatchDim1(static_cast<uint32_t>(batchInfo_.batchA1));
-    bmmTilingData_.multiBatchInfo.set_aBatchDim0(static_cast<uint32_t>(batchInfo_.batchA0));
-    bmmTilingData_.multiBatchInfo.set_bBatchDim3(static_cast<uint32_t>(batchInfo_.batchB3));
-    bmmTilingData_.multiBatchInfo.set_bBatchDim2(static_cast<uint32_t>(batchInfo_.batchB2));
-    bmmTilingData_.multiBatchInfo.set_bBatchDim1(static_cast<uint32_t>(batchInfo_.batchB1));
-    bmmTilingData_.multiBatchInfo.set_bBatchDim0(static_cast<uint32_t>(batchInfo_.batchB0));
-    bmmTilingData_.multiBatchInfo.set_cBatchDim3(static_cast<uint32_t>(batchInfo_.batchC3));
-    bmmTilingData_.multiBatchInfo.set_cBatchDim2(static_cast<uint32_t>(batchInfo_.batchC2));
-    bmmTilingData_.multiBatchInfo.set_cBatchDim1(static_cast<uint32_t>(batchInfo_.batchC1));
-    bmmTilingData_.multiBatchInfo.set_cBatchDim0(static_cast<uint32_t>(batchInfo_.batchC0));
+    auto ret = Mc2MatmulV3BaseTiling::DoLibApiTiling();
+    bmmTilingData_.Mc2multiBatchInfo.set_batchUsedCoreNum(bmmTilingData_.matmulTiling.matmulTiling.get_usedCoreNum());
+    bmmTilingData_.Mc2multiBatchInfo.set_aBatchDim3(static_cast<uint32_t>(batchInfo_.batchA3));
+    bmmTilingData_.Mc2multiBatchInfo.set_aBatchDim2(static_cast<uint32_t>(batchInfo_.batchA2));
+    bmmTilingData_.Mc2multiBatchInfo.set_aBatchDim1(static_cast<uint32_t>(batchInfo_.batchA1));
+    bmmTilingData_.Mc2multiBatchInfo.set_aBatchDim0(static_cast<uint32_t>(batchInfo_.batchA0));
+    bmmTilingData_.Mc2multiBatchInfo.set_bBatchDim3(static_cast<uint32_t>(batchInfo_.batchB3));
+    bmmTilingData_.Mc2multiBatchInfo.set_bBatchDim2(static_cast<uint32_t>(batchInfo_.batchB2));
+    bmmTilingData_.Mc2multiBatchInfo.set_bBatchDim1(static_cast<uint32_t>(batchInfo_.batchB1));
+    bmmTilingData_.Mc2multiBatchInfo.set_bBatchDim0(static_cast<uint32_t>(batchInfo_.batchB0));
+    bmmTilingData_.Mc2multiBatchInfo.set_cBatchDim3(static_cast<uint32_t>(batchInfo_.batchC3));
+    bmmTilingData_.Mc2multiBatchInfo.set_cBatchDim2(static_cast<uint32_t>(batchInfo_.batchC2));
+    bmmTilingData_.Mc2multiBatchInfo.set_cBatchDim1(static_cast<uint32_t>(batchInfo_.batchC1));
+    bmmTilingData_.Mc2multiBatchInfo.set_cBatchDim0(static_cast<uint32_t>(batchInfo_.batchC0));
 
     aBatchDimAll_ = batchInfo_.batchA0 * batchInfo_.batchA1 * batchInfo_.batchA2 * batchInfo_.batchA3;
     bBatchDimAll_ = batchInfo_.batchB0 * batchInfo_.batchB1 * batchInfo_.batchB2 * batchInfo_.batchB3;
     cBatchDimAll_ = batchInfo_.batchC0 * batchInfo_.batchC1 * batchInfo_.batchC2 * batchInfo_.batchC3;
-    bmmTilingData_.multiBatchInfo.set_aBatchDimAll(static_cast<uint32_t>(aBatchDimAll_));
-    bmmTilingData_.multiBatchInfo.set_bBatchDimAll(static_cast<uint32_t>(bBatchDimAll_));
-    bmmTilingData_.multiBatchInfo.set_cBatchDimAll(static_cast<uint32_t>(cBatchDimAll_));
-    bmmTilingData_.multiBatchInfo.set_batchTileBlock(static_cast<uint32_t>(cBatchDimAll_));
+    bmmTilingData_.Mc2multiBatchInfo.set_aBatchDimAll(static_cast<uint32_t>(aBatchDimAll_));
+    bmmTilingData_.Mc2multiBatchInfo.set_bBatchDimAll(static_cast<uint32_t>(bBatchDimAll_));
+    bmmTilingData_.Mc2multiBatchInfo.set_cBatchDimAll(static_cast<uint32_t>(cBatchDimAll_));
+    bmmTilingData_.Mc2multiBatchInfo.set_batchTileBlock(static_cast<uint32_t>(cBatchDimAll_));
     if (CheckBMMTilingDataIsVaild()) {
         return ge::GRAPH_FAILED;
     }
-    bmmTilingData_.multiBatchInfo.set_biasWithBatch(static_cast<uint32_t>(batchInfo_.biasWithBatch));
-    bmmTilingData_.multiBatchInfo.set_mOri(static_cast<uint32_t>(args_.mOriValue));
+    bmmTilingData_.Mc2multiBatchInfo.set_biasWithBatch(static_cast<uint32_t>(batchInfo_.biasWithBatch));
+    bmmTilingData_.Mc2multiBatchInfo.set_mOri(static_cast<uint32_t>(args_.mOriValue));
 
     uint64_t innerSizeA = args_.isATrans ? args_.mValue : args_.kValue;
     uint64_t innerSizeB = args_.isBTrans ? args_.kValue : args_.nValue;
     if (innerSizeA > ND2NZ_ON_THE_FLY_LIMIT || innerSizeB > ND2NZ_ON_THE_FLY_LIMIT) {
         DoUnAlignCommonTiling();
+        DoTilingKeyCustom();
         return ret;
     }
 
     DoCommonTiling();
     DoL1FullLoadTiling();
     DoL2CacheAndCalOrderTiling();
-    if (compileInfo_.supportL0c2out && tilingSelect_ != TilingCalcSelect::COMMON &&
-        std::string(context_->GetNodeType()) != "TransposeBatchMatMul") {
+    if (compileInfo_.supportL0c2out && tilingSelect_ != Mc2TilingCalcSelect::COMMON &&
+        std::string(context_->GetNodeType()) != "TransposeBatchMatMul" &&
+        args_.bFormat != ge::FORMAT_FRACTAL_NZ) {
         DoMultiBatchTiling();
         if (IsMultiBatchAL1FullLoad()) { // 多batch AL1全载
             DoMultiBatchL1FullLoadTiling();
         }
     }
+    DoTilingKeyCustom();
     return ret;
 }
 
@@ -337,7 +348,7 @@ ge::graphStatus BatchMatmulV3BaseTiling::DoLibApiTiling()
  * Choosing different starting point can sometimes get better performance.
  * The starting point of `divisor = 2` is half of that of `divisor = 1`
  */
-static void CalcBaseMN(uint64_t &baseM, uint64_t &baseN, const matmul_v3::MatmulV3Args &args, uint64_t divisor = 1UL)
+static void CalcBaseMN(uint64_t &baseM, uint64_t &baseN, const mc2_matmul_v3::Mc2MatmulV3Args &args, uint64_t divisor = 1UL)
 {
     uint64_t dtypeSize = GetSizeByDataType(args.aType);
     // step 1: calc baseM
@@ -375,8 +386,8 @@ static void CalcBaseMN(uint64_t &baseM, uint64_t &baseN, const matmul_v3::Matmul
     baseN = getBestBaseN(args.isBTrans, args.nValue, args.kValue);
 }
 
-static void TuneBaseMN(matmul_v3::MatmulV3RunInfo &runInfo,
-                       const matmul_v3::MatmulV3Args &args,
+static void TuneBaseMN(mc2_matmul_v3::Mc2MatmulV3RunInfo &runInfo,
+                       const mc2_matmul_v3::Mc2MatmulV3Args &args,
                        uint64_t batchC,
                        uint64_t aicNum)
 {
@@ -411,8 +422,8 @@ static void TuneBaseMN(matmul_v3::MatmulV3RunInfo &runInfo,
     }
 }
 
-static void TuneBaseMKN(matmul_v3::MatmulV3RunInfo &runInfo,
-                        const matmul_v3::MatmulV3Args &args,
+static void TuneBaseMKN(mc2_matmul_v3::Mc2MatmulV3RunInfo &runInfo,
+                        const mc2_matmul_v3::Mc2MatmulV3Args &args,
                         uint64_t batchC,
                         uint64_t aicNum)
 {
@@ -434,7 +445,7 @@ static void TuneBaseMKN(matmul_v3::MatmulV3RunInfo &runInfo,
     OP_LOGD(args.opName, "after DoCommonTiling baseM, baseN, baseK[%lu, %lu, %lu]", baseM, baseN, baseK);
 }
 
-void BatchMatmulV3BaseTiling::DoCommonTiling()
+void Mc2BatchMatmulV3BaseTiling::DoCommonTiling()
 {
     TuneBaseMKN(runInfo_, args_, cBatchDimAll_, compileInfo_.aicNum);
 
@@ -474,19 +485,27 @@ void BatchMatmulV3BaseTiling::DoCommonTiling()
     bmmTilingData_.matmulTiling.matmulTiling.set_baseN(baseN);
     bmmTilingData_.matmulTiling.matmulTiling.set_baseK(baseK);
 
-    tilingKey_ = 10000000000000000001UL;
+    tilingEnable_.tilingEnableMultiBatchL1FullLoad = Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE;
+    tilingEnable_.tilingEnableMultiBatch = Mc2TilingEnableMultiBatch::IS_FALSE;
+    tilingEnable_.tilingEnableLoadMode = Mc2TilingEnableLoadMode::BASE;
+    tilingEnable_.tilingEnableMultiBatchOut = Mc2TilingEnableMultiBatchOut::IS_FALSE;
+    tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_FALSE;
 }
 
-void BatchMatmulV3BaseTiling::DoUnAlignCommonTiling()
+void Mc2BatchMatmulV3BaseTiling::DoUnAlignCommonTiling()
 {
-    tilingKey_ = 10000000000000000000UL;
+    tilingEnable_.tilingEnableMultiBatchL1FullLoad = Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE;
+    tilingEnable_.tilingEnableMultiBatch = Mc2TilingEnableMultiBatch::IS_FALSE;
+    tilingEnable_.tilingEnableLoadMode = Mc2TilingEnableLoadMode::BASE;
+    tilingEnable_.tilingEnableMultiBatchOut = Mc2TilingEnableMultiBatchOut::IS_FALSE;
+    tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_TRUE;
     uint64_t baseM = static_cast<uint64_t>(bmmTilingData_.matmulTiling.matmulTiling.get_baseM());
     uint64_t baseN = static_cast<uint64_t>(bmmTilingData_.matmulTiling.matmulTiling.get_baseN());
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreM(std::min(args_.mValue, baseM));
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreN(std::min(args_.nValue, baseN));
 }
 
-void BatchMatmulV3BaseTiling::DoMultiBatchTilingImpl()
+void Mc2BatchMatmulV3BaseTiling::DoMultiBatchTilingImpl()
 {
     uint64_t m = args_.mValue;
     uint64_t n = args_.nValue;
@@ -529,7 +548,7 @@ void BatchMatmulV3BaseTiling::DoMultiBatchTilingImpl()
     bmmTilingData_.matmulTiling.matmulTiling.set_baseK(baseK);
 }
 
-bool BatchMatmulV3BaseTiling::DoMultiBatchOutTiling()
+bool Mc2BatchMatmulV3BaseTiling::DoMultiBatchOutTiling()
 {   
     uint64_t singleCoreN = static_cast<uint64_t>(bmmTilingData_.matmulTiling.matmulTiling.get_singleCoreN());
     uint64_t singleCoreM = static_cast<uint64_t>(bmmTilingData_.matmulTiling.matmulTiling.get_singleCoreM());
@@ -551,7 +570,7 @@ bool BatchMatmulV3BaseTiling::DoMultiBatchOutTiling()
     return false;
 }
 
-void BatchMatmulV3BaseTiling::DoMultiBatchTiling()
+void Mc2BatchMatmulV3BaseTiling::DoMultiBatchTiling()
 {
     bool isEqualBatch = batchInfo_.batchA0 == batchInfo_.batchB0 && batchInfo_.batchA1 == batchInfo_.batchB1 &&
         batchInfo_.batchA2 == batchInfo_.batchB2 && batchInfo_.batchA3 == batchInfo_.batchB3;  //广播
@@ -569,7 +588,7 @@ void BatchMatmulV3BaseTiling::DoMultiBatchTiling()
         biasSize = shapeN * GetSizeByDataType(args_.biasType);   //MultiBatch场景,暂时不支持 不带batch的bias.
     }
     uint64_t iterBatch = ops::FloorDiv(compileInfo_.l1Size, ((shapeM * shapeK + shapeK * shapeN) * aDtypeSize_ + biasSize));
-    if (optiling::matmul_v3::CheckNumberIsValid(iterBatch, args_.opName, "batchInfo_.iterBatch")){
+    if (optiling::mc2_matmul_v3::CheckNumberIsValid(iterBatch, args_.opName, "batchInfo_.iterBatch")){
         return;
     }
     uint64_t preCoreBatch = ops::FloorDiv(batchInfo_.batchC, compileInfo_.aicNum);
@@ -580,12 +599,12 @@ void BatchMatmulV3BaseTiling::DoMultiBatchTiling()
     }
     iterBatch = ops::FloorAlign(iterBatch, 2UL);
     uint64_t useCoreNum = std::min(ops::CeilDiv(batchInfo_.batchC, iterBatch), compileInfo_.aicNum);
-    bmmTilingData_.multiBatchInfo.set_batchUsedCoreNum(useCoreNum);
+    bmmTilingData_.Mc2multiBatchInfo.set_batchUsedCoreNum(useCoreNum);
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreM(bmmTilingData_.matmulTiling.matmulTiling.get_M());
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreN(bmmTilingData_.matmulTiling.matmulTiling.get_N());
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreK(bmmTilingData_.matmulTiling.matmulTiling.get_Ka());
     bmmTilingData_.matmulTiling.matmulTiling.set_BatchNum(static_cast<uint32_t>(iterBatch));
-    bmmTilingData_.multiBatchInfo.set_iterBatch(static_cast<uint32_t>(iterBatch));
+    bmmTilingData_.Mc2multiBatchInfo.set_iterBatch(static_cast<uint32_t>(iterBatch));
     //multiBatch需要
     bmmTilingData_.matmulTiling.matmulTiling.set_usedCoreNum(useCoreNum);
 
@@ -600,16 +619,24 @@ void BatchMatmulV3BaseTiling::DoMultiBatchTiling()
     bool isMultiBatchOut = DoMultiBatchOutTiling();
 
     if (args_.nd2nzA || args_.nd2nzB) {
-        tilingKey_ = isMultiBatchOut ? 10000000000000001010UL : 10000000000000001000UL;
+        tilingEnable_.tilingEnableMultiBatchL1FullLoad = Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE;
+        tilingEnable_.tilingEnableMultiBatch = Mc2TilingEnableMultiBatch::IS_TRUE;
+        tilingEnable_.tilingEnableLoadMode = Mc2TilingEnableLoadMode::BASE;
+        tilingEnable_.tilingEnableMultiBatchOut = isMultiBatchOut ? Mc2TilingEnableMultiBatchOut::IS_TRUE : Mc2TilingEnableMultiBatchOut::IS_FALSE;
+        tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_TRUE;
         CalculateNd2nzWorkspaceSize();
         return;
     }
 
-    tilingKey_ = isMultiBatchOut ? 10000000000000001011UL : 10000000000000001001UL;
+    tilingEnable_.tilingEnableMultiBatchL1FullLoad = Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE;
+    tilingEnable_.tilingEnableMultiBatch = Mc2TilingEnableMultiBatch::IS_TRUE;
+    tilingEnable_.tilingEnableLoadMode = Mc2TilingEnableLoadMode::BASE;
+    tilingEnable_.tilingEnableMultiBatchOut = isMultiBatchOut ? Mc2TilingEnableMultiBatchOut::IS_TRUE : Mc2TilingEnableMultiBatchOut::IS_FALSE;
+    tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_FALSE;
     return;
 }
 
-bool BatchMatmulV3BaseTiling::IsMultiBatchAL1FullLoad()
+bool Mc2BatchMatmulV3BaseTiling::IsMultiBatchAL1FullLoad()
 {   
     // 白名单:((1500,1,128),(1500,512,128)) || !(!args_.isATrans && args_.isBTrans)
     bool isEqualBatch = batchInfo_.batchA0 == batchInfo_.batchB0 && batchInfo_.batchA1 == batchInfo_.batchB1 &&
@@ -618,7 +645,7 @@ bool BatchMatmulV3BaseTiling::IsMultiBatchAL1FullLoad()
     constexpr uint64_t M_VALUE = 1;
     constexpr uint64_t K_VALUE_128 = 128;
     constexpr uint64_t N_VALUE_512 = 512;
-    if (isEqualBatch && !args_.hasBias && 
+    if (isEqualBatch && !args_.hasBias &&
         (aBatchDimAll_ == BATCH_DIM_ALL && args_.mValue == M_VALUE && args_.kValue == K_VALUE_128 && args_.nValue == N_VALUE_512 && !args_.isATrans && args_.isBTrans && args_.aType == ge::DT_FLOAT)) {
             return true;
     }
@@ -628,7 +655,7 @@ bool BatchMatmulV3BaseTiling::IsMultiBatchAL1FullLoad()
     return true;
 }
 
-void BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTilingImpl()
+void Mc2BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTilingImpl()
 {
     TuneBaseMKN(runInfo_, args_, cBatchDimAll_, compileInfo_.aicNum);
 
@@ -646,7 +673,7 @@ void BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTilingImpl()
     uint64_t shapeK = ops::CeilAlign(static_cast<uint64_t>(bmmTilingData_.matmulTiling.matmulTiling.get_Ka()),
                                      BLOCK_CUBE);
     // BL1 batch=1
-    uint64_t depthB1 = (shapeN * shapeK * bmmTilingData_.multiBatchInfo.get_bBatch() / (baseN * baseK) / 4) * 4;                                
+    uint64_t depthB1 = (shapeN * shapeK * bmmTilingData_.Mc2multiBatchInfo.get_bBatch() / (baseN * baseK) / 4) * 4;                                
     depthB1 = std::max(NUM_TWO, depthB1);
     uint64_t stepKb = depthB1 / NUM_TWO;
 
@@ -658,7 +685,7 @@ void BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTilingImpl()
     bmmTilingData_.matmulTiling.matmulTiling.set_baseK(baseK);
 }
 
-void BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTiling()
+void Mc2BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTiling()
 {   
     bool isEqualBatch = batchInfo_.batchA0 == batchInfo_.batchB0 && batchInfo_.batchA1 == batchInfo_.batchB1 &&
         batchInfo_.batchA2 == batchInfo_.batchB2 && batchInfo_.batchA3 == batchInfo_.batchB3;  //广播
@@ -686,10 +713,10 @@ void BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTiling()
     if (aBatch < 2UL) { // if aBatch < 2, no need use AL1 full load
         return;
     }
-    bmmTilingData_.multiBatchInfo.set_aBatch(static_cast<uint32_t>(aBatch));
-    bmmTilingData_.multiBatchInfo.set_bBatch(static_cast<uint32_t>(bBatch));
+    bmmTilingData_.Mc2multiBatchInfo.set_aBatch(static_cast<uint32_t>(aBatch));
+    bmmTilingData_.Mc2multiBatchInfo.set_bBatch(static_cast<uint32_t>(bBatch));
     uint64_t useCoreNum = std::min(ops::CeilDiv(batchInfo_.batchC, aBatch), compileInfo_.aicNum);
-    bmmTilingData_.multiBatchInfo.set_batchUsedCoreNum(useCoreNum);
+    bmmTilingData_.Mc2multiBatchInfo.set_batchUsedCoreNum(useCoreNum);
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreM(bmmTilingData_.matmulTiling.matmulTiling.get_M());
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreN(bmmTilingData_.matmulTiling.matmulTiling.get_N());
     bmmTilingData_.matmulTiling.matmulTiling.set_singleCoreK(bmmTilingData_.matmulTiling.matmulTiling.get_Ka());
@@ -710,12 +737,16 @@ void BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTiling()
         bmmTilingData_.matmulTiling.matmulTiling.set_baseN(64); // 设置baseN为64
         bmmTilingData_.matmulTiling.matmulTiling.set_baseK(128); // 设置baseK为128
     }
-    tilingKey_ = 10000000000000010001UL;
+    tilingEnable_.tilingEnableMultiBatchL1FullLoad = Mc2TilingEnableMultiBatchL1FullLoad::IS_TRUE;
+    tilingEnable_.tilingEnableMultiBatch = Mc2TilingEnableMultiBatch::IS_FALSE;
+    tilingEnable_.tilingEnableLoadMode = Mc2TilingEnableLoadMode::BASE;
+    tilingEnable_.tilingEnableMultiBatchOut = Mc2TilingEnableMultiBatchOut::IS_FALSE;
+    tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_FALSE;
     return;
 }
 
 
-void BatchMatmulV3BaseTiling::UpdateMultiBatchNd2nz() {
+void Mc2BatchMatmulV3BaseTiling::UpdateMultiBatchNd2nz() {
     uint64_t innerSizeA = args_.isATrans ? args_.mValue : args_.kValue;
     uint64_t innerSizeB = args_.isBTrans ? args_.kValue : args_.nValue;
     bool supportNd2NzOnTheWayA = IsOnTheWay(args_.aFormat, innerSizeA, aDtypeSize_, SUPPORT_ND2NZ_GM2L0_WITHOUT32B);
@@ -734,7 +765,7 @@ void BatchMatmulV3BaseTiling::UpdateMultiBatchNd2nz() {
                                    (innerSizeB * bDtypeSize_ <= CACHELINE && innerSizeB % 4 == 0));
 }
 
-void BatchMatmulV3BaseTiling::CalculateNd2nzWorkspaceSize() {
+void Mc2BatchMatmulV3BaseTiling::CalculateNd2nzWorkspaceSize() {
     workspaceSize_ = 0;
     uint64_t alignedSize = 0;
     uint64_t c0 = BLOCK_BYTE_SIZE / aDtypeSize_;
@@ -754,8 +785,8 @@ void BatchMatmulV3BaseTiling::CalculateNd2nzWorkspaceSize() {
     //workspace超L2切分batch轴,单个batch取四分之一L2
     if (workspaceSize_ > compileInfo_.l2Size && alignedSize != 0) {
         uint64_t batchTileBlock = compileInfo_.l2Size / 4 / alignedSize;
-        if (batchTileBlock > bmmTilingData_.multiBatchInfo.get_iterBatch()) {
-            bmmTilingData_.multiBatchInfo.set_batchTileBlock(batchTileBlock);
+        if (batchTileBlock > bmmTilingData_.Mc2multiBatchInfo.get_iterBatch()) {
+            bmmTilingData_.Mc2multiBatchInfo.set_batchTileBlock(batchTileBlock);
             workspaceSize_ = batchTileBlock * alignedSize * DOUBLE_BUFFER;
         }
     }
@@ -785,7 +816,7 @@ static void TuneDownParam(uint64_t target, uint64_t &y, uint64_t &x, uint64_t dy
     }
 }
 
-static void TuneDownBaseBlock(bool isTensorA, const matmul_v3::MatmulV3Args &args, uint64_t l1Size,
+static void TuneDownBaseBlock(bool isTensorA, const mc2_matmul_v3::Mc2MatmulV3Args &args, uint64_t l1Size,
                               uint64_t &baseMN, uint64_t &baseK)
 {
     const uint64_t mnDim = isTensorA ? args.mValue : args.nValue;
@@ -810,7 +841,7 @@ static void TuneDownBaseBlock(bool isTensorA, const matmul_v3::MatmulV3Args &arg
     }
 }
 
-static void AL1FullLoadTiling(const matmul_v3::MatmulV3Args &args, uint64_t l1Size, uint64_t l0CSize,
+static void AL1FullLoadTiling(const mc2_matmul_v3::Mc2MatmulV3Args &args, uint64_t l1Size, uint64_t l0CSize,
                               TCubeTiling &tilingData)
 {
     uint64_t baseK = static_cast<uint64_t>(tilingData.get_baseK());
@@ -851,7 +882,7 @@ static void AL1FullLoadTiling(const matmul_v3::MatmulV3Args &args, uint64_t l1Si
     tilingData.set_dbL0C((baseM * baseN * 4 * NUM_TWO > l0CSize) ? 1 : NUM_TWO);    // 4 is data size within l0c
 }
 
-static void BL1FullLoadTiling(const matmul_v3::MatmulV3Args &args, uint64_t l1Size, uint64_t l0CSize,
+static void BL1FullLoadTiling(const mc2_matmul_v3::Mc2MatmulV3Args &args, uint64_t l1Size, uint64_t l0CSize,
                               TCubeTiling &tilingData)
 {
     uint64_t baseK = static_cast<uint64_t>(tilingData.get_baseK());
@@ -892,17 +923,17 @@ static void BL1FullLoadTiling(const matmul_v3::MatmulV3Args &args, uint64_t l1Si
     tilingData.set_dbL0C((baseM * baseN * 4 * NUM_TWO > l0CSize) ? 1 : NUM_TWO);    // 4 is data size within l0c
 }
 
-static void UpdateUsedCoreNum(uint64_t batchC, uint64_t aicNum, BatchMatmulTilingData &tilingData)
+static void UpdateUsedCoreNum(uint64_t batchC, uint64_t aicNum, Mc2BatchMatmulTilingData &tilingData)
 {
     TCubeTiling &matmulTiling = tilingData.matmulTiling.matmulTiling;
     uint64_t mWideNum = static_cast<uint64_t>(ops::CeilDiv(matmulTiling.get_M(), matmulTiling.get_singleCoreM()));
     uint64_t nWideNum = static_cast<uint64_t>(ops::CeilDiv(matmulTiling.get_N(), matmulTiling.get_singleCoreN()));
     uint64_t usedCoreNum = std::min(batchC * mWideNum * nWideNum, aicNum);
     matmulTiling.set_usedCoreNum(usedCoreNum);
-    tilingData.multiBatchInfo.set_batchUsedCoreNum(usedCoreNum);
+    tilingData.Mc2multiBatchInfo.set_batchUsedCoreNum(usedCoreNum);
 }
 
-void BatchMatmulV3BaseTiling::DoL1FullLoadTiling()
+void Mc2BatchMatmulV3BaseTiling::DoL1FullLoadTiling()
 {
     if (compileInfo_.socVersion == platform_ascendc::SocVersion::ASCEND310P ||
         std::string(context_->GetNodeType()) == "TransposeBatchMatMul") {
@@ -911,8 +942,8 @@ void BatchMatmulV3BaseTiling::DoL1FullLoadTiling()
 
     enum class L1FullLoad { NONE, AL1, BL1 };
     const uint64_t totalL1Size = compileInfo_.l1Size + 256;  // 256B为预留给rpc使用，单算子不涉及
-    auto getL1FullLoad = [totalL1Size](uint64_t aBatchDim, uint64_t bBatchDim, const MatmulV3CompileInfo &compileInfo,
-                                       const matmul_v3::MatmulV3Args &args) -> enum L1FullLoad
+    auto getL1FullLoad = [totalL1Size](uint64_t aBatchDim, uint64_t bBatchDim, const Mc2MatmulV3CompileInfo &compileInfo,
+                                       const mc2_matmul_v3::Mc2MatmulV3Args &args) -> enum L1FullLoad
     {
         const bool aNoBatch = aBatchDim <= 1UL;
         const bool bNoBatch = bBatchDim <= 1UL;
@@ -942,11 +973,19 @@ void BatchMatmulV3BaseTiling::DoL1FullLoadTiling()
     };
     switch (getL1FullLoad(aBatchDimAll_, bBatchDimAll_, compileInfo_, args_)) {
         case L1FullLoad::AL1:
-            tilingKey_ = 10000000000000000101UL;
+            tilingEnable_.tilingEnableMultiBatchL1FullLoad = Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE;
+            tilingEnable_.tilingEnableMultiBatch = Mc2TilingEnableMultiBatch::IS_FALSE;
+            tilingEnable_.tilingEnableLoadMode = Mc2TilingEnableLoadMode::AL1_FULL_LOAD;
+            tilingEnable_.tilingEnableMultiBatchOut = Mc2TilingEnableMultiBatchOut::IS_FALSE;
+            tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_FALSE;
             AL1FullLoadTiling(args_, totalL1Size, compileInfo_.l0CSize, bmmTilingData_.matmulTiling.matmulTiling);
             return UpdateUsedCoreNum(batchInfo_.batchC, compileInfo_.aicNum, bmmTilingData_);
         case L1FullLoad::BL1:
-            tilingKey_ = 10000000000000000201UL;
+            tilingEnable_.tilingEnableMultiBatchL1FullLoad = Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE;
+            tilingEnable_.tilingEnableMultiBatch = Mc2TilingEnableMultiBatch::IS_FALSE;
+            tilingEnable_.tilingEnableLoadMode = Mc2TilingEnableLoadMode::BL1_FULL_LOAD;
+            tilingEnable_.tilingEnableMultiBatchOut = Mc2TilingEnableMultiBatchOut::IS_FALSE;
+            tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_FALSE;
             BL1FullLoadTiling(args_, totalL1Size, compileInfo_.l0CSize, bmmTilingData_.matmulTiling.matmulTiling);
             return UpdateUsedCoreNum(batchInfo_.batchC, compileInfo_.aicNum, bmmTilingData_);
         case L1FullLoad::NONE:
@@ -955,7 +994,7 @@ void BatchMatmulV3BaseTiling::DoL1FullLoadTiling()
     }
 }
 
-ge::graphStatus BatchMatmulV3BaseTiling::PostTiling()
+ge::graphStatus Mc2BatchMatmulV3BaseTiling::PostTiling()
 {
     OP_TILING_CHECK(tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
                     OP_LOGE(args_.opName, "tiling data size[%zu] is not aligned to 8", tilingData_.GetDataSize()),
@@ -964,9 +1003,12 @@ ge::graphStatus BatchMatmulV3BaseTiling::PostTiling()
         context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(bmmTilingData_.GetDataSize());
     context_->SetBlockDim(compileInfo_.aicNum);
-    if (tilingKey_ == 10000000000000001000UL || tilingKey_ == 10000000000000001010UL) {
-        CalculateNd2nzWorkspaceSize();
-        workspaceSize_ += RPC_WORKSIZE * MB_SIZE;
+    if ((tilingEnable_.tilingEnableMultiBatchL1FullLoad == Mc2TilingEnableMultiBatchL1FullLoad::IS_FALSE) &&
+        (tilingEnable_.tilingEnableMultiBatch == Mc2TilingEnableMultiBatch::IS_TRUE) &&
+        (tilingEnable_.tilingEnableLoadMode == Mc2TilingEnableLoadMode::BASE) &&
+        (tilingEnable_.tilingEnableMixNd2Nz == Mc2TilingEnableMixNd2Nz::IS_TRUE)) {
+            CalculateNd2nzWorkspaceSize();
+            workspaceSize_ += RPC_WORKSIZE * MB_SIZE;
     }
     workspaceSize_ = std::max(workspaceSize_, DEFAULT_SIZE);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
@@ -977,9 +1019,21 @@ ge::graphStatus BatchMatmulV3BaseTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t BatchMatmulV3BaseTiling::GetTilingKey() const
+uint64_t Mc2BatchMatmulV3BaseTiling::GetTilingKey() const
 {
     return tilingKey_;
+}
+
+void Mc2BatchMatmulV3BaseTiling::DoTilingKeyCustom()
+{
+    tilingKey_ = GET_TPL_TILING_KEY(
+        static_cast<uint64_t>(tilingEnable_.tilingEnableMultiBatchL1FullLoad),
+        static_cast<uint64_t>(tilingEnable_.tilingEnableMultiBatch),
+        static_cast<uint64_t>(tilingEnable_.tilingEnableLoadMode), 
+        static_cast<uint64_t>(tilingEnable_.tilingEnableMultiBatchOut),
+        static_cast<uint64_t>(tilingEnable_.tilingEnableMixNd2Nz),
+    );
+    OP_LOGI(args_.opName, "Tiling Key is 0x%x", tilingKey_);
 }
 
 }

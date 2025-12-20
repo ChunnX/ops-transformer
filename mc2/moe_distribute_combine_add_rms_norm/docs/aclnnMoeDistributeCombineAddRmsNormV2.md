@@ -358,7 +358,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
 <td>groupTp</td>
 <td>输入</td>
 <td>TP通信域名称（数据并行通信域）。</td>
-<td>字符串长度范围为[1, 128)，不能和groupEp相同</td>
+<td>字符串长度范围为[0, 128)，不能和groupEp相同，仅在无TP域通信时支持传空字符串</td>
 <td>STRING</td>
 <td>ND</td>
 <td>-</td>

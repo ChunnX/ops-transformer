@@ -1,20 +1,22 @@
 /**
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "aclnn_moe_distribute_combine_add_rms_norm.h"
 #include <algorithm>
 #include "op_mc2.h"
-#include "matmul_util.h"
 #include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "common/op_host/op_api/matmul_util.h"
 
+using namespace Ops::Transformer;
 using namespace op;
 
 #ifdef __cplusplus
@@ -79,7 +81,7 @@ static aclnnStatus CheckParams(const aclTensor* expandX, const aclTensor* expert
                            x), ACLNN_ERR_PARAM_NULLPTR);
 
     if (is910B) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Not supported platform.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Not support 910B platform.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
@@ -115,7 +117,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize(const aclTensor*
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     aclnnStatus ret;
     if (is910B) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Not supported platform.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Not support 910B platform.");
         return ACLNN_ERR_PARAM_INVALID;
     } else {
         ret = aclnnInnerMoeDistributeCombineAddRmsNormGetWorkspaceSize(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, residualX, gamma,
@@ -132,7 +134,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(void *workspace, uint64_t worksp
     aclnnStatus ret = 0;
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     if (is910B) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Not supported platform.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Not support 910B platform.");
         return ACLNN_ERR_PARAM_INVALID;
     } else {
         if (NnopbaseSetHcclServerType) {

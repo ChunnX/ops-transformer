@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine_tiling.cc
@@ -41,7 +41,10 @@
 #include "moe_distribute_combine_tiling_a2a3.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
+#include "../../op_kernel/moe_distribute_combine_tiling_key.h"
+
 using namespace Ops::Transformer::OpTiling;
+using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
 
@@ -271,15 +274,18 @@ static uint64_t MoeDistributeCombineA2CalcTilingKey(gert::TilingContext *context
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter MoeDistributeCombineA2 calc tiling func.");
 
-    uint64_t tilingKey = TILING_KEY_BASE_A2;
+    bool tp = false;
+    uint32_t quantMode = TILINGKEY_NO_QUANT;  // A2 & A3
+    uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
 
     if (isLayered) {
-        tilingKey = TILING_KEY_LAYERED_COMM_A2;
+        layeredMode = TILINGKEY_TPL_AICPU;
         if (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::INT8_QUANT)) {
-            tilingKey += TILING_KEY_INT8_COMM_QUANT_A2;
+            quantMode = TILINGKEY_INT8_QUANT;
         }
     }
 
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, TILINGKEY_TPL_A2);
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%lu", tilingKey);
 
     return tilingKey;
@@ -334,8 +340,10 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     uint32_t opType = 18; // batch write=18,
     std::string algConfig = "BatchWrite=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+            OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+            OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
 
     OP_LOGI(nodeName, "Leave MoeDistributeCombineA2 tiling func.");
     return ge::GRAPH_SUCCESS;
@@ -471,7 +479,9 @@ static bool CheckTensorShape(gert::TilingContext *context, MoeDistributeCombineT
     OP_TILING_CHECK(expandXDim0 < tpWorldSize * static_cast<int64_t>(A),
                     OP_LOGE(nodeName,
                             "expandX's dim0 not greater than or equal to A * tpWorldSize, expandXDim0 = %ld, A = %ld, "
-                            "tpWorldSize = %ld", expandXDim0, static_cast<int64_t>(A), tpWorldSize), return false);
+                            "tpWorldSize = %ld",
+                            expandXDim0, static_cast<int64_t>(A), tpWorldSize),
+                    return false);
     OP_TILING_CHECK((expandXDim1 != 7168),
                     OP_LOGE(nodeName, "expandX dims1(H) only supports 7168, but got %ld.", expandXDim1), return false);
     tilingData.moeDistributeCombineInfo.h = static_cast<uint32_t>(expandXDim1);
@@ -659,7 +669,7 @@ static ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBuffe
     return ge::GRAPH_SUCCESS;
 }
 
-static void SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombineTilingData *tiling,
+static ge::graphStatus SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombineTilingData *tiling,
                         const std::string groupEp, const std::string groupTp, const uint32_t tpWorldSize)
 {
     const char *nodeName = context->GetNodeName();
@@ -670,16 +680,21 @@ static void SetHCommCfg(const gert::TilingContext *context, MoeDistributeCombine
     std::string algConfigReduceScatterStr = "ReduceScatter=level0:ring";
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType1, algConfigAllToAllStr);
-    mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1);
+    mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);   // 通过不拉起AICPU，提高算子退出性能
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling) != 0,
+        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1) != 0,
+        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling1 failed"), return ge::GRAPH_FAILED);
 
     if (tpWorldSize > 1) {
         OP_LOGD(nodeName, "MoeDistributeCombine groupTp = %s", groupTp.c_str());
         mc2CcTilingConfig.SetGroupName(groupTp);
         mc2CcTilingConfig.SetOpType(opType2);
         mc2CcTilingConfig.SetAlgConfig(algConfigReduceScatterStr);
-        mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2) != 0,
+            OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling2 failed"), return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistributeCombineTilingData* tilingData,
@@ -768,14 +783,18 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext 
                     return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
-    SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize);
-    uint64_t tilingKey = INIT_TILINGKEY_TP_2;
-    if (tpWorldSize != MAX_TP_WORLD_SIZE) {
-        tilingKey = INIT_TILINGKEY_TP_1;
+    OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+    bool tp = false;
+    uint32_t quantMode = TILINGKEY_NO_QUANT;
+    uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
+    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
+        tp = true;
     }
     if (commQuantMode == INT8_COMM_QUANT) {
-        tilingKey += TILINGKEY_INT8_COMM_QUANT;
+        quantMode = TILINGKEY_INT8_QUANT;
     }
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, TILINGKEY_TPL_A3);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     uint32_t blockDim = 1U;
@@ -826,7 +845,7 @@ ge::graphStatus TilingParseForMoeDistributeCombine(gert::TilingParseContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("MoeDistributeCombine", MoeDistributeCombineTilingA2A3, 1);
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombine, MoeDistributeCombineTilingA2A3, 1);
 
 ge::graphStatus MoeDistributeCombineTilingA2A3::DoOpTiling()
 {

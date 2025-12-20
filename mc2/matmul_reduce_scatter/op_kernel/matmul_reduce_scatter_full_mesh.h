@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_reduce_scatter_full_mesh.h
@@ -32,11 +32,11 @@ private:
     __aicore__ inline void HcclPrepare();
     __aicore__ inline void InnerProcess();
     __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR gmToFloat, TCubeTiling &tiling,
-        TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void MatmulKernelComputeL2Cache(GM_ADDR aGM, GM_ADDR gmToFloat, TCubeTiling &tiling,
-        TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void MatmulKernelReduceScatter(GM_ADDR aGM, GM_ADDR gmToFloat, TCubeTiling &tiling,
-        TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void HcclFinalize();
 
 private:
@@ -127,7 +127,7 @@ MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Floa
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void
 MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::MatmulKernelCompute(GM_ADDR aGM,
-    GM_ADDR gmToFloat, TCubeTiling &tiling, TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
+    GM_ADDR gmToFloat, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
 {
     if (GetBlockIdx() >= tiling.usedCoreNum) {
         for (uint32_t i = 0; i < tileCnt; i++) {
@@ -177,7 +177,7 @@ MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Floa
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void
 MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::MatmulKernelComputeL2Cache(
-    GM_ADDR aGM, GM_ADDR gmToFloat, TCubeTiling &tiling, TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
+    GM_ADDR aGM, GM_ADDR gmToFloat, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
 {
     if (GetBlockIdx() >= tiling.usedCoreNum) {
         for (uint32_t i = 0; i < tileCnt; i++) {
@@ -222,7 +222,7 @@ MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Floa
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void
 MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::MatmulKernelReduceScatter(
-    GM_ADDR aGM, GM_ADDR gmToFloat, TCubeTiling &tiling, TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
+    GM_ADDR aGM, GM_ADDR gmToFloat, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt)
 {
     // Matmul的一次计算流程
     if (l2Tiling.enableL2Tile > 0) {

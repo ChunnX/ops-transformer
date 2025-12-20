@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_msd.cpp
@@ -19,6 +19,9 @@
 #include "weight_quant_batch_matmul_v2_white_list.h"
 #include "weight_quant_batch_matmul_v2_tiling_key.h"
 #include "tiling_base/tiling_key.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_def_tiling.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h"
 
 using Ops::Transformer::OpTiling::RecursiveSum;
 
@@ -30,19 +33,19 @@ constexpr uint64_t MSD_PERCHANNEL_MAX_N = 32000UL;
 constexpr uint64_t INT4_BLK_SIZE = 64UL;
 constexpr uint64_t DB_BUFFER = 2UL;
 
-const std::map<WhiteListShape, uint32_t> MM_PRELOAD_TIME_MAP = {
+const std::map<Mc2WhiteListShape, uint32_t> MM_PRELOAD_TIME_MAP = {
     {{1, 5568, 6656, false, false, true, 1}, 1},  {{1, 8192, 3072, false, false, true, 1}, 3},
     {{1, 8192, 6144, false, false, true, 1}, 3},  {{1, 1024, 8192, false, false, true, 1}, 3},
     {{16, 8192, 5504, false, false, true, 1}, 3}, {{16, 8192, 7168, false, false, true, 1}, 2}};
 
-const std::set<WhiteListShape> MSD_HIGH_PRECISION_LIST = {
+const std::set<Mc2WhiteListShape> MSD_HIGH_PRECISION_LIST = {
     // llama3-70B
     {36, 8192, 1280, false, false, true, 1},
 };
 
-void WeightQuantBatchMatmulV2Msd::Reset()
+void Mc2WeightQuantBatchMatmulV2Msd::Reset()
 {
-    WeightQuantBatchMatmulV2Tiling::Reset();
+    Mc2WeightQuantBatchMatmulV2Tiling::Reset();
     splitKFlag_ = false;
     highPrecision_ = false;
 
@@ -52,7 +55,7 @@ void WeightQuantBatchMatmulV2Msd::Reset()
                     OP_LOGE(opName_, "fail to memset tiling data"), return;);
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2Msd::PostTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::PostTiling()
 {
     OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
 
@@ -85,16 +88,16 @@ The function is limite of msd
    2) groupsize: 64 or 128
    3) m <= groupsize/8, k % groupsize =0, n % 64 = 0
 */
-bool WeightQuantBatchMatmulV2Msd::IsCapable()
+bool Mc2WeightQuantBatchMatmulV2Msd::IsCapable()
 {
     OP_LOGI(opName_, "Begin check msd");
     OP_TILING_CHECK(
         matmulInfoPtr_->transA || matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64 ||
             matmulInfoPtr_->cDtype == ge::DT_INT8 || matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64 ||
-            (matmulInfoPtr_->antiQuantType != QuantType::PER_CHANNEL &&
-             matmulInfoPtr_->antiQuantType != QuantType::PER_GROUP),
+            (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL &&
+             matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_GROUP),
         OP_LOGI(opName_, "MSD not support trans_a, quant, int64 antiquant or pertsor"), return false);
-    if (matmulInfoPtr_->antiQuantType == QuantType::PER_CHANNEL) {
+    if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_CHANNEL) {
         OP_TILING_CHECK(
             matmulInfoPtr_->mSize > MSD_M_LIMIT || matmulInfoPtr_->kSize % 32 != 0 || matmulInfoPtr_->nSize % 32 != 0,
             OP_LOGI(
@@ -116,7 +119,7 @@ bool WeightQuantBatchMatmulV2Msd::IsCapable()
             splitKFlag_ = true;
         } else {
             splitKFlag_ = matmulInfoPtr_->kSize > MSD_PERCHANNEL_MAX_K || matmulInfoPtr_->nSize > MSD_PERCHANNEL_MAX_N;
-            WhiteListShape shape(
+            Mc2WhiteListShape shape(
                 {matmulInfoPtr_->mSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias,
                  matmulInfoPtr_->transA, matmulInfoPtr_->transB, 1});
             if (MSD_HIGH_PRECISION_LIST.find(shape) != MSD_HIGH_PRECISION_LIST.end()) {
@@ -126,7 +129,7 @@ bool WeightQuantBatchMatmulV2Msd::IsCapable()
         }
         OP_LOGI(opName_, "Check msd fo perchannel succ");
     }
-    if (matmulInfoPtr_->antiQuantType == QuantType::PER_GROUP) {
+    if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP) {
         OP_TILING_CHECK(
             matmulInfoPtr_->transB || matmulInfoPtr_->bDtype != ge::DT_INT4,
             OP_LOGI(opName_, "Pergroup not support trans_b or W8"), return false);
@@ -149,11 +152,11 @@ bool WeightQuantBatchMatmulV2Msd::IsCapable()
     return true;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2Msd::InstantiateTilingData()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::InstantiateTilingData()
 {
     if (tilingData_ == nullptr) {
-        tilingData_ = std::unique_ptr<WeightQuantBatchMatmulV2MsdTilingData>(
-            new (std::nothrow) WeightQuantBatchMatmulV2MsdTilingData());
+        tilingData_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2MsdTilingData>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2MsdTilingData());
     }
     OP_TILING_CHECK(
         tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
@@ -167,7 +170,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2Msd::DoOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::DoOpTiling()
 {
     OP_TILING_CHECK(
         InstantiateTilingData() == ge::GRAPH_FAILED,
@@ -191,7 +194,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::DoOpTiling()
         uint32_t preloadTimes = 3;
         uint32_t bL1KSize = tilingData_->matmulTiling.get_baseK() * tilingData_->matmulTiling.get_stepKb();
         preloadTimes = std::min(preloadTimes, static_cast<uint32_t>(matmulInfoPtr_->kSize / bL1KSize));
-        WhiteListShape shape(
+        Mc2WhiteListShape shape(
             {matmulInfoPtr_->mSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias,
              matmulInfoPtr_->transA, matmulInfoPtr_->transB, 1});
         auto it = MM_PRELOAD_TIME_MAP.find(shape);
@@ -209,7 +212,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::DoOpTiling()
         tilingData_->set_preProcessUsedVecNum(preprocessUsedAivNum);
         blkDim_ = preprocessUsedAivNum;
     } else {
-        if (matmulInfoPtr_->antiQuantType == QuantType::PER_GROUP) {
+        if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP) {
             return DoMSDGroupSplitKOpTiling();
         }
         return DoMSDGeneralOpTiling();
@@ -217,7 +220,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2Msd::DoMSDGeneralOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::DoMSDGeneralOpTiling()
 {
     uint64_t kBlockNum = 1;
     // nk差距超过30倍，需要考虑对k切多份, 该值为经验值
@@ -281,7 +284,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::DoMSDGeneralOpTiling()
     return ge::GRAPH_FAILED;
 }
 
-uint64_t WeightQuantBatchMatmulV2Msd::SplitKByKBlock(uint64_t kBlockNum) const
+uint64_t Mc2WeightQuantBatchMatmulV2Msd::SplitKByKBlock(uint64_t kBlockNum) const
 {
     // 默认k切分粒度希望尽量小，使分核均匀
     uint64_t kAlignSize = 64;
@@ -292,7 +295,7 @@ uint64_t WeightQuantBatchMatmulV2Msd::SplitKByKBlock(uint64_t kBlockNum) const
     return kBlockNum == 0 ? 0 : ops::CeilAlign(ops::CeilDiv(matmulInfoPtr_->kSize, kBlockNum), kAlignSize);
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2Msd::DoMSDGroupSplitKOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::DoMSDGroupSplitKOpTiling()
 {
     tilingData_->set_groupSize(matmulInfoPtr_->groupSize);
     uint64_t kBlockNum = 1;
@@ -345,74 +348,134 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::DoMSDGroupSplitKOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t WeightQuantBatchMatmulV2Msd::GetInnerPreciseTilingKey() const
+uint64_t Mc2WeightQuantBatchMatmulV2Msd::GetInnerPreciseTilingKey() const
 {
-    TilingKeyConfigure tilingKeyConfigure;
+    Mc2TilingKeyConfigure tilingKeyConfigure;
     SetCommonTilingKeyElement(tilingKeyConfigure);
-    // 10:乘10表示在第4位
-    tilingKeyConfigure.algorithm = (static_cast<uint8_t>(OptimizationAlgorithmCategory::MULTI_SCALE_DEQUANT) * 10) +
-                                   static_cast<uint8_t>(OptimizationAlgorithmSubCategory::SPLIT_K);
-    tilingKeyConfigure.apiConstexpr = 0;
-    tilingKeyConfigure.templateCustom = static_cast<uint8_t>(matmulInfoPtr_->innerPrecise) * 1000; // 1000:第6位
-    return tilingKeyConfigure.GenTilingKey();
+
+    uint64_t socVersionType = tilingKeyConfigure.socVersionType / 10UL;
+    uint64_t subSocVersionType = 0UL;
+    uint64_t antiquantScenario = tilingKeyConfigure.quantizationScenario;
+    uint64_t algorithm = static_cast<uint64_t>(Mc2OptimizationAlgorithmCategory::MULTI_SCALE_DEQUANT); // 3 means CUSTOM tilingkey algorithm
+    uint64_t subAlgorithm = static_cast<uint64_t>(Mc2OptimizationAlgorithmSubCategory::SPLIT_K);
+    uint64_t subAlgorithmCustom = 0UL;
+    uint64_t innerPrecise = matmulInfoPtr_->innerPrecise;
+    uint64_t templateCustom = 0UL;
+    uint64_t apiConstexpr = 0UL;
+    bool transA = ((tilingKeyConfigure.transposeSituation >> 1) & 1) != 0;
+    bool transB = (tilingKeyConfigure.transposeSituation & 1) != 0;
+    uint64_t antiquantType = tilingKeyConfigure.antiquantType;
+    uint64_t quantType = tilingKeyConfigure.quantType;
+    bool hasAntiquantOffset = ((tilingKeyConfigure.optionInputSituation >> 1) & 1) != 0;
+    bool hasBias = false;
+    bool isBiasFp32 = false;
+    bool isWeightNz = (tilingKeyConfigure.weightFormat == 1UL) ? true : false; // Mc2WeightFormat::ND
+    uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t batch = 0UL;
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    return tilingKey_;
 }
 
 // 4、计算高阶API的TilingData
-ge::graphStatus WeightQuantBatchMatmulV2Msd::DoLibApiTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // 5、计算TilingKey
-uint64_t WeightQuantBatchMatmulV2Msd::GetTilingKey() const
+uint64_t Mc2WeightQuantBatchMatmulV2Msd::GetTilingKey() const
 {
     // 在A16W4 pergroup切K 下才有效
-    if (matmulInfoPtr_->antiQuantType == QuantType::PER_GROUP && splitKFlag_ && matmulInfoPtr_->bDtype == ge::DT_INT4 &&
+    if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP && splitKFlag_ && matmulInfoPtr_->bDtype == ge::DT_INT4 &&
         (matmulInfoPtr_->innerPrecise != 0 || matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ)) {
         return GetInnerPreciseTilingKey();
     }
+    uint64_t socVersionType = 1UL; // 1 means SUPPORT_L0C_TO_OUT
+    uint64_t subSocVersionType = 0UL;
+    uint64_t antiquantScenario = 0UL;
+    uint64_t algorithm = 3UL; // 3 means CUSTOM tilingkey algorithm
+    uint64_t subAlgorithm = 0UL;
+    uint64_t subAlgorithmCustom = static_cast<uint64_t>(Mc2KernelTemplateType::MSD_MULTI_CORE);
+    uint64_t innerPrecise = 0UL;
+    uint64_t templateCustom = 0UL;
+    uint64_t apiConstexpr = 0UL;
+    bool transA = matmulInfoPtr_->transA;
+    bool transB = matmulInfoPtr_->transB;
+    uint64_t antiquantType = static_cast<uint64_t>(matmulInfoPtr_->antiQuantType);
+    uint64_t quantType = static_cast<uint64_t>(matmulInfoPtr_->quantType);
+    bool hasAntiquantOffset = matmulInfoPtr_->hasAntiQuantOffset;
+    bool hasBias = false;
+    bool isBiasFp32 = false;
+    bool isWeightNz;
+    uint64_t templateExtra;
+    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t batch = 0UL;
+    uint64_t tilingKey_;
 
     if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
         if (highPrecision_) {
-            return RecursiveSum(
-                matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-                matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, KernelTemplateType::MSD_MULTI_CORE,
-                KernelTemplateType::WEIGHT_NZ, KernelTemplateTypeExtra::HIGH_PRECISION);
+            isWeightNz = true; // Mc2KernelTemplateType::WEIGHT_NZ
+            templateExtra = static_cast<uint64_t>(Mc2KernelTemplateTypeExtra::HIGH_PRECISION);
+            tilingKey_ = GET_TPL_TILING_KEY(
+                socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+                hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+            return tilingKey_;
         } else {
             if (splitKFlag_) {
-                return RecursiveSum(
-                    matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-                    matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, KernelTemplateType::MSD_MULTI_CORE,
-                    KernelTemplateType::WEIGHT_NZ, KernelTemplateTypeExtra::MSD_GENERAL);
+                isWeightNz = true; // Mc2KernelTemplateType::WEIGHT_NZ
+                templateExtra = static_cast<uint64_t>(Mc2KernelTemplateTypeExtra::MSD_GENERAL);
+                tilingKey_ = GET_TPL_TILING_KEY(
+                    socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+                    innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+                    hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+                return tilingKey_;
             }
-            return RecursiveSum(
-                matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-                matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, KernelTemplateType::MSD_MULTI_CORE,
-                KernelTemplateType::WEIGHT_NZ);
+            isWeightNz = true; // Mc2KernelTemplateType::WEIGHT_NZ
+            templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+            tilingKey_ = GET_TPL_TILING_KEY(
+                socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+                hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+            return tilingKey_;
         }
     }
 
     if (splitKFlag_) {
-        return RecursiveSum(
-            matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-            matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, KernelTemplateType::MSD_MULTI_CORE,
-            WeightFormat::ND, KernelTemplateTypeExtra::MSD_GENERAL);
+        isWeightNz = false; // Mc2WeightFormat::ND
+        templateExtra = static_cast<uint64_t>(Mc2KernelTemplateTypeExtra::MSD_GENERAL);
+        tilingKey_ = GET_TPL_TILING_KEY(
+            socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+            innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+            hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+        return tilingKey_;
     } else {
         if (highPrecision_) {
-            return RecursiveSum(
-                matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-                matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, KernelTemplateType::MSD_MULTI_CORE,
-                WeightFormat::ND, KernelTemplateTypeExtra::HIGH_PRECISION);
+            isWeightNz = false; // Mc2WeightFormat::ND
+            templateExtra = static_cast<uint64_t>(Mc2KernelTemplateTypeExtra::HIGH_PRECISION);
+            tilingKey_ = GET_TPL_TILING_KEY(
+                socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+                hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+            return tilingKey_;
         } else {
-            return RecursiveSum(
-                matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-                matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, KernelTemplateType::MSD_MULTI_CORE);
+            isWeightNz = false;
+            templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+            tilingKey_ = GET_TPL_TILING_KEY(
+                socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+                hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+            return tilingKey_;
         }
     }
 }
 
 // 6、计算Workspace 大小
-ge::graphStatus WeightQuantBatchMatmulV2Msd::GetWorkspaceSize()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Msd::GetWorkspaceSize()
 {
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(
@@ -422,7 +485,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Msd::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-bool WeightQuantBatchMatmulV2Msd::CheckCacheTiling()
+bool Mc2WeightQuantBatchMatmulV2Msd::CheckCacheTiling()
 {
     if (tilingData_->get_cubeBlockDimM() != 1) {
         // 切k模板未实现m分核逻辑，导致性能裂化。mult core模板不支持m分核场景
@@ -468,7 +531,7 @@ bool WeightQuantBatchMatmulV2Msd::CheckCacheTiling()
     return true;
 }
 
-bool WeightQuantBatchMatmulV2Msd::CheckInt8MatmulTiling(uint64_t singleCoreNCalc) const
+bool Mc2WeightQuantBatchMatmulV2Msd::CheckInt8MatmulTiling(uint64_t singleCoreNCalc) const
 {
     if (matmulInfoPtr_->bDtype != ge::DT_INT8) {
         return true;
@@ -489,7 +552,7 @@ bool WeightQuantBatchMatmulV2Msd::CheckInt8MatmulTiling(uint64_t singleCoreNCalc
     return true;
 }
 
-bool WeightQuantBatchMatmulV2Msd::CheckInt4MatmulTiling() const
+bool Mc2WeightQuantBatchMatmulV2Msd::CheckInt4MatmulTiling() const
 {
     if (matmulInfoPtr_->bDtype != ge::DT_INT4) {
         return true;
@@ -543,11 +606,11 @@ bool WeightQuantBatchMatmulV2Msd::CheckInt4MatmulTiling() const
     return true;
 }
 
-bool WeightQuantBatchMatmulV2Msd::InvokeCacheTiling()
+bool Mc2WeightQuantBatchMatmulV2Msd::InvokeCacheTiling()
 {
-    MatmulMultiCoreResult multiCoreResult;
+    Mc2MatmulMultiCoreResult multiCoreResult;
     if (!splitKFlag_) {
-        bool result = ComputeMatmulTiling::GetTiling(
+        bool result = Mc2ComputeMatmulTiling::GetTiling(
             tilingData_->matmulTiling, multiCoreResult,
             {order_ * matmulInfoPtr_->mSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, ge::DT_INT8, ge::DT_INT8,
              ge::DT_INT32, ge::DT_INT32, matmulInfoPtr_->transA, matmulInfoPtr_->transB, false, matmulInfoPtr_->aFormat,
@@ -557,7 +620,7 @@ bool WeightQuantBatchMatmulV2Msd::InvokeCacheTiling()
             !result, false, opName_, "cannot get tiling from cachetiling, mnk[%lu, %lu, %lu]", matmulInfoPtr_->mSize,
             matmulInfoPtr_->nSize, matmulInfoPtr_->kSize);
     } else {
-        bool result = ComputeMatmulTiling::GetTiling(
+        bool result = Mc2ComputeMatmulTiling::GetTiling(
             tilingData_->matmulTiling, multiCoreResult,
             {order_ * matmulInfoPtr_->mSize,
              std::min(matmulInfoPtr_->kSize, static_cast<uint64_t>(tilingData_->get_v1BaseK())),
@@ -577,9 +640,9 @@ bool WeightQuantBatchMatmulV2Msd::InvokeCacheTiling()
     return CheckCacheTiling();
 }
 
-bool WeightQuantBatchMatmulV2Msd::GetMatMulTiling()
+bool Mc2WeightQuantBatchMatmulV2Msd::GetMatMulTiling()
 {
-    if (matmulInfoPtr_->antiQuantType == QuantType::PER_GROUP || (!GetTilingFromCache() && !InvokeCacheTiling())) {
+    if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP || (!GetTilingFromCache() && !InvokeCacheTiling())) {
         uint64_t mSize = order_ * matmulInfoPtr_->mSize;
         uint64_t nSize = matmulInfoPtr_->nSize;
         uint64_t kSize = matmulInfoPtr_->kSize;
@@ -604,14 +667,14 @@ bool WeightQuantBatchMatmulV2Msd::GetMatMulTiling()
                                               matmul_tiling::CubeFormat::ND;
         matmul_tiling::MatmulApiTiling mmTiling;
         mmTiling.SetAType(
-            matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, GetMatmulTilingDtype(matmulInfoPtr_->bDtype),
+            matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, Mc2GetMatmulTilingDtype(matmulInfoPtr_->bDtype),
             matmulInfoPtr_->transA);
         mmTiling.SetBType(
-            matmul_tiling::TPosition::GM, bCube, GetMatmulTilingDtype(matmulInfoPtr_->bDtype), matmulInfoPtr_->transB);
+            matmul_tiling::TPosition::GM, bCube, Mc2GetMatmulTilingDtype(matmulInfoPtr_->bDtype), matmulInfoPtr_->transB);
         mmTiling.SetCType(
             matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_INT32);
         mmTiling.SetBias(false);
-        if (matmulInfoPtr_->antiQuantType == QuantType::PER_GROUP) {
+        if (matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP) {
             mmTiling.SetOrgShape(order_ * matmulInfoPtr_->mSize, matmulInfoPtr_->nSize, matmulInfoPtr_->kSize);
             // N方向cube上切分SingleCoreN固定为1024
             mmTiling.SetShape(order_ * matmulInfoPtr_->mSize, 1024, matmulInfoPtr_->groupSize);
@@ -634,7 +697,7 @@ bool WeightQuantBatchMatmulV2Msd::GetMatMulTiling()
     return true;
 }
 
-void WeightQuantBatchMatmulV2Msd::ReviseMMTiling() const
+void Mc2WeightQuantBatchMatmulV2Msd::ReviseMMTiling() const
 {
     uint64_t stepKb = tilingData_->matmulTiling.get_stepKb();
     uint64_t stepKa = tilingData_->matmulTiling.get_stepKa();
@@ -659,8 +722,35 @@ void WeightQuantBatchMatmulV2Msd::ReviseMMTiling() const
     tilingData_->matmulTiling.set_shareL1Size(0);
 }
 
-bool WeightQuantBatchMatmulV2Msd::GetTilingFromCache()
+bool Mc2WeightQuantBatchMatmulV2Msd::GetTilingFromCache()
 {
-    return false;
+    if (matmulInfoPtr_->bDtype == ge::DT_INT4) {
+        return false;
+    }
+    uint64_t mMatchSize = ops::CeilDiv(matmulInfoPtr_->mSize * order_, static_cast<uint64_t>(BLOCK_CUBE));
+    uint64_t nSize = matmulInfoPtr_->nSize;
+    uint64_t kSize = matmulInfoPtr_->kSize;
+    if (splitKFlag_) {
+        nSize = tilingData_->get_taskNSize();
+        kSize = tilingData_->get_v1BaseK();
+    }
+
+    bool isNzFormat = matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ;
+    WeightQuantBatchMatmulCacheTilingParas paras(
+        {mMatchSize, kSize, nSize, matmulInfoPtr_->hasBias, matmulInfoPtr_->transA, matmulInfoPtr_->transB, isNzFormat,
+         compileInfoPtr_->aicNum});
+
+    WeightQuantBatchMatmulCacheTilingData matmulTilingCache;
+    if (!GenWqbmmTiling(WQBMM_MSD, paras, matmulTilingCache)) {
+        OP_LOGD(opName_, "the Msd template not find mm tiling from cache");
+        return false;
+    }
+
+    OP_LOGD(opName_, "the Msd template get mm tiling from cache");
+    Mc2SetMatmulTilingFromCacheData(matmulTilingCache, tilingData_->matmulTiling, matmulInfoPtr_->mSize * order_, nSize, 0);
+
+    tilingData_->set_cubeBlockDimM(matmulTilingCache.mDim_);
+    tilingData_->set_cubeBlockDimN(matmulTilingCache.nDim_);
+    return true;
 }
 } // namespace optiling

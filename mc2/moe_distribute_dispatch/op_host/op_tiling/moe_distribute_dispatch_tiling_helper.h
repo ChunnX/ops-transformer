@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_tiling_helper.h
@@ -38,6 +38,9 @@ constexpr uint32_t OUTPUT_TP_RECV_COUNTS_INDEX = 5U;
 
 constexpr uint32_t TWO_DIMS = 2;
 constexpr uint32_t ONE_DIM = 1;
+
+constexpr uint32_t OP_VERSION_1 = 1U;
+
 enum class RealModeA5 : uint32_t {
     NO_SCALES = 0,
     STATIC_SCALES = 1,
@@ -91,11 +94,11 @@ class MoeDistributeDispatchTilingHelper {
 public:
     static ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode);
-    static ge::graphStatus TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);
+    static ge::graphStatus TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context,
+        const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask, const uint32_t opVersion);
 protected:
     static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName,
-        const bool isScales, const uint32_t quantMode);
+        const bool isScales, const uint32_t quantMode, const uint32_t opVersion);
     static bool CheckTensorDataType(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode);    
     static bool CheckTensorDataTypeA5(gert::TilingContext *context, const char *nodeName,
@@ -115,6 +118,7 @@ private:
     inline static bool CheckTensorDataTypeMxfp8(const gert::TilingContext *context, const char *nodeName);
     inline static bool CheckDistinctTensorDataType(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode);
+    inline static bool CheckTokenMask(gert::TilingContext *context, const char *nodeName);
 };
 } // namespace optiling
 #endif // MOE_DISTRIBUTE_DISPATCH_TILING_HELPER_H

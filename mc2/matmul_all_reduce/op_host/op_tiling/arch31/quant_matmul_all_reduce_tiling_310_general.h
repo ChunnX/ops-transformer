@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_matmul_all_reduce_tiling_310_general.h
@@ -15,17 +15,17 @@
 #ifndef QUANT_MATMUL_ALL_REDUCE_TILING_310_GENERAL_H
 #define QUANT_MATMUL_ALL_REDUCE_TILING_310_GENERAL_H
 
-#include "../matmul_all_reduce_tiling.h"
-#include "../quant_matmul_all_reduce_tiling.h"
+#include "../matmul_all_reduce_tiling_base.h"
+#include "../arch32/quant_matmul_all_reduce_tiling.h"
 namespace optiling {
 class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
 {
-    class QuantTilingTransferHelper : public QuantBatchMatmulV3Tiling
+    class QuantTilingTransferHelper : public Mc2QuantBatchMatmulV3Tiling
     {
     public:
         QuantTilingTransferHelper(
-            QuantMatmulAllReduceTiling310General& quantMatmulAllReduceTiling, QuantBatchMatmulV3TilingData& data)
-            : QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data),
+            QuantMatmulAllReduceTiling310General& quantMatmulAllReduceTiling, Mc2QuantBatchMatmulV3TilingData& data)
+            : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data),
               tilingProcesser_(quantMatmulAllReduceTiling)
         {}
 
@@ -101,7 +101,7 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             return ge::GRAPH_SUCCESS;
         }
 
-        void PrintTilingInputParam(QuantBatchMatmulInfo& info)
+        void PrintTilingInputParam(Mc2QuantBatchMatmulInfo& info)
         {
             OP_LOGD(
                 tilingProcesser_.opName_, " transA %d transB %d, hasBias %d, mSize %ld, kSize %ld, nSize %ld ",

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_moe_distribute_combine_v2.cpp
@@ -20,8 +20,8 @@
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "../../moe_distribute_dispatch_v2/op_api/aclnn_moe_distribute_dispatch_v2.h"
-#include "../op_api/aclnn_moe_distribute_combine_v2.h"
+#include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
+#include "aclnnop/aclnn_moe_distribute_combine_v2.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -403,9 +403,9 @@ int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST
     HcclComm hcclComm = nullptr;
     int rank_id = rankId + first_rank_id;
     ret = HcclCommInitClusterInfo(RANK_TABLE_FILE, rank_id, &hcclComm);
-    if (ret != HCCL_SUCCESS || hcclComm == nullptr) {
+    if (ret != HCCL_SUCCESS) {
         std::cout << "[ERROR] HCCL CommInitClusterInfo failed. ret = " << ret << std::endl;
-        return 0;
+        return ret;
     }
     std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
               << ", hcclComm:" << hcclComm << std::endl;
@@ -510,12 +510,13 @@ int main(int argc, char *argv[])
         LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
         uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
         std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
-        int ret = aclInit(nullptr);
+        auto ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
         for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
             threads[rankId] = std::make_unique<std::thread>([rankId]()
             {
                 int ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
+                CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] run example on A2 failed. ret = %d\n", ret); return ret);
             });
         }
         for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {

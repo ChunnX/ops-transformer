@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef ACLNN_MM_WHITE_LIST_H_
 #define ACLNN_MM_WHITE_LIST_H_
 
@@ -66,6 +66,8 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {16384, 1024, 64000, 0, 1, 0, 1},
     {101376, 1024, 1024, 0, 1, 0, 1},
     {4096, 4096, 11008, 1, 0, 0, 1},
+    // 6656, 24576, 17920, 1, 0, 0, 1
+    // 8192, 27392, 4096, 0, 0, 0, 1
     {6656, 24576, 6656, 1, 0, 0, 1},
     {4096, 11008, 4096, 0, 0, 0, 1},
     {640, 15808, 640, 1, 0, 0, 1},
@@ -93,6 +95,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {236, 8192, 28672, 0, 1, 0, 1},
     {16032, 32768, 4096, 1, 0, 0, 1},
     {768, 32768, 4096, 1, 0, 0, 1},
+    // deepseek
     {8, 7168, 16, 0, 1, 0, 0},
     {16, 7168, 16, 0, 1, 0, 0},
     {8, 7168, 8, 0, 1, 0, 0},
@@ -104,12 +107,17 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {48, 7168, 256, 0, 1, 0, 0},
     {64, 7168, 256, 0, 1, 0, 0},
     {128, 7168, 256, 0, 1, 0, 0},
+    // X1 White
+    // TX Opensora
     {4608, 67584, 1152, 1, 0, 0, 1},
     {4608, 34816, 1152, 1, 0, 0, 1},
+    // fp16 Bert
     {768, 16384, 768, 1, 0, 0, 1},
     {768, 16384, 3072, 1, 0, 0, 1},
+    // fp32 JD
     {200, 2386, 3, 0, 0, 0, 0},
     {200, 2386, 256, 0, 0, 1, 0},
+    // fp32 MT
     {96, 2400, 64, 1, 0, 0, 0},
     {96000, 280, 256, 0, 0, 0, 0},
     {720000, 200, 128, 0, 0, 0, 0},
@@ -137,6 +145,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {1024, 4, 64, 0, 1, 0, 0},
     {1024, 128, 216, 0, 1, 0, 0},
     {1024, 8192, 64, 0, 1, 0, 0},
+    // fp32 ZJ
     {3000, 1312, 256, 0, 0, 1, 0},
     {3000, 3429, 581, 0, 0, 1, 0},
     {3000, 4070, 426, 0, 0, 1, 0},
@@ -168,6 +177,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {872, 3000, 128, 1, 0, 0, 0},
     {3000, 128, 1992, 0, 1, 0, 0},
     {1072, 3000, 128, 1, 0, 0, 0},
+    // hf32 whitelist
     {4, 700000, 4, 1, 0, 0, 0},
     {4, 350000, 4, 1, 0, 0, 0},
     {60, 350000, 128, 1, 0, 0, 0},
@@ -233,6 +243,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {1336, 1024, 1336, 1, 0, 0, 0},
     {976, 1024, 976, 1, 0, 0, 0},
     {160, 7000, 64, 1, 0, 0, 0},
+    // mayi bailingMM white list
     {1152, 8192, 33962, 0, 1, 0, 1},
     {856, 8192, 33936, 0, 1, 0, 1},
     {856, 33936, 8192, 0, 0, 0, 1},
@@ -242,6 +253,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {856, 8192, 8192, 0, 0, 0, 1},
     {856, 8192, 10240, 0, 1, 0, 1},
     {856, 10240, 8192, 0, 0, 0, 1},
+    // 盘古135B2
     {4096, 12544, 8192, 0, 0, 0, 1},
     {12544, 4096, 8192, 1, 0, 0, 1},
     {7168, 4096, 12288, 1, 0, 0, 1},
@@ -251,11 +263,15 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {1792, 4096, 12288, 1, 0, 0, 1},
     {4096, 1792, 12288, 0, 0, 0, 1},
     {4096, 12288, 1536, 0, 0, 0, 1},
+    // DIT模型
     {8358, 132, 3072, 0, 1, 1, 1},
+    // 盘古
     {7680, 1024, 256, 1, 0, 0, 1},
     {2048, 512, 4096, 0, 1, 0, 1},
     {4096, 8192, 512, 1, 0, 0, 1},
+    // DeepSeek
     {2048, 7168, 256, 0, 1, 0, 0},
+    // 多模态 QW2/ZJ
     {4096, 450, 4096, 1, 0, 0, 1},
     {10240, 512, 3584, 0, 0, 0, 1},
     {3584, 456, 3584, 1, 0, 0, 1},
@@ -298,6 +314,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST 
     {12288, 208, 3072, 1, 0, 0, 1},
     {544, 8192, 14784, 0, 1, 0, 1},
     {24576, 24212, 4096, 1, 0, 0, 1},
+    // tuijian
     {192000, 66, 64, 0, 1, 0, 0},
     {24000, 5, 25, 1, 1, 0, 0},
     {48000, 5, 25, 1, 1, 0, 0},
@@ -442,6 +459,8 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST_
     {16384, 1024, 64000, 0, 1, 0, 1},
     {101376, 1024, 1024, 0, 1, 0, 1},
     {4096, 4096, 11008, 1, 0, 0, 1},
+    // 6656, 24576, 17920, 1, 0, 0, 1
+    // 8192, 27392, 4096, 0, 0, 0, 1
     {6656, 24576, 6656, 1, 0, 0, 1},
     {4096, 11008, 4096, 0, 0, 0, 1},
     {640, 15808, 640, 1, 0, 0, 1},
@@ -469,12 +488,17 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST_
     {236, 8192, 28672, 0, 1, 0, 1},
     {16032, 32768, 4096, 1, 0, 0, 1},
     {768, 32768, 4096, 1, 0, 0, 1},
+    // X1 B3
     {666, 2816, 1024, 0, 0, 0, 1},
+    // TX Opensora
     {4608, 67584, 1152, 1, 0, 0, 1},
     {4608, 34816, 1152, 1, 0, 0, 1},
+    // fp16 Bert
     {768, 16384, 3072, 1, 0, 0, 1},
+    // fp32 JD
     {200, 2386, 3, 0, 0, 0, 0},
     {200, 2386, 256, 0, 0, 1, 0},
+    // fp32 MT
     {96, 2400, 64, 1, 0, 0, 0},
     {96000, 280, 256, 0, 0, 0, 0},
     {720000, 200, 128, 0, 0, 0, 0},
@@ -501,6 +525,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST_
     {1024, 664, 976, 0, 1, 0, 0},
     {1024, 4, 64, 0, 1, 0, 0},
     {1024, 128, 216, 0, 1, 0, 0},
+    // fp32 ZJ
     {3000, 1312, 256, 0, 0, 1, 0},
     {3000, 3429, 581, 0, 0, 1, 0},
     {3000, 4070, 426, 0, 0, 1, 0},
@@ -532,6 +557,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST_
     {872, 3000, 128, 1, 0, 0, 0},
     {3000, 128, 1992, 0, 1, 0, 0},
     {1072, 3000, 128, 1, 0, 0, 0},
+    // hf32 whitelist
     {4, 700000, 4, 1, 0, 0, 0},
     {4, 350000, 4, 1, 0, 0, 0},
     {60, 350000, 128, 1, 0, 0, 0},
@@ -597,6 +623,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST_
     {1336, 1024, 1336, 1, 0, 0, 0},
     {976, 1024, 976, 1, 0, 0, 0},
     {160, 7000, 64, 1, 0, 0, 0},
+    // deepseek
     {8, 7168, 16, 0, 1, 0, 0},
     {16, 7168, 16, 0, 1, 0, 0},
     {8, 7168, 8, 0, 1, 0, 0},
@@ -640,6 +667,9 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST_
     {16384, 1024, 64000, 0, 1, 0, 1},
     {101376, 1024, 1024, 0, 1, 0, 1},
     {4096, 4096, 11008, 1, 0, 0, 1},
+    // 6656, 24576, 17920, 1, 0, 0
+    // 8192, 27392, 4096, 0, 0, 0
+    // 101376, 1024, 1024, 0, 1, 0
     {6656, 24576, 6656, 1, 0, 0, 1},
     {4096, 11008, 4096, 0, 0, 0, 1},
     {640, 15808, 640, 1, 0, 0, 1},
@@ -648,7 +678,9 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_WHITE_LIST_
     {12504, 16384, 4096, 1, 0, 0, 1},
     {512, 13696, 5120, 0, 1, 0, 1},
     {200, 2386, 256, 0, 0, 1, 0},
+    // X1  B4
     {666, 2816, 1024, 0, 0, 0, 1},
+    // deepseek
     {8, 7168, 16, 0, 1, 0, 0},
     {16, 7168, 16, 0, 1, 0, 0},
     {8, 7168, 8, 0, 1, 0, 0},
@@ -723,6 +755,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_BLACK_LIST 
     {6144, 15000, 8192, 0, 0, 0, 1},
     {2048, 12000, 1888, 1, 0, 0, 0},
     {221184, 320, 2560, 0, 1, 0, 1},
+    // mayi black
     {12288, 32768, 8192, 0, 1, 0, 1},
     {12288, 24576, 8192, 0, 0, 0, 1},
     {1712, 33936, 8192, 0, 1, 0, 1},
@@ -756,6 +789,7 @@ const std::initializer_list<std::initializer_list<int64_t>> ASCEND_C_BLACK_LIST 
     {2048, 2560, 10240, 0, 1, 0, 1},
     {2048, 3840, 10240, 0, 0, 0, 1},
     {2048, 5120, 10240, 0, 0, 0, 1},
+    // 推荐
     {24000, 4, 18, 1, 1, 0, 0},
     {48000, 4, 18, 1, 1, 0, 0},
     {192000, 66, 64, 0, 1, 0, 0},

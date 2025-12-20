@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 // mc2注释
 //
@@ -103,6 +103,7 @@ BEGIN_TILING_DATA_DEF(RCSTiling)
     TILING_DATA_FIELD_DEF(uint32_t, isInputCommQuantScale); // 是否传入CommQuantScale
     TILING_DATA_FIELD_DEF(uint32_t, dataType);
     TILING_DATA_FIELD_DEF(uint32_t, commInt8WorkSpace); // int8 通信时用于存放reduceScatter输入 workspace 的开销
+    TILING_DATA_FIELD_DEF(uint32_t, dynamicQuantTempBuffSize); // fp8通信时用于存放BroadCast接口需要的临时空间开销
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(RCSTilingOp, RCSTiling)
 
@@ -176,16 +177,6 @@ BEGIN_TILING_DATA_DEF(TileL2Tiling)
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(TileL2TilingOp, TileL2Tiling);
 
-BEGIN_TILING_DATA_DEF(Mc2MatmulTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, rankDim);
-    TILING_DATA_FIELD_DEF(uint32_t, rankM);
-    TILING_DATA_FIELD_DEF(uint32_t, rankID);
-    TILING_DATA_FIELD_DEF(uint32_t, enableL2Tile);
-    TILING_DATA_FIELD_DEF_STRUCT(BatchMatmulTilingData, bmmTilingData);
-
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(Mc2MatmulTilingDataOp, Mc2MatmulTilingData);
-
 BEGIN_TILING_DATA_DEF(TileInfo)
     TILING_DATA_FIELD_DEF(uint64_t, tileCnt);
     TILING_DATA_FIELD_DEF(uint64_t, tileLen);
@@ -199,7 +190,12 @@ BEGIN_TILING_DATA_DEF(MC2MatmulV3TilingData)
   TILING_DATA_FIELD_DEF(uint32_t, mTailCnt);
   TILING_DATA_FIELD_DEF(uint32_t, nTailCnt);
   TILING_DATA_FIELD_DEF(uint32_t, kTailCnt);
+  TILING_DATA_FIELD_DEF(uint32_t, mBaseTailSplitCnt);
+  TILING_DATA_FIELD_DEF(uint32_t, nBaseTailSplitCnt);
+  TILING_DATA_FIELD_DEF(uint32_t, mTailMain);
+  TILING_DATA_FIELD_DEF(uint32_t, nTailMain);
   TILING_DATA_FIELD_DEF(uint32_t, isHf32);
+  TILING_DATA_FIELD_DEF(uint32_t, aswWindowLen);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MC2MatmulV3TilingDataOp, MC2MatmulV3TilingData);
 

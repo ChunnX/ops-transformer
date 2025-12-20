@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_mat_mul_allto_allv_gen_task_training.cpp
@@ -27,11 +27,11 @@
 #else
 #include "mc2_gen_task_training.h"
 #include "mc2_gen_task_utils.h"
+#include "mc2_a5_gen_task_utils.h"
 #include "register/op_ct_impl_registry.h"
 #endif
 
 namespace ops {
-
 #ifdef BUILD_OPEN_PROJECT
 ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
 {
@@ -53,6 +53,9 @@ IMPL_OP(GroupedMatMulAlltoAllv)
 #else // mc2 gen task utils
 ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
 {
+    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), PLATFORM_A5)) {
+        return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+    }
     const ge::AscendString name = "aicpu kfc server";
     const ge::AscendString reuseKey = "kfc_stream";
     return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, name, reuseKey);
@@ -61,6 +64,9 @@ ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *co
 ge::Status GroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
+    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), PLATFORM_A5)) {
+        return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2A5GenTaskUtils::Mc2GenTaskCallBack910A5);
+    }
     return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskTraining::Mc2TrainingGenTaskCallback);
 }
 

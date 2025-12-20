@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_tiling.cc
@@ -21,19 +21,19 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "tiling/mc2_tiling_utils.h"
+
+#include "../../op_kernel/all_gather_matmul_tiling_key.h"
 #include "../../op_kernel/all_gather_matmul_tiling.h"
 
 using namespace AscendC;
 using namespace ge;
+using namespace all_gather_matmul_tiling_key;
 
 namespace {
 const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK = {
     {0, {2, 4, 8}},
     {1, {2, 4, 8, 16, 32}}
     };
-constexpr uint32_t TILINGKEY_BIAS = 1U;
-constexpr uint32_t TILINGKEY_ND2NZ = 10U;
-constexpr uint32_t TILINGKEY_FULL_MESH = 100U;
 
 static void PrintTilingData(::TCubeTiling& tiling)
 {
@@ -67,7 +67,7 @@ static void PrintTilingData(::TCubeTiling& tiling)
     OP_LOGD("AllGatherMatmul", " tiling.singleBatchN %d", tiling.singleBatchN);
 }
 
-static void PrintTilingData(::RCSTiling& rcsTiling)
+static void PrintTilingData(Mc2Tiling::RCSTiling& rcsTiling)
 {
     OP_LOGD("AllGatherMatmul", " rcsTiling.commtype %d", rcsTiling.commtype);
     OP_LOGD("AllGatherMatmul", " rcsTiling.subtype %d", rcsTiling.subtype);
@@ -87,7 +87,7 @@ static void PrintTilingData(::RCSTiling& rcsTiling)
     OP_LOGD("AllGatherMatmul", " rcsTiling.gatherLen %lu", rcsTiling.gatherLen);
 }
 
-static void PrintTilingData(::TileL2Tiling& tileL2Tiling)
+static void PrintTilingData(Mc2Tiling::TileL2Tiling& tileL2Tiling)
 {
     OP_LOGD("AllGatherMatmul", " tileL2Tiling.mL2TileCnt %d", tileL2Tiling.mL2TileCnt);
     OP_LOGD("AllGatherMatmul", " tileL2Tiling.nL2TileCnt %d", tileL2Tiling.nL2TileCnt);
@@ -103,9 +103,9 @@ static void PrintTilingData(::TileL2Tiling& tileL2Tiling)
 
 namespace optiling {
 
-static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling, ::TileL2Tiling &l2Tiling);
+static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling, Mc2Tiling::TileL2Tiling &l2Tiling);
 
-static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args);
+static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args);
 
 static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64)
 {
@@ -165,7 +165,7 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetCommAlg(AllGatherMatmulTilingData &tilingData)
+static ge::graphStatus SetCommAlg(Mc2Tiling::AllGatherMatmulTilingData &tilingData)
 {
     tilingData.socParam.commAlg = COMM_ALG_FULL_MESH;
 
@@ -173,7 +173,7 @@ static ge::graphStatus SetCommAlg(AllGatherMatmulTilingData &tilingData)
 }
 
 static ge::graphStatus GetAllGatherFormulateTileCnt(const gert::TilingContext* ctx,
-    AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args)
+    Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args)
 {
     if (ctx->GetAttrs() == nullptr) {
         OP_LOGW(ctx->GetNodeName(), " ctx->GetAttrs is nullptr.");
@@ -205,7 +205,7 @@ static ge::graphStatus GetAllGatherFormulateTileCnt(const gert::TilingContext* c
 }
 
 // 第一个参数m
-static ge::graphStatus MCSpliteM(gert::TilingContext* ctx, AllGatherMatmulTilingData& tilingData,
+static ge::graphStatus MCSpliteM(gert::TilingContext* ctx, Mc2Tiling::AllGatherMatmulTilingData& tilingData,
                                  mc2tiling::TilingArgs& args)
 {
     args.rankTileNum = args.rankDim - 1;
@@ -242,23 +242,46 @@ static ge::graphStatus MCSpliteM(gert::TilingContext* ctx, AllGatherMatmulTiling
     return ge::GRAPH_SUCCESS;
 }
 
-static void UpdateTilingKey(uint32_t& tilingKey, AllGatherMatmulTilingData& tilingData, bool isBias)
+static void UpdateTilingKey(uint64_t& tilingKey, const Mc2Tiling::AllGatherMatmulTilingData& tilingData, bool isBias)
 {
-    tilingKey += isBias ? TILINGKEY_BIAS : 0;
-    tilingKey += (tilingData.socParam.isND2NZ == 1) ? TILINGKEY_ND2NZ : 0;
-    tilingKey += (tilingData.socParam.commAlg == COMM_ALG_FULL_MESH) ? TILINGKEY_FULL_MESH : 0;
+    bool allGatherMatmulFullMesh = true;
+    bool allGatherMatmulNd2nzOpt = false;
+    bool allGatherMatmulBiasCast = false;
+
+    if(isBias) {
+        allGatherMatmulBiasCast = true;
+    }
+    else {
+        allGatherMatmulBiasCast = false;
+    }
+
+    if(tilingData.socParam.isND2NZ == 1) {
+        allGatherMatmulNd2nzOpt = true;
+    }
+    else {
+        allGatherMatmulNd2nzOpt = false;
+    }
+
+    if (tilingData.socParam.commAlg == COMM_ALG_FULL_MESH){
+        allGatherMatmulFullMesh = true;
+    }
+    else {
+        allGatherMatmulFullMesh = false;
+    }
+
+    tilingKey = GET_TPL_TILING_KEY(allGatherMatmulFullMesh, allGatherMatmulNd2nzOpt, allGatherMatmulBiasCast);
 }
 
 static ge::graphStatus SetMatmulTilingAllGatherMatmul(gert::TilingContext* context,
-                                                      AllGatherMatmulTilingData& tilingData,
+                                                      Mc2Tiling::AllGatherMatmulTilingData& tilingData,
                                                       mc2tiling::TilingArgs& args)
 {
     ge::DataType  biasType;
     bool isBias = true;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     auto coreNum = ascendcPlatform.GetCoreNumAic();
-    auto aType = context->GetInputTensor(0)->GetDataType();
-    auto bType = context->GetInputTensor(1)->GetDataType();
+    auto aType = context->GetInputDesc(0)->GetDataType();
+    auto bType = context->GetInputDesc(1)->GetDataType();
     auto cType = aType;
     const gert::StorageShape* matrix_bias = context->GetOptionalInputShape(2);
     if (matrix_bias == nullptr) {
@@ -266,7 +289,7 @@ static ge::graphStatus SetMatmulTilingAllGatherMatmul(gert::TilingContext* conte
         biasType = cType;
     }
     else {
-        biasType = context->GetInputTensor(2)->GetDataType(); // 2 is index
+        biasType = context->GetInputDesc(2)->GetDataType(); // 2 is index
     }
 
     const gert::StorageShape* aShape = context->GetInputShape(0);
@@ -337,7 +360,7 @@ static ge::graphStatus SetMatmulTilingAllGatherMatmul(gert::TilingContext* conte
 
     MCSpliteM(context, tilingData, args);
 
-    uint32_t tilingKey = 0U;
+    uint64_t tilingKey = 0U;
     UpdateTilingKey(tilingKey, tilingData, isBias);     // 当前GetTilingKey函数中使用了Mc2Msg结构体，因而无法归一化，此处使用自己的tilingkey计算函数，确保计算逻辑与旧的key保持一致
     OP_LOGD(context->GetNodeName(), "tilingKey is %u, aicCoreNum is %lu.", tilingKey, args.aicCoreNum);
     context->SetTilingKey(tilingKey);
@@ -345,7 +368,7 @@ static ge::graphStatus SetMatmulTilingAllGatherMatmul(gert::TilingContext* conte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling, ::TileL2Tiling &l2Tiling)
+static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling, Mc2Tiling::TileL2Tiling &l2Tiling)
 {
     uint64_t mValue = args.mValue;
     uint64_t nValue = args.nValue;
@@ -384,7 +407,7 @@ static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTili
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t GetStorage_a(AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args)
+static uint64_t GetStorage_a(Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args)
 {
     constexpr uint64_t alignAddrLen = 512;
     auto&& cfg = tilingData.param;
@@ -443,7 +466,7 @@ struct KFCNotify {
     HcclAicpuOpParam msgCnt[16];
 };
 
-static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, AllGatherMatmulTilingData& tilingData,
+static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::AllGatherMatmulTilingData& tilingData,
                                        mc2tiling::TilingArgs& args)
 {
     size_t* workspaces = context->GetWorkspaceSizes(1);
@@ -495,7 +518,7 @@ static bool NeedGatherOut(const gert::TilingContext* context) {
   }
 }
 
-static void SetSocParam(AllGatherMatmulTilingData* tilingData, const char* group)
+static void SetSocParam(Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
 {
   auto commSets = mc2tiling::Mc2TilingUtils::GetCommSets(group);
   tilingData->socParam.isA3 = (commSets == mc2tiling::COMM_MESH) ? 0 : 1; 
@@ -503,7 +526,7 @@ static void SetSocParam(AllGatherMatmulTilingData* tilingData, const char* group
   tilingData->socParam.isND2NZ = 1U; 
 }
 
-static void InitHcclParam(AllGatherMatmulTilingData* tilingData, const char* group)
+static ge::graphStatus InitHcclParam(const gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
 {
   std::string algConfig = (tilingData->socParam.isA3 == 0) ?
     "AllGather=level0:fullmesh" : "AllGather=level0:doublering";
@@ -512,14 +535,17 @@ static void InitHcclParam(AllGatherMatmulTilingData* tilingData, const char* gro
                                  static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
                                  static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
   mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
-  mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-  mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+  OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+    OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+  OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+    OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+  return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext *context) {
   // 对参数进行校验
   int index = 0;
-  AllGatherMatmulTilingData* tilingData = context->GetTilingData<AllGatherMatmulTilingData>();
+  Mc2Tiling::AllGatherMatmulTilingData* tilingData = context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
   mc2tiling::TilingArgs args;
   auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
   OP_TILING_CHECK(AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS,
@@ -571,7 +597,8 @@ static ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext *context) {
   }
 
   SetMatmulTilingAllGatherMatmul(context, *tilingData, args);
-  InitHcclParam(tilingData, group);
+  OP_TILING_CHECK(InitHcclParam(context, tilingData, group) != ge::GRAPH_SUCCESS,
+    OP_LOGE(context->GetNodeName(), "Tiling InitHcclParam failed."), return ge::GRAPH_FAILED);
   return ge::GRAPH_SUCCESS;
 }
 

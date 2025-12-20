@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_tool.cpp
@@ -21,7 +21,7 @@ constexpr int64_t B16_BITS = 16;
 constexpr int64_t B8_BITS = 8;
 constexpr int64_t B4_BITS = 4;
 
-uint64_t GetBlockAlignSizeByDataType(ge::DataType dtype)
+uint64_t Mc2GetBlockAlignSizeByDataType(ge::DataType dtype)
 {
     if (dtype == ge::DT_INT4 || dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2) {
         return ONE_BLK_SIZE + ONE_BLK_SIZE;
@@ -30,7 +30,7 @@ uint64_t GetBlockAlignSizeByDataType(ge::DataType dtype)
     }
 }
 
-uint64_t GetShapeSizeWithDataType(uint64_t shapeSize, ge::DataType dtype)
+uint64_t Mc2GetShapeSizeWithDataType(uint64_t shapeSize, ge::DataType dtype)
 {
     if (dtype == ge::DT_INT4) {
         return (shapeSize + 1) >> 1;
@@ -39,12 +39,12 @@ uint64_t GetShapeSizeWithDataType(uint64_t shapeSize, ge::DataType dtype)
     }
 }
 
-bool CheckOptionalInputByShape(const gert::StorageShape* storageShape)
+bool Mc2CheckOptionalInputByShape(const gert::StorageShape* storageShape)
 {
     return storageShape != nullptr && storageShape->GetStorageShape().GetShapeSize() != 0;
 }
 
-int64_t GetDtypeBits(ge::DataType dtype)
+int64_t Mc2GetDtypeBits(ge::DataType dtype)
 {
     if (dtype == ge::DT_INT4 || dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2) {
         return B4_BITS;
@@ -74,14 +74,14 @@ const std::map<ge::DataType, matmul_tiling::DataType> DTYPE_MAP = {
     {ge::DT_FLOAT4_E1M2, matmul_tiling::DataType::DT_FLOAT4_E1M2},
 };
 
-matmul_tiling::DataType GetMatmulTilingDtype(ge::DataType dtype)
+matmul_tiling::DataType Mc2GetMatmulTilingDtype(ge::DataType dtype)
 {
     auto it = DTYPE_MAP.find(dtype);
     // impossible to get runtime error
     return it != DTYPE_MAP.end() ? it->second : matmul_tiling::DataType::DT_FLOAT16;
 }
 
-ge::Format GetInputStorageFormat(const gert::TilingContext* context, size_t id)
+ge::Format Mc2GetInputStorageFormat(const gert::TilingContext* context, size_t id)
 {
     auto desc = context->GetInputDesc(id);
     OP_TILING_CHECK(

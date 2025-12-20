@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file matmul_v3_tuning.h
  * \brief
@@ -20,7 +20,7 @@
 namespace tuningtiling {
 #pragma pack(push)
 #pragma pack(1)
-struct MatMulV3InputArgs { //GemmInputArgs
+struct Mc2MatMulV3InputArgs { //GemmInputArgs
   int64_t m;
   int64_t k;
   int64_t n;
@@ -58,7 +58,7 @@ struct MatMulV3InputArgs { //GemmInputArgs
 };
 #pragma pack(pop)
 
-BEGIN_TUNING_TILING_DEF(MatMulV3TunnerTiling)
+BEGIN_TUNING_TILING_DEF(Mc2MatMulV3TunnerTiling)
   TUNING_TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
   TUNING_TILING_DATA_FIELD_DEF(uint32_t, singleCoreM);
   TUNING_TILING_DATA_FIELD_DEF(uint32_t, singleCoreN);
@@ -84,30 +84,30 @@ BEGIN_TUNING_TILING_DEF(MatMulV3TunnerTiling)
   TUNING_TILING_DATA_FIELD_DEF(uint32_t, tilingEnable);
 END_TUNING_TILING_DEF
 
-DECLARE_SCHEMA(MatMulV3TunnerTiling,
-  FIELD(MatMulV3TunnerTiling, usedCoreNum),
-  FIELD(MatMulV3TunnerTiling, singleCoreM),
-  FIELD(MatMulV3TunnerTiling, singleCoreN),
-  FIELD(MatMulV3TunnerTiling, singleCoreK),
-  FIELD(MatMulV3TunnerTiling, baseM),
-  FIELD(MatMulV3TunnerTiling, baseN),
-  FIELD(MatMulV3TunnerTiling, baseK),
-  FIELD(MatMulV3TunnerTiling, depthA1),
-  FIELD(MatMulV3TunnerTiling, depthB1),
-  FIELD(MatMulV3TunnerTiling, stepM),
-  FIELD(MatMulV3TunnerTiling, stepN),
-  FIELD(MatMulV3TunnerTiling, iterateOrder),
-  FIELD(MatMulV3TunnerTiling, stepKa),
-  FIELD(MatMulV3TunnerTiling, stepKb),
-  FIELD(MatMulV3TunnerTiling, dbL0A),
-  FIELD(MatMulV3TunnerTiling, dbL0B),
-  FIELD(MatMulV3TunnerTiling, dbL0C),
-  FIELD(MatMulV3TunnerTiling, l2MTileCnt),
-  FIELD(MatMulV3TunnerTiling, l2NTileCnt),
-  FIELD(MatMulV3TunnerTiling, l2MTileBlock),
-  FIELD(MatMulV3TunnerTiling, l2NTileBlock),
-  FIELD(MatMulV3TunnerTiling, l2IterateOrder),
-  FIELD(MatMulV3TunnerTiling, tilingEnable));
+DECLARE_SCHEMA(Mc2MatMulV3TunnerTiling,
+  FIELD(Mc2MatMulV3TunnerTiling, usedCoreNum),
+  FIELD(Mc2MatMulV3TunnerTiling, singleCoreM),
+  FIELD(Mc2MatMulV3TunnerTiling, singleCoreN),
+  FIELD(Mc2MatMulV3TunnerTiling, singleCoreK),
+  FIELD(Mc2MatMulV3TunnerTiling, baseM),
+  FIELD(Mc2MatMulV3TunnerTiling, baseN),
+  FIELD(Mc2MatMulV3TunnerTiling, baseK),
+  FIELD(Mc2MatMulV3TunnerTiling, depthA1),
+  FIELD(Mc2MatMulV3TunnerTiling, depthB1),
+  FIELD(Mc2MatMulV3TunnerTiling, stepM),
+  FIELD(Mc2MatMulV3TunnerTiling, stepN),
+  FIELD(Mc2MatMulV3TunnerTiling, iterateOrder),
+  FIELD(Mc2MatMulV3TunnerTiling, stepKa),
+  FIELD(Mc2MatMulV3TunnerTiling, stepKb),
+  FIELD(Mc2MatMulV3TunnerTiling, dbL0A),
+  FIELD(Mc2MatMulV3TunnerTiling, dbL0B),
+  FIELD(Mc2MatMulV3TunnerTiling, dbL0C),
+  FIELD(Mc2MatMulV3TunnerTiling, l2MTileCnt),
+  FIELD(Mc2MatMulV3TunnerTiling, l2NTileCnt),
+  FIELD(Mc2MatMulV3TunnerTiling, l2MTileBlock),
+  FIELD(Mc2MatMulV3TunnerTiling, l2NTileBlock),
+  FIELD(Mc2MatMulV3TunnerTiling, l2IterateOrder),
+  FIELD(Mc2MatMulV3TunnerTiling, tilingEnable));
 } // namespace tuningtiling
 
 #endif

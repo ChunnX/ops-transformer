@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_data.h
@@ -25,7 +25,7 @@
 
 namespace optiling {
 // tiling data for custom and splitK
-BEGIN_TILING_DATA_DEF(WeightQuantBatchMatmulV2TilingData)
+BEGIN_TILING_DATA_DEF(Mc2WeightQuantBatchMatmulV2TilingData)
 TILING_DATA_FIELD_DEF(uint8_t, vecBlockDimN);
 TILING_DATA_FIELD_DEF(uint8_t, vecBlockDimK);
 TILING_DATA_FIELD_DEF(uint8_t, cubeBlockDimN);
@@ -88,7 +88,7 @@ TILING_DATA_FIELD_DEF(uint64_t, nBL1Size);
 TILING_DATA_FIELD_DEF(uint64_t, kBL1Size);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2, WeightQuantBatchMatmulV2TilingData)
-REGISTER_TILING_DATA_CLASS(WeightQuantBatchMatmulV2TilingDataOp, WeightQuantBatchMatmulV2TilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2TilingDataOp, Mc2WeightQuantBatchMatmulV2TilingData)
 } // namespace optiling
 #endif // WEIGHT_QUANT_BATCH_MATMUL_V2_TILING_DATA_H

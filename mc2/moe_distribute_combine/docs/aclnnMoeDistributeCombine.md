@@ -293,7 +293,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     - 有TP域通信时 tpSendCounts 为1D Tensor，shape为 (tpWorldSize, )；支持非连续的Tensor。
     - expandScales 为预留参数，当前版本不支持，传空指针即可。
     - epWorldSize 取值支持8、16、32、64、128、144、256、288。
-    - groupTp 字符串长度范围为[1, 128)，不能和groupEp相同。
+    - groupTp 字符串长度范围为[0, 128)，不能和groupEp相同，仅在无TP域通信时支持传空字符串。
     - tpWorldSize 取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
     - tpRankId 取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
     - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mat_mul_cvp_base_kernel.h
@@ -24,7 +24,7 @@ using namespace AscendC;
 using namespace matmul;
 
 
-namespace MatmulV3 {
+namespace Mc2MatmulV3 {
 
 __BLOCK_LOCAL__ __inline__ uint64_t procNum;
 
@@ -36,7 +36,7 @@ template<typename T>
 __aicore__ inline void CopyAImpl(const LocalTensor<int8_t> &aMatrix, const __gm__ void *gm, int row, int col,
     int useM, int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
-    MatmulTilingData* tilingDataPtr = reinterpret_cast<MatmulTilingData*>(tilingPtr);
+    Mc2MatmulV3TilingData* tilingDataPtr = reinterpret_cast<Mc2MatmulV3TilingData*>(tilingPtr);
     uint64_t c0Size;
     GetSizeC0<T>(c0Size);
     LocalTensor<T> dst = aMatrix.ReinterpretCast<T>();
@@ -85,7 +85,7 @@ template<typename T>
 __aicore__ inline void CopyBImpl(const LocalTensor<int8_t> &bMatrix, const __gm__ void *gm, int row, int col,
     int useK, int useNn, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
-    MatmulTilingData* tilingDataPtr = reinterpret_cast<MatmulTilingData*>(tilingPtr);
+    Mc2MatmulV3TilingData* tilingDataPtr = reinterpret_cast<Mc2MatmulV3TilingData*>(tilingPtr);
     uint64_t c0Size;
     GetSizeC0<T>(c0Size);
     LocalTensor<T> dst = bMatrix.ReinterpretCast<T>();
@@ -133,7 +133,7 @@ __aicore__ inline void CopyBImpl(const LocalTensor<int8_t> &bMatrix, const __gm_
 __aicore__ inline void CopyA(const LocalTensor<int8_t> &aMatrix, const __gm__ void *gm, int row, int col,
     int useM, int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
-    MatmulTilingData* tilingDataPtr = reinterpret_cast<MatmulTilingData*>(tilingPtr);
+    Mc2MatmulV3TilingData* tilingDataPtr = reinterpret_cast<Mc2MatmulV3TilingData*>(tilingPtr);
     if (tilingDataPtr->matmulRunInfo.nd2nzA) {
         if (ctx.inputDtypeSize == 2) {
             CopyAImpl<half>(aMatrix, gm, row, col, useM, useK, tilingPtr, dataPtr);
@@ -146,14 +146,14 @@ __aicore__ inline void CopyA(const LocalTensor<int8_t> &aMatrix, const __gm__ vo
     if (tilingDataPtr == nullptr || !ctx.isFirst) {
         return;
     }
-    MatmulV3::DataCopyL1FullLoad(true, aMatrix, gm, useM, useK, 0UL, *tilingDataPtr);
+    Mc2MatmulV3::DataCopyL1FullLoad(true, aMatrix, gm, useM, useK, 0UL, *tilingDataPtr);
     ctx.isFirst = false;
 }
 
 __aicore__ inline void CopyB(const LocalTensor<int8_t> &bMatrix, const __gm__ void *gm, int row, int col,
     int useK, int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
-    MatmulTilingData* tilingDataPtr = reinterpret_cast<MatmulTilingData*>(tilingPtr);
+    Mc2MatmulV3TilingData* tilingDataPtr = reinterpret_cast<Mc2MatmulV3TilingData*>(tilingPtr);
     if (tilingDataPtr->matmulRunInfo.nd2nzB) {
         if (ctx.inputDtypeSize == 2) {
             CopyBImpl<half>(bMatrix, gm, row, col, useK, useN, tilingPtr, dataPtr);
@@ -165,16 +165,16 @@ __aicore__ inline void CopyB(const LocalTensor<int8_t> &bMatrix, const __gm__ vo
     if (tilingDataPtr == nullptr || !ctx.isFirst) {
         return;
     }
-    MatmulV3::DataCopyL1FullLoad(false, bMatrix, gm, 0UL, useK, useN, *tilingDataPtr);
+    Mc2MatmulV3::DataCopyL1FullLoad(false, bMatrix, gm, 0UL, useK, useN, *tilingDataPtr);
     ctx.isFirst = false;
 }
 
 template <
-    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = MatmulBaseBlock,
+    class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = Mc2MatmulBaseBlock,
     const MatmulConfig& MM_CFG = MM_CFG_NO_PRELOAD, class MM_CB = MatmulCallBackFunc<nullptr, CopyA, CopyB>>
-class MatmulCvpBaseKernel : public MatmulBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB> {
+class Mc2MatmulCvpBaseKernel : public Mc2MatmulBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB> {
 public:
-    __aicore__ inline MatmulCvpBaseKernel()
+    __aicore__ inline Mc2MatmulCvpBaseKernel()
     {}
 
     __aicore__ inline void InitInputs(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR workspaceGM);
@@ -201,7 +201,7 @@ protected:
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
     class MM_CB>
-__aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Init(GM_ADDR aGM,
+__aicore__ inline void Mc2MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Init(GM_ADDR aGM,
     GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM, const void *tilingData,
     TPipe *pipe)
 {
@@ -221,7 +221,7 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
     class MM_CB>
-__aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::InitInputs(
+__aicore__ inline void Mc2MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::InitInputs(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR workspaceGM)
 {
     this->aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM),
@@ -248,7 +248,7 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
     class MM_CB>
-__aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Process(
+__aicore__ inline void Mc2MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::Process(
     uint64_t index, uint8_t enAtomic)
 {
     this->mm_.SetHF32(false, 0);
@@ -296,7 +296,7 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
     class MM_CB>
-__aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::AicProcess(
+__aicore__ inline void Mc2MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::AicProcess(
     uint32_t pingpong_gm, uint8_t enAtomic)
 {
     if ASCEND_IS_AIV {
@@ -325,7 +325,7 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
     class MM_CB>
-__aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::AivProcess(
+__aicore__ inline void Mc2MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB>::AivProcess(
     uint32_t pingpong_gm)
 {
     if ASCEND_IS_AIC {
@@ -355,5 +355,5 @@ __aicore__ inline void MatmulCvpBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BL
     CrossCoreSetFlag<0x2, PIPE_MTE3>(V_NOTIFY_C + pingpong_gm);
     return;
 }
-}  // namespace MatmulV3
+}  // namespace Mc2MatmulV3
 #endif // MMV3_MATMUL_KERNEL_H

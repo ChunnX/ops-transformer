@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file context_transfer.cpp
@@ -153,8 +153,8 @@ ge::graphStatus ContextTransfer::CheckMRNCtxInfo(const gert::TilingContext *cont
                                                     "Expect x1 dim to be more than 0, but got x1 dim [%lu].",
                                                     x1DimNum),
                     return ge::GRAPH_FAILED);
-    uint64_t x1MValue = x1Shape->GetStorageShape().GetDim(0);
-    if (x1DimNum >= DIM_THREE) {
+    int64_t x1MValue = x1Shape->GetStorageShape().GetDim(0);
+    if (x1DimNum >= static_cast<int64_t>(DIM_THREE)) {
         x1MValue *= x1Shape->GetStorageShape().GetDim(1);
     }
     OP_TILING_CHECK(residualShape->GetStorageShape().GetDimNum() != DIM_THREE,
@@ -163,7 +163,7 @@ ge::graphStatus ContextTransfer::CheckMRNCtxInfo(const gert::TilingContext *cont
                                                     " residual_dim:[%lu].",
                                                     residualShape->GetStorageShape().GetDimNum()),
                     return ge::GRAPH_FAILED);
-    uint64_t residualMValue = residualShape->GetStorageShape().GetDim(0) * residualShape->GetStorageShape().GetDim(1);
+    int64_t residualMValue = residualShape->GetStorageShape().GetDim(0) * residualShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(x1MValue != residualMValue,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
                                                     "Expect b * s of x1 (when dim of x1 is 2, b = 1 as default) and"

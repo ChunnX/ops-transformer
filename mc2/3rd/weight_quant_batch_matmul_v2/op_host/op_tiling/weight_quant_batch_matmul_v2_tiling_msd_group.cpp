@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_msd_group.cpp
@@ -22,7 +22,7 @@ constexpr uint64_t DOUBLE_BUFFER_FACTOR = 2UL; // 1: off, 2: on
 constexpr int32_t MSD_GROUP_VEC_BASE_BLOCK = 1024;
 constexpr int32_t MSD_GROUP_CUBE_BASE_BLOCK = 2048;
 
-const std::set<WhiteListShape> MSD_GROUP_WHITE_LIST = {
+const std::set<Mc2WhiteListShape> MSD_GROUP_WHITE_LIST = {
     // JYXC
     {1, 12288, 1792, false, false, false, 1},
     {1, 12288, 7808, false, false, false, 1},
@@ -30,7 +30,7 @@ const std::set<WhiteListShape> MSD_GROUP_WHITE_LIST = {
     {1, 1536, 12288, false, false, false, 1},
     {1, 1536, 12288, false, false, false, 1}};
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingMsdGroup::PostTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingMsdGroup::PostTiling()
 {
     OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
 
@@ -54,7 +54,7 @@ The function is limite of msd-group
 3. not trans_a, not trans_b, c_dtype!=int8, antiquan_scale_dtype!=uint64
 4. int8: jyxc white case; int4: L1 limit
 */
-bool WeightQuantBatchMatmulV2TilingMsdGroup::IsCapable()
+bool Mc2WeightQuantBatchMatmulV2TilingMsdGroup::IsCapable()
 {
     OP_LOGI(opName_, "Begin check msd group");
     // MSD pergroup模板不支持确定性
@@ -98,7 +98,7 @@ bool WeightQuantBatchMatmulV2TilingMsdGroup::IsCapable()
         OP_TILING_CHECK(
             !CheckL1Size(), OP_LOGI(opName_, "L1 size cannot meet the requirement for msd group"), return false);
     } else {
-        WhiteListShape shape(
+        Mc2WhiteListShape shape(
             {1, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, false, matmulInfoPtr_->transA, matmulInfoPtr_->transB,
              1});
         if (MSD_GROUP_WHITE_LIST.find(shape) == MSD_GROUP_WHITE_LIST.end()) {
@@ -110,7 +110,7 @@ bool WeightQuantBatchMatmulV2TilingMsdGroup::IsCapable()
     return true;
 }
 
-bool WeightQuantBatchMatmulV2TilingMsdGroup::CheckL1Size() const
+bool Mc2WeightQuantBatchMatmulV2TilingMsdGroup::CheckL1Size() const
 {
     // 当前n方向默认按照2048的基本块切分
     uint64_t cubeNMaxBlockDim = ops::CeilDiv(matmulInfoPtr_->nSize, 2048UL);
@@ -128,11 +128,11 @@ bool WeightQuantBatchMatmulV2TilingMsdGroup::CheckL1Size() const
     return (al1Size + bl1Size <= aicoreParams_.l1Size);
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingMsdGroup::InstantiateTilingData()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingMsdGroup::InstantiateTilingData()
 {
     if (tilingData_ == nullptr) {
-        tilingData_ = std::unique_ptr<WeightQuantBatchMatmulV2MsdGroupTilingData>(
-            new (std::nothrow) WeightQuantBatchMatmulV2MsdGroupTilingData());
+        tilingData_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2MsdGroupTilingData>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2MsdGroupTilingData());
     }
     OP_TILING_CHECK(
         tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
@@ -146,7 +146,7 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingMsdGroup::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingMsdGroup::DoOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingMsdGroup::DoOpTiling()
 {
     OP_TILING_CHECK(
         InstantiateTilingData() == ge::GRAPH_FAILED,
@@ -189,7 +189,7 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingMsdGroup::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void WeightQuantBatchMatmulV2TilingMsdGroup::Reset()
+void Mc2WeightQuantBatchMatmulV2TilingMsdGroup::Reset()
 {
     OP_TILING_CHECK(memset_s(
                         context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
@@ -197,7 +197,7 @@ void WeightQuantBatchMatmulV2TilingMsdGroup::Reset()
                     OP_LOGE(opName_, "fail to memset tiling data"), return;);
 }
 
-bool WeightQuantBatchMatmulV2TilingMsdGroup::GetMatMulTiling()
+bool Mc2WeightQuantBatchMatmulV2TilingMsdGroup::GetMatMulTiling()
 {
     uint64_t cubeSingleCoreN = 2048;
     uint64_t iteratorTime = 2;
@@ -208,10 +208,10 @@ bool WeightQuantBatchMatmulV2TilingMsdGroup::GetMatMulTiling()
 
     matmul_tiling::MatmulApiTiling mmTiling;
     mmTiling.SetAType(
-        matmul_tiling::TPosition::A1, matmul_tiling::CubeFormat::ND, GetMatmulTilingDtype(matmulInfoPtr_->bDtype),
+        matmul_tiling::TPosition::A1, matmul_tiling::CubeFormat::ND, Mc2GetMatmulTilingDtype(matmulInfoPtr_->bDtype),
         matmulInfoPtr_->transA);
     mmTiling.SetBType(
-        matmul_tiling::TPosition::A1, matmul_tiling::CubeFormat::ND, GetMatmulTilingDtype(matmulInfoPtr_->bDtype),
+        matmul_tiling::TPosition::A1, matmul_tiling::CubeFormat::ND, Mc2GetMatmulTilingDtype(matmulInfoPtr_->bDtype),
         matmulInfoPtr_->transB);
     mmTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_INT32);
     mmTiling.SetBias(false);

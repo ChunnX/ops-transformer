@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_tiling_utils.h
@@ -27,6 +27,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_type.h"
+#include "../../../3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h"
 
 namespace mc2tiling {
 constexpr uint32_t COMM_MESH = 0b1U;
@@ -43,6 +44,7 @@ constexpr size_t RES_LEN = 64;
 constexpr size_t MAX_MSG_NUM = 16;
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
 constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
+constexpr uint8_t AIV_ENGINE = 2;   // 当前通信API未提供枚举，后续会提供， 0：AICPU，1：CCU，2：AIV
 constexpr uint8_t Y_INDEX = 3;
 constexpr uint8_t COMM_ALG_DEFAULT = 0;
 constexpr uint8_t COMM_ALG_FULL_MESH = 1;
@@ -73,6 +75,7 @@ enum class Mc2QuantMode {
   DEFAULT = 0,
   PERTENSOR_MODE,
   PERBLOCK_MODE,
+  MXFP_MODE,
   INVALID_MODE,
 };
 
@@ -95,6 +98,9 @@ constexpr std::initializer_list<ge::DataType> FP8DTYPE_SUPPORT_LIST = {
     ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2,
     ge::DataType::DT_HIFLOAT8};
 
+constexpr std::initializer_list<ge::DataType> MXFP8DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT8_E4M3FN,
+    ge::DataType::DT_FLOAT8_E5M2 };
+
 matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,
                                               ge::DataType type);
 ge::DataType ConvertMmTypeToGeType(const std::string &opName,
@@ -113,6 +119,12 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
 
 bool CheckDataTypeVaild(ge::DataType type,
                         std::initializer_list<ge::DataType> supportDtypeList);
+
+void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args,
+                        const mc2tiling::TilingArgs &args, const char *opName);
+ge::graphStatus GetMatmulV3PriorityPolicy(
+    const platform_ascendc::SocVersion socVersion,
+    std::vector<int32_t> &priorities, const char *opName);
 
 class Mc2TilingUtils {
  public:
@@ -174,6 +186,7 @@ const std::map<platform_ascendc::SocVersion, std::set<uint32_t>>
     supportedRankSizeSet = {
         {platform_ascendc::SocVersion::ASCEND310P, {1, 2, 4}},
         {platform_ascendc::SocVersion::ASCEND910B, {1, 2, 4, 8}},
+        {platform_ascendc::SocVersion::ASCEND910_95, {1, 2, 4, 8, 16, 32, 64}},
 };
 
 const std::set<ge::Format> SUPPORTED_FORMAT = {

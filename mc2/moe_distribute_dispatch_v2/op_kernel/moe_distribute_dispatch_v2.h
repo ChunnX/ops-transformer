@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_v2.h
@@ -17,18 +17,14 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#if __has_include("../moe_distribute_dispatch/moe_distribute_base.h")
-#include "../moe_distribute_dispatch/moe_distribute_base.h"
-#else
-#include "../../moe_distribute_dispatch/op_kernel/moe_distribute_base.h"
-#endif
 #include "moe_distribute_dispatch_v2_tiling.h"
+#include "moe_distribute_v2_base.h"
+#include "../common/inc/kernel/moe_distribute_base.h"
 #if __has_include("../moe_distribute_dispatch/check_winsize.h")
 #include "../moe_distribute_dispatch/check_winsize.h"
 #else
 #include "../../moe_distribute_dispatch/op_kernel/check_winsize.h"
 #endif
-#include "moe_distribute_v2_base.h"
 
 namespace MoeDistributeDispatchV2Impl {
 constexpr uint8_t BUFFER_NUM = 2;        // 多buf
@@ -41,11 +37,11 @@ constexpr uint8_t COMM_TP_IDX = 1;
 // 先写死这个偏移，如果TP固定为2，可直接往起始数据偏移开始读写
 constexpr uint64_t WIN_STATE_OFFSET = 500UL * 1024UL;
 constexpr uint64_t STATE_WIN_OFFSET = 950UL * 1024UL;
-constexpr uint64_t STATE_HCCL_OFFSET = 32UL;
-constexpr uint64_t STATE_CHECK_OFFSET = 1000UL * 1024UL;
+constexpr uint64_t TIMEOUT_OFFSET = 1000UL * 1024UL;
 constexpr uint64_t TIMEOUT_DETECTION_THRESHOLD = 50000UL;
 constexpr uint64_t CYCLES_PER_US = 50UL;
 constexpr uint64_t TIMEOUT_DETECTION_TX_UNITS = 8UL;
+constexpr uint64_t STATE_HCCL_OFFSET = 32UL;
 constexpr uint32_t TP_STATE_SIZE = 100U * 1024U;
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
@@ -58,7 +54,7 @@ constexpr uint8_t EP_WORLD_SIZE_IDX = 1;
 constexpr uint8_t SHARE_RANK_NUM_IDX = 2;
 constexpr uint8_t MOE_NUM_IDX = 3;
 constexpr int32_t  BITS_PER_BYTE = 8;
-constexpr uint32_t MAX_UB_SIZE = 170U * 1024U;
+constexpr uint32_t  MAX_UB_SIZE = 170U * 1024U;
 
 #define TemplateMC2TypeClass typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist, bool IsNeedAllgather
 #define TemplateMC2TypeFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist, IsNeedAllgather
@@ -710,8 +706,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::SendToMoeEx
             xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
             DataCopyPad(xTmpTensor_, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
             xQueue_.EnQue(xTmpTensor_);
-            FillTriple(xTmpTensor_, tokenIndex, topKIndex);
             xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+            FillTriple(xTmpTensor_, tokenIndex, topKIndex);
             DataCopyPad(dstWinGMTensor, xTmpTensor_, hCommuCopyOutParams_);
             xQueue_.FreeTensor<ExpandXOutType>(xTmpTensor_);
         }
@@ -804,7 +800,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::ExpertActiv
 {
     // 计算当前有效bs数量, stride搬入xActiveMask进行sum计算, 用于moe专家发送
     LocalTensor<bool> maskStrideTensor = dstExpBuf_.Get<bool>();
-    DataCopyPadExtParams<bool> maskStrideCopyPadParams{true, 0U, static_cast<uint8_t>(UB_ALIGN - axisK_), 0U};
+    DataCopyPadExtParams<bool> maskStrideCopyPadParams{false, 0U, 0U, 0U};
     DataCopyExtParams maskStrideParams{
         static_cast<uint16_t>(axisBS_), static_cast<uint32_t>(axisK_ * sizeof(bool)), 0U, 0U, 0U};
     DataCopyPad(maskStrideTensor, xActiveMaskGMTensor_, maskStrideParams, maskStrideCopyPadParams);
@@ -1114,6 +1110,7 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::TimeOutDetection()
 {
     uint32_t toRankId;
+    uint64_t stateCheckOffset = (dataState_ == 0) ? TIMEOUT_OFFSET : (TIMEOUT_OFFSET - WIN_STATE_OFFSET);
     GlobalTensor<float> timeoutCheckGMTensor;
     for (uint32_t index = startStatusIndex_; index < startStatusIndex_ + recStatusNumPerCore_; index++) {
         if (isScalingDownFlag_) {
@@ -1122,7 +1119,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::TimeOutDete
             toRankId = index % epWorldSize_;
         }
         GM_ADDR timeoutCheckGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(COMM_EP_IDX, toRankId)
-            + STATE_CHECK_OFFSET);
+            + stateCheckOffset);
         timeoutCheckGMTensor.SetGlobalBuffer((__gm__ float*)(timeoutCheckGM));
         DataCopy<float>(timeoutCheckGMTensor, statusFp32Tensor_, TIMEOUT_DETECTION_TX_UNITS);
     }

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file grouped_mat_mul_allto_allv.h
@@ -18,7 +18,6 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #include "lib/matmul_intf.h"
-
 #if __has_include("../../allto_allv_grouped_mat_mul/op_kernel/allto_allv_gmm.h")
 #include "../../allto_allv_grouped_mat_mul/op_kernel/allto_allv_gmm.h"
 #else
@@ -90,7 +89,11 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
+#if defined(__DAV_C310__)
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+#else
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
+#endif
     HcclHandle allGatherHandleId_{INVALID_HANDLE_ID};
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclDataType hcclDataType_;

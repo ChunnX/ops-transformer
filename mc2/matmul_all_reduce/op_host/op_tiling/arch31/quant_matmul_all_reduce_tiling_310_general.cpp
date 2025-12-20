@@ -1,18 +1,19 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_matmul_all_reduce_tiling_310_general.cc
  * \brief
  */
 #include "quant_matmul_all_reduce_tiling_310_general.h"
+#include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
 #include "mc2_log.h"
 #include "op_mc2.h"
 using namespace Mc2Log;
@@ -20,9 +21,6 @@ using namespace Mc2Log;
 namespace optiling {
 bool QuantMatmulAllReduceTiling310General::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND310P) {
-        return false;
-    }
     if (args_.aType == matmul_tiling::DataType::DT_INT8 && args_.bType == matmul_tiling::DataType::DT_INT8) {
         OP_LOGI(opName_, "start with 310p quant tiling.");
         return true;
@@ -43,7 +41,17 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::DoOpTiling()
 
 uint64_t QuantMatmulAllReduceTiling310General::GetTilingKey() const
 {
-    uint64_t tilingKey = context_->GetTilingKey();
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        static_cast<uint64_t>(ASCEND_310P),
+        static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_QUANT_MATMUL),
+        MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+        MATMUL_ALLREDUCE_INT8_COMM_F,
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        SET_NOT_USE_FM_MM_TPL_TILING,
+        SET_NOT_USE_QUANT_MM_TPL_TILING,
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING);
+
     OP_LOGI(opName_, "QuantMatmulAllReduceTiling310General get tilingKey %lu", tilingKey);
     return tilingKey;
 }
@@ -118,4 +126,7 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::DoQuantTiling()
         return mmTail.DoTiling();
     }
 }
+
+//注册tiling类
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,QuantMatmulAllReduceTiling310General,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P),1);
 } // namespace optiling

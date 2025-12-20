@@ -1,5 +1,5 @@
 {
-  "op_type": "BatchMatMulV3",
+  "op_type": "Mc2BatchMatMulV3",
   "optional_input_mode": "gen_placeholder",
   "op_list": [
     {

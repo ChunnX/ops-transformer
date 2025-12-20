@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mat_mul_nd2nz.h
@@ -127,7 +127,7 @@ __aicore__ inline void CopyPadNd2Nz<bfloat16_t>(const GlobalTensor<bfloat16_t>& 
 template <class T, Nd2NzMode mode = Nd2NzMode::MULTI_CORE>
 __aicore__ inline bool Nd2nzVnchwMM(GlobalTensor<T>& dst, GlobalTensor<T>& src, uint32_t height, uint32_t width,
                                     uint32_t batch, TBuf<TPosition::VECCALC>& ubBuffer, uint32_t usedCoreNum) {
-    KernelND2NZMM<T> op;
+    Mc2KernelND2NZMM<T> op;
     op.Init((GM_ADDR)dst[0].GetPhyAddr(), (GM_ADDR)src[0].GetPhyAddr(), height, width, batch, ubBuffer, usedCoreNum);
     return op.template ProcessMM<mode>();
 }
@@ -245,7 +245,7 @@ __aicore__ inline void MatrixAtoNZV2(GM_ADDR workspace, GM_ADDR src, const TCube
     tempSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(src), oriD * oriN);
 #if defined(__DAV_C220_VEC__)
     if (batch > 1) {
-        Nd2nzVnchwBMM(tempDstGlobal, tempSrcGlobal, oriN, oriD, batch, tmpBuf, usedCoreNum);
+        Mc2Nd2nzVnchwBMM(tempDstGlobal, tempSrcGlobal, oriN, oriD, batch, tmpBuf, usedCoreNum);
     } else {
         // outersize over 8192 and (innersize below 384B when it is even or below 192B when it is odd) for vnchw.
         if ((oriN > 8192) && (oriD > 1) && (oriD != c0Size) && (oriD * sizeof(T) <= 192 ||
@@ -281,7 +281,7 @@ __aicore__ inline void MatrixBtoNZV2(GM_ADDR workspace, GM_ADDR src, const TCube
     tempSrcGlobal1.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(src), oriD * oriN);
 #if defined(__DAV_C220_VEC__)
     if (batch > 1) {
-        Nd2nzVnchwBMM(tempDstGlobal1, tempSrcGlobal1, oriN, oriD, batch, tmpBuf, usedCoreNum);
+        Mc2Nd2nzVnchwBMM(tempDstGlobal1, tempSrcGlobal1, oriN, oriD, batch, tmpBuf, usedCoreNum);
     } else {
         // outersize over 8192 and (innersize below 384B when it is even or below 192B when it is odd) for vnchw.
         if ((oriN > 8192) && (oriD > 1) && (oriD != c0Size) && (oriD * sizeof(T) <= 192 ||

@@ -1,18 +1,19 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file batch_mat_mul_v3.cpp
  * \brief
  */
 #include "./batch_mat_mul_v3.h"
+#include "batch_mat_mul_v3_tiling_key.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -136,44 +137,66 @@ constexpr CubeFormat format_y = CubeFormat::ND;
         op.Process();                                                                                                 \
     } while (0)
 
-extern "C" __global__ __aicore__ void batch_mat_mul_v3(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
-    GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+template<int MULTIBATCHL1FULLLOAD, int MULTIBATCH, int LOADMODE, int ISMULTIBATCHOUT, int MIXND2NZ>
+__global__ __aicore__ void batch_mat_mul_v3(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ < 220
     GET_TILING_DATA(tilingData, tilingGM);
-    if (TILING_KEY_IS(10000000000000000001UL)) {
-        BMMV3_IMPL_CLASS_COMMON(BatchMatMulCommonKernel, BatchMatMulCommonBaseBlock, MM_CFG_VEC_ND2NZ);
+    if (MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_FALSE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_FALSE) {
+        BMMV3_IMPL_CLASS_COMMON(Mc2BatchMatMulCommonKernel, Mc2BatchMatMulCommonBaseBlock, MM_CFG_VEC_ND2NZ);
     }
 #else
     GET_TILING_DATA(tilingData, tilingGM);
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    if (TILING_KEY_IS(10000000000000000000UL)) {
-        BMMV3_IMPL_CLASS_COMMON(BatchMatMulUnalignedKernel, MatmulBaseBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000000000000000001UL)) {
-        KERNEL_TASK_TYPE(10000000000000000001UL, KERNEL_TYPE_AIC_ONLY);
-        BMMV3_IMPL_CLASS_COMMON(BatchMatMulCommonKernel, BatchMatMulCommonBaseBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000000000000000101UL)) {
-        KERNEL_TASK_TYPE(10000000000000000101UL, KERNEL_TYPE_AIC_ONLY);
-        BMMV3_IMPL_CLASS_COMMON(BatchMatMulCommonKernel, BatchMatMulCommonBaseBlock, MM_CFG_NO_PRELOAD,
+    if (MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_FALSE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_TRUE) {
+        BMMV3_IMPL_CLASS_COMMON(Mc2BatchMatMulUnalignedKernel, Mc2MatmulBaseBlock, MM_CFG_NO_PRELOAD);
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_FALSE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_FALSE) {
+        BMMV3_IMPL_CLASS_COMMON(Mc2BatchMatMulCommonKernel, Mc2BatchMatMulCommonBaseBlock, MM_CFG_NO_PRELOAD);
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_FALSE && LOADMODE == BATCH_MAT_MUL_V3_AL1_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_FALSE) {
+        BMMV3_IMPL_CLASS_COMMON(Mc2BatchMatMulCommonKernel, Mc2BatchMatMulCommonBaseBlock, MM_CFG_NO_PRELOAD,
                                 MatmulCallBackFunc<nullptr, BmmCopyAL1, nullptr>);
-    } else if (TILING_KEY_IS(10000000000000000201UL)) {
-        KERNEL_TASK_TYPE(10000000000000000201UL, KERNEL_TYPE_AIC_ONLY);
-        BMMV3_IMPL_CLASS_COMMON(BatchMatMulCommonKernel, BatchMatMulCommonBaseBlock, MM_CFG_NO_PRELOAD,
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_FALSE && LOADMODE == BATCH_MAT_MUL_V3_BL1_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_FALSE) {
+        BMMV3_IMPL_CLASS_COMMON(Mc2BatchMatMulCommonKernel, Mc2BatchMatMulCommonBaseBlock, MM_CFG_NO_PRELOAD,
                                 MatmulCallBackFunc<nullptr, nullptr, BmmCopyBL1>);
-    } else if (TILING_KEY_IS(10000000000000001001UL)) { // need to be set
-        KERNEL_TASK_TYPE(10000000000000001001UL, KERNEL_TYPE_AIC_ONLY);
-        BMMV3_IMPL_CLASS(BatchMatMulMultiBatchKernel, BatchMatMulMultiBatchBaseBlock);
-    } else if (TILING_KEY_IS(10000000000000010001UL)) {
-        KERNEL_TASK_TYPE(10000000000000010001UL, KERNEL_TYPE_AIC_ONLY);
-        BMMV3_IMPL_CLASS(BatchMatMulMultiBatchFullLoadKernel, BatchMatMulMultiBatchFullLoadBlock);
-    } else if (TILING_KEY_IS(10000000000000001000UL)) {
-        BMMV3_IMPL_CLASS(BatchMatMulUnalignedMultiBatchKernel, BatchMatMulUnalignedMultiBatchBaseBlock);
-    } else if (TILING_KEY_IS(10000000000000001011UL)) {
-        KERNEL_TASK_TYPE(10000000000000001011UL, KERNEL_TYPE_AIC_ONLY);
-        BMMV3_IMPL_CLASS(BatchMatMulMultiBatchKernel, BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT);
-    } else if (TILING_KEY_IS(10000000000000001010UL)) {
-        BMMV3_IMPL_CLASS(BatchMatMulUnalignedMultiBatchKernel, BatchMatMulUnalignedMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT);
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE && // need to be set
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_TRUE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_FALSE) {
+        BMMV3_IMPL_CLASS(Mc2BatchMatMulMultiBatchKernel, Mc2BatchMatMulMultiBatchBaseBlock);
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_TRUE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_FALSE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_FALSE) {
+        BMMV3_IMPL_CLASS(Mc2BatchMatMulMultiBatchFullLoadKernel, Mc2BatchMatMulMultiBatchFullLoadBlock);
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_TRUE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_FALSE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_TRUE) {
+        BMMV3_IMPL_CLASS(Mc2BatchMatMulUnalignedMultiBatchKernel, Mc2BatchMatMulUnalignedMultiBatchBaseBlock);
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_TRUE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_TRUE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_FALSE) {
+        BMMV3_IMPL_CLASS(Mc2BatchMatMulMultiBatchKernel, Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT);
+    } else if (
+        MULTIBATCHL1FULLLOAD == BATCH_MAT_MUL_V3_MULTI_BATCH_L1_FULLLOAD_FALSE &&
+        MULTIBATCH == BATCH_MAT_MUL_V3_MULTI_BATCH_TRUE && LOADMODE == BATCH_MAT_MUL_V3_BASE_FULLLOAD &&
+        ISMULTIBATCHOUT == BATCH_MAT_MUL_V3_ISMULTIBATCHOUT_TRUE && MIXND2NZ == BATCH_MAT_MUL_V3_MIXND2NZ_TRUE) {
+        BMMV3_IMPL_CLASS(Mc2BatchMatMulUnalignedMultiBatchKernel, Mc2BatchMatMulUnalignedMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT);
     }
 #endif
 }

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_performance.cpp
@@ -19,7 +19,7 @@
 #include "mc2_log.h"
 #include "tiling/matmul_performance.h"
 
-const std::map<std::string, double> CUBE_CALC_PER_CYCLE_MAP = {
+const static std::map<std::string, double> CUBE_CALC_PER_CYCLE_MAP = {
     {MatmulPerformance::DEFAULT_KEY_FOR_PAR_MAP,
      MatmulPerformance::COMPUTES_PER_CYCLE},
     {"1_1_1_1_2", 8192},
@@ -28,7 +28,7 @@ const std::map<std::string, double> CUBE_CALC_PER_CYCLE_MAP = {
     {"4_1_1_1_2", 8192},
 };
 
-const std::map<std::string, L2CacheEstimateParameters> L2_PARAMETER_MAP = {
+const static std::map<std::string, L2CacheEstimateParameters> L2_PARAMETER_MAP = {
     {MatmulPerformance::DEFAULT_KEY_FOR_PAR_MAP,
      L2CacheEstimateParameters{128, 192, 0.85, 0.75, 0.65}},
     {"3_1_1_1_2", L2CacheEstimateParameters{96, 96, 0.4, 0.4, 0.35}},

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_weight_quant_batch_matmul_v2.h"
 #include "aclnn_weight_quant_batch_matmul_v3.h"
@@ -16,6 +16,7 @@
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/transpose.h"
 
+#include <limits>
 #include "graph/types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -505,11 +506,11 @@ static bool CheckXWeight(const aclTensor* x, const aclTensor* weight, bool trans
         return false;
     }
     if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND310P &&
+        GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95 &&
         (kX > M_K_N_MAX_VALUE || nWeight > M_K_N_MAX_VALUE || (transposeX && (mX > M_K_N_MAX_VALUE)))) {
         OP_LOGE(
             ACLNN_ERR_PARAM_INVALID,
-            "k,n shouldn't be larger than %ld, "
-            "actual k is %ld, n is %ld. When x is transposed, "
+            "k,n shouldn't be larger than %ld, actual k is %ld, n is %ld. When x is transposed, "
             "m shouldn't be larger than %ld, actual m is %ld.",
             M_K_N_MAX_VALUE, kX, nWeight, M_K_N_MAX_VALUE, mX);
         return false;
@@ -548,6 +549,17 @@ static bool CheckXWeight(const aclTensor* x, const aclTensor* weight, bool trans
     return true;
 }
 
+bool CheckMultiplyOverflow(int64_t a, int64_t b)
+{
+    if (a == 0 || b == 0) {
+        return false;
+    }
+    if (a > 0 && b > 0) {
+        return a > std::numeric_limits<int64_t>::max() / b;
+    }
+    return false;
+}
+
 static bool CheckXWeightY(const aclTensor* x, const aclTensor* weight, const aclTensor* y, int antiquantGroupSize)
 {
     size_t kDimX = x->GetViewShape().GetDimNum() - 1;
@@ -559,6 +571,10 @@ static bool CheckXWeightY(const aclTensor* x, const aclTensor* weight, const acl
     int64_t nY = y->GetViewShape().GetDim(nDimY);
 
     if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P && antiquantGroupSize > 0) {
+        OP_CHECK(
+            !CheckMultiplyOverflow(mX, kX),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "m * k (%ld * %ld) is overflow of int64.", mX, kX),
+        return false);
         if (mX * kX > MAX_MK_VALUE) {
             OP_LOGE(
                 ACLNN_ERR_PARAM_INVALID, "m*k shouldn't be larger than %ld, actual m is %ld, k is %ld.", MAX_MK_VALUE,
@@ -1585,7 +1601,7 @@ aclnnStatus aclnnWeightQuantBatchMatmulV2GetWorkspaceSize(
 
     // dtype=-1表示输出dtype和输入x dtype一致
     int64_t dtype = tensorQuantScaleOptional != nullptr ? static_cast<int64_t>(y->GetDataType()) : -1;
-    auto result = l0op::WeightQuantBatchMatmulV2(
+    auto result = l0op::Mc2WeightQuantBatchMatmulV2(
         x, tensorWeight, antiquantScaleRef, antiquantOffsetOptional, tensorQuantScaleOptional, quantOffsetOptional,
         biasOptional, transposeX, transposeWeight, antiquantGroupSize, dtype, 0,
         uniqueExecutor.get()); // 0:v2接口innerPrecise参数默认传0
@@ -1639,7 +1655,7 @@ aclnnStatus aclnnWeightQuantBatchMatmulV3GetWorkspaceSize(
 
     // dtype=-1表示输出dtype和输入x dtype一致
     int64_t dtype = tensorQuantScaleOptional != nullptr ? static_cast<int64_t>(y->GetDataType()) : -1;
-    auto result = l0op::WeightQuantBatchMatmulV2(
+    auto result = l0op::Mc2WeightQuantBatchMatmulV2(
         x, tensorWeight, antiquantScaleRef, antiquantOffsetOptional, tensorQuantScaleOptional, quantOffsetOptional,
         biasOptional, transposeX, transposeWeight, antiquantGroupSize, dtype, innerPrecise, uniqueExecutor.get());
     CHECK_RET(result != nullptr, ACLNN_ERR_PARAM_INVALID);

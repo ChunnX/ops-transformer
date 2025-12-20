@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mm_allreduce_add_rms_norm_910_general.h
@@ -19,10 +19,13 @@
 #include "lib/matmul_intf.h"
 #if __has_include("../../matmul_all_reduce/op_kernel/common.h")
 #include "../../matmul_all_reduce/op_kernel/common.h"
-#include "../../matmul_all_reduce/op_kernel/matmul_all_reduce_910_general.h"
 #else
 #include "../matmul_all_reduce/common.h"
-#include "../matmul_all_reduce/matmul_all_reduce_910_general.h"
+#endif
+#if __has_include("../../matmul_all_reduce/op_kernel/arch32/matmul_all_reduce_910_general.h")
+#include "../../matmul_all_reduce/op_kernel/arch32/matmul_all_reduce_910_general.h"
+#else
+#include "../matmul_all_reduce/arch32/matmul_all_reduce_910_general.h"
 #endif
 #include "add_rms_norm_kernel.h"
 
@@ -73,8 +76,8 @@ public:
 
 private:
     AddRMSNormTilingeKeyData* arnTilineKey_;
-    AddRMSNormTilingData* arnTile_;
-    AddRMSNormTilingData* arnTail_;
+    MC2AddRMSNormTilingData* arnTile_;
+    MC2AddRMSNormTilingData* arnTail_;
 };
 
 #define INVOKE_MC2_ARN_910_OP_IMPL_HELPER(opTemplateClass, bTransFlag)                                     \
@@ -83,7 +86,7 @@ private:
         using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, bTransFlag>;            \
         using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_Y>;                         \
         using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS_FOR_MC2>;           \
-        using opType = opTemplateClass<aType, bType, cType, biasType, MatmulBaseBlock, MM_CFG_NO_PRELOAD>; \
+        using opType = opTemplateClass<aType, bType, cType, biasType, Mc2MatmulBaseBlock, MM_CFG_NO_PRELOAD>; \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, nullptr, normOutGM, workspaceGM, normOutGM};                 \
         ArnGmAddrs arnAddrs = {residualGM, gammaGM, yGM, normOutGM};                                       \
         MatmulAllReduceAddRmsNorm910General<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType> op(                       \

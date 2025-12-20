@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_matmul_all_reduce.cpp
@@ -35,6 +35,13 @@ using namespace op;
 extern "C" {
 #endif
 
+enum class NnopbaseHcclServerType : uint32_t {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
+
 extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
     const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
@@ -47,6 +54,7 @@ extern aclnnStatus aclnnInnerMatmulAllReduce(
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const char* group, const char* reduceOp,
@@ -103,7 +111,6 @@ aclnnStatus aclnnMatmulAllReduce(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_LOGD("MatmulAllReduce, aclnnMatmulAllReduce ret %d", ret);
     if (ret != 0) {

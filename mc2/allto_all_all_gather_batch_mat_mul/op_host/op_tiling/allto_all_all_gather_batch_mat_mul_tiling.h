@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_to_all_all_gather_batch_matmul_tiling.h
@@ -20,6 +20,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling/mc2_tiling_struct.h"
+#include "tiling/new_mc2_tiling_struct.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "mc2_log.h"
@@ -108,22 +109,22 @@ TILING_DATA_FIELD_DEF_STRUCT(Mc2ServerCfg, serverCfg);                 // server
 TILING_DATA_FIELD_DEF_STRUCT(Mc2HcommCfg, hcommCfgATA);                // 通信域1：allToall
 TILING_DATA_FIELD_DEF_STRUCT(Mc2HcommCfg, hcommCfgAG);                 // 通信域2：allGather
 TILING_DATA_FIELD_DEF_STRUCT(Mc2CommonTiling, commonTiling);           // kernel侧需要的通用tiling
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, localTiling);        // local块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, domesticTiling);     // 非local块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, localTailTiling);    // local尾块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData, domesticTailTiling); // 非local尾块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(Mc2MatmulTilingData,
+TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, localTiling);        // local块的matmul tiling数据
+TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, domesticTiling);     // 非local块的matmul tiling数据
+TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, localTailTiling);    // local尾块的matmul tiling数据
+TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, domesticTailTiling); // 非local尾块的matmul tiling数据
+TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData,
                              domesticTailETiling); // sherd-0切E不切C时非local尾块的matmul tiling数据
 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(AlltoAllAllGatherBatchMatMul, AlltoAllAllGatherBatchMatMulTilingData);
 
-class AlltoAllAllGatherBatchMatMulTiling : public batch_mat_mul_v3::BatchMatmulV3BaseTiling {
+class AlltoAllAllGatherBatchMatMulTiling : public Mc2batch_mat_mul_v3::Mc2BatchMatmulV3BaseTiling {
 public:
-    AlltoAllAllGatherBatchMatMulTiling(gert::TilingContext *context, BatchMatmulTilingData &bmmTilingData,
+    AlltoAllAllGatherBatchMatMulTiling(gert::TilingContext *context, Mc2BatchMatmulTilingData &bmmTilingData,
                                        AlltoAllAllGatherBatchInfo &BMMV3BatchInfo,
                                        AlltoAllAllGatherMatmulInfo &MMV3ArgsInfo)
-        : BatchMatmulV3BaseTiling(context, bmmTilingData), BMMV3BatchInfo_(BMMV3BatchInfo), MMV3ArgsInfo_(MMV3ArgsInfo)
+        : Mc2BatchMatmulV3BaseTiling(context, bmmTilingData), BMMV3BatchInfo_(BMMV3BatchInfo), MMV3ArgsInfo_(MMV3ArgsInfo)
     {
     }
 

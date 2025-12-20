@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine.h
@@ -18,12 +18,7 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_combine_tiling.h"
-#if __has_include("../../moe_distribute_dispatch/op_kernel/moe_distribute_base.h")
-#include "../../moe_distribute_dispatch/op_kernel/moe_distribute_base.h"
-#else
-#include "../moe_distribute_dispatch/moe_distribute_base.h"
-#endif
-
+#include "../common/inc/kernel/moe_distribute_base.h"
 namespace MoeDistributeCombineImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
 constexpr uint32_t STATE_OFFSET = 512; // 状态空间偏移地址
@@ -77,7 +72,6 @@ private:
     __aicore__ inline void BuffInit();
     __aicore__ inline void SplitCoreCal();
     __aicore__ inline void SetStatus();
-    __aicore__ inline void InitTp(GM_ADDR tpSendCount, const MoeDistributeCombineTilingData* tilingData);
     __aicore__ inline void WaitDispatch();
     __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId, const uint8_t domain, const uint8_t expertLocalId = 0U)
     {
@@ -230,29 +224,6 @@ private:
 };
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombine<TemplateMC2TypeFunc>::InitTp(GM_ADDR tpSendCount,
-    const MoeDistributeCombineTilingData* tilingData)
-{
-    auto contextGM1 = AscendC::GetHcclContext<1>();
-    tpWinContext_ = (__gm__ HcclOpResParam *)contextGM1;
-    tpSendCountGM_.SetGlobalBuffer((__gm__ int32_t *)tpSendCount);
-    tpWorldSize_ = tilingData->moeDistributeCombineInfo.tpWorldSize;
-    tpRankId_ = tilingData->moeDistributeCombineInfo.tpRankId;
-    tpWindowGM_ = GetWinAddrByRankId(tpRankId_, TP_DOMAIN);
-    tpStatusSpaceGm_ = GetWinStateAddrByRankId(tpRankId_, TP_DOMAIN);
-#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType*)(tpWindowGM_), totalWinSizeTp_);
-    OOMCheckAddrRange<float>((__gm__ float*)(tpStatusSpaceGm_), STATE_SIZE);
-#endif  
-    tpStatusSpaceGlobalTensor_.SetGlobalBuffer((__gm__ float *)tpStatusSpaceGm_);
-    tpDataOffsetOnWin_ = tpRankId_ * TP_RANK_SIZE_ON_WIN;
-    tpStateOffsetOnWin_ = tpRankId_ * stateOffset_;
-    uint32_t tpScatterRankWinOffset = (tpRankId_ == 0) ? TP_RANK_SIZE_ON_WIN : 0;
-    GM_ADDR rankGM = tpWindowGM_ + tpScatterRankWinOffset;
-    tpRankWindow_.SetGlobalBuffer((__gm__ ExpandXType *)rankGM);
-}
-
-template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombine<TemplateMC2TypeFunc>::Init(GM_ADDR expandX, GM_ADDR expertIds,
     GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount, GM_ADDR scales, GM_ADDR XOut, GM_ADDR workspaceGM,
     TPipe *pipe, const MoeDistributeCombineTilingData *tilingData)
@@ -261,6 +232,7 @@ __aicore__ inline void MoeDistributeCombine<TemplateMC2TypeFunc>::Init(GM_ADDR e
     coreIdx_ = GetBlockIdx();
     epRankId_ = tilingData->moeDistributeCombineInfo.epRankId;
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    auto contextGM1 = AscendC::GetHcclContext<1>();
     epWinContext_ = (__gm__ HcclOpResParam *)contextGM0;
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)epWinContext_->localWindowsExp;
@@ -327,7 +299,22 @@ __aicore__ inline void MoeDistributeCombine<TemplateMC2TypeFunc>::Init(GM_ADDR e
     }
 
     if constexpr (IsNeedReduceScatter) {
-        InitTp(tpSendCount, tilingData);
+        tpWinContext_ = (__gm__ HcclOpResParam *)contextGM1;
+        tpSendCountGM_.SetGlobalBuffer((__gm__ int32_t *)tpSendCount);
+        tpWorldSize_ = tilingData->moeDistributeCombineInfo.tpWorldSize;
+        tpRankId_ = tilingData->moeDistributeCombineInfo.tpRankId;
+        tpWindowGM_ = GetWinAddrByRankId(tpRankId_, TP_DOMAIN);
+        tpStatusSpaceGm_ = GetWinStateAddrByRankId(tpRankId_, TP_DOMAIN);
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+        OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType*)(tpWindowGM_), totalWinSizeTp_);
+        OOMCheckAddrRange<float>((__gm__ float*)(tpStatusSpaceGm_), STATE_SIZE);
+#endif  
+        tpStatusSpaceGlobalTensor_.SetGlobalBuffer((__gm__ float *)tpStatusSpaceGm_);
+        tpDataOffsetOnWin_ = tpRankId_ * TP_RANK_SIZE_ON_WIN;
+        tpStateOffsetOnWin_ = tpRankId_ * stateOffset_;
+        uint32_t tpScatterRankWinOffset = (tpRankId_ == 0) ? TP_RANK_SIZE_ON_WIN : 0;
+        GM_ADDR rankGM = tpWindowGM_ + tpScatterRankWinOffset;
+        tpRankWindow_.SetGlobalBuffer((__gm__ ExpandXType *)rankGM);
     }
 
     tpipe_->InitBuffer(moeQueue_, BUFFER_NUM, axisHExpandXTypeSize_); // 7168 * 2 * 2 = 28672

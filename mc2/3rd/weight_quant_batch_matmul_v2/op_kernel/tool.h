@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file tool.h
@@ -43,6 +43,10 @@ using AscendC::TPosition;
 using AscendC::WaitFlag;
 using matmul::MatmulType;
 
+#if defined(__DAV_C310__)
+using AscendC::VECTOR_REG_WIDTH;
+#endif
+
 #if defined(__CCE_KT_TEST__)
 #include <sys/types.h>
 #include <unistd.h>
@@ -58,7 +62,7 @@ constexpr int DEBUG_HALF_WIDTH = 14;
 constexpr int DEBUG_HALF_PRECISION = 4;
 
 template <typename T>
-std::string DoPrintData(
+std::string Mc2DoPrintData(
     const LocalTensor<T>& tensor, size_t count, size_t stride, size_t elementsPerRow, const std::string& block_id,
     const std::string& core_type)
 {
@@ -78,7 +82,7 @@ std::string DoPrintData(
 }
 
 template <>
-std::string DoPrintData(
+std::string Mc2DoPrintData(
     const LocalTensor<uint8_t>& tensor, size_t count, size_t stride, size_t elementsPerRow, const std::string& block_id,
     const std::string& core_type)
 {
@@ -98,7 +102,7 @@ std::string DoPrintData(
 }
 
 template <>
-std::string DoPrintData(
+std::string Mc2DoPrintData(
     const LocalTensor<int8_t>& tensor, size_t count, size_t stride, size_t elementsPerRow, const std::string& block_id,
     const std::string& core_type)
 {
@@ -118,7 +122,7 @@ std::string DoPrintData(
 }
 
 template <>
-std::string DoPrintData(
+std::string Mc2DoPrintData(
     const LocalTensor<half>& tensor, size_t count, size_t stride, size_t elementsPerRow, const std::string& block_id,
     const std::string& core_type)
 {
@@ -138,7 +142,7 @@ std::string DoPrintData(
 }
 
 template <typename T>
-std::string DoPrintData(
+std::string Mc2DoPrintData(
     const GlobalTensor<T>& tensor, size_t count, size_t stride, size_t elementsPerRow, const std::string& block_id,
     const std::string& core_type)
 {
@@ -157,7 +161,7 @@ std::string DoPrintData(
     return oss.str();
 }
 
-std::string DoPrintData(
+std::string Mc2DoPrintData(
     const GlobalTensor<int8_t>& tensor, size_t count, size_t stride, size_t elementsPerRow, const std::string& block_id,
     const std::string& core_type)
 {
@@ -177,7 +181,7 @@ std::string DoPrintData(
 }
 
 template <>
-std::string DoPrintData(
+std::string Mc2DoPrintData(
     const GlobalTensor<half>& tensor, size_t count, size_t stride, size_t elementsPerRow, const std::string& block_id,
     const std::string& core_type)
 {
@@ -214,7 +218,7 @@ std::string DoPrintData(
         printf(                                                                                                   \
             "[%s][%s][%s:%d][%s][%ld] " format "\n%s\n", block_id.c_str(), core_type.c_str(), FILENAME, __LINE__, \
             __FUNCTION__, (long)getpid(), ##__VA_ARGS__,                                                          \
-            DoPrintData(data, count, stride, elementsPerRow, block_id, core_type).c_str());                       \
+            Mc2DoPrintData(data, count, stride, elementsPerRow, block_id, core_type).c_str());                       \
     } while (0)
 
 #define SHORT_MIX_LOG(format, ...)                                                                            \
@@ -243,7 +247,7 @@ std::string DoPrintData(
 #define PRINT_DATA(format, ...)
 
 #endif
-namespace WeightQuantBatchMatmulV2 {
+namespace Mc2WeightQuantBatchMatmulV2 {
 static constexpr uint64_t SYNC_MODE0 = 0;
 static constexpr uint64_t SYNC_MODE2 = 2;
 static constexpr uint64_t SYNC_MODE4 = 4;
@@ -303,6 +307,10 @@ static constexpr uint32_t FIXPIPE_TABLE_MAX_SIZE_910B = 2048;
 static constexpr uint64_t MX_GROUPSIZE = 32;
 
 static constexpr int32_t C0_SIZE_B8 = 32;
+
+#if defined(__DAV_C310__)
+static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
+#endif
 
 template <typename T>
 __aicore__ inline T CeilAlign(T a, T b)
@@ -378,6 +386,16 @@ __aicore__ inline void DataCopyPad2D(
         padParams.rightPadding = CeilAlign(blockLen, static_cast<uint32_t>(32 / sizeof(T))) - blockLen;
         padParams.paddingValue = 0;
     }
+#if defined(__DAV_C310__)
+    if constexpr (
+        IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value || IsSameType<T, fp4x2_e1m2_t>::value) {
+        // 4bit场景下， 跳转的步长、数据长度等需要除2
+        params.blockLen = params.blockLen >> 1;
+        params.srcStride = params.srcStride >> 1;
+        params.dstStride = params.dstStride >> 1;
+        padParams.rightPadding = padParams.rightPadding >> 1;
+    }
+#else
     if constexpr (IsSameType<T, int4b_t>::value) {
         // int4场景下， 跳转的步长、数据长度等需要除2
         params.blockLen = params.blockLen >> 1;
@@ -385,7 +403,7 @@ __aicore__ inline void DataCopyPad2D(
         params.dstStride = params.dstStride >> 1;
         padParams.rightPadding = padParams.rightPadding >> 1;
     }
-
+#endif
     DataCopyPad(dst, src, params, padParams);
 }
 
@@ -398,13 +416,22 @@ __aicore__ inline void DataCopyPad2D(
     params.blockLen = dim0 * sizeof(T);
     params.srcStride = 0;
     params.dstStride = (dstFullDim0 - dim0) * sizeof(T);
+#if defined(__DAV_C310__)
+    if constexpr (
+        IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value || IsSameType<T, fp4x2_e1m2_t>::value) {
+        // int4场景下， 跳转的步长、数据长度等需要除2
+        params.blockLen = params.blockLen >> 1;
+        params.srcStride = params.srcStride >> 1;
+        params.dstStride = params.dstStride >> 1;
+    }
+#else
     if constexpr (IsSameType<T, int4b_t>::value) {
         // int4场景下， 跳转的步长、数据长度等需要除2
         params.blockLen = params.blockLen >> 1;
         params.srcStride = params.srcStride >> 1;
         params.dstStride = params.dstStride >> 1;
     }
-
+#endif
     DataCopyPad(dst, src, params);
 }
 
@@ -537,5 +564,5 @@ struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSH
     constexpr static TPosition srcPos = TPosition::GM;
 };
 
-} // namespace WeightQuantBatchMatmulV2
+} // namespace Mc2WeightQuantBatchMatmulV2
 #endif

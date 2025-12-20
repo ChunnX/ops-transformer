@@ -1,19 +1,19 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3_basic_tiling.h
  * \brief
  */
-#ifndef QUANT_BATCH_MATMUL_V3_BASIC_TILING_H
-#define QUANT_BATCH_MATMUL_V3_BASIC_TILING_H
+#ifndef MC2_QUANT_BATCH_MATMUL_V3_BASIC_TILING_H
+#define MC2_QUANT_BATCH_MATMUL_V3_BASIC_TILING_H
 #include "quant_batch_matmul_v3_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 
@@ -47,18 +47,18 @@ enum class BasicTilingMode : uint32_t{
     L2_CACHE_TILING_MODE = 1
 };
 
-class QuantBatchMatmulV3BasicTiling : public QuantBatchMatmulV3Tiling {
+class Mc2QuantBatchMatmulV3BasicTiling : public Mc2QuantBatchMatmulV3Tiling {
 public:
-    explicit QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn)
-     : QuantBatchMatmulV3Tiling(contextIn), context(contextIn) { }
-    QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn, QuantBatchMatmulV3TilingData *out)
-     : QuantBatchMatmulV3Tiling(contextIn, out), context(contextIn)
+    explicit Mc2QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn)
+     : Mc2QuantBatchMatmulV3Tiling(contextIn), context(contextIn) { }
+    Mc2QuantBatchMatmulV3BasicTiling(gert::TilingContext *contextIn, Mc2QuantBatchMatmulV3TilingData *out)
+     : Mc2QuantBatchMatmulV3Tiling(contextIn, out), context(contextIn)
     {
     }
-    ~QuantBatchMatmulV3BasicTiling() override = default;
+    ~Mc2QuantBatchMatmulV3BasicTiling() override = default;
 
     BasicTiling basicTiling_;
-    QuantBatchMatmulV3Trans trans_ = QuantBatchMatmulV3Trans::NO_TRANS;
+    Mc2QuantBatchMatmulV3Trans trans_ = Mc2QuantBatchMatmulV3Trans::NO_TRANS;
 
 protected:
     bool IsCapable() override;

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_matmul_all_reduce_add_rms_norm.cpp
@@ -16,10 +16,10 @@
 #include <iostream>
 #include <vector>
 #include <thread>
-#include "../op_api/aclnn_matmul_all_reduce_add_rms_norm.h"
+#include "hccl/hccl.h"
+#include "aclnnop/aclnn_matmul_all_reduce_add_rms_norm.h"
 
-namespace {
-static int ndev = 8;
+int ndev = 8;
 
 #define CHECK_RET(cond, return_expr) \
 do {                               \
@@ -69,22 +69,9 @@ struct Args {
     aclrtContext context;
 };
 
-static inline void FreeTensor(aclTensor *tensor)
-{
-    if (tensor != nullptr) {
-        aclDestroyTensor(tensor);
-    }
-}
-
-static inline void FreeDevice(void *deviceAddr)
-{
-    if (deviceAddr != nullptr) {
-        aclrtFree(deviceAddr);
-    }
-}
-
 int launchOneThreadMatmulAllReduceAddRmsNorm(Args &args) {
-    int ret = aclrtSetCurrentContext(args.context);
+    int ret;
+    ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
     char hcom_name[128];
     ret = HcclGetCommName(args.hcclComm, hcom_name);
@@ -157,7 +144,7 @@ int launchOneThreadMatmulAllReduceAddRmsNorm(Args &args) {
     CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
-    if (workspaceSize > static_cast<uint64_t>(0)) {
+    if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
@@ -165,26 +152,54 @@ int launchOneThreadMatmulAllReduceAddRmsNorm(Args &args) {
     ret = aclnnMatmulAllReduceAddRmsNorm(workspaceAddr, workspaceSize, executor, args.stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMatmulAllReduceAddRmsNorm failed. ERROR: %d\n", ret); return ret);
     //（固定写法）同步等待任务执行结束
-    constexpr int TIMEOUT_MS = 10000;
-    ret = aclrtSynchronizeStreamWithTimeout(args.stream, TIMEOUT_MS);
+    ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     LOG_PRINT("device%d aclnnMatmulAllReduceAddRmsNorm execute success \n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
-    FreeTensor(x1);
-    FreeTensor(x2);
-    FreeTensor(bias);
-    FreeTensor(residual);
-    FreeTensor(gamma);
-    FreeTensor(y);
-    FreeTensor(normOut);
-    FreeDevice(x1DeviceAddr);
-    FreeDevice(x2DeviceAddr);
-    FreeDevice(biasDeviceAddr);
-    FreeDevice(residualDeviceAddr);
-    FreeDevice(gammaDeviceAddr);
-    FreeDevice(yDeviceAddr);
-    FreeDevice(normOutDeviceAddr);
-    if (workspaceSize > static_cast<uint64_t>(0)) {
+
+    if (x1 != nullptr) {
+        aclDestroyTensor(x1);
+    }
+    if (x2 != nullptr) {
+        aclDestroyTensor(x2);
+    }
+    if (bias != nullptr) {
+        aclDestroyTensor(bias);
+    }
+    if (residual != nullptr) {
+        aclDestroyTensor(residual);
+    }
+    if (gamma != nullptr) {
+        aclDestroyTensor(gamma);
+    }
+    if (y != nullptr) {
+        aclDestroyTensor(y);
+    }
+    if (normOut != nullptr) {
+        aclDestroyTensor(normOut);
+    }
+    if (x1DeviceAddr != nullptr) {
+        aclrtFree(x1DeviceAddr);
+    }
+    if (x2DeviceAddr != nullptr) {
+        aclrtFree(x2DeviceAddr);
+    }
+    if (biasDeviceAddr != nullptr) {
+        aclrtFree(biasDeviceAddr);
+    }
+    if (residualDeviceAddr != nullptr) {
+        aclrtFree(residualDeviceAddr);
+    }
+    if (gammaDeviceAddr != nullptr) {
+        aclrtFree(gammaDeviceAddr);
+    }
+    if (yDeviceAddr != nullptr) {
+        aclrtFree(yDeviceAddr);
+    }
+    if (normOutDeviceAddr != nullptr) {
+        aclrtFree(normOutDeviceAddr);
+    }
+    if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }
     aclrtDestroyStream(args.stream);
@@ -193,7 +208,6 @@ int launchOneThreadMatmulAllReduceAddRmsNorm(Args &args) {
     aclrtResetDevice(args.rankId);
     return 0;
 }
-} // namespace
 
 int main(int argc, char *argv[]) {
     // 本样例基于Atlas A2实现，必须在Atlas A2上运行
@@ -215,7 +229,7 @@ int main(int argc, char *argv[]) {
     Args args[ndev];
     aclrtStream stream[ndev];
     aclrtContext context[ndev];
-    for (uint32_t rankId = 0; rankId < static_cast<uint32_t>(ndev); rankId++) {
+    for (uint32_t rankId = 0; rankId < ndev; rankId++) {
         ret = aclrtSetDevice(rankId);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
         ret = aclrtCreateContext(&context[rankId], rankId);
@@ -225,14 +239,14 @@ int main(int argc, char *argv[]) {
     }
     // 启动多线程
     std::vector<std::unique_ptr<std::thread>> threads(ndev);
-    for (uint32_t rankId = 0; rankId < static_cast<uint32_t>(ndev); rankId++) {
+    for (uint32_t rankId = 0; rankId < ndev; rankId++) {
         args[rankId].rankId = rankId;
         args[rankId].hcclComm = comms[rankId];
         args[rankId].stream = stream[rankId];
         args[rankId].context = context[rankId];
         threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAllReduceAddRmsNorm, std::ref(args[rankId])));
     }
-    for (uint32_t rankId = 0; rankId < static_cast<uint32_t>(ndev); rankId++) {
+    for (uint32_t rankId = 0; rankId < ndev; rankId++) {
         threads[rankId]->join();
     }
     aclFinalize();

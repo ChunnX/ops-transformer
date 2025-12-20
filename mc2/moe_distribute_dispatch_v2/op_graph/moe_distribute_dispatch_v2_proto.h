@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fusion_ops.h
@@ -28,7 +28,7 @@ namespace ge {
 * @li scales: An optional tensor. Support dtype: float32, dimension must be 2, support format: ND.
 * @li x_active_mask: An optional tensor. Support dtype: bool, support format: ND.
 * @li expert_scales: An optional tensor. Support dtype: float32. Shape supports (BS, K), support format: ND.
-* @li performance_info: An optional tensor. Support dtype: int64. Shape supports (BS, ), support format: ND.
+* @li performance_info: An optional tensor. Support dtype: int64, support format: ND.
 
 * @par Attributes
 * @li group_ep: Required. Input ep comm group name, ep means experts parallelism, dtype: String.

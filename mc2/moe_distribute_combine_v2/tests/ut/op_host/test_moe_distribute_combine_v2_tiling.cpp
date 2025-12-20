@@ -1,17 +1,16 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "tiling_context_faker.h"
-#include "tiling_case_executor.h"
+#include "mc2_tiling_case_executor.h"
 
 using namespace std;
 
@@ -72,7 +71,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_shared_e
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
     // todo check ge::GRAPH_FAILED
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_shared_expert_x_1) {
@@ -120,8 +120,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_shared_e
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
     // todo check ge::GRAPH_SUCCESS
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 10000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_shared_expert_x_three_dims) {
@@ -169,8 +170,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_shared_e
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
     // todo check ge::GRAPH_SUCCESS
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 10000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_0) {
@@ -211,8 +213,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_0) {
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 10000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_1) {
@@ -254,7 +257,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_1) {
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_2) {
@@ -296,7 +300,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_2) {
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_3) {
@@ -338,7 +343,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_3) {
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_ep_world_size_384) {
@@ -380,7 +386,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_ep_world
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_ep_world_size_72) {
@@ -422,7 +429,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_ep_world
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_x_activate_mask_2dims) {
@@ -470,7 +478,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_x_activa
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_elastic_info) {
@@ -519,7 +528,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_elastic_
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_moepp) {
@@ -572,7 +582,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_moepp) {
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_copyExpert_without_OriX) {
@@ -625,7 +636,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_copyExpe
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_constExpert_without_OriX) {
@@ -678,7 +690,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_constExp
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 //===============================================A2====================================================
@@ -720,9 +733,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
-
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 2000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_commalg_empty_with_env) {
@@ -763,9 +776,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
-
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 2000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_commalg_fullmesh) {
@@ -806,9 +819,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
-
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 2000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_commalg_fullmesh_with_env) {
@@ -849,9 +862,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
-
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 2000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_commalg_hierarchy) {
@@ -892,9 +905,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
-
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_commalg_error) {
@@ -936,7 +949,8 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
 
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_commalg_empty_with_env_commint8) {
@@ -977,9 +991,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
-
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 2000UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_commalg_hierarchy_commint8) {
@@ -1020,9 +1034,9 @@ TEST_F(MoeDistributeCombineV2Tiling, moe_distribute_combine_test_tiling_a2_comma
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
-
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3100UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 }  // moe_distribute_combine_v2_ut

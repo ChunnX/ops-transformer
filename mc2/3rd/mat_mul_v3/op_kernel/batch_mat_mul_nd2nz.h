@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file batch_mat_mul_nd2nz.h
@@ -24,9 +24,9 @@ using namespace std;
 #endif
 
 template <class T>
-class KernelND2NZBMM {
+class Mc2KernelND2NZBMM {
    public:
-    __aicore__ inline KernelND2NZBMM(){};
+    __aicore__ inline Mc2KernelND2NZBMM(){};
     __aicore__ inline void CopyIn(uint64_t progress, LocalTensor<T>& dstLocal);
     __aicore__ inline bool SetBufBMM();
     __aicore__ inline void Init(GM_ADDR dst, GM_ADDR src, uint32_t height, uint32_t width, uint32_t batch,
@@ -79,7 +79,7 @@ class KernelND2NZBMM {
 };
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyIn(uint64_t progress, LocalTensor<T>& dstLocal) {
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyIn(uint64_t progress, LocalTensor<T>& dstLocal) {
     uint64_t curCopyInSize = progress == nFullProgress_ ? heightTotalTail_ * width_ : copyInSize_;
     uint64_t gmInOffset = copyInSize_ * progress;
     DataCopyExtParams copyParams{DEFAULT_DATA_COPY_NBURST, static_cast<uint32_t>(curCopyInSize * sizeof(T)),
@@ -89,7 +89,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyIn(uint64_t progress, LocalTensor<
 }
 
 template <class T>
-__aicore__ inline bool KernelND2NZBMM<T>::SetBufBMM() {
+__aicore__ inline bool Mc2KernelND2NZBMM<T>::SetBufBMM() {
     uint32_t hTotal = height_ * batch_;
     uint32_t wAligned = Align2(width_, c0_);
 
@@ -136,7 +136,7 @@ __aicore__ inline bool KernelND2NZBMM<T>::SetBufBMM() {
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::Init(GM_ADDR dst, GM_ADDR src, uint32_t height, uint32_t width, uint32_t batch,
+__aicore__ inline void Mc2KernelND2NZBMM<T>::Init(GM_ADDR dst, GM_ADDR src, uint32_t height, uint32_t width, uint32_t batch,
                                             TBuf<TPosition::VECCALC>& ubBuffer, uint32_t usedCoreNum) {
     height_ = height;
     width_ = width;
@@ -168,7 +168,7 @@ __aicore__ inline void KernelND2NZBMM<T>::Init(GM_ADDR dst, GM_ADDR src, uint32_
 }
 
 template <class T>
-__aicore__ inline bool KernelND2NZBMM<T>::ProcessBMM() {
+__aicore__ inline bool Mc2KernelND2NZBMM<T>::ProcessBMM() {
     if (SetBufBMM()) {
         uint32_t nLoop = heightTotalTail_ ? nFullProgress_ + 1 : nFullProgress_;
         for (uint32_t i = blockIdx_; i < nLoop; i += blockDim_) {
@@ -184,7 +184,7 @@ __aicore__ inline bool KernelND2NZBMM<T>::ProcessBMM() {
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutDirect(uint64_t gmOutOffset, uint32_t startPad, uint16_t total,
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutDirect(uint64_t gmOutOffset, uint32_t startPad, uint16_t total,
                                                      uint64_t progress) {
     uint32_t start = startPad - hPad_;
     SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
@@ -243,7 +243,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutDirect(uint64_t gmOutOffset, ui
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutPageInit(uint64_t& gmOutOffset, uint32_t startPad, uint32_t& bufOffset) {
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutPageInit(uint64_t& gmOutOffset, uint32_t startPad, uint32_t& bufOffset) {
     uint32_t start = startPad - hPad_;
     uint32_t startSize = start * c0_;
 
@@ -267,7 +267,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutPageInit(uint64_t& gmOutOffset,
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutMakePage(uint32_t nLoop, uint32_t& bufOffset) {
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutMakePage(uint32_t nLoop, uint32_t& bufOffset) {
     for (int j = 0; j < nLoop; j++) {
         for (int k = 0; k < widthBlockTotal_; k++) {
             Copy(midBuf_[c0_ * hAligned_ * (k + widthBlockTotal_ * j)],
@@ -279,7 +279,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutMakePage(uint32_t nLoop, uint32
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutPageMainImp(uint64_t& gmOutOffset, uint32_t nLoop, uint32_t& bufOffset) {
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutPageMainImp(uint64_t& gmOutOffset, uint32_t nLoop, uint32_t& bufOffset) {
     CopyOutMakePage(nLoop, bufOffset);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
@@ -292,7 +292,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutPageMainImp(uint64_t& gmOutOffs
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutPageMain(uint64_t& gmOutOffset, uint32_t mPage, uint32_t startPad,
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutPageMain(uint64_t& gmOutOffset, uint32_t mPage, uint32_t startPad,
                                                        uint32_t total, uint32_t& bufOffset, uint64_t progress) {
     uint32_t mPage2 = mPage / widthBlockTotal_;
     uint32_t nLoopIn = mPage2 / hAligned_;
@@ -309,7 +309,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutPageMain(uint64_t& gmOutOffset,
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutPageEnd(uint64_t gmOutOffset, uint32_t res, uint32_t& bufOffset) {
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutPageEnd(uint64_t gmOutOffset, uint32_t res, uint32_t& bufOffset) {
     for (int k = 0; k < widthBlockTotal_; k++) {
         Copy(midBuf_[c0_ * res * k], outBuf_[bufOffset + hBuffer_ * c0_ * k], res * c0_);
     }
@@ -320,7 +320,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutPageEnd(uint64_t gmOutOffset, u
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutPage(uint64_t gmOutOffset, uint32_t mPage, uint32_t total,
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutPage(uint64_t gmOutOffset, uint32_t mPage, uint32_t total,
                                                    uint32_t startPad, uint64_t progress) {
     uint32_t bufOffset = 0;
     uint32_t start = startPad - hPad_;
@@ -341,7 +341,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutPage(uint64_t gmOutOffset, uint
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::CopyOutBatchReform(uint64_t gmOutOffset, uint32_t mPage, uint32_t total,
+__aicore__ inline void Mc2KernelND2NZBMM<T>::CopyOutBatchReform(uint64_t gmOutOffset, uint32_t mPage, uint32_t total,
                                                           uint32_t startPad, uint64_t progress) {
     uint32_t mPage2 = mPage / widthBlockTotal_;
 
@@ -353,7 +353,7 @@ __aicore__ inline void KernelND2NZBMM<T>::CopyOutBatchReform(uint64_t gmOutOffse
 }
 
 template <class T>
-__aicore__ inline void KernelND2NZBMM<T>::ComputeBMM(uint64_t progress) {
+__aicore__ inline void Mc2KernelND2NZBMM<T>::ComputeBMM(uint64_t progress) {
     if (noPadD_) {
         CopyIn(progress, outBuf_);
     } else {
@@ -382,15 +382,15 @@ __aicore__ inline void KernelND2NZBMM<T>::ComputeBMM(uint64_t progress) {
 
 #if defined(__DAV_C220_VEC__)
 template <class T>
-__aicore__ inline bool Nd2nzVnchwBMM(GlobalTensor<T>& dst, GlobalTensor<T>& src, uint32_t height, uint32_t width,
+__aicore__ inline bool Mc2Nd2nzVnchwBMM(GlobalTensor<T>& dst, GlobalTensor<T>& src, uint32_t height, uint32_t width,
                                      uint32_t batch, TBuf<TPosition::VECCALC>& ubBuffer, uint32_t usedCoreNum) {
-    KernelND2NZBMM<T> op;
+    Mc2KernelND2NZBMM<T> op;
     op.Init((GM_ADDR)dst[0].GetPhyAddr(), (GM_ADDR)src[0].GetPhyAddr(), height, width, batch, ubBuffer, usedCoreNum);
     return op.ProcessBMM();
 }
 
 template <>
-__aicore__ inline bool Nd2nzVnchwBMM(GlobalTensor<bfloat16_t>& dst, GlobalTensor<bfloat16_t>& src, uint32_t height,
+__aicore__ inline bool Mc2Nd2nzVnchwBMM(GlobalTensor<bfloat16_t>& dst, GlobalTensor<bfloat16_t>& src, uint32_t height,
                                      uint32_t width, uint32_t batch, TBuf<TPosition::VECCALC>& ubBuffer,
                                      uint32_t usedCoreNum)
 {
@@ -398,7 +398,7 @@ __aicore__ inline bool Nd2nzVnchwBMM(GlobalTensor<bfloat16_t>& dst, GlobalTensor
     GlobalTensor<half> srcGlobalTrans;
     dstGlobalTrans.SetGlobalBuffer((__gm__ half*)dst.GetPhyAddr(0));
     srcGlobalTrans.SetGlobalBuffer((__gm__ half*)src.GetPhyAddr(0));
-    return Nd2nzVnchwBMM(dstGlobalTrans, srcGlobalTrans, height, width, batch, ubBuffer, usedCoreNum);
+    return Mc2Nd2nzVnchwBMM(dstGlobalTrans, srcGlobalTrans, height, width, batch, ubBuffer, usedCoreNum);
 }
 #endif
 

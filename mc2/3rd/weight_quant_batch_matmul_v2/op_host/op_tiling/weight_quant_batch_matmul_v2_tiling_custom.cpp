@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_custom.cpp
@@ -18,6 +18,9 @@
 #include "weight_quant_batch_matmul_v2_compute_matmul_tiling.h"
 #include "weight_quant_batch_matmul_v2_white_list.h"
 #include "tiling_base/tiling_key.h"
+#include "ops_legacy/op_tiling/op_cache_tiling.h"
+#include "ops_legacy/op_tiling/op_cache_def_tiling.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h"
 
 using Ops::Transformer::OpTiling::RecursiveSum;
 
@@ -35,7 +38,7 @@ constexpr uint32_t CUSTOM_NZ_NO_TRANS_FP16_BASE_K = 864;
 constexpr int32_t TILING_COMPENSATION_FACTOR = 2;
 constexpr uint32_t CUSTOM_NZ_GROUP_BASE_N = 48U;
 
-void WeightQuantBatchMatmulV2TilingCustom::Reset()
+void Mc2WeightQuantBatchMatmulV2TilingCustom::Reset()
 {
     cubeBaseN_ = static_cast<uint64_t>(BLOCK_CUBE);
 }
@@ -44,14 +47,14 @@ void WeightQuantBatchMatmulV2TilingCustom::Reset()
 The function is limite of custom
 1. not support antiquant scale dtype is uint64/int64
 */
-bool WeightQuantBatchMatmulV2TilingCustom::IsCapable()
+bool Mc2WeightQuantBatchMatmulV2TilingCustom::IsCapable()
 {
     OP_LOGI(opName_, "Begin check custom");
     OP_TILING_CHECK(
         ((matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64) ||
          (matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64)),
         OP_LOGI(opName_, "Custom do not support antiquant scale dtype is uint64 and int64"), return false);
-    if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ && matmulInfoPtr_->antiQuantType == QuantType::PER_GROUP) {
+    if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ && matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_GROUP) {
         OP_TILING_CHECK(
             matmulInfoPtr_->groupSize != 64 && matmulInfoPtr_->groupSize != 128,
             OP_LOGI(
@@ -85,7 +88,7 @@ bool WeightQuantBatchMatmulV2TilingCustom::IsCapable()
     return true;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::DoOpTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingCustom::DoOpTiling()
 {
     OP_TILING_CHECK(
         InstantiateTilingData() == ge::GRAPH_FAILED,
@@ -117,7 +120,7 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::DoOpTiling()
     totalCubeSingleN = std::min(totalCubeSingleN, tilingData_->get_nAlign());
     tilingData_->set_vecSingleNLoop(ops::CeilDiv(totalCubeSingleN, vecSingleN));
     tilingData_->set_vecSingleNTailLoop(
-        ops::CeilDiv(CalcTailSize(matmulInfoPtr_->nSize, cubeBaseN_ * tilingData_->get_cubeBlockDimN()), vecSingleN));
+        ops::CeilDiv(Mc2CalcTailSize(matmulInfoPtr_->nSize, cubeBaseN_ * tilingData_->get_cubeBlockDimN()), vecSingleN));
     tilingData_->set_vecSingleKLoop(ops::CeilDiv(matmulInfoPtr_->kSize, vecSingleK));
 
     tilingData_->set_vecBlockDimK(1);
@@ -127,10 +130,10 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::SetShapeSize()
+void Mc2WeightQuantBatchMatmulV2TilingCustom::SetShapeSize()
 {
     tilingData_->set_groupSize(matmulInfoPtr_->groupSize);
-    uint64_t weightBlockAlignSize = GetBlockAlignSizeByDataType(matmulInfoPtr_->bDtype);
+    uint64_t weightBlockAlignSize = Mc2GetBlockAlignSizeByDataType(matmulInfoPtr_->bDtype);
     if (matmulInfoPtr_->transB) {
         tilingData_->set_kAlign(ops::CeilAlign(matmulInfoPtr_->kSize, weightBlockAlignSize));
         if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
@@ -157,14 +160,14 @@ void WeightQuantBatchMatmulV2TilingCustom::SetShapeSize()
     tilingData_->set_shapeBatch(1);
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::InstantiateTilingData()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingCustom::InstantiateTilingData()
 {
     if (tilingData_ == nullptr) {
         OP_TILING_CHECK(
             isOutTilingData_, OP_LOGE(opName_, "The out incoming tilingData is nullptr"),
             return ge::GRAPH_FAILED);
-        tilingDataManager_ = std::unique_ptr<WeightQuantBatchMatmulV2TilingData>(
-            new (std::nothrow) WeightQuantBatchMatmulV2TilingData());
+        tilingDataManager_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2TilingData>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2TilingData());
         tilingData_ = tilingDataManager_.get();
     }
     OP_TILING_CHECK(
@@ -179,11 +182,11 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-bool WeightQuantBatchMatmulV2TilingCustom::GetMatMulTiling()
+bool Mc2WeightQuantBatchMatmulV2TilingCustom::GetMatMulTiling()
 {
     if (!GetTilingFromCache() && !InvokeCacheTiling()) {
-        auto mmInputDtype = GetMatmulTilingDtype(matmulInfoPtr_->aDtype);
-        auto mmOutputDtype = GetMatmulTilingDtype(matmulInfoPtr_->cDtype);
+        auto mmInputDtype = Mc2GetMatmulTilingDtype(matmulInfoPtr_->aDtype);
+        auto mmOutputDtype = Mc2GetMatmulTilingDtype(matmulInfoPtr_->cDtype);
         matmul_tiling::MultiCoreMatmulTiling mmTiling;
         matmul_tiling::CubeFormat bCubeFormat = (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) ?
                                                     matmul_tiling::CubeFormat::NZ :
@@ -194,7 +197,7 @@ bool WeightQuantBatchMatmulV2TilingCustom::GetMatMulTiling()
         mmTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmOutputDtype);
         mmTiling.SetBias(matmulInfoPtr_->hasBias);
         if (matmulInfoPtr_->hasBias) {
-            auto mmBiasDtype = GetMatmulTilingDtype(matmulInfoPtr_->biasDtype);
+            auto mmBiasDtype = Mc2GetMatmulTilingDtype(matmulInfoPtr_->biasDtype);
             mmTiling.SetBiasType(matmul_tiling::TPosition::VECCALC, matmul_tiling::CubeFormat::ND, mmBiasDtype);
         }
         mmTiling.SetDim(compileInfoPtr_->aicNum);
@@ -236,7 +239,7 @@ bool WeightQuantBatchMatmulV2TilingCustom::GetMatMulTiling()
     return true;
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::AdjustMatmulTiling() const
+void Mc2WeightQuantBatchMatmulV2TilingCustom::AdjustMatmulTiling() const
 {
     if (matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ || matmulInfoPtr_->transB) {
         return;
@@ -294,18 +297,18 @@ void WeightQuantBatchMatmulV2TilingCustom::AdjustMatmulTiling() const
     }
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::AdjustL1Size() const
+void Mc2WeightQuantBatchMatmulV2TilingCustom::AdjustL1Size() const
 {
     // 如果调整完之后l1size还是大于l1空间，则缩小stepM和depthA1
-    uint64_t a1Length = static_cast<uint64_t>(GetShapeSizeWithDataType(
+    uint64_t a1Length = static_cast<uint64_t>(Mc2GetShapeSizeWithDataType(
         tilingData_->matmulTiling.get_baseM() * tilingData_->matmulTiling.get_baseK(), matmulInfoPtr_->aDtype));
-    uint64_t b1Length = static_cast<uint64_t>(GetShapeSizeWithDataType(
+    uint64_t b1Length = static_cast<uint64_t>(Mc2GetShapeSizeWithDataType(
         tilingData_->matmulTiling.get_baseN() * tilingData_->matmulTiling.get_baseK(), matmulInfoPtr_->aDtype));
     uint64_t aL1Size = a1Length * tilingData_->matmulTiling.get_depthA1();
     uint64_t bL1Size = b1Length * tilingData_->matmulTiling.get_depthB1();
     uint64_t biasL1Size =
         matmulInfoPtr_->hasBias ?
-            GetShapeSizeWithDataType(tilingData_->matmulTiling.get_baseN(), matmulInfoPtr_->biasDtype) :
+            Mc2GetShapeSizeWithDataType(tilingData_->matmulTiling.get_baseN(), matmulInfoPtr_->biasDtype) :
             0;
     uint64_t l1Size = aL1Size + bL1Size + biasL1Size;
     if (l1Size > aicoreParams_.l1Size) {
@@ -314,7 +317,7 @@ void WeightQuantBatchMatmulV2TilingCustom::AdjustL1Size() const
     }
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::ComputeDefaultBlock(uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeDefaultBlock(uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
 {
     uint64_t defaultInnerAxis = matmulInfoPtr_->bDtype == ge::DT_INT8 ? 512 : 1024;
     uint64_t defaultOutterAxis = 32;
@@ -339,7 +342,7 @@ void WeightQuantBatchMatmulV2TilingCustom::ComputeDefaultBlock(uint64_t& default
     ComputeVectorDefaultBlock(defaultVecSingleK, defaultVecSingleN);
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::ComputeGroupDefaultBlock(
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeGroupDefaultBlock(
     uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
 {
     if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
@@ -397,7 +400,7 @@ void WeightQuantBatchMatmulV2TilingCustom::ComputeGroupDefaultBlock(
     }
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithTrans(
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithTrans(
     uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
 {
     for (; defaultVecSingleK > matmulInfoPtr_->groupSize; defaultVecSingleK -= matmulInfoPtr_->groupSize) {
@@ -421,7 +424,7 @@ void WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithTrans(
     }
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithoutTrans(
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithoutTrans(
     uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
 {
     while (defaultVecSingleN > 0) {
@@ -456,7 +459,7 @@ void WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithoutTrans(
     }
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::ComputeVectorDefaultBlock(
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeVectorDefaultBlock(
     uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
 {
     /*
@@ -472,7 +475,7 @@ void WeightQuantBatchMatmulV2TilingCustom::ComputeVectorDefaultBlock(
     }
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::ComputeInt4VectorDefaultBlock(
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeInt4VectorDefaultBlock(
     uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
 {
     if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
@@ -525,10 +528,10 @@ void WeightQuantBatchMatmulV2TilingCustom::ComputeInt4VectorDefaultBlock(
     }
 }
 
-uint64_t WeightQuantBatchMatmulV2TilingCustom::ComputeAntiquantBuffer(
+uint64_t Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeAntiquantBuffer(
     uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN)
 {
-    uint64_t aDtypeBlockSize = GetBlockAlignSizeByDataType(matmulInfoPtr_->aDtype);
+    uint64_t aDtypeBlockSize = Mc2GetBlockAlignSizeByDataType(matmulInfoPtr_->aDtype);
     uint64_t antiquantSize = ops::CeilAlign(defaultVecSingleN, aDtypeBlockSize);
     if (matmulInfoPtr_->groupSize > 0) {
         if (matmulInfoPtr_->transB) {
@@ -569,7 +572,7 @@ uint64_t WeightQuantBatchMatmulV2TilingCustom::ComputeAntiquantBuffer(
     }
 }
 
-uint64_t WeightQuantBatchMatmulV2TilingCustom::ComputeWeightBuffer(
+uint64_t Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeWeightBuffer(
     uint64_t defaultVecSingleK, uint64_t defaultVecSingleN)
 {
     uint64_t originWeightAlignAxis = ONE_BLK_SIZE / sizeof(matmulInfoPtr_->bDtype);
@@ -600,7 +603,7 @@ uint64_t WeightQuantBatchMatmulV2TilingCustom::ComputeWeightBuffer(
     }
 }
 
-void WeightQuantBatchMatmulV2TilingCustom::ComputeInt8VectorDefaultBlock(
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeInt8VectorDefaultBlock(
     uint64_t& defaultVecSingleK, uint64_t& defaultVecSingleN) const
 {
     if (matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ) {
@@ -646,7 +649,7 @@ void WeightQuantBatchMatmulV2TilingCustom::ComputeInt8VectorDefaultBlock(
     }
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::DoLibApiTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingCustom::DoLibApiTiling()
 {
     uint64_t cubeBlockDimN = static_cast<uint64_t>(tilingData_->get_cubeBlockDimN());
     uint64_t cubeEachCoreN = ops::CeilAlign(ops::CeilDiv(matmulInfoPtr_->nSize, cubeBlockDimN), cubeBaseN_);
@@ -654,13 +657,13 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::DoLibApiTiling()
     tilingData_->set_cubeSingleNTailLoop(
         ops::CeilDiv(matmulInfoPtr_->nSize - cubeEachCoreN * (cubeBlockDimN - 1), cubeBaseN_));
     tilingData_->set_cubeTailM(
-        CalcTailSize(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_singleCoreM())));
+        Mc2CalcTailSize(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_singleCoreM())));
     tilingData_->set_cubeTailN(
-        CalcTailSize(matmulInfoPtr_->nSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_baseN())));
+        Mc2CalcTailSize(matmulInfoPtr_->nSize, static_cast<uint64_t>(tilingData_->matmulTiling.get_baseN())));
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::GetWorkspaceSize()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingCustom::GetWorkspaceSize()
 {
     // weight的缓存最多使用3份空间，实际划分少于3时以实际划分为准
     uint64_t weightCacheCount = std::min(static_cast<uint32_t>(3), tilingData_->get_cubeSingleNLoop());
@@ -681,7 +684,7 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::PostTiling()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingCustom::PostTiling()
 {
     OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
 
@@ -702,22 +705,62 @@ ge::graphStatus WeightQuantBatchMatmulV2TilingCustom::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t WeightQuantBatchMatmulV2TilingCustom::GetTilingKey() const
+uint64_t Mc2WeightQuantBatchMatmulV2TilingCustom::GetTilingKey() const
 {
-    KernelTemplateType templateType = matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ ?
-                                          KernelTemplateType::WEIGHT_NZ :
-                                          KernelTemplateType::CUSTOM_ANTIQUANT;
-    return RecursiveSum(
-        matmulInfoPtr_->transA, matmulInfoPtr_->transB, matmulInfoPtr_->antiQuantType,
-        matmulInfoPtr_->hasAntiQuantOffset, matmulInfoPtr_->quantType, templateType);
+    Mc2KernelTemplateType templateType = matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ ?
+                                          Mc2KernelTemplateType::WEIGHT_NZ :
+                                          Mc2KernelTemplateType::CUSTOM_ANTIQUANT;
+    uint64_t socVersionType = 1UL; // 1 means SUPPORT_L0C_TO_OUT
+    uint64_t subSocVersionType = 0UL;
+    uint64_t antiquantScenario = 0UL;
+    uint64_t algorithm = 3UL; // 3 means CUSTOM tilingkey algorithm
+    uint64_t subAlgorithm = 0UL;
+    uint64_t subAlgorithmCustom = static_cast<uint64_t>(templateType);
+    uint64_t innerPrecise = 0UL;
+    uint64_t templateCustom = 0UL;
+    uint64_t apiConstexpr = 0UL;
+    bool transA = matmulInfoPtr_->transA;
+    bool transB = matmulInfoPtr_->transB;
+    uint64_t antiquantType = static_cast<uint64_t>(matmulInfoPtr_->antiQuantType);
+    uint64_t quantType = static_cast<uint64_t>(matmulInfoPtr_->quantType);
+    bool hasAntiquantOffset = matmulInfoPtr_->hasAntiQuantOffset;
+    bool hasBias = false;
+    bool isBiasFp32 = false;
+    bool isWeightNz = false; // weightNz according to subAlgorithmCustom templateType
+    uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
+    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t batch = 0UL;
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
+        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    return tilingKey_;
 }
 
-bool WeightQuantBatchMatmulV2TilingCustom::GetTilingFromCache()
+bool Mc2WeightQuantBatchMatmulV2TilingCustom::GetTilingFromCache()
 {
-    return false;
+    bool isNzFormat = matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ;
+    uint64_t mMatchSize = ops::CeilDiv(matmulInfoPtr_->mSize, static_cast<uint64_t>(BLOCK_CUBE));
+    WeightQuantBatchMatmulCacheTilingParas paras(
+        {mMatchSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias, matmulInfoPtr_->transA,
+         matmulInfoPtr_->transB, isNzFormat, compileInfoPtr_->aicNum});
+    WeightQuantBatchMatmulCacheTilingData matmulTilingCache;
+    if (!GenWqbmmTiling(WQBMM_CUSTOM, paras, matmulTilingCache)) {
+        OP_LOGD(opName_, "not find mm tiling from cache");
+        return false;
+    }
+
+    OP_LOGD(opName_, "get mm tiling from cache");
+    Mc2SetMatmulTilingFromCacheData(
+        matmulTilingCache, tilingData_->matmulTiling, matmulInfoPtr_->mSize, matmulInfoPtr_->nSize,
+        static_cast<int32_t>(matmulInfoPtr_->hasBias));
+
+    tilingData_->set_cubeBlockDimM(matmulTilingCache.mDim_);
+    tilingData_->set_cubeBlockDimN(matmulTilingCache.nDim_);
+    return true;
 }
 
-bool WeightQuantBatchMatmulV2TilingCustom::CheckCacheTiling()
+bool Mc2WeightQuantBatchMatmulV2TilingCustom::CheckCacheTiling()
 {
     if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
         int32_t kAL1Loop = ops::CeilDiv(
@@ -742,10 +785,10 @@ bool WeightQuantBatchMatmulV2TilingCustom::CheckCacheTiling()
     return true;
 }
 
-bool WeightQuantBatchMatmulV2TilingCustom::InvokeCacheTiling()
+bool Mc2WeightQuantBatchMatmulV2TilingCustom::InvokeCacheTiling()
 {
-    MatmulMultiCoreResult multiCoreResult;
-    bool result = ComputeMatmulTiling::GetTiling(
+    Mc2MatmulMultiCoreResult multiCoreResult;
+    bool result = Mc2ComputeMatmulTiling::GetTiling(
         tilingData_->matmulTiling, multiCoreResult,
         {matmulInfoPtr_->mSize, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->aDtype,
          matmulInfoPtr_->bDtype, matmulInfoPtr_->cDtype, matmulInfoPtr_->biasDtype, matmulInfoPtr_->transA,

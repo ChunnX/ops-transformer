@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef OP_API_SRC_LEVEL2_MATMUL_UTIL_H_
 #define OP_API_SRC_LEVEL2_MATMUL_UTIL_H_
 
@@ -50,19 +50,6 @@ struct OpShapeInfo {
   int64_t dtypeBSize = 2; //float16 dtype 2
 };
 
-struct BmmNd2nzInfo {
-  int64_t mDim = 1;
-  int64_t kDim = 1;
-  int64_t nDim = 1;
-  int64_t dtypeASize = 2; // float16 dtype 2
-  int64_t dtypeBSize = 2; //float16 dtype 2
-  int64_t dtypeCSize = 2; //float16 dtype 2
-  bool transX1 = false;
-  bool transX2 = false;
-  bool nd2nzA = false;
-  bool nd2nzB = false;
-};
-
 struct MmOpInfo {
   // mm api input info
   OpBaseInfo ori_info;
@@ -93,24 +80,10 @@ bool IsFormatSupportNd(const aclTensor* self, const aclTensor* mat2);
 
 bool IsNdToNzOnTheFly(const aclTensor* self, const aclTensor* mat2);
 
-bool IsSmallMNMultiSplitK(const uint64_t mDim, const uint64_t kDim, const uint64_t nDim,
-                          const bool transposeX1, const bool transposeX2);
-
 bool IsTransposeLastTwoDims(const aclTensor* tensor);
 
 bool CheckGemmV3Support(const aclTensor* mat1, const aclTensor* mat2, MmOpInfo& mmOpInfo,
                                       int8_t cubeMathType);
-
-const aclTensor* ExecGemmV3Op(const aclTensor* self, const aclTensor* mat2, const aclTensor* c, MmOpInfo& mmOpInfo,
-                              aclOpExecutor* executor);
-
-const aclTensor* ExecMmOp(const aclTensor* self, const aclTensor* mat2, int8_t cubeMathType, aclOpExecutor* executor);
-
-const aclTensor* ExecMmOpWithBias(const aclTensor* self, const aclTensor* mat2, const aclTensor* bias,
-                                  int8_t cubeMathType, aclOpExecutor* executor, bool transposeX2 = false);
-
-const aclTensor* ExecMmOpWithTrans(const aclTensor* self, const aclTensor* mat2, int64_t transSelf, int64_t transMat2,
-                                   int8_t cubeMathType, aclOpExecutor* executor);
 
 aclnnStatus SetMmSupportDType(MmOpInfo& mmOpInfo, int8_t cubeMathType);
 
@@ -155,33 +128,11 @@ aclnnStatus IfNEqual1Mat2ToNK(const aclTensor *&mat2Input, const aclTensor *&mat
 
 uint64_t TransDequantScaleToM1(const float deqScale);
 
-uint32_t GetL2Size(const std::string& socLongVersion);
-
-uint64_t GetL1Size(const std::string& socLongVersion);
-
 const aclTensor *ContiguousBias(const aclTensor *self, const aclTensor *bias, aclOpExecutor *executor);
 
 op::FVector<int64_t> GetShape(const aclTensor *tensor);
 } // namespace Transformer
 } // namespace Ops
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-const aclTensor *ExecBmmOpWithBias(const aclTensor *self, const aclTensor *mat2, const aclTensor *bias,
-                                   const aclTensor *out, int8_t cubeMathType, aclOpExecutor *executor);
-
-const aclTensor *ExecBatchMatmulOpWithBiasAndAttrs(const aclTensor *self, const aclTensor *mat2, const aclTensor *bias,
-                                                   const aclTensor *out, bool adjX1, bool adjX2, int8_t cubeMathType,
-                                                   aclOpExecutor *executor);
-
-const aclTensor *ExecBatchMatmulOp(const aclTensor *self, const aclTensor *mat2, const aclTensor *out, bool adjX1,
-                                   bool adjX2, int8_t cubeMathType, aclOpExecutor *executor);
-
-const aclTensor *ExecBmmOp(const aclTensor *self, const aclTensor *mat2, const aclTensor *out, int8_t cubeMathType,
-                           aclOpExecutor *executor);
-#ifdef __cplusplus
-}
-#endif
 
 #endif  // OP_API_SRC_LEVEL2_MATMUL_UTIL_H_

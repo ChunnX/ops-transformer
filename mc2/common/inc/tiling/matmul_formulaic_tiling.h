@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_formulaic_tiling.h
@@ -17,7 +17,7 @@
 
 #pragma once
 #include "graph/ge_error_codes.h"
-#include "../kernel/all_gather_matmul_tiling.h"
+#include "../kernel/mc2_tiling_struct.h"
 #include "register/tilingdata_base.h"
 #include "mc2_tiling_struct.h"
 #include "tiling/tiling_api.h"
@@ -89,6 +89,7 @@ enum class AicpuComType {
   HCCL_CMD_REDUCE_SCATTER,
   HCCL_CMD_ALLTOALLV,
   HCCL_CMD_ALLTOALLVC,
+  HCCL_CMD_ALLTOALL,
   HCCL_CMD_GATHER,
   HCCL_CMD_HALFALLTOALLV = 20,
   HCCL_CMD_MAX
@@ -162,6 +163,7 @@ struct TilingArgs {
   uint64_t orgMValue;
   uint64_t orgNValue;
   uint64_t orgKValue;
+  uint64_t batchValue;
   uint64_t mValue;
   uint64_t kValue;
   uint64_t nValue;
@@ -278,7 +280,7 @@ class MatmulFormulaicTiling {
     socInfo_.socVersion = version;
   }
   ge::graphStatus GetCubeTiling(TilingArgs &args, ::TCubeTiling &cubeTiling,
-                                ::TileL2Tiling &tileL2Tiling);
+                                Mc2Tiling::TileL2Tiling &tileL2Tiling);
   ge::graphStatus GetCubeTiling(TilingArgs &args,
                                 optiling::TCubeTiling &cubeTiling,
                                 optiling::TileL2Tiling &tileL2Tiling);

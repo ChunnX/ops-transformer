@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_tiling.cpp
@@ -35,13 +35,14 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "../../op_kernel/moe_distribute_dispatch_tiling.h"
-
+#include "../../op_kernel/moe_distribute_dispatch_tiling_key.h"
 #include "tiling/moe_tiling_base.h"
 #include "moe_distribute_dispatch_tiling_a2a3.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
 
 using namespace Ops::Transformer::OpTiling;
+using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
 namespace {
@@ -321,8 +322,9 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
         const int64_t scalesDim0 = scalesStorageShape->GetStorageShape().GetDim(0);
         const int64_t scalesDim1 = scalesStorageShape->GetStorageShape().GetDim(1);
         if (sharedExpertRankNum == 0U) {
-            OP_TILING_CHECK(scalesDim0 != moeExpertNum, OP_LOGE(nodeName, "scales's dim0 not equal to moeExpertNum, "
-            "scales's dim0 is %ld, moeExpertNum is %ld.", scalesDim0, moeExpertNum), return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(scalesDim0 != moeExpertNum, OP_LOGE(nodeName,
+                "scales's dim0 not equal to moeExpertNum, scales's dim0 is %ld, moeExpertNum is %ld.",
+                scalesDim0, moeExpertNum), return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK(scalesDim0 != (moeExpertNum + 1), OP_LOGE(nodeName,
                 "scales's dim0 not equal to moeExpertNum + 1, scales's dim0 is %ld, moeExpertNum + 1 is %ld.",
@@ -398,17 +400,29 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
     return ge::GRAPH_SUCCESS;
 }
 
-static void CalTilingKey(uint64_t &tilingKey, const bool isScales, const uint32_t quantMode, const uint32_t tpWorldSize)
+static uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, const uint32_t tpWorldSize)
 {
-    tilingKey += static_cast<uint64_t>(quantMode);
-    tilingKey += static_cast<uint64_t>((isScales ? NUM_10 : 0));
+    bool tp = false;
+    uint32_t tilingKeyQuantMode = TILINGKEY_NO_QUANT;
+    bool scaleMode = false;   // A2 & A3
+    uint32_t layeredMode = TILINGKEY_TPL_MTE; // A2
+    
     if (tpWorldSize == MAX_TP_WORLD_SIZE) {
-        tilingKey += static_cast<uint64_t>(NUM_100);
+        tp = true;
     }
-    return;
+    if (quantMode == STATIC_QUANT_MODE) {
+        tilingKeyQuantMode = TILINGKEY_STATIC_QUANT;
+    } else if (quantMode == DYNAMIC_QUANT_MODE) {
+        tilingKeyQuantMode = TILINGKEY_DYNAMIC_QUANT;
+    }
+    if (isScales) {
+        scaleMode = true;
+    }
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode, layeredMode, TILINGKEY_TPL_A3);
+    return tilingKey;
 }
 
-static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatchTilingData *tiling,
+static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatchTilingData *tiling,
     const std::string groupEp, const std::string groupTp, const uint32_t tpWorldSize)
 {
     const char *nodeName = context->GetNodeName();
@@ -419,16 +433,21 @@ static void SetHcommCfg(const gert::TilingContext *context, MoeDistributeDispatc
     std::string algConfigAllGatherStr = "AllGather=level0:ring";
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType1, algConfigAllToAllStr);
-    mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1);
+    mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);   // 通过不拉起AICPU，提高算子退出性能
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling) != 0,
+        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1) != 0,
+        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling1 failed"), return ge::GRAPH_FAILED);
 
     if (tpWorldSize > 1) {
         OP_LOGD(nodeName, "MoeDistributeDispatch groupTp = %s", groupTp.c_str());
         mc2CcTilingConfig.SetGroupName(groupTp);
         mc2CcTilingConfig.SetOpType(opType2);
         mc2CcTilingConfig.SetAlgConfig(algConfigAllGatherStr);
-        mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2);
+        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2) != 0,
+            OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling2 failed"), return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBufferSize, const char* nodeName)
@@ -555,9 +574,9 @@ static ge::graphStatus MoeDistributeDispatchA3TilingFuncImpl(gert::TilingContext
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
     uint32_t tpWorldSize = tilingData->moeDistributeDispatchInfo.tpWorldSize;
-    SetHcommCfg(context, tilingData, groupEp, groupTp, tpWorldSize);
-    uint64_t tilingKey = INIT_TILINGKEY;
-    CalTilingKey(tilingKey, isScales, quantMode, tpWorldSize);
+    OP_TILING_CHECK(SetHcommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "SetHcommCfg failed."), return ge::GRAPH_FAILED);
+    uint64_t tilingKey = CalTilingKey(isScales, quantMode, tpWorldSize);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     uint32_t blockDim = 1U;
@@ -735,25 +754,20 @@ static bool MoeDistributeDispatchA2IsLayered()
 
 static uint64_t MoeDistributeDispatchA2CalcTilingKey(gert::TilingContext *context, const bool isLayered)
 {
-    uint64_t tilingKey = TILING_KEY_BASE_A2 + INIT_TILINGKEY;
+    bool tp = false;
+    uint32_t tilingKeyQuantMode = TILINGKEY_NO_QUANT;
+    bool scaleMode = false;   // A2 & A3
+    uint32_t layeredMode = TILINGKEY_TPL_MTE; // A2
 
     if (isLayered) {
-        tilingKey += TILING_KEY_LAYERED_COMM_A2;
+        layeredMode = TILINGKEY_TPL_AICPU;
     }
-
-    auto attrs = context->GetAttrs();
-    auto quantModePtr = attrs->GetAttrPointer<int>(ATTR_QUANT_MODE_INDEX);
-    tilingKey += static_cast<uint64_t>(*quantModePtr);
-
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
-    bool isScales = (scalesStorageShape != nullptr);
-    tilingKey += static_cast<uint64_t>((isScales ? NUM_10 : 0));
-
+    scaleMode = (scalesStorageShape != nullptr);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode, layeredMode, TILINGKEY_TPL_A2);
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%lu", tilingKey);
-
     return tilingKey;
 }
-
 static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
@@ -799,9 +813,10 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
     uint32_t opType = 18; // batch write=18,
     std::string algConfig = "BatchWrite=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
-
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "Leave MoeDistributeDispatchA2 tiling func.");
     return ge::GRAPH_SUCCESS;
 }
@@ -829,7 +844,7 @@ ge::graphStatus TilingParseForMoeDistributeDispatch(gert::TilingParseContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("MoeDistributeDispatch", MoeDistributeDispatchTilingA2A3, 1);
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeDispatch, MoeDistributeDispatchTilingA2A3, 1);
 
 ge::graphStatus MoeDistributeDispatchTilingA2A3::DoOpTiling()
 {

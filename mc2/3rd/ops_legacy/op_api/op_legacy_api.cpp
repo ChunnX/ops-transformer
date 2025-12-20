@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file op_legacy_api.cpp
@@ -32,29 +32,9 @@
 #include "level0/padv3.h"
 #include "level0/squeeze.h"
 #include "level0/unsqueeze.h"
-#include "level0/adaptive_avg_pool2d_assist_matrix.h"
-#include "level0/max_pool3d_with_argmax_v2.h"
-#include "level0/max_pool3d_grad_with_argmax.h"
-#include "level0/max_pool_grad_with_argmax_v1.h"
-#include "level0/max_pool_grad_with_argmax_v3.h"
+
 namespace l0op {
 const aclTensor* Cast(const aclTensor* /*self*/, op::DataType /*dstDtype*/, aclOpExecutor* /*executor*/)
-{
-    return nullptr;
-}
-
-const aclTensor* MaxPoolGradWithArgmaxV1(
-    const aclTensor* /*gradOutput*/, const aclTensor* /*self*/, const aclTensor* /*indices*/, const aclIntArray* /*kernelSize*/,
-    const aclIntArray* /*stride*/, const aclIntArray* /*padding*/, const aclIntArray* /*dilation*/, bool /*ceilMode*/,
-    aclOpExecutor* /*executor*/)
-{
-    return nullptr;
-}
-
-const aclTensor* MaxPoolGradWithArgmaxV3(
-    const aclTensor* /*gradOutput*/, const aclTensor* /*self*/, const aclTensor* /*indices*/, const aclIntArray* /*kernelSize*/,
-    const aclIntArray* /*stride*/, const aclIntArray* /*padding*/, const ge::DataType /*dtype*/, const aclIntArray* /*dilation*/,
-    bool /*ceilMode*/, std::string& /*dataFormat*/, aclOpExecutor* /*executor*/)
 {
     return nullptr;
 }
@@ -197,33 +177,11 @@ const aclTensor* ReduceMean(
 {
     return nullptr;
 }
-const aclTensor* Shape_op(const aclTensor* /*x*/, aclOpExecutor* /*executor*/)
-{
-    return nullptr;
-}
-const std::array<aclTensor*, 3> AdaptiveAvgPool2dAssistMatrix(
-    const aclTensor* /*input*/, const aclTensor* /*origin_input*/, const aclIntArray* /*output_size*/, aclOpExecutor* /*executor*/)
-{
-    return {nullptr, nullptr, nullptr};
-}
 const aclTensor* SqueezeNd(const aclTensor* /*x*/, const aclIntArray* /*dim*/, aclOpExecutor* /*executor*/)
 {
     return nullptr;
 }
 const aclTensor* SqueezeNd(const aclTensor* /*x*/, int64_t /*dim*/, aclOpExecutor* /*executor*/)
-{
-    return nullptr;
-}
-const std::tuple<const aclTensor*, const aclTensor*> MaxPool3DWithArgmaxV2Ncdhw(
-    const aclTensor* /*self*/, const aclIntArray* /*kernelSize*/, const aclIntArray* /*stride*/, const aclIntArray* /*padding*/,
-    const aclIntArray* /*dilation*/, bool /*ceilMode*/, std::string /*dataFormat*/, aclOpExecutor* /*executor*/)
-{
-    return std::make_tuple(nullptr, nullptr);
-}
-const aclTensor* MaxPool3DGradWithArgmax(
-    const aclTensor* /*gradOutput*/, const aclTensor* /*self*/, const aclTensor* /*indices*/, const aclIntArray* /*kernelSize*/,
-    const aclIntArray* /*stride*/, const aclIntArray* /*padding*/, const aclIntArray* /*dilation*/, bool /*ceilMode*/,
-    aclOpExecutor* /*executor*/)
 {
     return nullptr;
 }

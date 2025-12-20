@@ -1,17 +1,16 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "tiling_context_faker.h"
-#include "tiling_case_executor.h"
+#include "mc2_tiling_case_executor.h"
 
 using namespace std;
 
@@ -50,8 +49,9 @@ TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_1)
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    uint64_t expectTilingKey = 110;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 3;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_2)
@@ -75,8 +75,9 @@ TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_2)
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    uint64_t expectTilingKey = 110;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 3;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_3)
@@ -100,8 +101,9 @@ TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_3)
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    uint64_t expectTilingKey = 110;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 3;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_4)
@@ -125,8 +127,9 @@ TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_4)
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    uint64_t expectTilingKey = 110;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 3;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_5)
@@ -150,8 +153,9 @@ TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_5)
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    uint64_t expectTilingKey = 110;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 3;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_6)
@@ -175,8 +179,9 @@ TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_float16_6)
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    uint64_t expectTilingKey = 110;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 3;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_bfloat16)
@@ -200,6 +205,7 @@ TEST_F(MatmulReduceScatterTiling, matmul_reduce_scatter_test_tiling_bfloat16)
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    uint64_t expectTilingKey = 111;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 7;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }

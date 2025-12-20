@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling.cpp
@@ -18,6 +18,7 @@
 #include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "common/op_host/math_util.h"
 #include "common/op_host/op_tiling/debug_tiling.h"
+#include "platform/platform_infos_def.h"
 
 namespace optiling {
 
@@ -36,7 +37,7 @@ static const std::initializer_list<ge::DataType> BIT8_WEIGHT_DTYPE_LIST = {
     ge::DT_INT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8};
 static const std::initializer_list<uint64_t> GROUP_SIZE_LIST = {32, 64, 128, 256};
 
-void GetDtype(WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext* context)
+void GetDtype(Mc2WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext* context)
 {
     size_t idx = 0;
     matmulInfo.aDtype = context->GetInputDesc(idx++)->GetDataType();
@@ -49,7 +50,7 @@ void GetDtype(WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext*
     }
 }
 
-void GetAttrs(WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext* context)
+void GetAttrs(Mc2WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext* context)
 {
     auto attrs = context->GetAttrs();
     size_t idx = 0;
@@ -77,7 +78,7 @@ void GetAttrs(WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext*
     matmulInfo.transB = transposeWeight != nullptr && *transposeWeight;
 }
 
-void GetInputs(WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext* context)
+void GetInputs(Mc2WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext* context)
 {
     size_t idx = 0;
     auto xShape = context->GetInputShape(idx++);
@@ -86,7 +87,7 @@ void GetInputs(WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext
     auto antiQuantOffsetShape = context->GetOptionalInputShape(idx++);
     auto quantScaleShape = context->GetOptionalInputShape(idx++);
     auto biasShape = context->GetOptionalInputShape(BIAS_INDEX);
-    matmulInfo.bFormat = GetInputStorageFormat(context, 1);
+    matmulInfo.bFormat = Mc2GetInputStorageFormat(context, 1);
     uint64_t weightLastDim = weightShape->GetOriginShape().GetDim(1);
     if (matmulInfo.bDtype == ge::DT_INT32 || matmulInfo.bDtype == ge::DT_FLOAT) {
         weightLastDim *= INT4_IN_INT32_NUMS;
@@ -99,37 +100,37 @@ void GetInputs(WeightQuantBatchMatmulInfo& matmulInfo, const gert::TilingContext
     matmulInfo.nSize =
         static_cast<uint64_t>(matmulInfo.transB ? weightShape->GetOriginShape().GetDim(0) : weightLastDim);
 
-    if (CheckOptionalInputByShape(antiQuantOffsetShape)) {
+    if (Mc2CheckOptionalInputByShape(antiQuantOffsetShape)) {
         matmulInfo.hasAntiQuantOffset = true;
     }
     size_t antiQuantScaleShapeSize = static_cast<size_t>(antiQuantScaleShape->GetStorageShape().GetShapeSize());
     if (matmulInfo.antiQuantScaleDtype == ge::DT_FLOAT8_E8M0) {
-        matmulInfo.antiQuantType = QuantType::MX;
+        matmulInfo.antiQuantType = Mc2QuantType::MX;
     } else {
         if (antiQuantScaleShapeSize == 1) {
-            matmulInfo.antiQuantType = QuantType::PER_TENSOR;
+            matmulInfo.antiQuantType = Mc2QuantType::PER_TENSOR;
         } else if (matmulInfo.groupSize > 0) {
-            matmulInfo.antiQuantType = QuantType::PER_GROUP;
+            matmulInfo.antiQuantType = Mc2QuantType::PER_GROUP;
         } else {
-            matmulInfo.antiQuantType = QuantType::PER_CHANNEL;
+            matmulInfo.antiQuantType = Mc2QuantType::PER_CHANNEL;
         }
     }
-    if (CheckOptionalInputByShape(quantScaleShape)) {
+    if (Mc2CheckOptionalInputByShape(quantScaleShape)) {
         size_t quantScaleShapeSize = static_cast<size_t>(quantScaleShape->GetStorageShape().GetShapeSize());
         if (quantScaleShapeSize == 0) {
-            matmulInfo.quantType = QuantType::NONE;
+            matmulInfo.quantType = Mc2QuantType::NONE;
         } else if (quantScaleShapeSize == 1) {
-            matmulInfo.quantType = QuantType::PER_TENSOR;
+            matmulInfo.quantType = Mc2QuantType::PER_TENSOR;
         } else {
-            matmulInfo.quantType = QuantType::PER_CHANNEL;
+            matmulInfo.quantType = Mc2QuantType::PER_CHANNEL;
         }
     }
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2Tiling::GetShapeAttrsInfo()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Tiling::GetShapeAttrsInfo()
 {
     try {
-        matmulInfoPtr_ = std::make_unique<WeightQuantBatchMatmulInfo>();
+        matmulInfoPtr_ = std::make_unique<Mc2WeightQuantBatchMatmulInfo>();
     } catch (const std::bad_alloc& e) {
         OP_LOGE(context_->GetNodeName(), "failed to instantiate matmul info");
         return ge::GRAPH_FAILED;
@@ -159,7 +160,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Tiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void WeightQuantBatchMatmulV2Tiling::InitCompileInfo()
+void Mc2WeightQuantBatchMatmulV2Tiling::InitCompileInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
@@ -168,7 +169,7 @@ void WeightQuantBatchMatmulV2Tiling::InitCompileInfo()
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     try {
-        compileInfoPtr_ = std::make_unique<WeightQuantBatchMatmulV2CompileInfo>();
+        compileInfoPtr_ = std::make_unique<Mc2WeightQuantBatchMatmulV2CompileInfo>();
     } catch (const std::bad_alloc& e) {
         OP_LOGE(context_->GetNodeName(), "failed to instantiate compile info");
         return;
@@ -183,35 +184,38 @@ void WeightQuantBatchMatmulV2Tiling::InitCompileInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr_->ubSize);
     compileInfoPtr_->workspaceNum = ascendcPlatform.GetLibApiWorkSpaceSize();
     compileInfoPtr_->socVersion = ascendcPlatform.GetSocVersion();
+    std::string mmad;
+    bool res = platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_mmad", mmad);
+    compileInfoPtr_->supportMmadS8S4 = res && mmad.find("s8s4") != std::string::npos;
 
     TilingPrepareForOpCache(context_);
     OP_LOGD(context_->GetNodeName(), "MatmulAllReduce Init Quant Tiling Compile Info Success");
 }
 
-void WeightQuantBatchMatmulV2Tiling::SetCommonTilingKeyElement(TilingKeyConfigure& tilingKeyConfigure) const
+void Mc2WeightQuantBatchMatmulV2Tiling::SetCommonTilingKeyElement(Mc2TilingKeyConfigure& tilingKeyConfigure) const
 {
-    tilingKeyConfigure.socVersionType = static_cast<uint8_t>(SocVersionType::SUPPORT_L0C_TO_OUT) * 10; // 10:乘10第0位
-    tilingKeyConfigure.quantizationScenario = static_cast<uint8_t>(QuantizationScenario::DEFAULT);
+    tilingKeyConfigure.socVersionType = static_cast<uint8_t>(Mc2SocVersionType::SUPPORT_L0C_TO_OUT) * 10; // 10:乘10第0位
+    tilingKeyConfigure.quantizationScenario = static_cast<uint8_t>(Mc2QuantizationScenario::DEFAULT);
     tilingKeyConfigure.transposeSituation =
         (static_cast<uint16_t>(matmulInfoPtr_->transA) << 1) | static_cast<uint16_t>(matmulInfoPtr_->transB);
     tilingKeyConfigure.antiquantType = static_cast<uint8_t>(matmulInfoPtr_->antiQuantType);
-    tilingKeyConfigure.quantType = static_cast<uint8_t>(QuantType::NONE);
+    tilingKeyConfigure.quantType = static_cast<uint8_t>(Mc2QuantType::NONE);
     tilingKeyConfigure.optionInputSituation = (static_cast<uint16_t>(matmulInfoPtr_->hasAntiQuantOffset) << 1);
     tilingKeyConfigure.weightFormat =
-        static_cast<uint8_t>(matmulInfoPtr_->bFormat == ge::FORMAT_ND ? WeightFormat::ND : WeightFormat::FRACTAL_NZ);
+        static_cast<uint8_t>(matmulInfoPtr_->bFormat == ge::FORMAT_ND ? Mc2WeightFormat::ND : Mc2WeightFormat::FRACTAL_NZ);
     tilingKeyConfigure.apiConstexpr = 0;
 }
 
-ge::graphStatus WeightQuantBatchMatmulV2Tiling::GetPlatformInfo()
+ge::graphStatus Mc2WeightQuantBatchMatmulV2Tiling::GetPlatformInfo()
 {
     auto compileInfoPtr = compileInfoPtr_ ?
                               compileInfoPtr_.get() :
-                              reinterpret_cast<const WeightQuantBatchMatmulV2CompileInfo*>(context_->GetCompileInfo());
+                              reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo*>(context_->GetCompileInfo());
     OP_LOGE_IF(compileInfoPtr == nullptr, ge::GRAPH_FAILED, context_->GetNodeName(), "compileInfoPtr is null");
 
     if (compileInfoPtr_ == nullptr) {
-        compileInfoPtr_ = std::unique_ptr<WeightQuantBatchMatmulV2CompileInfo>(
-            new (std::nothrow) WeightQuantBatchMatmulV2CompileInfo());
+        compileInfoPtr_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo>(
+            new (std::nothrow) Mc2WeightQuantBatchMatmulV2CompileInfo());
         OP_LOGE_IF(compileInfoPtr_ == nullptr, ge::GRAPH_FAILED, opName_, "compileInfoPtr_ is null");
         compileInfoPtr_->ubSize = compileInfoPtr->ubSize;
         compileInfoPtr_->l1Size = compileInfoPtr->l1Size;
@@ -222,6 +226,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Tiling::GetPlatformInfo()
         compileInfoPtr_->aivNum = compileInfoPtr->aivNum;
         compileInfoPtr_->aicNum = compileInfoPtr->aicNum;
         compileInfoPtr_->socVersion = compileInfoPtr->socVersion;
+        compileInfoPtr_->supportMmadS8S4 = compileInfoPtr->supportMmadS8S4;
     }
 
     aicoreParams_.blockDim = 0;
@@ -249,7 +254,7 @@ ge::graphStatus WeightQuantBatchMatmulV2Tiling::GetPlatformInfo()
 }
 
 bool CheckInputShape(
-    WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* xShape, const gert::StorageShape* weightShape)
+    Mc2WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* xShape, const gert::StorageShape* weightShape)
 {
     size_t xDimNum = xShape->GetStorageShape().GetDimNum();
     size_t xOriDimNum = xShape->GetOriginShape().GetDimNum();
@@ -313,7 +318,7 @@ bool CheckInputShape(
 }
 
 bool CheckAntiQuantScaleShape(
-    WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* antiQuantScaleShape)
+    Mc2WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* antiQuantScaleShape)
 {
     size_t antiQuantScaleDimNum = antiQuantScaleShape->GetStorageShape().GetDimNum();
     size_t antiQuantScaleShapeSize = static_cast<size_t>(antiQuantScaleShape->GetStorageShape().GetShapeSize());
@@ -342,11 +347,11 @@ bool CheckAntiQuantScaleShape(
                     Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str()),
                 return false);
             if (inputParams->antiQuantScaleDtype == ge::DT_FLOAT8_E8M0) {
-                inputParams->antiQuantType = QuantType::MX;
+                inputParams->antiQuantType = Mc2QuantType::MX;
             } else if (inputParams->groupSize > 0) {
-                inputParams->antiQuantType = QuantType::PER_GROUP;
+                inputParams->antiQuantType = Mc2QuantType::PER_GROUP;
             } else {
-                inputParams->antiQuantType = QuantType::PER_CHANNEL;
+                inputParams->antiQuantType = Mc2QuantType::PER_CHANNEL;
             }
         } else {
             OP_TILING_CHECK(
@@ -355,19 +360,19 @@ bool CheckAntiQuantScaleShape(
                     inputParams->opName, "Antiquant size should be n size when perchannel, but is %s",
                     Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str()),
                 return false);
-            inputParams->antiQuantType = QuantType::PER_CHANNEL;
+            inputParams->antiQuantType = Mc2QuantType::PER_CHANNEL;
         }
     } else {
-        inputParams->antiQuantType = QuantType::PER_TENSOR;
+        inputParams->antiQuantType = Mc2QuantType::PER_TENSOR;
     }
     return true;
 }
 
 bool CheckAntiQuantOffsetShape(
-    WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* antiQuantScaleShape,
+    Mc2WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* antiQuantScaleShape,
     const gert::StorageShape* antiQuantOffsetShape)
 {
-    if (CheckOptionalInputByShape(antiQuantOffsetShape)) {
+    if (Mc2CheckOptionalInputByShape(antiQuantOffsetShape)) {
         inputParams->hasAntiQuantOffset = true;
     }
     if (inputParams->hasAntiQuantOffset) {
@@ -393,7 +398,7 @@ bool CheckAntiQuantOffsetShape(
 }
 
 bool CheckAntiQuantShape(
-    WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* antiQuantScaleShape,
+    Mc2WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* antiQuantScaleShape,
     const gert::StorageShape* antiQuantOffsetShape)
 {
     OP_TILING_CHECK(
@@ -406,11 +411,11 @@ bool CheckAntiQuantShape(
 }
 
 bool CheckQuantShape(
-    WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* quantScaleShape,
+    Mc2WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* quantScaleShape,
     const gert::StorageShape* quantOffsetShape)
 {
-    if (!CheckOptionalInputByShape(quantScaleShape)) {
-        if (CheckOptionalInputByShape(quantOffsetShape)) {
+    if (!Mc2CheckOptionalInputByShape(quantScaleShape)) {
+        if (Mc2CheckOptionalInputByShape(quantOffsetShape)) {
             OP_LOGE(inputParams->opName, "Quant offset should exist with scale");
             return false;
         }
@@ -456,7 +461,7 @@ bool CheckQuantShape(
     return true;
 }
 
-bool CheckBiasShape(WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* biasShape)
+bool CheckBiasShape(Mc2WeightQuantBatchMatmulInfo* inputParams, const gert::StorageShape* biasShape)
 {
     if (biasShape != nullptr) {
         auto biasShapeDimNum = static_cast<uint64_t>(biasShape->GetStorageShape().GetDimNum());
@@ -486,17 +491,18 @@ bool CheckBiasShape(WeightQuantBatchMatmulInfo* inputParams, const gert::Storage
     return true;
 }
 
-bool CheckShapeDims(WeightQuantBatchMatmulInfo* inputParams)
+bool CheckShapeDims(Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
 {
     OP_TILING_CHECK(
-        inputParams->kSize > MAX_SHAPE_DIM || inputParams->nSize > MAX_SHAPE_DIM,
+        socVersion != platform_ascendc::SocVersion::ASCEND910_95 &&
+            (inputParams->kSize > MAX_SHAPE_DIM || inputParams->nSize > MAX_SHAPE_DIM),
         OP_LOGE(
             inputParams->opName, "Dim of k or n should not more than 65535, but they are [%lu] and [%lu]",
             inputParams->kSize, inputParams->nSize),
         return false);
     uint64_t batchMax = inputParams->transA ? MAX_SHAPE_DIM : MAX_INT32;
     OP_TILING_CHECK(
-        inputParams->mSize > batchMax,
+        socVersion != platform_ascendc::SocVersion::ASCEND910_95 && (inputParams->mSize > batchMax),
         OP_LOGE(
             inputParams->opName, "Dim of m should not more than [%lu], but is [%lu]", batchMax, inputParams->mSize),
         return false);
@@ -531,7 +537,7 @@ The function is check the shape limit:
     6. nk must <= 65535, m <= 65535(trans_a) or int32_max(not trans_a);
     7. group_size < k, align to 32
 */
-bool CheckShape(gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputParams)
+bool CheckShape(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
 {
     size_t idx = 0;
     auto xShape = context->GetInputShape(idx++);
@@ -552,7 +558,7 @@ bool CheckShape(gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputP
         xShape->GetStorageShape().GetShapeSize() == 0 || weightShape->GetStorageShape().GetShapeSize() == 0 ||
             antiQuantScaleShape->GetStorageShape().GetShapeSize() == 0,
         OP_LOGE(inputParams->opName, "Not yet support empty tensor"), return false);
-    inputParams->bFormat = GetInputStorageFormat(context, 1);
+    inputParams->bFormat = Mc2GetInputStorageFormat(context, 1);
     OP_TILING_CHECK(
         inputParams->bFormat == ge::FORMAT_NULL,
         OP_LOGE(inputParams->opName, "Input weight format is null"), return false);
@@ -569,13 +575,13 @@ bool CheckShape(gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputP
         !CheckBiasShape(inputParams, biasShape),
         OP_LOGE(inputParams->opName, "Check bias shape failed"), return false);
     OP_TILING_CHECK(
-        !CheckShapeDims(inputParams), OP_LOGE(inputParams->opName, "Check shape dims failed"),
+        !CheckShapeDims(inputParams, socVersion), OP_LOGE(inputParams->opName, "Check shape dims failed"),
         return false);
     return true;
 }
 
 bool CheckInputDtype(
-    gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
+    gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
 {
     OP_TILING_CHECK(
         inputParams->aDtype != ge::DT_FLOAT16 && inputParams->aDtype != ge::DT_BF16,
@@ -624,7 +630,7 @@ bool CheckInputDtype(
 }
 
 bool CheckAntiQuantDtype(
-    gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
+    gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
 {
     // the antiquant scale is the 3nd input
     auto antiQuantOffsetDesc = context->GetOptionalInputDesc(3);
@@ -681,7 +687,7 @@ bool CheckAntiQuantDtype(
     return true;
 }
 
-bool CheckQuantDtype(gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputParams)
+bool CheckQuantDtype(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams)
 {
     // the quant_scale is the 4th input
     auto quantScaleDesc = context->GetOptionalInputDesc(4);
@@ -714,7 +720,7 @@ The function is check the dtype limit:
     5. quant scale dtype should be uint64
 */
 bool CheckDtype(
-    gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
+    gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
 {
     size_t idx = 0;
     inputParams->aDtype = context->GetInputDesc(idx++)->GetDataType();
@@ -733,7 +739,7 @@ bool CheckDtype(
     return true;
 }
 
-bool CheckAttr(gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputParams)
+bool CheckAttr(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams)
 {
     auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -771,7 +777,7 @@ bool CheckAttr(gert::TilingContext* context, WeightQuantBatchMatmulInfo* inputPa
     return true;
 }
 
-bool CheckTempLimit(WeightQuantBatchMatmulInfo* inputParams)
+bool CheckTempLimit(Mc2WeightQuantBatchMatmulInfo* inputParams)
 {
     // not support transposeA and int8 out
     OP_TILING_CHECK(
@@ -790,7 +796,7 @@ bool CheckTempLimit(WeightQuantBatchMatmulInfo* inputParams)
     // k, n not align to 32B, only not support A16W8/W4/F8/F4 pergroup
     if (inputParams->kSize % alignDim != 0 || inputParams->nSize % alignDim != 0) {
         OP_TILING_CHECK(
-            inputParams->antiQuantType == QuantType::PER_GROUP,
+            inputParams->antiQuantType == Mc2QuantType::PER_GROUP,
             OP_LOGE(
                 inputParams->opName,
                 "In A16F4/W4/W8/F8 pergroup, K and N dim must align to 32B, "
@@ -804,18 +810,18 @@ bool CheckTempLimit(WeightQuantBatchMatmulInfo* inputParams)
             BIT8_WEIGHT_DTYPE_LIST.end() &&
         inputParams->bDtype != ge::DT_INT8) {
         OP_TILING_CHECK(
-            inputParams->antiQuantType != QuantType::PER_CHANNEL,
+            inputParams->antiQuantType != Mc2QuantType::PER_CHANNEL,
             OP_LOGE(inputParams->opName, "A16F8 only support perchannel"), return false);
     }
     // A16F4 support Mx and pergroup
     if (inputParams->bDtype == ge::DT_FLOAT4_E2M1 || inputParams->bDtype == ge::DT_FLOAT4_E1M2 ||
         inputParams->bDtype == ge::DT_FLOAT) {
         OP_TILING_CHECK(
-            inputParams->antiQuantType == QuantType::PER_TENSOR || inputParams->antiQuantType == QuantType::PER_CHANNEL,
+            inputParams->antiQuantType == Mc2QuantType::PER_TENSOR || inputParams->antiQuantType == Mc2QuantType::PER_CHANNEL,
             OP_LOGE(inputParams->opName, "A16F4 only support Mx and pergroup"), return false);
     }
 
-    if (inputParams->antiQuantType == QuantType::PER_GROUP &&
+    if (inputParams->antiQuantType == Mc2QuantType::PER_GROUP &&
         (inputParams->bDtype == ge::DT_FLOAT4_E2M1 || inputParams->bDtype == ge::DT_FLOAT4_E1M2 ||
          inputParams->bDtype == ge::DT_FLOAT)) {
         OP_TILING_CHECK(
@@ -830,7 +836,7 @@ bool CheckTempLimit(WeightQuantBatchMatmulInfo* inputParams)
     return true;
 }
 
-bool CheckNzSupportedScenarios(WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
+bool CheckNzSupportedScenarios(Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
 {
     if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
         // WeightNZ only support the following scenarios:
@@ -838,10 +844,10 @@ bool CheckNzSupportedScenarios(WeightQuantBatchMatmulInfo* inputParams, platform
         // (2) Weight in fp4 dtye with per-group or MX quantization without transA, transB or C8.
         OP_TILING_CHECK(
             (inputParams->transB || inputParams->transA || inputParams->cDtype == ge::DT_INT8 ||
-             !(((inputParams->antiQuantType == QuantType::PER_GROUP ||
-                 inputParams->antiQuantType == QuantType::PER_CHANNEL) &&
+             !(((inputParams->antiQuantType == Mc2QuantType::PER_GROUP ||
+                 inputParams->antiQuantType == Mc2QuantType::PER_CHANNEL) &&
                 (inputParams->bDtype == ge::DT_INT4 || inputParams->bDtype == ge::DT_INT32)) ||
-               ((inputParams->antiQuantType == QuantType::MX || inputParams->antiQuantType == QuantType::PER_GROUP) &&
+               ((inputParams->antiQuantType == Mc2QuantType::MX || inputParams->antiQuantType == Mc2QuantType::PER_GROUP) &&
                 (inputParams->bDtype == ge::DT_FLOAT4_E2M1 || inputParams->bDtype == ge::DT_FLOAT4_E1M2 ||
                  inputParams->bDtype == ge::DT_FLOAT)))),
             OP_LOGE(
@@ -851,9 +857,9 @@ bool CheckNzSupportedScenarios(WeightQuantBatchMatmulInfo* inputParams, platform
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
-            (inputParams->antiQuantType == QuantType::PER_GROUP && inputParams->transA &&
+            (inputParams->antiQuantType == Mc2QuantType::PER_GROUP && inputParams->transA &&
              inputParams->bDtype != ge::DT_INT4) ||
-                inputParams->cDtype == ge::DT_INT8 || inputParams->antiQuantType == QuantType::PER_TENSOR,
+                inputParams->cDtype == ge::DT_INT8 || inputParams->antiQuantType == Mc2QuantType::PER_TENSOR,
             OP_LOGE(
                 inputParams->opName,
                 "WeightNZ cannot support per-group with transA int8, cannot support int8 output or per-tensor"),
@@ -862,7 +868,7 @@ bool CheckNzSupportedScenarios(WeightQuantBatchMatmulInfo* inputParams, platform
     return true;
 }
 
-ge::graphStatus CheckPara(gert::TilingContext* context, platform_ascendc::SocVersion socVersion)
+ge::graphStatus Mc2CheckPara(gert::TilingContext* context, platform_ascendc::SocVersion socVersion)
 {
     // check Raw TilingData
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetRawTilingData());
@@ -873,7 +879,7 @@ ge::graphStatus CheckPara(gert::TilingContext* context, platform_ascendc::SocVer
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetInputDesc(idx++));
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetInputDesc(idx++));
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetOutputDesc(0));
-    WeightQuantBatchMatmulInfo inputParams;
+    Mc2WeightQuantBatchMatmulInfo inputParams;
     inputParams.opName = context->GetNodeName();
     // OP_LOG_FULL
     OPS_LOG_I(inputParams.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context).c_str());
@@ -885,7 +891,7 @@ ge::graphStatus CheckPara(gert::TilingContext* context, platform_ascendc::SocVer
         !CheckAttr(context, &inputParams), OP_LOGE(inputParams.opName, "Check attr failed"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        !CheckShape(context, &inputParams), OP_LOGE(inputParams.opName, "Check shape failed"),
+        !CheckShape(context, &inputParams, socVersion), OP_LOGE(inputParams.opName, "Check shape failed"),
         return ge::GRAPH_FAILED);
     if (inputParams.bFormat == ge::FORMAT_FRACTAL_NZ) {
         OP_TILING_CHECK(

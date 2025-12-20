@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_grouped_mat_mul_allto_allv.cpp
@@ -16,10 +16,11 @@
 #include <thread>
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
-#include "../op_api/aclnn_grouped_mat_mul_allto_allv.h"
+#include "aclnnop/aclnn_grouped_mat_mul_allto_allv.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -177,7 +178,7 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
               return ret);
-    LOG_PRINT("[INFO] device_%d aclnnGroupedMatMulAlltoAllv execute successfully.\n", args.rankId);    
+    LOG_PRINT("[INFO] device_%d aclnnGroupedMatMulAlltoAllv execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (args.rankId == 0) {
         size_t size = A * N1 * sizeof(int16_t);
@@ -231,6 +232,7 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
 
 int main(int argc, char *argv[])
 {
+    // 本样例基于Atlas A3实现，必须在Atlas A3上运行
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     aclrtStream stream[EP_WORLD_SIZE];

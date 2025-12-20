@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file weight_quant_batch_matmul_v2_custom_nz_splitk.h
@@ -75,18 +75,18 @@ struct ComputeParams {
     uint16_t curSingleKOrigin = 0;
 };
 
-namespace WeightQuantBatchMatmulV2 {
+namespace Mc2WeightQuantBatchMatmulV2 {
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-class WeightQuantBatchMatmulV2CustomNzSplitkKernel
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+class Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel
 {
 public:
-    __aicore__ inline WeightQuantBatchMatmulV2CustomNzSplitkKernel(){};
+    __aicore__ inline Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel(){};
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
         GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const WeightQuantBatchMatmulV2CustomNzSplitKTilingData* tilingData, TPipe* tPipe);
+        const Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void ComputeGlobalParams();
     __aicore__ inline void InitBuffer();
@@ -155,7 +155,7 @@ private:
     static constexpr int32_t BLOCK_SIZE = GetBlockSize<wType>();
 
     TPipe* pipe_;
-    const WeightQuantBatchMatmulV2CustomNzSplitKTilingData* tiling_;
+    const Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData* tiling_;
 
     bool biasFlag_;
     bool hasPostProcessFlag_;
@@ -243,8 +243,8 @@ private:
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     InitInputOutput(
         GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
@@ -262,8 +262,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::ComputeGlobalParams()
 {
@@ -284,8 +284,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::InitTensor()
 {
@@ -330,8 +330,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::InitBuffer()
 {
@@ -376,8 +376,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::InitAtomic()
 {
@@ -391,8 +391,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::InitEventIds()
 {
@@ -414,13 +414,13 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     Init(
         GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
         GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const WeightQuantBatchMatmulV2CustomNzSplitKTilingData* tilingData, TPipe* tPipe)
+        const Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData* tilingData, TPipe* tPipe)
 {
     tiling_ = tilingData;
     pipe_ = tPipe;
@@ -452,8 +452,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::WeightCopyIn(ComputeParams& computeParams)
 {
@@ -472,8 +472,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::WeightCast(ComputeParams& computeParams)
 {
@@ -489,8 +489,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     ComputeMulAdd(
         LocalTensor<half>& tmpTensor, LocalTensor<half>& antiquantWeightTensor, uint32_t loopNum, uint32_t singleCalNum,
@@ -548,8 +548,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::ComputeMulAddCast(LocalTensor<half>& antiquantWeightTensor, ComputeParams& computeParams)
 {
@@ -592,8 +592,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::AntiQuantCompute(ComputeParams& computeParams)
 {
@@ -603,8 +603,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::ProcessVector(ComputeParams& computeParams)
 {
@@ -633,8 +633,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     PostCopyInAndCast(
         LocalTensor<float>& biasComputeTensor, LocalTensor<float>& scaleComputeTensor, uint32_t realSingleCoreN,
@@ -673,8 +673,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     BiasAdd(
         LocalTensor<float>& biasComputeTensor, LocalTensor<float>& cTensor, LocalTensor<xType>& outTensor,
@@ -716,8 +716,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     ScaleMul(
         LocalTensor<float>& scaleComputeTensor, LocalTensor<float>& cTensor, uint32_t realSingleM, uint32_t realSingleN,
@@ -757,8 +757,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     PostCast(LocalTensor<xType>& outTensor, LocalTensor<float>& cTensor, uint32_t realSingleM, uint32_t realSingleN)
 {
@@ -791,8 +791,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     PostMulAndAdd(
         LocalTensor<float>& biasComputeTensor, LocalTensor<float>& scaleComputeTensor, uint32_t realSingleCoreN,
@@ -849,8 +849,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::PostProcess()
 {
@@ -872,8 +872,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::BroadCastAntiquantParams(LocalTensor<half>& dstTensor, LocalTensor<xType>& srcTensor)
 {
@@ -893,8 +893,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::CopyInAntiquantParams(ComputeParams& computeParams)
 {
@@ -926,8 +926,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::AntiquantWeight(ComputeParams& computeParams)
 {
@@ -940,8 +940,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::WeightCopyOut(ComputeParams& computeParams)
 {
@@ -969,8 +969,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::SetMatmulParams(ComputeParams& computeParams)
 {
@@ -1003,8 +1003,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::
     ComputeMatmulCustom(ComputeParams& computeParams, LocalTensor<xType>& aL1Tensor, LocalTensor<xType>& bL1Tensor)
 {
@@ -1063,8 +1063,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::ProcessCube(ComputeParams& computeParams, LocalTensor<xType>& aL1Tensor)
 {
@@ -1106,8 +1106,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::CopyInAL1(ComputeParams& computeParams)
 {
@@ -1128,8 +1128,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::CopyInAL1FullLoad(ComputeParams& computeParams, LocalTensor<xType>& aL1Tensor, uint32_t aL1Index)
 {
@@ -1148,8 +1148,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::CopyInBL1(ComputeParams& computeParams)
 {
@@ -1173,8 +1173,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::ReleaseEventIds()
 {
@@ -1196,8 +1196,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::CalcComputeParams(ComputeParams& computeParams)
 {
@@ -1231,8 +1231,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType,
     aL1FullLoad>::MainProcess(LocalTensor<xType>& aL1Tensor, ComputeParams& computeParams)
 {
@@ -1269,8 +1269,8 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
 
 template <
     typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    QuantType antiQuantType, bool hasAntiQuantOffset, QuantType quantType, bool aL1FullLoad>
-__aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
+    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, bool aL1FullLoad>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, aL1FullLoad>::Process()
 {
     ComputeParams computeParams;
@@ -1313,5 +1313,5 @@ __aicore__ inline void WeightQuantBatchMatmulV2CustomNzSplitkKernel<
     }
     ReleaseEventIds();
 }
-} // namespace WeightQuantBatchMatmulV2
+} // namespace Mc2WeightQuantBatchMatmulV2
 #endif // WEIGHT_QUANT_BATCHMATMUL_V2_CUSTOM_NZ_SPLITK_H

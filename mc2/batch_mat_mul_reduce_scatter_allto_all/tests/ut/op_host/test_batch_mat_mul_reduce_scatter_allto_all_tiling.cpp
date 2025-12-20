@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <map>
@@ -17,8 +17,7 @@
 #include <gtest/gtest.h>
 #include <opdev/platform.h>
 #include <gmock/gmock.h>
-#include "tiling_context_faker.h"
-#include "tiling_case_executor.h"
+#include "mc2_tiling_case_executor.h"
 
 class BatchMatMulReduceScatterAlltoAllTiling : public testing::Test {
 protected:
@@ -53,8 +52,9 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000001001;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_1_weight_trans) {
@@ -79,8 +79,9 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000001011;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_M_0) {
@@ -105,7 +106,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard) {
@@ -130,8 +132,9 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000001001;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias) {
@@ -157,8 +160,9 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000001101;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_0) {
@@ -183,7 +187,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test1) {
@@ -209,7 +214,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test2) {
@@ -235,7 +241,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test3) {
@@ -261,7 +268,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test4) {
@@ -287,7 +295,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test5) {
@@ -313,7 +322,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test6) {
@@ -339,7 +349,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test7) {
@@ -365,7 +376,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_float16_shard_with_bias_test8) {
@@ -391,7 +403,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_fp16_shard0_with_bias) {
@@ -417,8 +430,9 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000100;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_fp16_shard0_nonlocalE_tail_front) {
@@ -444,8 +458,9 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000100;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_bf16_shard0_with_bias) {
@@ -471,8 +486,9 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1000000000000000100;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_fp16_shard0_with_bias_invalid_Xshape) {
@@ -498,7 +514,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_fp16_shard1_with_bias_invalid_Xshape) {
@@ -524,7 +541,8 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_to_all_test_tiling_fp16_shard0_with_bias_invalid_H) {
@@ -549,5 +567,6 @@ TEST_F(BatchMatMulReduceScatterAlltoAllTiling, batch_matmul_reduce_scatter_all_t
             {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910_93", coreNum, ubSize);
-    ExecuteTestCase(tilingContextPara);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }

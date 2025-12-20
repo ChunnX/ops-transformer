@@ -1,18 +1,19 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_matmul_all_reduce_tiling_310p.cc
  * \brief
  */
 #include "weight_quant_matmul_all_reduce_tiling_310p.h"
+#include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
 #include "mc2_log.h"
 #include "op_mc2.h"
 using namespace Mc2Log;
@@ -20,9 +21,6 @@ using namespace Mc2Log;
 namespace optiling {
 bool WeightQuantMatmulAllReduceTiling310P::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND310P) {
-        return false;
-    }
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
     OP_TILING_CHECK(
         weightTensor == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
@@ -87,14 +85,45 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoOpTiling()
 uint64_t WeightQuantMatmulAllReduceTiling310P::GetTilingKey() const
 {
     if (isKZero_) {
-        const uint64_t emptyTensorKey = 2100000;
-        OP_LOGI(opName_, "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu", emptyTensorKey);
+        const uint64_t emptyTensorKey = GET_TPL_TILING_KEY(
+            static_cast<uint64_t>(ASCEND_310P),
+            static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
+            static_cast<uint64_t>(isKZero_),
+            MATMUL_ALLREDUCE_INT8_COMM_F,
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            SET_NOT_USE_FM_MM_TPL_TILING,
+            SET_NOT_USE_QUANT_MM_TPL_TILING,
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(FORMAT_B_NZ));
+
+        OP_LOGI(opName_, "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu. isKZero_ %lu.", emptyTensorKey, isKZero_);
         return emptyTensorKey;
     }
-    uint64_t tilingKey = context_->GetTilingKey();
-    OP_LOGI(opName_, "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu", tilingKey);
-    const uint64_t perfKey = 80000;
-    return (tileTilingKey_ != tilingKey && tilingKey == perfKey) ? tileTilingKey_ : tilingKey;
+
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        static_cast<uint64_t>(ASCEND_310P),
+        static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
+        MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+        MATMUL_ALLREDUCE_INT8_COMM_F,
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        SET_NOT_USE_FM_MM_TPL_TILING,
+        SET_NOT_USE_QUANT_MM_TPL_TILING,
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        weightQuantMatmul310TPLParam_.hasAntiquantOffset,
+        weightQuantMatmul310TPLParam_.antiQuantType,
+        weightQuantMatmul310TPLParam_.transA,
+        static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        static_cast<uint64_t>(FORMAT_B_NZ));
+
+    OP_LOGI(opName_, "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu. AntiQuantType %lu, hasAntiquantOffset %lu, transA %lu.", tilingKey,
+        weightQuantMatmul310TPLParam_.antiQuantType, weightQuantMatmul310TPLParam_.hasAntiquantOffset, weightQuantMatmul310TPLParam_.transA);
+    return tilingKey;
 }
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling310P::GetWorkspaceSize()
@@ -168,18 +197,41 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
     WeightQuantTilingTransferHelper mmTile(*this, weightQuantMatmulAllReduceTilingData_.tilematmulTiling);
     OP_LOGI(opName_, "DoWeightQuantTiling enableSplitK:%d", args_.enableSplitK);
     if (args_.enableSplitK) {
-        return mmTile.DoTiling();
+        auto res = mmTile.DoTiling();
+        weightQuantMatmul310TPLParam_ = mmTile.GetWeightQuantMatmul310TPLParam();
+        return res;
     } else {
         OP_LOGI(opName_, "DoWeightQuantTiling tailMValue_:%lu", tailMValue_);
         GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
-        tileTilingKey_ = context_->GetTilingKey();
-        OP_LOGI(opName_, " tilematmulTiling tilingKey %lu", tileTilingKey_);
+        weightQuantMatmul310TPLParam_ = mmTile.GetWeightQuantMatmul310TPLParam();
+        tileTilingKey_ = GET_TPL_TILING_KEY(
+            static_cast<uint64_t>(ASCEND_310P),
+            static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
+            MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+            MATMUL_ALLREDUCE_INT8_COMM_F,
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            SET_NOT_USE_FM_MM_TPL_TILING,
+            SET_NOT_USE_QUANT_MM_TPL_TILING,
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            weightQuantMatmul310TPLParam_.hasAntiquantOffset,
+            weightQuantMatmul310TPLParam_.antiQuantType,
+            weightQuantMatmul310TPLParam_.transA,
+            static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(FORMAT_B_NZ));
+        OP_LOGI(opName_, " tilematmulTiling tilingKey %lu. AntiQuantType %lu, hasAntiquantOffset %lu, transA %lu.", tileTilingKey_,
+            weightQuantMatmul310TPLParam_.antiQuantType, weightQuantMatmul310TPLParam_.hasAntiquantOffset, weightQuantMatmul310TPLParam_.transA);
         if (MutableRCSTilingData().get_tailCnt() == 0) {
             return ge::GRAPH_SUCCESS;
         }
         args_.mValue = tailMValue_;
         WeightQuantTilingTransferHelper mmTail(*this, weightQuantMatmulAllReduceTilingData_.tailmatmulTiling);
-        return mmTail.DoTiling();
+        auto res = mmTail.DoTiling();
+        weightQuantMatmul310TPLParam_ = mmTile.GetWeightQuantMatmul310TPLParam();
+        return res;
     }
 }
+
+//注册Tiling类
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,WeightQuantMatmulAllReduceTiling310P,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P),0);
 } // namespace optiling

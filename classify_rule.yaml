@@ -371,12 +371,6 @@ mc2_moe@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/op_kernel/
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/README.md
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/op_host/
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/op_api/
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/op_graph/
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/op_kernel/
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/CMakeLists.txt
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/README.md
                 - ops/ops-transformer/mc2/moe_update_expert/op_host/
                 - ops/ops-transformer/mc2/moe_update_expert/op_api/
                 - ops/ops-transformer/mc2/moe_update_expert/op_graph/
@@ -389,18 +383,6 @@ mc2_moe@ops-transformer:
                 - ops/ops-transformer/mc2/distribute_barrier/op_kernel/
                 - ops/ops-transformer/mc2/distribute_barrier/CMakeLists.txt
                 - ops/ops-transformer/mc2/distribute_barrier/README.md
-                - ops/ops-transformer/mc2/elastic_receivable_test/op_host/
-                - ops/ops-transformer/mc2/elastic_receivable_test/op_api/
-                - ops/ops-transformer/mc2/elastic_receivable_test/op_graph/
-                - ops/ops-transformer/mc2/elastic_receivable_test/op_kernel/
-                - ops/ops-transformer/mc2/elastic_receivable_test/CMakeLists.txt
-                - ops/ops-transformer/mc2/elastic_receivable_test/README.md
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/op_host/
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/op_api/
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/op_graph/
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/op_kernel/
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/CMakeLists.txt
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/README.md
             opensource_style: null 
             kernel_style: null  
         unrelease:
@@ -414,21 +396,12 @@ mc2_moe@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/tests/
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/examples/
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/docs/
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/tests/
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/examples/
-                - ops/ops-transformer/mc2/moe_distribute_buffer_reset/docs/
                 - ops/ops-transformer/mc2/moe_update_expert/tests/
                 - ops/ops-transformer/mc2/moe_update_expert/examples/
                 - ops/ops-transformer/mc2/moe_update_expert/docs/
                 - ops/ops-transformer/mc2/distribute_barrier/tests/
                 - ops/ops-transformer/mc2/distribute_barrier/examples/
                 - ops/ops-transformer/mc2/distribute_barrier/docs/
-                - ops/ops-transformer/mc2/elastic_receivable_test/tests/
-                - ops/ops-transformer/mc2/elastic_receivable_test/examples/
-                - ops/ops-transformer/mc2/elastic_receivable_test/docs/
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/tests/
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/examples/
-                - ops/ops-transformer/mc2/elastic_receivable_info_collect/docs/  
             non_delivery: null  
             open_source:
                 - ops/ops-transformer/mc2/3rd/batch_mat_mul_v3/ 
@@ -497,33 +470,12 @@ mc2_infer@ops-transformer:
                 - ops/ops-transformer/mc2/matmul_reduce_scatter/op_kernel/
                 - ops/ops-transformer/mc2/matmul_reduce_scatter/CMakeLists.txt
                 - ops/ops-transformer/mc2/matmul_reduce_scatter/README.md
-                - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/op_host/
-                - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/graph_plugin/
-                - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/op_kernel/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/op_host/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/op_api/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/op_graph/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/op_kernel/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/CMakeLists.txt
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/README.md
                 - ops/ops-transformer/mc2/matmul_all_reduce/op_host/
                 - ops/ops-transformer/mc2/matmul_all_reduce/op_api/
                 - ops/ops-transformer/mc2/matmul_all_reduce/op_graph/
                 - ops/ops-transformer/mc2/matmul_all_reduce/op_kernel/
                 - ops/ops-transformer/mc2/matmul_all_reduce/CMakeLists.txt
                 - ops/ops-transformer/mc2/matmul_all_reduce/README.md
-                - ops/ops-transformer/mc2/quant_all_reduce/op_host/
-                - ops/ops-transformer/mc2/quant_all_reduce/op_api/
-                - ops/ops-transformer/mc2/quant_all_reduce/op_graph/
-                - ops/ops-transformer/mc2/quant_all_reduce/op_kernel/
-                - ops/ops-transformer/mc2/quant_all_reduce/CMakeLists.txt
-                - ops/ops-transformer/mc2/quant_all_reduce/README.md
-                - ops/ops-transformer/mc2/quant_reduce_scatter/op_host/
-                - ops/ops-transformer/mc2/quant_reduce_scatter/op_api/
-                - ops/ops-transformer/mc2/quant_reduce_scatter/op_graph/
-                - ops/ops-transformer/mc2/quant_reduce_scatter/op_kernel/
-                - ops/ops-transformer/mc2/quant_reduce_scatter/CMakeLists.txt
-                - ops/ops-transformer/mc2/quant_reduce_scatter/README.md
                 - ops/ops-transformer/mc2/3rd/common/
                 - ops/ops-transformer/mc2/3rd/ops_legacy/
                 - ops/ops-transformer/mc2/3rd/CMakeLists.txt
@@ -539,21 +491,9 @@ mc2_infer@ops-transformer:
                 - ops/ops-transformer/mc2/matmul_reduce_scatter/tests/
                 - ops/ops-transformer/mc2/matmul_reduce_scatter/examples/
                 - ops/ops-transformer/mc2/matmul_reduce_scatter/docs/
-                - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/tests/
-                - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/examples/
-                - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/docs/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/tests/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/examples/
-                - ops/ops-transformer/mc2/matmul_reduce_scatter_v2/docs/
                 - ops/ops-transformer/mc2/matmul_all_reduce/tests/
                 - ops/ops-transformer/mc2/matmul_all_reduce/examples/
                 - ops/ops-transformer/mc2/matmul_all_reduce/docs/
-                - ops/ops-transformer/mc2/quant_all_reduce/tests/
-                - ops/ops-transformer/mc2/quant_all_reduce/examples/
-                - ops/ops-transformer/mc2/quant_all_reduce/docs/
-                - ops/ops-transformer/mc2/quant_reduce_scatter/tests/
-                - ops/ops-transformer/mc2/quant_reduce_scatter/examples/
-                - ops/ops-transformer/mc2/quant_reduce_scatter/docs/ 
             non_delivery: null  
             open_source:
                 - ops/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/ 

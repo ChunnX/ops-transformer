@@ -256,7 +256,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
   <tr>
    <td>groupTp</td>
    <td>输入</td>
-   <td>TP通信域名称（数据并行）：<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传空字符即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：字符串长度范围为[1, 128)，不能和groupEp相同。</td>
+   <td>TP通信域名称（数据并行）：<br><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当前版本不支持，传空字符即可。<br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：字符串长度范围为[0, 128)，不能和groupEp相同，仅在无TP域通信时支持传空字符串。</td>
    <td>STRING</td>
    <td>-</td>
   </tr>

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_splitk.h
@@ -19,11 +19,11 @@
 #include "weight_quant_batch_matmul_v2_tiling_data.h"
 
 namespace optiling {
-class WeightQuantBatchMatmulV2TilingSplitK : public WeightQuantBatchMatmulV2Tiling
+class Mc2WeightQuantBatchMatmulV2TilingSplitK : public Mc2WeightQuantBatchMatmulV2Tiling
 {
 public:
-    explicit WeightQuantBatchMatmulV2TilingSplitK(gert::TilingContext* context)
-        : WeightQuantBatchMatmulV2Tiling(context)
+    explicit Mc2WeightQuantBatchMatmulV2TilingSplitK(gert::TilingContext* context)
+        : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
     }
@@ -32,10 +32,10 @@ public:
         TilingBaseClass::Reset(context);
         Reset();
     }
-    ~WeightQuantBatchMatmulV2TilingSplitK() override = default;
+    ~Mc2WeightQuantBatchMatmulV2TilingSplitK() override = default;
 
 protected:
-    std::unique_ptr<WeightQuantBatchMatmulV2TilingData> tilingData_;
+    std::unique_ptr<Mc2WeightQuantBatchMatmulV2TilingData> tilingData_;
     void Reset();
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
