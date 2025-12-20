@@ -14,7 +14,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "moe_distribute_combine_add_rms_norm.h"
-#include "moe_distribute_combine_add_rms_norm_tling_key.h"
+#include "moe_distribute_combine_add_rms_norm_tiling_key.h"
 #if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h")
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h"
 #else
