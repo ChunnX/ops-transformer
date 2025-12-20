@@ -1,11 +1,12 @@
-# This program is free software, you can redistribute it and/or modify.
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# ======================================================================================================================
+# -----------------------------------------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -15,19 +16,48 @@ option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
 option(ENABLE_CCACHE              "Enable ccache capability"        ON)
 option(ENABLE_BUILT_IN            "Enable built-in package"         OFF)
+option(ENABLE_STATIC              "Enable Static"                   OFF)
 option(ENABLE_EXPERIMENTAL        "Enable experimental module"      OFF)
 option(ENABLE_TEST                "Enable test"                     OFF)
 option(ENABLE_UT_EXEC             "Enable exec ut"                  OFF)
 option(ENABLE_ASAN                "Enable asan"                     OFF)
+option(ENABLE_VALGRIND            "Enable valgrind"                 OFF)
 option(OP_HOST_UT                 "Enable ophost ut"                OFF)
 option(OP_API_UT                  "Enable opapi ut"                 OFF)
 option(OP_GRAPH_UT                "Enable graph ut"                 OFF)
 option(OP_KERNEL_UT               "Enable kernel ut"                OFF)
+option(OP_KERNEL_AICPU_UT         "Enable aicpu kernel ut"          OFF)
 option(UT_TEST_ALL                "Enable all ut"                   OFF)
+option(ENABLE_OOM                 "Enable kernel oom"               OFF)
 
 set(ASCEND_COMPUTE_UNIT           "ascend910b"                    CACHE   STRING   "soc that need to be compiled")
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")
+set(ARCH_DIRECTORY                ""                           CACHE   STRING   "arch directory that need to be compiled")
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
+set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend910_95" CACHE STRING "all soc list")
+
+set(SOC_VERSION_LIST ascend910b ascend910_93 ascend910_95)
+set(ARCH_DIRECTORY_LIST arch32 arch32 arch35)
+
+foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
+  list(FIND SOC_VERSION_LIST ${SOC_VERSION} INDEX)
+  if(NOT INDEX EQUAL -1)
+    list(GET ARCH_DIRECTORY_LIST ${INDEX} VAL)
+    list(APPEND ARCH_DIRECTORY ${VAL})
+  else()
+    message(STATUS "unsupport chip type")
+    if ((NOT BUILD_OPS_RTY_KERNEL) AND (BUILD_OPEN_PROJECT))
+      include(cmake/build_empty_package.cmake)
+      cpack_empty_package()
+      return()
+    endif()
+  endif()
+endforeach()
+
+list(FIND ARCH_DIRECTORY "arch32" INDXE)
+if(NOT INDEX EQUAL -1)
+    list(APPEND ARCH_DIRECTORY "arch22")
+endif()
 
 if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   message(STATUS "compile project with library")
@@ -84,6 +114,7 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
 
+        include(cmake/third_party/makeself-fetch.cmake)
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
         include(cmake/opbuild.cmake)
@@ -93,6 +124,9 @@ if (BUILD_OPEN_PROJECT)
         )
         if (ENABLE_OPS_HOST)
             gen_aclnn_with_opdef()
+        endif()
+        if (ENABLE_STATIC)
+            include(cmake/static.cmake)
         endif()
         if (ENABLE_BUILT_IN)
             message(STATUS "Start building built-in package.")
@@ -270,6 +304,15 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
         add_subdirectory(${OP_DEPEND_DIR})
     endif()
 endforeach ()
+
+install(DIRECTORY ${OPS_ADV_ACT}/
+        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/act
+)
+
+install(DIRECTORY ${OPS_GROUPEDMATMUL_ACT}/
+        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/groupedmatmul_act
+)
+
 
 if (BUILD_OPS_RTY_KERNEL)
     get_target_property(base_aclnn_srcs op_host_aclnn SOURCES)
@@ -501,7 +544,17 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
+        install(DIRECTORY ${op_dir}/arch32
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
+        )
+
         install(DIRECTORY ${op_dir}/arch35
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                OPTIONAL
+        )
+
+        install(DIRECTORY ${op_dir}/arch38
                 DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
                 OPTIONAL
         )

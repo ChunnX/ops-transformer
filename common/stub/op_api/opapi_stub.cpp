@@ -1,13 +1,12 @@
-
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file op_legacy_api.cpp
@@ -102,11 +101,11 @@ const aclTensor *ReViewToOut(const aclTensor *x, const aclTensor * /*y*/, aclOpE
     return x;
 }
 
-const std::tuple<aclTensor *, aclTensor *> Sort(const aclTensor * /*self*/, int64_t /*dim*/, bool /*descending*/,
+const std::tuple<aclTensor *, aclTensor *> Sort(const aclTensor * self, int64_t /*dim*/, bool /*descending*/,
                                                 bool /*stable*/, op::DataType /*indicesType*/,
                                                 aclOpExecutor * /*executor*/)
 {
-    return std::tuple<aclTensor *, aclTensor *>(nullptr, nullptr);
+    return std::tuple<aclTensor *, aclTensor *>(const_cast<aclTensor *>(self), const_cast<aclTensor *>(self));
 }
 
 bool CanOptimizeContiguous(const op::Shape & /*viewShape*/, const op::Strides & /*strides*/, int64_t /*offset*/,
@@ -261,32 +260,32 @@ const aclTensor *ReduceSumOp(const aclTensor *x, const aclIntArray * /*axes*/, b
     return x;
 }
 
-const aclTensor *MaskedScatter(const aclTensor * /*self*/, const aclTensor * /*mask*/, const aclTensor * /*source*/,
+const aclTensor *MaskedScatter(const aclTensor * self, const aclTensor * /*mask*/, const aclTensor * /*source*/,
                                aclOpExecutor * /*executor*/)
 {
-    return nullptr;
+    return self;
 }
 
-const aclTensor *InplaceIndexAddAiCore(const aclTensor * /*self*/, const int64_t /*dim*/, const aclTensor * /*index*/,
+const aclTensor *InplaceIndexAddAiCore(const aclTensor * self, const int64_t /*dim*/, const aclTensor * /*index*/,
                                        const aclTensor * /*source*/, const aclTensor * /*alphaTensor*/,
                                        aclOpExecutor * /*executor*/)
 {
-    return nullptr;
+    return self;
 }
 
-const aclTensor *InplaceIndexAddAiCpu(const aclTensor * /*self*/, const int64_t /*dim*/, const aclTensor * /*index*/,
+const aclTensor *InplaceIndexAddAiCpu(const aclTensor * self, const int64_t /*dim*/, const aclTensor * /*index*/,
                                       const aclTensor * /*source*/, const aclTensor * /*alphaTensor*/,
                                       aclOpExecutor * /*executor*/)
 {
-    return nullptr;
+    return self;
 }
 
-const aclTensor *InplaceIndexAddWithSorted(const aclTensor * /*self*/, const int64_t /*dim*/,
+const aclTensor *InplaceIndexAddWithSorted(const aclTensor * self, const int64_t /*dim*/,
                                            const aclTensor * /*sortedIndices*/, const aclTensor * /*pos*/,
                                            const aclTensor * /*value*/, const aclTensor * /*alphaTensor*/,
                                            aclOpExecutor * /*executor*/)
 {
-    return nullptr;
+    return self;
 }
 
 const aclTensor *GatherV3(const aclTensor *self, int64_t axis, const aclTensor *indices, aclOpExecutor *executor,
@@ -298,7 +297,7 @@ const aclTensor *GatherV3(const aclTensor *self, int64_t axis, const aclTensor *
     (void)executor;
     (void)batchDims;
     (void)negativeIndexSupport;
-    return nullptr;
+    return self;
 }
 
 } // namespace l0op

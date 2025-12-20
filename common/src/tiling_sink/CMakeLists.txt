@@ -1,6 +1,17 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.16)
 
 project(tiling_sink_project)
+
+set(CMAKE_SKIP_RPATH TRUE)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/intf.cmake)
 
@@ -8,17 +19,24 @@ set(ATTENTION_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../../attention)
 set(src_files
   ${ATTENTION_SRC}/common/op_host/fia_tiling_info.cpp
   ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant_mla.cpp
+  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant.cpp
+  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_empty_tensor.cpp
   ${ATTENTION_SRC}/common/op_host/fia_tiling_shape.cpp
+  ${ATTENTION_SRC}/common/op_host/split_core.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_check.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_check_single_para.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_check_existence.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_check_feature.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_check_consistency.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_info_parser.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_v3.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_info_parser.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v2.cpp
   ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp
+  ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
+  ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
+  ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/tiling_sink_registry.cpp
 )
@@ -67,24 +85,24 @@ if (BUILD_OPEN_PROJECT)
   target_include_directories(opmaster PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/include
     ${ASCEND_CANN_PACKAGE_PATH}/include/base
-    ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
-    ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu
-    ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu_common/context/common
-    ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu_common/context/utils
-    ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu_common/context/cpu_proto
-    ${ASCEND_CANN_PACKAGE_PATH}/include/toolchain
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
+    ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/common
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/utils
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/cpu_proto
+    ${ASCEND_CANN_PACKAGE_PATH}/include/toolchain
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base
   )
 else ()
   target_include_directories(opmaster PRIVATE
     ${TOP_DIR}/ops-base/include
-    ${TOP_DIR}/ops-base/include/op_common
+    ${TOP_DIR}/ops-base/pkg_inc
+    ${TOP_DIR}/ops-base/pkg_inc/op_common
     ${TOP_DIR}/ops-base/include/base
-    ${TOP_DIR}/ops-base/include/aicpu_common/context/common
-    ${TOP_DIR}/ops-base/include/aicpu_common/context/utils
-    ${TOP_DIR}/ops-base/include/aicpu_common/context/cpu_proto
+    ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/common
+    ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/utils
+    ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/cpu_proto
     ${TOP_DIR}/metadef/inc/external
     ${TOP_DIR}/metadef/inc
     ${TOP_DIR}/abl/slog/inc/toolchain
@@ -96,6 +114,7 @@ endif ()
 if (BUILD_OPEN_PROJECT)
   target_link_directories(opmaster PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/lib64/device/lib64
+    ${ASCEND_CANN_PACKAGE_PATH}/devlib/device
     ${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/lib64
   )
 endif()
