@@ -1,12 +1,12 @@
-# ----------------------------------------------------------------------------
-# This program is free software, you can redistribute it and/or modify.
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# ----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
 # ######################################################################################################################
 # 调用opbuild工具，生成aclnn/aclnnInner/.ini的算子信息库 等文件
 # generate outpath: ${ASCEND_AUTOGEN_PATH}/${sub_dir}
@@ -136,15 +136,84 @@ function(gen_aclnn_with_opdef)
   set(aclnn_master_header "${CMAKE_CURRENT_BINARY_DIR}/${aclnn_master_header_name}.h")
   gen_aclnn_master_header(${aclnn_master_header_name} "${aclnn_master_header}" "${opbuild_out_headers}")
 
+  set(mc2_op_aclnn_name 
+        "all_gather_matmul"
+        "all_gather_matmul_v2"
+        "all_to_all_all_gather_batch_matmul"
+        "allto_allv_grouped_mat_mul"
+        "batch_matmul_reduce_scatter_all_to_all"
+        "distribute_barrier"
+        "distribute_barrier_v2"
+        "elastic_receivable_info_collect"
+        "elastic_receivable_test"
+        "grouped_mat_mul_all_reduce"
+        "grouped_mat_mul_allto_allv"
+        "inplace_matmul_all_reduce_add_rms_norm"
+        "inplace_quant_matmul_all_reduce_add_rms_norm"
+        "inplace_weight_quant_matmul_all_reduce_add_rms_norm"
+        "matmul_all_reduce"
+        "matmul_all_reduce_add_rms_norm"
+        "matmul_all_reduce_v2"
+        "matmul_reduce_scatter"
+        "matmul_reduce_scatter_v2"
+        "moe_distribute_buffer_reset"
+        "moe_distribute_combine"
+        "moe_distribute_combine_add_rms_norm"
+        "moe_distribute_combine_add_rms_norm_v2"
+        "moe_distribute_combine_v2"
+        "moe_distribute_combine_v3"
+        "moe_distribute_dispatch"
+        "moe_distribute_dispatch_v2"
+        "moe_distribute_dispatch_v3"
+        "moe_update_expert"
+        "quant_matmul_all_reduce"
+        "quant_matmul_all_reduce_add_rms_norm"
+        "quant_matmul_all_reduce_v2"
+        "quant_matmul_all_reduce_v3"
+        "quant_matmul_all_reduce_v4"
+        "weight_quant_matmul_all_reduce"
+        "weight_quant_matmul_all_reduce_add_rms_norm"
+      )
+  set(mc2_aclnn_master_headers "")
+  foreach(op_aclnn_name ${mc2_op_aclnn_name})
+    if (NOT ENABLE_BUILT_IN AND NOT ("${ASCEND_OP_NAME}" STREQUAL "ALL"))
+      foreach(op_name IN LISTS ASCEND_OP_NAME)
+        file(GLOB matching_file "${OPS_TRANSFORMER_DIR}/mc2/${op_name}/op_api/aclnn_${op_aclnn_name}.h")
+        list(APPEND mc2_aclnn_master_headers ${matching_file})
+      endforeach()
+    else()
+      file(GLOB matching_file "${OPS_TRANSFORMER_DIR}/mc2/*/op_api/aclnn_${op_aclnn_name}.h")
+      list(APPEND mc2_aclnn_master_headers ${matching_file})
+    endif()
+  endforeach()
+
   # 将头文件安装到packages/vendors/vendor_name/op_api/include
   if (NOT ENABLE_BUILT_IN)
     install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    if (BUILD_OPEN_PROJECT AND mc2_aclnn_master_headers)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+    endif()
   else()
     install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+    if (BUILD_OPEN_PROJECT)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+    endif()
+  endif()
+
+  if (ENABLE_STATIC)
+    install(FILES ${opbuild_out_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
+    install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
+    install(FILES ${opbuild_out_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
+    install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
+    if (BUILD_OPEN_PROJECT)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
+      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
+    endif()
   endif()
 
   # ascendc_impl_gen depends opbuild_custom_gen_aclnn_all, for opbuild will generate .ini
