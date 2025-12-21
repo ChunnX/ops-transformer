@@ -57,149 +57,6 @@ static inline bool CheckNotNull(const aclTensor *x,
     return true;
 }
 
-static bool CheckDtypeValid(const aclTensor *x, 
-                            const aclTensor *expertIdx,
-                            const aclTensor *scaleOptional,
-                            const aclTensor *offsetOptional, 
-                            const aclTensor *expandedXOut, 
-                            const aclTensor *expandedRowIdxOut, 
-                            const aclTensor *expertTokensCountOrCumsumOut, 
-                            const aclTensor *expandedScaleOut) {
-    
-    OP_CHECK_DTYPE_NOT_SUPPORT(x, DTYPE_SUPPORT_LIST_X, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(expertIdx, DTYPE_SUPPORT_LIST_EXPERT_IDX, return false);
-
-    if (scaleOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(scaleOptional, DTYPE_SUPPORT_LIST_SCALE, return false);
-    }
-    if (offsetOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(offsetOptional, DTYPE_SUPPORT_LIST_OFFSET, return false);
-    }
-
-    OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOut, DTYPE_SUPPORT_LIST_EXPANDED_X_OUT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(expandedRowIdxOut, DTYPE_SUPPORT_LIST_EXPANDED_ROW_IDX_OUT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(expertTokensCountOrCumsumOut, DTYPE_SUPPORT_LIST_EXPERT_TOKENS_COUNT_OR_CUMSUMOUT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(expandedScaleOut, DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT, return false);
-
-    return true;
-}
-
-static inline bool CheckShape(  const aclTensor *x, 
-                                const aclTensor *expertIdx,
-                                const aclTensor *scaleOptional,
-                                const aclTensor *offsetOptional,
-                                const aclTensor *expandedXOut, 
-                                const aclTensor *expandedRowIdxOut, 
-                                const aclTensor *expertTokensCountOrCumsumOut, 
-                                const aclTensor *expandedScaleOut,
-                                int64_t expertNum, 
-                                int64_t expertTokensNumType, 
-                                int64_t quantMode,
-                                const aclIntArray *activeExpertRangeOptional) {
-    
-    (void)offsetOptional;
-    int64_t expertRangeNum = (*activeExpertRangeOptional)[1] - (*activeExpertRangeOptional)[0];
-    OP_CHECK_WRONG_DIMENSION(x, MOE_DIM_2, return false);
-    OP_CHECK_WRONG_DIMENSION(expertIdx, MOE_DIM_2, return false);
-
-    int64_t n = x->GetViewShape().GetDim(0);
-    int64_t h = x->GetViewShape().GetDim(1);
-    int64_t k = expertIdx->GetViewShape().GetDim(1);
-    OP_CHECK(expertIdx->GetViewShape().GetDim(0) == n, 
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expertIdx shape error"),
-             return false);
-
-    if (scaleOptional != nullptr && quantMode != 0) {
-        if (quantMode == -1){
-            OP_CHECK_WRONG_DIMENSION(scaleOptional, MOE_DIM_1, return false);
-            OP_CHECK(scaleOptional->GetViewShape().GetDim(0) == n,
-                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scale shape error"),
-                     return false);
-        }
-        else if (quantMode == 1){
-            OP_CHECK_WRONG_DIMENSION(scaleOptional, MOE_DIM_2, return false);
-            OP_CHECK(scaleOptional->GetViewShape().GetDim(0) == expertRangeNum, 
-                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scale shape error"),
-                     return false);
-            OP_CHECK(scaleOptional->GetViewShape().GetDim(1) == h,
-                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scale shape error"),
-                     return false);
-        }
-        OP_CHECK_WRONG_DIMENSION(expandedScaleOut, MOE_DIM_1, return false);
-        OP_CHECK(expandedScaleOut->GetViewShape().GetDim(0) == n * k, 
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expandedScaleOut shape error"),       
-                 return false);
-    }
-
-    OP_CHECK_WRONG_DIMENSION(expandedXOut, MOE_DIM_2, return false);
-    OP_CHECK(expandedXOut->GetViewShape().GetDim(0) == n * k,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expandedXOut shape error"),
-             return false);
-    OP_CHECK(expandedXOut->GetViewShape().GetDim(1) == h,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expandedXOut shape error"),
-             return false);
-    OP_CHECK_WRONG_DIMENSION(expandedRowIdxOut, MOE_DIM_1, return false);
-    OP_CHECK(expandedRowIdxOut->GetViewShape().GetDim(0) == n * k,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expandedRowIdxOut shape error"),
-             return false);
-
-    if (expertTokensNumType == 1) {
-        OP_CHECK_WRONG_DIMENSION(expertTokensCountOrCumsumOut, MOE_DIM_1, return false);
-        OP_CHECK(expertTokensCountOrCumsumOut->GetViewShape().GetDim(0) == expertRangeNum, 
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expertTokensCountOrCumsumOut shape error"),
-                 return false);
-    }
-    else if (expertTokensNumType == 2) {
-        OP_CHECK_WRONG_DIMENSION(expertTokensCountOrCumsumOut, MOE_DIM_2, return false);
-        OP_CHECK(expertTokensCountOrCumsumOut->GetViewShape().GetDim(0) == expertNum,
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expertTokensCountOrCumsumOut shape error"),
-                 return false);
-        OP_CHECK(expertTokensCountOrCumsumOut->GetViewShape().GetDim(1) == 2,
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expertTokensCountOrCumsumOut shape error"),
-                 return false);
-    }
-
-    (void)offsetOptional;
-    return true;
-}
-
-static aclnnStatus CheckParams( const aclTensor *x, 
-                                const aclTensor *expertIdx,
-                                const aclTensor *scaleOptional,
-                                const aclTensor *offsetOptional, 
-                                int64_t activeNum, 
-                                int64_t expertCapacity, 
-                                int64_t expertNum, 
-                                int64_t dropPadMode, 
-                                int64_t expertTokensNumType, 
-                                bool expertTokensNumFlag, 
-                                int64_t quantMode, 
-                                const aclIntArray *activeExpertRangeOptional, 
-                                int64_t rowIdxType, 
-                                const aclTensor *expandedXOut, 
-                                const aclTensor *expandedRowIdxOut, 
-                                const aclTensor *expertTokensCountOrCumsumOut, 
-                                const aclTensor *expandedScaleOut) {
-    // 1. 检查参数是否为空指针
-    CHECK_RET(CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut, 
-                            expertTokensCountOrCumsumOut, expandedScaleOut), ACLNN_ERR_PARAM_NULLPTR);
-
-    // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
-    CHECK_RET(CheckDtypeValid(x, expertIdx, scaleOptional, offsetOptional, expandedXOut, 
-                                expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut), ACLNN_ERR_PARAM_INVALID);
-
-    // 3. 检查shape是否满足约束
-    CHECK_RET(CheckShape(x, expertIdx,scaleOptional, offsetOptional, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, 
-                        expandedScaleOut, expertNum, expertTokensNumType, quantMode, activeExpertRangeOptional), ACLNN_ERR_PARAM_INVALID);
-
-    (void)activeNum;
-    (void)expertCapacity;
-    (void)dropPadMode;
-    (void)expertTokensNumFlag;
-    (void)rowIdxType;
-    return ACLNN_SUCCESS;
-}
-
 ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x, 
                                                             const aclTensor *expertIdx,
                                                             const aclTensor *scaleOptional,
@@ -226,13 +83,10 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
                             expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional, rowIdxType), 
                     DFX_OUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut));
     // 参数检查
-    auto ret = CheckParams( x, expertIdx, scaleOptional, offsetOptional, 
-                            activeNum, expertCapacity, expertNum, dropPadMode, 
-                            expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional, 
-                            rowIdxType, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, 
-                            expandedScaleOut);
+    auto ret = CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut, 
+                            expertTokensCountOrCumsumOut, expandedScaleOut);
 
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    CHECK_RET(ret, ACLNN_ERR_PARAM_NULLPTR);
 
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();

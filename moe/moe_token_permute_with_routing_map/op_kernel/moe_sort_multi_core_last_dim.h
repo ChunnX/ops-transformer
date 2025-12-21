@@ -32,6 +32,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitTilingConfig(const MoeTokenPermuteWithRoutingMapTilingData* tilingData);
     __aicore__ inline void VBSProcess();
     __aicore__ inline void UBSortProcess(int64_t progress, int64_t size, int64_t sortNum);
     __aicore__ inline void OneCoreVMSProcess(int64_t listNum, int64_t perListElements, int64_t lastListElements);
@@ -341,13 +342,8 @@ __aicore__ inline void MoeSortMultiLastDimCore<T>::SortOutProcess()
 }
 
 template <typename T>
-__aicore__ inline void MoeSortMultiLastDimCore<T>::Init(
-    GM_ADDR expertForSourceRow, GM_ADDR sortedExpertForSourceRow, GM_ADDR workspace,
-    const MoeTokenPermuteWithRoutingMapTilingData* tilingData, TPipe* tPipe)
+__aicore__ inline void MoeSortMultiLastDimCore<T>::InitTilingConfig(const MoeTokenPermuteWithRoutingMapTilingData* tilingData)
 {
-    expertForSourceRow_ = expertForSourceRow;
-    sortedExpertForSourceRow_ = sortedExpertForSourceRow;
-    workspace_ = workspace;
     this->totalLength = tilingData->n;
     this->coreNum = tilingData->coreNum;
     this->capacity = tilingData->capacity;
@@ -367,6 +363,17 @@ __aicore__ inline void MoeSortMultiLastDimCore<T>::Init(
 
     this->tileLength = this->vbsTilingData->perCorePerLoopElements;
     this->sortTotalLength = this->vbsTilingData->perCoreElements;
+}
+
+template <typename T>
+__aicore__ inline void MoeSortMultiLastDimCore<T>::Init(
+    GM_ADDR expertForSourceRow, GM_ADDR sortedExpertForSourceRow, GM_ADDR workspace,
+    const MoeTokenPermuteWithRoutingMapTilingData* tilingData, TPipe* tPipe)
+{
+    expertForSourceRow_ = expertForSourceRow;
+    sortedExpertForSourceRow_ = sortedExpertForSourceRow;
+    workspace_ = workspace;
+    InitTilingConfig(tilingData);
 
     sortCoreLoops = this->vbsTilingData->perCoreLoops;
     sortCoreLoopElements = this->vbsTilingData->perCorePerLoopElements;

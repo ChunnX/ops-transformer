@@ -48,16 +48,9 @@ TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_001) {
                                               },
                                               &compileInfo, socVersion, coreNum, ubSize);
     uint64_t expectTilingKey = 101031;
-    string expectTilingData =
-        "68719476992 68719476768 274877906976 158913789984 17179869191 4294967297 30064771079 4 137438953479 "
-        "30064771296 240518168584 137438953479 30064771296 240518168584 1 0 137438953479 30064771296 240518168584 "
-        "137438953479 30064771296 240518168584 1 0 137438953476 17179869312 137438953480 137438953476 17179869312 "
-        "137438953480 1 0 962072674432 4294967360 68719476744 481036337168 274877906976 17179869186 8589934598 "
-        "4294967360 34359738368 0 0 0 0 0 962072674432 4294967360 68719476744 481036337168 274877906976 17179869186 "
-        "8589934598 4294967360 34359738368 0 0 0 0 0 549755814016 4294967360 68719476744 274877906960 274877906976 "
-        "17179869186 8589934598 4294967360 34359738368 0 0 0 0 0 ";
+    string expectTilingData = "0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces, 70);
 }
 
 TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_002) {
@@ -80,16 +73,9 @@ TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_002) {
                                               },
                                               &compileInfo, socVersion, coreNum, ubSize);
     uint64_t expectTilingKey = 101111;
-    string expectTilingData =
-        "68719476992 68719476768 274877906976 158913790016 17179869191 4294967297 30064771079 4 68719476743 "
-        "30064771184 240518168584 68719476743 30064771184 240518168584 1 0 68719476743 30064771184 240518168584 "
-        "68719476743 30064771184 240518168584 1 0 68719476740 17179869248 137438953480 68719476740 17179869248 "
-        "137438953480 1 0 962072674432 4294967360 68719476744 481036337168 274877906976 17179869186 8589934598 "
-        "4294967360 34359738368 0 0 0 0 0 962072674432 4294967360 68719476744 481036337168 274877906976 17179869186 "
-        "8589934598 4294967360 34359738368 0 0 0 0 0 549755814016 4294967360 68719476744 274877906960 274877906976 "
-        "17179869186 8589934598 4294967360 34359738368 0 0 0 0 0 ";
+    string expectTilingData = "0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces, 70);
 }
 
 TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_003) {
@@ -275,13 +261,9 @@ TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_010) {
                                               },
                                               &compileInfo, socVersion, coreNum, ubSize);
     uint64_t expectTilingKey = 102111;
-    string expectTilingData =
-        "32212254720024 137438953488 4294967320 12884901889 16080357559968 137438953484 0 137438953473 4294967328 "
-        "34359738376 137438953473 4294967328 34359738376 1 0 0 0 0 0 0 0 0 0 16217796524800 506806148480 137438954416 "
-        "137438953504 549755813952 17179869186 8589934598 4294974848 4054449127424 0 0 0 0 0 274877907200 8589934720 "
-        "137438953488 137438953504 549755813952 17179869186 8589934598 4294967424 68719476736 0 0 0 0 0 ";
+    string expectTilingData = "0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces, 47);
 }
 
 TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_011) {

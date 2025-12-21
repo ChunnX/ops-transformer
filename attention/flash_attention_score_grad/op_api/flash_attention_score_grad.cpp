@@ -33,8 +33,8 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional,
     const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, const aclTensor *dScaleQOptional,
     const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional, const aclTensor *dScaleDyOptional,
-    const aclTensor *dScaleOOptional, const aclTensor *queryRope, const aclTensor *keyRope, double scaleValueOptional,
-    double keepProbOptional, int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
+    const aclTensor *dScaleOOptional, const aclTensor *queryRope, const aclTensor *keyRope, const aclTensor *sinkInOptional,
+    double scaleValueOptional, double keepProbOptional, int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
     char *inputLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
     int64_t seed, int64_t offset, int64_t outDTypeOptional,char *softmaxInLayout, aclOpExecutor *executor)
 {
@@ -43,8 +43,7 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
            prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional,
            dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
            queryRope, keyRope, scaleValueOptional, keepProbOptional, preTockensOptional, nextTockensOptional, headNum,
-           inputLayout, innerPreciseOptional, sparseModeOptional, pseTypeOptional, seed, offset, outDTypeOptional,softmaxInLayout);
-
+           inputLayout, innerPreciseOptional, sparseModeOptional, pseTypeOptional, seed, offset, outDTypeOptional,softmaxInLayout, sinkInOptional); 
     DataType outputDtype = query->GetDataType();
     if (outputDtype == DataType::DT_FLOAT8_E4M3FN || outputDtype == DataType::DT_FLOAT8_E5M2 || outputDtype == DataType::DT_HIFLOAT8) {
         if (outDTypeOptional == 0) {
@@ -59,6 +58,7 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     auto dpseOut = executor->AllocTensor(outputDtype, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
     auto dqRopeOut = executor->AllocTensor(outputDtype, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
     auto dkRopeOut = executor->AllocTensor(outputDtype, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
+    auto dsinkOut = executor->AllocTensor(DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND); 
 
     const aclTensor *prefix = nullptr;
     if (prefixOptional) {
@@ -129,14 +129,14 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
                                     attenMaskOptional, softmaxMaxOptional, softmaxSumOptional, softmaxInOptional,
                                     attentionInOptional, prefix, actualSeqQLen, actualSeqKvLen,
                                     qStartIdxOptionalTensor, kvStartIdxOptionalTensor,
-                                    dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional, queryRope, keyRope),
-                           OP_OUTPUT(dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut),
+                                    dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional, queryRope, keyRope, sinkInOptional), 
+                           OP_OUTPUT(dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut, dsinkOut), 
                            OP_ATTR(static_cast<float>(scaleValueOptional), static_cast<float>(keepProbOptional),
                                    preTockensOptional, nextTockensOptional, headNum, inputLayout, innerPreciseOptional,
                                    sparseModeOptional, pseTypeOptional, seed, offset, outDTypeOptional, softmaxInLayout));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Fag InferShape failed.");
-        return {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+        return {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     }
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
@@ -144,17 +144,17 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
         OP_INPUT(query, key, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
                  softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, prefix, actualSeqQLen,
                  actualSeqKvLen, qStartIdxOptionalTensor, kvStartIdxOptionalTensor,
-                 dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional, queryRope, keyRope),
-        OP_OUTPUT(dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut),
+                 dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional, queryRope, keyRope, sinkInOptional),
+        OP_OUTPUT(dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut,dsinkOut),
         OP_ATTR(static_cast<float>(scaleValueOptional), static_cast<float>(keepProbOptional), preTockensOptional,
                 nextTockensOptional, headNum, inputLayout, innerPreciseOptional, sparseModeOptional, pseTypeOptional,
                 seed, offset, outDTypeOptional, softmaxInLayout));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Fag launch kernel failed.");
-        return {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+        return {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     }
 
-    return {dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut};
+    return {dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut, dsinkOut};
 }
 
 } // namespace l0op

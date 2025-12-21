@@ -31,7 +31,7 @@
 
 a. 将核心的数量用满，防止部分核闲置。
 
-b. 每一个核心被分配的计算量相对均匀，避免出现某些核计算的数据量过大，其余核在围观的情况。
+b. 每一个核心被分配的计算量相对均匀，避免出现某些核计算的数据量过大，其余核空闲的情况。
 
 c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AIV出现长时间的空闲。 
 
@@ -74,10 +74,13 @@ TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个�
 |-------|------|----|-------|
 |0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
 |4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
-|6-9|QUANT_MODE|量化场景|0-MMQcQr量化，1-MMQcQr量化+KVCache量化，2-MMcqCkvKr量化+MMQcQr量化，3-MMCqCkvkr量化+MMQcQr量化+KVCache量化|
+|6-9|QUANT_MODE|量化场景|0-非量化，1-MMQcQr量化，2-MMQcQr量化+KVcache量化，3-MMcqCkvKr量化+MMQcQr量化，4-MMCqCkvkr量化+MMQcQr量化+KVcache量化，5-MMQcQr量化+KVcache pertile量化，6-MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化，7-Mxfp8量化+MMQcQr量化 8-Mxfp8量化+MMQcQr量化+KVcache量化|
 |10|ENABLE_DEQUANT_OPTIONAL|反量化使能，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
+|14-15|ACTUAL_SEQ_LEN_MODE|actualSeqLen使能场景|0-关闭 1-使能actualSeqLen|
+|16-17|SPLIT_M_MODE|切M模式 |0-关闭(切N) 1-使能(切M)|
+|18-25|CV_MODE|CV模式|ASCENDC_TPL_MIX_AIC_1_1(6)：1:1模式, ASCENDC_TPL_MIX_AIC_1_2(7)：1:2模式|
 
 ## 主流程
 
@@ -89,15 +92,15 @@ void Process() {
     for (i = 0; i < loops; i++) {
         updateCurrentStepSize(i, stepSize, allTokenSize);  //刷新当前轮的计算的M轴大小
         if ASCEND_IS_AIC {
-            MatmulCq(tokenXOffset, weightDqOffset, cqResOffset);  // 计算MatmulCq; tokenXOffset, weightDqOffset, cqResOffset为当前核的起始偏移
-            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCQ_NORMCQ_FLG);       //cube与vector同步
+            MatmulCq(tokenXOffset, weightDqOffset, cqResOffset);
+            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCQ_NORMSCQ_FLG);       //cube与vector同步
 
-            MatmulCkvKr(tokenXOffset, weightDkvKrOffset, ckvKrResOffset);  // 计算MatmulCkvKr; tokenXOffset, weightDkvKrOffset, ckvKrResOffset为当前核的起始偏移
+            MatmulCkvKr(tokenXOffset, weightDkvKrOffset, ckvKrResOffset);
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCKVKR_NORMROPE_FLG);   //cube与vector同步
 
-            CrossCoreWaitFlag(SYNC_MMCQ_NORMCQ_FLG);                     // MatmulQcQr依赖RmsNormCq的输出，需要插入CV核间同步
+            CrossCoreWaitFlag(SYNC_MMCQ_NORMSCQ_FLG);                     // MatmulQcQr依赖RmsNormCq的输出，需要插入CV核间同步
       
-            MatmulQcQr(weightUqQrOffset, qcQrResOffset);  // 计算MatmulQcQr; weightUqQrOffset, qcQrResOffset为当前核的起始偏移
+            MatmulQcQr(weightUqQrOffset, qcQrResOffset);
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMQCQR_ROPEQR_FLG);      //cube与vector同步
 
             // 由于 MatmulQn 和 MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
@@ -111,28 +114,28 @@ void Process() {
         if ASCEND_IS_AIV {
             GetSinCos(tokenIndex);
 
-            CrossCoreWaitFlag(SYNC_MMCQ_NORMCQ_FLG);  // wait MatmulCq
+            CrossCoreWaitFlag(SYNC_MMCQ_NORMSCQ_FLG);  // wait MatmulCq
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
 
-            RmsNormCq(rmsNormCqOffset); // 计算RmsNormCq; rmsNormCqOffset为当前核的起始偏移
+            RmsNormCq(rmsNormCqOffset);
 
             // 由于RmsNormCq和MatmulQcQr的分核策略不一样，需要等所有vector上的RmsNormCq执行完成后才能启动 MatmulQcQr
             // 需要所有vector核上的RmsNormCq执行完成后，才发起MatmulQcQr的执行
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
 
-            CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_MMCQ_NORMCQ_FLG);        // 保障MatmulQcQr等 RmsNormCq
+            CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_MMCQ_NORMSCQ_FLG);        // 保障MatmulQcQr等 RmsNormCq
             CrossCoreWaitFlag(SYNC_MMCKVKR_NORMROPE_FLG);                   // wait MatmulCkvKr
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
 
-            RmsNormRopeScatterCkvKr(tokenIndex, rmsNormCkvOffset, ropeKrOffset);  // 计算RmsNormRopeScatterCkvKr; tokenIndex, rmsNormCkvOffset, ropeKrOffset为当前核的起始偏移
+            RmsNormRopeScatterCkvKr(tokenIndex, rmsNormCkvOffset, ropeKrOffset);
             CrossCoreWaitFlag(SYNC_MMQCQR_ROPEQR_FLG);  // wait MatmulQcQr
 
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
-            RopeQr(ropeQrOffset, ropeQrResOffset);  // 计算RopeQr; ropeQrOffset, ropeQrResOffset为当前核的起始偏移
+            RopeQr(ropeQrOffset, ropeQrResOffset);
         }
     }
 }
@@ -171,7 +174,7 @@ $$
 本章节（以及后续章节）涉及的矩阵乘法模块使用AscendC Kernel API中Matmul高阶API实现。相关API使用可以参考官网[算子实现->矩阵编程（高阶API）](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0041.html)开发指南。
 
 ### RMSNormCq
-对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的rmsnormGammaCq和rmsnormEpsilonCq。
+对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的 rmsnormGammaCq 和 rmsnormEpsilonCq。
 $$
 c_{\mathrm{norm}}^Q = \mathrm{RmsNorm}(c^Q) \tag{2}
 $$
@@ -402,7 +405,7 @@ PA场景
   ![KVCacheScatter_PA_ND](../../../docs/zh/figures/KVCacheScatter_PA_ND.jpg)
 - KVCache使用NZ格式存储，其更新流程如图4所示。数据分形格式的介绍可以参考官网指南-[数据排布格式
 ](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0104.html)。
-  - 当前按NZ格式存储KVCache时，是将整个Block存储成NZ格式；小块内是以行为主（Row Major）的排布，形状如Z字型；块与块之间是以列为主的排布，形状如N字形。将完整的H（Hidden States）按32B长度的小块进行分块后，在ND格式下连续存储的小块，在NZ格式下需要跳$32B * BlockSize$存储，即需要设置stride为$32B * BlockSize$。
+  - 当前按NZ格式存储KVCache时，是将整个Block存储成NZ格式；小块内是以行为主(Row Major)的排布，形状如Z字型；块与块之间是以列为主的排布，形状如N字形。将完整的H(Hidden States)按32B长度的小块进行分块后，在ND格式下连续存储的小块，在NZ格式下需要跳$32B * BlockSize$存储，即需要设置stride为$32B * BlockSize$。
   - 图4 KVCacheScatter操作（PA场景-NZ格式）
   ![PA_NZ](../../../docs/zh/figures/PA_NZ.jpg)
 

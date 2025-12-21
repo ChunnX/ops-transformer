@@ -23,6 +23,7 @@ constexpr uint64_t INPUT_X_IDX = 0;
 constexpr uint64_t INPUT_COS_IDX = 1;
 constexpr uint64_t INPUT_SIN_IDX = 2;
 constexpr uint64_t INPUT_DIM_NUM = 4;
+constexpr uint64_t TND_INPUT_DIM_NUM = 3;
 constexpr uint64_t IO_NUM = 3; // sin、cos -> tri
 constexpr uint64_t BF16_TBUF_NUM = 3;
 constexpr uint64_t INPUT_DIM_0 = 0;
@@ -98,15 +99,32 @@ ge::graphStatus CheckInputShape(gert::TilingContext *context, const gert::Storag
     size_t xShapeSize = xShape->GetStorageShape().GetDimNum();
     size_t cosShapeSize = cosShape->GetStorageShape().GetDimNum();
     size_t sinShapeSize = sinShape->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(xShapeSize != INPUT_DIM_NUM && cosShapeSize != INPUT_DIM_NUM && sinShapeSize != INPUT_DIM_NUM,
+    if(xShapeSize == TND_INPUT_DIM_NUM){
+        OP_CHECK_IF(xShapeSize != TND_INPUT_DIM_NUM && cosShapeSize != TND_INPUT_DIM_NUM && sinShapeSize != TND_INPUT_DIM_NUM,
                 OP_LOGE(context, "Inconsistent dimensions of input shape."), return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(xShapeSize != INPUT_DIM_NUM && cosShapeSize != INPUT_DIM_NUM && sinShapeSize != INPUT_DIM_NUM,
+                OP_LOGE(context, "Inconsistent dimensions of input shape."), return ge::GRAPH_FAILED);
+    }
+    
     for (size_t i = 0; i < xShapeSize; ++i) {
         OP_CHECK_IF(cosShape->GetStorageShape().GetDim(i) != sinShape->GetStorageShape().GetDim(i),
                     OP_LOGE(context, "The shape of the input cos and sin is inconsistent."), return ge::GRAPH_FAILED);
     }
-    uint64_t xHeadDim = xShape->GetStorageShape().GetDim(INPUT_DIM_3);
-    uint64_t cosHeadDim = cosShape->GetStorageShape().GetDim(INPUT_DIM_3);
-    uint64_t sinHeadDim = sinShape->GetStorageShape().GetDim(INPUT_DIM_3);
+    
+    uint64_t xHeadDim = 0;
+    uint64_t cosHeadDim = 0;
+    uint64_t sinHeadDim = 0;
+    if(xShapeSize == TND_INPUT_DIM_NUM) {
+        xHeadDim = xShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        cosHeadDim = cosShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        sinHeadDim = sinShape->GetStorageShape().GetDim(INPUT_DIM_2);
+    } else {
+        xHeadDim = xShape->GetStorageShape().GetDim(INPUT_DIM_3);
+        cosHeadDim = cosShape->GetStorageShape().GetDim(INPUT_DIM_3);
+        sinHeadDim = sinShape->GetStorageShape().GetDim(INPUT_DIM_3);
+    }
+    
     OP_CHECK_IF((xHeadDim != cosHeadDim) && (xHeadDim != sinHeadDim),
                 OP_LOGE(context, "The last dim of inputs x, cos, sin is inconsistent."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -262,13 +280,32 @@ ge::graphStatus TilingSplit(gert::TilingContext *context, const gert::StorageSha
     uint64_t coreNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    uint64_t xShape0 = xShape->GetStorageShape().GetDim(INPUT_DIM_0);
-    uint64_t xShape1 = xShape->GetStorageShape().GetDim(INPUT_DIM_1);
-    uint64_t xShape2 = xShape->GetStorageShape().GetDim(INPUT_DIM_2);
-    uint64_t xHeadDim = xShape->GetStorageShape().GetDim(INPUT_DIM_3);
-    uint64_t cosShape0 = cosShape->GetStorageShape().GetDim(INPUT_DIM_0);
-    uint64_t cosShape1 = cosShape->GetStorageShape().GetDim(INPUT_DIM_1);
-    uint64_t cosShape2 = cosShape->GetStorageShape().GetDim(INPUT_DIM_2);
+    size_t xShapeSize = xShape->GetStorageShape().GetDimNum();
+    uint64_t xShape0 = 0;
+    uint64_t xShape1 = 0;
+    uint64_t xShape2 = 0;
+    uint64_t xHeadDim = 0;
+    uint64_t cosShape0 = 0;
+    uint64_t cosShape1 = 0;
+    uint64_t cosShape2 = 0;
+    if(xShapeSize == TND_INPUT_DIM_NUM){
+        xShape0 = 1;
+        xShape1 = xShape->GetStorageShape().GetDim(INPUT_DIM_0);
+        xShape2 = xShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        xHeadDim = xShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        cosShape0 = 1;
+        cosShape1 = cosShape->GetStorageShape().GetDim(INPUT_DIM_0);
+        cosShape2 = cosShape->GetStorageShape().GetDim(INPUT_DIM_1);
+    } else {
+        xShape0 = xShape->GetStorageShape().GetDim(INPUT_DIM_0);
+        xShape1 = xShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        xShape2 = xShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        xHeadDim = xShape->GetStorageShape().GetDim(INPUT_DIM_3);
+        cosShape0 = cosShape->GetStorageShape().GetDim(INPUT_DIM_0);
+        cosShape1 = cosShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        cosShape2 = cosShape->GetStorageShape().GetDim(INPUT_DIM_2);
+    }
+    
     uint64_t batchSizeOut{1}, seqLenOut{1}, numHeadsOut{1};
     if (cosShape1 == 1 && cosShape2 == 1 && xShape0 == cosShape0) {
         seqLenOut = cosShape0;

@@ -136,7 +136,7 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
 
     this->outGM.SetGlobalBuffer(
         (__gm__ T1*)unpermuted_tokens + out_block_offset, this->tokens_core_length * this->hidden_size);
-
+        
     this->pipe.InitBuffer(tokens_inque, tiling_data->buffer_num, hidden_splited_length_align512 * sizeof(T1));
     this->pipe.InitBuffer(indices_inque, 1, block_splited_length * (sizeof(T2)));
     this->pipe.InitBuffer(outque, 1, hidden_splited_length_align512 * sizeof(T1));

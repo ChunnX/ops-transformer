@@ -14,6 +14,7 @@
 #include "opdev/op_executor.h"
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "posembedding/rotary_position_embedding/op_host/op_api/aclnn_rotary_position_embedding.h"
 
 using namespace op;
 

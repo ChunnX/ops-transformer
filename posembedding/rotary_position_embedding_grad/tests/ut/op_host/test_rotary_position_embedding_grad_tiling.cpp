@@ -50,6 +50,7 @@ TEST_F(RotaryPositionEmbeddingGradTiling, RotaryPositionEmbeddingGradTiling_fp16
                                                   {{{2, 64, 4, 10}, {2, 64, 4, 10}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 64, 1, 10}, {1, 64, 1, 10}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 64, 1, 10}, {1, 64, 1, 10}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{2, 64, 4, 10}, {2, 64, 4, 10}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
                                                   // output info
@@ -62,7 +63,7 @@ TEST_F(RotaryPositionEmbeddingGradTiling, RotaryPositionEmbeddingGradTiling_fp16
                                                   {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 20000;
+    uint64_t expectTilingKey = 21000;
     string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 4 10 "
                               "16 6 64 0 1 1 1 1 0 1 1 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
@@ -78,6 +79,7 @@ TEST_F(RotaryPositionEmbeddingGradTiling, RotaryPositionEmbeddingGradTiling_bf16
                                                   {{{2, 64, 4, 10}, {2, 64, 4, 10}}, ge::DT_BF16, ge::FORMAT_ND},
                                                   {{{1, 64, 1, 10}, {1, 64, 1, 10}}, ge::DT_BF16, ge::FORMAT_ND},
                                                   {{{1, 64, 1, 10}, {1, 64, 1, 10}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{2, 64, 4, 10}, {2, 64, 4, 10}}, ge::DT_BF16, ge::FORMAT_ND},
                                               },
                                               {
                                                   // output info
@@ -90,7 +92,7 @@ TEST_F(RotaryPositionEmbeddingGradTiling, RotaryPositionEmbeddingGradTiling_bf16
                                                   {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 20010;
+    uint64_t expectTilingKey = 21010;
     string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 4 10 "
                               "16 6 64 0 1 1 1 1 0 1 1 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
@@ -106,6 +108,7 @@ TEST_F(RotaryPositionEmbeddingGradTiling, RotaryPositionEmbeddingGradTiling_fp32
                                                   {{{2, 64, 4, 10}, {2, 64, 4, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                   {{{1, 64, 1, 10}, {1, 64, 1, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                   {{{1, 64, 1, 10}, {1, 64, 1, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 64, 4, 10}, {2, 64, 4, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                               },
                                               {
                                                   // output info
@@ -118,8 +121,37 @@ TEST_F(RotaryPositionEmbeddingGradTiling, RotaryPositionEmbeddingGradTiling_fp32
                                                   {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 20020;
+    uint64_t expectTilingKey = 21020;
     string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 4 10 "
+                              "16 6 64 0 1 1 1 1 0 1 1 0 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(RotaryPositionEmbeddingGradTiling, RotaryPositionEmbeddingGradTiling_fp32_TND)
+{
+    optiling::RotaryPositionEmbeddingGradCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("RotaryPositionEmbeddingGrad",
+                                              {
+                                                  // input info
+                                                  {{{64, 4, 10}, {64, 4, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{64, 1, 10}, {64, 1, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{64, 1, 10}, {64, 1, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{64, 4, 10}, {64, 4, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{64, 4, 10}, {64, 4, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{64, 1, 10}, {64, 1, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{64, 1, 10}, {64, 1, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                                  {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                              },
+                                              &compileInfo);
+    uint64_t expectTilingKey = 21020;
+    string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 64 4 10 "
                               "16 6 64 0 1 1 1 1 0 1 1 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);

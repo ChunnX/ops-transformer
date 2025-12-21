@@ -67,8 +67,8 @@ TEST_F(MoeTokenPermuteWithEpGradInferShape, infertype_bf16) {
                               .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_tokens_ref, &input_indices_ref, &input_probs_ref})
                               .OutputDataTypes({&output_tokens_ref, &output_probs_ref})
                               .Build();

@@ -32,9 +32,14 @@ ge::graphStatus MoeGatingTopKSoftmaxBaseTiling::GetPlatformInfo()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     coreNum = ascendcPlatform.GetCoreNum();
+    aivNum = ascendcPlatform.GetCoreNumAiv();
+    OP_LOGD(context_, "coreNum is: %d", coreNum);
+    OP_LOGD(context_, "aivNum is: %ld", aivNum);
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     ubSize = ubSizePlatForm;
+    OP_LOGD(context_, "ubSize is: %lu", ubSize);
+    socVersion = ascendcPlatform.GetSocVersion();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -88,6 +93,7 @@ ge::graphStatus MoeGatingTopKSoftmaxBaseTiling::GetShapeAttrsInfo()
 
     auto finished = context_->GetOptionalInputShape(1);
     if (finished != nullptr) {
+        hasFinished = true;
         auto finishDtype = context_->GetOptionalInputDesc(1)->GetDataType();
         OP_CHECK_IF(
             (finishDtype != ge::DataType::DT_BOOL),

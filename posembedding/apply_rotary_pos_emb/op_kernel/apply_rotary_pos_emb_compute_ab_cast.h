@@ -153,21 +153,14 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::SmallQC(
     LocalTensor<T2>& qUbFP32, LocalTensor<T2>& mul2Ub, LocalTensor<T2>& cosCUb,
     const ApplyRotaryPosEmbTilingData* tilingData, BinaryRepeatParams& repeatParams)
 {
+    int64_t qcdhalfNum = tilingData->lastDim / tilingData->mask;    //类似于tiling侧小shape情况处理
     for (int64_t ii = 0; ii < tilingData->qkcNum; ii++) {
-        Mul<T2, false>(
-            mul1Ub[ii * tilingData->lastDim], qoutSizeFP32[ii * tilingData->lastDim], sinCUb, tilingData->mask,
-            preCBatchB, repeatParams);
-        Mul<T2, false>(
-            mul1Ub[ii * tilingData->lastDim + tilingData->halfNum],
-            qoutSizeFP32[ii * tilingData->lastDim + tilingData->halfNum], sinCUb[tilingData->halfNum], tilingData->mask,
-            preCBatchB, repeatParams);
-        Mul<T2, false>(
-            qUbFP32[ii * tilingData->lastDim], mul2Ub[ii * tilingData->lastDim], cosCUb, tilingData->mask, preCBatchB,
-            repeatParams);
-        Mul<T2, false>(
-            qUbFP32[ii * tilingData->lastDim + tilingData->halfNum],
-            mul2Ub[ii * tilingData->lastDim + tilingData->halfNum], cosCUb[tilingData->halfNum], tilingData->mask,
-            preCBatchB, repeatParams);
+        for (int32_t j = 0; j < qcdhalfNum; j++){
+            Mul<T2>(mul1Ub[ii * tilingData->lastDim + j * tilingData->mask], qoutSizeFP32[ii * tilingData->lastDim + j * tilingData->mask], 
+                sinCUb[j * tilingData->mask], tilingData->mask, preCBatchB, repeatParams);
+            Mul<T2>(qUbFP32[ii * tilingData->lastDim + j * tilingData->mask], mul2Ub[ii * tilingData->lastDim + j * tilingData->mask], 
+                cosCUb[j * tilingData->mask], tilingData->mask, preCBatchB, repeatParams);
+        }
     }
 }
 
@@ -177,12 +170,13 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::SmallQCFP16(
     LocalTensor<T1>& mul2Ub, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
     const ApplyRotaryPosEmbTilingData* tilingData, BinaryRepeatParams& repeatParams)
 {
+    int64_t mask = (tilingData->lastDim <= tilingData->mask) ? tilingData->lastDim : tilingData->mask;
     for (int64_t ii = 0; ii < tilingData->qkcNum; ii++) {
-        Mul<half, false>(
-            mul1Ub[ii * tilingData->lastDim], outUb[ii * tilingData->lastDim], sinSize, tilingData->mask, preCBatchB,
+        Mul<T1>(
+            mul1Ub[ii * tilingData->lastDim], outUb[ii * tilingData->lastDim], sinSize, mask, preCBatchB,
             repeatParams);
-        Mul<half, false>(
-            mul2Ub[ii * tilingData->lastDim], qSize[ii * tilingData->lastDim], cosSize, tilingData->mask, preCBatchB,
+        Mul<T1>(
+            mul2Ub[ii * tilingData->lastDim], qSize[ii * tilingData->lastDim], cosSize, mask, preCBatchB,
             repeatParams);
     }
 }
@@ -193,13 +187,14 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::LargeQCFP16(
     LocalTensor<T1>& mul2Ub, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
     const ApplyRotaryPosEmbTilingData* tilingData, BinaryRepeatParams& repeatParams)
 {
+    int64_t mask = (tilingData->lastDim <= tilingData->mask) ? tilingData->lastDim : tilingData->mask;
     for (int64_t i = 0; i < preCBatchB; i++) {
-        Mul<half, false>(
+        Mul<T1>(
             mul1Ub[i * tilingData->qkcNum * tilingData->lastDim], outUb[i * tilingData->qkcNum * tilingData->lastDim],
-            sinSize[i * tilingData->lastDim], tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<half, false>(
+            sinSize[i * tilingData->lastDim], mask, tilingData->qkcNum, repeatParams);
+        Mul<T1>(
             mul2Ub[i * tilingData->qkcNum * tilingData->lastDim], qSize[i * tilingData->qkcNum * tilingData->lastDim],
-            cosSize[i * tilingData->lastDim], tilingData->mask, tilingData->qkcNum, repeatParams);
+            cosSize[i * tilingData->lastDim], mask, tilingData->qkcNum, repeatParams);
     }
 }
 
@@ -209,22 +204,20 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::LargeQC(
     LocalTensor<T2>& qUbFP32, LocalTensor<T2>& mul2Ub, LocalTensor<T2>& cosCUb,
     const ApplyRotaryPosEmbTilingData* tilingData, BinaryRepeatParams& repeatParams)
 {
+    int64_t qcdhalfNum = tilingData->lastDim / tilingData->mask;
     for (int64_t i = 0; i < preCBatchB; i++) {
-        Mul<T2, false>(
-            mul1Ub[i * tilingData->qkcNum * tilingData->lastDim],
-            qoutSizeFP32[i * tilingData->qkcNum * tilingData->lastDim], sinCUb[i * tilingData->lastDim],
-            tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<T2, false>(
-            mul1Ub[i * tilingData->qkcNum * tilingData->lastDim + tilingData->halfNum],
-            qoutSizeFP32[i * tilingData->qkcNum * tilingData->lastDim + tilingData->halfNum],
-            sinCUb[i * tilingData->lastDim + tilingData->halfNum], tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<T2, false>(
-            qUbFP32[i * tilingData->qkcNum * tilingData->lastDim], mul2Ub[i * tilingData->qkcNum * tilingData->lastDim],
-            cosCUb[i * tilingData->lastDim], tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<T2, false>(
-            qUbFP32[i * tilingData->qkcNum * tilingData->lastDim + tilingData->halfNum],
-            mul2Ub[i * tilingData->qkcNum * tilingData->lastDim + tilingData->halfNum],
-            cosCUb[i * tilingData->lastDim + tilingData->halfNum], tilingData->mask, tilingData->qkcNum, repeatParams);
+        for (int32_t j = 0; j < qcdhalfNum; j++){
+            Mul<T2>(
+                mul1Ub[i * tilingData->qkcNum * tilingData->lastDim + j * tilingData->mask], 
+                qoutSizeFP32[i * tilingData->qkcNum * tilingData->lastDim + j * tilingData->mask], 
+                sinCUb[i * tilingData->lastDim + j * tilingData->mask], 
+                tilingData->mask, tilingData->qkcNum, repeatParams);
+            Mul<T2>(
+                qUbFP32[i * tilingData->qkcNum * tilingData->lastDim + j * tilingData->mask], 
+                mul2Ub[i * tilingData->qkcNum * tilingData->lastDim + j * tilingData->mask], 
+                cosCUb[i * tilingData->lastDim + j * tilingData->mask], 
+                tilingData->mask, tilingData->qkcNum, repeatParams);
+        }
     }
 }
 
@@ -272,7 +265,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::CTotaryBF16(
     Muls(sinCUb, sinCUb, T2(-1.0), tilingData->halfNum, preCBatchB, mulRepeatP);
     LocalTensor<T2> qUbFP32;
     SetMaskNorm();
-    SetVectorMask<T2>(64);
+
     this->LocalTensor2NewTensor(qUbFP32, qSize);
     if (tilingData->qkcNum >= preCBatchB) {
         repeatParams.dstRepStride = tilingData->dstRepSBr;
@@ -353,13 +346,8 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeElse(
     copyInq2q1.blockCount = preCBatchB * tilingData->qkcNum;
     DataCopy(qOutUb, qSize[tilingData->halfNum], copyInq2q1);
     DataCopy(qOutUb[tilingData->halfNum], qSize, copyInq2q1);
-#if ORIG_DTYPE_QUERY == DT_FLOAT
+
     SetMaskNorm();
-    SetVectorMask<T1>(64);
-#else
-    SetMaskNorm();
-    SetVectorMask<T1>(128);
-#endif
 
     ComputeTotary(preCBatchB, qSize, cosSize, sinSize, qOutUb, tilingData);
     qInQueue.FreeTensor(qSize);

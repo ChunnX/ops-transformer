@@ -77,6 +77,7 @@ TILING_DATA_FIELD_DEF(int64_t, lastCoreLastLoopIndicesElements);
 TILING_DATA_FIELD_DEF(int64_t, colsLoops);
 TILING_DATA_FIELD_DEF(int64_t, perLoopCols);
 TILING_DATA_FIELD_DEF(int64_t, lastLoopCols);
+TILING_DATA_FIELD_DEF(int64_t, activeNum);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeV3GatherOutComputeTilingDataOp, MoeV3GatherOutComputeTilingData)
 
@@ -94,6 +95,12 @@ TILING_DATA_FIELD_DEF(int64_t, isInputScale);
 TILING_DATA_FIELD_DEF(int64_t, isInputOffset);
 TILING_DATA_FIELD_DEF(int64_t, expertNum);
 TILING_DATA_FIELD_DEF(int64_t, expertTokensNumType);
+TILING_DATA_FIELD_DEF(int64_t, expertTokensNumFlag);
+TILING_DATA_FIELD_DEF(int64_t, gatherFirstFullload);
+TILING_DATA_FIELD_DEF(int64_t, epFullload);
+TILING_DATA_FIELD_DEF(int64_t, activeNum);
+TILING_DATA_FIELD_DEF(int64_t, dropPadMode);
+TILING_DATA_FIELD_DEF(int64_t, smoothType);
 TILING_DATA_FIELD_DEF_STRUCT(MoeV3VBSComputeTilingData, vbsComputeParamsOp);
 TILING_DATA_FIELD_DEF_STRUCT(MoeV3VMSMiddleComputeTilingData, vmsMiddleComputeParamsOp);
 TILING_DATA_FIELD_DEF_STRUCT(MoeV3SortOutComputeTilingData, sortOutComputeParamsOp);

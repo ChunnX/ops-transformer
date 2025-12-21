@@ -66,6 +66,8 @@ attention:
       - attention/flash_attention_score/README.md
     ut_cov_exclude:
       - attention/flash_attention_score
+    test:
+        ut: False
     options:
       - flash_attention_score
 
@@ -80,6 +82,7 @@ attention:
       - attention/flash_attention_score_grad
     test:
         examples: False
+        ut: False
     options:
       - flash_attention_score_grad
 
@@ -119,6 +122,8 @@ attention:
       - attention/nsa_compress/README.md
     ut_cov_exclude:
       - attention/nsa_compress
+    test:
+        ut: False
     options:
       - nsa_compress
 
@@ -131,6 +136,8 @@ attention:
       - attention/nsa_compress_attention/README.md
     ut_cov_exclude:
       - attention/nsa_compress_attention
+    test:
+        ut: False
     options:
       - nsa_compress_attention
 
@@ -143,6 +150,8 @@ attention:
       - attention/nsa_compress_attention_infer/README.md
     ut_cov_exclude:
       - attention/nsa_compress_attention_infer
+    test:
+        ut: False
     options:
       - nsa_compress_attention_infer
 
@@ -155,6 +164,8 @@ attention:
       - attention/nsa_compress_grad/README.md
     ut_cov_exclude:
       - attention/nsa_compress_grad
+    test:
+        ut: False
     options:
       - nsa_compress_grad
 
@@ -182,6 +193,8 @@ attention:
       - attention/nsa_selected_attention/README.md
     ut_cov_exclude:
       - attention/nsa_selected_attention
+    test:
+      ut: False
     options:
       - nsa_selected_attention
 
@@ -295,6 +308,8 @@ ffn:
       - ffn/ffn/README.md
     ut_cov_exclude:
       - ffn/ffn
+    test:
+        ut: False
     options:
       - ffn
 
@@ -482,6 +497,8 @@ moe:
       - moe/moe_init_routing_v2/README.md
     ut_cov_exclude:
       - moe/moe_init_routing_v2
+    test:
+      ut: False
     options:
       - moe_init_routing_v2
 

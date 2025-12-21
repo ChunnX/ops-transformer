@@ -62,7 +62,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_1)
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
-    EXPECT_EQ(aclRet, ACL_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_2)

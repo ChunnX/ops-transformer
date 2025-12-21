@@ -50,46 +50,32 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant(
     auto t = &tilingData;
     TPipe sortPipe;
     // sort
-    if (TILING_KEY_IS(1)) {
-        MoeSortOneCore op;
-        op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(3)) {
-        MoeSortOneCore op;
-        op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(2)) {
-        MoeSortMultiCore op;
-        op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(4)) {
-        MoeSortMultiCore op;
-        op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
-        op.Process();
+    if (TILING_KEY_IS(1) || TILING_KEY_IS(3)) {
+        MoeSortOneCore moeSortOneCore;
+        moeSortOneCore.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
+        moeSortOneCore.Process();
+    } else if (TILING_KEY_IS(2) || TILING_KEY_IS(4)) {
+        MoeSortMultiCore moeSortMultiCore;
+        moeSortMultiCore.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
+        moeSortMultiCore.Process();
+    } else {
+        return;
     }
     sortPipe.Destroy();
     TPipe srcToDstPipe;
-    MoeSrcToDstOp srcToDstOp;
-    srcToDstOp.Init(expandedRowIdx, userWS, t, &srcToDstPipe);
-    srcToDstOp.Process();
+    MoeSrcToDstOp moeSrcToDstOp;
+    moeSrcToDstOp.Init(expandedRowIdx, userWS, t, &srcToDstPipe);
+    moeSrcToDstOp.Process();
     srcToDstPipe.Destroy();
 
     TPipe gatherPipe;
-    if (TILING_KEY_IS(1)) {
-        MoeGatherOut<DTYPE_X> gatherOp;
-        gatherOp.Init(x, expandedRowIdx, expandedX, t, &gatherPipe);
-        gatherOp.Process();
-    } else if (TILING_KEY_IS(2)) {
-        MoeGatherOut<DTYPE_X> gatherOp;
-        gatherOp.Init(x, expandedRowIdx, expandedX, t, &gatherPipe);
-        gatherOp.Process();
-    } else if (TILING_KEY_IS(3)) {
-        MoeGatherOutSmallActiveRow<DTYPE_X> gatherOp;
-        gatherOp.Init(x, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
-        gatherOp.Process();
-    } else if (TILING_KEY_IS(4)) {
-        MoeGatherOutSmallActiveRow<DTYPE_X> gatherOp;
-        gatherOp.Init(x, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
-        gatherOp.Process();
+    if (TILING_KEY_IS(1) || TILING_KEY_IS(2)) {
+        MoeGatherOut<DTYPE_X> moeGatherOut;
+        moeGatherOut.Init(x, expandedRowIdx, expandedX, t, &gatherPipe);
+        moeGatherOut.Process();
+    } else if (TILING_KEY_IS(3) || TILING_KEY_IS(4)) {
+        MoeGatherOutSmallActiveRow<DTYPE_X> moeGatherOutSmallActiveRow;
+        moeGatherOutSmallActiveRow.Init(x, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
+        moeGatherOutSmallActiveRow.Process();
     }
 }

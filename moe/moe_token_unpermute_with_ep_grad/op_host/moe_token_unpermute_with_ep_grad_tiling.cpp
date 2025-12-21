@@ -183,14 +183,31 @@ static bool CoreSplitInfoProbIsNone(
         OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling error, hiddenSizeAlign == 0");
         return false;
     }
+
+    tiling.set_inputReserveNum(indicesReserveNum);        // permutedTokenNumPerLoop = indicesNumPerLoop
+    tiling.set_indicesReserveNum(indicesReserveNum);      // indicesNumPerLoop
+    tiling.set_indicesReserveNumAlign(indicesReserveNum); // indicesNumPerLoopAlign
+
     int64_t hiddenSizeLoopTimes = (hiddenSize + hiddenSizeAlign - 1) / hiddenSizeAlign;
     int64_t hiddenSizeTail = hiddenSize - (hiddenSizeLoopTimes - 1) * hiddenSizeAlign;
     tiling.set_hiddenSizeAlign(hiddenSizeAlign);
     tiling.set_hiddenSizeLoopTimes(hiddenSizeLoopTimes);
     tiling.set_hiddenSizeTail(hiddenSizeTail);
-    tiling.set_inputReserveNum(indicesReserveNum);        // permutedTokenNumPerLoop = indicesNumPerLoop
-    tiling.set_indicesReserveNum(indicesReserveNum);      // indicesNumPerLoop
-    tiling.set_indicesReserveNumAlign(indicesReserveNum); // indicesNumPerLoopAlign
+
+    return true;
+}
+
+static bool CoreSplitInfoProbIsNotNoneHelper(int64_t indicesReserveNum, int64_t inputReserveNum, int64_t hiddenSizeLoopTimes
+, int64_t hiddenSizeAlign, MoeTokenUnpermuteWithEpGradTilingData& tiling) {
+    if (indicesReserveNum == 0 || inputReserveNum == 0) {
+        OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling error, indicesReserveNum == 0 or inputReserveNum == 0");
+        return false;
+    }
+    tiling.set_hiddenSizeAlign(hiddenSizeAlign);
+    tiling.set_hiddenSizeLoopTimes(hiddenSizeLoopTimes);
+    tiling.set_inputReserveNum(inputReserveNum);               // permutedTokenNumPerLoop
+    tiling.set_indicesReserveNum(indicesReserveNum);           // indicesNumPerLoop
+
     return true;
 }
 
@@ -200,23 +217,17 @@ static bool CoreSplitInfoProbIsNotNone(
 {
     int64_t hiddenSize = tiling.get_hiddenSize();
     int64_t topK = tiling.get_topK();
+    
     uint32_t inputBlock512AlignEleNum = BLOCK_SIZE_512 / inputTypeLength;
+    int64_t hiddenSizeAlign = AlignUp<int64_t>(hiddenSize, static_cast<int64_t>(inputBlock512AlignEleNum)); // h=hiddensize,全载
+    int64_t indicesReserveNumMax = tiling.get_tokenNumEachCore() * topK;
+    int64_t indicesReserveNum = topK <= INDICES_RESERVE_MAX_NUM // indicesReserveNum最大预留256个元素，占据内存BUFFER_NUM*(4*n+2*n)+4*n=(BUFFER_NUM* 6 + 4)*n
+    ? std::min(indicesReserveNumMax, AlignDown<int64_t>(INDICES_RESERVE_MAX_NUM, topK))  // indicesNumPerLoop
+    : topK; // indicesNumPerLoop
+
     uint32_t inputBlock32AlignEleNum = BLOCK_SIZE_32 / probTypeLength;
     uint32_t fp32TypeLength = sizeof(float);
-
-    int64_t hiddenSizeAlign =
-        AlignUp<int64_t>(hiddenSize, static_cast<int64_t>(inputBlock512AlignEleNum)); // h=hiddensize,全载
-    int64_t indicesReserveNumMax = tiling.get_tokenNumEachCore() * topK;
-    int64_t indicesReserveNum = 1;
-    if (topK <= INDICES_RESERVE_MAX_NUM) { // indicesReserveNum最大预留256个元素，占据内存BUFFER_NUM*(4*n+2*n)+4*n=(BUFFER_NUM
-                                           // * 6 + 4)*n
-        indicesReserveNum =
-            std::min(indicesReserveNumMax, AlignDown<int64_t>(INDICES_RESERVE_MAX_NUM, topK)); // indicesNumPerLoop
-    } else {                      // indicesReserveNum最大预留topK个元素
-        indicesReserveNum = topK; // indicesNumPerLoop
-    }
-    int64_t indicesReserveNumAlign =
-        AlignUp<int64_t>(indicesReserveNum, static_cast<int64_t>(inputBlock32AlignEleNum)); // indicesNumPerLoopAlign
+    int64_t indicesReserveNumAlign = AlignUp<int64_t>(indicesReserveNum, static_cast<int64_t>(inputBlock32AlignEleNum)); // indicesNumPerLoopAlign
     int64_t inputReserveNumMax = static_cast<int64_t>(
                                      totalUbSize - BUFFER_NUM * probTypeLength * indicesReserveNumAlign * 2 -
                                      indicesReserveNumAlign * fp32TypeLength * 3 - 256 -
@@ -227,12 +238,10 @@ static bool CoreSplitInfoProbIsNotNone(
     if (inputReserveNumMax < 1) {
         // 切hiddensize
         OP_LOGD("MoeTokenUnpermuteWithEpGradTiling", "hiddensize need to be split.");
-        int64_t hiddenSizeLoopMax =
-            (totalUbSize - BUFFER_NUM * probTypeLength * indicesReserveNumAlign * 2 -
+        int64_t hiddenSizeLoopMax = (totalUbSize - BUFFER_NUM * probTypeLength * indicesReserveNumAlign * 2 -
              indicesReserveNumAlign * fp32TypeLength * 3 - 256) /
             (3 * BUFFER_NUM * inputTypeLength + 3 * fp32TypeLength); // 一个切片最大能载入的hidden_size大小
-        hiddenSizeLoopMax = AlignDown<int64_t>(
-            hiddenSizeLoopMax, static_cast<int64_t>(inputBlock512AlignEleNum)); // 512B能存放元素数量对齐
+        hiddenSizeLoopMax = AlignDown<int64_t>(hiddenSizeLoopMax, static_cast<int64_t>(inputBlock512AlignEleNum)); // 512B能存放元素数量对齐
         if (hiddenSizeLoopMax == 0) {
             OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling error, hiddenSizeLoopMax == 0");
             return false;
@@ -249,15 +258,10 @@ static bool CoreSplitInfoProbIsNotNone(
         }
         inputReserveNum = GetGreatestDivisor(topK, inputReserveNumMax);
     }
-    if (indicesReserveNum == 0 || inputReserveNum == 0) {
-        OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling error, indicesReserveNum == 0 or inputReserveNum == 0");
+    if (!CoreSplitInfoProbIsNotNoneHelper(indicesReserveNum, inputReserveNum, hiddenSizeLoopTimes, hiddenSizeAlign, tiling)) {
         return false;
     }
-    tiling.set_hiddenSizeAlign(hiddenSizeAlign);
-    tiling.set_hiddenSizeLoopTimes(hiddenSizeLoopTimes);
     tiling.set_hiddenSizeTail(hiddenSize);
-    tiling.set_inputReserveNum(inputReserveNum);               // permutedTokenNumPerLoop
-    tiling.set_indicesReserveNum(indicesReserveNum);           // indicesNumPerLoop
     tiling.set_indicesReserveNumAlign(indicesReserveNumAlign); // indicesNumPerLoopAlign
     return true;
 }
@@ -307,26 +311,82 @@ static ge::graphStatus MoeTokenUnpermuteWithEpGradCoreSplitInfo(
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus Tiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* context)
-{
-    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling start");
+static ge::graphStatus SetInfoForTiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* context, MoeTokenUnpermuteWithEpGradTilingData& tiling) {
+    auto rawTilingData = context->GetRawTilingData();
+    auto attrPtr = context->GetAttrs();
+    auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
+    tiling.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
+    rawTilingData->SetDataSize(tiling.GetDataSize());
+    size_t sysWorkspaceSize = 16 * 1024 * 1024;
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    currentWorkspace[0] = sysWorkspaceSize;
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
+    const bool* paddedModePtr = attrPtr->GetAttrPointer<bool>(ATTR_PADDEDMODE_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, paddedModePtr);
+    bool paddedMode = *paddedModePtr;
+    MoeTokenUnpermuteWithEpGradPrintParam(context, tiling);
+    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithEpGradTiling] paddedMode: %d", paddedMode);
+    uint32_t paddedModeKey = 0;
+    uint32_t probKey = (probTensor == nullptr) ? 0 : 1;
+    uint32_t tilingKey = paddedModeKey * 10 + probKey;
+    // 0: padded_mode = False, 不存在prob
+    // 1: padded_mode = False, 存在prob
+    // 10: padded_mode = True, 不存在prob
+    // 11: padded_mode = True, 存在prob
+    context->SetTilingKey(tilingKey);
+    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithEpGradTiling] tilingKey: %u", tilingKey);
+    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling end");
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static bool SetStartEndInfoForTiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* context, MoeTokenUnpermuteWithEpGradTilingData& tiling,
+ int64_t totalNum, int64_t numOutTokens) {
+    auto attrPtr = context->GetAttrs();
+    MoeTokenUnpermuteWithEpGradInitSplitInfo(context, tiling); // 核间切分
+    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling MoeTokenUnpermuteWithEpGradInitSplitInfo finished");
+    MoeTokenUnpermuteWithEpGradCoreSplitInfo(context, tiling); // 核内切分
+    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling MoeTokenUnpermuteWithEpGradCoreSplitInfo finished");
+    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t totalCoreNum = ascendcPlatform.GetCoreNumAiv();
+    auto epRangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(2);
+    int64_t start = 0;
+    int64_t end = totalNum;
+    if (epRangePtr != nullptr) {
+        OP_CHECK_IF(
+            epRangePtr->GetSize() != EP_RANGE_SIZE,
+            OP_LOGE(context->GetNodeName(), "the size of range only support 2"),
+            return ge::GRAPH_FAILED);
+        const int64_t* epRangeList = static_cast<const int64_t*>(epRangePtr->GetData());
+        start = epRangeList[0];
+        end = epRangeList[1];
+        end = (end < 0) ? end + totalNum : end;
+        start = (start < 0) ? start + totalNum : start;
+        end = std::min(end, totalNum);
+        end = std::max(end, static_cast<int64_t>(0));
+        start = std::min(start, totalNum);
+        start = std::max(start, static_cast<int64_t>(0));
+        if (end < start) {
+            return false;
+        }
+    }
+    if (start != 0) {
+        numOutTokens = end;
+    }
+    tiling.set_numOutTokens(numOutTokens);
+    tiling.set_start(start);
+    tiling.set_end(end);
+    context->SetBlockDim(totalCoreNum);
+    return true;
+}
+
+static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* context, const gert::StorageShape* unpermutedOutputDShape) {
     MoeTokenUnpermuteWithEpGradTilingData tiling;
+    auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     auto permutedTokensTensor = context->GetOptionalInputTensor(INPUT_PERMUTED_TOKENS_IDX);
     const gert::StorageShape* permutedTokensShape =
         (permutedTokensTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PERMUTED_TOKENS_IDX);
-    const gert::StorageShape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
-    auto permutedTokensDesc = context->GetOptionalInputDesc(INPUT_PERMUTED_TOKENS_IDX);
-    auto unpermutedOutputDDesc = context->GetInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX);
-    if (permutedTokensDesc != nullptr) {
-        OP_CHECK_IF(
-            permutedTokensDesc->GetDataType() != unpermutedOutputDDesc->GetDataType(),
-            OP_LOGE(
-                context->GetNodeName(), "input permutedTokens 's dtype should be same with unpermutedTokensGrad"),
-            return ge::GRAPH_FAILED);
-    }
-    const gert::StorageShape* rowMap = context->GetInputShape(INPUT_ROWIDMAP_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
-    auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     const gert::StorageShape* probShape =
         (probTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PROB_IDX);
     int64_t tokensNum = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_0);
@@ -338,7 +398,7 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* c
     if (topKPtr != nullptr) {
         topK = *topKPtr;
     }
-
+    const gert::StorageShape* rowMap = context->GetInputShape(INPUT_ROWIDMAP_IDX);
     size_t rowMapDimNnum = rowMap->GetStorageShape().GetDimNum();
     if (rowMapDimNnum != DIM_1) {
         OP_LOGE(context->GetNodeName(), "The dim number of sort_indices should be 1.");
@@ -362,66 +422,32 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* c
             context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] topK only support no greater than 512."),
         return ge::GRAPH_FAILED);
 
-    MoeTokenUnpermuteWithEpGradInitSplitInfo(context, tiling); // 核间切分
-    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling MoeTokenUnpermuteWithEpGradInitSplitInfo finished");
-    MoeTokenUnpermuteWithEpGradCoreSplitInfo(context, tiling); // 核内切分
-    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling MoeTokenUnpermuteWithEpGradCoreSplitInfo finished");
-    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t totalCoreNum = ascendcPlatform.GetCoreNumAiv();
-    auto epRangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(2);
-    int64_t start = 0;
-    int64_t end = totalNum;
-    if (epRangePtr != nullptr) {
-        OP_CHECK_IF(
-            epRangePtr->GetSize() != EP_RANGE_SIZE,
-            OP_LOGE(context->GetNodeName(), "the size of range only support 2"),
-            return ge::GRAPH_FAILED);
-        const int64_t* epRangeList = reinterpret_cast<const int64_t*>(epRangePtr->GetData());
-        start = epRangeList[0];
-        end = epRangeList[1];
-        end = (end < 0) ? end + totalNum : end;
-        start = (start < 0) ? start + totalNum : start;
-        end = std::min(end, totalNum);
-        end = std::max(end, (int64_t)0);
-        start = std::min(start, totalNum);
-        start = std::max(start, (int64_t)0);
-        OP_CHECK_IF(
-            end < start,
+    OP_CHECK_IF(
+            !SetStartEndInfoForTiling4MoeTokenUnpermuteWithEpGrad(context, tiling, totalNum, numOutTokens),
             OP_LOGE(
                 context->GetNodeName(), "rangeOptional[1] should not less than rangeOptional[0]"),
             return ge::GRAPH_FAILED);
+    
+    return SetInfoForTiling4MoeTokenUnpermuteWithEpGrad(context, tiling);
+}
+
+static ge::graphStatus Tiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext* context)
+{
+    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling start");
+    const gert::StorageShape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
+    auto permutedTokensDesc = context->GetOptionalInputDesc(INPUT_PERMUTED_TOKENS_IDX);
+    auto unpermutedOutputDDesc = context->GetInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX);
+    if (permutedTokensDesc != nullptr) {
+        OP_CHECK_IF(
+            permutedTokensDesc->GetDataType() != unpermutedOutputDDesc->GetDataType(),
+            OP_LOGE(
+                context->GetNodeName(), "input permutedTokens 's dtype should be same with unpermutedTokensGrad"),
+            return ge::GRAPH_FAILED);
     }
-    if (start != 0) {
-        numOutTokens = end;
-    }
-    tiling.set_numOutTokens(numOutTokens);
-    tiling.set_start(start);
-    tiling.set_end(end);
-    context->SetBlockDim(totalCoreNum);
-    auto rawTilingData = context->GetRawTilingData();
-    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
-    tiling.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
-    rawTilingData->SetDataSize(tiling.GetDataSize());
-    size_t sysWorkspaceSize = 16 * 1024 * 1024;
-    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    currentWorkspace[0] = sysWorkspaceSize;
-    OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
-    const bool* paddedModePtr = attrPtr->GetAttrPointer<bool>(ATTR_PADDEDMODE_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, paddedModePtr);
-    bool paddedMode = *paddedModePtr;
-    MoeTokenUnpermuteWithEpGradPrintParam(context, tiling);
-    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithEpGradTiling] paddedMode: %d", paddedMode);
-    uint32_t paddedModeKey = 0;
-    uint32_t probKey = (probTensor == nullptr) ? 0 : 1;
-    uint32_t tilingKey = paddedModeKey * 10 + probKey;
-    // 0: padded_mode = False, 不存在prob
-    // 1: padded_mode = False, 存在prob
-    // 10: padded_mode = True, 不存在prob
-    // 11: padded_mode = True, 存在prob
-    context->SetTilingKey(tilingKey);
-    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithEpGradTiling] tilingKey: %u", tilingKey);
-    OP_LOGD("MoeTokenUnpermuteWithEpGradTiling tiling end");
-    return ge::GRAPH_SUCCESS;
+    
+    OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
+
+    return SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(context, unpermutedOutputDShape);
 }
 
 static ge::graphStatus TilingPrepare4MoeTokenUnpermuteWithEpGrad(gert::TilingParseContext* context)

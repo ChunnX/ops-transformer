@@ -31,7 +31,7 @@
 
 a. 将核心的数量用满，防止部分核闲置。
 
-b. 每一个核心被分配的计算量相对均匀，避免出现某些核计算的数据量过大，其余核在空闲的情况。
+b. 每一个核心被分配的计算量相对均匀，避免出现某些核计算的数据量过大，其余核空闲的情况。
 
 c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AIV出现长时间的空闲。 
 
@@ -89,15 +89,15 @@ void Process() {
     for (i = 0; i < loops; i++) {
         updateCurrentStepSize(i, stepSize, allTokenSize);  //刷新当前轮的计算的M轴大小
         if ASCEND_IS_AIC {
-            MatmulCq(tokenXOffset, weightDqOffset, cqResOffset);  // 计算MatmulCq; tokenXOffset, weightDqOffset, cqResOffset为当前核的起始偏移
+            MatmulCq(tokenXOffset, weightDqOffset, cqResOffset);
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCQ_NORMCQ_FLG);       //cube与vector同步
 
-            MatmulCkvKr(tokenXOffset, weightDkvKrOffset, ckvKrResOffset);  // 计算MatmulCkvKr; tokenXOffset, weightDkvKrOffset, ckvKrResOffset为当前核的起始偏移
+            MatmulCkvKr(tokenXOffset, weightDkvKrOffset, ckvKrResOffset);
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCKVKR_NORMROPE_FLG);   //cube与vector同步
 
             CrossCoreWaitFlag(SYNC_MMCQ_NORMCQ_FLG);                     // MatmulQcQr依赖RmsNormCq的输出，需要插入CV核间同步
       
-            MatmulQcQr(weightUqQrOffset, qcQrResOffset);  // 计算MatmulQcQr; weightUqQrOffset, qcQrResOffset为当前核的起始偏移
+            MatmulQcQr(weightUqQrOffset, qcQrResOffset);
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMQCQR_ROPEQR_FLG);      //cube与vector同步
 
             // 由于 MatmulQn 和 MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
@@ -115,7 +115,7 @@ void Process() {
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
 
-            RmsNormCq(rmsNormCqOffset); // 计算RmsNormCq; rmsNormCqOffset为当前核的起始偏移
+            RmsNormCq(rmsNormCqOffset);
 
             // 由于RmsNormCq和MatmulQcQr的分核策略不一样，需要等所有vector上的RmsNormCq执行完成后才能启动 MatmulQcQr
             // 需要所有vector核上的RmsNormCq执行完成后，才发起MatmulQcQr的执行
@@ -127,12 +127,12 @@ void Process() {
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
 
-            RmsNormRopeScatterCkvKr(tokenIndex, rmsNormCkvOffset, ropeKrOffset);  // 计算RmsNormRopeScatterCkvKr; tokenIndex, rmsNormCkvOffset, ropeKrOffset为当前核的起始偏移
+            RmsNormRopeScatterCkvKr(tokenIndex, rmsNormCkvOffset, ropeKrOffset);
             CrossCoreWaitFlag(SYNC_MMQCQR_ROPEQR_FLG);  // wait MatmulQcQr
 
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
-            RopeQr(ropeQrOffset, ropeQrResOffset);  // 计算RopeQr; ropeQrOffset, ropeQrResOffset为当前核的起始偏移
+            RopeQr(ropeQrOffset, ropeQrResOffset);
         }
     }
 }

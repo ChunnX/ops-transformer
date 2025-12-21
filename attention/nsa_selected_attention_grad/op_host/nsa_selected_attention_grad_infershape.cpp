@@ -109,7 +109,7 @@ ge::graphStatus InferDataType4NsaSelectedAttentionGrad(gert::InferDataTypeContex
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP(NsaSelectedAttentionGrad)
+IMPL_OP_INFERSHAPE(NsaSelectedAttentionGrad)
     .InferShape(InferShape4NsaSelectedAttentionGrad)
     .InferDataType(InferDataType4NsaSelectedAttentionGrad);
 } // namespace nsa

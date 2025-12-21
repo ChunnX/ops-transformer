@@ -964,6 +964,6 @@ protected:
 };
 
 // NOTE manually initialize tiling data in hostapi scenario in highest priority template
-REGISTER_TILING_TEMPLATE("NsaCompressAttention", NsaCompressAttentionVarLenScoreTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(NsaCompressAttention, NsaCompressAttentionVarLenScoreTiling, 0);
 } // namespace NsaCompressAttention
 } // namespace optiling

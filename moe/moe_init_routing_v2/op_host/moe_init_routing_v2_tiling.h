@@ -128,6 +128,13 @@ protected:
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
     void Tiling4VBSCompute();
+    void ShowMoeInitRoutingTilingData();
+    void ShowMoeV2VBSComputeTilingData();
+    void ShowVMSMiddleComputeTilingData();
+    void ShowSortOutComputeTilingData();
+    void ShowSrcToDstComputeTilingData();
+    void ShowSrcToDstComputeCapacityTilingData();
+    void ShowGatherOutComputeTilingData();
     void ShowTilingData();
     void Tiling4VBSMultiCoreCompute(MoeV2VBSComputeTilingData *tilingData);
     void Tiling4VBSOneCoreCompute(MoeV2VBSComputeTilingData *tilingData);

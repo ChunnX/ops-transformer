@@ -62,7 +62,7 @@ TEST_F(MoeTokenPermuteGradTiling, test_tiling_fp16) {
                                               {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                                             },
                                             &compileInfo);
-  uint64_t expectTilingKey = 0;
+  uint64_t expectTilingKey = 2;
   string expectTilingData = "5120 8 49152 5120 1 0 96 0 96 1 0 4 ";
   std::vector<size_t> expectWorkspaces = {16*1024*1024};
   ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
@@ -83,7 +83,7 @@ TEST_F(MoeTokenPermuteGradTiling, test_tiling_fp32) {
                                               {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                                             },
                                             &compileInfo);
-  uint64_t expectTilingKey = 0;
+  uint64_t expectTilingKey = 4;
   string expectTilingData = "5120 8 49152 5120 1 0 96 0 96 1 0 4 ";
   std::vector<size_t> expectWorkspaces = {16*1024*1024};
   ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);

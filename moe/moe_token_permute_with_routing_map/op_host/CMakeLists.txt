@@ -8,6 +8,7 @@
 # ======================================================================================================================
 
 if (BUILD_OPEN_PROJECT)
+    set(moe_token_permute_with_routing_map_depends moe/3rd/moe_gather_v2 CACHE INTERNAL "Dependencies for moe_token_permute_with_routing_map")
     target_sources(op_host_aclnnExc PRIVATE
        moe_token_permute_with_routing_map_def.cpp
     )

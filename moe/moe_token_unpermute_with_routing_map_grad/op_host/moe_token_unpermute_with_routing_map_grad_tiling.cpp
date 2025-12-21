@@ -240,6 +240,42 @@ static ge::graphStatus TilingForProbNotNonePadTrue(
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus SetTilingForProbNotNonePadFalse(int64_t rowIdMapEachCore, int64_t topK,
+ int64_t numExpert, MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling, const gert::TilingContext* context) {
+    int64_t hiddenSize = tiling.get_hiddenSize();
+    int64_t inputTypeLength = GetLengthByType(context->GetInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType());
+    if (inputTypeLength == 0){
+        return ge::GRAPH_FAILED;
+    }
+    int64_t inputBlockAlignEleNum = BLOCK_SIZE_32 / inputTypeLength;
+    int64_t hiddenSizeAlign = AlignUp<int64_t>(hiddenSize, inputBlockAlignEleNum);
+    int64_t indicesReserveNumMax = rowIdMapEachCore;
+    int64_t indicesReserveNum = topK <= INDICES_RESERVE_MAX_NUM ?
+                                    std::min(indicesReserveNumMax, AlignDown<int64_t>(INDICES_RESERVE_MAX_NUM, topK)) :
+                                    topK;
+    int64_t indicesReserveNumAlign = AlignUp<int64_t>(indicesReserveNum, inputBlockAlignEleNum);
+    int64_t numExpertAlign = AlignUp<int64_t>(numExpert, BLOCK_SIZE_32);
+    int64_t hiddenSizeTmpMax =
+        (tiling.get_totalUbSize() - numExpertAlign - numExpertAlign * inputTypeLength -
+         inputTypeLength * indicesReserveNumAlign - indicesReserveNumAlign * sizeof(float) * INDICES_FP32_BUFFER_NUM) /
+        (H_BUFFER_NUM_PAD_FALSE * BUFFER_NUM * inputTypeLength + H_FP32_BUFFER_NUM_PAD_FALSE * sizeof(float));
+    OP_CHECK_IF(
+        hiddenSizeTmpMax < MIN_SPILT_H_SIZE,
+        OP_LOGE(context->GetNodeName(), "The input shape of routingMap is too large."),
+        return ge::GRAPH_FAILED);
+    hiddenSizeAlign = hiddenSizeTmpMax < hiddenSizeAlign ? AlignDown<int64_t>(hiddenSizeTmpMax, inputBlockAlignEleNum) :
+                                                           hiddenSizeAlign;
+    int64_t hiddenSizeLoopTimes = CeilDiv(hiddenSize, hiddenSizeAlign);
+    int64_t hiddenSizeTail = hiddenSize - (hiddenSizeLoopTimes - 1) * hiddenSizeAlign;
+    tiling.set_hiddenSizeAlign(hiddenSizeAlign);
+    tiling.set_hiddenSizeLoopTimes(hiddenSizeLoopTimes);
+    tiling.set_hiddenSizeTail(hiddenSizeTail);
+    tiling.set_indicesReserveNum(indicesReserveNum);
+    tiling.set_indicesReserveNumAlign(indicesReserveNumAlign);
+    tiling.set_numExpertAlign(numExpertAlign);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus TilingForProbNotNonePadFalse(
     const gert::TilingContext* context, MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling)
 {
@@ -276,38 +312,7 @@ static ge::graphStatus TilingForProbNotNonePadFalse(
     tiling.set_tokenNumTailCore(tokenNumTailCore);
     tiling.set_rowIdMapEachCore(rowIdMapEachCore);
     tiling.set_rowIdMapTailCore(rowIdMapTailCore);
-    int64_t hiddenSize = tiling.get_hiddenSize();
-    int64_t inputTypeLength = GetLengthByType(context->GetInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType());
-    if (inputTypeLength == 0){
-        return ge::GRAPH_FAILED;
-    }
-    int64_t inputBlockAlignEleNum = BLOCK_SIZE_32 / inputTypeLength;
-    int64_t hiddenSizeAlign = AlignUp<int64_t>(hiddenSize, inputBlockAlignEleNum);
-    int64_t indicesReserveNumMax = rowIdMapEachCore;
-    int64_t indicesReserveNum = topK <= INDICES_RESERVE_MAX_NUM ?
-                                    std::min(indicesReserveNumMax, AlignDown<int64_t>(INDICES_RESERVE_MAX_NUM, topK)) :
-                                    topK;
-    int64_t indicesReserveNumAlign = AlignUp<int64_t>(indicesReserveNum, inputBlockAlignEleNum);
-    int64_t numExpertAlign = AlignUp<int64_t>(numExpert, BLOCK_SIZE_32);
-    int64_t hiddenSizeTmpMax =
-        (tiling.get_totalUbSize() - numExpertAlign - numExpertAlign * inputTypeLength -
-         inputTypeLength * indicesReserveNumAlign - indicesReserveNumAlign * sizeof(float) * INDICES_FP32_BUFFER_NUM) /
-        (H_BUFFER_NUM_PAD_FALSE * BUFFER_NUM * inputTypeLength + H_FP32_BUFFER_NUM_PAD_FALSE * sizeof(float));
-    OP_CHECK_IF(
-        hiddenSizeTmpMax < MIN_SPILT_H_SIZE,
-        OP_LOGE(context->GetNodeName(), "The input shape of routingMap is too large."),
-        return ge::GRAPH_FAILED);
-    hiddenSizeAlign = hiddenSizeTmpMax < hiddenSizeAlign ? AlignDown<int64_t>(hiddenSizeTmpMax, inputBlockAlignEleNum) :
-                                                           hiddenSizeAlign;
-    int64_t hiddenSizeLoopTimes = CeilDiv(hiddenSize, hiddenSizeAlign);
-    int64_t hiddenSizeTail = hiddenSize - (hiddenSizeLoopTimes - 1) * hiddenSizeAlign;
-    tiling.set_hiddenSizeAlign(hiddenSizeAlign);
-    tiling.set_hiddenSizeLoopTimes(hiddenSizeLoopTimes);
-    tiling.set_hiddenSizeTail(hiddenSizeTail);
-    tiling.set_indicesReserveNum(indicesReserveNum);
-    tiling.set_indicesReserveNumAlign(indicesReserveNumAlign);
-    tiling.set_numExpertAlign(numExpertAlign);
-    return ge::GRAPH_SUCCESS;
+    return SetTilingForProbNotNonePadFalse(rowIdMapEachCore, topK, numExpert, tiling, context);
 }
 
 static ge::graphStatus PreInitForTiling(
@@ -402,6 +407,32 @@ static ge::graphStatus CheckInputForProbIsNotNone(
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus SetInfoForTiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingContext* context, MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling
+, bool paddedMode, uint32_t sysWorkspaceSize) {
+    OP_LOGD(
+        context->GetNodeName(),
+        "MoeTokenUnpermuteWithRoutingMapGradTiling MoeTokenUnpermuteWithRoutingMapGradCoreSplitInfo finished");
+    MoeTokenUnpermuteWithRoutingMapGradPrintParam(context, tiling);
+
+    auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
+    uint32_t paddedModeKey = paddedMode ? 1 : 0;
+    uint32_t probKey = (probTensor == nullptr) ? 0 : 1;
+    uint32_t tilingKey = paddedModeKey * 10 + probKey;
+    // 00: padded_mode = False, 不存在prob  01: padded_mode = False, 存在prob
+    // 10: padded_mode = True, 不存在prob   11: padded_mode = True, 存在prob
+    context->SetTilingKey(tilingKey);
+    context->SetScheduleMode(1);
+    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithRoutingMapGradTiling] tilingKey: %d", tilingKey);
+
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    currentWorkspace[0] = sysWorkspaceSize;
+    OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithRoutingMapGradTiling tiling end");
+
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus Tiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingContext* context)
 {
     OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithRoutingMapGradTiling tiling start");
@@ -441,27 +472,9 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingCo
                 return ge::GRAPH_FAILED);
         }
     }
-    OP_LOGD(
-        context->GetNodeName(),
-        "MoeTokenUnpermuteWithRoutingMapGradTiling MoeTokenUnpermuteWithRoutingMapGradCoreSplitInfo finished");
-    MoeTokenUnpermuteWithRoutingMapGradPrintParam(context, tiling);
-
-    uint32_t paddedModeKey = paddedMode ? 1 : 0;
-    uint32_t probKey = (probTensor == nullptr) ? 0 : 1;
-    uint32_t tilingKey = paddedModeKey * 10 + probKey;
-    // 00: padded_mode = False, 不存在prob  01: padded_mode = False, 存在prob
-    // 10: padded_mode = True, 不存在prob   11: padded_mode = True, 存在prob
-    context->SetTilingKey(tilingKey);
-    context->SetScheduleMode(1);
-    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithRoutingMapGradTiling] tilingKey: %d", tilingKey);
-
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    currentWorkspace[0] = sysWorkspaceSize;
-    OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithRoutingMapGradTiling tiling end");
-    return ge::GRAPH_SUCCESS;
+    return SetInfoForTiling4MoeTokenUnpermuteWithRoutingMapGrad(context, tiling, paddedMode, sysWorkspaceSize);
 }
 
 static ge::graphStatus TilingPrepare4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingParseContext* context)

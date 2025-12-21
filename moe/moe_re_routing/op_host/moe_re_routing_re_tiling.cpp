@@ -125,6 +125,6 @@ ge::graphStatus MoeReRoutingReTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("MoeReRouting", MoeReRoutingReTiling, 10000);
+REGISTER_OPS_TILING_TEMPLATE(MoeReRouting, MoeReRoutingReTiling, 10000);
 
 }  // namespace optiling

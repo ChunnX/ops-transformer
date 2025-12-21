@@ -178,7 +178,7 @@ ge::graphStatus NsaCompressGradTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("NsaCompressGrad", NsaCompressGradTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(NsaCompressGrad, NsaCompressGradTiling, 0);
 
 const gert::Shape NsaCompressGradTiling::GetShapeOfInput(const size_t index)
 {

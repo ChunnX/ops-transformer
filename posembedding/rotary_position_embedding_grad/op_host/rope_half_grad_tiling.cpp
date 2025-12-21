@@ -54,6 +54,7 @@ constexpr uint64_t NEED_BACKWARD_KEY_TRUE = 0;
 constexpr uint64_t NEED_BACKWARD_KEY_FALSE = 1000;
 
 optiling::RotaryPositionEmbeddingGradTilingData tiling;
+bool isTndLayout = false;
 
 int64_t GetCeilInt(int64_t value1, int64_t value2)
 {
@@ -151,8 +152,18 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
     const auto sinShape = sinStorage->GetStorageShape();
     const uint64_t xDimNum = xShape.GetDimNum();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    if (xDimNum != DIM_FOUR || cosShape.GetDimNum() != DIM_FOUR) {
-        OP_LOGE(context->GetNodeName(), "only support 4-d input.");
+
+    uint64_t inputDimNum = DIM_FOUR;
+
+    if (xDimNum == DIM_THREE) {
+        // TND
+        OP_LOGD(context->GetNodeName(), "Enter TND layout.");
+        inputDimNum = DIM_THREE;
+        isTndLayout = true;
+    }
+
+    if (xDimNum != inputDimNum || cosShape.GetDimNum() != inputDimNum) {
+        OP_LOGE(context->GetNodeName(), "only support 4-d or 3-d input.");
         return ge::GRAPH_FAILED;
     }
     if (cosShape != sinShape) {
@@ -170,6 +181,15 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
     if (xShape.GetDim(xDimNum - 1) % CHUNK_SIZE != 0) {
         OP_LOGE(context->GetNodeName(), "dimension D is not a multiple of 2, do not support.");
         return ge::GRAPH_FAILED;
+    }
+    auto xOptionalInput = context->GetOptionalInputDesc(INDEX_X);
+    auto xOptionalShape = context->GetOptionalInputShape(INDEX_X);
+    if (xOptionalInput != nullptr && xOptionalShape != nullptr) {
+        auto xOptionalStorageShape = xOptionalShape->GetStorageShape();
+        OP_CHECK_IF(
+            xOptionalStorageShape != xShape,
+            OP_LOGE(context->GetNodeName(), "The shape of xOptional should be same with dy."),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -293,9 +313,18 @@ static bool RopeHalfGradInitShapeInfo(const gert::TilingContext* context)
 
     vector<int64_t> xShapePerDim(DIM_FOUR, 0);
     vector<int64_t> cosShapePerDim(DIM_FOUR, 0);
-    for (int64_t i = DIM_FOUR - 1; i >= 0; i--) {
-        xShapePerDim[i] = xShape.GetDim(i);
-        cosShapePerDim[i] = cosShape.GetDim(i);
+    if (isTndLayout) {
+        for (int64_t i = DIM_FOUR - 1; i > 0; i--) {
+            xShapePerDim[i] = xShape.GetDim(i - 1);
+            cosShapePerDim[i] = cosShape.GetDim(i - 1);
+        }
+        xShapePerDim[0] = 1;
+        cosShapePerDim[0] = 1;
+    } else {
+        for (int64_t i = DIM_FOUR - 1; i >= 0; i--) {
+            xShapePerDim[i] = xShape.GetDim(i);
+            cosShapePerDim[i] = cosShape.GetDim(i);
+        }
     }
 
     OP_CHECK_IF(
@@ -313,7 +342,7 @@ static bool RopeHalfGradSetTiling(const gert::TilingContext* context, int64_t av
         xStorage == nullptr, OP_LOGE(context->GetNodeName(), "xStorage is null."),
         return false);
     const auto xShape = xStorage->GetStorageShape();
-    uint64_t dimD = xShape.GetDim(DIM_THREE);
+    uint64_t dimD = isTndLayout ? xShape.GetDim(DIM_TWO) : xShape.GetDim(DIM_THREE);
     uint64_t halfDimDAlignNum = tiling.ropeHalfGradParams.get_halfDimDAlignNum();
     uint64_t reserveAlignNum = dimD;
     uint64_t alignUbSize = availableUbSize;

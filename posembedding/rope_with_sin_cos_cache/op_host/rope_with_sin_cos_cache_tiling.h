@@ -42,6 +42,13 @@ TILING_DATA_FIELD_DEF(uint64_t, loop_time_each_front_core);
 TILING_DATA_FIELD_DEF(uint64_t, loop_time_each_tail_core);
 TILING_DATA_FIELD_DEF(uint64_t, num_tokens_front_core_last_loop);
 TILING_DATA_FIELD_DEF(uint64_t, num_tokens_tail_core_last_loop);
+TILING_DATA_FIELD_DEF(uint64_t, loop_for_one_token);
+TILING_DATA_FIELD_DEF(uint64_t, loop_along_qheads);
+TILING_DATA_FIELD_DEF(uint64_t, loop_along_kheads);
+TILING_DATA_FIELD_DEF(uint64_t, num_qheads_each_loop);
+TILING_DATA_FIELD_DEF(uint64_t, num_qheads_last_loop);
+TILING_DATA_FIELD_DEF(uint64_t, num_kheads_each_loop);
+TILING_DATA_FIELD_DEF(uint64_t, num_kheads_last_loop);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(RopeWithSinCosCache, RopeWithSinCosCacheTilingData)

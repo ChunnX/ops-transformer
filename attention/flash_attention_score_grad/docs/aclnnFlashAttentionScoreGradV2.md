@@ -4,8 +4,15 @@
 ## 产品支持情况
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-  |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -185,7 +192,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>可选输入</td>
+        <td>输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -465,6 +472,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
 
 ## 约束说明
 
+- 确定性计算：
+  - aclnnFlashAttentionScoreGradV2默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - 输入query、key、value、dy的B：batchsize必须相等。
 - 输入query、key、value的D：Head-Dim必须满足(qD == kD && kD >= vD)。

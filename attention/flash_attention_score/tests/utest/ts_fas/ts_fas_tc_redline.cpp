@@ -38,7 +38,7 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Redline_FullCore_SpecCase_001)
     FasCase cs("Fas_Redline_FullCore_SpecCase_001", true,           /* CaseName, Enable */
                "",                                                  /* DebugInfo */
                OpInfoWithSocversion(ControlInfo(true, false),                     /* RunTiling, RunKernel */
-                      ExpectInfoWithSocversion(true,                              /* ExpectSuccess */
+                      ExpectInfoWithSocversion(false,                              /* ExpectSuccess */
                                  5440824368UL,            /* ExpectTilingKey */
                                  ExpectInfoWithSocversion::kFullTilingBlockDim)), /* ExpectTilingBlockDim */
                FaParam(3, 40, 1, 2048, 2048, 128,                   /* B, N2, G, S1, S2, D */
@@ -52,8 +52,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Redline_FullCore_SpecCase_001)
                        ge::DataType::DT_BOOL,                       /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                       /* PrefixShapeType */
                        {},                                          /* PrefixTensorData */
-                       {2048, 2048, 2048},                          /* ActualSeqQLenList */
-                       {2048, 2048, 2048})                          /* ActualSeqKVLenList */
+                       {2048, 2048, 2049},                          /* ActualSeqQLenList */
+                       {2048, 2048, 2049})                          /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));
@@ -123,7 +123,7 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Redline_Pse_003)
     FasCase cs("Fas_Redline_Pse_003", true,                         /* CaseName, Enable */
                "",                                                  /* DebugInfo */
                OpInfoWithSocversion(ControlInfo(true, false),                     /* RunTiling, RunKernel */
-                      ExpectInfoWithSocversion(true,                              /* ExpectSuccess */
+                      ExpectInfoWithSocversion(false,                              /* ExpectSuccess */
                                  14030758960UL,            /* ExpectTilingKey */
                                  ExpectInfoWithSocversion::kFullTilingBlockDim)), /* ExpectTilingBlockDim */
                FaParam(3, 40, 1, 2048, 2048, 128,                   /* B, N2, G, S1, S2, D */
@@ -137,8 +137,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Redline_Pse_003)
                        ge::DataType::DT_BOOL,                       /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                       /* PrefixShapeType */
                        {},                                          /* PrefixTensorData */
-                       {2048, 2048, 2048},                          /* ActualSeqQLenList */
-                       {2048, 2048, 2048})                          /* ActualSeqKVLenList */
+                       {2048, 2048, 2049},                          /* ActualSeqQLenList */
+                       {2048, 2048, 2049})                          /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));

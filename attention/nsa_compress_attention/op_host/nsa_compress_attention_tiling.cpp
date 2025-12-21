@@ -97,7 +97,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForNsaCompressAttention(gert::Tili
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(NsaCompressAttention)
+IMPL_OP_OPTILING(NsaCompressAttention)
     .Tiling(TilingNsaCompressAttention)
     .TilingInputsDataDependency({4, 5, 6})
     .TilingParse<NsaCompressAttentionCompileInfo>(TilingPrepareForNsaCompressAttention);  // 向框架注册入口函数

@@ -4,8 +4,15 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
 
 
 ## 功能说明
@@ -386,6 +393,8 @@ aclnnStatus aclnnFlashAttentionScoreV2(
 
 ## 约束说明
 
+- 确定性计算：
+  - aclnnFlashAttentionScoreV2默认确定性实现。
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - 输入query、key、value的约束：
   - B：batchsize必须相等。

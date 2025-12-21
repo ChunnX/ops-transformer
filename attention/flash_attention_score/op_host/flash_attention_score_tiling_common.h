@@ -30,6 +30,4 @@ struct FlashAttentionScoreCompileInfo {
     platform_ascendc::SocVersion socVersion;
 };
 
-uint32_t CalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum);
-
 } // namespace optiling

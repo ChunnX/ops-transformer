@@ -224,5 +224,5 @@ uint32_t MoeGatingTopKSoftmaxV2PerfRegbaseTiling::calcMaxRowInUb(
     return curRowInUb;
 }
 
-REGISTER_TILING_TEMPLATE("MoeGatingTopKSoftmaxV2", MoeGatingTopKSoftmaxV2PerfRegbaseTiling, 999);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopKSoftmaxV2, MoeGatingTopKSoftmaxV2PerfRegbaseTiling, 999);
 } // namespace optiling

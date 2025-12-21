@@ -33,6 +33,7 @@ public:
 
 private:
     __aicore__ inline void ParseTilingData(const MoeFinalizeRoutingTilingData *tilingData);
+    __aicore__ inline void SetPadMode();
     __aicore__ inline void CopyIn(int64_t nLoopIdx, int64_t curRepeatTimes);
     __aicore__ inline void Compute(int64_t nLoopIdx, int64_t curRepeatTimes);
     __aicore__ inline void CopyOut(int64_t nLoopIdx, int64_t curRepeatTimes);
@@ -143,20 +144,8 @@ __aicore__ inline void MoeFinalizeRoutingFpDb<T>::ParseTilingData(const MoeFinal
 }
 
 template <typename T>
-__aicore__ inline void MoeFinalizeRoutingFpDb<T>::Init(GM_ADDR expandedPermutedRows, GM_ADDR skip1, GM_ADDR skip2,
-                                                       GM_ADDR bias, GM_ADDR scales, GM_ADDR expandedSrcToDstRow,
-                                                       GM_ADDR expertForSourceRow, GM_ADDR out, GM_ADDR workspace,
-                                                       const MoeFinalizeRoutingTilingData *tilingData)
+__aicore__ inline void MoeFinalizeRoutingFpDb<T>::SetPadMode()
 {
-    // init tiling data
-    ParseTilingData(tilingData);
-
-    if (GetBlockIdx() + 1 == usedCoreNum_) {
-        curCoreHandleNumPerLoop_ = tailCoreHandleNumPerLoop_;
-    } else {
-        curCoreHandleNumPerLoop_ = normalCoreHandleNumPerLoop_;
-    }
-
     if (H_ * sizeof(T) % ONE_BLK_SIZE) {
         isPadH_ = true;
         rightPaddingH_ = PadProcessT(H_);
@@ -171,7 +160,23 @@ __aicore__ inline void MoeFinalizeRoutingFpDb<T>::Init(GM_ADDR expandedPermutedR
         isPadKInt32_ = true;
         rightPaddingKInt32_ = PadProcessInt32(K_);
     }
+}
 
+template <typename T>
+__aicore__ inline void MoeFinalizeRoutingFpDb<T>::Init(GM_ADDR expandedPermutedRows, GM_ADDR skip1, GM_ADDR skip2,
+                                                       GM_ADDR bias, GM_ADDR scales, GM_ADDR expandedSrcToDstRow,
+                                                       GM_ADDR expertForSourceRow, GM_ADDR out, GM_ADDR workspace,
+                                                       const MoeFinalizeRoutingTilingData *tilingData)
+{
+    // init tiling data
+    ParseTilingData(tilingData);
+
+    if (GetBlockIdx() + 1 == usedCoreNum_) {
+        curCoreHandleNumPerLoop_ = tailCoreHandleNumPerLoop_;
+    } else {
+        curCoreHandleNumPerLoop_ = normalCoreHandleNumPerLoop_;
+    }
+    SetPadMode();
     // gmInput分核 && 输入偏移量初始化
     inputSkipIdx_ = GetBlockIdx() * normalCoreHandleNum_ * H_;
     gmSkip1_.SetGlobalBuffer((__gm__ T *)skip1 + inputSkipIdx_, normalCoreHandleNum_ * H_);

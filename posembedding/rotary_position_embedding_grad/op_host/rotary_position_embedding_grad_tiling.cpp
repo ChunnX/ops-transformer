@@ -52,6 +52,14 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED);
     const uint32_t inputMode = *(attrs->GetAttrPointer<char>(MODE_ATTR_IDX));
     OP_LOGI("[RotaryPositionEmbedding]", "[mode]: %d", inputMode);
+
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95 &&
+        (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
+        OP_LOGE(context_->GetNodeName(), "only support mode 0 or 1.");
+        return ge::GRAPH_FAILED;
+    }
     inputMode_ = inputMode;
     return ge::GRAPH_SUCCESS;
 }
@@ -138,8 +146,8 @@ ge::graphStatus TilingPrepareForRotaryPositionEmbeddingGrad(gert::TilingParseCon
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("RotaryPositionEmbeddingGrad", RopeInterLeavedGradTlingClass, 50000);
-REGISTER_TILING_TEMPLATE("RotaryPositionEmbeddingGrad", RopeRotateHalfGradTlingClass, 60000);
+REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbeddingGrad, RopeInterLeavedGradTlingClass, 50000);
+REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbeddingGrad, RopeRotateHalfGradTlingClass, 60000);
 
 IMPL_OP_OPTILING(RotaryPositionEmbeddingGrad)
     .Tiling(Tiling4RotaryPositionEmbeddingGrad)

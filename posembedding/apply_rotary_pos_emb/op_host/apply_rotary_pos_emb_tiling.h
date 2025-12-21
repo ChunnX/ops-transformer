@@ -130,6 +130,7 @@ enum class ApplyRotaryPosEmbLayout : int64_t {
     BSND = 1,
     SBND = 2,
     BNSD = 3,
+    TND = 4,
 };
 
 enum class ApplyRotaryPosEmbRotaryMode : int64_t {

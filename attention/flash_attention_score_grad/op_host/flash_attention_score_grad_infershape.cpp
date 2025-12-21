@@ -25,6 +25,7 @@ static const uint64_t INDEX_OUT_2 = 2;
 static const uint64_t INDEX_OUT_3 = 3;
 static const uint64_t INDEX_OUT_4 = 4;
 static const uint64_t INDEX_OUT_5 = 5;
+static const uint64_t INDEX_OUT_6 = 6;
 static const uint64_t INDEX_OUTDTYPE = 11;
 
 ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *context)
@@ -98,6 +99,9 @@ ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *cont
     gert::Shape *dqRopeShape = context->GetOutputShape(4);
 
     gert::Shape *dkRopeShape = context->GetOutputShape(5);
+
+    gert::Shape *dsinkShape = context->GetOutputShape(6);
+
     const gert::Shape *pseShape = context->GetOptionalInputShape(4);
     if (pseShape != nullptr && pseShape->GetShapeSize() != 0) {
         OP_LOGD(context, "pse_shift is not nullptr");
@@ -116,6 +120,11 @@ ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *cont
     if (keyRopeShape != nullptr && keyRopeShape->GetShapeSize() != 0) {
         OP_LOGD(context, "keyRope is not nullptr");
         *dkRopeShape = *keyRopeShape;
+    }
+    const gert::Shape *sinkShape = context->GetOptionalInputShape(24);
+    if (sinkShape != nullptr && sinkShape->GetShapeSize() != 0) {
+        OP_LOGD(context, "sink is not nullptr");
+        *dsinkShape = *sinkShape;
     }
     return GRAPH_SUCCESS;
 }
@@ -146,6 +155,8 @@ ge::graphStatus InferDataType4FlashAttentionScoreGrad(gert::InferDataTypeContext
             context->SetOutputDataType(INDEX_OUT_4, ge::DT_FLOAT16);
             // dk_rope, outidx:5
             context->SetOutputDataType(INDEX_OUT_5, ge::DT_FLOAT16);
+            // dsink, outidx:6
+            context->SetOutputDataType(INDEX_OUT_6, ge::DT_FLOAT);
         } else if (outDtype == 1) {
             // dq, outidx:0
             context->SetOutputDataType(0, ge::DT_BF16);
@@ -160,6 +171,8 @@ ge::graphStatus InferDataType4FlashAttentionScoreGrad(gert::InferDataTypeContext
             context->SetOutputDataType(INDEX_OUT_4, ge::DT_BF16);
             // dk_rope, outidx:5
             context->SetOutputDataType(INDEX_OUT_5, ge::DT_BF16);
+            // dsink, outidx:6
+            context->SetOutputDataType(INDEX_OUT_6, ge::DT_FLOAT);
         } else {
             OP_LOGE(context, "Context outDtype:%ld is invalid.", outDtype);
             return GRAPH_FAILED;
@@ -180,10 +193,12 @@ ge::graphStatus InferDataType4FlashAttentionScoreGrad(gert::InferDataTypeContext
     context->SetOutputDataType(INDEX_OUT_4, dtype);
     // dk_rope, outidx:5
     context->SetOutputDataType(INDEX_OUT_5, dtype);
+    // dsink, outidx:6
+    context->SetOutputDataType(INDEX_OUT_6, ge::DT_FLOAT);
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP(FlashAttentionScoreGrad)
+IMPL_OP_INFERSHAPE(FlashAttentionScoreGrad)
     .InferShape(InferShape4FlashAttentionScoreGrad)
     .InferDataType(InferDataType4FlashAttentionScoreGrad);
 

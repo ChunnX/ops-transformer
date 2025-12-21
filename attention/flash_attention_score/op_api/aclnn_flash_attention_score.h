@@ -19,7 +19,7 @@ extern "C" {
 
 /**
  * @brief aclnnFlashAttentionScore的第一段接口，根据具体的计算流程，计算workspace大小。
- * @domain aclnn_ops_infer
+ * @domain aclnn_ops_train
  */
 aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *realShiftOptional,
@@ -37,7 +37,7 @@ aclnnStatus aclnnFlashAttentionScore(void *workspace, uint64_t workspaceSize, ac
 
 /**
  * @brief aclnnFlashAttentionVarLenScore的第一段接口，根据具体的计算流程，计算workspace大小。
- * @domain aclnn_ops_infer
+ * @domain aclnn_ops_train
  */
 aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *realShiftOptional,
@@ -57,7 +57,7 @@ aclnnStatus aclnnFlashAttentionVarLenScore(void *workspace, uint64_t workspaceSi
 
 /**
  * @brief aclnnFlashAttentionScoreV2的第一段接口，根据具体的计算流程，计算workspace大小。
- * @domain aclnn_ops_infer
+ * @domain aclnn_ops_train
 */
 aclnnStatus aclnnFlashAttentionScoreV2GetWorkspaceSize(
     const aclTensor *query,
@@ -96,8 +96,50 @@ aclnnStatus aclnnFlashAttentionScoreV2(
     const aclrtStream stream);
 
 /**
+ * @brief aclnnFlashAttentionScoreV3的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @domain aclnn_ops_train
+*/
+aclnnStatus aclnnFlashAttentionScoreV3GetWorkspaceSize(
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *value,
+    const aclTensor *realShiftOptional,
+    const aclTensor *dropMaskOptional,
+    const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional,
+    const aclTensor *sinkOptional,
+    const aclIntArray *prefixOptional,
+    const aclIntArray *qStartIdxOptional,
+    const aclIntArray *kvStartIdxOptional,
+    double scaleValue,
+    double keepProb,
+    int64_t preTokens,
+    int64_t nextTokens,
+    int64_t headNum,
+    char *inputLayout,
+    int64_t innerPrecise,
+    int64_t sparseMode,
+    int64_t pseType,
+    const aclTensor *softmaxMaxOut,
+    const aclTensor *softmaxSumOut,
+    const aclTensor *softmaxOutOut,
+    const aclTensor *attentionOutOut,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
+
+/**
+ * @brief aclnnFlashAttentionScoreV3的第二段接口，用于执行计算。
+*/
+aclnnStatus aclnnFlashAttentionScoreV3(
+    void *workspace,
+    uint64_t workspaceSize,
+    aclOpExecutor *executor,
+    const aclrtStream stream);
+
+
+/**
  * @brief aclnnFlashAttentionVarLenScoreV2的第一段接口，根据具体的计算流程，计算workspace大小。
- * @domain aclnn_ops_infer
+ * @domain aclnn_ops_train
 */
 aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
     const aclTensor *query,
@@ -139,7 +181,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
 
 /**
  * @brief aclnnFlashAttentionVarLenScoreV3的第一段接口，根据具体的计算流程，计算workspace大小。
- * @domain aclnn_ops_infer
+ * @domain aclnn_ops_train
 */
 aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
     const aclTensor *query,
@@ -183,7 +225,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3(
 
 /**
  * @brief aclnnFlashAttentionVarLenScoreV4的第一段接口，根据具体的计算流程，计算workspace大小。
- * @domain aclnn_ops_infer
+ * @domain aclnn_ops_train
  */
 aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *realShiftOptional,
@@ -199,6 +241,52 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
  */
 aclnnStatus aclnnFlashAttentionVarLenScoreV4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            const aclrtStream stream);
+
+/**
+ * @brief aclnnFlashAttentionVarLenScoreV5的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @domain aclnn_ops_train
+ */
+aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
+    const aclTensor *query,
+    const aclTensor *queryRope,
+    const aclTensor *key,
+    const aclTensor *keyRope,
+    const aclTensor *value,
+    const aclTensor *realShiftOptional,
+    const aclTensor *dropMaskOptional,
+    const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional,
+    const aclTensor *sinkOptional,
+    const aclIntArray *prefixOptional,
+    const aclIntArray *actualSeqQLenOptional,
+    const aclIntArray *actualSeqKvLenOptional,
+    const aclIntArray *qStartIdxOptional,
+    const aclIntArray *kvStartIdxOptional,
+    double scaleValue,
+    double keepProb,
+    int64_t preTokens,
+    int64_t nextTokens,
+    int64_t headNum,
+    char *inputLayout,
+    int64_t innerPrecise,
+    int64_t sparseMode,
+    int64_t pseType,
+    char *softmaxOutLayout,
+    const aclTensor *softmaxMaxOut,
+    const aclTensor *softmaxSumOut,
+    const aclTensor *softmaxOutOut,
+    const aclTensor *attentionOutOut,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
+
+/**
+ * @brief aclnnFlashAttentionVarLenScoreV5的第二段接口，用于执行计算。
+ */
+aclnnStatus aclnnFlashAttentionVarLenScoreV5(
+    void *workspace, 
+    uint64_t workspaceSize, 
+    aclOpExecutor *executor,
+    const aclrtStream stream);
 
 #ifdef __cplusplus
 }

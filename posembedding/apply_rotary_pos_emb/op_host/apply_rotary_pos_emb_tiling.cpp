@@ -29,7 +29,8 @@ static const int64_t DIM_1 = 1;
 static const int64_t DIM_2 = 2;
 static const int64_t DIM_3 = 3;
 static const int64_t DIM_4 = 4;
-static const int64_t LASTDIM = 128;
+static const int64_t LASTDIM_64 = 64;
+static const int64_t LASTDIM_128 = 128;
 static const int64_t BLOCK_SIZE = 32;
 static const int64_t REPEAT_FP32 = 64;
 static const int64_t REPEAT_FP16 = 128;
@@ -110,6 +111,7 @@ struct ApplyRotaryPosEmbParams {
     int64_t blockLenq2q1 = 0;
     int64_t mask = 0;
     int64_t tilingKey = 0;
+    platform_ascendc::SocVersion  socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 
 class ApplyRotaryPosEmbTiling {
@@ -134,38 +136,38 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, q);
     gert::Shape qShape = q->GetStorageShape();
     params.qDims = qShape.GetDimNum();
-    OP_CHECK_IF(params.qDims != DIM_4, OP_LOGE(context->GetNodeName(), "q shape dims is not four"),
+    OP_CHECK_IF(params.qDims != DIM_4 && params.qDims != DIM_3, OP_LOGE(context->GetNodeName(), "q shape dims is not 3 or 4"),
                 return ge::GRAPH_FAILED);
-    params.qDim0 = qShape.GetDim(DIM_0);
-    params.qDim1 = qShape.GetDim(DIM_1);
-    params.qcNum = qShape.GetDim(DIM_2);
-    params.qDim3 = qShape.GetDim(DIM_3);
+    params.qDim0 = params.qDims == DIM_4 ? qShape.GetDim(DIM_0) : 1;//BSND格式下代表B维度的大小，TND格式下为1;
+    params.qDim1 = params.qDims == DIM_4 ? qShape.GetDim(DIM_1) : qShape.GetDim(DIM_0);// BSND格式下代表S维度的大小,TND格式下代表T维度的大小;
+    params.qcNum = params.qDims == DIM_4 ? qShape.GetDim(DIM_2) : qShape.GetDim(DIM_1);// N;
+    params.qDim3 = params.qDims == DIM_4 ? qShape.GetDim(DIM_3) : qShape.GetDim(DIM_2);// D;
     auto k = context->GetInputTensor(INPUT1);
     OP_CHECK_NULL_WITH_CONTEXT(context, k);
     gert::Shape kShape = k->GetStorageShape();
     int64_t kDims = kShape.GetDimNum();
     OP_CHECK_IF(kDims != params.qDims, OP_LOGE(context->GetNodeName(), "k shape dims is not same as q dims"),
                 return ge::GRAPH_FAILED);
-    params.kDim0 = kShape.GetDim(DIM_0);
-    params.kDim1 = kShape.GetDim(DIM_1);
-    params.kcNum = kShape.GetDim(DIM_2);
-    params.kDim3 = kShape.GetDim(DIM_3);
+    params.kDim0 = kDims == DIM_4 ? kShape.GetDim(DIM_0) : 1;
+    params.kDim1 = kDims == DIM_4 ? kShape.GetDim(DIM_1) : kShape.GetDim(DIM_0);
+    params.kcNum = kDims == DIM_4 ? kShape.GetDim(DIM_2) : kShape.GetDim(DIM_1);
+    params.kDim3 = kDims == DIM_4 ? kShape.GetDim(DIM_3) : kShape.GetDim(DIM_2);
     auto cos = context->GetInputTensor(INPUT2);
     OP_CHECK_NULL_WITH_CONTEXT(context, cos);
     gert::Shape cosShape = cos->GetStorageShape();
     int64_t cosDims = cosShape.GetDimNum();
-    OP_CHECK_IF(cosDims != DIM_4, OP_LOGE(context->GetNodeName(), "cos shape dims is not four"),
+    OP_CHECK_IF(cosDims != params.qDims, OP_LOGE(context->GetNodeName(), "cos shape dims is not same as q dims"),
                 return ge::GRAPH_FAILED);
-    params.cosDim0 = cosShape.GetDim(DIM_0);
-    params.cosDim1 = cosShape.GetDim(DIM_1);
-    params.coscNum = cosShape.GetDim(DIM_2);
-    params.cosDim3 = cosShape.GetDim(DIM_3);
+    params.cosDim0 = cosDims == DIM_4 ? cosShape.GetDim(DIM_0) : 1;
+    params.cosDim1 = cosDims == DIM_4 ? cosShape.GetDim(DIM_1) : cosShape.GetDim(DIM_0);
+    params.coscNum = cosDims == DIM_4 ? cosShape.GetDim(DIM_2) : cosShape.GetDim(DIM_1);
+    params.cosDim3 = cosDims == DIM_4 ? cosShape.GetDim(DIM_3) : cosShape.GetDim(DIM_2);
     auto sin = context->GetInputTensor(INPUT3);
     OP_CHECK_NULL_WITH_CONTEXT(context, sin);
     gert::Shape sinShape = sin->GetStorageShape();
     int64_t sinDims = sinShape.GetDimNum();
-    OP_CHECK_IF((sinDims != DIM_4) || (cosShape != sinShape),
-                OP_LOGE(context->GetNodeName(), "cos and sin shape not equal or rank not four"),
+    OP_CHECK_IF((sinDims != DIM_4 && sinDims != DIM_3) || (cosShape != sinShape),
+                OP_LOGE(context->GetNodeName(), "cos and sin shape not equal or rank not 3 or 4"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(qShape.GetShapeSize() == 0 || kShape.GetShapeSize() == 0 || cosShape.GetShapeSize() == 0 ||
                     sinShape.GetShapeSize() == 0,
@@ -181,20 +183,24 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *layoutAttr = attrs->GetAttrPointer<int64_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutAttr);
-    int64_t layout = *layoutAttr;
-    OP_CHECK_IF(layout != 1, OP_LOGE(context->GetNodeName(), "layout is not one"), return ge::GRAPH_FAILED);
+    ApplyRotaryPosEmbLayout layout = static_cast<ApplyRotaryPosEmbLayout>(*layoutAttr);
+    OP_CHECK_IF(layout != ApplyRotaryPosEmbLayout::BSND && layout != ApplyRotaryPosEmbLayout::TND, OP_LOGE(context->GetNodeName(), "layout is not 1 or 4"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(layout == ApplyRotaryPosEmbLayout::BSND && params.qDims != DIM_4, OP_LOGE(context->GetNodeName(), "layout is BSND, but shape dims is not 4"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(layout == ApplyRotaryPosEmbLayout::TND && params.qDims != DIM_3, OP_LOGE(context->GetNodeName(), "layout is TND, but shape dim is not 3"), return ge::GRAPH_FAILED);
     OP_CHECK_IF((params.kDim0 != params.qDim0) || (params.cosDim0 != params.kDim0),
                 OP_LOGE(context->GetNodeName(), "all input dim0 must equal"), return ge::GRAPH_FAILED);
     OP_CHECK_IF((params.kDim1 != params.qDim1) || (params.cosDim1 != params.kDim1),
                 OP_LOGE(context->GetNodeName(), "all input dim1 must equal"), return ge::GRAPH_FAILED);
     OP_CHECK_IF((params.kDim3 != params.qDim3) || (params.cosDim3 != params.kDim3),
                 OP_LOGE(context->GetNodeName(), "all input dim3 must equal"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(params.qDim3 != LASTDIM, OP_LOGE(context->GetNodeName(), "last dims is not 128"),
+    OP_CHECK_IF(params.qDim3 != LASTDIM_128 && params.qDim3 != LASTDIM_64, OP_LOGE(context->GetNodeName(), "last dim is not 128 or 64"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(params.coscNum != 1, OP_LOGE(context->GetNodeName(), "cos dim2 is not one"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(context->GetInputDesc(INPUT0) == nullptr, OP_LOGE(context->GetNodeName(), "input 0 get desc failed"),
                 return ge::GRAPH_FAILED);
     ge::DataType qDtype = context->GetInputDesc(INPUT0)->GetDataType();
+    OP_CHECK_IF(qDtype != ge::DT_BF16 && qDtype != ge::DT_FLOAT && qDtype != ge::DT_FLOAT16, OP_LOGE(context->GetNodeName(), "input 0 dtype not right"),
+                return ge::GRAPH_FAILED);
     for (int32_t i = 1; i < DIM_4; i++) {
         auto desc = context->GetInputDesc(i);
         OP_CHECK_IF(desc == nullptr, OP_LOGE(context->GetNodeName(), "get input[%d] Desc is null !", i),
@@ -276,7 +282,8 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     OP_LOGD(context->GetNodeName(), "isCast is %d, dtypeSize is %d, isFp32 is %d", params.isCast, params.dtypeSize,
             params.isFp32);
 
-    // a, b, c, d: dim0(B), dim1(S), dim2(N), dim3(D)
+    // 当格式为BSND时，a, b, c, d 分别表示为: dim0(B), dim1(S), dim2(N), dim3(D)
+    // 当格式为TND时，a, b, c, d 分别表示为: dim0(1), dim1(T), dim2(N), dim3(D)，为了计算逻辑统一，dim0在前面设置为1
     int64_t ab = params.kDim0 * params.kDim1;                                   // 总batch = BS
     params.preCoreBatch = (ab + params.totalCoreNum - 1) / params.totalCoreNum; // front核每核处理batch数据量
     params.useCoreNum = (ab + params.preCoreBatch - 1) / params.preCoreBatch;   // 使用的核数
@@ -290,6 +297,10 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.kcdNum = params.kcNum * params.kDim3;       // K_n * D
     params.coscdNum = params.coscNum * params.cosDim3; // coscNum = 1 --> 1 * D
     params.qkcNum = params.qcNum + params.kcNum;       // (Q_n + K_n), Q、K在N轴上进行拼接
+    // kernel侧Mul()中repeatTimes参数为uint8_t类型，避免使用qkcNum传参计算时超出范围
+    OP_CHECK_IF(params.qkcNum > UINT8_MAX, OP_LOGE(context->GetNodeName(),
+        "qkcNum exceeds the maximum range of uint8_t"), return ge::GRAPH_FAILED);
+                
     params.mulNum = params.qkcNum * params.halfNum;    // (Q_n + K_n) * D / 2
     params.qcdHalfNum = params.qcNum * params.halfNum; // Q_n * D / 2
     // 单核处理的数据偏移 batch * ND
@@ -297,11 +308,9 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.kCoreOffset = params.preCoreBatch * params.kcdNum;
     params.cosCoreOffset = params.preCoreBatch * params.coscdNum;
     // ub size
-    params.qPart1Ub =
-        params.qkcNum * params.lastDim * params.castDtypeSize; // 搬运 (Q_n + K_n) * D * 4(fp32)/2(fp16/bf16)
+    params.qPart1Ub = params.qkcNum * params.lastDim * params.castDtypeSize; // 搬运 (Q_n + K_n) * D * 4(fp32)/2(fp16/bf16)
     params.cosPart1Ub = params.coscNum * params.lastDim * params.dtypeSize; // 搬运 1 * D * 4(fp32)/2(fp16/bf16)
-    params.q2q1Part1Ub =
-        params.qkcNum * params.lastDim * params.castDtypeSize; // 计算 (Q_n + K_n) * D * 4(bf16/fp32)/2(fp16)
+    params.q2q1Part1Ub = params.qkcNum * params.lastDim * params.castDtypeSize; // 计算 (Q_n + K_n) * D * 4(bf16/fp32)/2(fp16)
     params.sin1UbSize = params.coscNum * params.lastDim * params.castDtypeSize; // 计算 1 * D * 4， 为BF16 cast使用
     int64_t speUb = params.qPart1Ub * 2 + params.cosPart1Ub * 2 + params.q2q1Part1Ub * 2 +
                     static_cast<int64_t>(params.isCast) * (params.sin1UbSize * 2);
@@ -313,7 +322,10 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
         params.mulNum = params.qkcNum * params.lastDim;
         params.blockLenQ = params.halfNum / params.oneBlockFp32; // D/2 占用block数，搬运
         params.dstRepSBr = params.lastDim / params.oneBlockFp32; // D 占用block数，计算
-        params.qcdHalfNum = params.lastDim / params.mask;        // D 计算时的repeat次数（按列计算）
+        if (params.lastDim <= params.mask) {
+            params.mask = params.lastDim;  // lastDim值放开至64的情况下，数据类型为F16时，lastDim值可能小于mask值，则重新设置mask值为lastDim
+        }
+        params.qcdHalfNum = params.lastDim / params.mask; // D 计算时的repeat次数（按列计算），至少会执行一次，不能为0
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(ComputeAB(context, params) != ge::GRAPH_SUCCESS, OP_LOGE(context->GetNodeName(), "ComputeAB failed"),
@@ -409,6 +421,37 @@ public:
 protected:
     ge::graphStatus GetPlatformInfo() override
     {
+        // get and check platform information
+        if (aropeCompileInfo == nullptr) {
+            OP_LOGD(context_->GetNodeName(), "get platform information from ascendc interface.");
+            auto platformInfo = context_->GetPlatformInfo();
+            OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
+            auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+            params.totalCoreNum = ascendcPlatform.GetCoreNumAiv();
+            params.socVersion = ascendcPlatform.GetSocVersion();
+
+            uint64_t platformUbSize = 0;
+            platformInfo->GetLocalMemSize(fe::LocalMemType::UB, platformUbSize);
+            params.totalUbSize = static_cast<int64_t>(platformUbSize);
+
+            int64_t sysWorkspaceSize = static_cast<int64_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
+            params.sysWorkspaceSize = sysWorkspaceSize > WORK_SPACE_SIZE ? sysWorkspaceSize : WORK_SPACE_SIZE;
+
+            aropeCompileInfo = std::make_unique<ApplyRotaryPosEmbCompileInfo>(
+            ApplyRotaryPosEmbCompileInfo{params.totalCoreNum, platformUbSize, params.sysWorkspaceSize, params.socVersion});
+        } else {
+            OP_LOGD(context_->GetNodeName(), "get platform information from compile info.");
+            params.totalCoreNum = aropeCompileInfo->blockDim;
+            params.totalUbSize = aropeCompileInfo->ubSize;
+            params.sysWorkspaceSize = aropeCompileInfo->sysWorkspaceSize;
+            params.socVersion = aropeCompileInfo->socVersion;
+        }
+        OP_LOGD(context_->GetNodeName(), "totalCoreNum is %ld", params.totalCoreNum);
+        OP_CHECK_IF(params.totalCoreNum <= 0, OP_LOGE(context_->GetNodeName(), "PrepareTiling fail to get core num."),
+                    return ge::GRAPH_FAILED);
+        OP_LOGD(context_->GetNodeName(), "totalUbSize is %ld", params.totalUbSize);
+        OP_CHECK_IF(params.totalUbSize <= 0, OP_LOGE(context_->GetNodeName(), "PrepareTiling fail to get ub size."),
+                    return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -432,38 +475,6 @@ protected:
     {
         ApplyRotaryPosEmbTiling tilingObject(context_);
         ApplyRotaryPosEmbTilingData tilingData;
-        ApplyRotaryPosEmbParams params;
-
-        // get and check platform information
-        if (aropeCompileInfo == nullptr) {
-            OP_LOGD(context_->GetNodeName(), "get platform information from ascendc interface.");
-            auto platformInfo = context_->GetPlatformInfo();
-            OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
-            auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-            params.totalCoreNum = ascendcPlatform.GetCoreNumAiv();
-
-            uint64_t platformUbSize = 0;
-            platformInfo->GetLocalMemSize(fe::LocalMemType::UB, platformUbSize);
-            params.totalUbSize = static_cast<int64_t>(platformUbSize);
-
-            int64_t sysWorkspaceSize = static_cast<int64_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
-            params.sysWorkspaceSize = sysWorkspaceSize > WORK_SPACE_SIZE ? sysWorkspaceSize : WORK_SPACE_SIZE;
-
-            aropeCompileInfo = std::make_unique<ApplyRotaryPosEmbCompileInfo>(
-                ApplyRotaryPosEmbCompileInfo{params.totalCoreNum, platformUbSize, params.sysWorkspaceSize});
-        } else {
-            OP_LOGD(context_->GetNodeName(), "get platform information from compile info.");
-            params.totalCoreNum = aropeCompileInfo->blockDim;
-            params.totalUbSize = aropeCompileInfo->ubSize;
-            params.sysWorkspaceSize = aropeCompileInfo->sysWorkspaceSize;
-        }
-        OP_LOGD(context_->GetNodeName(), "totalCoreNum is %ld", params.totalCoreNum);
-        OP_CHECK_IF(params.totalCoreNum <= 0, OP_LOGE(context_->GetNodeName(), "PrepareTiling fail to get core num."),
-                    return ge::GRAPH_FAILED);
-        OP_LOGD(context_->GetNodeName(), "totalUbSize is %ld", params.totalUbSize);
-        OP_CHECK_IF(params.totalUbSize <= 0, OP_LOGE(context_->GetNodeName(), "PrepareTiling fail to get ub size."),
-                    return ge::GRAPH_FAILED);
-
         if (tilingObject.CheckParams(context_, params) != ge::GRAPH_SUCCESS) {
             OP_LOGE(context_->GetNodeName(), "CheckParams return failed.");
             return ge::GRAPH_FAILED;
@@ -493,6 +504,9 @@ protected:
     {
         return context_->GetTilingKey();
     }
+    
+private:
+    ApplyRotaryPosEmbParams params;
 };
 
 static ge::graphStatus Tiling4ApplyRotaryPosEmb(gert::TilingContext *context)
@@ -517,7 +531,7 @@ static ge::graphStatus TilingPrepare4ApplyRotaryPosEmb(gert::TilingParseContext 
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("ApplyRotaryPosEmb", ApplyRotaryPosMembaseEmbTilingClass, 40000);
+REGISTER_OPS_TILING_TEMPLATE(ApplyRotaryPosEmb, ApplyRotaryPosMembaseEmbTilingClass, 40000);
 
 IMPL_OP_OPTILING(ApplyRotaryPosEmb)
     .Tiling(Tiling4ApplyRotaryPosEmb)

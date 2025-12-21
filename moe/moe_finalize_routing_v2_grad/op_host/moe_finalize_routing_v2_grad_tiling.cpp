@@ -230,6 +230,40 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckRequiredInput()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckBiasExist()
+{
+    OP_CHECK_IF(
+        (expertIdxShape_.GetDim(0) != gradYShape_.GetDim(0)),
+        OP_LOGE(
+            nodeName_, "expert_idx and grad_y dim0 must be same, but got %ld, %ld.", expertIdxShape_.GetDim(0),
+            gradYShape_.GetDim(0)),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (expertIdxShape_.GetShapeSize() != expandedRowIdxShape_.GetShapeSize()),
+        OP_LOGE(
+            nodeName_, "expert_idx and expanded_row_idx shape size must be same, but got %ld, %ld.",
+            expertIdxShape_.GetShapeSize(), expandedRowIdxShape_.GetShapeSize()),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        (biasShape_.GetDim(0) <= 0),
+        OP_LOGE(nodeName_, "bias dim0 must be greater than 0, but got %ld.", biasShape_.GetDim(0)),
+        return ge::GRAPH_FAILED);
+    if (dropPadMode_ == 1) {
+        OP_CHECK_IF(
+            (biasShape_.GetDim(0) != expertNum_),
+            OP_LOGE(nodeName_, "bias dim0 must be equal to %ld, but got %ld.", expertNum_, biasShape_.GetDim(0)),
+            return ge::GRAPH_FAILED);
+    }
+    OP_CHECK_IF(
+        (biasShape_.GetDim(1) != gradYShape_.GetDim(1)),
+        OP_LOGE(
+            nodeName_, "grad_y and bias dim1 must be same, but got %ld, %ld.", gradYShape_.GetDim(1),
+            biasShape_.GetDim(1)),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOptionalInputShape()
 {
     if (expandedXDimNum_ == NUM_TWO) {
@@ -268,35 +302,10 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOptionalInputShape()
         return ge::GRAPH_FAILED);
 
     if (isBiasExist_) {
-         OP_CHECK_IF(
-            (expertIdxShape_.GetDim(0) != gradYShape_.GetDim(0)),
-            OP_LOGE(
-                nodeName_, "expert_idx and grad_y dim0 must be same, but got %ld, %ld.", expertIdxShape_.GetDim(0),
-                gradYShape_.GetDim(0)),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (expertIdxShape_.GetShapeSize() != expandedRowIdxShape_.GetShapeSize()),
-            OP_LOGE(
-                nodeName_, "expert_idx and expanded_row_idx shape size must be same, but got %ld, %ld.",
-                expertIdxShape_.GetShapeSize(), expandedRowIdxShape_.GetShapeSize()),
-            return ge::GRAPH_FAILED);
-
-         OP_CHECK_IF(
-            (biasShape_.GetDim(0) <= 0),
-            OP_LOGE(nodeName_, "bias dim0 must be greater than 0, but got %ld.", biasShape_.GetDim(0)),
-            return ge::GRAPH_FAILED);
-        if (dropPadMode_ == 1) {
-             OP_CHECK_IF(
-                (biasShape_.GetDim(0) != expertNum_),
-                OP_LOGE(nodeName_, "bias dim0 must be equal to %ld, but got %ld.", expertNum_, biasShape_.GetDim(0)),
-                return ge::GRAPH_FAILED);
-        }
-         OP_CHECK_IF(
-            (biasShape_.GetDim(1) != gradYShape_.GetDim(1)),
-            OP_LOGE(
-                nodeName_, "grad_y and bias dim1 must be same, but got %ld, %ld.", gradYShape_.GetDim(1),
-                biasShape_.GetDim(1)),
-            return ge::GRAPH_FAILED);
+         auto ret = CheckBiasExist();
+         if (ret == ge::GRAPH_FAILED) {
+            return ge::GRAPH_FAILED;
+         }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -324,6 +333,23 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOptionalInputDtype()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckExpandedXDims()
+{
+    OP_CHECK_IF(
+        (gradExpandedXShape_.GetDim(0) != expandedXDim0_),
+        OP_LOGE(
+            nodeName_, "grad_expanded_x dim0 must be equal to %ld, but got %ld.", expandedXDim0_,
+            gradExpandedXShape_.GetDim(0)),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (gradExpandedXShape_.GetDim(1) != gradYShape_.GetDim(1)),
+        OP_LOGE(
+            nodeName_, "grad_expanded_x and grad_y dim1 must be same, but got %ld, %ld.",
+            gradExpandedXShape_.GetDim(1), gradYShape_.GetDim(1)),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOutput()
 {
      OP_CHECK_IF(
@@ -332,18 +358,10 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOutput()
         return ge::GRAPH_FAILED);
 
     if (expandedXDimNum_ == NUM_TWO) {
-         OP_CHECK_IF(
-            (gradExpandedXShape_.GetDim(0) != expandedXDim0_),
-            OP_LOGE(
-                nodeName_, "grad_expanded_x dim0 must be equal to %ld, but got %ld.", expandedXDim0_,
-                gradExpandedXShape_.GetDim(0)),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (gradExpandedXShape_.GetDim(1) != gradYShape_.GetDim(1)),
-            OP_LOGE(
-                nodeName_, "grad_expanded_x and grad_y dim1 must be same, but got %ld, %ld.",
-                gradExpandedXShape_.GetDim(1), gradYShape_.GetDim(1)),
-            return ge::GRAPH_FAILED);
+        auto ret = CheckExpandedXDims();
+        if (ret == ge::GRAPH_FAILED) {
+            return ge::GRAPH_FAILED;
+        }
     } else {
          OP_CHECK_IF(
             (gradExpandedXShape_.GetDim(0) * gradExpandedXShape_.GetDim(1) != expandedXDim0_),
@@ -387,6 +405,39 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOutput()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckScaleExist()
+{
+    OP_CHECK_IF(
+        (expandedXShape_.GetDimNum() != static_cast<size_t>(expandedXDimNum_)),
+        OP_LOGE(
+            nodeName_, "expanded_x dimnum error. dropMode = %ld, got expandedXdim %zu", dropPadMode_,
+            expandedXShape_.GetDimNum()),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (scalesShape_.GetDimNum() != NUM_TWO),
+        OP_LOGE(nodeName_, "scales dimnum must be 2, but got %zu.", scalesShape_.GetDimNum()),
+        return ge::GRAPH_FAILED);
+    if (isBiasExist_) {
+        OP_CHECK_IF(
+            (expertIdxShape_.GetDimNum() != NUM_TWO),
+            OP_LOGE(nodeName_, "expert_idx dimnum must be 2, but got %zu.", expertIdxShape_.GetDimNum()),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (biasShape_.GetDimNum() != NUM_TWO),
+            OP_LOGE(nodeName_, "bias dimnum must be 2, but got %zu.", biasShape_.GetDimNum()),
+            return ge::GRAPH_FAILED);
+    }
+    OP_CHECK_IF(
+        (CheckOptionalInputShape() != ge::GRAPH_SUCCESS),
+        OP_LOGE(nodeName_, "CheckOptionalInputShape check failed."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (CheckOptionalInputDtype() != ge::GRAPH_SUCCESS),
+        OP_LOGE(nodeName_, "CheckOptionalInputDtype check failed."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckParams()
 {
      OP_CHECK_IF(
@@ -406,34 +457,10 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckParams()
         expandedXDim0_ = expertNum_ * expertCapacity_;
     }
     if (isScalesExist_) {
-         OP_CHECK_IF(
-            (expandedXShape_.GetDimNum() != static_cast<size_t>(expandedXDimNum_)),
-            OP_LOGE(
-                nodeName_, "expanded_x dimnum error. dropMode = %ld, got expandedXdim %zu", dropPadMode_,
-                expandedXShape_.GetDimNum()),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (scalesShape_.GetDimNum() != NUM_TWO),
-            OP_LOGE(nodeName_, "scales dimnum must be 2, but got %zu.", scalesShape_.GetDimNum()),
-            return ge::GRAPH_FAILED);
-        if (isBiasExist_) {
-             OP_CHECK_IF(
-                (expertIdxShape_.GetDimNum() != NUM_TWO),
-                OP_LOGE(nodeName_, "expert_idx dimnum must be 2, but got %zu.", expertIdxShape_.GetDimNum()),
-                return ge::GRAPH_FAILED);
-             OP_CHECK_IF(
-                (biasShape_.GetDimNum() != NUM_TWO),
-                OP_LOGE(nodeName_, "bias dimnum must be 2, but got %zu.", biasShape_.GetDimNum()),
-                return ge::GRAPH_FAILED);
+        auto ret = CheckScaleExist();
+        if (ret == ge::GRAPH_FAILED) {
+            return ge::GRAPH_FAILED;
         }
-         OP_CHECK_IF(
-            (CheckOptionalInputShape() != ge::GRAPH_SUCCESS),
-            OP_LOGE(nodeName_, "CheckOptionalInputShape check failed."),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (CheckOptionalInputDtype() != ge::GRAPH_SUCCESS),
-            OP_LOGE(nodeName_, "CheckOptionalInputDtype check failed."),
-            return ge::GRAPH_FAILED);
     } else {
          OP_CHECK_IF(
             (gradYShape_.GetDim(0) != expandedRowIdxShape_.GetDim(0)),

@@ -1,14 +1,21 @@
 # aclnnRotaryPositionEmbeddingGrad
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/posembedding/rotary_position_embedding_grad)
+
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
+| 产品                                                         |  是否支持   |
+| :----------------------------------------------------------- |:-------:|
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
 
 ## 功能说明
--  算子功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
+-  接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
 -  计算公式：
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
@@ -16,6 +23,7 @@
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 
     （1）half模式（mode等于0）：
+
     $$
     dy1, dy2 = chunk(dy, chunks=2, dim=-1)
     $$
@@ -45,6 +53,7 @@
     $$
 
     （2）interleave模式（mode等于1）：
+
     $$
     dy1, dy2 = dy[..., :: 2], dy[..., 1 :: 2]
     $$
@@ -74,6 +83,7 @@
     $$
     
     （3）quarter模式（mode等于2）：
+
     $$
     dy1, dy2, dy3, dy4 = chunk(dy, chunks=4, dim=-1)
     $$
@@ -103,6 +113,7 @@
     $$
 
     （4）interleave-half模式（mode等于3）：
+
     $$
     dy1, dy2 = chunk(dy, chunks=2, dim=-1)
     $$
@@ -132,7 +143,7 @@
     $$
 
 ## 函数原型
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGradGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGradGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
@@ -140,7 +151,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
     const aclTensor *cos,
     const aclTensor *sin,
     const aclTensor *xOptional,
-    int64_t mode,
+    int64_t          mode,
     const aclTensor *dxOut,
     const aclTensor *dcosOut,
     const aclTensor *dsinOut,
@@ -150,190 +161,192 @@ aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     void          *workspace,
-    uint64_t      workspaceSize,
+    uint64_t       workspaceSize,
     aclOpExecutor *executor,
-    aclrtStream   stream)
+    aclrtStream    stream)
 ```
 ## aclnnRotaryPositionEmbeddingGradGetWorkspaceSize
 
-<table style="undefined;table-layout: fixed; width: 1565px">
-<colgroup>
-  <col style="width: 146px">
-  <col style="width: 135px">
-  <col style="width: 326px">
-  <col style="width: 246px">
-  <col style="width: 275px">
-  <col style="width: 101px">
-  <col style="width: 190px">
-  <col style="width: 146px">
-</colgroup>
-<thead>
-  <tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    <th>使用说明</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>dy</td>
-    <td>输入</td>
-    <td>旋转位置编码正向输出 y 的导数。</td>
-    <td>-</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>4</td>
-    <td>√</td>
-  </tr>
-  <tr>
-    <td>cos</td>
-    <td>输入</td>
-    <td>正向计算输入 cos。</td>
-    <td>与 dy 数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>4</td>
-    <td>√</td>
-  </tr>
-  <tr>
-    <td>sin</td>
-    <td>输入</td>
-    <td>正向计算输入 sin。</td>
-    <td>与 dy 数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>4</td>
-    <td>√</td>
-  </tr>
-  <tr>
-    <td>xOptional</td>
-    <td>可选输入</td>
-    <td>正向计算输入 x，空指针时不计算 dcosOut 和 dsinOut。</td>
-    <td>与 dy 数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>4</td>
-    <td>√</td>
-  </tr>
-  <tr>
-    <td>mode</td>
-    <td>输入</td>
-    <td>旋转模式。</td>
-    <td>
-      <ul>
-        <li>Atlas A3/A2 系列：0=half，1=interleave。</li>
-      </ul>
-    </td>
-    <td>INT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>dxOut</td>
-    <td>输出</td>
-    <td>正向计算输入 x 的导数。</td>
-    <td>与 dy 数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>4</td>
-    <td>x</td>
-  </tr>
-  <tr>
-    <td>dcosOut</td>
-    <td>输出</td>
-    <td>正向计算输入 cos 的导数，xOptional 非空时有效。</td>
-    <td>与 dy 数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>4</td>
-    <td>x</td>
-  </tr>
-  <tr>
-    <td>dsinOut</td>
-    <td>输出</td>
-    <td>正向计算输入 sin 的导数，xOptional 非空时有效。</td>
-    <td>与 dy 数据类型一致。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>4</td>
-    <td>x</td>
-  </tr>
-  <tr>
-    <td>workspaceSize</td>
-    <td>输出</td>
-    <td>返回需要在Device侧申请的workspace大小。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>executor</td>
-    <td>输出</td>
-    <td>返回op执行器，包含算子计算流程。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-</tbody>
-</table>
+- **参数说明**
 
+  <table style="undefined;table-layout: fixed; width: 1532px"><colgroup>
+  <col style="width: 162px">
+  <col style="width: 121px">
+  <col style="width: 403px">
+  <col style="width: 169px">
+  <col style="width: 275px">
+  <col style="width: 118px">
+  <col style="width: 138px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>dy</td>
+      <td>输入</td>
+      <td>旋转位置编码正向输出 y 的导数。</td>
+      <td>-</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>4</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>cos</td>
+      <td>输入</td>
+      <td>正向计算输入 cos。</td>
+      <td>与 dy 数据类型一致。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>4</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>sin</td>
+      <td>输入</td>
+      <td>正向计算输入 sin。</td>
+      <td>与 dy 数据类型一致。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>4</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>xOptional</td>
+      <td>可选输入</td>
+      <td>正向计算输入 x，空指针时不计算 dcosOut 和 dsinOut。</td>
+      <td>与 dy 数据类型一致。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>4</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>mode</td>
+      <td>输入</td>
+      <td>旋转模式。</td>
+      <td>-</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>dxOut</td>
+      <td>输出</td>
+      <td>正向计算输入 x 的导数。</td>
+      <td>与 dy 数据类型一致。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>4</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>dcosOut</td>
+      <td>输出</td>
+      <td>正向计算输入 cos 的导数，xOptional 非空时有效。</td>
+      <td>与 dy 数据类型一致。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>4</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>dsinOut</td>
+      <td>输出</td>
+      <td>正向计算输入 sin 的导数，xOptional 非空时有效。</td>
+      <td>与 dy 数据类型一致。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>4</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+  </table>
+
+  - 参数mode约束：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：0=half，1=interleave。
+    - <term>昇腾910_95 AI处理器</term>：2=quarter，3=interleave-half。
 
 - **返回值：**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-<col style="width: 319px">
-<col style="width: 144px">
-<col style="width: 671px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>传入的必选输入dy、cos、sin和输出dxOut、dcosOut、dsinOut是空指针。</td>
-  </tr>
-  <tr>
-    <td>ACLNN_ERR_PARAM_INVALID</td>
-    <td>161002</td>
-    <td>传入的输入dy、cos、sin、xOptinal和输出dxOut、dcosOut、dsinOut的数据类型和格式不在支持的范围内。</td>
-  </tr>
-  <tr>
-    <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
-    <td rowspan="2">561002</td>
-    <td>传入的参数shape不满足约束说明章节中的条件。</td>
-  </tr>
-  <tr>
-    <td>传入的mode参数不在0、1、2、3范围内。 </td>
-  </tr>
-</tbody>
-</table>
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 288px">
+  <col style="width: 125px">
+  <col style="width: 742px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入的必选输入dy、cos、sin和输出dxOut、dcosOut、dsinOut是空指针。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>传入的输入dy、cos、sin、xOptinal和输出dxOut、dcosOut、dsinOut的数据类型和格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td rowspan="2">561002</td>
+      <td>传入的参数shape不满足约束说明章节中的条件。</td>
+    </tr>
+    <tr>
+      <td>传入的mode参数不在0、1、2、3范围内。 </td>
+    </tr>
+  </tbody>
+  </table>
 
 ## aclnnRotaryPositionEmbeddingGrad
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 173px">
+  <col style="width: 133px">
+  <col style="width: 849px">
   </colgroup>
   <thead>
     <tr>
@@ -360,35 +373,49 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的AscendCL stream流。</td>
+      <td>指定执行任务的Stream流。</td>
     </tr>
   </tbody>
   </table>
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+
 ## 约束说明
+
+- 确定性计算：
+  - aclnnRotaryPositionEmbeddingGrad默认确定性实现。
+
+  - <term>昇腾910_95 AI处理器</term>：
+
+    输入张量x共有四维，各参数的shape约束可以描述如下：
+    - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
+    - 输入张量x和输出张量y的shape必须完全相同。
+    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
+
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 
-    - 输入张量dy支持BNSD、BSND、SBND排布。
+    - 输入张量dy支持BNSD、BSND、SBND、TND排布。
     - 输入张量dy、cos、sin、xOptional及输出张量dxOut、dcosOut、dsinOut的D维度大小必须相同，满足D<896，且必须为2的倍数。
     - 输入张量dy、xOptional和输出张量dxOut的shape必须完全相同。
     - 输入张量cos、sin和输出张量dcosOut、dsinOut的shape必须完全相同，且cos和sin的shape必须完全相同。
     - half模式：
       - B，N < 1000；当需要计算dsin、dcos时，B * N <= 1024
-      - 当dy为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - 当dy为BSND时，cos、sin支持1S1D、BS1D、BSND
+      - 当dy为BNSD时，cos、sin支持11SD、B1SD、BNSD；当cos、sin为B1SD时需满足B < S
+      - 当dy为BSND时，cos、sin支持1S1D、BS1D、BSND；当cos、sin为BS1D时需满足B < S
       - 当dy为SBND时，cos、sin支持S11D、SB1D、SBND
+      - 当dy为TND时，cos、sin支持T1D、TND
     - interleave模式：
-      - B * N < 1000
+      - B * N < 1000（N < 1000当dy为TND时）
       - 当dy为BNSD时，cos、sin支持11SD
       - 当dy为BSND时，cos、sin支持1S1D
       - 当dy为SBND时，cos、sin支持S11D
+      - 当dy为TND时，cos、sin支持T1D
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/context/编译与运行样例.md)。
 
 ```Cpp
 #include "acl/acl.h"

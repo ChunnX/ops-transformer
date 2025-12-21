@@ -104,6 +104,6 @@ void MoeFinalizeRoutingV2GradMembase::CalcTilingKeyWithScales()
     }
 }
 
-REGISTER_TILING_TEMPLATE("MoeFinalizeRoutingV2Grad", MoeFinalizeRoutingV2GradMembase, 10000);
+REGISTER_OPS_TILING_TEMPLATE(MoeFinalizeRoutingV2Grad, MoeFinalizeRoutingV2GradMembase, 10000);
 
 } // namespace optiling

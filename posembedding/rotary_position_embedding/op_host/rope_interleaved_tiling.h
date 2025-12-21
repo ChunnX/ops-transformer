@@ -30,7 +30,6 @@ public:
     {
         RotaryPosEmbeddingMembaseTilingClass::Reset(context);
     }
-
 protected:
     bool IsCapable() override
     {

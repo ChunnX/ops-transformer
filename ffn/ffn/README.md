@@ -4,8 +4,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -13,7 +18,7 @@
 - 计算公式：
 
   - **非量化场景：**
-  
+
 	$$
     y=activation(x * W1 + b1) * W2 + b2
 	$$
@@ -75,7 +80,7 @@
     <td>可选参数，Host侧的aclIntArray类型，代表各专家的token数，若不为空时可支持的最大长度为256个。</td>
     <td>INT64</td>
     <td>ND</td>
-  </tr>  
+  </tr>
   <tr>
     <td>bias1</td>
     <td>输入</td>
@@ -149,7 +154,6 @@
 </tbody>
 </table>
 
-
 ## 约束说明
 
 - 有专家时，专家数据的总数需要与x的M保持一致。
@@ -177,4 +181,4 @@
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_ffn.cpp](examples/test_aclnn_ffn.cpp) | 通过接口方式调用[ffn](docs/aclnnFFN.md)算子。 |
+| aclnn调用 | [test_aclnn_ffn.cpp](examples/test_aclnn_ffn.cpp) | 通过接口方式调用[FFN](docs/aclnnFFN.md)算子。 |

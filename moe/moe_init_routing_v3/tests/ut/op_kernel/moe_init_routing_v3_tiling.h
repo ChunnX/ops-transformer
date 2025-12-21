@@ -102,6 +102,7 @@ struct MoeV3GatherOutComputeTilingData {
     int64_t colsLoops = 0;
     int64_t perLoopCols = 0;
     int64_t lastLoopCols = 0;
+    int64_t activeNum = 0;
 };
 #pragma pack()
 
@@ -164,6 +165,12 @@ struct MoeInitRoutingV3TilingData {
     int64_t isInputOffset = 0;
     int64_t expertNum = -1;
     int64_t expertTokensNumType = -1;
+    int64_t expertTokensNumFlag = 1;
+    int64_t gatherFirstFullload = 0;
+    int64_t epFullload = 1;
+    int64_t activeNum = 0;
+    int64_t dropPadMode = 0;
+    int64_t smoothType = 2;
     MoeV3VBSComputeTilingData vbsComputeParamsOp;
     MoeV3VMSMiddleComputeTilingData vmsMiddleComputeParamsOp;
     MoeV3SortOutComputeTilingData sortOutComputeParamsOp;

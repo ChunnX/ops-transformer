@@ -282,7 +282,7 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
     return ret;
 }
 
-void MoeInitRoutingV2TilingBase::ShowTilingData()
+void MoeInitRoutingV2TilingBase::ShowMoeInitRoutingTilingData()
 {
     OP_LOGI(opName,
               "moeInitRoutingTilingData is coreNum:%ld, n:%ld, cols:%ld, k:%ld, expertCapacity:%ld, expertNum:%ld, "
@@ -292,6 +292,10 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
               moeInitRoutingTilingData.get_expertCapacity(), moeInitRoutingTilingData.get_expertNum(),
               moeInitRoutingTilingData.get_dropPadMode(), moeInitRoutingTilingData.get_expertTokensCountOrCumsumFlag(),
               moeInitRoutingTilingData.get_expertTokensBeforeCapacityFlag());
+}
+
+void MoeInitRoutingV2TilingBase::ShowMoeV2VBSComputeTilingData()
+{
     OP_LOGI(opName,
               "MoeV2VBSComputeTilingData is needCoreNum:%ld, perCoreElements:%ld, perCoreLoops:%ld, "
               "perCorePerLoopElements:%ld, "
@@ -307,10 +311,22 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
               moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCorePerLoopElements(),
               moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLastLoopElements(),
               moeInitRoutingTilingData.vbsComputeParamsOp.get_oneLoopMaxElements());
+}
+
+void MoeInitRoutingV2TilingBase::ShowVMSMiddleComputeTilingData()
+{
     OP_LOGI(opName, "VMSMiddleComputeTilingData is needCoreNum:%ld",
               moeInitRoutingTilingData.vmsMiddleComputeParamsOp.get_needCoreNum());
+}
+
+void MoeInitRoutingV2TilingBase::ShowSortOutComputeTilingData()
+{
     OP_LOGI(opName, "SortOutComputeTilingData is oneLoopMaxElements:%ld",
               moeInitRoutingTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
+}
+
+void MoeInitRoutingV2TilingBase::ShowSrcToDstComputeTilingData()
+{
     OP_LOGI(
         opName,
         "SrcToDstComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
@@ -323,6 +339,10 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
         moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreRows(),
         moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCorePerLoopRows(),
         moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreLastLoopRows());
+}
+
+void MoeInitRoutingV2TilingBase::ShowSrcToDstComputeCapacityTilingData()
+{
     OP_LOGI(opName,
               "SrcToDstComputeCapacityTilingData is needCoreNum:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
               "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
@@ -333,6 +353,10 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
               moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreRows(),
               moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCorePerLoopRows(),
               moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreLastLoopRows());
+}
+
+void MoeInitRoutingV2TilingBase::ShowGatherOutComputeTilingData()
+{
     OP_LOGI(
         opName,
         "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
@@ -345,6 +369,17 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreRows(),
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCorePerLoopRows(),
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows());
+}
+
+void MoeInitRoutingV2TilingBase::ShowTilingData()
+{
+    ShowMoeInitRoutingTilingData();
+    ShowMoeV2VBSComputeTilingData();
+    ShowVMSMiddleComputeTilingData();
+    ShowSortOutComputeTilingData();
+    ShowSrcToDstComputeTilingData();
+    ShowSrcToDstComputeCapacityTilingData();
+    ShowGatherOutComputeTilingData();
 }
 
 ge::graphStatus MoeInitRoutingV2TilingBase::DoOpTiling()

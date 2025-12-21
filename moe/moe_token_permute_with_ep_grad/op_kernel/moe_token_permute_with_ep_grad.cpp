@@ -30,6 +30,7 @@
         op1.Process();                                                                                             \
         if (haveProbs) {                                                                                           \
             t_pipe.Destroy();                                                                                      \
+            TPipe t_probs_pipe;\
             opClass<probsDtype, int32_t, probsDtype, false, false> op2;                                            \
             op2.Init(permuted_probs_output_grad, sorted_indices, nullptr, probs_grad, tiling_data, &t_probs_pipe); \
             op2.Process();                                                                                         \
@@ -49,7 +50,6 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_ep_grad(
     GET_TILING_DATA(tiling_data_in, tiling);
     const MoeTokenPermuteWithEpGradTilingData* __restrict tiling_data = &tiling_data_in;
     TPipe t_pipe;
-    TPipe t_probs_pipe;
     if (TILING_KEY_IS(0)) {
         GENERAL_OP_IMPL(
             KernelMoeTokenUnpermuteWithEp, DTYPE_PERMUTED_TOKENS_OUTPUT_GRAD, DTYPE_PERMUTED_PROBS_OUTPUT_GRAD, false);

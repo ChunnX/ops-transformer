@@ -16,7 +16,7 @@
 namespace l0op {
 
 const std::size_t MAX_OPTIONAL_CNT = 9;
-const std::size_t MAX_FAG_OUTPUT_CNT = 6;
+const std::size_t MAX_FAG_OUTPUT_CNT = 7;
 
 const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dy,
@@ -26,8 +26,9 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional,
     const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, const aclTensor *dScaleQOptional,
     const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional, const aclTensor *dScaleDyOptional,
-    const aclTensor *dScaleOOptional, const aclTensor *queryRope, const aclTensor *keyRope, double scaleValueOptional,
-    double keepProbOptional, int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
+    const aclTensor *dScaleOOptional, const aclTensor *queryRope, const aclTensor *keyRope,
+    const aclTensor *sinkInOptional, double scaleValueOptional, double keepProbOptional, 
+    int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
     char *inputLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
     int64_t seed, int64_t offset, int64_t outDTypeOptional,char *softmaxInLayout, aclOpExecutor *executor);
 } // namespace l0op

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file service_rms_norm.h
@@ -19,7 +19,13 @@
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
 
+#if __CCE_AICORE__ == 310
+#include "arch35/vf/vf_rms_norm.h"
+#include "arch35/vf/vf_dynamic_quant.h"
+#else
 #include "arch32/rms_norm.h"
+#endif
+
 namespace MlaProlog {
 
 /**
@@ -75,14 +81,21 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         Cast(xFp32Local, inputLocal, RoundMode::CAST_NONE, cnt);
         AscendC::PipeBarrier<PIPE_V>();
     }
-
     LocalTensor<C> rmsnormShareUB = xFp32Local[rmsNormParams.col];
 
     if constexpr (std::is_same<C, O>::value) {
+        #if __CCE_AICORE__ == 310
+        RmsNormVF<C, GammaType, C, C>(outputLocal, xFp32Local, gammaLocal, rmsNormParams);
+        #else
         RmsNorm(outputLocal, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
+        #endif
         AscendC::PipeBarrier<PIPE_V>();
     } else {
+        #if __CCE_AICORE__ == 310
+        RmsNormVF<C, GammaType, C, C>(xFp32Local, xFp32Local, gammaLocal, rmsNormParams);
+        #else
         RmsNorm(xFp32Local, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
+        #endif
         // Cast xFp32 to outputLocal
         AscendC::PipeBarrier<PIPE_V>();
         Cast(outputLocal, xFp32Local, RoundMode::CAST_RINT, cnt);
@@ -108,8 +121,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
           col 列数，对应H
  * @param enableSmoothScalesCq 表示是否有smoothGm的需求
  */
-template <typename T, typename GammaType, typename SmoothType, typename C>
-__aicore__ inline void RmsNormDynamicQuant(const LocalTensor<int8_t>& outputLocal, const LocalTensor<float> &outputScales, const GlobalTensor<T>& inputGm, const LocalTensor<GammaType>& gammaLocal,
+template <typename T, typename GammaType, typename SmoothType, typename C, typename O, typename U>
+__aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, const LocalTensor<U> &outputScales, const GlobalTensor<T>& inputGm, const LocalTensor<GammaType>& gammaLocal,
                                            const LocalTensor<SmoothType>& smoothLocal, const LocalTensor<float> &dequantScaleWDqLocal,
                                            const LocalTensor<float>& dequantScaleXLocal, 
                                            const LocalTensor<uint8_t>& shareTmpUb,
@@ -118,6 +131,17 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<int8_t>& outputLoca
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
     RmsNormNormal<T, GammaType, C, C>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal, shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
     AscendC::PipeBarrier<PIPE_V>();
+#if __CCE_AICORE__ == 310
+    LocalTensor<bfloat16_t> xBf16Local = xFp32Local[cnt].template ReinterpretCast<bfloat16_t>();
+    Cast(xBf16Local, xFp32Local, RoundMode::CAST_ROUND, cnt);
+    AscendC::PipeBarrier<PIPE_V>();
+    LocalTensor<uint16_t> outputScalesLocal = outputScales.template ReinterpretCast<uint16_t>();
+    LocalTensor<int8_t> outLocal = outputLocal.template ReinterpretCast<int8_t>();
+    LocalTensor<uint8_t> tmpLocal = xBf16Local[cnt].template ReinterpretCast<uint8_t>();
+    DynamicQuantCqVf<bfloat16_t, fp8_e4m3fn_t>(outLocal, outputScalesLocal, xBf16Local, tmpLocal, rmsNormParams.row, rmsNormParams.col);
+    LocalTensor<uint8_t> scale = outputScalesLocal.template ReinterpretCast<uint8_t>();
+    AscendC::PipeBarrier<PIPE_V>();
+#else
     if (enableSmoothScalesCq) {
         Mul(xFp32Local, xFp32Local, smoothLocal, cnt);
     }
@@ -130,6 +154,7 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<int8_t>& outputLoca
     AscendC::PipeBarrier<PIPE_V>();
     CastFP32ToINT8(outputLocal, xFp32Local, shareTmpUb, cnt);
     AscendC::PipeBarrier<PIPE_V>();
+#endif
 }
 
 } // namespace MlaProlog

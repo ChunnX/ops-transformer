@@ -196,6 +196,16 @@ bool NsaCompressAttentionCase::InitOptInputs()
         actualSelSeqKvLen = Tensor("actualSelSeqKvLen", {}, "None", ge::DataType::DT_INT64, ge::FORMAT_ND,
                                    Tensor::TensorType::OPTIONAL_INPUT);
     }
+
+    if (!InitTensor(actualSeqQLen, mParam.actualSeqQLenTensorData)) {
+        return false;
+    }
+    if (!InitTensor(actualCmpSeqKvLen, mParam.actualCmpSeqKVLenTensorData)) {
+        return false;
+    }
+    if (!InitTensor(actualSelSeqKvLen, mParam.actualSelSeqKVLenTensorData)) {
+        return false;
+    }
     return true;
 }
 

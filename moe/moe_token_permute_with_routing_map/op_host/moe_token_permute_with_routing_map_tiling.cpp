@@ -137,9 +137,43 @@ inline static int64_t VmsLoops(int64_t x)
     }
     return srcWsIndex;
 }
+
 } // namespace
 
 namespace optiling {
+
+struct MoeTokenPermuteWithRoutingMapIndexCopyParams {
+    int64_t topK = 0;
+    int64_t cols = 0;
+    int64_t frontCoreNum = 0;
+    int64_t tailCoreNum = 0;
+    int64_t blockDim = 0;
+    int64_t coreCalcNum = 0;
+    int64_t coreCalcTail = 0;
+    int64_t ubLeft = 0;
+    int64_t oneTokenBtypeSize = 0;
+    int64_t oneTokenBtypeSizeAlign32 = 0;
+
+    int64_t oneTokenlastMove = 1;
+    int64_t oneTokenOnceMove = 1;
+    int64_t oneTokenMoveTimes = 1;
+    int64_t onceIndicesTokenMoveTimes = 1;
+    int64_t onceUbTokenNums = 1;
+    int64_t onceIndicesTokenNums = 1;
+    int64_t onceIndices = 1;
+    int64_t tokenUB = 1;
+    int64_t indicesUB = 1;
+
+    int64_t frontCoreLoop = 0;
+    int64_t frontCoreLastTokenNums = 0;
+    int64_t tailCoreLoop = 0;
+    int64_t tailCoreLastTokenNums = 0;
+    int64_t tailLastonceIndicesTokenMoveTimes = 0;
+    int64_t tailLastIndicesLastTokenNums = 0;
+    int64_t frontLastonceIndicesTokenMoveTimes = 0;
+    int64_t frontLastIndicesLastTokenNums = 0;
+};
+
 class MoeTokenPermuteWithRoutingMapTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
@@ -177,13 +211,18 @@ protected:
     void Reset();
 
 private:
+    ge::graphStatus InitShapeAttrsInfo();
     ge::graphStatus CheckOutShape();
     void Tiling4IndexCopyCompute();
+    uint64_t CalcMaskedSelectUb();
     void Tiling4MaskedSelect();
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
+    void InitMoeTokenPermuteWithRoutingMapIndexCopyParams(MoeTokenPermuteWithRoutingMapIndexCopyParams& params);
+    void SetMoeTokenPermuteWithRoutingMapIndexCopyParams(MoeTokenPermuteWithRoutingMapIndexCopyParams& params);
     void Tiling4VBSCompute();
     void Tiling4VBSComputeLastdim();
+    void ShowIndexCopyComputeTilingDataTilingData();
     void ShowTilingData();
     void Tinlig4VBSMultiCoreCompute(PermuteVBSComputeRMTilingData* tilingData);
     void Tinlig4VBSMultiCoreComputeLastdim(PermuteVBSComputeRMTilingData* tilingData);
@@ -296,7 +335,7 @@ ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::CheckOutShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::GetShapeAttrsInfo()
+ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::InitShapeAttrsInfo()
 {
     opName = context_->GetNodeName();
     OP_LOGD(opName, "MoeTokenPermuteWithRoutingMap Tiling initing.");
@@ -350,6 +389,16 @@ ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::GetShapeAttrsInfo()
     auto colsAlign = GetCeilInt(cols, tokenOneBlockNum) * tokenOneBlockNum;
     moeTokenPermuteWithRoutingMapTilingData.set_n(tokensShape.GetDim(0));
     moeTokenPermuteWithRoutingMapTilingData.set_colsAlign(colsAlign);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::GetShapeAttrsInfo()
+{
+    ge::graphStatus status = InitShapeAttrsInfo();
+    if (status != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context_->GetNodeName(), "Init Shape Attrs Info failed.");
+        return ge::GRAPH_FAILED;
+    }
     if (numTokens <= 0) {
         OP_LOGE(context_->GetNodeName(), "Input attr's num_out_tokens [%ld] should  large than max 0.", numTokens);
         return ge::GRAPH_FAILED;
@@ -388,8 +437,7 @@ ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::GetShapeAttrsInfo()
     return ret;
 }
 
-void MoeTokenPermuteWithRoutingMapTilingBase::ShowTilingData()
-{
+void MoeTokenPermuteWithRoutingMapTilingBase::ShowIndexCopyComputeTilingDataTilingData() {
     OP_LOGD(
         opName,
         "indexCopyCTilingData is needCoreNum:%ld, frontCoreNum:%ld, "
@@ -424,6 +472,11 @@ void MoeTokenPermuteWithRoutingMapTilingBase::ShowTilingData()
         moeTokenPermuteWithRoutingMapTilingData.indexCopyComputeParamsOp.get_numOutTokens(),
         moeTokenPermuteWithRoutingMapTilingData.indexCopyComputeParamsOp.get_tokenUB(),
         moeTokenPermuteWithRoutingMapTilingData.indexCopyComputeParamsOp.get_indicesUB());
+}
+
+void MoeTokenPermuteWithRoutingMapTilingBase::ShowTilingData()
+{
+    ShowIndexCopyComputeTilingDataTilingData();
     OP_LOGD(
         opName,
         "PermuteVBSComputeRMTilingData is needCoreNum:%ld, perCoreElements:%ld, perCoreLoops:%ld, "
@@ -453,6 +506,7 @@ void MoeTokenPermuteWithRoutingMapTilingBase::ShowTilingData()
         opName, "PermuteSortOutComputeRMTilingData is oneLoopMaxElements:%ld",
         moeTokenPermuteWithRoutingMapTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
 }
+
 ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::DoOpTiling()
 {
     sortLoopMaxElement = (aicoreParams_.ubSize - aivNum * ONE_BLOCK_BYTE) / (NUM_FOUR * NUM_TWO * NUM_FOUR) /
@@ -634,28 +688,9 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4SortOutCompute()
     auto tilingData = &moeTokenPermuteWithRoutingMapTilingData.sortOutComputeParamsOp;
     tilingData->set_oneLoopMaxElements(mrgSortListMaxElement);
 }
-void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4MaskedSelect()
+
+uint64_t MoeTokenPermuteWithRoutingMapTilingBase::CalcMaskedSelectUb()
 {
-    auto tilingData = &moeTokenPermuteWithRoutingMapTilingData.maskedSelectParamsOp;
-
-    uint64_t aivUseNum = realCoreNumAiv;    // Vector核数量
-    uint64_t ubSize = aicoreParams_.ubSize; // ubSize大小
-    uint64_t totalLengthLocal = numTokens * numExperts;
-
-    uint64_t formerNum = 0;
-    uint64_t formerLength = 0;
-    uint64_t formerTileNum = 0;
-    uint64_t formerTileLength = 0;
-    uint64_t formerLastTileLength = 0;
-
-    uint64_t tailNum = 0;
-    uint64_t tailLength = 0;
-    uint64_t tailTileNum = 0;
-    uint64_t tailTileLength = 0;
-    uint64_t tailLastTileLength = 0;
-
-    uint64_t blockDim = 0;
-
     // 求单个元素大小
     uint64_t sizeOfDataType = 2;
     if (hasProb) {
@@ -689,12 +724,38 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4MaskedSelect()
 
     // 一个block存放的元素
     uint32_t alignNum = BLOCK_SIZE / NUM_TWO; // 256/<8>=32
-
+    
     // ub对齐后长度
-
     uint64_t oneDataSize = IO_QUE * DOUBLE_BUFFER * sizeOfDataType + MASK_ONE_DATA_SIZE + INDEX_ONE_DATA_SIZE;
+    uint64_t ubSize = aicoreParams_.ubSize;
     uint64_t ubLength = ((ubSize - ONE_BLOCK_BYTE * DOUBLE_BUFFER * DOUBLE_BUFFER) / oneDataSize) / alignNum * alignNum;
     ubLength = static_cast<int64_t>(ubLength) > numTokens ? numTokens : ubLength; // 一次ub能放多少数
+    return ubLength;
+}
+
+void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4MaskedSelect()
+{
+    auto tilingData = &moeTokenPermuteWithRoutingMapTilingData.maskedSelectParamsOp;
+
+    uint64_t aivUseNum = realCoreNumAiv;    // Vector核数量
+    uint64_t totalLengthLocal = numTokens * numExperts;
+
+    uint64_t formerNum = 0;
+    uint64_t formerLength = 0;
+    uint64_t formerTileNum = 0;
+    uint64_t formerTileLength = 0;
+    uint64_t formerLastTileLength = 0;
+
+    uint64_t tailNum = 0;
+    uint64_t tailLength = 0;
+    uint64_t tailTileNum = 0;
+    uint64_t tailTileLength = 0;
+    uint64_t tailLastTileLength = 0;
+
+    uint64_t blockDim = 0;
+    uint64_t ubLength = CalcMaskedSelectUb();
+    OP_CHECK_IF(ubLength == 0, OP_LOGE(opName, "Ub length is zero."), return);
+       
     // 运行核数
     blockDim = (numExperts > static_cast<int64_t>(aivUseNum)) ? aivUseNum : numExperts;
     tilingData->set_needCoreNum(blockDim);
@@ -737,95 +798,104 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4MaskedSelect()
     tilingData->set_tailtileLength(tailTileLength);
     tilingData->set_taillasttileLength(tailLastTileLength);
 }
-void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4IndexCopyCompute()
-{
+
+void MoeTokenPermuteWithRoutingMapTilingBase::InitMoeTokenPermuteWithRoutingMapIndexCopyParams(
+    MoeTokenPermuteWithRoutingMapIndexCopyParams& params) {
     auto tilingData = &moeTokenPermuteWithRoutingMapTilingData.indexCopyComputeParamsOp;
     int64_t tokenNums = moeTokenPermuteWithRoutingMapTilingData.get_n();
-    int64_t topK = moeTokenPermuteWithRoutingMapTilingData.get_topK();
-    int64_t cols = moeTokenPermuteWithRoutingMapTilingData.get_cols();
+    params.topK = moeTokenPermuteWithRoutingMapTilingData.get_topK();
+    params.cols = moeTokenPermuteWithRoutingMapTilingData.get_cols();
 
     tilingData->set_numOutTokens(numOutTokens);
 
-    int64_t frontCoreNum = GetRem(tokenNums, realCoreNumAiv) != 0 ? GetRem(tokenNums, realCoreNumAiv) : realCoreNumAiv;
-    int64_t tailCoreNum = tokenNums <= realCoreNumAiv ? 0 : realCoreNumAiv - frontCoreNum;
-    int64_t blockDim = frontCoreNum + tailCoreNum;
-    int64_t coreCalcNum = GetCeilInt(tokenNums, realCoreNumAiv);
-    int64_t coreCalcTail = GetDiv(tokenNums, realCoreNumAiv);
+    params.frontCoreNum = GetRem(tokenNums, realCoreNumAiv) != 0 ? GetRem(tokenNums, realCoreNumAiv) : realCoreNumAiv;
+    params.tailCoreNum = tokenNums <= realCoreNumAiv ? 0 : realCoreNumAiv - params.frontCoreNum;
+    params.blockDim = params.frontCoreNum + params.tailCoreNum;
+    params.coreCalcNum = GetCeilInt(tokenNums, realCoreNumAiv);
+    params.coreCalcTail = GetDiv(tokenNums, realCoreNumAiv);
 
-    int64_t ubLeft = aicoreParams_.ubSize - MAX_INDICES_NUM * INT32_DTYPE_SIZE;
-    int64_t oneTokenBtypeSize = cols * tokenBtypeSize;
+    params.ubLeft = aicoreParams_.ubSize - MAX_INDICES_NUM * INT32_DTYPE_SIZE;
+    params.oneTokenBtypeSize = params.cols * tokenBtypeSize;
 
-    int64_t oneTokenBtypeSizeAlign32 = UpAlign(oneTokenBtypeSize, ONE_BLOCK_BYTE);
+    params.oneTokenBtypeSizeAlign32 = UpAlign(params.oneTokenBtypeSize, ONE_BLOCK_BYTE);
 
-    int64_t oneTokenlastMove = 1;
-    int64_t oneTokenOnceMove = 1;
-    int64_t oneTokenMoveTimes = 1;
-    int64_t onceIndicesTokenMoveTimes = 1;
-    ;
-    int64_t onceUbTokenNums = 1;
-    ;
-    int64_t onceIndicesTokenNums = 1;
-    ;
-    int64_t onceIndices = 1;
-    int64_t tokenUB = 1;
-    int64_t indicesUB = 1;
-    if (ubLeft >= BUFFER_NUM * oneTokenBtypeSizeAlign32) {
-        onceUbTokenNums = GetDiv(
+    params.oneTokenlastMove = 1;
+    params.oneTokenOnceMove = 1;
+    params.oneTokenMoveTimes = 1;
+    params.onceIndicesTokenMoveTimes = 1;
+    params.onceUbTokenNums = 1;
+    params.onceIndicesTokenNums = 1;
+    params.onceIndices = 1;
+    params.tokenUB = 1;
+    params.indicesUB = 1;
+}
+
+void MoeTokenPermuteWithRoutingMapTilingBase::SetMoeTokenPermuteWithRoutingMapIndexCopyParams(
+    MoeTokenPermuteWithRoutingMapIndexCopyParams& params) {
+    auto tilingData = &moeTokenPermuteWithRoutingMapTilingData.indexCopyComputeParamsOp;
+    tilingData->set_tokenUB(params.tokenUB);
+    tilingData->set_indicesUB(params.indicesUB);
+    tilingData->set_needCoreNum(params.blockDim);
+    tilingData->set_frontCoreNum(params.frontCoreNum);
+    tilingData->set_tailCoreNum(params.tailCoreNum);
+    tilingData->set_coreCalcNum(params.coreCalcNum);
+    tilingData->set_coreCalcTail(params.coreCalcTail);
+    tilingData->set_oneTokenBtypeSize(params.oneTokenBtypeSize);
+    tilingData->set_onceIndicesTokenMoveTimes(params.onceIndicesTokenMoveTimes);
+    tilingData->set_onceUbTokenNums(params.onceUbTokenNums);
+    tilingData->set_onceIndicesTokenNums(params.onceIndicesTokenNums);
+    tilingData->set_onceIndices(params.onceIndices);
+    tilingData->set_oneTokenlastMove(params.oneTokenlastMove);
+    tilingData->set_oneTokenOnceMove(params.oneTokenOnceMove);
+    tilingData->set_oneTokenMoveTimes(params.oneTokenMoveTimes);
+    tilingData->set_frontCoreLoop(params.frontCoreLoop);
+    tilingData->set_frontCoreLastTokenNums(params.frontCoreLastTokenNums);
+    tilingData->set_tailCoreLoop(params.tailCoreLoop);
+    tilingData->set_tailCoreLastTokenNums(params.tailCoreLastTokenNums);
+    tilingData->set_tailLastonceIndicesTokenMoveTimes(params.tailLastonceIndicesTokenMoveTimes);
+    tilingData->set_tailLastIndicesLastTokenNums(params.tailLastIndicesLastTokenNums);
+    tilingData->set_frontLastonceIndicesTokenMoveTimes(params.frontLastonceIndicesTokenMoveTimes);
+    tilingData->set_frontLastIndicesLastTokenNums(params.frontLastIndicesLastTokenNums);
+}
+
+void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4IndexCopyCompute()
+{
+    MoeTokenPermuteWithRoutingMapIndexCopyParams params;
+    InitMoeTokenPermuteWithRoutingMapIndexCopyParams(params);
+    if (params.ubLeft >= BUFFER_NUM * params.oneTokenBtypeSizeAlign32) {
+        params.onceUbTokenNums = GetDiv(
             static_cast<int64_t>(aicoreParams_.ubSize),
-            oneTokenBtypeSizeAlign32 * BUFFER_NUM + topK * BUFFER_NUM * INT32_DTYPE_SIZE);
-        onceUbTokenNums = std::min(onceUbTokenNums, MAX_BLOCK_COUNT);
-        int64_t TopKUbLeft = aicoreParams_.ubSize - onceUbTokenNums * oneTokenBtypeSizeAlign32 * BUFFER_NUM;
-        onceIndicesTokenMoveTimes = GetDiv(TopKUbLeft, onceUbTokenNums * topK * INT32_DTYPE_SIZE);
-        onceIndicesTokenNums = onceIndicesTokenMoveTimes * onceUbTokenNums;
-        onceIndices = onceIndicesTokenNums * topK;
-        tokenUB = onceUbTokenNums * oneTokenBtypeSizeAlign32;
-        indicesUB = UpAlign(onceIndices * INT32_DTYPE_SIZE, ONE_BLOCK_BYTE);
+            params.oneTokenBtypeSizeAlign32 * BUFFER_NUM + params.topK * BUFFER_NUM * INT32_DTYPE_SIZE);
+        params.onceUbTokenNums = std::min(params.onceUbTokenNums, MAX_BLOCK_COUNT);
+        int64_t TopKUbLeft = aicoreParams_.ubSize - params.onceUbTokenNums * params.oneTokenBtypeSizeAlign32 * BUFFER_NUM;
+        params.onceIndicesTokenMoveTimes = GetDiv(TopKUbLeft, params.onceUbTokenNums * params.topK * INT32_DTYPE_SIZE);
+        params.onceIndicesTokenNums = params.onceIndicesTokenMoveTimes * params.onceUbTokenNums;
+        params.onceIndices = params.onceIndicesTokenNums * params.topK;
+        params.tokenUB = params.onceUbTokenNums * params.oneTokenBtypeSizeAlign32;
+        params.indicesUB = UpAlign(params.onceIndices * INT32_DTYPE_SIZE, ONE_BLOCK_BYTE);
     } else {
-        onceIndicesTokenNums = GetDiv(MAX_INDICES_NUM, topK);
-        onceIndices = onceIndicesTokenNums * topK;
-        oneTokenOnceMove = GetDiv(FloorAlign(GetDiv(ubLeft, BUFFER_NUM), DATA_MOVE_ALIGN), tokenBtypeSize);
-        oneTokenMoveTimes = GetCeilInt(cols, oneTokenOnceMove);
-        oneTokenlastMove = cols - (oneTokenMoveTimes - 1) * oneTokenOnceMove;
+        params.onceIndicesTokenNums = GetDiv(MAX_INDICES_NUM, params.topK);
+        params.onceIndices = params.onceIndicesTokenNums * params.topK;
+        params.oneTokenOnceMove = GetDiv(FloorAlign(GetDiv(params.ubLeft, BUFFER_NUM), DATA_MOVE_ALIGN), tokenBtypeSize);
+        params.oneTokenMoveTimes = GetCeilInt(params.cols, params.oneTokenOnceMove);
+        params.oneTokenlastMove = params.cols - (params.oneTokenMoveTimes - 1) * params.oneTokenOnceMove;
         tilingKey_ = tilingKey_ + SPLIT_D_MODE;
-        tokenUB = oneTokenOnceMove * tokenBtypeSize;
-        indicesUB = MAX_INDICES_NUM * INT32_DTYPE_SIZE;
+        params.tokenUB = params.oneTokenOnceMove * tokenBtypeSize;
+        params.indicesUB = MAX_INDICES_NUM * INT32_DTYPE_SIZE;
     }
 
-    int64_t frontCoreLoop = GetCeilInt(coreCalcNum, onceIndicesTokenNums);
-    int64_t frontCoreLastTokenNums = coreCalcNum - (frontCoreLoop - 1) * onceIndicesTokenNums;
-    int64_t tailCoreLoop = GetCeilInt(coreCalcTail, onceIndicesTokenNums);
-    int64_t tailCoreLastTokenNums = coreCalcTail - (tailCoreLoop - 1) * onceIndicesTokenNums;
-    int64_t tailLastonceIndicesTokenMoveTimes = GetCeilInt(tailCoreLastTokenNums, onceUbTokenNums);
-    int64_t tailLastIndicesLastTokenNums =
-        tailCoreLastTokenNums - (tailLastonceIndicesTokenMoveTimes - 1) * onceUbTokenNums;
-    int64_t frontLastonceIndicesTokenMoveTimes = GetCeilInt(frontCoreLastTokenNums, onceUbTokenNums);
-
-    int64_t frontLastIndicesLastTokenNums =
-        frontCoreLastTokenNums - (frontLastonceIndicesTokenMoveTimes - 1) * onceUbTokenNums;
-    tilingData->set_tokenUB(tokenUB);
-    tilingData->set_indicesUB(indicesUB);
-    tilingData->set_needCoreNum(blockDim);
-    tilingData->set_frontCoreNum(frontCoreNum);
-    tilingData->set_tailCoreNum(tailCoreNum);
-    tilingData->set_coreCalcNum(coreCalcNum);
-    tilingData->set_coreCalcTail(coreCalcTail);
-    tilingData->set_oneTokenBtypeSize(oneTokenBtypeSize);
-    tilingData->set_onceIndicesTokenMoveTimes(onceIndicesTokenMoveTimes);
-    tilingData->set_onceUbTokenNums(onceUbTokenNums);
-    tilingData->set_onceIndicesTokenNums(onceIndicesTokenNums);
-    tilingData->set_onceIndices(onceIndices);
-    tilingData->set_oneTokenlastMove(oneTokenlastMove);
-    tilingData->set_oneTokenOnceMove(oneTokenOnceMove);
-    tilingData->set_oneTokenMoveTimes(oneTokenMoveTimes);
-    tilingData->set_frontCoreLoop(frontCoreLoop);
-    tilingData->set_frontCoreLastTokenNums(frontCoreLastTokenNums);
-    tilingData->set_tailCoreLoop(tailCoreLoop);
-    tilingData->set_tailCoreLastTokenNums(tailCoreLastTokenNums);
-    tilingData->set_tailLastonceIndicesTokenMoveTimes(tailLastonceIndicesTokenMoveTimes);
-    tilingData->set_tailLastIndicesLastTokenNums(tailLastIndicesLastTokenNums);
-    tilingData->set_frontLastonceIndicesTokenMoveTimes(frontLastonceIndicesTokenMoveTimes);
-    tilingData->set_frontLastIndicesLastTokenNums(frontLastIndicesLastTokenNums);
-    aivNum = std::max(aivNum, blockDim);
+    params.frontCoreLoop = GetCeilInt(params.coreCalcNum, params.onceIndicesTokenNums);
+    params.frontCoreLastTokenNums = params.coreCalcNum - (params.frontCoreLoop - 1) * params.onceIndicesTokenNums;
+    params.tailCoreLoop = GetCeilInt(params.coreCalcTail, params.onceIndicesTokenNums);
+    params.tailCoreLastTokenNums = params.coreCalcTail - (params.tailCoreLoop - 1) * params.onceIndicesTokenNums;
+    params.tailLastonceIndicesTokenMoveTimes = GetCeilInt(params.tailCoreLastTokenNums, params.onceUbTokenNums);
+    params.tailLastIndicesLastTokenNums =
+        params.tailCoreLastTokenNums - (params.tailLastonceIndicesTokenMoveTimes - 1) * params.onceUbTokenNums;
+    params.frontLastonceIndicesTokenMoveTimes = GetCeilInt(params.frontCoreLastTokenNums, params.onceUbTokenNums);
+    params.frontLastIndicesLastTokenNums =
+        params.frontCoreLastTokenNums - (params.frontLastonceIndicesTokenMoveTimes - 1) * params.onceUbTokenNums;
+    SetMoeTokenPermuteWithRoutingMapIndexCopyParams(params);
+    aivNum = std::max(aivNum, params.blockDim);
 }
 
 static ge::graphStatus TilingForMoeTokenPermuteWithRoutingMap(gert::TilingContext* context)

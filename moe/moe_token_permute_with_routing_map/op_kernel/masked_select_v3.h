@@ -126,28 +126,18 @@ class KernelMaskedSelectV3
 public:
     __aicore__ inline KernelMaskedSelectV3()
     {}
+
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR mask, GM_ADDR y, GM_ADDR sortedIndices, GM_ADDR workspace,
         const MaskedSelectRMTilingData* maskedSelectTilingData, int64_t hasProb, TPipe* tPipe)
     {
         this->pipe = tPipe;
         ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
-        this->blockDim = maskedSelectTilingData->needCoreNum;
         __gm__ T* globalWorkTensor = (__gm__ T*)((__gm__ uint64_t*)workspace);
         blockIdx = GetBlockIdx();
-        this->formerNum = maskedSelectTilingData->formerNum;
-        this->formerLength = maskedSelectTilingData->formerLength;
-        this->formertileNum = maskedSelectTilingData->formertileNum;
-        this->formertileLength = maskedSelectTilingData->formertileLength;
-        this->formerlasttileLength = maskedSelectTilingData->formerlasttileLength;
+        InitForMaskedSelectTilingData(maskedSelectTilingData);
+        
         this->hasProb = hasProb;
-        this->needCoreNum = maskedSelectTilingData->needCoreNum;
-        this->tailNum = maskedSelectTilingData->tailNum;
-        this->tailLength = maskedSelectTilingData->tailLength;
-        this->tailtileNum = maskedSelectTilingData->tailtileNum;
-        this->tailtileLength = maskedSelectTilingData->tailtileLength;
-        this->taillasttileLength = maskedSelectTilingData->taillasttileLength;
-        this->tokenNum = maskedSelectTilingData->tokenNum;
         if (blockIdx < this->formerNum) { // 分到大块核的处理
             this->tileLength = this->formertileLength / BUFFER_NUM;
             this->lasttileLength = this->formerlasttileLength / BUFFER_NUM;
@@ -180,24 +170,7 @@ public:
         tileLengthAlign = (tileLength + alignNum - 1) / alignNum * alignNum;
 
         offsetGlobal.SetGlobalBuffer((__gm__ int32_t*)workspace, blockDim);
-        if (hasProb) {
-            pipe->InitBuffer(inQueueX, BUFFER_NUM, this->tileLengthAlign * sizeof(T));
-            pipe->InitBuffer(outQueueY, BUFFER_NUM, this->tileLengthAlign * sizeof(T));
-        }
-        pipe->InitBuffer(inQueueMask, BUFFER_NUM, this->tileLengthAlign * sizeof(uint8_t));
-        pipe->InitBuffer(outQueueIndex, BUFFER_NUM, this->tileLengthAlign * sizeof(int32_t));
-        pipe->InitBuffer(offsetBuf, BLOCK_SIZE);
-
-        pipe->InitBuffer(sumBuf, BLOCK_SIZE);
-
-        pipe->InitBuffer(maskCastBuf, this->tileLengthAlign * sizeof(float));
-        pipe->InitBuffer(bitMaskBuf, this->tileLengthAlign);
-        pipe->InitBuffer(indexBuf, this->tileLengthAlign * sizeof(int32_t));
-
-        if constexpr (IS_1_BYTES_TYPE) {
-            pipe->InitBuffer(xCastBuf, this->tileLengthAlign * sizeof(half));
-            pipe->InitBuffer(yCastBuf, this->tileLengthAlign * sizeof(half));
-        }
+        SetPipeBuffer(hasProb);
         indexLocal = indexBuf.Get<int32_t>();
         offsetLocal = offsetBuf.Get<int32_t>();
     }
@@ -261,6 +234,43 @@ public:
     }
 
 private:
+    __aicore__ inline void InitForMaskedSelectTilingData(const MaskedSelectRMTilingData* maskedSelectTilingData) {
+        this->blockDim = maskedSelectTilingData->needCoreNum;
+        this->formerNum = maskedSelectTilingData->formerNum;
+        this->formerLength = maskedSelectTilingData->formerLength;
+        this->formertileNum = maskedSelectTilingData->formertileNum;
+        this->formertileLength = maskedSelectTilingData->formertileLength;
+        this->formerlasttileLength = maskedSelectTilingData->formerlasttileLength;
+        this->needCoreNum = maskedSelectTilingData->needCoreNum;
+        this->tailNum = maskedSelectTilingData->tailNum;
+        this->tailLength = maskedSelectTilingData->tailLength;
+        this->tailtileNum = maskedSelectTilingData->tailtileNum;
+        this->tailtileLength = maskedSelectTilingData->tailtileLength;
+        this->taillasttileLength = maskedSelectTilingData->taillasttileLength;
+        this->tokenNum = maskedSelectTilingData->tokenNum;
+    }
+
+    __aicore__ inline void SetPipeBuffer(int64_t hasProb) {
+        if (hasProb) {
+            pipe->InitBuffer(inQueueX, BUFFER_NUM, this->tileLengthAlign * sizeof(T));
+            pipe->InitBuffer(outQueueY, BUFFER_NUM, this->tileLengthAlign * sizeof(T));
+        }
+        pipe->InitBuffer(inQueueMask, BUFFER_NUM, this->tileLengthAlign * sizeof(uint8_t));
+        pipe->InitBuffer(outQueueIndex, BUFFER_NUM, this->tileLengthAlign * sizeof(int32_t));
+        pipe->InitBuffer(offsetBuf, BLOCK_SIZE);
+
+        pipe->InitBuffer(sumBuf, BLOCK_SIZE);
+
+        pipe->InitBuffer(maskCastBuf, this->tileLengthAlign * sizeof(float));
+        pipe->InitBuffer(bitMaskBuf, this->tileLengthAlign);
+        pipe->InitBuffer(indexBuf, this->tileLengthAlign * sizeof(int32_t));
+
+        if constexpr (IS_1_BYTES_TYPE) {
+            pipe->InitBuffer(xCastBuf, this->tileLengthAlign * sizeof(half));
+            pipe->InitBuffer(yCastBuf, this->tileLengthAlign * sizeof(half));
+        }
+    }
+
     __aicore__ inline void CopyIn(int32_t progress)
     {
         uint32_t ind = progress * this->tileLength;

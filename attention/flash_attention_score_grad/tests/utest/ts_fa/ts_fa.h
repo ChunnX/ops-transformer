@@ -34,7 +34,6 @@ class Ts_Fa : public Ts<FaCase> {};
 class Ts_Fa_Ascend910B1 : public Ts_Ascend910B1<FaCase> {};
 class Ts_Fa_Ascend910B2 : public Ts_Ascend910B2<FaCase> {};
 class Ts_Fa_Ascend910B3 : public Ts_Ascend910B3<FaCase> {};
-class Ts_Fa_Ascend910_9591 : public Ts_Ascend910_9591<FaCase> {};
 
 class Ts_Fa_WithParam : public Ts_WithParam<FaCase> {};
 class Ts_Fa_WithParam_Ascend910B1 : public Ts_WithParam_Ascend910B1<FaCase> {};

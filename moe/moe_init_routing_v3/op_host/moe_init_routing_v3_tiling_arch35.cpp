@@ -842,6 +842,6 @@ void MoeInitRountingV3RegbaseTiling::Tiling4GatherOutCompute()
         lastCorePerLoopIndicesElements, lastCoreLastLoopIndicesElements);
 }
 
-REGISTER_TILING_TEMPLATE("MoeInitRoutingV3", MoeInitRountingV3RegbaseTiling,
+REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRountingV3RegbaseTiling,
                          1000); // If 910_95, use this tiling class.
 } // namespace optiling

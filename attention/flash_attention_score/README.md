@@ -4,10 +4,16 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>昇腾910_95 AI处理器</term>|      √     |
+|<term>Atlas A3 训练系列产品</term>|      √     |
+|<term>Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas 800I A2 推理产品</term>|      ×     |
 |<term>A200I A2 Box 异构组件</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -22,12 +28,12 @@
 
     - pseType=1时，公式如下：
       $$
-      attention\_out = Dropout(Softmax(Mask(scale*(pse+query*key^T), atten\_mask)), keep\_prob)*value
+      attention\_out=Dropout(Softmax(Mask(scale*(pse+(query*d\_scale\_q)*(key*d\_scale\_k)^T), atten\_mask)), keep\_prob)*(value*d\_scale\_v)
       $$
 
     - pseType≠1时，公式如下：
       $$
-      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
+      attention\_out=Dropout(Softmax(Mask(scale*((query*d\_scale\_q)*(key*d\_scale\_k)^T) + pse),atten\_mask),keep\_prob)*(value*d\_scale\_v)
       $$
 
 ## 参数说明
@@ -52,21 +58,21 @@
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入query。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>BFLOAT16、FLOAT16、FLOAT、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
       <td>公式中的输入key。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>BFLOAT16、FLOAT16、FLOAT、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>value</td>
       <td>输入</td>
       <td>公式中的输入value。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>BFLOAT16、FLOAT16、FLOAT、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -88,6 +94,27 @@
       <td>可选输入</td>
       <td>公式中的atten_mask，表示注意力掩码，取值为1代表该位不参与计算（不生效），为0代表该位参与计算。</td>
       <td>BOOL、UINT8</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>dScaleQOptional</td>
+      <td>可选输入</td>
+      <td>公式中的d_scale_q，FP8场景下query的全量化参数。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>dScaleKOptional</td>
+      <td>可选输入</td>
+      <td>公式中的d_scale_k，FP8场景下key的全量化参数。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>dScaleVOptional</td>
+      <td>可选输入</td>
+      <td>公式中的d_scale_v，FP8场景下value的全量化参数。</td>
+      <td>FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -150,6 +177,9 @@
   </tbody>
 </table>
 
+- <term>Atlas A2 训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
+- <term>Atlas A3 训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
+
 ## 约束说明
 
 - 输入query、key、value、realShiftOptional的数据类型必须一致。
@@ -168,3 +198,6 @@
 | 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_flash_attention_score](./examples/test_aclnn_flash_attention_score.cpp) | 非TND场景，通过[aclnnFlashAttentionScore](./docs/aclnnFlashAttentionScoreV2.md)接口方式调用FlashAttention算子。             |
+
+## 参考资源
+- [算子设计原理](./docs/FA算子设计介绍.md)

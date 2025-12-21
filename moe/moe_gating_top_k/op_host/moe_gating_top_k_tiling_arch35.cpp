@@ -177,7 +177,17 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
     OP_CHECK_IF(kGroup_ > groupCount_,
                 OP_LOGE(context_, "k_group is: %ld, but should not greater than group_count: %ld", kGroup_, groupCount_),
                 return ge::GRAPH_FAILED);
-
+    OP_CHECK_IF(groupCount_ == expertCount_ && kGroup_ < k_,
+                OP_LOGE(context_, "k_group * group expert count is: %ld, but it must be greater than or equal to k: %ld.",
+                     kGroup_, k_),
+                return ge::GRAPH_FAILED);
+    
+    if (kGroup_ == groupCount_ || groupCount_ == expertCount_) {
+        kGroup_ = 1;
+        groupCount_ = 1;
+    }
+    moeGatingTopKTilingData_.set_kGroup(kGroup_);
+    moeGatingTopKTilingData_.set_groupCount(groupCount_);
     int64_t groupExpertCount = expertCount_ / groupCount_;
     int64_t groupExpertCountAlign = Ops::Base::CeilAlign(groupExpertCount, 32L);
     moeGatingTopKTilingData_.set_perGroupExpertCount(expertCount_ / groupCount_);
@@ -214,9 +224,6 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
     OP_CHECK_IF(normType_ != NORM_TYPE_SOFTMAX && normType_ != NORM_TYPE_SIGMOID,
                 OP_LOGE(context_, "norm type is: %ld, but currently only support %ld and %ld.", normType_,
                         NORM_TYPE_SOFTMAX, NORM_TYPE_SIGMOID),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(outFlag_ != 0, OP_LOGE(context_, "out_flag is: True, but currently only support False."),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -293,14 +300,12 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetShapeAttrsInfo()
     if (kGroupPtr != nullptr) {
         kGroup_ = *kGroupPtr;
     }
-    moeGatingTopKTilingData_.set_kGroup(kGroup_);
     OP_LOGI(context_, "Attr k_group is: %ld ", kGroup_);
 
     const int64_t *groupCountPtr = attrs->GetAttrPointer<int64_t>(GROUP_COUNT_ATTR_INDEX);
     if (groupCountPtr != nullptr) {
         groupCount_ = *groupCountPtr;
     }
-    moeGatingTopKTilingData_.set_groupCount(groupCount_);
     OP_LOGI(context_, "Attr group_count is: %ld ", groupCount_);
 
     const int64_t *groupSelectModePtr = attrs->GetAttrPointer<int64_t>(GROUP_SELECT_MODE_ATTR_INDEX);
@@ -506,5 +511,5 @@ void MoeGatingTopKTilingRegbase::Reset()
     return;
 }
 
-REGISTER_TILING_TEMPLATE("MoeGatingTopK", MoeGatingTopKTilingRegbase, 1000);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopK, MoeGatingTopKTilingRegbase, 1000);
 } // namespace optiling

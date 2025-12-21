@@ -21,11 +21,13 @@ namespace ops {
 static ge::graphStatus InferShapeForMoeTokenPermuteWithEpGrad(gert::InferShapeContext* context)
 {
     const gert::Shape* permuted_inputs_shape = context->GetInputShape(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, permuted_inputs_shape);
     const int* top_k = context->GetAttrs()->GetAttrPointer<int>(0);
     int64_t topk = static_cast<int64_t>(*top_k);
     int64_t tokens_num = permuted_inputs_shape->GetDim(0) / topk;
 
     gert::Shape* out_shape = context->GetOutputShape(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, out_shape);
     const int8_t out_dim_num = 2;
     out_shape->SetDimNum(out_dim_num);
     out_shape->SetDim(0, tokens_num);

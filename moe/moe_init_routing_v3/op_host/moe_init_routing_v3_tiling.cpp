@@ -21,6 +21,7 @@ namespace optiling {
 const static int64_t NUM_TWO = 2;
 const static int64_t NUM_THREE = 3;
 const static int64_t NUM_FOUR = 4;
+const static int64_t NUM_FIVE = 5;
 const static int64_t MRG_LIST_NUM = 4;
 const static int64_t SORT32_ALIGN_ELEMENT = 32;
 const static int64_t ONE_BLOCK_BYTE = 32;
@@ -61,12 +62,19 @@ const static int64_t SCATTER = 1;
 const static int64_t UN_QUANT = -1L;
 const static int64_t STATIC_QUANT = 0;
 const static int64_t DYNAMIC_QUANT = 1;
+const static int64_t CUMSUM = 0;
 const static int64_t COUNT = 1;
 const static int64_t KEY_VALUE = 2;
-const static int64_t CUMSUM = 0;
 const static int64_t DROP_LESS = 0;
 const static int64_t DROP_PAD = 1;
 const static int64_t DYNAMIC_QUANT_COLS_BUFFER = 21;
+const static int64_t DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER = 13;
+const static int64_t STATIC_QUANT_FULLLOAD_COLS_BUFFER = 11;
+
+const static int64_t SIZE_INT32 = 4;
+const static int64_t SIZE_INT16 = 2;
+const static int64_t SIZE_INT8 = 1;
+const static int64_t SIZE_FP32 = 4;
 
 const static uint64_t TILINGKEY_BASE = 1000000;
 const static uint64_t SORT_CORE_TILINGKEY_BASE = 100000;
@@ -75,6 +83,11 @@ const static uint64_t DROP_MODE_TILINGKEY_BASE = 1000;
 
 // Tiling Key for performance puncturing
 const static uint64_t PERFORMANCE_TILINGKEY_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168 = 2000000;
+const static uint64_t UNQUANTIZED_FULLLOAD_TILINGKEY = 2100000;
+const static uint64_t STATIC_QUANT_FULLLOAD_TILINGKEY = 2200000;
+const static uint64_t DYNAMIC_QUANT_FULLLOAD_TILINGKEY = 2300000;
+const static uint64_t DYNAMIC_QUANT_EPFULLLOAD_FULLLOAD_TILINGKEY = 10000;
+const static uint64_t DYNAMIC_QUANT_SMOOTHTYPE_FULLLOAD_TILINGKEY = 1000;
 
 const static int64_t PERFORMANCE_MODE_TOP_K = 8;
 const static int64_t PERFORMANCE_MODE_BS_MIN = 384;
@@ -82,6 +95,12 @@ const static int64_t PERFORMANCE_MODE_BS_MAX = 8192;
 const static int64_t PERFORMANCE_MODE_RANGE_MAX = 32;
 const static int64_t PERFORMANCE_MODE_MAX_BATCH_SIZE_TOP_K = PERFORMANCE_MODE_BS_MAX * PERFORMANCE_MODE_TOP_K;
 const static int64_t PERFORMANCE_MODE_MAX_ONE_CORE_GATHER = 21845;
+
+const static int64_t gatherFirstN = 100;
+const static int64_t gatherFirstScale = 8;
+const static int64_t oneDimScale = 1;
+const static int64_t twoDimScale = 2;
+const static int64_t ONE_REPEAT_SORT_NUM = 32;
 
 enum class PerformanceMode : int32_t {
     COMMON = 0,
@@ -148,6 +167,7 @@ private:
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckOutShape();
     ge::graphStatus CheckInputShape();
+    ge::graphStatus CheckDtype();
     void Tiling4GatherOutCompute();
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
@@ -157,6 +177,8 @@ private:
     void Tinlig4VBSMultiCoreCompute(MoeV3VBSComputeTilingData *tilingData);
     void Tinlig4VBSOneCoreCompute(MoeV3VBSComputeTilingData *tilingData);
     bool IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168() const;
+    bool IsFullLoad(); 
+    int64_t IsGatherFirstFullLoad();
     PerformanceMode GetPerformanceMode() const;
 
     int64_t aivNum;
@@ -183,6 +205,11 @@ private:
     bool expertTokensNumFlag_ = false;
     int64_t quantMode_ = 0;
     int64_t rowIdxType_ = -1L;
+
+    bool isFullload_ = false;
+    int64_t gatherFirstFullload_ = 0; 
+    int64_t epFullload_ = 0;
+    int64_t smoothType_ = 0;
 
     const gert::StorageShape *xShapePtr_ = nullptr;
     const gert::StorageShape *expertIdxShapePtr_ = nullptr;
@@ -261,6 +288,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
     OP_CHECK_IF(expertNum_ <= 0, OP_LOGE(context_, "expert_num should be greater than 0"), return ge::GRAPH_FAILED);
 
     dropPadMode_ = *dropPadModePtr_;
+    moeInitRoutingV3TilingData.set_dropPadMode(dropPadMode_);
     OP_CHECK_IF(dropPadMode_ != DROP_LESS, OP_LOGE(context_, "drop_pad_mode currently support %ld", DROP_LESS),
                 return ge::GRAPH_FAILED);
 
@@ -273,6 +301,11 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
     expertTokensNumFlag_ = *expertTokensNumFlagPtr_;
     OP_CHECK_IF(!expertTokensNumFlag_, OP_LOGE(context_, "expert_tokens_num_flag currently support True"),
                 return ge::GRAPH_FAILED);
+    if (expertTokensNumFlag_) {
+        moeInitRoutingV3TilingData.set_expertTokensNumFlag(1);
+    } else {
+        moeInitRoutingV3TilingData.set_expertTokensNumFlag(0);
+    }
     OP_CHECK_IF(expertStart_ < 0, OP_LOGE(context_, "expert_start should be greater than or equal to 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(expertStart_ >= expertEnd_, OP_LOGE(context_, "expert_start should be less than expert_end"),
@@ -291,7 +324,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
                     return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(quantMode_ != UN_QUANT && quantMode_ != DYNAMIC_QUANT,
-                OP_LOGE(context_, "quant_mode currently support %ld or %ld", UN_QUANT, DYNAMIC_QUANT),
+                OP_LOGE(context_, "quant_mode currently support %ld, %ld", UN_QUANT, DYNAMIC_QUANT),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(rowIdxTytpe_ != SCATTER && rowIdxTytpe_ != GATHER,
                 OP_LOGE(context_, "row_idx_type currently support %ld or %ld", SCATTER, GATHER),
@@ -321,17 +354,23 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
     moeInitRoutingV3TilingData.set_k(k_);
     moeInitRoutingV3TilingData.set_cols(cols_);
     totalLength_ = n_ * k_;
-    if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
-        OP_CHECK_IF(activeNum_ != totalLength_,
-                    OP_LOGE(context_, "active_num currently should equal to %ld(bs*k)", totalLength_),
-                    return ge::GRAPH_FAILED);
+    if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {	
+        OP_CHECK_IF(activeNum_ != totalLength_,	
+                    OP_LOGE(context_, "active_num currently should equal to %ld(bs*k)", totalLength_),	
+                    return ge::GRAPH_FAILED);	
     }
+    if (activeNum_ == 0) {
+        activeNum_ = totalLength_;
+    } else {
+        activeNum_ = std::min(activeNum_, totalLength_);
+    }
+    moeInitRoutingV3TilingData.set_activeNum(activeNum_);
 
     inuptXDtypeSize_ =
         static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(INPUT_X_INDEX)->GetDataType()));
     OP_LOGI(context_, "Input x dtype size is: %ld. ", inuptXDtypeSize_);
 
-    if (quantMode_ == 0 && scaleShapePtr_ != nullptr) {
+    if (quantMode_ == UN_QUANT && scaleShapePtr_ != nullptr) {
         auto scaleShape = scaleShapePtr_->GetStorageShape();
         OP_LOGI(context_, "input scale shape: %s", Ops::Base::ToString(scaleShape).c_str());
         OP_CHECK_IF(scaleShape.GetDimNum() != 1, OP_LOGE(context_, "The dim number of scale should be 1. "),
@@ -350,6 +389,13 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(scaleShape.GetDim(1) != cols_, OP_LOGE(context_, "The second dim of scale should be %ld", cols_),
                     return ge::GRAPH_FAILED);
+        if (scaleShape.GetDim(0) == 1) {
+            smoothType_ = oneDimScale;
+            moeInitRoutingV3TilingData.set_smoothType(smoothType_);
+        } else {
+            smoothType_ = twoDimScale;
+            moeInitRoutingV3TilingData.set_smoothType(smoothType_);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -377,7 +423,6 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckOutShape()
         expandedRowIdxShape.GetDim(0) != totalLength_,
         OP_LOGE(context_, "The first dim of expanded_row_idx and expanded_expert_idx should be %ld.", totalLength_),
         return ge::GRAPH_FAILED);
-
     if (expertTokensNumType_ == KEY_VALUE) {
         OP_CHECK_IF(
             expertTokensCountOrCumsumShape.GetDimNum() != DIM_TWO,
@@ -468,7 +513,69 @@ ge::graphStatus MoeInitRountingV3TilingBase::GetShapeAttrsInfo()
 }
 
 void MoeInitRountingV3TilingBase::ShowTilingData()
-{
+{   
+    int64_t isFullloadInt = 1 ? isFullload_ == true : 0;
+    OP_LOGI(context_, "isFullload: %ld, gatherFirstFullload: %ld, epFullload: %ld", isFullloadInt, gatherFirstFullload_, epFullload_);
+}
+
+int64_t MoeInitRountingV3TilingBase::IsGatherFirstFullLoad() {
+    // 判断当前输入条件下，要不要先gather(剔除无效专家)再排序.
+    if (epFullload_ == 0) {
+        return 0;
+    } else if (n_ >= gatherFirstN && (expertEnd_-expertStart_) * gatherFirstScale <= expertNum_) {
+        return 1;
+    }
+    return 0;
+}
+
+bool MoeInitRountingV3TilingBase::IsFullLoad() {
+    // 当下全载模板只支持非量化
+    if (totalLength_ > sortLoopMaxElement || this->dropPadMode_ == 1 || quantMode_ != UN_QUANT) {
+        return false;
+    }
+    int64_t perCoreTokens = 1;
+    if (expertStart_ == 0 && expertEnd_ == expertNum_) {
+        epFullload_ = 0;
+        if (quantMode_ != 1) {
+            perCoreTokens = n_ / aivNum;
+            int64_t remainder = n_ % aivNum;
+            // NUM_TWO is Max xRows need add 2 becauseof the left and right row may be another row.
+            perCoreTokens = remainder <= 1 ? perCoreTokens + 1 : perCoreTokens + NUM_TWO;
+        }
+    } else {
+        epFullload_ = 1;
+        perCoreTokens = 1;
+    }
+
+    gatherFirstFullload_ = IsGatherFirstFullLoad();
+    moeInitRoutingV3TilingData.set_epFullload(epFullload_);
+    moeInitRoutingV3TilingData.set_gatherFirstFullload(gatherFirstFullload_);
+    int64_t tileLength = Align(this->totalLength_, int64_t(sizeof(int32_t)));
+    int64_t sortNum = Ops::Base::CeilDiv(tileLength, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
+
+    int64_t sortSpace = sortNum * sizeof(int32_t) * ONE_CORE_SORT_BUFFER;
+    int64_t rowIdxSpace = sortNum * sizeof(int32_t) * NUM_THREE;
+    int64_t expertSpace = Ops::Base::CeilDiv(this->expertNum_ * int64_t(sizeof(int64_t)), ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE * NUM_TWO;
+    int64_t gatherSpace = Ops::Base::CeilDiv(cols_ * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE * perCoreTokens;
+    int64_t remainUb = aicoreParams_.ubSize - sortSpace - rowIdxSpace - expertSpace - LENGTH_1024;
+
+    if (quantMode_ == -1) {
+        remainUb -= (gatherSpace + ONE_BLOCK_BYTE);
+    } else if (quantMode_ == 0) {
+        int64_t quantSpace = 0;
+        if (epFullload_) {
+            quantSpace = Ops::Base::CeilDiv(cols_* STATIC_QUANT_FULLLOAD_COLS_BUFFER, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE;
+        } else {
+            quantSpace = Ops::Base::CeilDiv(cols_* STATIC_QUANT_FULLLOAD_COLS_BUFFER, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE * perCoreTokens;
+        }
+        remainUb -= (gatherSpace + quantSpace);
+    } else {
+        int64_t quantSpace = Ops::Base::CeilDiv(cols_ * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE;
+        int64_t scaleOutSpace = ONE_BLOCK_BYTE * 2;
+        remainUb -= (quantSpace + scaleOutSpace);
+    }
+
+    return remainUb > 0;
 }
 
 bool MoeInitRountingV3TilingBase::IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168() const
@@ -516,8 +623,67 @@ PerformanceMode MoeInitRountingV3TilingBase::GetPerformanceMode() const
     return result;
 }
 
-ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
+ge::graphStatus MoeInitRountingV3TilingBase::CheckDtype() 
 {
+    auto inputXDtype_ = context_->GetInputDesc(INPUT_X_INDEX)->GetDataType();
+    OP_CHECK_IF(inputXDtype_ != ge::DT_INT8 && inputXDtype_ != ge::DT_FLOAT16 && inputXDtype_ != ge::DT_BF16 && inputXDtype_ != ge::DT_FLOAT,
+        OP_LOGE(context_, "The data type of input_X should be INT8, FLOAT16, BF16, FLOAT."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(inputXDtype_ == ge::DT_INT8 && quantMode_ != UN_QUANT,
+        OP_LOGE(context_, "When input_X is INT8, quantization is not supported."),
+                return ge::GRAPH_FAILED);
+
+    auto expertIdxDtype_ = context_->GetInputDesc(INPUT_EXPERT_IDX_INDEX)->GetDataType();
+    OP_CHECK_IF(expertIdxDtype_ != ge::DT_INT32,
+        OP_LOGE(context_, "The data type of input_expertIdx should be INT32."),
+                return ge::GRAPH_FAILED);
+    
+    if (quantMode_ == STATIC_QUANT) {
+        auto scaleDtype_ = context_->GetOptionalInputDesc(INPUT_SCALE_INDEX)->GetDataType();
+        OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
+            OP_LOGE(context_, "The data type of input_scale should be FLOAT."),
+                return ge::GRAPH_FAILED);
+        
+        auto offsetDtype_ = context_->GetOptionalInputDesc(INPUT_OFFSET_INDEX)->GetDataType();
+        OP_CHECK_IF(offsetDtype_ != ge::DT_FLOAT,
+            OP_LOGE(context_, "The data type of input_offset should be FLOAT."),
+                return ge::GRAPH_FAILED);
+    } else {
+        if (scaleShapePtr_ != nullptr) {
+            auto scaleDtype_ = context_->GetOptionalInputDesc(INPUT_SCALE_INDEX)->GetDataType();
+            OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
+                OP_LOGE(context_, "The data type of input_scale should be FLOAT."),
+                    return ge::GRAPH_FAILED);
+        }
+    }
+
+    auto expandedXDtype_ = context_->GetOutputDesc(OUTPUT_EXPANDED_X_INDEX)->GetDataType();
+    OP_CHECK_IF(expandedXDtype_ != ge::DT_INT8 && expandedXDtype_ != ge::DT_FLOAT16 && expandedXDtype_ != ge::DT_BF16 && expandedXDtype_ != ge::DT_FLOAT,
+        OP_LOGE(context_, "The data type of output_expanded_X should be INT8, FLOAT16, BF16, FLOAT."),
+                return ge::GRAPH_FAILED);
+    
+    auto expandedRowIdxDtype_ = context_->GetOutputDesc(OUTPUT_EXPANDED_ROW_IDX_INDEX)->GetDataType();
+    OP_CHECK_IF(expandedRowIdxDtype_ != ge::DT_INT32,
+        OP_LOGE(context_, "The data type of output_expanded_row_idx should be INT32."),
+                return ge::GRAPH_FAILED);
+
+    auto expertTokensCountOrCusumDtype_ = context_->GetOutputDesc(OUTPUT_EXPERT_TOKENS_COUNT_INDEX)->GetDataType();
+    OP_CHECK_IF(expertTokensCountOrCusumDtype_ != ge::DT_INT64,
+        OP_LOGE(context_, "The data type of output_expert_tokens_count_or_cumsum should be INT64."),
+                return ge::GRAPH_FAILED);
+    
+    if (quantMode_ == DYNAMIC_QUANT || (quantMode_ == UN_QUANT && scaleShapePtr_ != nullptr)) {
+        auto expandedScaleDtype_ = context_->GetOutputDesc(OUTPUT_EXPANDED_SCALE_INDEX)->GetDataType();
+        OP_CHECK_IF(expandedScaleDtype_ != ge::DT_FLOAT,
+            OP_LOGE(context_, "The data type of input_expanded_scale should be FLOAT."),
+                    return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
+{   
     auto ret = CheckAttr();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
@@ -533,17 +699,24 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
         return ret;
     }
 
+    ret = CheckDtype();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
     if (IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
         aivNum = totalLength_;
     }
 
     sortLoopMaxElement = (aicoreParams_.ubSize - aivNum * ONE_BLOCK_BYTE) / (NUM_FOUR * NUM_TWO * NUM_FOUR) /
                          SORT32_ALIGN_ELEMENT * SORT32_ALIGN_ELEMENT;
+
     Tiling4VBSCompute();
     Tiling4VMSMiddleCompute();
     Tiling4SortOutCompute();
     Tiling4ExpertTokensCountCompute();
     Tiling4GatherOutCompute();
+    isFullload_ = IsFullLoad();
     ShowTilingData();
     return ge::GRAPH_SUCCESS;
 }
@@ -554,8 +727,18 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoLibApiTiling()
 }
 
 uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
-{
-    if (IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
+{   
+    if (isFullload_) {
+        if (quantMode_ == UN_QUANT) {
+            return UNQUANTIZED_FULLLOAD_TILINGKEY;
+        } else if (quantMode_ == STATIC_QUANT) {
+            return STATIC_QUANT_FULLLOAD_TILINGKEY;
+        } else {
+            return (DYNAMIC_QUANT_FULLLOAD_TILINGKEY + epFullload_ * DYNAMIC_QUANT_EPFULLLOAD_FULLLOAD_TILINGKEY 
+                    + smoothType_ * DYNAMIC_QUANT_SMOOTHTYPE_FULLLOAD_TILINGKEY);
+        }
+    }
+    else if (IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
         return PERFORMANCE_TILINGKEY_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168;
     } else if (PerformanceMode::ONE_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
                rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT) {
@@ -761,6 +944,7 @@ void MoeInitRountingV3TilingBase::Tiling4GatherOutCompute()
         colMultiple = DYNAMIC_QUANT_COLS_BUFFER;
         rowMultiple = NUM_FOUR;
     }
+
     int64_t perLoopMaxIndicesElements =
         (static_cast<int64_t>(aicoreParams_.ubSize) - Align(perLoopCols, inuptXDtypeSize_) * colMultiple -
          ONE_BLOCK_BYTE * NUM_TWO) /
@@ -810,5 +994,5 @@ void MoeInitRountingV3TilingBase::Tiling4GatherOutCompute()
         lastCorePerLoopIndicesElements, lastCoreLastLoopIndicesElements);
 }
 
-REGISTER_TILING_TEMPLATE("MoeInitRoutingV3", MoeInitRountingV3TilingBase, 10000); // If not 910_95, fallback to this.
+REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRountingV3TilingBase, 10000); // If not 910_95, fallback to this.
 } // namespace optiling

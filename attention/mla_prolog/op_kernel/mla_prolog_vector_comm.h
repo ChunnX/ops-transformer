@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
  /*!
   * \file mla_prolog_comm.h
@@ -15,6 +15,10 @@
 
 #ifndef MLA_PROLOG_VECTOR_COMM_H
 #define MLA_PROLOG_VECTOR_COMM_H
+
+#if __CCE_AICORE__ == 310
+#include "arch35/vf/vf_quant_pertensor.h"
+#endif
 
 #include "mla_prolog_comm.h"
 namespace MlaProlog {
@@ -236,7 +240,8 @@ __aicore__ inline void Dequant(const LocalTensor<float> &outputLocal, const Loca
  * @param shareTmpUb 临时buffer 内部需要的空间为 [cnt * 4] 4 : sizeof(int32)
  * @param cnt tensor长度
  */
-__aicore__ inline void CastFP32ToINT8(const LocalTensor<int8_t> outLocal, const LocalTensor<float> &inputLocal,
+template <typename O>
+__aicore__ inline void CastFP32ToINT8(const LocalTensor<O> outLocal, const LocalTensor<float> &inputLocal,
                                       const LocalTensor<uint8_t> &shareTmpUb, uint64_t cnt)
 {
     LocalTensor<int32_t> int32 = shareTmpUb.ReinterpretCast<int32_t>();
@@ -401,6 +406,25 @@ __aicore__ inline void QuantPerTensor(const LocalTensor<int8_t> &outLocal, const
     RowMuls(inputLocal, inputLocal, quantScaleLocal, rectangleParams);
     AscendC::PipeBarrier<PIPE_V>();
     CastFP32ToINT8(outLocal, inputLocal, shareTmpUb, rectangleParams.row * rectangleParams.col);
+}
+
+/**
+ * @brief QuantPerTensorToFP8e4m3 同时对row行进行FP32到fp8_e4m3的per-tensor量化操作。一行内共用同一个量化系数。
+          outLocal[i , j] = inputLocal[i , j] * quantScaleLocal[i]
+ * @param outLocal 输出tensor [row , col]
+ * @param inputLocal 输入tensor [row , col]
+ * @param quantScaleLocal quant系数 [1 , Hckv]
+ * @param rectangleParams 描述待处理数据的排布，包括
+          row 行数
+          col 列数
+          stride 一行的真实长度
+ */
+__aicore__ inline void QuantPerTensorToFP8e4m3(const LocalTensor<FP8E4M3> &outLocal, const LocalTensor<float> &inputLocal, 
+                                               const LocalTensor<float> &quantScaleLocal, const Rectangle& rectangleParams)
+{
+#if __CCE_AICORE__ == 310
+    QuantPerTensorVF(outLocal, inputLocal, quantScaleLocal, rectangleParams.row, rectangleParams.col);
+#endif
 }
 
 __aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal,

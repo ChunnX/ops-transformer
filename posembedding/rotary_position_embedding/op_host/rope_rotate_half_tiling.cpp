@@ -27,6 +27,7 @@ const uint64_t BYTE_PER_DATA_4 = 4;
 const uint64_t BYTE_PER_DATA_2 = 2;
 const uint64_t BYTE_OF_BLOCK = 32;
 const uint64_t BYTE_OF_REPEAT = 256;
+const uint64_t TND_DIM_NUM = 3;
 const uint64_t DIM_NUM = 4;
 const uint64_t DIM_FIRST = 0;
 const uint64_t DIM_SECOND = 1;
@@ -120,6 +121,7 @@ public:
     uint64_t coreNum = 0;
     uint64_t tilingDtype = TILING_DTYPE_UNKNOWN;
     uint64_t tilingKey = TILING_KEY_PREFIX;
+    bool isTndLayOut = false;
     RotaryPositionEmbeddingTilingData tiling;
     RotateHalfParams &tilingData_ = tiling.rotateHalfParams;
     ge::graphStatus DoRotateHalfTiling();
@@ -278,13 +280,29 @@ inline void RotateHalfTiling::GetStoreLines(const uint64_t ubSize, const uint64_
 }
 
 inline void RotateHalfTiling::ChooseTilingMode(const gert::Shape &xShape, const gert::Shape &rShape)
-{
-    uint64_t xFirstDim = static_cast<int64_t>(xShape.GetDim(DIM_FIRST));
-    uint64_t xSecondDim = static_cast<int64_t>(xShape.GetDim(DIM_SECOND));
-    uint64_t xThirdDim = static_cast<int64_t>(xShape.GetDim(DIM_THIRD));
-    uint64_t rFirstDim = static_cast<int64_t>(rShape.GetDim(DIM_FIRST));
-    uint64_t rSecondDim = static_cast<int64_t>(rShape.GetDim(DIM_SECOND));
-    uint64_t rThirdDim = static_cast<int64_t>(rShape.GetDim(DIM_THIRD));
+{   
+    uint64_t xFirstDim = 0;
+    uint64_t xSecondDim = 0;
+    uint64_t xThirdDim = 0;
+    uint64_t rFirstDim = 0;
+    uint64_t rSecondDim = 0;
+    uint64_t rThirdDim = 0;
+    if(isTndLayOut){
+        xFirstDim = 1;
+        xSecondDim = static_cast<int64_t>(xShape.GetDim(DIM_FIRST));
+        xThirdDim = static_cast<int64_t>(xShape.GetDim(DIM_SECOND));
+        rFirstDim = 1;
+        rSecondDim = static_cast<int64_t>(rShape.GetDim(DIM_FIRST));
+        rThirdDim = static_cast<int64_t>(rShape.GetDim(DIM_SECOND));
+    } else {
+        xFirstDim = static_cast<int64_t>(xShape.GetDim(DIM_FIRST));
+        xSecondDim = static_cast<int64_t>(xShape.GetDim(DIM_SECOND));
+        xThirdDim = static_cast<int64_t>(xShape.GetDim(DIM_THIRD));
+        rFirstDim = static_cast<int64_t>(rShape.GetDim(DIM_FIRST));
+        rSecondDim = static_cast<int64_t>(rShape.GetDim(DIM_SECOND));
+        rThirdDim = static_cast<int64_t>(rShape.GetDim(DIM_THIRD));
+    }
+    
     if (rFirstDim == xFirstDim && rSecondDim == xSecondDim && rThirdDim == xThirdDim) { // x = r, NO_BROADCAST
         OP_LOGD(context, "RotateHalf layout: x = r, NO_BROADCAST");
         tilingData_.set_tilingMode(TILING_MODE_NO_BROADCAST);
@@ -381,9 +399,15 @@ inline void RotateHalfTiling::GetAlignedInfo(const ge::DataType inputDtype, uint
 /* Check input shape */
 ge::graphStatus RotateHalfTiling::CheckShapeSupport(const gert::Shape &xShape, const gert::Shape &cosShape,
                                                     const gert::Shape &sinShape, uint64_t dLength)
-{
-    OP_CHECK_IF(xShape.GetDimNum() != DIM_NUM || cosShape.GetDimNum() != DIM_NUM || sinShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context, "the input shape must be 4-dimensional."), return ge::GRAPH_FAILED);
+{   
+    if(isTndLayOut){
+        OP_CHECK_IF(xShape.GetDimNum() != TND_DIM_NUM || cosShape.GetDimNum() != TND_DIM_NUM || sinShape.GetDimNum() != TND_DIM_NUM,
+                OP_LOGE(context, "the input shape must be 3or4-dimensional."), return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(xShape.GetDimNum() != DIM_NUM || cosShape.GetDimNum() != DIM_NUM || sinShape.GetDimNum() != DIM_NUM,
+                OP_LOGE(context, "the input shape must be 3or4-dimensional."), return ge::GRAPH_FAILED);
+    }
+    
     OP_CHECK_IF(dLength > D_LENGTH_LIMIT,
                 OP_LOGE(context, "input last dim (head_dim) should be less than %lu.", D_LENGTH_LIMIT),
                 return ge::GRAPH_FAILED);
@@ -392,6 +416,9 @@ ge::graphStatus RotateHalfTiling::CheckShapeSupport(const gert::Shape &xShape, c
     OP_CHECK_IF(cosShape != sinShape, OP_LOGE(context, "cos shape and sin shape should be equal."),
                 return ge::GRAPH_FAILED);
     uint64_t cosDLength = static_cast<uint64_t>(cosShape.GetDim(DIM_FOURTH));
+    if(isTndLayOut) {
+        cosDLength = static_cast<uint64_t>(cosShape.GetDim(DIM_THIRD));
+    }
     OP_CHECK_IF(cosDLength != dLength,
                 OP_LOGE(context, "input last dim (head_dim) should be equal, but get x [%lu] and cos [%lu].", dLength,
                         cosDLength),
@@ -446,8 +473,14 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
     auto inputSinShapePtr = context->GetInputShape(INDEX_INPUT_SIN);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputSinShapePtr);
     const gert::Shape &sinShape = inputSinShapePtr->GetStorageShape();
-    uint64_t dLength = static_cast<uint64_t>(xShape.GetDim(DIM_FOURTH));
+    uint64_t dLength = 0;
     uint64_t gmLength = static_cast<uint64_t>(xShape.GetShapeSize());
+    if(xShape.GetDimNum() == TND_DIM_NUM){
+        isTndLayOut = true;
+        dLength = static_cast<uint64_t>(xShape.GetDim(DIM_THIRD));
+    } else {
+        dLength = static_cast<uint64_t>(xShape.GetDim(DIM_FOURTH));
+    }
     tilingData_.set_gmLength(gmLength);
     auto shapeCheckRes = CheckShapeSupport(xShape, cosShape, sinShape, dLength);
     if (ge::GRAPH_SUCCESS != shapeCheckRes) {

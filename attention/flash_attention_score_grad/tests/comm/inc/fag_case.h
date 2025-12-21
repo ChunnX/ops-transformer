@@ -14,7 +14,7 @@
  */
 
 #include "fa_case.h"
-#include "../../../op_kernel/flash_attention_score_grad_tiling.h"
+#include "../../../op_kernel/arch32/flash_attention_score_grad_tiling.h"
 
 namespace ops::adv::tests::fag {
 

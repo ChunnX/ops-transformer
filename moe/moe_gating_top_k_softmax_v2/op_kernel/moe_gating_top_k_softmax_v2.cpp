@@ -60,6 +60,7 @@ extern "C" __global__ __aicore__ void moe_gating_top_k_softmax_v2(
     GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut, GM_ADDR softmaxOut, GM_ADDR workspace,
     GM_ADDR tiling)
 {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);  
     if (g_coreType == AIC) {
         return;
     }

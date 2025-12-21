@@ -149,6 +149,42 @@ namespace optiling {
 class MoeTokenPermuteWithEpTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
+	struct CoreParams {
+		int64_t frontCoreNum = 1;
+		int64_t tailCoreNum = 1;
+		int64_t blockDim = 1;
+		int64_t coreCalcNum = 1;
+		int64_t coreCalcTail = 1;
+	};
+	struct UBParams {
+		int64_t ubLeft = 1;
+		int64_t oneTokenBtypeSize = 1;
+		int64_t oneTokenBtypeSizeAlign32 = 1;
+		int64_t oneTokenlastMove = 1;
+    	int64_t oneTokenOnceMove = 1;
+    	int64_t oneTokenMoveTimes = 1;
+    	int64_t onceIndicesTokenMoveTimes = 1;
+    	int64_t onceUbTokenNums = 1;
+    	int64_t onceIndicesTokenNums = 1;
+    	int64_t onceIndices = 1;
+    	int64_t tokenUB = 1;
+    	int64_t indicesUB = 1;
+    	int64_t probsUB = 1;
+		int64_t oneProbBtypeSize = 1;
+	};
+
+	struct LoopParams {
+	    int64_t frontCoreLoop = 1;
+    	int64_t frontCoreLastTokenNums = 1;
+    	int64_t tailCoreLoop = 1;
+    	int64_t tailCoreLastTokenNums = 1;
+    	int64_t tailLastonceIndicesTokenMoveTimes = 1;
+    	int64_t tailLastIndicesLastTokenNums = 1;
+    	int64_t frontLastonceIndicesTokenMoveTimes = 1;
+    	int64_t frontLastIndicesLastTokenNums = 1;
+	};
+
+public:
     explicit MoeTokenPermuteWithEpTilingBase(gert::TilingContext* context) : TilingBaseClass(context)
     {
         Reset();
@@ -185,15 +221,25 @@ protected:
 private:
     ge::graphStatus CheckAndGetAttrsInfo();
     ge::graphStatus CheckInputShape();
+    ge::graphStatus CheckAttrsInfosAndInputShape();
+    ge::graphStatus CheckOutputIndicesAndToken(const gert::Shape indicesShape, int64_t cols,
+        const gert::Shape tokensShape);
     ge::graphStatus CheckOutputShape();
     void Tiling4IndexCopyCompute();
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
     void Tiling4VBSCompute();
+    void ShowIndexCopyCTilingData();
+    void ShowVBSComputeTilingEPData();
     void ShowTilingData();
     void Tinlig4VBSMultiCoreCompute(PermuteVBSComputeTilingEPData* tilingData);
     void Tinlig4VBSOneCoreCompute(PermuteVBSComputeTilingEPData* tilingData);
-
+	void CalculateCoreParams(CoreParams& coreParams, int64_t tokenNums);
+	void CalculateUBParams(UBParams& ubParams, int64_t topK, int64_t cols);
+	void CalculateLoopParams(LoopParams& loopParams, const CoreParams& coreParams, int64_t onceIndicesTokenNums,
+		int64_t onceUbTokenNums) const;
+	void SetTilingDataFinalParams(IndexMixCopyComputeTilingData* tilingData, const CoreParams& coreParams,
+		const UBParams& ubParams, const LoopParams& loopParams) const;
     int64_t aivNum = 0;
     int64_t realCoreNumAiv = 0;
     int64_t inputDimNum = 0;
@@ -245,6 +291,34 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckOutputIndicesAndToken(
+    const gert::Shape indicesShape, int64_t cols, const gert::Shape tokensShape)
+{
+    size_t IndicesDimNnum = indicesShape.GetDimNum();
+    if (IndicesDimNnum != DIM_ONE) {
+        OP_LOGE(context_->GetNodeName(), "The dim number of Output sort_indices should be 1.");
+        return ge::GRAPH_FAILED;
+    }
+
+    if (indicesShape.GetDim(0) != totalLength) {
+        OP_LOGE(context_->GetNodeName(), "The size of Output sort_indices should be [%ld].", totalLength);
+        return ge::GRAPH_FAILED;
+    }
+
+    if (cols != moeTokenPermuteWithEpTilingData.get_cols()) {
+        OP_LOGE(context_->GetNodeName(), "The hidden_size of output permuteTokens should be %ld but got %ld.",
+            moeTokenPermuteWithEpTilingData.get_cols(), cols);
+        return ge::GRAPH_FAILED;
+    }
+
+    if (tokensShape.GetDim(0) != numOutTokens) {
+        OP_LOGE(context_->GetNodeName(), "The dim 0 of output permuteTokens should be %ld but got %ld.", numOutTokens,
+            tokensShape.GetDim(0));
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckOutputShape()
 {
     // 获取输入shape
@@ -257,9 +331,8 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckOutputShape()
 
     size_t tokensDimNnum = tokensShape.GetDimNum();
     if (tokensDimNnum < DIM_TWO) {
-        OP_LOGE(
-            context_->GetNodeName(), "The dim number of Output permute_tokens should be greater than 1 but got [%lu].",
-            tokensDimNnum);
+        OP_LOGE(context_->GetNodeName(),
+            "The dim number of Output permute_tokens should be greater than 1 but got [%lu].", tokensDimNnum);
         return ge::GRAPH_FAILED;
     }
 
@@ -268,29 +341,9 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckOutputShape()
         cols *= tokensShape.GetDim(i);
     }
 
-    size_t IndicesDimNnum = IndicesShape.GetDimNum();
-    if (IndicesDimNnum != DIM_ONE) {
-        OP_LOGE(context_->GetNodeName(), "The dim number of Output sort_indices should be 1.");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (IndicesShape.GetDim(0) != totalLength) {
-        OP_LOGE(context_->GetNodeName(), "The size of Output sort_indices should be [%ld].", totalLength);
-        return ge::GRAPH_FAILED;
-    }
-
-    if (cols != moeTokenPermuteWithEpTilingData.get_cols()) {
-        OP_LOGE(
-            context_->GetNodeName(), "The hidden_size of output permuteTokens should be %ld but got %ld.",
-            moeTokenPermuteWithEpTilingData.get_cols(), cols);
-        return ge::GRAPH_FAILED;
-    }
-
-    if (tokensShape.GetDim(0) != numOutTokens) {
-        OP_LOGE(
-            context_->GetNodeName(), "The dim 0 of output permuteTokens should be %ld but got %ld.", numOutTokens,
-            tokensShape.GetDim(0));
-        return ge::GRAPH_FAILED;
+    auto ret = CheckOutputIndicesAndToken(IndicesShape, cols, tokensShape);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
     }
 
     auto probsTensor = context_->GetOptionalInputTensor(PERMUTE_WITH_EP_OUTPUT_PROBS);
@@ -305,9 +358,8 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckOutputShape()
         }
 
         if (probsShape.GetDim(0) != numOutTokens) {
-            OP_LOGE(
-                context_->GetNodeName(), "The size of output permuteProbs should be [%ld] but got [%ld].", numOutTokens,
-                probsShape.GetDim(0));
+            OP_LOGE(context_->GetNodeName(),
+                "The size of output permuteProbs should be [%ld] but got [%ld].", numOutTokens, probsShape.GetDim(0));
             return ge::GRAPH_FAILED;
         }
     }
@@ -395,17 +447,25 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckAttrsInfosAndInputShape()
+{
+    auto ret = CheckAndGetAttrsInfo();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+    ret = CheckInputShape();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetShapeAttrsInfo()
 {
     opName = context_->GetNodeName();
     OP_LOGD(opName, "MoeTokenPermuteWithEp Tiling initing.");
 
-    auto ret = CheckAndGetAttrsInfo();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
-    ret = CheckInputShape();
+    auto ret = CheckAttrsInfosAndInputShape();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -416,8 +476,7 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetShapeAttrsInfo()
 
     tokenBtypeSize = ge::GetSizeByDataType(context_->GetInputDesc(PERMUTE_WITH_EP_INPUT_TOKENS)->GetDataType());
     indicesBtypeSize = ge::GetSizeByDataType(context_->GetInputDesc(PERMUTE_WITH_EP_INPUT_IDX)->GetDataType());
-    probsBtypeSize = (probsTensor == nullptr) ?
-                         0 :
+    probsBtypeSize = (probsTensor == nullptr) ? 0 :
                          ge::GetSizeByDataType(context_->GetInputDesc(PERMUTE_WITH_EP_INPUT_PROBS)->GetDataType());
 
     size_t TokensDimNnum = tokensShape.GetDimNum();
@@ -441,8 +500,7 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetShapeAttrsInfo()
     moeTokenPermuteWithEpTilingData.set_topK(topK);
     totalLength = moeTokenPermuteWithEpTilingData.get_n() * moeTokenPermuteWithEpTilingData.get_topK();
     if (totalLength >= SORT_LIMIT_LENGTH) {
-        OP_LOGE(
-            context_->GetNodeName(), "The elements num of indices [%ld] should be less than [%ld].", totalLength,
+        OP_LOGE( context_->GetNodeName(), "The elements num of indices [%ld] should be less than [%ld].", totalLength,
             SORT_LIMIT_LENGTH);
         return ge::GRAPH_FAILED;
     }
@@ -461,7 +519,7 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetShapeAttrsInfo()
     return CheckOutputShape();
 }
 
-void MoeTokenPermuteWithEpTilingBase::ShowTilingData()
+void MoeTokenPermuteWithEpTilingBase::ShowIndexCopyCTilingData()
 {
     OP_LOGD(
         opName,
@@ -500,6 +558,10 @@ void MoeTokenPermuteWithEpTilingBase::ShowTilingData()
         moeTokenPermuteWithEpTilingData.indexCopyComputeParamsOp.get_tokenUB(),
         moeTokenPermuteWithEpTilingData.indexCopyComputeParamsOp.get_indicesUB(),
         moeTokenPermuteWithEpTilingData.indexCopyComputeParamsOp.get_probsUB());
+}
+
+void MoeTokenPermuteWithEpTilingBase::ShowVBSComputeTilingEPData()
+{
     OP_LOGD(
         opName,
         "PermuteVBSComputeTilingEPData is needCoreNum:%ld, perCoreElements:%ld, perCoreLoops:%ld, "
@@ -517,6 +579,11 @@ void MoeTokenPermuteWithEpTilingBase::ShowTilingData()
         moeTokenPermuteWithEpTilingData.vbsComputeParamsOp.get_lastCoreLastLoopElements(),
         moeTokenPermuteWithEpTilingData.vbsComputeParamsOp.get_oneLoopMaxElements(),
         moeTokenPermuteWithEpTilingData.vbsComputeParamsOp.get_lastCoreWSindex());
+}
+void MoeTokenPermuteWithEpTilingBase::ShowTilingData()
+{
+    ShowIndexCopyCTilingData();
+    ShowVBSComputeTilingEPData();
     OP_LOGD(
         opName, "PermuteVMSMiddleComputeTilingEPData is needCoreNum:%ld",
         moeTokenPermuteWithEpTilingData.vmsMiddleComputeParamsOp.get_needCoreNum());
@@ -658,6 +725,107 @@ void MoeTokenPermuteWithEpTilingBase::Tiling4SortOutCompute()
     auto tilingData = &moeTokenPermuteWithEpTilingData.sortOutComputeParamsOp;
     tilingData->set_oneLoopMaxElements(mrgSortListMaxElement);
 }
+
+void MoeTokenPermuteWithEpTilingBase::CalculateCoreParams(MoeTokenPermuteWithEpTilingBase::CoreParams& coreParams,
+	int64_t tokenNums)
+{
+	coreParams.frontCoreNum = GetRem(tokenNums, realCoreNumAiv) != 0 ? GetRem(tokenNums, realCoreNumAiv) : realCoreNumAiv;
+    coreParams.tailCoreNum = tokenNums <= realCoreNumAiv ? 0 : realCoreNumAiv - coreParams.frontCoreNum;
+    coreParams.blockDim = coreParams.frontCoreNum + coreParams.tailCoreNum;
+    coreParams.coreCalcNum = GetCeilInt(tokenNums, realCoreNumAiv);
+    coreParams.coreCalcTail = GetDiv(tokenNums, realCoreNumAiv);
+}
+
+void MoeTokenPermuteWithEpTilingBase::CalculateUBParams(
+	MoeTokenPermuteWithEpTilingBase::UBParams& ubParams, int64_t topK, int64_t cols)
+{
+    ubParams.ubLeft = aicoreParams_.ubSize - PROBS_SPACE_SCALE * MAX_INDICES_NUM * INT32_DTYPE_SIZE - ONE_BLOCK_BYTE;
+    ubParams.oneTokenBtypeSize = cols * tokenBtypeSize;
+	ubParams.oneProbBtypeSize = probsBtypeSize;
+	ubParams.oneTokenBtypeSizeAlign32 = UpAlign(ubParams.oneTokenBtypeSize, ONE_BLOCK_BYTE);
+
+	if (ubParams.ubLeft >= BUFFER_NUM * ubParams.oneTokenBtypeSizeAlign32) {
+		ubParams.onceUbTokenNums = GetDiv(
+            static_cast<int64_t>(aicoreParams_.ubSize - USED_SIZE),
+            ubParams.oneTokenBtypeSizeAlign32 * BUFFER_NUM + PROBS_SPACE_SCALE * topK * BUFFER_NUM * INT32_DTYPE_SIZE);
+        ubParams.onceUbTokenNums = std::min(ubParams.onceUbTokenNums, MAX_BLOCK_COUNT);
+
+        int64_t TopKUbLeft = aicoreParams_.ubSize - USED_SIZE - ubParams.onceUbTokenNums * ubParams.oneTokenBtypeSizeAlign32 * BUFFER_NUM;
+        /* Probs的UB按照indices的UB计算, 这里乘以2*/
+        ubParams.onceIndicesTokenMoveTimes = GetDiv(TopKUbLeft, PROBS_SPACE_SCALE * ubParams.onceUbTokenNums * topK * INT32_DTYPE_SIZE);
+
+        ubParams.onceIndicesTokenNums = ubParams.onceIndicesTokenMoveTimes * ubParams.onceUbTokenNums;
+        ubParams.onceIndices = ubParams.onceIndicesTokenNums * topK;
+        ubParams.tokenUB = ubParams.onceUbTokenNums * ubParams.oneTokenBtypeSizeAlign32;
+        ubParams.indicesUB = UpAlign(ubParams.onceIndices * INT32_DTYPE_SIZE, ONE_BLOCK_BYTE);
+        ubParams.probsUB = ubParams.indicesUB;
+	} else {
+		ubParams.onceIndicesTokenNums = GetDiv(MAX_INDICES_NUM, topK);
+        ubParams.onceIndices = ubParams.onceIndicesTokenNums * topK;
+        ubParams.oneTokenOnceMove = GetDiv(FloorAlign(GetDiv(ubParams.ubLeft, BUFFER_NUM), DATA_MOVE_ALIGN), tokenBtypeSize);
+        ubParams.oneTokenMoveTimes = GetCeilInt(cols, ubParams.oneTokenOnceMove);
+        ubParams.oneTokenlastMove = cols - (ubParams.oneTokenMoveTimes - 1) * ubParams.oneTokenOnceMove;
+
+        tilingKey_ = tilingKey_ + SPILT_D_MODE;
+        ubParams.tokenUB = ubParams.oneTokenOnceMove * tokenBtypeSize;
+        ubParams.indicesUB = MAX_INDICES_NUM * INT32_DTYPE_SIZE;
+        ubParams.probsUB = ubParams.indicesUB;
+	}
+}
+
+void MoeTokenPermuteWithEpTilingBase::CalculateLoopParams(
+	MoeTokenPermuteWithEpTilingBase::LoopParams& loopParams,
+	const MoeTokenPermuteWithEpTilingBase::CoreParams& coreParams,
+	int64_t onceIndicesTokenNums, int64_t onceUbTokenNums) const 
+{
+    loopParams.frontCoreLoop = GetCeilInt(coreParams.coreCalcNum, onceIndicesTokenNums);
+    loopParams.frontCoreLastTokenNums = coreParams.coreCalcNum - (loopParams.frontCoreLoop - 1) * onceIndicesTokenNums;
+    loopParams.tailCoreLoop = GetCeilInt(coreParams.coreCalcTail, onceIndicesTokenNums);
+    loopParams.tailCoreLastTokenNums = coreParams.coreCalcTail - (loopParams.tailCoreLoop - 1) * onceIndicesTokenNums;
+    loopParams.tailLastonceIndicesTokenMoveTimes = GetCeilInt(loopParams.tailCoreLastTokenNums, onceUbTokenNums);
+    loopParams.tailLastIndicesLastTokenNums =
+        loopParams.tailCoreLastTokenNums - (loopParams.tailLastonceIndicesTokenMoveTimes - 1) * onceUbTokenNums;
+    loopParams.frontLastonceIndicesTokenMoveTimes = GetCeilInt(loopParams.frontCoreLastTokenNums, onceUbTokenNums);
+
+    loopParams.frontLastIndicesLastTokenNums =
+        loopParams.frontCoreLastTokenNums - (loopParams.frontLastonceIndicesTokenMoveTimes - 1) * onceUbTokenNums;
+}
+
+void MoeTokenPermuteWithEpTilingBase::SetTilingDataFinalParams(IndexMixCopyComputeTilingData* tilingData,
+	const MoeTokenPermuteWithEpTilingBase::CoreParams& coreParams,
+	const MoeTokenPermuteWithEpTilingBase::UBParams& ubParams,
+	const MoeTokenPermuteWithEpTilingBase::LoopParams& loopParams) const
+{
+    tilingData->set_tokenUB(ubParams.tokenUB);
+    tilingData->set_indicesUB(ubParams.indicesUB);
+    tilingData->set_probsUB(ubParams.probsUB);
+
+    tilingData->set_needCoreNum(coreParams.blockDim);
+    tilingData->set_frontCoreNum(coreParams.frontCoreNum);
+    tilingData->set_tailCoreNum(coreParams.tailCoreNum);
+    tilingData->set_coreCalcNum(coreParams.coreCalcNum);
+    tilingData->set_coreCalcTail(coreParams.coreCalcTail);
+
+    tilingData->set_oneTokenBtypeSize(ubParams.oneTokenBtypeSize);
+    tilingData->set_oneProbBtypeSize(ubParams.oneProbBtypeSize);
+    tilingData->set_onceIndicesTokenMoveTimes(ubParams.onceIndicesTokenMoveTimes);
+    tilingData->set_onceUbTokenNums(ubParams.onceUbTokenNums);
+    tilingData->set_onceIndicesTokenNums(ubParams.onceIndicesTokenNums);
+    tilingData->set_onceIndices(ubParams.onceIndices);
+    tilingData->set_oneTokenlastMove(ubParams.oneTokenlastMove);
+    tilingData->set_oneTokenOnceMove(ubParams.oneTokenOnceMove);
+    tilingData->set_oneTokenMoveTimes(ubParams.oneTokenMoveTimes);
+
+    tilingData->set_frontCoreLoop(loopParams.frontCoreLoop);
+    tilingData->set_frontCoreLastTokenNums(loopParams.frontCoreLastTokenNums);
+    tilingData->set_tailCoreLoop(loopParams.tailCoreLoop);
+    tilingData->set_tailCoreLastTokenNums(loopParams.tailCoreLastTokenNums);
+    tilingData->set_tailLastonceIndicesTokenMoveTimes(loopParams.tailLastonceIndicesTokenMoveTimes);
+    tilingData->set_tailLastIndicesLastTokenNums(loopParams.tailLastIndicesLastTokenNums);
+    tilingData->set_frontLastonceIndicesTokenMoveTimes(loopParams.frontLastonceIndicesTokenMoveTimes);
+    tilingData->set_frontLastIndicesLastTokenNums(loopParams.frontLastIndicesLastTokenNums);
+}
+
 void MoeTokenPermuteWithEpTilingBase::Tiling4IndexCopyCompute()
 {
     auto tilingData = &moeTokenPermuteWithEpTilingData.indexCopyComputeParamsOp;
@@ -672,94 +840,16 @@ void MoeTokenPermuteWithEpTilingBase::Tiling4IndexCopyCompute()
     tilingData->set_start(start);
     tilingData->set_end(end);
 
-    int64_t frontCoreNum = GetRem(tokenNums, realCoreNumAiv) != 0 ? GetRem(tokenNums, realCoreNumAiv) : realCoreNumAiv;
-    int64_t tailCoreNum = tokenNums <= realCoreNumAiv ? 0 : realCoreNumAiv - frontCoreNum;
-    int64_t blockDim = frontCoreNum + tailCoreNum;
-    int64_t coreCalcNum = GetCeilInt(tokenNums, realCoreNumAiv);
-    int64_t coreCalcTail = GetDiv(tokenNums, realCoreNumAiv);
+	CoreParams coreParams;
+	CalculateCoreParams(coreParams, tokenNums);
+	UBParams ubParams;
+	CalculateUBParams(ubParams, topK, cols);
 
-    /* 需要再减去probs的空间,按照indices空间计算*/
-    int64_t ubLeft = aicoreParams_.ubSize - PROBS_SPACE_SCALE * MAX_INDICES_NUM * INT32_DTYPE_SIZE - ONE_BLOCK_BYTE;
-    int64_t oneTokenBtypeSize = cols * tokenBtypeSize;
-    int64_t oneProbBtypeSize = probsBtypeSize;
+	LoopParams loopParams;
+	CalculateLoopParams(loopParams, coreParams, ubParams.onceIndicesTokenNums, ubParams.onceUbTokenNums);
+	SetTilingDataFinalParams(tilingData, coreParams, ubParams, loopParams);
 
-    int64_t oneTokenBtypeSizeAlign32 = UpAlign(oneTokenBtypeSize, ONE_BLOCK_BYTE);
-
-    int64_t oneTokenlastMove = 1;
-    int64_t oneTokenOnceMove = 1;
-    int64_t oneTokenMoveTimes = 1;
-    int64_t onceIndicesTokenMoveTimes = 1;
-    ;
-    int64_t onceUbTokenNums = 1;
-    ;
-    int64_t onceIndicesTokenNums = 1;
-    ;
-    int64_t onceIndices = 1;
-    int64_t tokenUB = 1;
-    int64_t indicesUB = 1;
-    int64_t probsUB = 1;
-    if (ubLeft >= BUFFER_NUM * oneTokenBtypeSizeAlign32) {
-        onceUbTokenNums = GetDiv(
-            static_cast<int64_t>(aicoreParams_.ubSize - USED_SIZE),
-            oneTokenBtypeSizeAlign32 * BUFFER_NUM + PROBS_SPACE_SCALE * topK * BUFFER_NUM * INT32_DTYPE_SIZE);
-        onceUbTokenNums = std::min(onceUbTokenNums, MAX_BLOCK_COUNT);
-        int64_t TopKUbLeft = aicoreParams_.ubSize - USED_SIZE - onceUbTokenNums * oneTokenBtypeSizeAlign32 * BUFFER_NUM;
-        /* Probs的UB按照indices的UB计算, 这里乘以2*/
-        onceIndicesTokenMoveTimes = GetDiv(TopKUbLeft, PROBS_SPACE_SCALE * onceUbTokenNums * topK * INT32_DTYPE_SIZE);
-        onceIndicesTokenNums = onceIndicesTokenMoveTimes * onceUbTokenNums;
-        onceIndices = onceIndicesTokenNums * topK;
-        tokenUB = onceUbTokenNums * oneTokenBtypeSizeAlign32;
-        indicesUB = UpAlign(onceIndices * INT32_DTYPE_SIZE, ONE_BLOCK_BYTE);
-        probsUB = indicesUB;
-    } else {
-        onceIndicesTokenNums = GetDiv(MAX_INDICES_NUM, topK);
-        onceIndices = onceIndicesTokenNums * topK;
-        oneTokenOnceMove = GetDiv(FloorAlign(GetDiv(ubLeft, BUFFER_NUM), DATA_MOVE_ALIGN), tokenBtypeSize);
-        oneTokenMoveTimes = GetCeilInt(cols, oneTokenOnceMove);
-        oneTokenlastMove = cols - (oneTokenMoveTimes - 1) * oneTokenOnceMove;
-        tilingKey_ = tilingKey_ + SPILT_D_MODE;
-        tokenUB = oneTokenOnceMove * tokenBtypeSize;
-        indicesUB = MAX_INDICES_NUM * INT32_DTYPE_SIZE;
-        probsUB = indicesUB;
-    }
-
-    int64_t frontCoreLoop = GetCeilInt(coreCalcNum, onceIndicesTokenNums);
-    int64_t frontCoreLastTokenNums = coreCalcNum - (frontCoreLoop - 1) * onceIndicesTokenNums;
-    int64_t tailCoreLoop = GetCeilInt(coreCalcTail, onceIndicesTokenNums);
-    int64_t tailCoreLastTokenNums = coreCalcTail - (tailCoreLoop - 1) * onceIndicesTokenNums;
-    int64_t tailLastonceIndicesTokenMoveTimes = GetCeilInt(tailCoreLastTokenNums, onceUbTokenNums);
-    int64_t tailLastIndicesLastTokenNums =
-        tailCoreLastTokenNums - (tailLastonceIndicesTokenMoveTimes - 1) * onceUbTokenNums;
-    int64_t frontLastonceIndicesTokenMoveTimes = GetCeilInt(frontCoreLastTokenNums, onceUbTokenNums);
-
-    int64_t frontLastIndicesLastTokenNums =
-        frontCoreLastTokenNums - (frontLastonceIndicesTokenMoveTimes - 1) * onceUbTokenNums;
-    tilingData->set_tokenUB(tokenUB);
-    tilingData->set_indicesUB(indicesUB);
-    tilingData->set_probsUB(probsUB);
-    tilingData->set_needCoreNum(blockDim);
-    tilingData->set_frontCoreNum(frontCoreNum);
-    tilingData->set_tailCoreNum(tailCoreNum);
-    tilingData->set_coreCalcNum(coreCalcNum);
-    tilingData->set_coreCalcTail(coreCalcTail);
-    tilingData->set_oneTokenBtypeSize(oneTokenBtypeSize);
-    tilingData->set_oneProbBtypeSize(oneProbBtypeSize);
-    tilingData->set_onceIndicesTokenMoveTimes(onceIndicesTokenMoveTimes);
-    tilingData->set_onceUbTokenNums(onceUbTokenNums);
-    tilingData->set_onceIndicesTokenNums(onceIndicesTokenNums);
-    tilingData->set_onceIndices(onceIndices);
-    tilingData->set_oneTokenlastMove(oneTokenlastMove);
-    tilingData->set_oneTokenOnceMove(oneTokenOnceMove);
-    tilingData->set_oneTokenMoveTimes(oneTokenMoveTimes);
-    tilingData->set_frontCoreLoop(frontCoreLoop);
-    tilingData->set_frontCoreLastTokenNums(frontCoreLastTokenNums);
-    tilingData->set_tailCoreLoop(tailCoreLoop);
-    tilingData->set_tailCoreLastTokenNums(tailCoreLastTokenNums);
-    tilingData->set_tailLastonceIndicesTokenMoveTimes(tailLastonceIndicesTokenMoveTimes);
-    tilingData->set_tailLastIndicesLastTokenNums(tailLastIndicesLastTokenNums);
-    tilingData->set_frontLastonceIndicesTokenMoveTimes(frontLastonceIndicesTokenMoveTimes);
-    tilingData->set_frontLastIndicesLastTokenNums(frontLastIndicesLastTokenNums);
-    aivNum = std::max(aivNum, blockDim);
+	aivNum = std::max(aivNum, coreParams.blockDim);
 }
 
 static ge::graphStatus TilingForMoeTokenPermuteWithEp(gert::TilingContext* context)

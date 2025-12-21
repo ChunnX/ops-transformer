@@ -12,7 +12,6 @@
 #include "aclnnop/aclnn_rotary_position_embedding.h"
 #include <iostream>
 #include <vector>
-#include<unistd.h>
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -35,7 +34,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
-    // 固定写法，AscendCL初始化
+    // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -174,5 +173,5 @@ int main() {
     aclrtResetDevice(deviceId);
     aclFinalize();
 
-    _exit(0);
+    return 0;
 }

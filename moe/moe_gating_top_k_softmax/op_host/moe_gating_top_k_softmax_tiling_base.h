@@ -114,11 +114,14 @@ protected:
 
 protected:
     int coreNum;
+    int64_t aivNum;
     uint64_t ubSize;
     ge::DataType dtype;
     uint32_t row;
     uint32_t col;
     int64_t k;
+    bool hasFinished{false};
+    platform_ascendc::SocVersion socVersion;
 };
 } // namespace optiling
 

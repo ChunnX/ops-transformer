@@ -15,7 +15,7 @@
 
 #include "ts_fa/ts_fa.h"
 #include "fas_case.h"
-#include "../../../op_kernel/flash_attention_score_tiling.h"
+#include "../../../op_kernel/arch32/flash_attention_score_tiling.h"
 
 using FasCase = ops::adv::tests::fas::FasCase;
 using ExpectInfoWithSocversion = ops::adv::tests::utils::ExpectInfoWithSocversion;

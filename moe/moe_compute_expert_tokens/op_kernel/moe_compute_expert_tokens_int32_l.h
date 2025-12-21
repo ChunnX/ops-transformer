@@ -32,6 +32,8 @@ public:
 
 private:
     __aicore__ inline void ProcessBefore();
+    __aicore__ inline void ProcessBeforeForTailCore();
+    __aicore__ inline void ProcessBeforeForNormalCore();
     __aicore__ inline void ProcessAfter();
     __aicore__ inline void CopyInBefore(int64_t loop1Idx, int64_t loop2Idx);
     __aicore__ inline void CopyInTailCoreBefore(int64_t loop1Idx, int64_t loop2Idx);
@@ -157,8 +159,7 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ParseTilingData(
     handleNumPerLoopBefore_ = tilingData->handleNumPerLoopBefore; // 非尾核，每次loop处理的sorted_expert数量
     usedCoreNumBefore3_ = tilingData->usedCoreNumBefore3;
     handleExpertNumLoopCount_ = tilingData->handleExpertNumLoopCount; // 切E需要的loop次数
-    handleExpertNumMainCorePerLoop_ =
-        tilingData->handleExpertNumMainCorePerLoop; // 每次loop，非最后一次切分处理的E的个数
+    handleExpertNumMainCorePerLoop_ = tilingData->handleExpertNumMainCorePerLoop; // 每次loop，非最后一次切分处理的E的个数
     handleExpertNumTailCorePerLoop_ = tilingData->handleExpertNumTailCorePerLoop; // 每次loop，最后一次切分处理的E个数
 
     loopCountTailCoreMainLoop_ = tilingData->loopCountTailCoreMainLoop;
@@ -214,16 +215,12 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::Init(
     // 内存初始化
     int64_t handleNum = isTailCore_ ? handleNumTailCoreMainLoop_ : handleNumPerLoopBefore_;
     pipe_.InitBuffer(inputQueue_, 1, (handleNum * sizeof(T) + ONE_BLK_SIZE - 1) / ONE_BLK_SIZE * ONE_BLK_SIZE);
-    pipe_.InitBuffer(
-        tmpOutQueue_, 1,
+    pipe_.InitBuffer(tmpOutQueue_, 1,
         ((PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_) * sizeof(T) +
-         ONE_BLK_SIZE - 1) /
-            ONE_BLK_SIZE * ONE_BLK_SIZE);
-    pipe_.InitBuffer(
-        tmpOutputBuf_,
+            ONE_BLK_SIZE - 1) / ONE_BLK_SIZE * ONE_BLK_SIZE);
+    pipe_.InitBuffer(tmpOutputBuf_,
         ((PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_) * sizeof(T) +
-         ONE_BLK_SIZE - 1) /
-            ONE_BLK_SIZE * ONE_BLK_SIZE);
+            ONE_BLK_SIZE - 1) / ONE_BLK_SIZE * ONE_BLK_SIZE);
 
     tbuf = tmpOutputBuf_.Get<T>();
 
@@ -473,6 +470,61 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::CopyInTailCoreLastBefore
     inputQueue_.EnQue(ubInput);
 }
 
+template <typename T> __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ProcessBeforeForTailCore()
+{
+    int32_t startOffset = 0;
+    int32_t idxOffset = handleNumTailCoreMainLoop_;
+    int32_t handleExpertNum = 0;
+    for (int64_t i = 0; i < handleExpertNumLoopCount_; i++) {
+        LocalTensor<T> output = tmpOutQueue_.AllocTensor<T>();
+        handleExpertNum = (i != handleExpertNumLoopCount_ - 1) ? 
+            handleExpertNumMainCorePerLoop_ : handleExpertNumTailCorePerLoop_;
+        Duplicate(
+            tbuf, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
+        Duplicate(
+            output, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
+        idxOffset = handleNumTailCoreMainLoop_;
+        // 尾核，主loop
+        for (int64_t j = 0; j < loopCountTailCoreMainLoop_; j++) {
+            startOffset = handleNumPerCoreBefore_ * GetBlockIdx() + j * handleNumTailCoreMainLoop_;
+            CopyInTailCoreBefore(i, j);
+            ComputeTailCoreBefore(i, j, output, idxOffset, handleExpertNum, startOffset);
+        }
+        // 尾核，尾loop
+        int64_t tailLoop = loopCountTailCoreTailLoop_;
+        idxOffset = handleNumTailCoreTailLoop_;
+        for (int64_t k = 0; k < tailLoop; k++) {
+            startOffset =
+                handleNumPerCoreBefore_ * GetBlockIdx() + loopCountTailCoreMainLoop_ * handleNumTailCoreMainLoop_;
+            CopyInTailCoreLastBefore(i, k);
+            ComputeTailCoreBefore(i, k, output, idxOffset, handleExpertNum, startOffset);
+        }
+        tmpOutQueue_.EnQue<T>(output);
+        CopyOutBefore(i, handleExpertNum);
+    }
+}
+
+template <typename T> __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ProcessBeforeForNormalCore()
+{
+    int32_t idxOffset = handleNumPerLoopBefore_;
+    int32_t handleExpertNum = 0;
+    for (int64_t i = 0; i < handleExpertNumLoopCount_; i++) {
+        LocalTensor<T> output = tmpOutQueue_.AllocTensor<T>();
+        handleExpertNum = (i != handleExpertNumLoopCount_ - 1) ? 
+            handleExpertNumMainCorePerLoop_ : handleExpertNumTailCorePerLoop_;
+        Duplicate(
+            tbuf, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
+        Duplicate(
+            output, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
+        for (int64_t j = 0; j < loopCountBefore_; j++) {
+            CopyInBefore(i, j);
+            ComputeBefore(i, j, output, idxOffset, handleExpertNum);
+        }
+        tmpOutQueue_.EnQue<T>(output);
+        CopyOutBefore(i, handleExpertNum);
+    }
+}
+
 template <typename T>
 __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ProcessBefore()
 {
@@ -481,56 +533,9 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ProcessBefore()
     }
 
     if (isTailCore_) {
-        int64_t loops1 = handleExpertNumLoopCount_;
-        int64_t loops2 = loopCountTailCoreMainLoop_;
-        int32_t startOffset = 0;
-        int32_t idxOffset = handleNumTailCoreMainLoop_;
-        int32_t handleExpertNum = 0;
-        for (int64_t i = 0; i < loops1; i++) {
-            LocalTensor<T> output = tmpOutQueue_.AllocTensor<T>();
-            handleExpertNum = (i != loops1 - 1) ? handleExpertNumMainCorePerLoop_ : handleExpertNumTailCorePerLoop_;
-            Duplicate(
-                tbuf, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
-            Duplicate(
-                output, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
-            idxOffset = handleNumTailCoreMainLoop_;
-            // 尾核，主loop
-            for (int64_t j = 0; j < loops2; j++) {
-                startOffset = handleNumPerCoreBefore_ * GetBlockIdx() + j * handleNumTailCoreMainLoop_;
-                CopyInTailCoreBefore(i, j);
-                ComputeTailCoreBefore(i, j, output, idxOffset, handleExpertNum, startOffset);
-            }
-            // 尾核，尾loop
-            int64_t tailLoop = loopCountTailCoreTailLoop_;
-            idxOffset = handleNumTailCoreTailLoop_;
-            for (int64_t k = 0; k < tailLoop; k++) {
-                startOffset =
-                    handleNumPerCoreBefore_ * GetBlockIdx() + loopCountTailCoreMainLoop_ * handleNumTailCoreMainLoop_;
-                CopyInTailCoreLastBefore(i, k);
-                ComputeTailCoreBefore(i, k, output, idxOffset, handleExpertNum, startOffset);
-            }
-            tmpOutQueue_.EnQue<T>(output);
-            CopyOutBefore(i, handleExpertNum);
-        }
+        ProcessBeforeForTailCore();
     } else {
-        int64_t loops1 = handleExpertNumLoopCount_;
-        int64_t loops2 = loopCountBefore_;
-        int32_t idxOffset = handleNumPerLoopBefore_;
-        int32_t handleExpertNum = 0;
-        for (int64_t i = 0; i < loops1; i++) {
-            LocalTensor<T> output = tmpOutQueue_.AllocTensor<T>();
-            handleExpertNum = (i != loops1 - 1) ? handleExpertNumMainCorePerLoop_ : handleExpertNumTailCorePerLoop_;
-            Duplicate(
-                tbuf, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
-            Duplicate(
-                output, 0, (PLACEHOLDER_NUM * (handleExpertNumMainCorePerLoop_ - 1) + handleExpertNumMainCorePerLoop_));
-            for (int64_t j = 0; j < loops2; j++) {
-                CopyInBefore(i, j);
-                ComputeBefore(i, j, output, idxOffset, handleExpertNum);
-            }
-            tmpOutQueue_.EnQue<T>(output);
-            CopyOutBefore(i, handleExpertNum);
-        }
+        ProcessBeforeForNormalCore();
     }
 }
 
@@ -568,9 +573,8 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeAfter(int64_t nLo
     int32_t dstRepStride = 1;
     int32_t srcBlkStride = 1;
     int32_t srcRepStride = Int32AlignmentProcess(usedCoreNumBefore3_) * sizeof(float) / 32;
-    WholeReduceMax<float>(
-        outputCastTmpUb, inputCastTmpUb, mask, repeatTimes, dstRepStride, srcBlkStride, srcRepStride,
-        ReduceOrder::ORDER_ONLY_VALUE);
+    WholeReduceMax<float>(outputCastTmpUb, inputCastTmpUb, mask, repeatTimes, dstRepStride, srcBlkStride, 
+        srcRepStride, ReduceOrder::ORDER_ONLY_VALUE);
 
     PipeBarrier<PIPE_V>();
     Cast(outputLocal, outputCastTmpUb, RoundMode::CAST_ROUND, Int32AlignmentProcess(numOfLoop));

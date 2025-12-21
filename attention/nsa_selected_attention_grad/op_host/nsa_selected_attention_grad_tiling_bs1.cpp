@@ -28,7 +28,7 @@ constexpr uint32_t BASE_LEN_256 = 256;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t BUFFER_NUM = 1;
 constexpr uint32_t PING_PONG_BUFFER = 2;
-constexpr uint32_t SELECTED_BLOCK_COUNT_MAX = 32;
+constexpr uint32_t SELECTED_BLOCK_COUNT_MAX = 128;
 constexpr uint32_t SELECTED_BLOCK_COUNT_MIN = 1;
 constexpr uint32_t KEY_DETERMINISTIC = 2;
 
@@ -130,7 +130,7 @@ ge::graphStatus NsaSelectedAttentionGradTiling::GetShapeAttrsInfo()
     if (selected_block_count > static_cast<int>(SELECTED_BLOCK_COUNT_MAX) ||
                     selected_block_count < static_cast<int>(SELECTED_BLOCK_COUNT_MIN)) {
         OP_LOGE(context_,
-                  "NsaSelectedAttentionGrad only support selected_block_count [1,32], now "
+                  "NsaSelectedAttentionGrad only support selected_block_count [1,128], now "
                   "selected_block_count=%d.",
                   selected_block_count);
         return ge::GRAPH_FAILED;
@@ -549,7 +549,7 @@ ge::graphStatus NsaSelectedAttentionGradTiling::SetBaseInfo(const gert::Shape &q
         tmpData.t2 = keyShape.GetDim(DIM_0);
         uint64_t tailZeroCount = 0;
         for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-            if (tmpData.actualSeqQlen[i] == 0) {
+            if (tmpData.actualSeqQlen[i] <= 0) {
                 ++tailZeroCount;
             } else {
                 break;
@@ -742,7 +742,7 @@ ge::graphStatus NsaSelectedAttentionGradTiling::Setmm5TilingData(matmul_tiling::
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("NsaSelectedAttentionGrad", NsaSelectedAttentionGradTiling, 10);
+REGISTER_OPS_TILING_TEMPLATE(NsaSelectedAttentionGrad, NsaSelectedAttentionGradTiling, 10);
 
 } // namespace nsa
 } // namespace optiling

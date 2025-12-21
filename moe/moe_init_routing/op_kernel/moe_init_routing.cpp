@@ -28,6 +28,7 @@ extern "C" __global__ __aicore__ void moe_init_routing(
     GM_ADDR x, GM_ADDR rowIdx, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expandedExpertIdx,
     GM_ADDR workspace, GM_ADDR tiling)
 {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);  
     if (g_coreType == AIC) {
         return;
     }
@@ -54,22 +55,16 @@ extern "C" __global__ __aicore__ void moe_init_routing(
 
     TPipe sortPipe;
     // sort
-    if (TILING_KEY_IS(1)) {
+    if (TILING_KEY_IS(1) || TILING_KEY_IS(3)) {
         MoeSortOneCore op;
         op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
         op.Process();
-    } else if (TILING_KEY_IS(3)) {
-        MoeSortOneCore op;
-        op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(2)) {
+    } else if (TILING_KEY_IS(2) || TILING_KEY_IS(4)) {
         MoeSortMultiCore op;
         op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
         op.Process();
-    } else if (TILING_KEY_IS(4)) {
-        MoeSortMultiCore op;
-        op.Init(expertIdx, rowIdx, expandedExpertIdx, userWS, t, &sortPipe);
-        op.Process();
+    } else {
+        return;
     }
     sortPipe.Destroy();
 
@@ -80,19 +75,11 @@ extern "C" __global__ __aicore__ void moe_init_routing(
     srcToDstPipe.Destroy();
 
     TPipe gatherPipe;
-    if (TILING_KEY_IS(1)) {
+    if (TILING_KEY_IS(1) || TILING_KEY_IS(2)) {
         MoeGatherOut<DTYPE_X> gatherOp;
         gatherOp.Init(x, expandedRowIdx, expandedX, t, &gatherPipe);
         gatherOp.Process();
-    } else if (TILING_KEY_IS(2)) {
-        MoeGatherOut<DTYPE_X> gatherOp;
-        gatherOp.Init(x, expandedRowIdx, expandedX, t, &gatherPipe);
-        gatherOp.Process();
-    } else if (TILING_KEY_IS(3)) {
-        MoeGatherOutSmallActiveRow<DTYPE_X> gatherOp;
-        gatherOp.Init(x, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
-        gatherOp.Process();
-    } else if (TILING_KEY_IS(4)) {
+    } else if (TILING_KEY_IS(3) || TILING_KEY_IS(4)) {
         MoeGatherOutSmallActiveRow<DTYPE_X> gatherOp;
         gatherOp.Init(x, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
         gatherOp.Process();

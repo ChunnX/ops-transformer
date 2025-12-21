@@ -257,7 +257,7 @@ ge::graphStatus TilingPrepareForMoeInitRoutingV2Grad(gert::TilingParseContext* c
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(MoeInitRoutingV2Grad)
+IMPL_OP_OPTILING(MoeInitRoutingV2Grad)
     .Tiling(TilingForMoeInitRoutingV2Grad)
     .TilingParse<MoeInitRoutingV2GradCompileInfo>(TilingPrepareForMoeInitRoutingV2Grad);
 } // namespace optiling

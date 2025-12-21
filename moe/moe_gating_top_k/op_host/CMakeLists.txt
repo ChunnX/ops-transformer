@@ -11,6 +11,7 @@
 message(STATUS "=== Debug: start ops.moe.moe_gating_top_k.op_host.CMakeLists.txt")
 
 if (BUILD_OPEN_PROJECT)
+    message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
     target_sources(op_host_aclnn PRIVATE
         moe_gating_top_k_def.cpp
     )
@@ -23,5 +24,6 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
+    message(STATUS "=== Debug: BUILD is NOT BUILD_OPS_RTY_KERNEL")
     add_modules_sources(OPTYPE moe_gating_top_k ACLNNTYPE aclnn)
 endif()

@@ -20,7 +20,7 @@ OP_TYPE_REGISTER(FlashAttentionScore);
 const std::array<const aclTensor *, 4> FlashAttentionScore(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *realShiftOptional,
     const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional, const aclTensor *attenMaskOptional,
-    const aclIntArray *prefixOptional, const aclIntArray *actualSeqQLenOptional,
+    const aclTensor *sinkOptional, const aclIntArray *prefixOptional, const aclIntArray *actualSeqQLenOptional,
     const aclIntArray *actualSeqKvLenOptional, const aclIntArray *qStartIdxOptional,
     const aclIntArray *kvStartIdxOptional, const aclTensor *dScaleQOptional, const aclTensor *dScaleKOptional,
     const aclTensor *dScaleVOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional, 
@@ -30,7 +30,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
     aclOpExecutor *executor)
 {
     L0_DFX(FlashAttentionScore, query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,
-           attenMaskOptional, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional,
+           attenMaskOptional, sinkOptional, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional,
            kvStartIdxOptional, dScaleQOptional, dScaleKOptional, dScaleVOptional, queryRopeOptional, keyRopeOptional,
            scaleValue, keepProb, preTockens, nextTockens, headNum, inputLayout, innerPrecise, sparseMode,
            pseType, seed, offset, outDtype, softmaxOutLayout);
@@ -126,7 +126,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
                            OP_INPUT(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,
                                     attenMaskOptional, prefixOptionalTensor, actualSeqQLen, actualSeqKvLen,
                                     qStartIdxOptionalTensor, kvStartIdxOptionalTensor, dScaleQOptional, dScaleKOptional,
-                                    dScaleVOptional, queryRopeOptional, keyRopeOptional),
+                                    dScaleVOptional, queryRopeOptional, keyRopeOptional, sinkOptional),
                            OP_OUTPUT(softmaxMaxOut, softmaxSumOut, softmaxOutOut, attentionOutOut),
                            OP_ATTR(static_cast<float>(scaleValue), static_cast<float>(keepProb),
                                    preTockens, nextTockens, headNum, inputLayout, innerPrecise,
@@ -140,7 +140,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         FlashAttentionScore,
         OP_INPUT(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
                  prefixOptionalTensor, actualSeqQLen, actualSeqKvLen, qStartIdxOptionalTensor, kvStartIdxOptionalTensor,
-                 dScaleQOptional, dScaleKOptional, dScaleVOptional, queryRopeOptional, keyRopeOptional),
+                 dScaleQOptional, dScaleKOptional, dScaleVOptional, queryRopeOptional, keyRopeOptional, sinkOptional),
         OP_OUTPUT(softmaxMaxOut, softmaxSumOut, softmaxOutOut, attentionOutOut),
         OP_ATTR(static_cast<float>(scaleValue), static_cast<float>(keepProb), preTockens,
                 nextTockens, headNum, inputLayout, innerPrecise, sparseMode, pseType,

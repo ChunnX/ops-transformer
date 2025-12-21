@@ -255,5 +255,5 @@ uint32_t MoeGatingTopKSoftmaxPerfTiling::calcMaxRowInUb(
     return curRowInUb;
 }
 
-REGISTER_TILING_TEMPLATE("MoeGatingTopKSoftmax", MoeGatingTopKSoftmaxPerfTiling, 1000);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopKSoftmax, MoeGatingTopKSoftmaxPerfTiling, 1000);
 } // namespace optiling

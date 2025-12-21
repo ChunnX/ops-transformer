@@ -39,6 +39,7 @@ TILING_DATA_FIELD_DEF_STRUCT(
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGrad, MoeTokenPermuteWithRoutingMapGradTilingData)
+
 struct MoeTokenPermuteWithRoutingMapGradCompileInfo {
 };
 

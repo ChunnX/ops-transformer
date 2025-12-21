@@ -192,6 +192,6 @@ ge::graphStatus InferDataTypeFlashAttentionScore(gert::InferDataTypeContext *con
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP(FlashAttentionScore).InferShape(InferShapeFlashAttentionScore).InferDataType(InferDataTypeFlashAttentionScore);
+IMPL_OP_INFERSHAPE(FlashAttentionScore).InferShape(InferShapeFlashAttentionScore).InferDataType(InferDataTypeFlashAttentionScore);
 
 } // namespace ops

@@ -268,18 +268,7 @@ __aicore__ inline void MoeFinalizeRoutingV2BF16<T, TS, ISBIASEXIST>::CopyIn(int6
             copyParamsExpert, padParamsExpert);
     }
 
-    if (tilingData_.skip2IsNull == 0) {
-        skip2Queue_.EnQue(skip2Local);
-    }
-    if (tilingData_.skip1IsNull == 0) {
-        skip1Queue_.EnQue(skip1Local);
-    }
-    if (tilingData_.scalesIsNull == 0) {
-        scalesQueue_.EnQue(scalesLocal);
-    }
-    if constexpr (ISBIASEXIST) {
-        expertForSourceRowQueue_.EnQue(expertForSourceRowLocal);
-    }
+    COPY_IN_ENQUE();
 }
 
 template <typename T, typename TS, const bool ISBIASEXIST>

@@ -226,5 +226,5 @@ void MoeInitRoutingV2GradTilingBase::TilingGradCompute()
     tilingData->set_lastCoreTailTokensFormer(lastCoreTailTokensFormer);
 }
 
-REGISTER_TILING_TEMPLATE("MoeInitRoutingV2Grad", MoeInitRoutingV2GradTilingBase, 10000);
+REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV2Grad, MoeInitRoutingV2GradTilingBase, 10000);
 } // namespace optiling

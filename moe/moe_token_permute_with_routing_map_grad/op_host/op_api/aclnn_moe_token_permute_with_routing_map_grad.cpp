@@ -9,7 +9,6 @@
  */
 
 #include "moe_token_permute_with_routing_map_grad.h"
-#include "level0/inplace_index_add.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/transpose.h"
@@ -26,7 +25,13 @@
 #include "aclnn_moe_token_permute_with_routing_map_grad.h"
 #include "level0/sort.h"
 #include "level0/zero_op.h"
-#include "level0/masked_scatter.h"
+#ifdef BUILD_OPEN_PROJECT_API
+    #include "../../../moe/3rd/moe_masked_scatter/op_host/op_api/moe_masked_scatter.h"
+    #include "../../../moe/3rd/moe_inplace_index_add_with_sorted/op_host/op_api/moe_inplace_index_add.h"
+#else
+    #include "level0/masked_scatter.h"
+    #include "level0/inplace_index_add.h"
+#endif
 
 using namespace op;
 #ifdef __cplusplus
@@ -217,6 +222,177 @@ static void ViewDataType(const aclTensor* input, const op::DataType dtype)
 }
 } // namespace
 
+aclnnStatus PrepareContiguousTensors(
+    aclOpExecutor* executor,
+    const aclTensor* tokensGradOut, aclTensor* probsGradOutOptional,
+    const aclTensor* permutedProbsOutputGradOptional, const aclTensor* sortedIndices,
+    const aclTensor* routingMapOptional,
+    const aclTensor** zeroTokensGradOut, const aclTensor** zeroPermutedProbsOutputGrad,
+    const aclTensor** sortedIndicesContiguous, const aclTensor** routingMapOptionalContiguous)
+{
+    // 处理第一个输出
+    auto TokensGradOutContiguous = l0op::Contiguous(tokensGradOut, executor);
+    CHECK_RET(TokensGradOutContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    *zeroTokensGradOut = l0op::ZerosLike(TokensGradOutContiguous, executor);
+    CHECK_RET(*zeroTokensGradOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // 处理第二个输出
+    *zeroPermutedProbsOutputGrad = nullptr;
+    if (probsGradOutOptional != nullptr && permutedProbsOutputGradOptional != nullptr) {
+        auto probsGradOutOptionalContiguous = l0op::Contiguous(probsGradOutOptional, executor);
+        CHECK_RET(probsGradOutOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        // 先清零
+        *zeroPermutedProbsOutputGrad = l0op::ZerosLike(probsGradOutOptionalContiguous, executor);
+        CHECK_RET(*zeroPermutedProbsOutputGrad != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    *sortedIndicesContiguous = l0op::Contiguous(sortedIndices, executor);
+    CHECK_RET(*sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    *routingMapOptionalContiguous = nullptr;
+    if (routingMapOptional != nullptr) {
+        *routingMapOptionalContiguous = l0op::Contiguous(routingMapOptional, executor);
+        CHECK_RET(*routingMapOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus ProcessNonDropAndPadGradients(
+    aclOpExecutor* executor, const aclTensor* permutedProbsOutputGradOptional,
+    const aclTensor* permutedTokenOutputGradContiguous, const aclTensor* permutedProbsOutputGradOptionalContiguous,
+    const aclTensor* sortedIndicesContiguous, const aclTensor* routingMapOptionalContiguous,
+    int64_t numExperts, int64_t tokensNum, bool dropAndPad, const aclTensor* zeroTokensGradOut,
+    const aclTensor* zeroPermutedProbsOutputGrad, aclTensor* tokensGradOut, aclTensor* probsGradOutOptional,
+    const aclIntArray* perm)
+{
+    // 算子kernel内部只会处理第一个输出，但是第二个输出传空指针时会影响第一个输出，所以这里暂时传zeroTokensGradOut
+    auto MoeTokenpermuteGradWithRoutingMapOut = l0op::MoeTokenPermuteWithRoutingMapGrad(
+        permutedTokenOutputGradContiguous, permutedProbsOutputGradOptionalContiguous, sortedIndicesContiguous,
+        routingMapOptionalContiguous, numExperts, tokensNum, dropAndPad, zeroTokensGradOut, zeroTokensGradOut,
+        executor);
+    auto permuteGradTokensOpOut = MoeTokenpermuteGradWithRoutingMapOut[0];
+    CHECK_RET(permuteGradTokensOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // 如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
+    auto permuteGradTokensResult = l0op::ViewCopy(permuteGradTokensOpOut, tokensGradOut, executor);
+    CHECK_RET(permuteGradTokensResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    if (probsGradOutOptional != nullptr && permutedProbsOutputGradOptional != nullptr) {
+        CHECK_RET(zeroPermutedProbsOutputGrad != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        auto maskBool = l0op::Cast(routingMapOptionalContiguous, DataType::DT_BOOL, executor);
+        CHECK_RET(maskBool != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        // mask scator
+        zeroPermutedProbsOutputGrad = l0op::Transpose(zeroPermutedProbsOutputGrad, perm, executor);
+        CHECK_RET(zeroPermutedProbsOutputGrad != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        maskBool = l0op::Transpose(maskBool, perm, executor);
+        CHECK_RET(maskBool != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        #ifdef BUILD_OPEN_PROJECT_API 
+            auto maskedScatterOpOut = l0op::MoeMaskedScatter(
+                zeroPermutedProbsOutputGrad, maskBool, permutedProbsOutputGradOptionalContiguous, executor);
+        #else
+            auto maskedScatterOpOut = l0op::MaskedScatter(
+                zeroPermutedProbsOutputGrad, maskBool, permutedProbsOutputGradOptionalContiguous, executor);
+        #endif
+        CHECK_RET(maskedScatterOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        maskedScatterOpOut = l0op::Transpose(maskedScatterOpOut, perm, executor);
+        CHECK_RET(maskedScatterOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        // 如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
+        auto permuteProbsResult = l0op::ViewCopy(maskedScatterOpOut, probsGradOutOptional, executor);
+        CHECK_RET(permuteProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus ProcessDropAndPadProbsGrad(
+    aclOpExecutor* executor,
+    const aclTensor* permutedTokenOutputGradContiguous, const aclTensor* permutedProbsOutputGradOptionalContiguous,
+    const aclTensor* sortedIndicesContiguous, const aclTensor* routingMapOptionalContiguous,
+    int64_t numExperts, int64_t tokensNum, bool dropAndPad, const aclTensor* zeroTokensGradOut,
+    const aclTensor* zeroPermutedProbsOutputGrad, aclTensor* probsGradOutOptional)
+{
+    if (nullptr != zeroPermutedProbsOutputGrad) {
+        auto MoeTokenpermuteGradWithRoutingMapOut = l0op::MoeTokenPermuteWithRoutingMapGrad(
+            permutedTokenOutputGradContiguous, permutedProbsOutputGradOptionalContiguous, sortedIndicesContiguous,
+            routingMapOptionalContiguous, numExperts, tokensNum, dropAndPad, zeroTokensGradOut,
+            zeroPermutedProbsOutputGrad, executor);
+        auto probsGradOpOut = MoeTokenpermuteGradWithRoutingMapOut[1];
+        CHECK_RET(probsGradOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        auto probsGradOutOptionalResult =
+            l0op::ViewCopy(probsGradOpOut, probsGradOutOptional, executor);
+        CHECK_RET(probsGradOutOptionalResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus ProcessDropAndPadTokensGrad(
+    aclOpExecutor* executor,
+    const aclTensor* permutedTokenOutputGradContiguous, const aclTensor* sortedIndicesContiguous,
+    const aclTensor* zeroTokensGradOut, aclTensor* tokensGradOut, int64_t tokensNum)
+{
+    constexpr bool descending = false;
+    constexpr bool stable = true;
+    const aclTensor* indexAddOut = nullptr;
+
+    // 当设备类型为A2或A3且index为int32类型时，切为InplaceIndexAddWithSorted算子
+    bool useNewOp = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
+                     GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) &&
+                    tokensNum < MAX_SORT_SHAPE_DIM &&
+                    (zeroTokensGradOut->GetDataType() == op::DataType::DT_BF16 ||
+                     zeroTokensGradOut->GetDataType() == op::DataType::DT_FLOAT16);
+    #ifdef BUILD_OPEN_PROJECT_API
+        if (useNewOp) {
+            const aclTensor* indicesViewFloat =
+                executor->CreateView(sortedIndicesContiguous, sortedIndicesContiguous->GetViewShape(), 0);
+            ViewDataType(indicesViewFloat, op::DataType::DT_FLOAT);
+            auto sortResult = l0op::Sort(indicesViewFloat, -1, descending, stable, op::DataType::DT_INT32, executor);
+            auto sortValues = std::get<0>(sortResult);
+            auto sortIndex = std::get<1>(sortResult);
+            CHECK_RET(sortValues != nullptr && sortIndex != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+            auto sortValuesI32 = executor->CreateView(
+                sortValues, sortedIndicesContiguous->GetViewShape(), sortValues->GetViewOffset());
+            ViewDataType(sortValuesI32, op::DataType::DT_INT32);
+            // inplace index add
+            indexAddOut = l0op::MoeInplaceIndexAddWithSorted(
+                zeroTokensGradOut, 0, sortValuesI32, sortIndex, permutedTokenOutputGradContiguous, nullptr,
+                executor);
+        } else {
+            indexAddOut = l0op::MoeInplaceIndexAddAiCore(
+                zeroTokensGradOut, 0, sortedIndicesContiguous, permutedTokenOutputGradContiguous, nullptr,
+                executor);
+        }
+    #else
+        if (useNewOp) {
+            const aclTensor* indicesViewFloat =
+                executor->CreateView(sortedIndicesContiguous, sortedIndicesContiguous->GetViewShape(), 0);
+            ViewDataType(indicesViewFloat, op::DataType::DT_FLOAT);
+            auto sortResult = l0op::Sort(indicesViewFloat, -1, descending, stable, op::DataType::DT_INT32, executor);
+            auto sortValues = std::get<0>(sortResult);
+            auto sortIndex = std::get<1>(sortResult);
+            CHECK_RET(sortValues != nullptr && sortIndex != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+            auto sortValuesI32 = executor->CreateView(
+                sortValues, sortedIndicesContiguous->GetViewShape(), sortValues->GetViewOffset());
+            ViewDataType(sortValuesI32, op::DataType::DT_INT32);
+            // inplace index add
+            indexAddOut = l0op::InplaceIndexAddWithSorted(
+                zeroTokensGradOut, 0, sortValuesI32, sortIndex, permutedTokenOutputGradContiguous, nullptr,
+                executor);
+        } else {
+            indexAddOut = l0op::InplaceIndexAddAiCore(
+                zeroTokensGradOut, 0, sortedIndicesContiguous, permutedTokenOutputGradContiguous, nullptr,
+                executor);
+        }
+    #endif
+    CHECK_RET(indexAddOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto tokensGradOutResult = l0op::ViewCopy(indexAddOut, tokensGradOut, executor);
+    CHECK_RET(tokensGradOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(
     const aclTensor* permutedTokenOutputGrad, const aclTensor* permutedProbsOutputGradOptional,
     const aclTensor* sortedIndices, const aclTensor* routingMapOptional, int64_t numExperts, int64_t tokensNum,
@@ -224,15 +400,12 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(
     aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(
-        aclnnMoeTokenPermuteWithRoutingMapGrad,
-        DFX_IN(
-            permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional, numExperts,
-            tokensNum, dropAndPad),
+        aclnnMoeTokenPermuteWithRoutingMapGrad, DFX_IN(permutedTokenOutputGrad, permutedProbsOutputGradOptional,
+       		sortedIndices, routingMapOptional, numExperts, tokensNum, dropAndPad),
         DFX_OUT(tokensGradOut, probsGradOutOptional));
 
-    auto ret = CheckParams(
-        permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional, numExperts,
-        tokensNum, dropAndPad, tokensGradOut, probsGradOutOptional);
+    auto ret = CheckParams(permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional,
+		numExperts, tokensNum, dropAndPad, tokensGradOut, probsGradOutOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 固定写法，创建OpExecutor
@@ -256,111 +429,36 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(
         permutedProbsOutputGradOptionalContiguous =
             l0op::Contiguous(permutedProbsOutputGradOptional, uniqueExecutor.get());
     }
-    // 处理第一个输出
-    auto TokensGradOutContiguous = l0op::Contiguous(tokensGradOut, uniqueExecutor.get());
-    CHECK_RET(TokensGradOutContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto zeroTokensGradOut = l0op::ZerosLike(TokensGradOutContiguous, uniqueExecutor.get());
-    CHECK_RET(zeroTokensGradOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // 处理第二个输出
-    if (probsGradOutOptional != nullptr && permutedProbsOutputGradOptional != nullptr) {
-        auto probsGradOutOptionalContiguous = l0op::Contiguous(probsGradOutOptional, uniqueExecutor.get());
-        CHECK_RET(probsGradOutOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        // 先清零
-        zeroPermutedProbsOutputGrad = l0op::ZerosLike(probsGradOutOptionalContiguous, uniqueExecutor.get());
-        CHECK_RET(zeroPermutedProbsOutputGrad != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
 
-    auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
-    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    const aclTensor* zeroTokensGradOut = nullptr;
+    const aclTensor* sortedIndicesContiguous = nullptr;
     const aclTensor* routingMapOptionalContiguous = nullptr;
-    if (routingMapOptional != nullptr) {
-        routingMapOptionalContiguous = l0op::Contiguous(routingMapOptional, uniqueExecutor.get());
-        CHECK_RET(routingMapOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
+
+    aclnnStatus status = PrepareContiguousTensors(
+        uniqueExecutor.get(), tokensGradOut, probsGradOutOptional, permutedProbsOutputGradOptional,
+        sortedIndices, routingMapOptional, &zeroTokensGradOut, &zeroPermutedProbsOutputGrad,
+        &sortedIndicesContiguous, &routingMapOptionalContiguous);
+    CHECK_RET(status == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
     if (dropAndPad == false) {
-        // 算子kernel内部只会处理第一个输出，但是第二个输出传空指针时会影响第一个输出，所以这里暂时传zeroTokensGradOut
-        auto MoeTokenpermuteGradWithRoutingMapOut = l0op::MoeTokenPermuteWithRoutingMapGrad(
-            permutedTokenOutputGradContiguous, permutedProbsOutputGradOptionalContiguous, sortedIndicesContiguous,
-            routingMapOptionalContiguous, numExperts, tokensNum, dropAndPad, zeroTokensGradOut, zeroTokensGradOut,
-            uniqueExecutor.get());
-        auto permuteGradTokensOpOut = MoeTokenpermuteGradWithRoutingMapOut[0];
-        CHECK_RET(permuteGradTokensOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-        // 如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
-        auto permuteGradTokensResult = l0op::ViewCopy(permuteGradTokensOpOut, tokensGradOut, uniqueExecutor.get());
-        CHECK_RET(permuteGradTokensResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-        if (probsGradOutOptional != nullptr && permutedProbsOutputGradOptional != nullptr) {
-            CHECK_RET(zeroPermutedProbsOutputGrad != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            auto maskBool = l0op::Cast(routingMapOptionalContiguous, DataType::DT_BOOL, uniqueExecutor.get());
-            CHECK_RET(maskBool != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            // mask scator
-            zeroPermutedProbsOutputGrad = l0op::Transpose(zeroPermutedProbsOutputGrad, perm, uniqueExecutor.get());
-            CHECK_RET(zeroPermutedProbsOutputGrad != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            maskBool = l0op::Transpose(maskBool, perm, uniqueExecutor.get());
-            CHECK_RET(maskBool != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            auto maskedScatterOpOut = l0op::MaskedScatter(
-                zeroPermutedProbsOutputGrad, maskBool, permutedProbsOutputGradOptionalContiguous, uniqueExecutor.get());
-            CHECK_RET(maskedScatterOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            maskedScatterOpOut = l0op::Transpose(maskedScatterOpOut, perm, uniqueExecutor.get());
-            CHECK_RET(maskedScatterOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            // 如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
-            auto permuteProbsResult = l0op::ViewCopy(maskedScatterOpOut, probsGradOutOptional, uniqueExecutor.get());
-            CHECK_RET(permuteProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        }
+        status = ProcessNonDropAndPadGradients(uniqueExecutor.get(), permutedProbsOutputGradOptional,
+			permutedTokenOutputGradContiguous, permutedProbsOutputGradOptionalContiguous,
+            sortedIndicesContiguous, routingMapOptionalContiguous, numExperts, tokensNum, dropAndPad,
+            zeroTokensGradOut, zeroPermutedProbsOutputGrad, tokensGradOut, probsGradOutOptional, perm);
+        CHECK_RET(status == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     } else {
-        constexpr bool descending = false;
-        constexpr bool stable = true;
+        status = ProcessDropAndPadProbsGrad(
+            uniqueExecutor.get(), permutedTokenOutputGradContiguous, permutedProbsOutputGradOptionalContiguous,
+            sortedIndicesContiguous, routingMapOptionalContiguous, numExperts, tokensNum, dropAndPad,
+            zeroTokensGradOut, zeroPermutedProbsOutputGrad, probsGradOutOptional);
+        CHECK_RET(status == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
-        if (nullptr != zeroPermutedProbsOutputGrad) {
-            auto MoeTokenpermuteGradWithRoutingMapOut = l0op::MoeTokenPermuteWithRoutingMapGrad(
-                permutedTokenOutputGradContiguous, permutedProbsOutputGradOptionalContiguous, sortedIndicesContiguous,
-                routingMapOptionalContiguous, numExperts, tokensNum, dropAndPad, zeroTokensGradOut,
-                zeroPermutedProbsOutputGrad, uniqueExecutor.get());
-            auto probsGradOpOut = MoeTokenpermuteGradWithRoutingMapOut[1];
-            CHECK_RET(probsGradOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            auto probsGradOutOptionalResult =
-                l0op::ViewCopy(probsGradOpOut, probsGradOutOptional, uniqueExecutor.get());
-            CHECK_RET(probsGradOutOptionalResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        }
-        const aclTensor* indexAddOut = nullptr;
-        // 当设备类型为A2或A3且index为int32类型时，切为InplaceIndexAddWithSorted算子
-        bool useNewOp = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
-                         GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) &&
-                        tokensNum < MAX_SORT_SHAPE_DIM &&
-                        (zeroTokensGradOut->GetDataType() == op::DataType::DT_BF16 ||
-                         zeroTokensGradOut->GetDataType() == op::DataType::DT_FLOAT16);
-        if (useNewOp) {
-            const aclTensor* indicesViewFloat =
-                uniqueExecutor.get()->CreateView(sortedIndicesContiguous, sortedIndicesContiguous->GetViewShape(), 0);
-            ViewDataType(indicesViewFloat, op::DataType::DT_FLOAT);
-            auto sortResult = l0op::Sort(indicesViewFloat, -1, descending, stable, op::DataType::DT_INT32, uniqueExecutor.get());
-            auto sortValues = std::get<0>(sortResult);
-            auto sortIndex = std::get<1>(sortResult);
-            CHECK_RET(sortValues != nullptr && sortIndex != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-            auto sortValuesI32 = uniqueExecutor.get()->CreateView(
-                sortValues, sortedIndicesContiguous->GetViewShape(), sortValues->GetViewOffset());
-            ViewDataType(sortValuesI32, op::DataType::DT_INT32);
-            // inplace index add
-            indexAddOut = l0op::InplaceIndexAddWithSorted(
-                zeroTokensGradOut, 0, sortValuesI32, sortIndex, permutedTokenOutputGradContiguous, nullptr,
-                uniqueExecutor.get());
-        } else if (IsAICoreSupport(zeroTokensGradOut)) {
-            indexAddOut = l0op::InplaceIndexAddAiCore(
-                zeroTokensGradOut, 0, sortedIndicesContiguous, permutedTokenOutputGradContiguous, nullptr,
-                uniqueExecutor.get());
-        } else {
-            indexAddOut = l0op::InplaceIndexAddAiCpu(
-                zeroTokensGradOut, 0, sortedIndicesContiguous, permutedTokenOutputGradContiguous, nullptr,
-                uniqueExecutor.get());
-        }
-
-        CHECK_RET(indexAddOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        auto tokensGradOutResult = l0op::ViewCopy(indexAddOut, tokensGradOut, uniqueExecutor.get());
-        CHECK_RET(tokensGradOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        status = ProcessDropAndPadTokensGrad(
+            uniqueExecutor.get(), permutedTokenOutputGradContiguous, sortedIndicesContiguous,
+            zeroTokensGradOut, tokensGradOut, tokensNum);
+        CHECK_RET(status == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     }
+
     // 固定写法，获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

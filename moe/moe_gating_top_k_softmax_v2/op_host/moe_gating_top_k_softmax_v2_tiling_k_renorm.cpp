@@ -201,5 +201,5 @@ ge::graphStatus MoeGatingTopKSoftmaxV2KRenormTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("MoeGatingTopKSoftmaxV2", MoeGatingTopKSoftmaxV2KRenormTiling, 20001);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopKSoftmaxV2, MoeGatingTopKSoftmaxV2KRenormTiling, 20001);
 } // namespace optiling

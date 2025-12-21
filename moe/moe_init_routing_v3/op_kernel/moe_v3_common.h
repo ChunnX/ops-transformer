@@ -22,11 +22,13 @@ using namespace AscendC;
 constexpr int64_t SPLIT_N = 0;
 constexpr int64_t SPLIT_K = 1;
 constexpr float MIN_FP32 = -3.4e38f;
+constexpr int64_t FP32_ONE_REPEAT_NUM = 64;
 constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
 constexpr int64_t ONE_REPEAT_COMPARE_NUM = 64;
 constexpr int64_t BLOCK_BYTES = 32;
 constexpr int64_t INT32_ONE_BLOCK_NUM = 8;
-
+constexpr int64_t DROPLESS_MODE = 0;
+constexpr int64_t DROP_PAD_MODE = 1;
 constexpr int64_t ASSIST_NUM = 256;
 constexpr int64_t ASSIST_INDEX_NUM = 32;
 
@@ -39,6 +41,14 @@ constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 
 constexpr int64_t GATHER = 0;
 constexpr int64_t SCATTER = 1;
+
+static constexpr int64_t NO_SCALE = 0;
+static constexpr int64_t ONE_DIM_SCALE = 1;
+static constexpr int64_t TWO_DIM_SCALE = 2;
+
+constexpr int64_t EXERPT_TOKENS_CUMSUM = 0;
+constexpr int64_t EXERPT_TOKENS_COUNT = 1;
+constexpr int64_t EXERPT_TOKENS_KEY_VALUE = 2;
 
 const __gm__ int32_t assist[256] = {
     0,  0, 0, 0, 0, 0, 0, 0, 1,  0, 0, 0, 0, 0, 0, 0, 2,  0, 0, 0, 0, 0, 0, 0, 3,  0, 0, 0, 0, 0, 0, 0,

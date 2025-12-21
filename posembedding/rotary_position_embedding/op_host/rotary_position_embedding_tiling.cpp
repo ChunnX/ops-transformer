@@ -61,12 +61,12 @@ ge::graphStatus Tiling4RotaryPositionEmbedding(gert::TilingContext *context)
 
 ge::graphStatus TilingPrepareForRotaryPositionEmbedding(gert::TilingParseContext *context)
 {
-    OP_LOGE(context, "TilingPrepareForRotaryPositionEmbedding context success");
+    OP_LOGD(context, "TilingPrepareForRotaryPositionEmbedding context success");
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("RotaryPositionEmbedding", RopeRotateHalfTilingClass, 50000);
-REGISTER_TILING_TEMPLATE("RotaryPositionEmbedding", RopeInterLeavedTilingClass, 60000);
+REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbedding, RopeRotateHalfTilingClass, 50000);
+REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbedding, RopeInterLeavedTilingClass, 60000);
 
 IMPL_OP_OPTILING(RotaryPositionEmbedding)
     .Tiling(Tiling4RotaryPositionEmbedding)

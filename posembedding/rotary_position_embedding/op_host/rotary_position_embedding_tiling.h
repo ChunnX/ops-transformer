@@ -281,6 +281,7 @@ protected:
 
     int64_t blockSize_;
     int64_t dSplitCoef_;
+    bool is1snd_ = false;
 };
 
 } // namespace optiling

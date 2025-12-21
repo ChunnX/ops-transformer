@@ -2,8 +2,13 @@
 ## 产品支持情况
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
+|  <term>昇腾910_95 AI处理器</term>   |     √    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
 |  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
+|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
+|  <term>Atlas 推理系列产品</term>    |     √    |
+|  <term>Atlas 训练系列产品</term>    |     ×    |
+|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
 
 ## 功能说明
 
@@ -13,7 +18,7 @@
     - 新增Dropless模式下expertTokensCountOrCumsumOut可选输出，输出每个专家需要处理的累积Token个数（Cumsum），或每个专家需要处理的Token数（Count）。
     - 新增Drop模式下expertTokensBeforeCapacityOut可选输出，输出每个专家在Drop前应处理的Token个数。
     - 删除rowIdx输入。
-    
+
     **说明：**
     Routing计算是MoE模型中的一个环节。MoE模型主要由一组专家模型和一个门控模型组成，在计算时，输入的数据会先根据门控网络（Gating Network，包含MoeGatingTopKSoftmax算子）计算出每个数据元素对应权重最高的k个专家，然后该结果会输入MoeInitRouting算子，生成Routing矩阵。在后续，模型中的每个专家会根据Routing矩阵处理其应处理的数据，产生相应的输出。各专家的输出最后与权重加权求和，形成最终的预测结果。
 -   **计算公式**：
@@ -115,10 +120,10 @@ aclnnStatus aclnnMoeInitRoutingV2(
         <td>expertIdx</td>
         <td>输入</td>
         <td>为每个Token对应的k个处理专家的序号。</td>
-        <td><ul><li>支持空tensor。</li><li>在Drop/Pad场景下或者非Drop/Pad场景下且需要输出expertTokensCountOrCumsumOut时，要求值域范围是[0, expertNum - 1]，其他场景要求大于等于0。shape为[numRows, k]。</li></ul></td>
-        <td>INT32</td>
+        <td><ul><li>支持空tensor。</li><li>在Drop/Pad场景下或者非Drop/Pad场景下且需要输出expertTokensCountOrCumsumOut时，要求值域范围是[0, expertNum - 1]，其他场景要求大于等于0。</li></ul></td>
+        <td>INT32、INT64</td>
         <td>ND</td>
-        <td>2</td>
+        <td>1或2</td>
         <td>√</td>
       </tr>
       <tr>
@@ -244,6 +249,10 @@ aclnnStatus aclnnMoeInitRoutingV2(
       </tr>
     </tbody></table>
 
+    -   <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]。
+    -   <term>昇腾910_95 AI处理器</term> ：输入expertIdx数据类型支持INT32、INT64，要求是一个2D的shape [numRows, k]或者1D的shape [numRows]，当shape为1D时表示k=1。
+    -   <term>Atlas 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]，dropPadMode仅支持0。
+
 - **返回值：**
 
     `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn 返回码</a>。
@@ -333,7 +342,8 @@ aclnnStatus aclnnMoeInitRoutingV2(
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 ## 约束说明
 
-aclnnMoeInitRoutingV2默认确定性实现。
+- 确定性计算：
+  - aclnnMoeInitRoutingV2默认确定性实现。
 
 ## 调用示例
 

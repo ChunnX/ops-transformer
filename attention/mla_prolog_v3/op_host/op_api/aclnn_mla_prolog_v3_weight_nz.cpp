@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <cstring>
 #include <string>
 #include "graph/types.h"
@@ -126,8 +126,20 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
+    const int WEIGHT_QUANT_MODE_NO_QUANT = 0;
+    const int WEIGHT_QUANT_MODE_PARTIAL_QUANT = 1;
+    const int WEIGHT_QUANT_MODE_FULL_QUANT = 2;
+    const int WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT = 3;
+    const int KV_CACHE_QUANT_MODE_NO_QUANT = 0;
+    const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
+    const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
+    const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
+
     auto dequantScaleQNopeHolder = TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
     aclDataType queryNormDataType = weightQuantMode == 0 ? aclDataType::ACL_BF16 : aclDataType::ACL_INT8;
+    if (weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT) {
+        queryNormDataType = aclDataType::ACL_FLOAT8_E4M3FN;
+    }
     auto queryNormHolder = TensorHolder(queryNormOutOptional, queryNormDataType, std::string("queryNormOut"));
     auto dequantScaleQNormHolder = TensorHolder(dequantScaleQNormOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNormOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {
@@ -142,11 +154,11 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNormOut!");
         return ge::GRAPH_FAILED;
     }
-    // weightQuantMode == 2:全量化场景, kvCacheQuantMode == 1:KV_PER_TENSOR量化场景
-    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(weightQuantMode == 2 && kvCacheQuantMode == 1); 
+    // weightQuantMode == 2:全量化场景, weightQuantMode == 3:mxfp8全量化场景, kvCacheQuantMode == 1:KV_PER_TENSOR量化场景
+    dequantScaleQNopeHolder.CheckTensorConditionalNotNull((weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT) && kvCacheQuantMode == KV_CACHE_QUANT_MODE_PER_TENSOR); 
     bool queryNormFlag = queryNormHolder.IsTensorNotNull();
     // weightQuantMode != 0:量化场景
-    dequantScaleQNormHolder.CheckTensorConditionalNotNull(weightQuantMode != 0 && queryNormFlag);
+    dequantScaleQNormHolder.CheckTensorConditionalNotNull(weightQuantMode != WEIGHT_QUANT_MODE_NO_QUANT && queryNormFlag);
     return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCacheRef, krCacheRef,
         cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional, dequantScaleWUqQrOptional,

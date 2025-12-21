@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "../op_kernel/flash_attention_score_grad_tiling.h"
+#include "../op_kernel/arch32/flash_attention_score_grad_tiling.h"
 #include <register/op_impl_registry.h>
 #include "log/log.h"
 #include "tiling_base/data_copy_transpose_tiling.h"
@@ -44,7 +44,7 @@ constexpr uint32_t KEY_ROPE_INPUT_INDEX = 23;
 constexpr uint32_t HEAD_NUM_IDX = 4;
 constexpr uint32_t LAYOUT_ATTR_IDX = 5;
 
-constexpr uint32_t FAG_EMPTY_TILING_KEY = 90;
+constexpr uint32_t FAG_EMPTY_TILING_KEY = 0;
 constexpr uint32_t TILING_KEY_1 = 1U;
 constexpr size_t WORKSPACE_SIZE = 100 * 1024 * 1024;
 
@@ -61,11 +61,10 @@ static uint32_t CalculateTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, ui
 // tiling func + tiling prepare
 class FlashAttentionScoreGradTiling {
 public:
-    FlashAttentionScoreGradTilingData tilingData;
-    FlashAttentionScoreGradTiling(){};
 
     ge::graphStatus RunEmptyTiling(gert::TilingContext *context)
     {
+        FlashAttentionScoreGradTilingData *tilingData = context->GetTilingData<FlashAttentionScoreGradTilingData>();
         uint64_t aicNum = 40; // 40: B3 default aicNum
         uint64_t aivNum = 20; // 20: B3 default aivNum
         auto platformInfoPtr = context->GetPlatformInfo();
@@ -84,44 +83,44 @@ public:
                    return GRAPH_FAILED);
         uint64_t dqNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DQ)->GetStorageShape().GetShapeSize());
         if (dqNum % aivNum == 0ULL) {
-            tilingData.emptyTensorTilingData.set_formerDqNum(aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDqNum(dqNum / aivNum);
-            tilingData.emptyTensorTilingData.set_tailCoreDqNum(0);
+            tilingData->emptyTensorTilingData.set_formerDqNum(aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDqNum(dqNum / aivNum);
+            tilingData->emptyTensorTilingData.set_tailCoreDqNum(0);
         } else {
-            tilingData.emptyTensorTilingData.set_formerDqNum(dqNum % aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDqNum(dqNum / aivNum + 1);
-            tilingData.emptyTensorTilingData.set_tailCoreDqNum(dqNum / aivNum);
+            tilingData->emptyTensorTilingData.set_formerDqNum(dqNum % aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDqNum(dqNum / aivNum + 1);
+            tilingData->emptyTensorTilingData.set_tailCoreDqNum(dqNum / aivNum);
         }
         uint64_t dkNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DK)->GetStorageShape().GetShapeSize());
         if (dkNum % aivNum == 0ULL) {
-            tilingData.emptyTensorTilingData.set_formerDkNum(aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDkNum(dkNum / aivNum);
-            tilingData.emptyTensorTilingData.set_tailCoreDkNum(0);
+            tilingData->emptyTensorTilingData.set_formerDkNum(aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDkNum(dkNum / aivNum);
+            tilingData->emptyTensorTilingData.set_tailCoreDkNum(0);
         } else {
-            tilingData.emptyTensorTilingData.set_formerDkNum(dkNum % aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDkNum(dkNum / aivNum + 1);
-            tilingData.emptyTensorTilingData.set_tailCoreDkNum(dkNum / aivNum);
+            tilingData->emptyTensorTilingData.set_formerDkNum(dkNum % aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDkNum(dkNum / aivNum + 1);
+            tilingData->emptyTensorTilingData.set_tailCoreDkNum(dkNum / aivNum);
         }
         uint64_t dvNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DV)->GetStorageShape().GetShapeSize());
         if (dvNum % aivNum == 0ULL) {
-            tilingData.emptyTensorTilingData.set_formerDvNum(aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDvNum(dvNum / aivNum);
-            tilingData.emptyTensorTilingData.set_tailCoreDvNum(0);
+            tilingData->emptyTensorTilingData.set_formerDvNum(aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDvNum(dvNum / aivNum);
+            tilingData->emptyTensorTilingData.set_tailCoreDvNum(0);
         } else {
-            tilingData.emptyTensorTilingData.set_formerDvNum(dvNum % aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDvNum(dvNum / aivNum + 1);
-            tilingData.emptyTensorTilingData.set_tailCoreDvNum(dvNum / aivNum);
+            tilingData->emptyTensorTilingData.set_formerDvNum(dvNum % aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDvNum(dvNum / aivNum + 1);
+            tilingData->emptyTensorTilingData.set_tailCoreDvNum(dvNum / aivNum);
         }
         const gert::StorageShape *dpseShape = context->GetOutputShape(OUTPUT_IDX_DPSE);
         uint64_t dpseNum = (dpseShape == nullptr) ? 0 : static_cast<uint64_t>(dpseShape->GetStorageShape().GetShapeSize());
         if (dpseNum % aivNum == 0ULL) {
-            tilingData.emptyTensorTilingData.set_formerDpseNum(aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDpseNum(dpseNum / aivNum);
-            tilingData.emptyTensorTilingData.set_tailCoreDpseNum(0);
+            tilingData->emptyTensorTilingData.set_formerDpseNum(aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDpseNum(dpseNum / aivNum);
+            tilingData->emptyTensorTilingData.set_tailCoreDpseNum(0);
         } else {
-            tilingData.emptyTensorTilingData.set_formerDpseNum(dpseNum % aivNum);
-            tilingData.emptyTensorTilingData.set_singleCoreDpseNum(dpseNum / aivNum + 1);
-            tilingData.emptyTensorTilingData.set_tailCoreDpseNum(dpseNum / aivNum);
+            tilingData->emptyTensorTilingData.set_formerDpseNum(dpseNum % aivNum);
+            tilingData->emptyTensorTilingData.set_singleCoreDpseNum(dpseNum / aivNum + 1);
+            tilingData->emptyTensorTilingData.set_tailCoreDpseNum(dpseNum / aivNum);
         }
 
         context->SetTilingKey(FAG_EMPTY_TILING_KEY);
@@ -278,6 +277,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
     OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
                return ge::GRAPH_FAILED);
     auto socVersion = compilePtr->socVersion;
+    OP_LOGW(context, "Current soc version is not ASCEND910_95.");
     if (IsEmptyOutput(context)) {
         FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
         return flashAttentionScoreGradTiling.RunEmptyTiling(context);
@@ -319,7 +319,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::T
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(FlashAttentionScoreGrad)
+IMPL_OP_OPTILING(FlashAttentionScoreGrad)
     .Tiling(TilingFlashAttentionGradScore)
     .TilingInputsDataDependency({12, 13, 14, 15, 16})
     .TilingParse<FlashAttentionScoreGradCompileInfo>(TilingPrepareForFlashAttentionScoreGrad); // 向框架注册入口函数

@@ -201,7 +201,7 @@ __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::Compute()
         PipeBarrier<PIPE_V>();
         Compare(mask1, inputCast, targetBuf, CMPMODE::EQ, mask, repeat, repeatParamsCompare);
         PipeBarrier<PIPE_V>();
-        Select<float>(resultBuf, mask1, oneBuf, 0, SELMODE::VSEL_TENSOR_SCALAR_MODE, mask, repeat, repeatParamsSelect);
+        Select<float>(resultBuf, mask1, oneBuf, static_cast<float>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE, mask, repeat, repeatParamsSelect);
         PipeBarrier<PIPE_V>();
         ReduceMax<float>(reduceMaxAnsBuf, resultBuf, workLocal, handleNum_, true);
 

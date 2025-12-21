@@ -59,7 +59,7 @@ template <typename T> void CopyOutResult(int64_t outIndex, std::vector<int64_t> 
 
 int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
 {
-    // 固定写法，AscendCL初始化
+    // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);

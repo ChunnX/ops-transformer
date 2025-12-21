@@ -464,7 +464,7 @@ ge::graphStatus NsaSelectedAttentionGradBasicTiling::GetBaseShapeInfo()
 
     uint64_t tailZeroCount = 0;
     for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-        if (tmpData.actualSeqQlen[i] == 0) {
+        if (tmpData.actualSeqQlen[i] <= 0) {
             ++tailZeroCount;
         } else {
             break;
@@ -520,7 +520,7 @@ ge::graphStatus NsaSelectedAttentionGradBasicTiling::GetBaseShapeInfo()
 }
 
 
-REGISTER_TILING_TEMPLATE("NsaSelectedAttentionGrad", NsaSelectedAttentionGradBasicTiling, 1);
+REGISTER_OPS_TILING_TEMPLATE(NsaSelectedAttentionGrad, NsaSelectedAttentionGradBasicTiling, 1);
 
 } // namespace nsa
 } // namespace optiling

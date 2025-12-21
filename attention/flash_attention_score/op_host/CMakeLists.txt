@@ -21,7 +21,6 @@ if (BUILD_OPS_RTY_KERNEL)
                     -Wno-deprecated-declarations
                     -Werror
     )
-    set(flash_attention_score_depends attention/common CACHE INTERNAL "Dependencies for flash_attention_score")
 else()
     add_ops_compile_options(
             OP_NAME FlashAttentionScore
@@ -29,7 +28,7 @@ else()
                     -Wno-deprecated-declarations
                     -Werror
     )
-    add_modules_sources(
+    add_modules_sources_with_soc(
         # 该变量用于判断op_api目录是否从op_host移出
         OP_API_INDEPENDENT ON
         # op_api新的地址

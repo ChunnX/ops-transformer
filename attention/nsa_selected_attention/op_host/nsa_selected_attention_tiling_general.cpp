@@ -33,6 +33,7 @@ const size_t ATTEN_OUT_INDEX = 2UL;
 const size_t ATTENTION_MASK_DIM_NUM_2 = 2UL;
 const size_t SOFTMAX_MAX_BUF_SIZE = 128 * 1024;
 constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
+constexpr uint32_t SELECTED_BLOCK_COUNT_MAX = 128;
 const int64_t MAX_VAR_LEN_SEQ_LEN = 4096L;
 const int64_t HEAD_DIM_MAX_VALUE = 768L;
 
@@ -343,8 +344,8 @@ bool NsaSelectedAttentionTiling::AnalyzeAttrs()
                                            selectedBlockSize),
                return false);
     selectedBlockCount = *selectedBlockCountPtr;
-    OP_CHECK_IF(selectedBlockCount > 32,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockCount [%ld] should be <= 32!", selectedBlockCount),
+    OP_CHECK_IF(selectedBlockCount > SELECTED_BLOCK_COUNT_MAX,
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "selectedBlockCount [%ld] should be <= 128!", selectedBlockCount),
                return false);
     selectedLength = selectedBlockSize * selectedBlockCount;
     OP_CHECK_IF(n1Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "Head num is zero."), return false);
@@ -648,6 +649,6 @@ ge::graphStatus NsaSelectedAttentionTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("NsaSelectedAttention", NsaSelectedAttentionTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(NsaSelectedAttention, NsaSelectedAttentionTiling, 0);
 } // namespace nsa
 } // namespace optiling

@@ -449,8 +449,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Invalid_Pse_Case_002)
                        ge::DataType::DT_BOOL,                          /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                          /* PrefixShapeType */
                        {},                                             /* PrefixTensorData */
-                       {2048, 2048, 2048},                             /* ActualSeqQLenList */
-                       {2048, 2048, 2048})                             /* ActualSeqKVLenList */
+                       {2048, 2048, 2049},                             /* ActualSeqQLenList */
+                       {2048, 2048, 2050})                             /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));
@@ -870,8 +870,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Invalid_PreTokens_NextTokens_Case004)
                        ge::DataType::DT_BOOL,                          /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                          /* PrefixShapeType */
                        {},                                             /* PrefixTensorData */
-                       {2048, 2048, 2048},                             /* ActualSeqQLenList */
-                       {2048, 2048, 2048})                             /* ActualSeqKVLenList */
+                       {2048, 2048, 2050},                             /* ActualSeqQLenList */
+                       {2048, 2048, 2049})                             /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));
@@ -897,8 +897,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Invalid_PreTokens_NextTokens_Case005)
                        ge::DataType::DT_BOOL,                          /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                          /* PrefixShapeType */
                        {},                                             /* PrefixTensorData */
-                       {2048, 2048, 2048},                             /* ActualSeqQLenList */
-                       {1024, 1024, 1024})                             /* ActualSeqKVLenList */
+                       {2048, 2048, 2050},                             /* ActualSeqQLenList */
+                       {1024, 1024, 1025})                             /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));
@@ -951,8 +951,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Invalid_PreTokens_NextTokens_Case007)
                        ge::DataType::DT_BOOL,                          /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                          /* PrefixShapeType */
                        {},                                             /* PrefixTensorData */
-                       {2048, 2048, 2048},                             /* ActualSeqQLenList */
-                       {1024, 1024, 1024})                             /* ActualSeqKVLenList */
+                       {2048, 2048, 2050},                             /* ActualSeqQLenList */
+                       {1024, 1024, 1025})                             /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));
@@ -978,8 +978,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Invalid_PreTokens_NextTokens_Case008)
                        ge::DataType::DT_BOOL,                          /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                          /* PrefixShapeType */
                        {},                                             /* PrefixTensorData */
-                       {2048, 2048, 2048},                             /* ActualSeqQLenList */
-                       {1024, 1024, 1024})                             /* ActualSeqKVLenList */
+                       {2048, 2048, 2050},                             /* ActualSeqQLenList */
+                       {1024, 1024, 1025})                             /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));
@@ -1032,8 +1032,8 @@ TEST_F(Ts_Fas_Ascend910B2, Tc_Fas_Invalid_PreTokens_NextTokens_Case010)
                        ge::DataType::DT_BOOL,                          /* AttentionMaskDtype */
                        PrefixShapeType::NONE,                          /* PrefixShapeType */
                        {},                                             /* PrefixTensorData */
-                       {2048, 2048, 2048},                             /* ActualSeqQLenList */
-                       {1024, 1024, 1024})                             /* ActualSeqKVLenList */
+                       {2048, 2048, 2050},                             /* ActualSeqQLenList */
+                       {1024, 1024, 1025})                             /* ActualSeqKVLenList */
     );
 
     ASSERT_TRUE(cs.Init(static_cast<int32_t>(this->socVersion_)));

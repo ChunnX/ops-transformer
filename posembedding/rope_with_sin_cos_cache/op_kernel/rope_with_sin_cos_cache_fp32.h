@@ -31,6 +31,7 @@ public:
         GM_ADDR key_out, const RopeWithSinCosCacheTilingData& tiling_data, TPipe* pipe);
     __aicore__ inline void Process();
     __aicore__ inline void Compute(uint64_t index, uint64_t loopN);
+    __aicore__ inline void ComputeAlongHeads(uint64_t indexToken, uint64_t indexHeads);
 
 protected:
     static constexpr uint64_t BLOCK_SIZE = 32;
@@ -77,32 +78,60 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::Init(
     }
 
     position_id_GM.SetGlobalBuffer((__gm__ uint64_t*)position_id + blockOffset);
-    query_in_GM.SetGlobalBuffer((__gm__ T*)query_in + blockOffset * this->num_q_heads * this->head_size);
+    query_in_GM.SetGlobalBuffer((__gm__ T*)query_in + blockOffset * this->num_q_heads * this->head_size);	
     key_in_GM.SetGlobalBuffer((__gm__ T*)key_in + blockOffset * this->num_kv_heads * this->head_size);
     cos_sin_cache_GM.SetGlobalBuffer((__gm__ T*)cos_sin_cache);
 
     queryGM.SetGlobalBuffer((__gm__ T*)query_out + blockOffset * this->num_q_heads * this->head_size);
     keyGM.SetGlobalBuffer((__gm__ T*)key_out + blockOffset * this->num_kv_heads * this->head_size);
 
-    pipe->InitBuffer(
-        inQQue, BUFFER_NUM, this->num_tokens_each_loop_current_core * num_heads_max * this->head_size * sizeof(T));
-    pipe->InitBuffer(
-        inQueueCosSinCache, BUFFER_NUM, this->num_tokens_each_loop_current_core * this->rotary_dim * sizeof(T));
-    pipe->InitBuffer(
-        outQue, BUFFER_NUM, this->num_tokens_each_loop_current_core * num_heads_max * this->head_size * sizeof(T));
-    pipe->InitBuffer(
-        reverseBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
-    pipe->InitBuffer(negOneBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
-    pipe->InitBuffer(cosSinBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
-    pipe->InitBuffer(
-        inQueCalBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
+    if(this->loop_for_one_token==0){
+        pipe->InitBuffer(
+            inQQue, BUFFER_NUM, this->num_tokens_each_loop_current_core * num_heads_max * this->head_size * sizeof(T));
+        pipe->InitBuffer(
+            inQueueCosSinCache, BUFFER_NUM, this->num_tokens_each_loop_current_core * this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(
+            outQue, BUFFER_NUM, this->num_tokens_each_loop_current_core * num_heads_max * this->head_size * sizeof(T));
+        pipe->InitBuffer(
+            reverseBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(negOneBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(cosSinBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(
+            inQueCalBuf, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
 
-    if (this->is_neox_style == 0) {
-        pipe->InitBuffer(temp1, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
-        pipe->InitBuffer(offsetBuf, this->rotary_dim * sizeof(uint32_t));
+        if (this->is_neox_style == 0) {
+            pipe->InitBuffer(temp1, this->num_tokens_each_loop_current_core * num_heads_max * this->rotary_dim * sizeof(T));
+            pipe->InitBuffer(offsetBuf, this->rotary_dim * sizeof(uint32_t));
+        } else {
+#ifndef __CCE_KT_TEST__
+            pipe->InitBuffer(temp1, 0 * sizeof(T));
+            pipe->InitBuffer(offsetBuf, 0 * sizeof(uint32_t));
+#else
+            pipe->InitBuffer(temp1, 1 * sizeof(T));
+            pipe->InitBuffer(offsetBuf, 1 * sizeof(uint32_t));
+#endif
+        }
     } else {
-        pipe->InitBuffer(temp1, 0 * sizeof(T));
-        pipe->InitBuffer(offsetBuf, 0 * sizeof(uint32_t));
+        pipe->InitBuffer(inQQue, BUFFER_NUM, this->num_heads_each_loop * this->head_size * sizeof(T));
+        pipe->InitBuffer(inQueueCosSinCache, BUFFER_NUM, this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(outQue, BUFFER_NUM, this->num_heads_each_loop * this->head_size * sizeof(T));
+        pipe->InitBuffer(reverseBuf, this->num_heads_each_loop * this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(negOneBuf, this->num_heads_each_loop * this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(cosSinBuf, this->num_heads_each_loop * this->rotary_dim * sizeof(T));
+        pipe->InitBuffer(inQueCalBuf, this->num_heads_each_loop * this->rotary_dim * sizeof(T));
+
+        if (this->is_neox_style == 0) {
+            pipe->InitBuffer(temp1, this->num_heads_each_loop * this->rotary_dim * sizeof(T));
+            pipe->InitBuffer(offsetBuf, this->rotary_dim * sizeof(uint32_t));
+        } else {
+#ifndef __CCE_KT_TEST__
+            pipe->InitBuffer(temp1, 0 * sizeof(T));
+            pipe->InitBuffer(offsetBuf, 0 * sizeof(uint32_t));
+#else
+            pipe->InitBuffer(temp1, 1 * sizeof(T));
+            pipe->InitBuffer(offsetBuf, 1 * sizeof(uint32_t));
+#endif
+        }
     }
 }
 
@@ -116,8 +145,13 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::Compute(uint64_t index, uint64
     uint64_t offsetCosSin = index * loopN * this->rotary_dim;
 
     uint32_t dstShape_[2] = {static_cast<uint32_t>(this->num_heads_max), static_cast<uint32_t>(this->rotary_dim)};
+#ifndef __CCE_KT_TEST__
     uint32_t dstShape_4Negone_[2] = {
         static_cast<uint32_t>(loopN * this->num_heads_max), static_cast<uint32_t>(this->rotary_dim)};
+#else
+    uint32_t dstShape_4Negone_[2] = {static_cast<uint32_t>(loopN * (this->num_heads_max - 1)),
+                                     static_cast<uint32_t>(this->rotary_dim)};
+#endif
     uint32_t srcShape_[2] = {1, static_cast<uint32_t>(this->rotary_dim)};
 
     LocalTensor<T> inLocal = inQQue.AllocTensor<T>();
@@ -486,16 +520,353 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::Compute(uint64_t index, uint64
 }
 
 template <typename T>
+__aicore__ inline void RopeWithSinCosCacheF32<T>::ComputeAlongHeads(uint64_t indexToken, uint64_t indexHeads){
+    q_size = this->num_q_heads * this->head_size;
+    k_size = this->num_kv_heads * this->head_size;
+    uint64_t offsetQHead = indexHeads * this->num_qheads_each_loop * this->head_size;
+    uint64_t offsetKHead = indexHeads * this->num_kheads_each_loop * this->head_size;
+    uint64_t offset = indexToken * q_size + offsetQHead;//非连续?
+    uint64_t offsetk = indexToken * k_size + offsetKHead;
+
+    uint32_t dstShape_[2] = {static_cast<uint32_t>(this->num_heads_each_loop), static_cast<uint32_t>(this->rotary_dim)};
+    uint32_t dstShape_4Negone_[2] = {static_cast<uint32_t>(this->num_heads_each_loop),
+                                     static_cast<uint32_t>(this->rotary_dim)};
+    uint32_t srcShape_[2] = {1, static_cast<uint32_t>(this->rotary_dim)};
+
+    LocalTensor<T> inLocal = inQQue.AllocTensor<T>();
+    LocalTensor<T> inCosSin = inQueueCosSinCache.AllocTensor<T>();
+    LocalTensor<T> outLocal = outQue.AllocTensor<T>();
+    LocalTensor<T> reverseQ = reverseBuf.Get<T>();
+    LocalTensor<T> negOne = negOneBuf.Get<T>();
+    LocalTensor<T> cosSin = cosSinBuf.Get<T>();
+    LocalTensor<uint32_t> offsetLocal = offsetBuf.Get<uint32_t>();
+    LocalTensor<T> temp1Local = temp1.Get<T>();
+    LocalTensor<T> inQueCalLocal = inQueCalBuf.Get<T>();
+
+    if (indexHeads < this->loop_along_qheads) {
+        uint64_t loopNQhead = (indexHeads == this->loop_along_qheads - 1 && this->num_qheads_last_loop != 0) ?
+                                  this->num_qheads_last_loop :
+                                  this->num_qheads_each_loop;
+        DataCopy(inLocal, query_in_GM[offset], {1, static_cast<uint16_t>(loopNQhead * headBlockLen), 0, 0});
+        PipeBarrier<PIPE_ALL>();
+        if (this->is_neox_style == 0) {
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(temp1Local, inLocal,
+                     {static_cast<uint16_t>(loopNQhead), static_cast<uint16_t>(rotaryBlockLen),
+                      static_cast<uint16_t>(headBlockLen - rotaryBlockLen), 0});
+            PipeBarrier<PIPE_ALL>();
+
+            uint64_t rsv = 0;
+            for (uint32_t i = 0; i < loopNQhead; i++) {
+                GatherMask(inQueCalLocal[i * this->rotary_dim], temp1Local[i * this->rotary_dim],
+                           static_cast<uint8_t>(1), true, this->rotary_dim, {1, 1, 0, 0}, rsv);
+                PipeBarrier<PIPE_ALL>();
+                GatherMask(inQueCalLocal[i * this->rotary_dim + this->rotary_dim / 2], temp1Local[i * this->rotary_dim],
+                           static_cast<uint8_t>(2), true, this->rotary_dim, {1, 1, 0, 0}, rsv);
+                PipeBarrier<PIPE_ALL>();
+            }
+        } else {
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(inQueCalLocal, inLocal,
+                     {static_cast<uint16_t>(loopNQhead), static_cast<uint16_t>(rotaryBlockLen),
+                      static_cast<uint16_t>(headBlockLen - rotaryBlockLen), 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+
+        DataCopy(reverseQ, inQueCalLocal[this->rotary_dim / 2],
+                 {static_cast<uint16_t>(loopNQhead), calBlockLen, calBlockLen, calBlockLen});
+        PipeBarrier<PIPE_ALL>();
+        DataCopy(reverseQ[this->rotary_dim / 2], inQueCalLocal,
+                 {static_cast<uint16_t>(loopNQhead), calBlockLen, calBlockLen, calBlockLen});
+        PipeBarrier<PIPE_ALL>();
+
+        float One = 1.0;
+        float None = -1.0;
+        Duplicate<float>(negOne, None, this->rotary_dim / 2);
+        Duplicate<float>(negOne[this->rotary_dim / 2], One, this->rotary_dim / 2);
+        PipeBarrier<PIPE_ALL>();
+
+        Broadcast<float, 2, 0, false>(negOne[this->rotary_dim], negOne, dstShape_4Negone_, srcShape_);
+        PipeBarrier<PIPE_ALL>();
+
+        uint64_t offsetPos = indexToken;
+        if (this->mrope_section0 > 0) {
+            uint64_t pos0 = position_id_GM.GetValue(offsetPos);
+            uint64_t pos1 = position_id_GM.GetValue(offsetPos + this->num_tokens);
+            uint64_t pos2 = position_id_GM.GetValue(offsetPos + 2 * this->num_tokens);
+
+            uint8_t padding2 =
+                ((this->mrope_section0 + this->mrope_section1) * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 + static_cast<uint16_t>(this->mrope_section1) - padding2],
+                        cos_sin_cache_GM[pos2 * this->rotary_dim +
+                                         static_cast<uint16_t>(this->mrope_section0 + this->mrope_section1)],
+                        {1, static_cast<uint16_t>(this->mrope_section2 * sizeof(float)), 0, 0}, {true, padding2, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            uint8_t padding1 = (this->mrope_section0 * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 - padding1],
+                        cos_sin_cache_GM[pos1 * this->rotary_dim + static_cast<uint16_t>(this->mrope_section0)],
+                        {1, static_cast<uint16_t>(this->mrope_section1 * sizeof(float)), 0, 0}, {true, padding1, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            DataCopyPad(inCosSin, cos_sin_cache_GM[pos0 * this->rotary_dim],
+                        {1, static_cast<uint16_t>(this->mrope_section0 * sizeof(float)), 0, 0}, {false, 0, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        } else {
+            uint64_t pos = position_id_GM.GetValue(offsetPos);
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(inCosSin, cos_sin_cache_GM[pos * this->rotary_dim], {1, calBlockLen, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+
+        DataCopy(inCosSin[this->rotary_dim / 2], inCosSin, {1, calBlockLen, 0, 0});
+        PipeBarrier<PIPE_ALL>();
+        Broadcast<float, 2, 0, false>(cosSin, inCosSin, dstShape_, srcShape_);
+        PipeBarrier<PIPE_ALL>();
+
+        Mul(inQueCalLocal, cosSin, inQueCalLocal, loopNQhead * this->rotary_dim);
+        PipeBarrier<PIPE_ALL>();
+        Mul(reverseQ, negOne, reverseQ, loopNQhead * this->rotary_dim);
+        PipeBarrier<PIPE_ALL>();
+        offsetPos = indexToken;
+        if (this->mrope_section0 > 0) {
+            uint64_t pos0 = position_id_GM.GetValue(offsetPos);
+            uint64_t pos1 = position_id_GM.GetValue(offsetPos + this->num_tokens);
+            uint64_t pos2 = position_id_GM.GetValue(offsetPos + 2 * this->num_tokens);
+
+            uint8_t padding2 =
+                ((this->mrope_section0 + this->mrope_section1) * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 + static_cast<uint16_t>(this->mrope_section1) - padding2],
+                        cos_sin_cache_GM[pos2 * this->rotary_dim +
+                                         static_cast<uint16_t>(this->mrope_section0 + this->mrope_section1) +
+                                         this->rotary_dim / 2],
+                        {1, static_cast<uint16_t>(this->mrope_section2 * sizeof(float)), 0, 0}, {true, padding2, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            uint8_t padding1 = (this->mrope_section0 * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 - padding1],
+                        cos_sin_cache_GM[pos1 * this->rotary_dim + static_cast<uint16_t>(this->mrope_section0) +
+                                         this->rotary_dim / 2],
+                        {1, static_cast<uint16_t>(this->mrope_section1 * sizeof(float)), 0, 0}, {true, padding1, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            DataCopyPad(inCosSin, cos_sin_cache_GM[pos0 * this->rotary_dim + this->rotary_dim / 2],
+                        {1, static_cast<uint16_t>(this->mrope_section0 * sizeof(float)), 0, 0}, {false, 0, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        } else {
+            uint64_t pos = position_id_GM.GetValue(offsetPos);
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(inCosSin, cos_sin_cache_GM[pos * this->rotary_dim + this->rotary_dim / 2], {1, calBlockLen, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+        DataCopy(inCosSin[this->rotary_dim / 2], inCosSin, {1, calBlockLen, 0, 0});
+        PipeBarrier<PIPE_ALL>();
+        Broadcast<float, 2, 0, false>(cosSin, inCosSin, dstShape_, srcShape_);
+        PipeBarrier<PIPE_ALL>();
+        Mul(reverseQ, cosSin, reverseQ, loopNQhead * this->rotary_dim);
+        PipeBarrier<PIPE_ALL>();
+
+        if (this->is_neox_style == 0) {
+            Add(temp1Local, reverseQ, inQueCalLocal, loopNQhead * this->rotary_dim);
+            PipeBarrier<PIPE_ALL>();
+            for (uint32_t i = 0; i < this->rotary_dim / 2; i++) {
+                offsetLocal.SetValue(i * 2, i * 4);
+                offsetLocal.SetValue(i * 2 + 1, (this->rotary_dim / 2 + i) * 4);
+            }
+            for (uint32_t i = 0; i < loopNQhead; i++) {
+                Gather(inQueCalLocal[i * this->rotary_dim], temp1Local[i * this->rotary_dim], offsetLocal, (uint32_t)0,
+                       this->rotary_dim);
+                PipeBarrier<PIPE_ALL>();
+            }
+        } else {
+            Add(inQueCalLocal, reverseQ, inQueCalLocal, loopNQhead * this->rotary_dim);
+            PipeBarrier<PIPE_ALL>();
+        }
+
+        if (this->head_size != this->rotary_dim) {
+            DataCopy(outLocal, inQueCalLocal,
+                     {static_cast<uint16_t>(loopNQhead), static_cast<uint16_t>(rotaryBlockLen), 0,
+                      static_cast<uint16_t>(headBlockLen - rotaryBlockLen)});
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(outLocal[this->rotary_dim], inLocal[this->rotary_dim],
+                     {static_cast<uint16_t>(loopNQhead), static_cast<uint16_t>(headBlockLen - rotaryBlockLen),
+                      static_cast<uint16_t>(rotaryBlockLen), static_cast<uint16_t>(rotaryBlockLen)});
+            PipeBarrier<PIPE_ALL>();
+        } else {
+            DataCopy(outLocal, inQueCalLocal,
+                     {static_cast<uint16_t>(loopNQhead), static_cast<uint16_t>(headBlockLen), 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+        DataCopy(queryGM[offset], outLocal,
+                 {static_cast<uint16_t>(loopNQhead), static_cast<uint16_t>(headBlockLen), 0, 0});
+        PipeBarrier<PIPE_ALL>();
+    }
+    //key
+    if (indexHeads < this->loop_along_kheads) {
+        uint64_t loopNKhead = (indexHeads == this->loop_along_kheads - 1 && this->num_kheads_last_loop != 0) ?
+                                  this->num_kheads_last_loop :
+                                  this->num_kheads_each_loop;
+        DataCopy(inLocal, key_in_GM[offsetk], {1, static_cast<uint16_t>(loopNKhead * headBlockLen), 0, 0});
+        PipeBarrier<PIPE_ALL>();
+        if (this->is_neox_style == 0) {
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(temp1Local, inLocal,
+                     {static_cast<uint16_t>(loopNKhead), static_cast<uint16_t>(rotaryBlockLen),
+                      static_cast<uint16_t>(headBlockLen - rotaryBlockLen), 0});
+            PipeBarrier<PIPE_ALL>();
+
+            uint64_t rsv = 0;
+            for (uint32_t i = 0; i < loopNKhead; i++) {
+                GatherMask(inQueCalLocal[i * this->rotary_dim], temp1Local[i * this->rotary_dim],
+                           static_cast<uint8_t>(1), true, this->rotary_dim, {1, 1, 0, 0}, rsv);
+                PipeBarrier<PIPE_ALL>();
+                GatherMask(inQueCalLocal[i * this->rotary_dim + this->rotary_dim / 2], temp1Local[i * this->rotary_dim],
+                           static_cast<uint8_t>(2), true, this->rotary_dim, {1, 1, 0, 0}, rsv);
+                PipeBarrier<PIPE_ALL>();
+            }
+        } else {
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(inQueCalLocal, inLocal,
+                     {static_cast<uint16_t>(loopNKhead), static_cast<uint16_t>(rotaryBlockLen),
+                      static_cast<uint16_t>(headBlockLen - rotaryBlockLen), 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+
+        DataCopy(reverseQ, inQueCalLocal[this->rotary_dim / 2],
+                 {static_cast<uint16_t>(loopNKhead), calBlockLen, calBlockLen, calBlockLen});
+        PipeBarrier<PIPE_ALL>();
+        DataCopy(reverseQ[this->rotary_dim / 2], inQueCalLocal,
+                 {static_cast<uint16_t>(loopNKhead), calBlockLen, calBlockLen, calBlockLen});
+        PipeBarrier<PIPE_ALL>();
+
+        uint64_t offsetPos = indexToken;
+        if (this->mrope_section0 > 0) {
+            uint64_t pos0 = position_id_GM.GetValue(offsetPos);
+            uint64_t pos1 = position_id_GM.GetValue(offsetPos + this->num_tokens);
+            uint64_t pos2 = position_id_GM.GetValue(offsetPos + 2 * this->num_tokens);
+
+            uint8_t padding2 =
+                ((this->mrope_section0 + this->mrope_section1) * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 + static_cast<uint16_t>(this->mrope_section1) - padding2],
+                        cos_sin_cache_GM[pos2 * this->rotary_dim +
+                                         static_cast<uint16_t>(this->mrope_section0 + this->mrope_section1)],
+                        {1, static_cast<uint16_t>(this->mrope_section2 * sizeof(float)), 0, 0}, {true, padding2, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            uint8_t padding1 = (this->mrope_section0 * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 - padding1],
+                        cos_sin_cache_GM[pos1 * this->rotary_dim + static_cast<uint16_t>(this->mrope_section0)],
+                        {1, static_cast<uint16_t>(this->mrope_section1 * sizeof(float)), 0, 0}, {true, padding1, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            DataCopyPad(inCosSin, cos_sin_cache_GM[pos0 * this->rotary_dim],
+                        {1, static_cast<uint16_t>(this->mrope_section0 * sizeof(float)), 0, 0}, {false, 0, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        } else {
+            uint64_t pos = position_id_GM.GetValue(offsetPos);
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(inCosSin, cos_sin_cache_GM[pos * this->rotary_dim], {1, calBlockLen, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+
+        DataCopy(inCosSin[this->rotary_dim / 2], inCosSin, {1, calBlockLen, 0, 0});
+        PipeBarrier<PIPE_ALL>();
+        Broadcast<float, 2, 0, false>(cosSin, inCosSin, dstShape_, srcShape_);
+        PipeBarrier<PIPE_ALL>();
+
+        Mul(inQueCalLocal, cosSin, inQueCalLocal, loopNKhead * this->rotary_dim);
+        PipeBarrier<PIPE_ALL>();
+        Mul(reverseQ, negOne, reverseQ, loopNKhead * this->rotary_dim);
+        PipeBarrier<PIPE_ALL>();
+        offsetPos = indexToken;
+        if (this->mrope_section0 > 0) {
+            uint64_t pos0 = position_id_GM.GetValue(offsetPos);
+            uint64_t pos1 = position_id_GM.GetValue(offsetPos + this->num_tokens);
+            uint64_t pos2 = position_id_GM.GetValue(offsetPos + 2 * this->num_tokens);
+
+            uint8_t padding2 =
+                ((this->mrope_section0 + this->mrope_section1) * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 + static_cast<uint16_t>(this->mrope_section1) - padding2],
+                        cos_sin_cache_GM[pos2 * this->rotary_dim +
+                                         static_cast<uint16_t>(this->mrope_section0 + this->mrope_section1) +
+                                         this->rotary_dim / 2],
+                        {1, static_cast<uint16_t>(this->mrope_section2 * sizeof(float)), 0, 0}, {true, padding2, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            uint8_t padding1 = (this->mrope_section0 * sizeof(float) % BLOCK_SIZE) / sizeof(float);
+            DataCopyPad(inCosSin[this->mrope_section0 - padding1],
+                        cos_sin_cache_GM[pos1 * this->rotary_dim + static_cast<uint16_t>(this->mrope_section0) +
+                                         this->rotary_dim / 2],
+                        {1, static_cast<uint16_t>(this->mrope_section1 * sizeof(float)), 0, 0}, {true, padding1, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+            DataCopyPad(inCosSin, cos_sin_cache_GM[pos0 * this->rotary_dim + this->rotary_dim / 2],
+                        {1, static_cast<uint16_t>(this->mrope_section0 * sizeof(float)), 0, 0}, {false, 0, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        } else {
+            uint64_t pos = position_id_GM.GetValue(offsetPos);
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(inCosSin, cos_sin_cache_GM[pos * this->rotary_dim + this->rotary_dim / 2], {1, calBlockLen, 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+        DataCopy(inCosSin[this->rotary_dim / 2], inCosSin, {1, calBlockLen, 0, 0});
+        PipeBarrier<PIPE_ALL>();
+        Broadcast<float, 2, 0, false>(cosSin, inCosSin, dstShape_, srcShape_);
+        PipeBarrier<PIPE_ALL>();
+        Mul(reverseQ, cosSin, reverseQ, loopNKhead * this->rotary_dim);
+        PipeBarrier<PIPE_ALL>();
+
+        if (this->is_neox_style == 0) {
+            Add(temp1Local, reverseQ, inQueCalLocal, loopNKhead * this->rotary_dim);
+            PipeBarrier<PIPE_ALL>();
+            for (uint32_t i = 0; i < loopNKhead; i++) {
+                Gather(inQueCalLocal[i * this->rotary_dim], temp1Local[i * this->rotary_dim], offsetLocal, (uint32_t)0,
+                       this->rotary_dim);
+                PipeBarrier<PIPE_ALL>();
+            }
+        } else {
+            Add(inQueCalLocal, reverseQ, inQueCalLocal, loopNKhead * this->rotary_dim);
+            PipeBarrier<PIPE_ALL>();
+        }
+
+        if (this->head_size != this->rotary_dim) {
+            DataCopy(outLocal, inQueCalLocal,
+                     {static_cast<uint16_t>(loopNKhead), static_cast<uint16_t>(rotaryBlockLen), 0,
+                      static_cast<uint16_t>(headBlockLen - rotaryBlockLen)});
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(outLocal[this->rotary_dim], inLocal[this->rotary_dim],
+                     {static_cast<uint16_t>(loopNKhead), static_cast<uint16_t>(headBlockLen - rotaryBlockLen),
+                      static_cast<uint16_t>(rotaryBlockLen), static_cast<uint16_t>(rotaryBlockLen)});
+            PipeBarrier<PIPE_ALL>();
+        } else {
+            DataCopy(outLocal, inQueCalLocal,
+                     {static_cast<uint16_t>(loopNKhead), static_cast<uint16_t>(headBlockLen), 0, 0});
+            PipeBarrier<PIPE_ALL>();
+        }
+        DataCopy(keyGM[offsetk], outLocal,
+                 {static_cast<uint16_t>(loopNKhead), static_cast<uint16_t>(headBlockLen), 0, 0});
+        PipeBarrier<PIPE_ALL>();
+    }
+    
+    inQueueCosSinCache.FreeTensor(inCosSin);
+    inQQue.FreeTensor(inLocal);
+    outQue.FreeTensor(outLocal);
+}
+
+template <typename T>
 __aicore__ inline void RopeWithSinCosCacheF32<T>::Process()
 {
-    for (uint64_t n = 0; n < this->loop_time_current_core - 1; n++) {
-        Compute(n, this->num_tokens_each_loop_current_core);
-    }
+    if(this->loop_for_one_token==0){
+        for (uint64_t n = 0; n < this->loop_time_current_core - 1; n++) {
+            Compute(n, this->num_tokens_each_loop_current_core);
+        }
 
-    if (this->num_tokens_last_loop_current_core == 0) {
-        Compute(this->loop_time_current_core - 1, this->num_tokens_each_loop_current_core);
-    } else {
-        Compute(this->loop_time_current_core - 1, this->num_tokens_last_loop_current_core);
+        if (this->num_tokens_last_loop_current_core == 0) {
+            Compute(this->loop_time_current_core - 1, this->num_tokens_each_loop_current_core);
+        } else {
+            Compute(this->loop_time_current_core - 1, this->num_tokens_last_loop_current_core);
+        }
+    }
+    else{
+        uint64_t loop_along_heads =
+            this->loop_along_qheads > this->loop_along_kheads ? this->loop_along_qheads : this->loop_along_kheads;
+        for(uint64_t n=0;n<this->num_tokens_current_core;n++){
+            for(uint64_t m=0;m<loop_along_heads;m++){
+                ComputeAlongHeads(n,m);
+            }
+        }
     }
 }
 } // namespace RopeWithSinCosCache

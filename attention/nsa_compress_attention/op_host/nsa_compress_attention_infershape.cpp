@@ -112,6 +112,6 @@ ge::graphStatus InferDataTypeNsaCompressAttention(gert::InferDataTypeContext *co
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP(NsaCompressAttention).InferShape(InferShapeNsaCompressAttention).InferDataType(InferDataTypeNsaCompressAttention);
+IMPL_OP_INFERSHAPE(NsaCompressAttention).InferShape(InferShapeNsaCompressAttention).InferDataType(InferDataTypeNsaCompressAttention);
 
 } // namespace ops

@@ -43,13 +43,6 @@ namespace ge {
    * @li out_flag: An optional attribute of type bool. true indicating that has renorm output, false indicating that does not have renorm output. The default value is false.
    * @li routed_scaling_factor: An optional attribute of type float, indicating the routed_scaling_factor coefficient in use. The default value is 1.0.
    * @li eps: An optional attribute of type float, indicating the eps coefficient in use. The default value is 1e-20.
-   *
-   * @par Restrictions:
-   * Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use.
-   *
-   * - Ascend 910_95 AI Processor:
-   * The attribute norm_type can only be 1 now.
-   * The attribute out_flag can only be false now.
    */
 REG_OP(MoeGatingTopK)
     .INPUT(x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))

@@ -125,67 +125,46 @@ static bool CheckParamsShape(const gert::TilingContext* context)
 
 static inline void PrintTilingData(MoeComputeExpertTokensTilingData& tilingData)
 {
-    OP_LOGI("[MoeComputeExpertTokens]", "[totalCoreNum]: %ld", tilingData.get_totalCoreNum());
-    OP_LOGI("[MoeComputeExpertTokens]", "[usedCoreNumBefore]: %ld", tilingData.get_usedCoreNumBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[usedCoreNumBefore3]: %ld", tilingData.get_usedCoreNumBefore3());
-    OP_LOGI("[MoeComputeExpertTokens]", "[usedCoreNumAfter]: %ld", tilingData.get_usedCoreNumAfter());
-    OP_LOGI("[MoeComputeExpertTokens]", "[ubSize]: %ld", tilingData.get_ubSize());
-    OP_LOGI("[MoeComputeExpertTokens]", "[workLocalNeedSize]: %ld", tilingData.get_workLocalNeedSize());
-    OP_LOGI("[MoeComputeExpertTokens]", "[sortedExpertNum]: %ld", tilingData.get_sortedExpertNum());
-    OP_LOGI("[MoeComputeExpertTokens]", "[normalCoreHandleNumBefore]: %ld", tilingData.get_normalCoreHandleNumBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[normalCoreLoopNumBefore]: %ld", tilingData.get_normalCoreLoopNumBefore());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[normalCoreHandleNumPerLoopBefore]: %ld",
-        tilingData.get_normalCoreHandleNumPerLoopBefore());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[normalCoreHandleNumTailLoopBefore]: %ld",
-        tilingData.get_normalCoreHandleNumTailLoopBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[tailCoreHandleNumBefore]: %ld", tilingData.get_tailCoreHandleNumBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[tailCoreLoopNumBefore]: %ld", tilingData.get_tailCoreLoopNumBefore());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[tailCoreHandleNumPerLoopBefore]: %ld",
-        tilingData.get_tailCoreHandleNumPerLoopBefore());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[tailCoreHandleNumTailLoopBefore]: %ld",
-        tilingData.get_tailCoreHandleNumTailLoopBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[numOfExpert]: %ld", tilingData.get_numOfExpert());
-    OP_LOGI("[MoeComputeExpertTokens]", "[normalCoreHandleNumAfter]: %ld", tilingData.get_normalCoreHandleNumAfter());
-    OP_LOGI("[MoeComputeExpertTokens]", "[normalCoreLoopNumAfter]: %ld", tilingData.get_normalCoreLoopNumAfter());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[normalCoreHandleNumPerLoopAfter]: %ld",
-        tilingData.get_normalCoreHandleNumPerLoopAfter());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[normalCoreHandleNumTailLoopAfter]: %ld",
-        tilingData.get_normalCoreHandleNumTailLoopAfter());
-    OP_LOGI("[MoeComputeExpertTokens]", "[tailCoreHandleNumAfter]: %ld", tilingData.get_tailCoreHandleNumAfter());
-    OP_LOGI("[MoeComputeExpertTokens]", "[tailCoreLoopNumAfter]: %ld", tilingData.get_tailCoreLoopNumAfter());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[tailCoreHandleNumPerLoopAfter]: %ld",
-        tilingData.get_tailCoreHandleNumPerLoopAfter());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[tailCoreHandleNumTailLoopAfter]: %ld",
-        tilingData.get_tailCoreHandleNumTailLoopAfter());
-    OP_LOGI("[MoeComputeExpertTokens]", "[handleNumPerCoreBefore]: %ld", tilingData.get_handleNumPerCoreBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[handleNumTailCoreBefore]: %ld", tilingData.get_handleNumTailCoreBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[loopCountBefore]: %ld", tilingData.get_loopCountBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[loopCountTailBefore]: %ld", tilingData.get_loopCountTailBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[handleNumPerLoopBefore]: %ld", tilingData.get_handleNumPerLoopBefore());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[handleNumTailCorePerLoopBefore]: %ld",
-        tilingData.get_handleNumTailCorePerLoopBefore());
-    OP_LOGI("[MoeComputeExpertTokens]", "[handleExpertNumLoopCount]: %ld", tilingData.get_handleExpertNumLoopCount());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[handleExpertNumMainCorePerLoop]: %ld",
-        tilingData.get_handleExpertNumMainCorePerLoop());
-    OP_LOGI(
-        "[MoeComputeExpertTokens]", "[handleExpertNumTailCorePerLoop]: %ld",
-        tilingData.get_handleExpertNumTailCorePerLoop());
-    OP_LOGI("[MoeComputeExpertTokens]", "[handleNumTailCoreMainLoop]: %ld", tilingData.get_handleNumTailCoreMainLoop());
-    OP_LOGI("[MoeComputeExpertTokens]", "[loopCountTailCoreMainLoop]: %ld", tilingData.get_loopCountTailCoreMainLoop());
-    OP_LOGI("[MoeComputeExpertTokens]", "[handleNumTailCoreTailLoop]: %ld", tilingData.get_handleNumTailCoreTailLoop());
-    OP_LOGI("[MoeComputeExpertTokens]", "[loopCountTailCoreTailLoop]: %ld", tilingData.get_loopCountTailCoreTailLoop());
-    OP_LOGI("[MoeComputeExpertTokens]", "[userWorkspaceSize]: %ld", tilingData.get_userWorkspaceSize());
-    OP_LOGI("[MoeComputeExpertTokens]", "[tilingKey]: %ld", tilingData.get_tilingKey());
+    const std::string opName = "MoeComputeExpertTokens";
+    OP_LOGI(opName, "[totalCoreNum]: %ld", tilingData.get_totalCoreNum());
+    OP_LOGI(opName, "[usedCoreNumBefore]: %ld", tilingData.get_usedCoreNumBefore());
+    OP_LOGI(opName, "[usedCoreNumBefore3]: %ld", tilingData.get_usedCoreNumBefore3());
+    OP_LOGI(opName, "[usedCoreNumAfter]: %ld", tilingData.get_usedCoreNumAfter());
+    OP_LOGI(opName, "[ubSize]: %ld", tilingData.get_ubSize());
+    OP_LOGI(opName, "[workLocalNeedSize]: %ld", tilingData.get_workLocalNeedSize());
+    OP_LOGI(opName, "[sortedExpertNum]: %ld", tilingData.get_sortedExpertNum());
+    OP_LOGI(opName, "[normalCoreHandleNumBefore]: %ld", tilingData.get_normalCoreHandleNumBefore());
+    OP_LOGI(opName, "[normalCoreLoopNumBefore]: %ld", tilingData.get_normalCoreLoopNumBefore());
+    OP_LOGI(opName, "[normalCoreHandleNumPerLoopBefore]: %ld", tilingData.get_normalCoreHandleNumPerLoopBefore());
+    OP_LOGI(opName, "[normalCoreHandleNumTailLoopBefore]: %ld", tilingData.get_normalCoreHandleNumTailLoopBefore());
+    OP_LOGI(opName, "[tailCoreHandleNumBefore]: %ld", tilingData.get_tailCoreHandleNumBefore());
+    OP_LOGI(opName, "[tailCoreLoopNumBefore]: %ld", tilingData.get_tailCoreLoopNumBefore());
+    OP_LOGI(opName, "[tailCoreHandleNumPerLoopBefore]: %ld", tilingData.get_tailCoreHandleNumPerLoopBefore());
+    OP_LOGI(opName, "[tailCoreHandleNumTailLoopBefore]: %ld", tilingData.get_tailCoreHandleNumTailLoopBefore());
+    OP_LOGI(opName, "[numOfExpert]: %ld", tilingData.get_numOfExpert());
+    OP_LOGI(opName, "[normalCoreHandleNumAfter]: %ld", tilingData.get_normalCoreHandleNumAfter());
+    OP_LOGI(opName, "[normalCoreLoopNumAfter]: %ld", tilingData.get_normalCoreLoopNumAfter());
+    OP_LOGI(opName, "[normalCoreHandleNumPerLoopAfter]: %ld", tilingData.get_normalCoreHandleNumPerLoopAfter());
+    OP_LOGI(opName, "[normalCoreHandleNumTailLoopAfter]: %ld", tilingData.get_normalCoreHandleNumTailLoopAfter());
+    OP_LOGI(opName, "[tailCoreHandleNumAfter]: %ld", tilingData.get_tailCoreHandleNumAfter());
+    OP_LOGI(opName, "[tailCoreLoopNumAfter]: %ld", tilingData.get_tailCoreLoopNumAfter());
+    OP_LOGI(opName, "[tailCoreHandleNumPerLoopAfter]: %ld", tilingData.get_tailCoreHandleNumPerLoopAfter());
+    OP_LOGI(opName, "[tailCoreHandleNumTailLoopAfter]: %ld", tilingData.get_tailCoreHandleNumTailLoopAfter());
+    OP_LOGI(opName, "[handleNumPerCoreBefore]: %ld", tilingData.get_handleNumPerCoreBefore());
+    OP_LOGI(opName, "[handleNumTailCoreBefore]: %ld", tilingData.get_handleNumTailCoreBefore());
+    OP_LOGI(opName, "[loopCountBefore]: %ld", tilingData.get_loopCountBefore());
+    OP_LOGI(opName, "[loopCountTailBefore]: %ld", tilingData.get_loopCountTailBefore());
+    OP_LOGI(opName, "[handleNumPerLoopBefore]: %ld", tilingData.get_handleNumPerLoopBefore());
+    OP_LOGI(opName, "[handleNumTailCorePerLoopBefore]: %ld", tilingData.get_handleNumTailCorePerLoopBefore());
+    OP_LOGI(opName, "[handleExpertNumLoopCount]: %ld", tilingData.get_handleExpertNumLoopCount());
+    OP_LOGI(opName, "[handleExpertNumMainCorePerLoop]: %ld", tilingData.get_handleExpertNumMainCorePerLoop());
+    OP_LOGI(opName, "[handleExpertNumTailCorePerLoop]: %ld", tilingData.get_handleExpertNumTailCorePerLoop());
+    OP_LOGI(opName, "[handleNumTailCoreMainLoop]: %ld", tilingData.get_handleNumTailCoreMainLoop());
+    OP_LOGI(opName, "[loopCountTailCoreMainLoop]: %ld", tilingData.get_loopCountTailCoreMainLoop());
+    OP_LOGI(opName, "[handleNumTailCoreTailLoop]: %ld", tilingData.get_handleNumTailCoreTailLoop());
+    OP_LOGI(opName, "[loopCountTailCoreTailLoop]: %ld", tilingData.get_loopCountTailCoreTailLoop());
+    OP_LOGI(opName, "[userWorkspaceSize]: %ld", tilingData.get_userWorkspaceSize());
+    OP_LOGI(opName, "[tilingKey]: %ld", tilingData.get_tilingKey());
 }
 
 static inline ge::graphStatus CalcNumOfExpertTiling(

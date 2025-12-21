@@ -525,8 +525,8 @@ __aicore__ inline void SelectedAttentionGrad<NSAGT>::AtomicClean()
     DumpGmZero(dqWorkspaceGm, dqSize);
     DumpGmZero(dkWorkspaceGm, dkSize);
     DumpGmZero(dvWorkspaceGm, dvSize); // FP32 FUNC:T1 FP16
-    InitOutput<T1>(selectedKWorkspaceGm, selectedKWorkspaceLen, 0);
-    InitOutput<T1>(selectedVWorkspaceGm, selectedVWorkspaceLen, 0);
+    InitOutput<T1>(selectedKWorkspaceGm, selectedKWorkspaceLen / sizeof(T1), 0);
+    InitOutput<T1>(selectedVWorkspaceGm, selectedVWorkspaceLen / sizeof(T1), 0);
 }
 template <typename NSAGT> __aicore__ inline void SelectedAttentionGrad<NSAGT>::InitAddrArray(int64_t* scatterDkAddrArray,
                                                                                            int64_t* scatterDvAddrArray,

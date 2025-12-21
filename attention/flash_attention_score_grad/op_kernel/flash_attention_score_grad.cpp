@@ -21,19 +21,21 @@
 
 #include "kernel_operator.h"
 using namespace AscendC;
-#include "flash_attention_score_grad_tiling.h"
-#include "flash_attention_score_grad_template_tiling_key.h"
-#include "flash_attention_score_grad_constant_propagation.h"
-#include "flash_attention_score_grad_empty_tensor.h"
-#include "flash_attention_score_grad_post.h"
-#include "flash_attention_score_grad_s1s2_bn2gs1s2.h"
-#include "flash_attention_score_grad_pre.h"
-#include "flash_attention_score_grad_sfmg.h"
-#include "flash_attention_score_grad_s1s2_bn2.h"
-#include "flash_attention_score_grad_ngs1s2_bn.h"
-#include "flash_attention_score_grad_bngs1s2_b.h"
-#include "flash_attention_score_grad_s1s2_bn2gs1s2_sab.h"
-#include "flash_attention_score_grad_s1s2_bn2gs1s2_basic.h"
+
+#include "arch32/flash_attention_score_grad_tiling.h"
+#include "arch32/flash_attention_score_grad_template_tiling_key.h"
+#include "arch32/flash_attention_score_grad_constant_propagation.h"
+#include "arch32/flash_attention_score_grad_empty_tensor.h"
+#include "arch32/flash_attention_score_grad_post.h"
+#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2.h"
+#include "arch32/flash_attention_score_grad_pre.h"
+#include "arch32/flash_attention_score_grad_sfmg.h"
+#include "arch32/flash_attention_score_grad_s1s2_bn2.h"
+#include "arch32/flash_attention_score_grad_ngs1s2_bn.h"
+#include "arch32/flash_attention_score_grad_bngs1s2_b.h"
+#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2_sab.h"
+#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2_basic.h"
+#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2_basic_det.h"
 
 constexpr MatmulConfig MM_CFG_EXCEED = GetNormalConfig(true);
 constexpr MatmulConfig MM_CFG_NORMAL = GetNormalConfig(false);
@@ -84,7 +86,7 @@ constexpr static const uint32_t TND = 3;
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2, true, INPUT_LAYOUT,     \
                                     input_format>                                                                      \
             opPost;                                                                                                    \
-        opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipePost);       \
+        opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipePost);       \
         opPost.Process();                                                                                              \
     } while (0)
 
@@ -120,7 +122,7 @@ constexpr static const uint32_t TND = 3;
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2, true, INPUT_LAYOUT,     \
                                     input_format, HAS_ROPE>                                                            \
             opPost;                                                                                                    \
-        opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipePost);       \
+        opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipePost);\
         opPost.Process();                                                                                              \
     } while (0)
 
@@ -147,7 +149,7 @@ constexpr static const uint32_t TND = 3;
             S1TEMPLATETYPE, S2TEMPLATETYPE, DTEMPLATETYPE>> op;                                                        \
         op.InitTscmBuffer(&pipeBase);                                                                                  \
         op.Init(key, keyRope, value, dy, query, queryRope, pse_shift, drop_mask, atten_mask, attention_in, softmax_max,\
-                softmax_sum, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, user,        \
+                softmax_sum, sink, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, dsink, user,        \
                 tilingData);                                                                                           \
         op.ProcessFirstMM();                                                                                           \
         op.InitBuffer(&pipeBase);                                                                                      \
@@ -158,7 +160,7 @@ constexpr static const uint32_t TND = 3;
             TPipe pipePost;                                                                                            \
             constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                   \
             FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb, true, INPUT_LAYOUT, input_format> opPost;\
-            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipePost);   \
+            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipePost);\
             opPost.Process();                                                                                          \
         }                                                                                                              \
     } while (0)
@@ -187,8 +189,8 @@ constexpr static const uint32_t TND = 3;
             S1TEMPLATETYPE, S2TEMPLATETYPE, DTEMPLATETYPE, HAS_ROPE>> op;                                              \
         op.InitTscmBuffer(&pipeBase);                                                                                  \
         op.Init(key, keyRope, value, dy, query, queryRope, pse_shift, drop_mask, atten_mask, attention_in, softmax_max,\
-                softmax_sum, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, user,        \
-                tilingData);                                                                                           \
+                softmax_sum, sink, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, dsink, user,        \
+                tilingData);                                                                                     \
         op.ProcessFirstMM();                                                                                           \
         op.InitBuffer(&pipeBase);                                                                                      \
         op.Process();                                                                                                  \
@@ -198,7 +200,7 @@ constexpr static const uint32_t TND = 3;
             TPipe pipePost;                                                                                            \
             constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                   \
                 FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb, true, INPUT_LAYOUT, input_format, HAS_ROPE> opPost;\
-            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipePost);   \
+            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipePost);\
             opPost.Process();                                                                                          \
         }                                                                                                              \
     } while (0)
@@ -224,8 +226,8 @@ constexpr static const uint32_t TND = 3;
         FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGType<INPUT_TYPE, float, IS_ATTEN_MASK, IS_PSE, IS_DROP,           \
             MM_OUT_FORMAT, INPUT_LAYOUT, MM2_OUT_FORMAT, IS_DTM>> op;                                                  \
         op.Init(key, keyRope, value, dy, query, queryRope, pse_shift, drop_mask, atten_mask, attention_in, softmax_max,\
-                softmax_sum, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, user,        \
-                tilingData);                                                                                           \
+                softmax_sum, sink, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, dsink, user,        \
+                tilingData);                                                                                    \
         op.ProcessFirstMM();                                                                                           \
         op.InitBuffer(&pipeBase);                                                                                      \
         op.Process();                                                                                                  \
@@ -235,7 +237,7 @@ constexpr static const uint32_t TND = 3;
             TPipe pipePost;                                                                                                \
             constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
             FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb, true, INPUT_LAYOUT,input_format> opPost;\
-            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipePost);       \
+            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipePost);\
             opPost.Process();                                                                                              \
         }                                                                                                       \
     } while (0)
@@ -264,8 +266,8 @@ constexpr static const uint32_t TND = 3;
             MM_OUT_FORMAT, INPUT_LAYOUT, MM2_OUT_FORMAT, IS_DTM, STemplateType::NotAligned, STemplateType::NotAligned, \
             DTemplateType::NotAligned, HAS_ROPE>> op;                                                                  \
         op.Init(key, keyRope, value, dy, query, queryRope, pse_shift, drop_mask, atten_mask, attention_in, softmax_max,\
-                softmax_sum, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, user,        \
-                tilingData);                                                                                           \
+                softmax_sum, sink, prefix, actual_seq_qlen, actual_seq_kvlen, dq, dqRope, dk, dkRope, dv, dpse, dsink, user,        \
+                tilingData);                                                                                          \
         op.ProcessFirstMM();                                                                                           \
         op.InitBuffer(&pipeBase);                                                                                      \
         op.Process();                                                                                                  \
@@ -275,7 +277,7 @@ constexpr static const uint32_t TND = 3;
             TPipe pipePost;                                                                                                \
             constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
             FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb, true, INPUT_LAYOUT, input_format, HAS_ROPE> opPost;\
-            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipePost);       \
+            opPost.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipePost);\
             opPost.Process();                                                                                              \
         }                                                     \
     } while (0)
@@ -308,7 +310,7 @@ constexpr static const uint32_t TND = 3;
         constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2, true, INPUT_LAYOUT,          \
         input_format> opCast;                                                                                          \
-        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipeCast);       \
+        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeCast);       \
         opCast.Process();                                                                                              \
     } while (0)
 
@@ -334,7 +336,7 @@ constexpr static const uint32_t TND = 3;
         constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2, true, INPUT_LAYOUT,          \
         input_format> opCast;                                                                                          \
-        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipeCast);       \
+        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeCast);       \
         opCast.Process();                                                                                              \
     } while (0)
 
@@ -427,7 +429,7 @@ constexpr static const uint32_t TND = 3;
         constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradUbngs1s2BbTilingData, false,                    \
         layout, input_format> opMuls;                                                                                  \
-        opMuls.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipeMuls);       \
+        opMuls.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeMuls);       \
         opMuls.Process();                                                                                              \
         pipeMuls.Destroy();                                                                                            \
     } while (0)
@@ -458,7 +460,7 @@ constexpr static const uint32_t TND = 3;
         constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataUngs1s2Bbn, false,                    \
         layout, input_format> opMuls;                                                                                  \
-        opMuls.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, user, tilingData, &pipeMuls);       \
+        opMuls.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeMuls);       \
         opMuls.Process();                                                                                              \
         pipeMuls.Destroy();                                                                                            \
     } while (0)
@@ -473,6 +475,18 @@ constexpr static const uint32_t TND = 3;
                       actual_seq_qlen, actual_seq_kvlen, dq, dk, dv, user, mlaTilingData);                             \
     } while (0)
 
+#define INVOKE_FAG_DETERMINISTIC_BASIC_IMPL(INPUT_TYPE, SEQLEN_TYPE, DROP_ENABLE, DETERMINISTIC_ENABLE)                \
+    do {                                                                                                               \
+        GET_TILING_DATA_WITH_STRUCT(FlashAttentionGradBasicDetTilingData, det_tiling_data, tiling_data);               \
+        const FlashAttentionGradBasicDetTilingData *__restrict detTilingData = &det_tiling_data;                       \
+        FlashAttentionScoreGradBasicDet<FAG_TYPE<INPUT_TYPE, FlashAttentionGradBasicDetTilingData, SEQLEN_TYPE,        \
+                                                 DROP_ENABLE, DETERMINISTIC_ENABLE>> opDet;                            \
+        pipeIn.Destroy();                                                                                              \
+        opDet.Process(query, key ,value, dy, drop_mask, atten_mask, softmax_max, softmax_sum, attention_in,            \
+                      actual_seq_qlen, actual_seq_kvlen, dq, dk, dv, user, detTilingData);                             \
+    } while (0)
+
+
 // implementation of kernel function
 template<uint8_t UB0, uint8_t UB1, uint8_t Block, bool IsSameAB, uint8_t DataType, uint8_t Layout, uint8_t Sparse, uint8_t MatmulCfg, uint8_t Mm12IsNZOut,
     uint8_t Mm345IsNZOut, bool HasDropOut, bool HasPse, bool HasAttenMask, bool EnableL1Reuse, bool TNDS1Pingpong, uint8_t S1TemplateType,
@@ -483,8 +497,8 @@ __global__ __aicore__ void flash_attention_score_grad(
     __gm__ uint8_t *softmax_sum, __gm__ uint8_t *softmax_in, __gm__ uint8_t *attention_in, __gm__ uint8_t *prefix,
     __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *q_start_idx, __gm__ uint8_t *kv_start_idx, 
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *deqScaleDy, __gm__ uint8_t *deqScaleO,
-    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
-    __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
+    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,  __gm__ uint8_t *sink ,__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
+    __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope, __gm__ uint8_t *dsink, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipeIn;
@@ -492,6 +506,27 @@ __global__ __aicore__ void flash_attention_score_grad(
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     REGISTER_TILING_DEFAULT(FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2);
+
+    if constexpr (UB0 == 0 && UB1 == 0 && Block == 0) {
+        REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR & 0x0)", FlashAttentionScoreGradTilingData);
+        GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreGradTilingData, tiling_data_in, tiling_data);
+        const FlashAttentionScoreGradTilingData *__restrict empty_tensor_tiling_data = &tiling_data_in;
+        #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+            FlashAttentionScoreGradEmptyTensor<half> op;
+            op.Init(dq, dk, dv, dpse, empty_tensor_tiling_data);
+            op.Process();
+        #elif (ORIG_DTYPE_QUERY == DT_FLOAT)
+            FlashAttentionScoreGradEmptyTensor<float> op;
+            op.Init(dq, dk, dv, dpse, empty_tensor_tiling_data);
+            op.Process();
+        #elif (ORIG_DTYPE_QUERY == DT_BF16)
+            FlashAttentionScoreGradEmptyTensor<bfloat16_t> op;
+            op.Init(dq, dk, dv, dpse, empty_tensor_tiling_data);
+            op.Process();
+        #endif
+        return;
+    }
+
     constexpr CubeFormat mm12Format = bool(Mm12IsNZOut) ? MM_NZ_OUT_FORMAT : MM_ND_OUT_NOALIGN;
     constexpr CubeFormat mm345Format = bool(Mm345IsNZOut) ? MM_NZ_OUT_FORMAT : MM_ND_OUT_NOALIGN;
     
@@ -512,7 +547,7 @@ __global__ __aicore__ void flash_attention_score_grad(
                                             mm12Format, mock_layout, mm345Format, TNDS1Pingpong);
         } else if constexpr (UB0 == 4 && UB1 == 3 && Block == 1) { // bn2
             REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR & 0xFFF = 0x134", FlashAttentionScoreGradTilingDataS1s2Bn2);
-            if constexpr (Layout == 4) { 
+            if constexpr (Layout == 3) {
                 if constexpr (HasDropOut) {
                     if constexpr (MatmulCfg == 1) {
                         INVOKE_FAG_GENERAL_S1S2_BN2_IMPL(half, MM_CFG_EXCEED, mm12Format, HasPse, HasAttenMask, INPUT_EXIST,
@@ -606,6 +641,9 @@ __global__ __aicore__ void flash_attention_score_grad(
                                         mm12Format, mm345Format, S1TemplateType::NotAligned, S2TemplateType::NotAligned, DTemplateType::NotAligned);
                 }
             }
+        } else if constexpr (UB0 == 9 && UB1 == 9 && Block == 9 && IsDeterministic == 1) { // basic det
+            REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR & 0xFFF = 0x1999", FlashAttentionGradBasicDetTilingData);
+            INVOKE_FAG_DETERMINISTIC_BASIC_IMPL(half, int64_t, false, true);
         } else if constexpr (UB0 == 9 && UB1 == 9 && Block == 9) { // basic
             REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR & 0xFFF = 0x999", FlashAttentionGradMlaTilingData);
             INVOKE_FAG_GENERAL_BASIC_IMPL(half);
@@ -654,7 +692,7 @@ __global__ __aicore__ void flash_attention_score_grad(
         } else if constexpr (UB0 == 4 && UB1 == 3 && Block == 1) { // bn2
             REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR & 0xFFF = 0x134", FlashAttentionScoreGradTilingDataS1s2Bn2);
 
-            if constexpr (Layout == 4) { 
+            if constexpr (Layout == 3) {
                 if constexpr (HasDropOut) {
                     if constexpr (MatmulCfg == 1) {
                         INVOKE_FAG_GENERAL_S1S2_BN2_IMPL(bfloat16_t, MM_CFG_EXCEED, mm12Format, HasPse, HasAttenMask, INPUT_EXIST,
@@ -789,6 +827,9 @@ __global__ __aicore__ void flash_attention_score_grad(
                                         mm12Format, mm345Format, S1TemplateType::NotAligned, S2TemplateType::NotAligned, DTemplateType::NotAligned);
                 }
             }
+        } else if constexpr (UB0 == 9 && UB1 == 9 && Block == 9 && IsDeterministic == 1) { // basic det
+            REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR & 0xFFF = 0x1999", FlashAttentionGradBasicDetTilingData);
+            INVOKE_FAG_DETERMINISTIC_BASIC_IMPL(bfloat16_t, int64_t, false, true);
         } else if constexpr (UB0 == 9 && UB1 == 9 && Block == 9) { // basic
             REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR & 0xFFF = 0x999", FlashAttentionGradMlaTilingData);
             INVOKE_FAG_GENERAL_BASIC_IMPL(bfloat16_t);
@@ -801,7 +842,7 @@ __global__ __aicore__ void flash_attention_score_grad(
                                             mm12Format, mock_layout, mm345Format, TNDS1Pingpong);
         } else if constexpr (UB0 == 4 && UB1 == 3 && Block == 1) { // bn2
             REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR & 0xFFF = 0x134", FlashAttentionScoreGradTilingDataS1s2Bn2);
-            if constexpr (Layout == 4) { 
+            if constexpr (Layout == 3) {
                 if constexpr (HasDropOut) {
                     if constexpr (MatmulCfg == 1) {
                         INVOKE_FAG_GENERAL_S1S2_BN2_IMPL(float, MM_CFG_EXCEED, mm12Format, HasPse, HasAttenMask, INPUT_EXIST,

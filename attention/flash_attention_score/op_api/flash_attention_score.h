@@ -18,7 +18,7 @@ namespace l0op {
 const std::array<const aclTensor *, 4> FlashAttentionScore(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *realShiftOptional,
     const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional, const aclTensor *attenMaskOptional,
-    const aclIntArray *prefixOptional, const aclIntArray *actualSeqQLenOptional,
+    const aclTensor *sinkOptional, const aclIntArray *prefixOptional, const aclIntArray *actualSeqQLenOptional,
     const aclIntArray *actualSeqKvLenOptional, const aclIntArray *qStartIdxOptional,
     const aclIntArray *kvStartIdxOptional, const aclTensor *dScaleQOptional, const aclTensor *dScaleKOptional,
     const aclTensor *dScaleVOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,

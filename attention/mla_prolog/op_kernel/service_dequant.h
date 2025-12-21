@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file service_dequant.h
@@ -72,6 +72,52 @@ __aicore__ inline void DequantPerTokenQc(const GlobalTensor<O> &outputGm, const 
         AscendC::PipeBarrier<PIPE_V>();
         // cast
         Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        // copy out
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        DataCopy(outputGm[outputOffset], outputLocal, count);
+    }
+}
+
+/**
+ * @brief CastPerTokenQc 用于对Qc做类型转换；按行做cast流程，给oriRow * col的数据做类型转换
+ * @param outputGm 输出tensor
+ * @param inputGm 输入tensor
+ * @param shareTmpUb 临时buffer
+ * @param castRowColStrideParams 描述待处理数据的排布，包括
+          row 行数
+          col 列数
+          stride 一行的真实长度
+ * @param oriRow 一共有多少行
+*/
+template <typename T, typename O>
+__aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm,
+                                      const GlobalTensor<T> &inputGm,
+                                      const LocalTensor<uint8_t> &shareTmpUb,
+                                      Rectangle castRowColStrideParams,
+                                      uint32_t oriRow) {
+    int64_t count = castRowColStrideParams.row * castRowColStrideParams.col;
+
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>(); // count * sizeof(T)
+    LocalTensor<O> outputLocal = inputLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+
+    DataCopyParams copyParams {
+        static_cast<uint16_t>(castRowColStrideParams.row),
+        static_cast<uint16_t>(castRowColStrideParams.col * sizeof(T) / 32U),
+        static_cast<uint16_t>((castRowColStrideParams.stride - castRowColStrideParams.col) * sizeof(T) / 32U),
+        0};
+
+    for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += castRowColStrideParams.row) {
+        int64_t inputOffset = rowOffset * castRowColStrideParams.stride;
+        int64_t outputOffset = rowOffset * castRowColStrideParams.col;
+        // copy in
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        DataCopy(inputLocal, inputGm[inputOffset], copyParams);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        // cast
+        Cast(outputLocal, inputLocal, RoundMode::CAST_RINT, count);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);

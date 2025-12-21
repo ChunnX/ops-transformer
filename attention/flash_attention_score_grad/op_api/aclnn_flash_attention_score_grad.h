@@ -80,6 +80,31 @@ aclnnStatus aclnnFlashAttentionScoreGradV2GetWorkspaceSize(
 aclnnStatus aclnnFlashAttentionScoreGradV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            const aclrtStream stream);
 
+                                           /**
+ * @brief aclnnFlashAttentionScoreGradV3的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @domain aclnn_ops_train
+*/
+aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(
+    const aclTensor *query, const aclTensor *keyIn, const aclTensor *value, const aclTensor *dy,
+    const aclTensor *pseShiftOptional, const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional, const aclTensor *softmaxMaxOptional, const aclTensor *softmaxSumOptional,
+    const aclTensor *softmaxInOptional, const aclTensor *attentionInOptional, 
+    const aclTensor *sinkInOptional,
+    const aclIntArray *prefixOptional,
+    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValue,
+    double keepProb, int64_t preTokens, int64_t nextTokens,
+    int64_t headNum, char *inputLayout, int64_t innerPrecise, int64_t sparseMode,
+    int64_t pseType, const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,
+    const aclTensor *dpseOut, 
+    const aclTensor *dsinkOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
+
+/**
+ * @brief aclnnFlashAttentionScoreGradV3的第二段接口，用于执行计算。
+*/
+aclnnStatus aclnnFlashAttentionScoreGradV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                           const aclrtStream stream);
+
 /**
  * @brief aclnnFlashAttentionUnpaddingScoreGradV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_train
@@ -147,8 +172,53 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                   const aclrtStream stream);
 
+aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
+    const aclTensor *query, 
+    const aclTensor *queryRope, 
+    const aclTensor *keyIn, 
+    const aclTensor *keyInRope, 
+    const aclTensor *value, 
+    const aclTensor *dy,
+    const aclTensor *pseShiftOptional, 
+    const aclTensor *dropMaskOptional, 
+    const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional, 
+    const aclTensor *softmaxMaxOptional, 
+    const aclTensor *softmaxSumOptional,
+    const aclTensor *softmaxInOptional, 
+    const aclTensor *attentionInOptional, 
+    const aclTensor *sinkInOptional, 
+    const aclIntArray *prefixOptional,
+    const aclIntArray *actualSeqQLenOptional, 
+    const aclIntArray *actualSeqKvLenOptional,
+    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *kvStartIdxOptional, 
+    double scaleValue,
+    double keepProb, 
+    int64_t preTokens, 
+    int64_t nextTokens, 
+    int64_t headNum,
+    char *inputLayout, 
+    int64_t innerPrecise, 
+    int64_t sparseMode, 
+    int64_t pseType,
+    char *softmaxInLayout, 
+    const aclTensor *dqOut, 
+    const aclTensor *dqRopeOut, 
+    const aclTensor *dkOut, 
+    const aclTensor *dkRopeOut, 
+    const aclTensor *dvOut, 
+    const aclTensor *dpseOut,
+    const aclTensor *dsinkOut, 
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
+
+aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                    const aclrtStream stream);                                
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // OP_API_INC_FLASH_ATTENTION_SCORE_GRAD_H_
+

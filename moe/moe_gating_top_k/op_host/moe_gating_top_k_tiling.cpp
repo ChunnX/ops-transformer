@@ -524,5 +524,5 @@ void MoeGatingTopKTilingBase::Reset()
     return;
 }
 
-REGISTER_TILING_TEMPLATE("MoeGatingTopK", MoeGatingTopKTilingBase, 2000);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopK, MoeGatingTopKTilingBase, 2000);
 } // namespace optiling

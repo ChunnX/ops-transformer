@@ -26,6 +26,7 @@
 #include "tests/utils/tensor_list.h"
 
 namespace ops::adv::tests::NsaCompressAttention {
+
 class NsaCompressAttentionCase : public ops::adv::tests::utils::Case {
     using OpInfo = ops::adv::tests::utils::OpInfo;
     using Context = ops::adv::tests::utils::Context;
@@ -144,6 +145,17 @@ public:
     bool DoOpTiling(DoTilingParam &tilingParam);
     bool InitQkvAndOut();
     bool InitOptInputs();
+    static bool InitTensor(Tensor &tensor, std::vector<int64_t> &hostData)
+    {
+        if (hostData.empty()) {
+            return true;
+        }
+        int64_t expMinSize = hostData.size() * sizeof(int64_t);
+        if (tensor.AllocDevData(0, expMinSize) == nullptr) {
+            return false;
+        }
+        return tensor.CopyHostToDevData(hostData);
+    }
 };
 
 } // namespace ops::adv::tests::MoeInitRoutingV2

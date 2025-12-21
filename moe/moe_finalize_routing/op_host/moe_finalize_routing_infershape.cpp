@@ -102,9 +102,8 @@ static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext *
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus Infershape4MoeFinalizeRouting(gert::InferShapeContext *context)
+static ge::graphStatus CheckInputShapes(const gert::InferShapeContext *context, const size_t offset)
 {
-    // get and check input param
     const gert::Shape *expandedPermutedRowsInputShape = context->GetInputShape(INDEX_IN_EXPAND_PERMUTED_ROWS);
     OP_CHECK_NULL_WITH_CONTEXT(context, expandedPermutedRowsInputShape);
     OP_CHECK_IF(expandedPermutedRowsInputShape->GetDimNum() != SHAPE_SIZE,
@@ -123,7 +122,6 @@ static ge::graphStatus Infershape4MoeFinalizeRouting(gert::InferShapeContext *co
     OP_CHECK_IF(skip2InputShape != nullptr && skip2InputShape->GetDimNum() != SHAPE_SIZE,
                 OP_LOGE(context->GetNodeName(), "The skip2 of input should be 2D tensor."), return ge::GRAPH_FAILED);
 
-    size_t offset = (context->GetComputeNodeInputNum() == INPUT_NUM) ? 0 : 1;
     const gert::Shape *biasInputShape = context->GetInputShape(INDEX_IN_BIAS - offset);
     OP_CHECK_NULL_WITH_CONTEXT(context, biasInputShape);
     OP_CHECK_IF(biasInputShape->GetDimNum() != SHAPE_SIZE,
@@ -147,12 +145,24 @@ static ge::graphStatus Infershape4MoeFinalizeRouting(gert::InferShapeContext *co
                 OP_LOGE(context->GetNodeName(), "The expert_for_source_row of input should be 2D tensor."),
                 return ge::GRAPH_FAILED);
 
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckInputDims(const gert::InferShapeContext *context, const size_t offset)
+{
+    const gert::Shape *scalesInputShape = context->GetInputShape(INDEX_IN_SCALES - offset);
+    const gert::Shape *expertForSourceRowInputShape = context->GetInputShape(INDEX_IN_EXPERT_FOR_SOURCE_ROW - offset);
     bool validColK = scalesInputShape->GetDim(1) == -1 || expertForSourceRowInputShape->GetDim(1) == -1 ||
                      scalesInputShape->GetDim(1) == expertForSourceRowInputShape->GetDim(1);
     OP_CHECK_IF(!validColK,
                 OP_LOGE(context->GetNodeName(), "The dim 1 of scales and expert_for_source_row should be same."),
                 return ge::GRAPH_FAILED);
 
+    const gert::Shape *skip1InputShape = context->GetInputShape(INDEX_IN_SKIP1);
+    const gert::Shape *skip2InputShape = (context->GetOptionalInputTensor(INDEX_IN_SKIP2) == nullptr ||
+                                          context->GetOptionalInputTensor(INDEX_IN_SKIP2)->GetShapeSize() == 0) ?
+                                             nullptr :
+                                             context->GetOptionalInputShape(INDEX_IN_SKIP2);
     int64_t skip2Row = skip2InputShape != nullptr ? skip2InputShape->GetDim(0) : -1;
     OP_CHECK_IF(
         !IsValidShape(skip1InputShape->GetDim(0), skip2Row, scalesInputShape->GetDim(0),
@@ -162,11 +172,15 @@ static ge::graphStatus Infershape4MoeFinalizeRouting(gert::InferShapeContext *co
 
     int64_t skip2Col = skip2InputShape != nullptr ? skip2InputShape->GetDim(1) : -1;
     OP_CHECK_IF(
-        !IsValidShape(skip1InputShape->GetDim(1), skip2Col, expandedPermutedRowsInputShape->GetDim(1),
-                      biasInputShape->GetDim(1)),
+        !IsValidShape(skip1InputShape->GetDim(1), skip2Col,
+                      context->GetInputShape(INDEX_IN_EXPAND_PERMUTED_ROWS)->GetDim(1),
+                      context->GetInputShape(INDEX_IN_BIAS - offset)->GetDim(1)),
         OP_LOGE(context->GetNodeName(), "The dim 1 of skip1, skip2, expanded_permuted_rows and bias should be same."),
         return ge::GRAPH_FAILED);
 
+    const gert::Shape *expandedSrcToDstRowInputShape =
+        context->GetInputShape(INDEX_IN_EXPANDED_SRC_TO_DST_ROW - offset);
+    const gert::Shape *expandedPermutedRowsInputShape = context->GetInputShape(INDEX_IN_EXPAND_PERMUTED_ROWS);
     bool validDim = expandedSrcToDstRowInputShape->GetDim(0) == -1 || expandedPermutedRowsInputShape->GetDim(0) == -1 ||
                     expandedSrcToDstRowInputShape->GetDim(0) == expandedPermutedRowsInputShape->GetDim(0);
 
@@ -174,6 +188,22 @@ static ge::graphStatus Infershape4MoeFinalizeRouting(gert::InferShapeContext *co
                 OP_LOGE(context->GetNodeName(),
                         "The dim 0 of expanded_permuted_rows and expanded_src_to_dst_row should be same."),
                 return ge::GRAPH_FAILED);
+    
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus Infershape4MoeFinalizeRouting(gert::InferShapeContext *context)
+{
+    // get and check input param
+    size_t offset = (context->GetComputeNodeInputNum() == INPUT_NUM) ? 0 : 1;
+    if (CheckInputShapes(context, offset) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckInputDims(context, offset) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     // infershape output
     OP_CHECK_IF(MoeCopyShapeInput2OutputWithIdx(context, INDEX_IN_SKIP1, INDEX_out) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "Infershape4MoeFinalizeRouting failed!"), return ge::GRAPH_FAILED);

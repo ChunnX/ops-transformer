@@ -4,10 +4,16 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>昇腾910_95 AI处理器</term>|      √     |
+|<term>Atlas A3 训练系列产品</term>|      √     |
+|<term>Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas 800I A2 推理产品</term>|      ×     |
 |<term>A200I A2 Box 异构组件</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -61,7 +67,8 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+<table style="undefined;table-layout: fixed; width: 1576px">
+  <colgroup>
   <col style="width: 170px">
   <col style="width: 170px">
   <col style="width: 310px">
@@ -75,34 +82,35 @@
       <th>描述</th>
       <th>数据类型</th>
       <th>数据格式</th>
-    </tr></thead>
+    </tr>
+  </thead>
   <tbody>
     <tr>
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入Q。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
       <td>公式中的输入K。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>value</td>
       <td>输入</td>
       <td>公式中的输入V。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>dy</td>
       <td>输入</td>
       <td>公式中的输入dY。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -124,27 +132,6 @@
       <td>可选输入</td>
       <td>公式中的atten_mask，表示注意力掩码，取值为1代表该位不参与计算（不生效），为0代表该位参与计算。</td>
       <td>BOOL、UINT8</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>softmaxMaxOptional</td>
-      <td>可选输入</td>
-      <td>注意力正向计算的中间输出，参与反向公式P的计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>softmaxSumOptional</td>
-      <td>可选输入</td>
-      <td>注意力正向计算的中间输出，参与反向公式P的计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>attentionInOptional</td>
-      <td>可选输入</td>
-      <td>注意力正向计算的最终输出，公式中的Y。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -172,50 +159,45 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>pseType</td>
-      <td>可选属性</td>
-      <td>
-        <ul>
-          <li>控制add与mul的执行次序，支持配置值为0、1、2、3。</li>
-          <li>默认值为1。</li>
-        </ul>
-      </td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>dqOut</td>
       <td>输出</td>
       <td>公式中的dQ，表示query的梯度。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>dkOut</td>
       <td>输出</td>
       <td>公式中的dK，表示key的梯度。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>dvOut</td>
       <td>输出</td>
       <td>公式中的dV，表示value的梯度。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
   </tbody>
 </table>
+<ul>
+  <li><term>Atlas A2 训练产品</term>:不支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
+  <li><term>Atlas A3 训练产品</term>:不支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
+</ul>
 
 ## 约束说明
 
 - 输入query、key、value、pseShiftOptional的数据类型必须一致。
-- 输入query、key、value、dy的inputLayout必须一致。
+- 输入query、key、value、dy的input_layout必须一致。
 - 关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
   -   B：取值范围为1\~2M。当prefixOptional的时候B最大支持2K。
   -   N：取值范围为1\~256。
   -   S：取值范围为1\~1M。
-  -   D：取值范围为1\~512。
+  -   D：
+      -   Atlas A2 训练系列产品:取值范围为1\~512。
+      -   Atlas A3 训练系列产品:取值范围为1\~512。
+      -   昇腾910_95 AI处理器:取值范围为1\~768。
 - keepProb的取值范围为(0, 1]。
 - 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
@@ -225,3 +207,7 @@
 | 调用方式           | 调用样例                                                                                                              | 说明                                                                                                                    |
 |----------------|-------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_flash_attention_score_grad](./examples/test_aclnn_flash_attention_score_grad.cpp)                     | 非TND场景，通过[aclnnFlashAttentionScoreGrad](./docs/aclnnFlashAttentionScoreGradV2.md)接口方式调用FlashAttentionGrad算子。                   |
+
+## 参考资源
+
+- [FAG算子设计介绍](./docs/FAG算子设计介绍.md)

@@ -338,7 +338,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForNsaSelectedAttention(gert::Tili
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(NsaSelectedAttention)
+IMPL_OP_OPTILING(NsaSelectedAttention)
     .Tiling(TilingNsaSelectedAttention)
     .TilingInputsDataDependency({5, 6})
     .TilingParse<NsaSelectedAttentionCompileInfo>(TilingPrepareForNsaSelectedAttention);  // 向框架注册入口函数

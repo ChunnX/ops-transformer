@@ -175,7 +175,7 @@ __aicore__ inline void SelectedAttentionGradBasic<NSAGT>::Process(
         VecOp<NSAGT> vecOp;
         vecOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
                    actual_seq_qlen, actual_seq_kvlen, atten_mask, dq, dk, dv, workspace, tilingData, &pipeVec);
-
+        SyncAll();
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);

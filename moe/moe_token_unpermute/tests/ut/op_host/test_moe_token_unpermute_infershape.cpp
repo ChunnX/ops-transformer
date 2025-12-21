@@ -163,7 +163,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_bf16)
                                   .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
                                   .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                                   .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                                  .NodeOutputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                                  .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                                   .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                                   .OutputDataTypes({&output_ref})
                                   .Build();
@@ -193,7 +193,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_fp16) {
                               .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();
@@ -223,7 +223,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_fp32) {
                               .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();
@@ -253,7 +253,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_mix_bf16_fp32) {
                               .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();
@@ -283,7 +283,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_mix_bf16_fp16) {
                               .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();
@@ -313,7 +313,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_mix_fp16_fp32) {
                               .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();
@@ -343,7 +343,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_mix_fp16_bf16) {
                               .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();
@@ -373,7 +373,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_mix_fp32_bf16) {
                               .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();
@@ -403,7 +403,7 @@ TEST_F(MoeTokenUnpermute, test_infertype_mix_fp32_fp16) {
                               .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
                               .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes({&input_ref, &input_indices_ref, &input_ref})
                               .OutputDataTypes({&output_ref})
                               .Build();

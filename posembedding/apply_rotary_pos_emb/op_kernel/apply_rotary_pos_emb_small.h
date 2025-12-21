@@ -137,13 +137,9 @@ __aicore__ inline void ARPESmall<T1, T2>::CastCopyIn(const ApplyRotaryPosEmbTili
 #else
     T1 scalar_data = -1.0;
     Muls(sinSize, sinSize, scalar_data, tilingData->halfNum, 1, mulRepeatP);
-#if ORIG_DTYPE_QUERY == DT_FLOAT
+
     SetMaskNorm();
-    SetVectorMask<T1>(64);
-#else
-    SetMaskNorm();
-    SetVectorMask<T1>(128);
-#endif
+
     LocalTensor<T1> qOutUb = qOutQueue.AllocTensor<T1>();
     ComputeTotary(qSize, cosSize, sinSize, qOutUb, tilingData);
 
@@ -176,17 +172,17 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeBF16(
     Cast(cosC1, cosUb, RoundMode::CAST_NONE, tilingData->lastDim);
     Cast(sinC1, sinUb, RoundMode::CAST_NONE, tilingData->lastDim);
     SetMaskNorm();
-    SetVectorMask<float>(64);
+ 
     float scalar_data = -1.0f;
 
-    Muls<float, false>(sinC1, sinC1, scalar_data, tilingData->halfNum, 1, mulRepeatP);
+    Muls<float>(sinC1, sinC1, scalar_data, tilingData->halfNum, 1, mulRepeatP);
     LocalTensor<float> qUbFP32;
     this->LocalTensor2NewTensor(qUbFP32, qUb);
     for (int32_t aa = 0; aa < (tilingData->qcdHalfNum); aa++) {
-        Mul<float, false>(
+        Mul<float>(
             mul1Ub[aa * tilingData->mask], qoutSizeFP32[aa * tilingData->mask], sinC1[aa * tilingData->mask],
             tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<float, false>(
+        Mul<float>(
             qUbFP32[aa * tilingData->mask], mul2Ub[aa * tilingData->mask], cosC1[aa * tilingData->mask],
             tilingData->mask, tilingData->qkcNum, repeatParams);
     }
@@ -210,10 +206,10 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeTotary(
     DataCopy(qoutSize[tilingData->halfNum], qUb, copyIn1);
 
     for (int32_t aa = 0; aa < (tilingData->qcdHalfNum); aa++) {
-        Mul<T1, false>(
+        Mul<T1>(
             mul1Ub[aa * tilingData->mask], qoutSize[aa * tilingData->mask], sinUb[aa * tilingData->mask],
             tilingData->mask, tilingData->qkcNum, repeatParams);
-        Mul<T1, false>(
+        Mul<T1>(
             mul2Ub[aa * tilingData->mask], qUb[aa * tilingData->mask], cosUb[aa * tilingData->mask], tilingData->mask,
             tilingData->qkcNum, repeatParams);
     }

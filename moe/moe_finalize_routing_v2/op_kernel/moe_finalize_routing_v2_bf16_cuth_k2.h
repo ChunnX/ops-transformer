@@ -34,7 +34,7 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void CkechColAlignment();
+    __aicore__ inline void CheckColAlignment();
     __aicore__ inline void CopyIn(int64_t nLoopIdx, int64_t bias, int64_t dataLen, bool isPadH, int64_t rightPaddingH);
     __aicore__ inline void Compute(int64_t nLoopIdx, int64_t bias, int64_t dataLen, bool isPadH, int64_t rightPaddingH);
     __aicore__ inline void CopyOut(int64_t nLoopIdx, int64_t bias, int64_t dataLen);
@@ -120,7 +120,7 @@ __aicore__ inline int64_t MoeFinalizeRoutingV2Bf16CuthK2<T, TS, ISBIASEXIST>::Pa
 }
 
 template <typename T, typename TS, const bool ISBIASEXIST>
-__aicore__ inline void MoeFinalizeRoutingV2Bf16CuthK2<T, TS, ISBIASEXIST>::CkechColAlignment()
+__aicore__ inline void MoeFinalizeRoutingV2Bf16CuthK2<T, TS, ISBIASEXIST>::CheckColAlignment()
 {
     if (tilingData_.normalH * sizeof(T) % ONE_BLK_SIZE) {
         isPadNormalH_ = true;
@@ -154,7 +154,7 @@ __aicore__ inline void MoeFinalizeRoutingV2Bf16CuthK2<T, TS, ISBIASEXIST>::Init(
         curCoreHandleNumPerLoop_ = tilingData_.normalCoreHandleNumPerLoop;
     }
 
-    CkechColAlignment();
+    CheckColAlignment();
 
     // gmInput分核 && 输入偏移量初始化
     inputSkipIdx_ = GetBlockIdx() * tilingData_.normalCoreHandleNum * tilingData_.H;
@@ -269,18 +269,7 @@ __aicore__ inline void MoeFinalizeRoutingV2Bf16CuthK2<T, TS, ISBIASEXIST>::CopyI
     }
     SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
 
-    if (tilingData_.skip2IsNull == 0) {
-        skip2Queue_.EnQue(skip2Local);
-    }
-    if (tilingData_.skip1IsNull == 0) {
-        skip1Queue_.EnQue(skip1Local);
-    }
-    if (tilingData_.scalesIsNull == 0) {
-        scalesQueue_.EnQue(scalesLocal);
-    }
-    if constexpr (ISBIASEXIST) {
-        expertForSourceRowQueue_.EnQue(expertForSourceRowLocal);
-    }
+    COPY_IN_ENQUE();
 }
 
 template <typename T, typename TS, const bool ISBIASEXIST>
@@ -518,22 +507,7 @@ __aicore__ inline void MoeFinalizeRoutingV2Bf16CuthK2<T, TS, ISBIASEXIST>::Proce
     if (GetBlockIdx() >= tilingData_.usedCoreNum) {
         return;
     }
-    int64_t loopCount = tilingData_.normalCoreLoopNum;
-    if ((GetBlockIdx() + 1) == tilingData_.usedCoreNum) {
-        loopCount = tilingData_.tailCoreLoopNum;
-    }
-
-    for (int64_t n = 0; n < loopCount; n++) {
-        bool isNormalH = (n + 1) % (tilingData_.hSliceNum + 1) != 0;
-        int64_t bias =
-            isNormalH ? (n % tilingData_.hSliceNum) * tilingData_.normalH : tilingData_.hSliceNum * tilingData_.normalH;
-        int64_t dataLen = isNormalH ? tilingData_.normalH : tilingData_.unnormalH;
-        int64_t rightPaddingH = isNormalH ? rightPaddingNormalH_ : rightPaddingUnnormalH_;
-        int64_t isPadH = isNormalH ? isPadNormalH_ : isPadUnnormalH_;
-        CopyIn(n, bias, dataLen, isPadH, rightPaddingH);
-        Compute(n, bias, dataLen, isPadH, rightPaddingH);
-        CopyOut(n, bias, dataLen);
-    }
+    PROCESS_IMP();
 }
 
 } // namespace MoeFinalizeRoutingV2

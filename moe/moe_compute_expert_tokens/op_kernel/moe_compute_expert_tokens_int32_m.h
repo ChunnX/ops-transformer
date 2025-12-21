@@ -176,6 +176,19 @@ __aicore__ inline void MoeComputeExpertTokensInt32M<T>::ParseTilingData(
 
     // 使用核数信息
     totalCoreNum_ = tilingData->totalCoreNum;
+
+    // syncall after
+    if (GetBlockIdx() + 1 == usedCoreNumBefore_) {
+        curCoreHandleNumPerLoopBefore_ = tailCoreHandleNumPerLoopBefore_;
+        curCoreHandleNumTailLoopBefore_ = tailCoreHandleNumTailLoopBefore_;
+        curCoreHandleNumBefore_ = tailCoreHandleNumBefore_;
+        loopCountBefore_ = tailCoreLoopNumBefore_;
+    } else {
+        curCoreHandleNumPerLoopBefore_ = normalCoreHandleNumPerLoopBefore_;
+        curCoreHandleNumTailLoopBefore_ = normalCoreHandleNumTailLoopBefore_;
+        curCoreHandleNumBefore_ = normalCoreHandleNumBefore_;
+        loopCountBefore_ = normalCoreLoopNumBefore_;
+    }
 }
 
 template <typename T>
@@ -200,19 +213,6 @@ __aicore__ inline void MoeComputeExpertTokensInt32M<T>::Init(
     // init tiling data
     ParseTilingData(tilingData);
     workspace_ = workspace;
-
-    // syncall after
-    if (GetBlockIdx() + 1 == usedCoreNumBefore_) {
-        curCoreHandleNumPerLoopBefore_ = tailCoreHandleNumPerLoopBefore_;
-        curCoreHandleNumTailLoopBefore_ = tailCoreHandleNumTailLoopBefore_;
-        curCoreHandleNumBefore_ = tailCoreHandleNumBefore_;
-        loopCountBefore_ = tailCoreLoopNumBefore_;
-    } else {
-        curCoreHandleNumPerLoopBefore_ = normalCoreHandleNumPerLoopBefore_;
-        curCoreHandleNumTailLoopBefore_ = normalCoreHandleNumTailLoopBefore_;
-        curCoreHandleNumBefore_ = normalCoreHandleNumBefore_;
-        loopCountBefore_ = normalCoreLoopNumBefore_;
-    }
 
     // syncall before
     int64_t inputIdx = GetBlockIdx() * normalCoreHandleNumBefore_;

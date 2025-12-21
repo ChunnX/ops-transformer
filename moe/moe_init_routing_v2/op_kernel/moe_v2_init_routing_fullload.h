@@ -36,6 +36,8 @@ private:
     __aicore__ inline void CopyOutEmpty();
     __aicore__ inline void CopyOutX();
     __aicore__ inline void ComputeExpertTokenCountOrCumsum();
+    __aicore__ inline void SetBuffer(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, 
+                                     GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum);
 
 private:
     int64_t sortNum_;
@@ -291,6 +293,22 @@ __aicore__ inline void MoeV2FullLoad<T>::CopyOutEmpty()
 }
 
 template <typename T>
+__aicore__ inline void MoeV2FullLoad<T>::SetBuffer(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, 
+                                                   GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum)
+{
+    xGm_.SetGlobalBuffer((__gm__ T *)x);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength);
+
+    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength);
+    if (this->expertTokensCountOrCumsumFlag > 0) {
+        // dropless
+        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
+                                                    Align(this->expertNum, sizeof(int32_t)));
+    }
+}
+
+template <typename T>
 __aicore__ inline void MoeV2FullLoad<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
                                               GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace,
                                               const MoeInitRoutingV2TilingData *tilingData, TPipe *tPipe)
@@ -321,16 +339,7 @@ __aicore__ inline void MoeV2FullLoad<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_A
     this->totalLength = tilingData->n * tilingData->k;
     this->pipe = tPipe;
 
-    xGm_.SetGlobalBuffer((__gm__ T *)x);
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength);
-
-    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength);
-    if (this->expertTokensCountOrCumsumFlag > 0) {
-        // dropless
-        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
-                                                    Align(this->expertNum, sizeof(int32_t)));
-    }
+    SetBuffer(x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum);
 
     int64_t kvFactor = 2;
     int64_t buffSize = this->sortNum_ * sizeof(int32_t);

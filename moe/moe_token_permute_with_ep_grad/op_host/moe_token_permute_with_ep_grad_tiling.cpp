@@ -174,8 +174,7 @@ static inline void Init(
     int inputTopK = static_cast<int64_t>(*tmpTopK);
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     if (rangePtr != nullptr) {
-        OP_CHECK_IF(
-            rangePtr->GetSize() != RANGE_SIZE,
+        OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
             OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return);
         const int64_t* rangeList = reinterpret_cast<const int64_t*>(rangePtr->GetData());
         param.input.start = rangeList[0];
@@ -187,28 +186,25 @@ static inline void Init(
 
     param.input.numOutTokens = tokensShape->GetStorageShape().GetDim(0); // numOutTokens根据tokens第0维获取；
     param.input.hiddenSize = tokensShape->GetStorageShape().GetDim(1);
-    param.input.totalLength = sortedIndicesShape->GetStorageShape().GetDim(
-        0); // tokens可能存在numOutTokens，因此totalLength从sortedIndices获取。
+    // tokens可能存在numOutTokens，因此totalLength从sortedIndices获取。
+    param.input.totalLength = sortedIndicesShape->GetStorageShape().GetDim(0);
     if (isUnpermute) {
         if (probsShape != nullptr) {
             auto dataTensor2 = context->GetInputTensor(2);
             param.input.probsDtypeSize = GetLengthByType(dataTensor2->GetDataType());
-            param.input.haveProbs = true;
             param.input.tokensNum = probsShape->GetStorageShape().GetDim(0);
             param.input.topK = probsShape->GetStorageShape().GetDim(1);
-            param.input.PermuteProbGradSize = 0;
         } else {
             param.input.topK = inputTopK;
-            param.input.PermuteProbGradSize = 1;
-            param.input.haveProbs = false;
             param.input.tokensNum = safeDiv(param.input.totalLength, param.input.topK);
         }
+        param.input.PermuteProbGradSize = (probsShape == nullptr) ? 1 : 0;
     } else {
         param.input.topK = (inputTopK == topK) ? topK : 1;
         param.input.PermuteProbGradSize = 1;
-        param.input.haveProbs = (probsShape != nullptr) ? true : false;
         param.input.tokensNum = safeDiv(param.input.totalLength, param.input.topK);
     }
+    param.input.haveProbs = (probsShape != nullptr);
 }
 
 static void SetCoreNum(MoeTokenUnpermuteWithEpParam& param)

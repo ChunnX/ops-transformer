@@ -233,5 +233,5 @@ ge::graphStatus MoeGatingTopKSoftmaxKFullLoadTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("MoeGatingTopKSoftmax", MoeGatingTopKSoftmaxKFullLoadTiling, 20000);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopKSoftmax, MoeGatingTopKSoftmaxKFullLoadTiling, 20000);
 } // namespace optiling

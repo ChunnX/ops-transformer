@@ -14,13 +14,13 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
-    add_ops_compile_options(
-        OP_NAME SparseFlashAttention
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
-                -Werror
-    )
-else()
+add_ops_compile_options(
+    OP_NAME SparseFlashAttention
+    OPTIONS --cce-auto-sync=off
+            -Wno-deprecated-declarations
+            -Werror
+)
+
+if (NOT BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_modules_sources(OPTYPE sparse_flash_attention ACLNNTYPE aclnn)
 endif()

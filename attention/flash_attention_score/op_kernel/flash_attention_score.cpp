@@ -21,16 +21,16 @@
 #endif
 
 #include "kernel_operator.h"
-#include "flash_attention_score_empty_tensor.h"
-#include "flash_attention_score_drop_mask_adapter.h"
-#include "flash_attention_score_s1s2_bn2gs1.h"
-#include "flash_attention_score_s1s2_bn2gs1_sab.h"
-#include "flash_attention_score_s1_bn2gs1.h"
-#include "flash_attention_score_bn2gs1s2_b.h"
-#include "flash_attention_var_len_score.h"
-#include "flash_attention_var_len_score_sab.h"
-#include "flash_attention_score_template_tiling_key.h"
-#include "flash_attention_score_tiling.h"
+#include "arch32/flash_attention_score_empty_tensor.h"
+#include "arch32/flash_attention_score_drop_mask_adapter.h"
+#include "arch32/flash_attention_score_s1s2_bn2gs1.h"
+#include "arch32/flash_attention_score_s1s2_bn2gs1_sab.h"
+#include "arch32/flash_attention_score_s1_bn2gs1.h"
+#include "arch32/flash_attention_score_bn2gs1s2_b.h"
+#include "arch32/flash_attention_var_len_score.h"
+#include "arch32/flash_attention_var_len_score_sab.h"
+#include "arch32/flash_attention_score_template_tiling_key.h"
+#include "arch32/flash_attention_score_tiling.h"
 
 using namespace AscendC;
 
@@ -61,7 +61,7 @@ using namespace AscendC;
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
         COPY_TILING_DATA_SAMEAB(tiling);                                                                               \
         templateClass<__VA_ARGS__> op;                                                                                 \
-        op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,                  \
+        op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,            \
                 softmaxMax, softmaxSum,                                                                                \
                 softmaxOut, attentionOut, user, tilingData, &tPipe);                                                   \
         op.Process();                                                                                                  \
@@ -76,7 +76,7 @@ using namespace AscendC;
         FaTscm::FaTscmArray tscmArray[FaTscm::TSCM_BUF_NUM];                                                           \
         FaTscm::TscmGlobal = tscmArray;                                                                                \
         FaTscm::InitTscmBuffer(&tPipe, FaTscm::TscmGlobal);                                                            \
-        op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,                  \
+        op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,            \
                 softmaxMax, softmaxSum,                                                                                \
                 softmaxOut, attentionOut, user, tilingData, &tPipe);                                                   \
         op.Process();                                                                                                  \
@@ -95,7 +95,7 @@ using namespace AscendC;
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
         COPY_TILING_DATA_SAMEAB(tiling);                                                                               \
         templateClass<__VA_ARGS__> op;                                                                                 \
-        op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,                  \
+        op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,            \
                 softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                           \
         op.Process();                                                                                                  \
     } while (0)
@@ -126,7 +126,7 @@ using namespace AscendC;
         if (inputParamsVar.needL1Carry) {                                                                              \
             COPY_TILING_DATA_SAMEAB(tiling);                                                                           \
             __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                        \
-            op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,        \
+            op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,  \
                           actualSeqLengths, actualSeqLengthsKv,                                                        \
                           softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.ProcessL1Carry();                                                                                       \
@@ -142,7 +142,7 @@ using namespace AscendC;
         COPY_TILING_DATA_SAMEAB(tiling);                                                                               \
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
         templateClass<__VA_ARGS__> op;                                                                                 \
-        op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,            \
+        op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,      \
                       actualSeqLengths,                                                                                \
                       actualSeqLengthsKv, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe); \
         op.Process();                                                                                                  \
@@ -168,13 +168,13 @@ using namespace AscendC;
             tPipe.Reset();                                                                                             \
             templateClass<__VA_ARGS__> op;                                                                             \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling);                 \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                                   \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.Process();                                                                                              \
         } else {                                                                                                       \
             templateClass<__VA_ARGS__> op;                                                                             \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling);                 \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,        \
                     softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                       \
             op.Process();                                                                                              \
         }                                                                                                              \
@@ -190,13 +190,13 @@ using namespace AscendC;
             dropMaskAdapter.Process();                                                                                 \
             tPipe.Reset();                                                                                             \
             templateClass<__VA_ARGS__> op;                                                                             \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                                   \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.Process();                                                                                              \
         } else {                                                                                                       \
             templateClass<__VA_ARGS__> op;                                                                             \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                                   \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.Process();                                                                                              \
         }                                                                                                              \
     } while (0)
@@ -214,16 +214,16 @@ using namespace AscendC;
             FaTscm::FaTscmArray tscmArray[FaTscm::TSCM_BUF_NUM];                                                       \
             FaTscm::TscmGlobal = tscmArray;                                                                            \
             FaTscm::InitTscmBuffer(&tPipe, FaTscm::TscmGlobal);                                                        \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                                   \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.Process();                                                                                              \
         } else {                                                                                                       \
             templateClass<__VA_ARGS__> op;                                                                             \
             FaTscm::FaTscmArray tscmArray[FaTscm::TSCM_BUF_NUM];                                                       \
             FaTscm::TscmGlobal = tscmArray;                                                                            \
             FaTscm::InitTscmBuffer(&tPipe, FaTscm::TscmGlobal);                                                        \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                                   \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.Process();                                                                                              \
         }                                                                                                              \
     } while (0) 
@@ -241,15 +241,15 @@ using namespace AscendC;
             templateClass<__VA_ARGS__> op;                                                                             \
             REGIST_MATMUL_OBJ(&tPipeOp, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm1Nz, bmm1tiling, op.bmm2,     \
                               bmm2tiling);                                                                             \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipeOp);                                 \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipeOp);               \
             op.Process();                                                                                              \
         } else {                                                                                                       \
             templateClass<__VA_ARGS__> op;                                                                             \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm1Nz, bmm1tiling, op.bmm2,       \
                               bmm2tiling);                                                                             \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                                   \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.Process();                                                                                              \
         }                                                                                                              \
     } while (0)
@@ -265,13 +265,13 @@ using namespace AscendC;
             tPipe.Destroy();                                                                                           \
             TPipe tPipeOp;                                                                                             \
             templateClass<__VA_ARGS__> op;                                                                             \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipeOp);                                 \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipeOp);               \
             op.Process();                                                                                              \
         } else {                                                                                                       \
             templateClass<__VA_ARGS__> op;                                                                             \
-            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax,  \
-                    softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                                   \
+            op.Init(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,              \
+                    sink, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe);                 \
             op.Process();                                                                                              \
         }                                                                                                              \
     } while (0)
@@ -292,7 +292,7 @@ using namespace AscendC;
             matmul::InitL1Buffer(&tPipe, matmul::l1Global);                                                            \
             REGIST_MATMUL_OBJ(&tPipeOp, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm1Nz, bmm1tiling, op.bmm2,     \
                               bmm2tiling);                                                                             \
-            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax, softmaxSum,          \
+            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, sink, softmaxMax, softmaxSum,    \
                     softmaxOut, attentionOut, user, tilingData, &tPipeOp);                                             \
             op.Process();                                                                                              \
         } else {                                                                                                       \
@@ -302,7 +302,7 @@ using namespace AscendC;
             matmul::InitL1Buffer(&tPipe, matmul::l1Global);                                                             \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm1Nz, bmm1tiling, op.bmm2,       \
                               bmm2tiling);                                                                             \
-            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax, softmaxSum,          \
+            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, sink, softmaxMax, softmaxSum,    \
                     softmaxOut, attentionOut, user, tilingData, &tPipe);                                               \
             op.Process();                                                                                              \
         }                                                                                                              \
@@ -321,14 +321,14 @@ using namespace AscendC;
             templateClass<__VA_ARGS__> op;                                                                             \
             REGIST_MATMUL_OBJ(&tPipeOp, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling, op.bmm2Nz,       \
                               bmm2tiling);                                                                             \
-            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax, softmaxSum,          \
+            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, sink, softmaxMax, softmaxSum,    \
                     softmaxOut, attentionOut, user, tilingData, &tPipeOp);                                             \
             op.Process();                                                                                              \
         } else {                                                                                                       \
             templateClass<__VA_ARGS__> op;                                                                             \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling, op.bmm2Nz,       \
                               bmm2tiling);                                                                             \
-            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, softmaxMax, softmaxSum,          \
+            op.Init(query, key, value, pse, dropMask, paddingMask, prefix, attenMask, sink, softmaxMax, softmaxSum,    \
                     softmaxOut, attentionOut, user, tilingData, &tPipe);                                               \
             op.Process();                                                                                              \
         }                                                                                                              \
@@ -347,7 +347,7 @@ using namespace AscendC;
         templateClass<__VA_ARGS__> op;                                                                                 \
         REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm1Nz, bmm1tiling, op.bmm2,           \
                           bmm2tiling);                                                                                 \
-        op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,            \
+        op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,      \
                       actualSeqLengths,                                                                                \
                       actualSeqLengthsKv, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe); \
         if (tilingData->inputParams.needL1Carry) {                                                                     \
@@ -368,7 +368,7 @@ using namespace AscendC;
         }                                                                                                              \
         tPipe.Reset();                                                                                                 \
         templateClass<__VA_ARGS__> op;                                                                                 \
-        op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask,            \
+        op.UnpackInit(query, queryRope, key, keyRope, value, pse, dropMask, paddingMask, prefix, attenMask, sink,      \
                       actualSeqLengths,                                                                                \
                       actualSeqLengthsKv, softmaxMax, softmaxSum, softmaxOut, attentionOut, user, tilingData, &tPipe); \
         op.Process();                                                                                                  \
@@ -387,7 +387,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                       __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
                       __gm__ uint8_t *qStartIdx, __gm__ uint8_t *kvStartIdx, __gm__ uint8_t *deqScaleQ,
                       __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, 
-                      __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxMax,
+                      __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sink, __gm__ uint8_t *softmaxMax,
                       __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *attentionOut,
                       __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
@@ -395,7 +395,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     AscendC::SetMaskNorm();
     REGISTER_TILING_DEFAULT(FlashAttentionScoreGeneralTilingData);
     if constexpr (KernelTypeKey == 1) {
-        REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR == 0x0)", FlashAttentionScoreTilingData);
+        REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR == 0x1)", FlashAttentionScoreTilingData);
         GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreTilingData, tiling_data_in, tiling);
         const FlashAttentionScoreTilingData *__restrict tiling_data = &tiling_data_in;
         if (ORIG_DTYPE_QUERY == DT_FLOAT16) {

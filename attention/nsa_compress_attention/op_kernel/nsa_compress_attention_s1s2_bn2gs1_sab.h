@@ -482,7 +482,7 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
             extraInfo.vec1S1RealSize = extraInfo.vec1MaxG;
             if (gLoopIdx == extraInfo.vec1LoopCountG - 1) {
                 extraInfo.vec1S1RealSize = this->gSize - gLoopIdx * extraInfo.vec1MaxG;
-            }
+            }          
             AscendC::WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
             this->GetBmm1Result(extraInfo, mm1ResultLocal, s1LoopIdx, gLoopIdx);
             this->CopyInAttenMask(extraInfo, attenMaskLocal, s1LoopIdx);
@@ -601,8 +601,8 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
         if (isInfo.isN == 1) {
             s2Offset += 1;
         }
-        uint32_t softmaxSrcBlockLen = this->s2Length;
-        uint32_t softmaxSrcStride = extraInfo.s2RealSize - this->s2Length;
+        uint32_t softmaxSrcBlockLen = this->s2Length <= extraInfo.s2RealSize ? this->s2Length : extraInfo.s2RealSize;
+        uint32_t softmaxSrcStride = extraInfo.s2RealSize - softmaxSrcBlockLen;
         uint32_t softmaxDstStride = 0;
         if (loopIdx == this->s2Loop - 1) {
             softmaxSrcBlockLen = extraInfo.s2RealSize - s2Offset;
@@ -677,6 +677,7 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
 
         int ubOffset = scoreLoop * vS1MulsGsize;
         uint8_t srcStride = isInfo.isM * vS1MulsGsize * sizeof(float) / BLOCK_SIZE;
+        AscendC::WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
         for (int i = 1; i < innerLoop; ++i) {
             int times = this->timesArray[i];
             int scoreIdx = 0;
@@ -701,12 +702,12 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
         }
 
         AscendC::PipeBarrier<PIPE_V>();
-        AscendC::WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
         AscendC::ConfusionTranspose<float>(transBack, scoreRes, sharedBuf,
             AscendC::TransposeType::TRANSPOSE_ND2ND_ONLY, transposeInfoBackward);
         AscendC::SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
         // reduce g [s1g, outerLoop(s2ScoreLoopLen)]
         if (this->gSize > 1) {
+            AscendC::PipeBarrier<PIPE_V>();
             DataCopyParams dataCopyParamsReduce;
             dataCopyParamsReduce.blockCount = this->vecS1BaseSize;
             dataCopyParamsReduce.blockLen = s2Aligned64B * sizeof(float) / BLOCK_SIZE;

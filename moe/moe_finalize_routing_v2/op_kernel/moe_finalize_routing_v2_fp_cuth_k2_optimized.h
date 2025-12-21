@@ -36,6 +36,7 @@ public:
 
 private:
     __aicore__ inline void CkechColAlignment();
+    __aicore__ inline void ParseTilingData();
     __aicore__ inline void CopyIn(
         int64_t nLoopIdx, int64_t lineNumInCurrentLoop, int64_t bias, int64_t dataLen, bool isPadH,
         int64_t rightPaddingH);
@@ -148,9 +149,7 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::CkechColAlignme
 }
 
 template <typename T>
-__aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Init(
-    GM_ADDR expandedPermutedRows, GM_ADDR expandedSrcToDstRow, GM_ADDR skip1, GM_ADDR skip2, GM_ADDR bias,
-    GM_ADDR scales, GM_ADDR expertForSourceRow, GM_ADDR out, GM_ADDR workspace)
+__aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::ParseTilingData()
 {
     if (GetBlockIdx() + 1 == tilingData_.usedCoreNum) {
         curCoreHandleNumPerLoop_ = tilingData_.tailCoreHandleNumPerLoop;
@@ -165,7 +164,14 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Init(
         curTotalLoopCount_ = tilingData_.normalCoreLoopNum * (tilingData_.hSliceNum + 1);
         curCoreHandleNum_ = tilingData_.normalCoreHandleNum;
     }
+}
 
+template <typename T>
+__aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Init(
+    GM_ADDR expandedPermutedRows, GM_ADDR expandedSrcToDstRow, GM_ADDR skip1, GM_ADDR skip2, GM_ADDR bias,
+    GM_ADDR scales, GM_ADDR expertForSourceRow, GM_ADDR out, GM_ADDR workspace)
+{
+    ParseTilingData();
     // 检查要处理的列数是否对齐以及应该如何对齐
     CkechColAlignment();
 
@@ -232,14 +238,14 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::PrepareData()
         DataCopyExtParams copyParamsSrcToDstRow{
             static_cast<uint16_t>(tilingData_.K), static_cast<uint32_t>(curCoreHandleNum_ * sizeof(int32_t)),
             static_cast<uint32_t>((tilingData_.totalRowNum - curCoreHandleNum_) * sizeof(int32_t)), 0, 0};
-        DataCopyPad(
+        DataCopyPadCustom<int32_t, DataCopyExtParams, DataCopyPadExtParams<int32_t>>(
             expandedSrcToDstRow_, gmExpandedSrcToDstRow_[GetBlockIdx() * tilingData_.normalCoreHandleNum],
             copyParamsSrcToDstRow, padParamsSrcToDstRow);
     } else if (tilingData_.dropPadMode == MODE_VALUE_2 || tilingData_.dropPadMode == MODE_VALUE_3) {
         DataCopyExtParams copyParamsSrcToDstRow{
             static_cast<uint16_t>(1), static_cast<uint32_t>(curCoreHandleNum_ * tilingData_.K * sizeof(int32_t)), 0, 0,
             0};
-        DataCopyPad(
+        DataCopyPadCustom<int32_t, DataCopyExtParams, DataCopyPadExtParams<int32_t>>(
             expandedSrcToDstRow_,
             gmExpandedSrcToDstRow_[GetBlockIdx() * tilingData_.normalCoreHandleNum * tilingData_.K],
             copyParamsSrcToDstRow, padParamsSrcToDstRow);
@@ -258,7 +264,7 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::CopyIn(
     DataCopyParams copyParamsExpert{
         static_cast<uint16_t>(lineNumInCurrentLoop), static_cast<uint16_t>(tilingData_.K * sizeof(int32_t)), 0, 0};
     DataCopyPadParams padParamsExpert{isPadKInt32_, 0, static_cast<uint8_t>(rightPaddingKInt32_), 0};
-    DataCopyPad(
+    DataCopyPadCustom<int32_t, DataCopyParams, DataCopyPadParams>(
         expertForSourceRowLocal,
         gmExpertForSourceRow_[nLoopIdx / (tilingData_.hSliceNum + 1) * curCoreHandleNumPerLoop_ * tilingData_.K],
         copyParamsExpert, padParamsExpert);
@@ -267,7 +273,7 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::CopyIn(
     DataCopyParams copyParamsScales{
         static_cast<uint16_t>(lineNumInCurrentLoop), static_cast<uint16_t>(tilingData_.K * sizeof(T)), 0, 0};
     DataCopyPadParams padParamsScales{isPadK_, 0, static_cast<uint8_t>(rightPaddingK_), 0};
-    DataCopyPad(
+    DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
         skip1Skip2ScalesLocal[tilingData_.normalCoreHandleNumPerLoop * AlignmentProcess(tilingData_.normalH)],
         gmScales_[nLoopIdx / (tilingData_.hSliceNum + 1) * curCoreHandleNumPerLoop_ * tilingData_.K], copyParamsScales,
         padParamsScales);
@@ -283,13 +289,13 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::CopyIn(
         static_cast<uint16_t>((tilingData_.H - dataLen) * sizeof(T)), 0};
     DataCopyPadParams padParamsSkip{isPadH, 0, static_cast<uint8_t>(rightPaddingH), 0};
 
-    DataCopyPad(
+    DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
         skip1Skip2ScalesLocal[0],
         gmSkip1_[nLoopIdx / (tilingData_.hSliceNum + 1) * curCoreHandleNumPerLoop_ * tilingData_.H + bias],
         copyParamsSkip, padParamsSkip);
 
     if (tilingData_.skip2IsNull == 0) {
-        DataCopyPad(
+        DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
             skip1Skip2ScalesLocal
                 [tilingData_.normalCoreHandleNumPerLoop * AlignmentProcess(tilingData_.normalH) +
                  tilingData_.normalCoreHandleNumPerLoop * AlignmentProcess(tilingData_.K)],
@@ -345,10 +351,10 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Compute(
 
             /*******************************乒***********************************************/
             WaitFlag<HardEvent::S_MTE2>(EVENT_ID0);
-            DataCopyPad(
+            DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
                 expandedPermutedTmpUbDb0, gmExpandedPermutedRows_[expandedPermutedRowsIndexDb0 * tilingData_.H + bias],
                 copyParams, padParams);
-            DataCopyPad(biasTmpUbDb0, gmBias_[biasIndexDb0 * tilingData_.H + bias], copyParams, padParams);
+            DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(biasTmpUbDb0, gmBias_[biasIndexDb0 * tilingData_.H + bias], copyParams, padParams);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
             /*******************************乓***********************************************/
@@ -369,10 +375,11 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Compute(
 
             /*******************************乓***********************************************/
             WaitFlag<HardEvent::S_MTE2>(EVENT_ID1);
-            DataCopyPad(
+            DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
                 expandedPermutedTmpUbDb1, gmExpandedPermutedRows_[expandedPermutedRowsIndexDb1 * tilingData_.H + bias],
                 copyParams, padParams);
-            DataCopyPad(biasTmpUbDb1, gmBias_[biasIndexDb1 * tilingData_.H + bias], copyParams, padParams);
+            DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
+                biasTmpUbDb1, gmBias_[biasIndexDb1 * tilingData_.H + bias], copyParams, padParams);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
             if (!((i == 0) && (j == 0))) {
@@ -448,7 +455,7 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::CopyOut(
     DataCopyParams copyParams{
         static_cast<uint16_t>(lineNumInCurrentLoop), static_cast<uint16_t>(dataLen * sizeof(T)), 0,
         static_cast<uint16_t>((tilingData_.H - dataLen) * sizeof(T))};
-    DataCopyPad(
+    DataCopyPadCustom<T>(
         gmOut_[nLoopIdx / (tilingData_.hSliceNum + 1) * curCoreHandleNumPerLoop_ * tilingData_.H + bias], outLocal,
         copyParams);
     outQueue_.FreeTensor(outLocal);

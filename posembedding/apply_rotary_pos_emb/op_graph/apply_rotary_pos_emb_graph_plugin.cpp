@@ -26,5 +26,5 @@ static ge::graphStatus ApplyRotaryPosEmbInferDtype(gert::InferDataTypeContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(ApplyRotaryPosEmb).InferDataType(ApplyRotaryPosEmbInferDtype);
+IMPL_OP_INFERSHAPE(ApplyRotaryPosEmb).InferDataType(ApplyRotaryPosEmbInferDtype);
 }; // namespace ops

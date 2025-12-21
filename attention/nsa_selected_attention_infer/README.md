@@ -2,10 +2,45 @@
 
 # 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+<table style="table-layout: fixed; border-collapse: collapse;">
+  <thead>
+    <tr>
+      <!-- 表头单元格完全居中 -->
+      <th style="border: 1px solid #ccc; font-weight: bold;">产品</th>
+      <th style="border: 1px solid #ccc; text-align: center; font-weight: bold;">是否支持</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="border: 1px solid #ccc;">昇腾910_95 AI处理器</td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;">Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
+      <td style="border: 1px solid #ccc; text-align: center;">√</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;">Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</td>
+      <td style="border: 1px solid #ccc; text-align: center;">√</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;">Atlas 200I/500 A2 推理产品</td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;">Atlas 推理系列产品</td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;">Atlas 训练系列产品</td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;">Atlas 200I/300/500 推理产品</td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+  </tbody>
+</table>
 
 # 功能说明
 
@@ -67,7 +102,7 @@
       <tr>
         <td style="white-space: nowrap;">topkIndices</td>
         <td>输入</td>
-        <td>公式里的topk索引。</td>
+        <td>公式里的topK索引。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>
@@ -104,3 +139,4 @@
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | aclnn接口 | [test_aclnn_nsa_selected_attention_infer](./examples/test_aclnn_nsa_selected_attention_infer.cpp) | 通过[`aclnnNsaSelectedAttentionInfer`](./docs/aclnnNsaSelectedAttentionInfer.md)接口方式调用NsaCompressAttentionInfer算子。 |
+

@@ -67,6 +67,15 @@ struct TilingParams {
     uint64_t loop_time_each_tail_core = 0;
     uint64_t num_tokens_front_core_last_loop = 0;
     uint64_t num_tokens_tail_core_last_loop = 0;
+    uint64_t loop_for_one_token = 0;
+    uint64_t num_heads_each_loop = 0;
+    uint64_t num_heads_last_loop = 0;
+    uint64_t loop_along_qheads = 0;
+    uint64_t loop_along_kheads = 0;
+    uint64_t num_qheads_each_loop = 0;
+    uint64_t num_qheads_last_loop = 0;
+    uint64_t num_kheads_each_loop = 0;
+    uint64_t num_kheads_last_loop = 0;
     uint64_t tilingKey = 0;
 };
 } // namespace
@@ -97,6 +106,13 @@ static void SetTiling(TilingParams& params, RopeWithSinCosCacheTilingData& tilin
     tiling.set_loop_time_each_tail_core(params.loop_time_each_tail_core);
     tiling.set_num_tokens_front_core_last_loop(params.num_tokens_front_core_last_loop);
     tiling.set_num_tokens_tail_core_last_loop(params.num_tokens_tail_core_last_loop);
+    tiling.set_loop_for_one_token(params.loop_for_one_token);
+    tiling.set_loop_along_qheads(params.loop_along_qheads);
+    tiling.set_loop_along_kheads(params.loop_along_kheads);
+    tiling.set_num_qheads_each_loop(params.num_qheads_each_loop);
+    tiling.set_num_qheads_last_loop(params.num_qheads_last_loop);
+    tiling.set_num_kheads_each_loop(params.num_kheads_each_loop);
+    tiling.set_num_kheads_last_loop(params.num_kheads_last_loop);
 }
 
 static ge::graphStatus TilingKeyChose(const gert::TilingContext* context, TilingParams& params)
@@ -117,7 +133,7 @@ static ge::graphStatus TilingKeyChose(const gert::TilingContext* context, Tiling
     return ge::GRAPH_FAILED;
 }
 
-static ge::graphStatus TilingCompute(gert::TilingContext* context, TilingParams& params)
+static ge::graphStatus TilingCompute(gert::TilingContext *context, TilingParams &params)
 {
     uint64_t numTokens =
         static_cast<uint64_t>(context->GetOutputShape(INDEX_QUERYOUT_OUTPUT_)->GetStorageShape().GetDim(DIM_0));
@@ -148,9 +164,10 @@ static ge::graphStatus TilingCompute(gert::TilingContext* context, TilingParams&
 
     uint64_t numHeadsMax = numQheads > numKheads ? numQheads : numKheads;
     uint64_t allSize = params.isNeoxStyle == 1UL ?
-                           static_cast<uint64_t>(numHeadsMax * (rotaryDim * 8UL + headSize) * dataTypeSize) :
-                           static_cast<uint64_t>(numHeadsMax * (rotaryDim * 10UL + headSize) * dataTypeSize);
-    uint64_t maxNPerLoopForUb = maxUbSize / allSize; // ub每次能载入最大行数（包括所有计算数据）;
+                           static_cast<uint64_t>(numHeadsMax * (rotaryDim * 5UL + headSize * 2UL) * dataTypeSize) :
+                           static_cast<uint64_t>(numHeadsMax * (rotaryDim * 6UL + headSize * 2UL) * dataTypeSize);
+    uint64_t maxNPerLoopForUb =
+        (maxUbSize - rotaryDim * 10UL * dataTypeSize) / allSize; // ub每次能载入最大行数（包括所有计算数据）;
 
     uint64_t num_tokens_each_front_core = (totalDataNum + coreNum - 1) / coreNum;
     uint64_t loop_time_each_front_core =
@@ -162,7 +179,6 @@ static ge::graphStatus TilingCompute(gert::TilingContext* context, TilingParams&
         loop_time_each_front_core == 1UL ?
             0 :
             num_tokens_each_front_core - num_tokens_front_core_each_loop * (loop_time_each_front_core - 1UL);
-
     uint64_t num_tokens_each_tail_core = totalDataNum / coreNum;
     uint64_t loop_time_each_tail_core = (num_tokens_each_tail_core + maxNPerLoopForUb - 1) / maxNPerLoopForUb;
     uint64_t num_tokens_tail_core_each_loop =
@@ -171,6 +187,21 @@ static ge::graphStatus TilingCompute(gert::TilingContext* context, TilingParams&
         static_cast<uint64_t>(loop_time_each_front_core) == 1UL ?
             0 :
             num_tokens_each_tail_core - num_tokens_tail_core_each_loop * (loop_time_each_tail_core - 1UL);
+
+    uint64_t numHeadsForUb =
+        params.isNeoxStyle == 1UL ?
+            (maxUbSize - rotaryDim * 10UL * dataTypeSize) / ((rotaryDim * 5UL + headSize * 2UL) * dataTypeSize) :
+            (maxUbSize - rotaryDim * 10UL * dataTypeSize) / ((rotaryDim * 6UL + headSize * 2UL) * dataTypeSize);
+
+    uint64_t loop_for_one_token = numHeadsMax > numHeadsForUb ? 1UL : 0UL; // 取1时，对numheads循环，maxNPerLoopForUb == 0
+    uint64_t loop_along_qheads = (numQheads + numHeadsForUb - 1UL) / numHeadsForUb;
+    uint64_t loop_along_kheads = (numKheads + numHeadsForUb - 1UL) / numHeadsForUb;
+    uint64_t num_qheads_each_loop = loop_along_qheads == 1UL ? numQheads : numHeadsForUb;
+    uint64_t num_qheads_last_loop =
+        loop_along_qheads == 1UL ? 0 : numQheads - num_qheads_each_loop * (loop_along_qheads - 1UL);
+    uint64_t num_kheads_each_loop = loop_along_kheads == 1UL ? numKheads : numHeadsForUb;
+    uint64_t num_kheads_last_loop =
+        loop_along_kheads == 1UL ? 0 : numKheads - num_kheads_each_loop * (loop_along_kheads - 1UL);
 
     params.num_tokens = numTokens;
     params.rotary_dim = rotaryDim;
@@ -186,6 +217,14 @@ static ge::graphStatus TilingCompute(gert::TilingContext* context, TilingParams&
     params.loop_time_each_tail_core = loop_time_each_tail_core;
     params.num_tokens_tail_core_each_loop = num_tokens_tail_core_each_loop;
     params.num_tokens_tail_core_last_loop = num_tokens_tail_core_last_loop;
+
+    params.loop_for_one_token = loop_for_one_token;
+    params.loop_along_qheads = loop_along_qheads;
+    params.loop_along_kheads = loop_along_kheads;
+    params.num_qheads_each_loop = num_qheads_each_loop;
+    params.num_qheads_last_loop = num_qheads_last_loop;
+    params.num_kheads_each_loop = num_kheads_each_loop;
+    params.num_kheads_last_loop = num_kheads_last_loop;
 
     context->SetBlockDim(blockDim);
     context->SetTilingKey(params.tilingKey);

@@ -103,5 +103,5 @@ ge::graphStatus InferDataTypeNsaSelectedAttention(gert::InferDataTypeContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(NsaSelectedAttention).InferShape(InferShapeNsaSelectedAttention).InferDataType(InferDataTypeNsaSelectedAttention);
+IMPL_OP_INFERSHAPE(NsaSelectedAttention).InferShape(InferShapeNsaSelectedAttention).InferDataType(InferDataTypeNsaSelectedAttention);
 } // namespace ops

@@ -108,7 +108,7 @@ TEST_F(MoeFinalizeRoutingHost, moe_finalize_routing_infer_data_type)
                 .NodeInputTd(4, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                 .NodeInputTd(5, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                 .NodeInputTd(6, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
-                .NodeOutputTd(0, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                 .InputDataTypes({&input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref1, &input_ref1})
                 .OutputDataTypes({&output_ref})
                 .Build();

@@ -38,17 +38,13 @@ file(GLOB _Src3 "${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_
 file(GLOB _Src4 "${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host/flash_attention_score_grad_tiling*.cpp")
 list(APPEND _FA_OpTilingSourcesExt ${_Src1} ${_Src2} ${_Src3} ${_Src4})
 
-set(_FA_OpTilingPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/attention/common/op_kernel/arch-310
-)
-
 file(GLOB _FAG_OpKernelTilingDataDefH_def "${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host/flash_attention_score_grad_tiling*_def.h")
 set(_FA_OpKernelTilingDataDefH
         # FAS
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_kernel/flash_attention_score_tiling.h
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score/op_kernel/arch32/flash_attention_score_tiling.h
         # FAG
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_kernel/flash_attention_score_grad_tiling.h
-        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host/flash_attention_score_grad_tiling_common.h
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_kernel/arch32/flash_attention_score_grad_tiling.h
+        ${OPS_TRANSFORMER_DIR}/attention/flash_attention_score_grad/op_host/arch32/flash_attention_score_grad_tiling_common.h
         ${_FAG_OpKernelTilingDataDefH_def}
 )
 

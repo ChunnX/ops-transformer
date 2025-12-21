@@ -28,6 +28,7 @@ extern "C" __global__ __aicore__ void moe_finalize_routing_v2_grad(
     GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
     GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace, GM_ADDR tiling)
 {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0); 
     GET_TILING_DATA(tilingData, tiling);
 
     TPipe pipe;

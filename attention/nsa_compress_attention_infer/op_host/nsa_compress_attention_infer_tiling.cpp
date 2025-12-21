@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_compress_attention_infer_tiling.cpp
@@ -277,7 +277,7 @@ ge::graphStatus NCAITiling::SplitBN()
     uint32_t totalQSplitNum = 0;
     int64_t actQSeqLen = 0;
     for (uint32_t i = 0; i < batchSize_; i++) {
-        if (ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>() != nullptr) {
+        if (ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>() != nullptr && qSeqSize_ != 1U) {
             const int64_t *actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
             actQSeqLen = actualQSeqLenData[i];
         } else {
@@ -552,12 +552,20 @@ ge::graphStatus NCAITiling::GetMaxQSeqlen()
     if (ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>() != nullptr) {
         const int64_t *actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
         int64_t batchSizeInQSeqLen = ncaiContext_->actualQSeqLengths.tensor->GetStorageShape().GetDim(DIM_0);
-        OP_CHECK_IF(ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0) != batchSizeInQSeqLen,
-            OP_LOGE(ncaiContext_->opName, "batchSize in blockTable, actualQSeqLengths must be equal"), return ge::GRAPH_FAILED);
+        if (ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0) != batchSizeInQSeqLen) {
+            OP_LOGW(ncaiContext_->opName, "batchSize in blockTable, actualQSeqLengths must be equal");
+            qSeqLenCumSum_ = batchSize_;
+            qSeqSize_ = 1U;
+            return ge::GRAPH_SUCCESS;
+        }
         for (uint32_t i = 0; i < batchSize_; i++) {
             int64_t actQSeqLen = actualQSeqLenData[i];
-            OP_CHECK_IF(actQSeqLen < 1 || actQSeqLen > 4,
-                OP_LOGE(ncaiContext_->opName, "qSeqLen only supports [1, 4]"), return ge::GRAPH_FAILED);
+            if (actQSeqLen < MIN_ACTUALQSEQLEN || actQSeqLen > MAX_ACTUALQSEQLEN) {
+                OP_LOGW(ncaiContext_->opName, "qSeqLen only supports [1, 4]");
+                qSeqLenCumSum_ = batchSize_;
+                qSeqSize_ = 1U;
+                return ge::GRAPH_SUCCESS;
+            }
             qSeqSize_ = qSeqSize_ < static_cast<uint32_t>(actQSeqLen) ? static_cast<uint32_t>(actQSeqLen) : qSeqSize_;
             qSeqLenCumSum_ += static_cast<uint32_t>(actQSeqLen);
         }
@@ -574,8 +582,12 @@ ge::graphStatus NCAITiling::CheckSelKvSeqlen()
     }
     if (ncaiContext_->actualCmpKvSeqLengths.tensor != nullptr && ncaiContext_->actualSelKvSeqLengths.tensor != nullptr) {
         int64_t batchSizeInSelKvSeqLen = ncaiContext_->actualSelKvSeqLengths.tensor->GetStorageShape().GetDim(DIM_0);
-        OP_CHECK_IF(ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0) != batchSizeInSelKvSeqLen,
-            OP_LOGE(ncaiContext_->opName, "batchSize in blockTable, batchSizeInSelKvSeqLen must be equal"), return ge::GRAPH_FAILED);
+        if (ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0) != batchSizeInSelKvSeqLen) {
+            OP_LOGW(ncaiContext_->opName, "batchSize in blockTable, batchSizeInSelKvSeqLen must be equal");
+            qSeqLenCumSum_ = batchSize_;
+            qSeqSize_ = 1U;
+            return ge::GRAPH_SUCCESS;
+        }
         const int64_t *actualKvSeqLenData = ncaiContext_->actualCmpKvSeqLengths.tensor->GetData<int64_t>();
         const int64_t *actualSelKvSeqLenData = ncaiContext_->actualSelKvSeqLengths.tensor->GetData<int64_t>();
         for (uint32_t i = 0; i < batchSize_; i++) {
@@ -583,9 +595,10 @@ ge::graphStatus NCAITiling::CheckSelKvSeqlen()
             int64_t actSelKvSeqLen = actualSelKvSeqLenData[i];
             int64_t validKvSeqLen = (actSelKvSeqLen - static_cast<int64_t>(compSizeL_)) / static_cast<int64_t>(compStrideD_) + static_cast<int64_t>(ONE); 
             if (actKvSeqLen != validKvSeqLen) {
-                OP_LOGE(ncaiContext_->opName, 
-                        "actualCmpKvSeqLen must equal '(actualSelKvSeqLen - compressBlockSize)/compressBlockStride + 1'");
-                return ge::GRAPH_FAILED;
+                OP_LOGW(ncaiContext_->opName, "actualCmpKvSeqLen must equal '(actualSelKvSeqLen - compressBlockSize)/compressBlockStride + 1'");
+                qSeqLenCumSum_ = batchSize_;
+                qSeqSize_ = 1U;
+                return ge::GRAPH_SUCCESS;
             }
         }
     }

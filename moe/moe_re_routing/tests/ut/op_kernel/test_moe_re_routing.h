@@ -22,15 +22,15 @@
 
 #pragma pack(1)
 
-// struct MoeReRoutingTilingData {
-//     int64_t coreNum = 48;
-//     int64_t ubFactor = 12;
-//     int64_t tokensNum = 16384;
-//     int64_t tokensSize = 7168;
-//     int64_t rankNum = 16;
-//     int64_t expertNumPerRank = 16;
-//     int64_t hasScale = 1;
-// };
+struct MoeReRoutingTilingData {
+    int64_t coreNum = 48;
+    int64_t ubFactor = 12;
+    int64_t tokensNum = 16384;
+    int64_t tokensSize = 7168;
+    int64_t rankNum = 16;
+    int64_t expertNumPerRank = 16;
+    int64_t hasScale = 1;
+};
 #pragma pack()
 
 #define CONVERT_TILING_DATA(tilingStruct, tilingDataPointer, tilingPointer) \

@@ -87,7 +87,7 @@ __aicore__ inline void MoeV2SrcToDstOpSimt::ComputeSimt() const
 __aicore__ inline void MoeV2SrcToDstOpSimt::Process()
 {
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
-        ParallelEXE(this->threadNum_, ComputeSimt);
+        Simt::VF_CALL<ComputeSimt>(simt::Dim3{static_cast<uint32_t>(this->threadNum_), 1, 1});
     }
     this->SyncAll();
 }

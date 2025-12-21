@@ -4,8 +4,13 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -17,80 +22,75 @@
     $$
     
     $$
-    out(i,j)=x1_{i,j}+x2Optional_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
+    out(i,j)=x1_{i,j}+x2Optional_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num_rows},j}+bias_{expertid,j}))
     $$
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 312px">
-  <col style="width: 213px">
-  <col style="width: 100px">
-  </colgroup>
+<table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
-      <th>参数名</th>
-      <th>输入/输出/属性</th>
-      <th>描述</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-    </tr></thead>
+      <th style="white-space: nowrap">参数名</th>
+      <th style="white-space: nowrap">输入/输出/属性</th>
+      <th style="white-space: nowrap">描述</th>
+      <th style="white-space: nowrap">数据类型</th>
+      <th style="white-space: nowrap">数据格式</th>
+    </tr>
+  </thead>
   <tbody>
     <tr>
       <td>expandedX</td>
       <td>输入</td>
-      <td>公式中的`expandedX` ，MoE的FFN输出，shape支持[NUM_ROWS*K, H]。</td>
+      <td>公式中的`expandedX` ，MoE的FFN输出。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>x1</td>
       <td>输入</td>
-      <td>公式中的`x1`，shape要求与out一致。</td>
+      <td>公式中的`x1`。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>x2Optional</td>
       <td>输入</td>
-      <td>公式中的`x2Optional`，shape要求与out一致。</td>
+      <td>公式中的`x2Optional`。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>bias</td>
       <td>输入</td>
-      <td>公式中的`bias`，shape支持[E, H]。</td>
+      <td>公式中的`bias`。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>scales</td>
       <td>输入</td>
-      <td>公式中的`scales`，shape支持[NUM_ROWS, K]。</td>
+      <td>公式中的`scales`。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>expandedRowIdx</td>
       <td>输入</td>
-      <td>公式中的`expandedRowIdx`，shape支持[NUM_ROWS, K]。</td>
+      <td>公式中的`expandedRowIdx`。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>expandedExpertIdx</td>
       <td>输入</td>
-      <td>公式中的`expandedExpertIdx`，shape支持[NUM_ROWS, K]。</td>
+      <td>公式中的`expandedExpertIdx`。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>out</td>
       <td>输出</td>
-      <td>公式中的`out`，shape支持[NUM_ROWS, h]。</td>
+      <td>公式中的`out`。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>

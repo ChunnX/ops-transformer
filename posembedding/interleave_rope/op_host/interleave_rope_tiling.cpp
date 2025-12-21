@@ -321,7 +321,7 @@ ge::graphStatus InterleaveRopeTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
-REGISTER_TILING_TEMPLATE("InterleaveRope", InterleaveRopeTiling, 1000);
+REGISTER_OPS_TILING_TEMPLATE(InterleaveRope, InterleaveRopeTiling, 1000);
 
 ge::graphStatus Tiling4InterleaveRope(gert::TilingContext* context)
 {

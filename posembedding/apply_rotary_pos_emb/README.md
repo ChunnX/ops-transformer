@@ -4,8 +4,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    √     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -132,24 +137,31 @@
 | key        | 输入输出 | 输入、输出tensor，即公式中的输入张量key和输出张量k_embed，4维张量   | BFLOAT16、FLOAT16、FLOAT | ND   |
 | cos        | 输入     | 公式中的输入张量cos，4维张量   | BFLOAT16、FLOAT16、FLOAT | ND   |
 | sin        | 输入     | 公式中的输入张量sin，4维张量   | BFLOAT16、FLOAT16、FLOAT | ND   |
-| layout     | 属性     | 表示输入张量的布局格式 | int64：1-BSND、2-SBND、3-BNSD | - |
+| layout     | 属性     | 表示输入张量的布局格式 | int64：1-BSND、2-SBND、3-BNSD、4-TND | - |
 | rotary_mode| 属性     | 公式中的旋转模式       | string："half"、"interleave"、"quarter"模式 | - |
+
+- <term>Atlas 推理系列产品</term>：不支持BFLOAT16
+
+
 
 ## 约束说明
 
-    - 输入张量query、key、cos、sin只支持4维的shape，layout只支持1-BSND，且4个输入shape的前2维和最后一维必须相等，cos和sin的shape第3维必须等于1，输入shape最后一维必须等于128。
+- <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - 输入张量query、key、cos、sin支持4维和3维的shape，layout支持1-BSND和4-TND，且4个输入shape的前2维（BSND格式）或者第一维（TND格式）和最后一维必须相等，cos和sin的shape倒数第2维（N维）必须等于1，输入shape最后一维必须等于128或者64。
     - 输入张量query、key、cos、sin的dtype必须相同。
-    - 输入query的shape用（q_b, q_s, q_n, q_d）表示，key shape用（q_b, q_s, k_n, q_d）表示，cos和sin shape用（q_b, q_s, 1, q_d）表示。其中，b表示batch_size，s表示seq_length，n表示head_num，d表示head_dim。
+    - layout为1时，输入queryRef的shape用（q_b, q_s, q_n, q_d）表示，keyRef shape用（q_b, q_s, k_n, q_d）表示，cos和sin shape用（q_b, q_s, 1, q_d）表示。其中，b表示batch_size，s表示seq_length，n表示head_num，d表示head_dim。layout为4时，输入queryRef的shape用（q_t, q_n, q_d）表示，keyRef shape用（q_t, k_n, q_d）表示，cos和sin shape用（q_t, 1, q_d）表示。其中，t表示b和s合轴，n表示head_num，d表示head_dim
 
       - 当输入是BFLOAT16时，cast表示为1，castSize为4，DtypeSize为2
       - 当输入是FLOAT16或FLOAT32时，cast表示为0，castSize = DtypeSize（FLOAT16时为2，FLOAT32时为4）
 
-      需要使用的UB空间大小计算方式：`ub_required = (q_n + k_n) * 128 * castSize * 2 + 128 * DtypeSize * 4 + (q_n + k_n) * 128 * castSize + (q_n + k_n) * 128 * castSize * 2 + cast * (128 * 4 * 2)`，
+      使用lastDim表示输入shape最后一维head_dim的值，计算需要使用的UB空间大小：
+      `ub_required = (q_n + k_n) * lastDim * castSize * 2 + lastDim * DtypeSize * 4 + (q_n + k_n) * lastDim * castSize + (q_n + k_n) * lastDim * castSize * 2 + cast * (lastDim * 4 * 2)`，
       当计算出`ub_required`的大小超过当前AI处理器的UB空间总大小时，不支持使用该融合算子。
     - rotary_mode只支持"half"。
     - 不支持空tensor场景。
   
-    - 输入张量query、key、cos、sin只支持4维的shape，对于任意layout，query与key除N维度外其他维度必须相同；cos与sin shape必须相同；cos与sin的B维度与query、key的B维度一致，或者等于1；cos和sin的N维度必须等于1；query、key、cos、sin的S,D维度必须相同,且D维度小于等于1024。
+- <term>昇腾910_95 AI处理器</term>：
+    - 输入张量query、key、cos、sin只支持4维的shape，对于任意layout，query与key除N维度外其他维度必须相同；cos与sin shape必须相同；cos与sin的B维度与query、key的B维度一致，或者等于1；cos和sin的N维度必须等于1；query、key、cos、sin的S,D维度必须相同，且D维度小于等于1024。
     - 输入张量query、key、cos、sin的dtype必须相同。
     - rotary_mode为"half"和"interleave"时，输入shape最后一维必须被2整除；rotary_mode为"quarter"时，输入shape最后一维必须被4整除。
 
