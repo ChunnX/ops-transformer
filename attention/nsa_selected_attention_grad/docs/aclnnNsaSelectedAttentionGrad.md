@@ -66,9 +66,9 @@ aclnnStatus aclnnNsaSelectedAttentionGradGetWorkspaceSize(
   int64_t            headNum,
   char              *inputLayout,
   int64_t            sparseMode,
-  aclTensor         *dqOut,
-  aclTensor         *dkOut,
-  aclTensor         *dvOut,
+  const aclTensor         *dqOut,
+  const aclTensor         *dkOut,
+  const aclTensor         *dvOut,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
