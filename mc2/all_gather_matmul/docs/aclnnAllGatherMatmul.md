@@ -146,7 +146,7 @@ aclnnStatus aclnnAllGatherMatmul(
           <td>output</td>
           <td>输出</td>
           <td>Device侧的aclTensor，AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
-          <td><li>不支持空Tensor。</li><li>与x1的数据类型保持一致。</li></td>
+          <td><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -156,7 +156,7 @@ aclnnStatus aclnnAllGatherMatmul(
           <td>gatherOut</td>
           <td>输出</td>
           <td>Device侧的aclTensor，仅输出AllGather通信后的结果，即计算公式中的gatherOut。</td>
-          <td><li>不支持空Tensor。</li><li>与x1的数据类型保持一致。</li></td>
+          <td><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -255,7 +255,7 @@ aclnnStatus aclnnAllGatherMatmul(
     </tbody></table>
 -   **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
