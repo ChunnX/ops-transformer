@@ -1,15 +1,18 @@
 # aclnnGroupedMatmulFinalizeRoutingWeightNzV2
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul_finalize_routing)
+
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+| 产品                                                                | 是否支持 |
+|:------------------------------------------------------------------|:----:|
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                      |  √   |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |  √   |
+
 
 ## 功能说明
 
-- 接口功能：GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持w为昇腾亲和数据排布格式(NZ)。
+- 接口功能：GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持w为AI处理器亲和数据排布格式(NZ)。
 本接口相较于[aclnnGroupedMatmulFinalizeRoutingWeightNz](aclnnGroupedMatmulFinalizeRoutingWeightNz.md)，新增对INT4类型weight矩阵的支持，并新增入参offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、tuningConfigOptional，其中前三个参数当前为预留参数，暂不生效，传入空指针即可。tuningConfigOptional是调优参数，数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。请根据实际情况选择合适的接口。
 
 
@@ -258,7 +261,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     <tr>
       <td>tuningConfigOptional</td>
       <td>输入</td>
-      <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。从第二个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入(即为nullptr)即可。</td>
+      <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。数组中的第二个元素设置为1，则算子tiling时会根据实际输入尝试使用更适合的算法，当k<=2048的时候，性能可能更优。从第三个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入(即为nullptr)即可。</td>
       <td></td>
       <td>INT64</td>
       <td></td>
@@ -380,9 +383,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+- 确定性计算：
+  - aclnnGroupedMatmulFinalizeRoutingWeightNzV2默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+
 输入和输出支持以下数据类型组合：
 
-| x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupList | sharedInput | logit   | rowIndex | out   | tuningConfigOptional |
+| x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional| groupList | sharedInput | logit   | rowIndex | out   | tuningConfigOptional |
 |------|------|---------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|-------|----------------------|
 | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT | IntArray             |
 | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT | IntArray             |
@@ -575,7 +581,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorPtr(x, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-      // 创建昇腾亲和数据排布格式的w aclTensor
+      // 创建AI处理器亲和数据排布格式的w aclTensor
       ret = CreateAclTensorWeight(wHostData, wShape, &wDeviceAddr, aclDataType::ACL_INT8, &w);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> wTensorPtr(w, aclDestroyTensor);
       std::unique_ptr<void, aclError (*)(void *)> wDeviceAddrPtr(wDeviceAddr, aclrtFree);

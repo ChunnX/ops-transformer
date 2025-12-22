@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file grouped_matmul_finalize_routing.cc
@@ -150,24 +150,21 @@ static ge::graphStatus ValidatePertokenAndGroupList(const InferShapeContext *con
 
 static ge::graphStatus ValidateSharedInputAndLogit(const InferShapeContext *context, int& bsdp, const char* op_name, const CheckXandWParams& xAndWParams)
 {
-    if (context->GetOptionalInputShape(sharedInputOptionIndex) == nullptr) {
-        OP_CHECK_IF(context->GetOptionalInputShape(logitOptionIndex) != nullptr,
-            OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input & logit must either both given or both not given."),
-            return ge::GRAPH_FAILED);
-    } else {
+    if (context->GetOptionalInputShape(sharedInputOptionIndex) != nullptr) {
         OP_CHECK_IF(context->GetOptionalInputShape(sharedInputOptionIndex)->GetDimNum() != TwoDimNum ||
             context->GetOptionalInputShape(sharedInputOptionIndex)->GetDim(1) != xAndWParams.n,
             OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input's shape is wrong."), return ge::GRAPH_FAILED);
         bsdp = context->GetOptionalInputShape(sharedInputOptionIndex)->GetDim(0);
         OP_CHECK_IF(bsdp <= 0, OPS_REPORT_CUBE_INNER_ERR(op_name, " shared_input first dim must bigger than 0 ."),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(context->GetOptionalInputShape(logitOptionIndex) == nullptr,
-            OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input & logit must either both given or both not given."),
-            return ge::GRAPH_FAILED);
+    }
+    
+    if (context->GetOptionalInputShape(logitOptionIndex) != nullptr) {
         OP_CHECK_IF(context->GetOptionalInputShape(logitOptionIndex)->GetDimNum() != OneDimNum ||
             context->GetOptionalInputShape(logitOptionIndex)->GetDim(0) != xAndWParams.m,
             OPS_REPORT_CUBE_INNER_ERR(op_name, "logit's shape is wrong."), return ge::GRAPH_FAILED);
     }
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -251,6 +248,48 @@ static ge::graphStatus InferShapeGroupedMatmulFinalizeRouting(InferShapeContext 
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *context)
+{
+    // 先判断a8w4还是a8w8出问题
+    if (context->GetInputDataType(xIndex) == ge::DT_INT8 && context->GetInputDataType(wIndex) == ge::DT_INT8) {
+        OP_CHECK_IF((context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_FLOAT &&
+                     context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_BF16),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W8A8 InputDataType of scale is wrong."),
+                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF((context->GetOptionalInputDataType(groupListOptionIndex) != ge::DT_INT64),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W8A8 InputDataType of groupList is wrong."),
+                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF((context->GetOptionalInputDataType(rowIndexOptionIndex) != ge::DT_INT64 &&
+                     context->GetOptionalInputDataType(rowIndexOptionIndex) != ge::DT_INT32),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W8A8 InputDataType of rowIndex is wrong."),
+                     return ge::GRAPH_FAILED);
+    }
+    
+    if (context->GetInputDataType(xIndex) == ge::DT_INT8 && context->GetInputDataType(wIndex) == ge::DT_INT4) {
+        OP_CHECK_IF((context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_INT64),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W4A8 InputDataType of scale is wrong."),
+                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF((context->GetOptionalInputDataType(biasOptionIndex) != ge::DT_FLOAT),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W4A8 InputDataType of bias is wrong."),
+                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF((context->GetOptionalInputDataType(groupListOptionIndex) != ge::DT_INT64),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W4A8 InputDataType of groupList is wrong."),
+                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF((context->GetOptionalInputDataType(rowIndexOptionIndex) != ge::DT_INT64),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W4A8 InputDataType of rowIndex is wrong."),
+                     return ge::GRAPH_FAILED);                     
+        OP_CHECK_IF((context->GetOptionalInputDataType(logitOptionIndex) != ge::DT_FLOAT),
+                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W4A8 InputDataType of logit is wrong."),
+                     return ge::GRAPH_FAILED);  
+    }
+
+    OP_CHECK_IF(!((context->GetInputDataType(xIndex) == ge::DT_INT8 && context->GetInputDataType(wIndex) == ge::DT_INT8) ||
+                  (context->GetInputDataType(xIndex) == ge::DT_INT8 && context->GetInputDataType(wIndex) == ge::DT_INT4)),
+                OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), 
+                "InputDataType is wrong, only support InputDataType of W8A8 and W4A8."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_FAILED;
+}
 
 static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferDataTypeContext *context)
 {
@@ -268,21 +307,25 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
                                context->GetOptionalInputDataType(biasOptionIndex) == ge::DT_FLOAT &&
                                context->GetOptionalInputDataType(groupListOptionIndex) == ge::DT_INT64 &&
                                context->GetOptionalInputDataType(rowIndexOptionIndex) == ge::DT_INT64 &&
-                               context->GetOptionalInputDataType(sharedInputOptionIndex) == ge::DT_BF16 &&
                                context->GetOptionalInputDataType(logitOptionIndex) == ge::DT_FLOAT;
 
-    if (context->GetOptionalInputDataType(sharedInputOptionIndex) != ge::DT_UNDEFINED &&
-        context->GetOptionalInputDataType(logitOptionIndex) != ge::DT_UNDEFINED) {
-        supportDataTypeW8A8 = supportDataTypeW8A8 && context->GetOptionalInputDataType(sharedInputOptionIndex) == ge::DT_BF16 &&
-            context->GetOptionalInputDataType(logitOptionIndex) == ge::DT_FLOAT;
+    if (context->GetOptionalInputDataType(logitOptionIndex) != ge::DT_UNDEFINED) {
+        supportDataTypeW8A8 = supportDataTypeW8A8 && context->GetOptionalInputDataType(logitOptionIndex) == ge::DT_FLOAT;
+    }
+
+    if (context->GetOptionalInputDataType(sharedInputOptionIndex) != ge::DT_UNDEFINED) {
+        supportDataTypeW8A8 = supportDataTypeW8A8 && context->GetOptionalInputDataType(sharedInputOptionIndex) == ge::DT_BF16;
+        // 移除 supportDataTypeW4A8 校验sharedInput类型后, 如果sharedInput存在需要在这里复查类型
+        supportDataTypeW4A8 = supportDataTypeW4A8 && context->GetOptionalInputDataType(sharedInputOptionIndex) == ge::DT_BF16;
     }
 
     if (context->GetOptionalInputDataType(offsetOptionIndex) != ge::DT_UNDEFINED) {
         supportDataTypeW4A8 = supportDataTypeW4A8 && context->GetOptionalInputDataType(offsetOptionIndex) == ge::DT_FLOAT;
     }
-
-    OP_CHECK_IF(!(supportDataTypeW4A8 || supportDataTypeW8A8), OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "InputDataType is wrong."),
-        return ge::GRAPH_FAILED);
+    
+    if (!(supportDataTypeW4A8 || supportDataTypeW8A8)) {
+        OP_CHECK_IF(ValidateFailedDataType(context) != ge::GRAPH_SUCCESS, return ge::GRAPH_FAILED,);
+    }
 
     context->SetOutputDataType(0, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;

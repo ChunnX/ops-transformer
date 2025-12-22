@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_antiquant_a8w4_msd_pre.h
@@ -35,6 +35,12 @@ struct MMPreInitParams {
     GM_ADDR workspace;
 };
 
+template <bool groupListType_>
+struct ParamW4A8Pre {
+    static const bool groupListType = groupListType_;
+};
+
+template <class P>
 class GMMA8W4PreProcess {
 public:
     __aicore__ inline GMMA8W4PreProcess(){};
@@ -42,6 +48,7 @@ public:
     __aicore__ inline void Process();
     __aicore__ inline void ProcessLoop();
     __aicore__ inline void ProcessPerToken(uint32_t xloop);
+    __aicore__ inline void ComputeTotalGroup();
 private:
     TQue<QuePosition::VECIN, 1> vecInQueueX;
     TQue<QuePosition::VECIN, 1> vecInQueueXBak;
@@ -86,7 +93,8 @@ private:
     size_t lastLenVk;
 };
 
-__aicore__ inline void GMMA8W4PreProcess::Init(MMPreInitParams& preInitParams, const GroupMatmulFRTilingData& tilingData, TPipe *pipe){
+template <class P>
+__aicore__ inline void GMMA8W4PreProcess<P>::Init(MMPreInitParams& preInitParams, const GroupMatmulFRTilingData& tilingData, TPipe *pipe){
     xGm.SetGlobalBuffer((__gm__ int8_t *)preInitParams.x);
     yGm.SetGlobalBuffer((__gm__ int8_t *)preInitParams.y);
     groupListGm.SetGlobalBuffer((__gm__ int64_t *)preInitParams.groupList);
@@ -117,7 +125,8 @@ __aicore__ inline void GMMA8W4PreProcess::Init(MMPreInitParams& preInitParams, c
     blockDim = GetBlockNum() * GetTaskRation();
 }
 
-__aicore__ inline void GMMA8W4PreProcess::ProcessPerToken(uint32_t xloop)
+template <class P>
+__aicore__ inline void GMMA8W4PreProcess<P>::ProcessPerToken(uint32_t xloop)
 {
     uint64_t startAddr = xloop * vK;
     WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
@@ -172,10 +181,9 @@ __aicore__ inline void GMMA8W4PreProcess::ProcessPerToken(uint32_t xloop)
     SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
 }
 
-__aicore__ inline void GMMA8W4PreProcess::ProcessLoop()
+template <class P>
+__aicore__ inline void GMMA8W4PreProcess<P>::ProcessLoop()
 {
-    WaitFlag<HardEvent::V_S>(EVENT_ID0);
-    totalGroup = groupListTensor.GetValue(0);
     SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
     SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
@@ -188,7 +196,34 @@ __aicore__ inline void GMMA8W4PreProcess::ProcessLoop()
     SyncAll<false>();
 }
 
-__aicore__ inline void GMMA8W4PreProcess::Process()
+template <class P>
+__aicore__ inline void GMMA8W4PreProcess<P>::ComputeTotalGroup(){
+    if constexpr (P::groupListType) {
+        totalGroup = static_cast<int32_t>(groupListGm.GetValue(groupNum - 1));
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        return;
+    }
+    groupListTensor = vecInQueueG.AllocTensor<int64_t>();
+    groupListFTensor = vecInQueueGF.AllocTensor<float>();
+    workTensor = vecInWork.AllocTensor<float>();
+    DataCopyParams dataCopyParams{1, static_cast<uint16_t>(groupNum * sizeof(int64_t)), 0, 0};
+    DataCopyPadParams padParams{false, 0, 0, 0};
+    DataCopyPad(groupListTensor, groupListGm, dataCopyParams, padParams);
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    Cast(groupListFTensor, groupListTensor, AscendC::RoundMode::CAST_ROUND, groupNum);
+    PipeBarrier<PIPE_V>();
+    ReduceSum(groupListFTensor, groupListFTensor, workTensor, groupNum);
+    PipeBarrier<PIPE_V>();
+    Cast(groupListTensor, groupListFTensor, AscendC::RoundMode::CAST_ROUND, 1);
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
+    totalGroup = groupListTensor.GetValue(0);
+}
+
+template <class P>
+__aicore__ inline void GMMA8W4PreProcess<P>::Process()
 {
     constexpr int32_t MASK = 128;
     xTensor = vecInQueueX.AllocTensor<int8_t>();
@@ -206,29 +241,18 @@ __aicore__ inline void GMMA8W4PreProcess::Process()
     }
     Duplicate(xLowI16Tensor, static_cast<int16_t>(0x0F0F), MASK);   // get rid of high 4 bits in every int8
     //先计算要处理的group数
-    groupListTensor = vecInQueueG.AllocTensor<int64_t>();
-    groupListFTensor = vecInQueueGF.AllocTensor<float>();
-    workTensor = vecInWork.AllocTensor<float>();
-    DataCopyParams dataCopyParams{1, static_cast<uint16_t>(groupNum * sizeof(int64_t)), 0, 0};
-    DataCopyPadParams padParams{false, 0, 0, 0};
-    DataCopyPad(groupListTensor, groupListGm, dataCopyParams, padParams);
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    Cast(groupListFTensor, groupListTensor, AscendC::RoundMode::CAST_ROUND, groupNum);
-    PipeBarrier<PIPE_V>();
-    ReduceSum(groupListFTensor, groupListFTensor, workTensor, groupNum);
-    PipeBarrier<PIPE_V>();
-    Cast(groupListTensor, groupListFTensor, AscendC::RoundMode::CAST_ROUND, 1);
-    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    ComputeTotalGroup();
     ProcessLoop();
     vecInQueueX.FreeTensor(xTensor);
     vecOutQueueA1.FreeTensor(xHighI4Tensor);
     vecOutQueueA2.FreeTensor(xLowI4Tensor);
     vecOutQueueA3.FreeTensor(xHighHalfTensor);
     vecOutQueue0F.FreeTensor(xLowI16Tensor);
-    vecInQueueG.FreeTensor(groupListTensor);
-    vecInQueueGF.FreeTensor(groupListFTensor);
-    vecInWork.FreeTensor(workTensor);
+    if constexpr (!P::groupListType) {
+        vecInQueueG.FreeTensor(groupListTensor);
+        vecInQueueGF.FreeTensor(groupListFTensor);
+        vecInWork.FreeTensor(workTensor);
+    }
     if (withOffset == uint32_t(1)) {
         vecOutQueueRowSum.FreeTensor(xRowSumTensor);
     }

@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_tiling.cc
@@ -31,14 +31,26 @@ static const int32_t BIAS_INDEX = 2;
 
 namespace optiling {
 
-REGISTER_TILING_TEMPLATE("GroupedMatmulFinalizeRouting", GroupedMatmulFinalizeRoutingBaseTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulFinalizeRouting, GroupedMatmulFinalizeRoutingBaseTiling, 0);
 
 static ge::graphStatus GroupedMatmulFinalizeRoutingTilingFunc(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr,
             OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
             return ge::GRAPH_FAILED);
-    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
+    auto compileInfoPtr = context->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "CompileInfo is null"),
+            return ge::GRAPH_FAILED);
+    if (compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+        std::vector<int32_t> tilingRegisterList = {1};
+        OP_LOGD("GroupedMatmulFinalizeRoutingTilingFunc", "Using the tiling strategy of A5");
+        return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context, tilingRegisterList);
+    } else {
+        std::vector<int32_t> tilingRegisterList = {0};
+        OP_LOGD("GroupedMatmulFinalizeRoutingTilingFunc", "Using the tiling strategy of A2/A3");
+        return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context, tilingRegisterList);
+    }
 }
 
 static ge::graphStatus TilingPrepareForGroupedMatmulFinalizeRouting(gert::TilingParseContext *context) {

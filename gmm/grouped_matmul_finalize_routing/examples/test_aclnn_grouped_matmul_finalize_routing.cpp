@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 
 #include <iostream>
@@ -14,9 +14,7 @@
 #include <vector>
 
 #include "acl/acl.h"
-#include "aclnnop/aclnn_permute.h"
 #include "aclnnop/aclnn_grouped_matmul_finalize_routing_v3.h"
-#include "aclnnop/aclnn_trans_matmul_weight.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -272,7 +270,7 @@ int CreateAclTensorWeight(const std::vector<T> &hostData, const std::vector<int6
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
               return ret);
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
     }
 
     // 6. 释放aclTensor和aclTensor，需要根据具体API的接口定义修改

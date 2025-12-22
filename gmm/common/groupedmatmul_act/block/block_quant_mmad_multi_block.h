@@ -46,7 +46,7 @@ public:
 public:
     static_assert(IsFp8Fp8F32<AType, BType, CType>(), "Unsupported dtype");
     static_assert(IsND<AType>() && IsND<CType>(), "Only support ND format");
-    static_assert(IsTileShapeValid<L1Shape, L0Shape>(), "L1Shape or L0Shape is invalid");
+    static_assert(IsTileShapeValid<AType, BType, L1Shape, L0Shape>(), "L1Shape or L0Shape is invalid");
     static_assert(IsL1BufferValid<AType, BType, L1Shape>(), "L1 buffer overflow");
     static_assert(IsL0BufferValid<AType, BType, L0Shape>(), "L0 buffer overflow");
 

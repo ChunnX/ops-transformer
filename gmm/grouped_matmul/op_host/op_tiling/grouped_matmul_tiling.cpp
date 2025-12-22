@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_tiling.cpp
@@ -16,6 +16,8 @@
 
 #include <climits>
 #include "register/op_impl_registry.h"
+#include "arch35/grouped_weight_quant_batch_matmul_tiling.h"
+#include "arch35/grouped_no_quant_matmul_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "err/ops_err.h"
 #include "../../op_kernel/grouped_matmul_tiling_key.h"
@@ -72,6 +74,27 @@ constexpr int64_t DOUBLE_VECTOT_THRESHOLD_K_UPPER = 2048L;
 constexpr int32_t SMALL_TUNING_CONFIG_THRESHOLD = 128;
 constexpr int32_t BIAS_REMAIN_SPACE = 2 * 1024;
 constexpr int32_t MIN_BASE_M = 16;
+// 定轴搬移算法K的范围
+constexpr int64_t FIXAXISMOVE_K1 = 2048L;
+constexpr int64_t FIXAXISMOVE_K2 = 7168L;
+// 定轴搬移算法N的范围
+constexpr int64_t FIXAXISMOVE_N1 = 7168L;
+constexpr int64_t FIXAXISMOVE_N2 = 4096L;
+// 定轴搬移算法group_num的范围
+constexpr int32_t FIXAXISMOVE_GROUP_NUM = 4;
+// 定轴搬移算法每个专家M的范围
+constexpr int64_t FIXAXISMOVE_PERM_LOWER = 128L;
+constexpr int64_t FIXAXISMOVE_PERM_UPPER = 512L;
+// 定轴搬移算法split_item的范围
+constexpr int64_t FIXAXISMOVE_SPLIT_ITEM2 = 2L;
+constexpr int64_t FIXAXISMOVE_SPLIT_ITEM3 = 3L;
+// 定轴搬移算法group_list_type的范围
+constexpr int64_t FIXAXISMOVE_GROUP_LIST_TYPE = 0L;
+// 定轴搬移算法group_type的范围
+constexpr int32_t FIXAXISMOVE_GROUP_TYPE = 0;
+constexpr size_t TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX = 0;
+constexpr size_t TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX = 1;
+constexpr size_t TUNING_CONFIG_ALLOW_WORKSPACE_INDEX = 2;
 
 ge::graphStatus GMMTiling::CheckWeightNZShape(const gert::TilingContext* context, int64_t numInOneBlk) const {
   OP_CHECK_IF(numInOneBlk <= 0, OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "numInOneBlk, the "
@@ -230,6 +253,7 @@ ge::graphStatus GMMTiling::SplitMSingleXSingleWeightSingleY(const gert::Shape &x
   maxK_ = k;
   maxN_ = n;
   totalM_ = static_cast<uint32_t>(m);
+  FixedAxisMoveWorkspace_ = maxM_ * maxN_ * sizeof(int32_t);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -414,6 +438,8 @@ ge::graphStatus GMMTiling::Init(const gert::TilingContext* context) {
   tilingData.gmmBaseParams.set_activeType(actType_);
   tilingData.gmmBaseParams.set_quantParam(perTokenOrPerGroupSize_);
   tilingData.gmmBaseParams.set_groupListType(groupListType_);
+  tilingData.gmmBaseParams.set_k(maxK_);
+  tilingData.gmmBaseParams.set_n(maxN_);
   OP_LOGI(context->GetNodeName(), "GMM_tiling: groupNum_ is %u, maxM_ is %ld, maxK_ is %ld, maxN_ is %ld.",
             groupNum_, maxM_, maxK_, maxN_);
   return ge::GRAPH_SUCCESS;
@@ -574,26 +600,31 @@ ge::graphStatus GMMTiling::DivideUbAndSetWorkspace(gert::TilingContext* context,
     OP_CHECK_IF(GetPerGroupNum(context) != ge::GRAPH_SUCCESS, OPS_REPORT_VECTOR_INNER_ERR(
                context->GetNodeName(), "GetPerGroupNum failed."), return ge::GRAPH_FAILED);
   } else if (xDType_ == ge::DT_INT8) {
-    // if tuningConfig_ in [1,256], recompute coreNum
-    constexpr int32_t tuningConfigLowerLimit = 1;
-    constexpr int32_t tuningConfigUpperLimit = 256;
-    if (tuningConfig_ >= tuningConfigLowerLimit && tuningConfig_ <= tuningConfigUpperLimit) {
-      FindBestUsedCoreNumOneGroup(aicNum);
-    }
-    if (yDtype_ == ge::DT_INT32) {
-      return ge::GRAPH_SUCCESS;
-    }
-    uint32_t scaleDataTypeSize = GetSizeByDataType(scaleDtype_);
-    ubSize = perTokenOrPerGroupSize_ == 1U ?  // is perToken
-      static_cast<uint32_t>(ubSize_ -
-                            (static_cast<uint64_t>(baseN_) * scaleDataTypeSize +
-                             static_cast<uint64_t>(baseM_) * sizeof(float)) * QUEUE_DOUBLE_BUFFER) :
-      static_cast<uint32_t>(ubSize_ - baseN_ * scaleDataTypeSize * QUEUE_DOUBLE_BUFFER);
-    OP_CHECK_IF(SetWorkspscesPerTokenQuant(aicNum, workspaces) != ge::GRAPH_SUCCESS,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetWorkspscesPerTokenQuant failed."),
-               return ge::GRAPH_FAILED);
-    if (isA8W4FakeA8W8_) {
-      workspaces[0] += A8W4noMsdSpace_;
+    isFixedAxisMove_ = IsFixedAxisMoveCondition();
+    if (isFixedAxisMove_) {
+          workspaces[0] += FixedAxisMoveWorkspace_;
+    } else {
+      // if tuningConfig_ in [1,256], recompute coreNum
+      constexpr int32_t tuningConfigLowerLimit = 1;
+      constexpr int32_t tuningConfigUpperLimit = 256;
+      if (tuningConfig_ >= tuningConfigLowerLimit && tuningConfig_ <= tuningConfigUpperLimit) {
+        FindBestUsedCoreNumOneGroup(aicNum);
+      }
+      if (yDtype_ == ge::DT_INT32) {
+        return ge::GRAPH_SUCCESS;
+      }
+      uint32_t scaleDataTypeSize = GetSizeByDataType(scaleDtype_);
+      ubSize = perTokenOrPerGroupSize_ == 1U ?  // is perToken
+        static_cast<uint32_t>(ubSize_ -
+                              (static_cast<uint64_t>(baseN_) * scaleDataTypeSize +
+                              static_cast<uint64_t>(baseM_) * sizeof(float)) * QUEUE_DOUBLE_BUFFER) :
+        static_cast<uint32_t>(ubSize_ - baseN_ * scaleDataTypeSize * QUEUE_DOUBLE_BUFFER);
+      OP_CHECK_IF(SetWorkspscesPerTokenQuant(aicNum, workspaces) != ge::GRAPH_SUCCESS,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetWorkspscesPerTokenQuant failed."),
+                return ge::GRAPH_FAILED);
+      if (isA8W4FakeA8W8_) {
+        workspaces[0] += A8W4noMsdSpace_;
+      }
     }
   } else if (xDType_ == ge::DT_INT4) {
     ubSize = perTokenOrPerGroupSize_ == 1U ?  // is perToken
@@ -887,11 +918,58 @@ uint32_t GMMTiling::GetTplDataType(const ge::DataType &dtype) {
   return GMM_TPL_INVALID;
 }
 
+bool GMMTiling::IsAivAicRatioTwoRequired() {
+    // Must be valid group type (not 2)
+    if (groupListType_ == GROUP_LIST_SPARSE_M) {
+      return false;
+    }
+    
+    // Condition 1: GELU activation (immediate match)
+    if (actType_ == ACT_TYPE_GELU) {
+      return true;
+    }
+    
+    // Condition 2: Complex tuning configuration requiring:
+    // - K dimension outside normal vectorization range
+    // - Minimum tuning configuration threshold
+    // - Valid token/group size
+    const bool needs_double_vector = (maxK_ <= DOUBLE_VECTOT_THRESHOLD_K_LOWER) || 
+                                    (maxK_ >= DOUBLE_VECTOT_THRESHOLD_K_UPPER);
+    const bool has_sufficient_tuning = (tuningConfig_ >= SMALL_TUNING_CONFIG_THRESHOLD);
+    const bool has_valid_workload = (perTokenOrPerGroupSize_ > 0U);
+    
+    return needs_double_vector && has_sufficient_tuning && has_valid_workload;
+}
+
+bool GMMTiling::IsFixedAxisMoveCondition() {
+    bool isCorrectShape = (maxK_ == FIXAXISMOVE_K1 && maxN_ == FIXAXISMOVE_N1) ||
+                          (maxK_ == FIXAXISMOVE_K2 && maxN_ == FIXAXISMOVE_N2);
+    bool isGroupCorrect = (groupNum_ == FIXAXISMOVE_GROUP_NUM);
+    bool isTuningInRange = (tuningConfig_ >= FIXAXISMOVE_PERM_LOWER) && 
+                          (tuningConfig_ <= FIXAXISMOVE_PERM_UPPER);
+    bool isDataTypeCorrect = yDtype_ == ge::DT_FLOAT16 && scaleDtype_ == ge::DT_FLOAT && perTokenScaleDtype_ == ge::DT_FLOAT;
+    bool isConfigCorrect = !transposeX_ && (splitItem_ == FIXAXISMOVE_SPLIT_ITEM2 || splitItem_ == FIXAXISMOVE_SPLIT_ITEM3) 
+                          && (groupListType_ == FIXAXISMOVE_GROUP_LIST_TYPE) 
+                          && (groupType_ == FIXAXISMOVE_GROUP_TYPE) && (actType_ == 0)
+                          && !transposeWeight_;
+    bool isWorkspaceValid = (FixedAxisMoveWorkspace_ <= tuningConfigWorkspace_) || 
+                           (tuningConfigWorkspace_ == -1);
+    bool isFormatValid = (wFormat_ == matmul_tiling::CubeFormat::NZ);
+
+    return isCorrectShape && isTuningInRange && isGroupCorrect && isA8W8_ &&
+           isDataTypeCorrect && isConfigCorrect && isWorkspaceValid && !hasBias_ && isFormatValid;
+}
+
+bool GMMTiling::IsIntDataType() {
+    return yDtype_ == ge::DT_INT8 || yDtype_ == ge::DT_INT32;
+}
+
 void GMMTiling::GMMSetTplTilingKey(gert::TilingContext* context) {
   uint32_t isStaticTilingApi = 0;
   uint32_t a8w4KernelTemplate = GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE;
   uint32_t a16w8KernelTemplate = GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE;
   uint32_t aivAicRatio = GROUPED_MATMUL_AIV_AIC_RATIO_1;
+  uint32_t isEnableFixedAxis = 0;
 
   if (isA8W4FakeA8W8_) {
     a8w4KernelTemplate = static_cast<uint32_t>(GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_PERCHANNEL_ANTIQUANT);
@@ -907,12 +985,12 @@ void GMMTiling::GMMSetTplTilingKey(gert::TilingContext* context) {
   if (isA4W4_ || antiquantPerformance_) {
     aivAicRatio = static_cast<uint32_t>(GROUPED_MATMUL_AIV_AIC_RATIO_2);
   } else if (isA8W8_) {
-    if (actType_ == ACT_TYPE_GELU ||
-        ((maxK_ <= DOUBLE_VECTOT_THRESHOLD_K_LOWER || maxK_ >= DOUBLE_VECTOT_THRESHOLD_K_UPPER) &&
-         tuningConfig_ >= SMALL_TUNING_CONFIG_THRESHOLD &&
-         perTokenOrPerGroupSize_ > 0U)) {
-        aivAicRatio = static_cast<uint32_t>(GROUPED_MATMUL_AIV_AIC_RATIO_2);
-    } else if (yDtype_ == ge::DT_INT8 || yDtype_ == ge::DT_INT32) {
+    if (isFixedAxisMove_) {
+      aivAicRatio = static_cast<uint32_t>(GROUPED_MATMUL_AIV_AIC_RATIO_1);
+      isEnableFixedAxis = 1;
+    } else if (IsAivAicRatioTwoRequired()) {
+      aivAicRatio = static_cast<uint32_t>(GROUPED_MATMUL_AIV_AIC_RATIO_2);
+    } else if (IsIntDataType()) {
       aivAicRatio = static_cast<uint32_t>(GROUPED_MATMUL_CUBE_ONLY);
     }
   } else if (!transposeX_ && xDType_ == weightDtype_ && (xDType_ == ge::DT_FLOAT16 || xDType_ == ge::DT_BF16 || xDType_ == ge::DT_FLOAT)) {
@@ -921,7 +999,8 @@ void GMMTiling::GMMSetTplTilingKey(gert::TilingContext* context) {
 
   if (a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE &&
       a16w8KernelTemplate == GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE &&
-      aivAicRatio != GROUPED_MATMUL_AIV_AIC_RATIO_2 &&
+      aivAicRatio != GROUPED_MATMUL_AIV_AIC_RATIO_2 && 
+      !isFixedAxisMove_ &&
       StaticTilingProcess(context)) {
     isStaticTilingApi = 1U;
   }
@@ -935,7 +1014,8 @@ void GMMTiling::GMMSetTplTilingKey(gert::TilingContext* context) {
                                                 isStaticTilingApi,
                                                 a8w4KernelTemplate,
                                                 a16w8KernelTemplate,
-                                                aivAicRatio);
+                                                aivAicRatio,
+                                                isEnableFixedAxis);
   context->SetTilingKey(tilingKey);
 
   if (isA16W8Msd_ || antiquantPerformance_) {
@@ -1003,6 +1083,10 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   if (perTokenScalePtr != nullptr && perTokenScalePtr->GetStorageShape().GetShapeSize() != 0) {
     perTokenOrPerGroupSize_ = 1U;
   }
+  auto pertokenScaleDesc = context->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
+  if (pertokenScaleDesc != nullptr) {
+    perTokenScaleDtype_ = pertokenScaleDesc->GetDataType();
+  }
   tilingData.gmmBaseParams.set_quantParam(perTokenOrPerGroupSize_);
   auto yDesc = context->GetOutputDesc(Y_INDEX);
   OP_CHECK_NULL_WITH_CONTEXT(context, yDesc);
@@ -1015,8 +1099,10 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   }
   auto wFormat0 = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
   wFormat_ = wFormat0 == ge::FORMAT_FRACTAL_NZ ? matmul_tiling::CubeFormat::NZ : matmul_tiling::CubeFormat::ND;
-  tuningConfig_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
-                  (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;
+  tuningConfig_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
+                  (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX] : 0;
+  tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
+                  (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
   return ge::GRAPH_SUCCESS;
 }
 
@@ -1325,7 +1411,7 @@ ge::graphStatus GMMTiling::CalMMTiling(const gert::TilingContext* context, const
   return ge::GRAPH_SUCCESS;
 }
 
-static void SetA8W4HPTiling(A8W4HPTiling *tiling_data, uint32_t group_num, uint32_t aicNum)
+static void SetA8W4HPTiling(A8W4HPTiling *tiling_data, uint32_t aicNum)
 {
   constexpr int SIZE_TWO = 2;
   constexpr int SIZE_THREE = 3;
@@ -1333,19 +1419,12 @@ static void SetA8W4HPTiling(A8W4HPTiling *tiling_data, uint32_t group_num, uint3
   constexpr int IDX_ONE = 1;
   constexpr int IDX_TWO = 2;
   constexpr uint32_t SINGLE_CORE_TILING_0 = 128;
-  constexpr uint32_t SINGLE_CORE_TILING_1 = 512;
+  constexpr uint32_t SINGLE_CORE_TILING_1 = 256;
   constexpr uint32_t SINGLE_CORE_BASE_TILING_0 = 128;
   constexpr uint32_t SINGLE_CORE_BASE_TILING_1 = 256;
-  constexpr uint32_t TOTAL_K_THRESHOLD_7168 = 7168;
-  constexpr uint32_t TOTAL_K_THRESHOLD_3584 = 3584;
-  constexpr uint32_t TOTAL_N_THRESHOLD_2048 = 2048;
-  constexpr uint32_t TOTAL_N_THRESHOLD_1024 = 1024;
-  constexpr float USAGE_RATE_THRESHOLD = 0.9f;
+  constexpr uint32_t TOTAL_K_THRESHOLD_6656 = 6656;
 
-  uint32_t *ori_out_shape = tiling_data->get_ori_out_shape();
   uint32_t *ori_in0_shape = tiling_data->get_ori_in0_shape();
-  uint32_t total_M = ori_out_shape[IDX_ZERO];
-  uint32_t total_N = ori_out_shape[IDX_ONE];
   uint32_t total_K = ori_in0_shape[IDX_ONE];
   uint32_t core_num = aicNum;
   uint32_t splitRecord[SIZE_THREE] = {1, 1, 1};
@@ -1356,28 +1435,9 @@ static void SetA8W4HPTiling(A8W4HPTiling *tiling_data, uint32_t group_num, uint3
   tiling_data->set_kernel_index(0);
   tiling_data->set_splitTimes(0);
 
-  if (total_K > TOTAL_K_THRESHOLD_7168) {
-    splitRecord[IDX_ZERO] = CeilDiv(total_K, TOTAL_K_THRESHOLD_7168);
-    single_core_tiling[IDX_TWO] = TOTAL_K_THRESHOLD_7168;
-  }
-
-  uint32_t M_length = CeilDiv(total_M, group_num);
-  float UsageRate2048 =
-      CeilDiv(total_N, TOTAL_N_THRESHOLD_2048) * CeilDiv(M_length, single_core_tiling[IDX_ZERO]) * group_num;
-  uint32_t virtualCoreNum = CeilDiv(static_cast<uint32_t>(UsageRate2048), core_num) * core_num;
-  UsageRate2048 = UsageRate2048 / virtualCoreNum;
-
-  float UsageRate1024 =
-      CeilDiv(total_N, TOTAL_N_THRESHOLD_1024) * CeilDiv(M_length, single_core_tiling[IDX_ZERO]) * group_num;
-  virtualCoreNum = CeilDiv(static_cast<uint32_t>(UsageRate1024), core_num) * core_num;
-  UsageRate1024 = UsageRate1024 / virtualCoreNum;
-
-  if (total_K >= TOTAL_K_THRESHOLD_3584 && UsageRate2048 >= USAGE_RATE_THRESHOLD) {
-    single_core_tiling[IDX_ONE] = TOTAL_N_THRESHOLD_2048;
-  }
-
-  if (total_K < TOTAL_K_THRESHOLD_3584 && UsageRate1024 >= USAGE_RATE_THRESHOLD) {
-    single_core_tiling[IDX_ONE] = TOTAL_N_THRESHOLD_1024;
+  if (total_K > TOTAL_K_THRESHOLD_6656) {
+    splitRecord[IDX_ZERO] = CeilDiv(total_K, TOTAL_K_THRESHOLD_6656);
+    single_core_tiling[IDX_TWO] = TOTAL_K_THRESHOLD_6656;
   }
 
   tiling_data->set_splitRecord(splitRecord);
@@ -1447,11 +1507,11 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
 
       auto attr = context->GetAttrs();
       const auto tuningConfigPtr = attr != nullptr ? (attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG)) : nullptr;
-      bool useHighPerf = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 1);
+
+      bool useHighPerf = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX) ?
+                    ((reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX] == 1) : false;
       if (useHighPerf) {
         OP_LOGD(context->GetNodeName(), "Enter GMM A8W4 MSD high performance path...");
-        constexpr size_t GMM_WORKSPACE_AMOUNT = 524288L;     // 256 * 2048
-        constexpr size_t SOFTWARE_WORKSPACE_ELE = 64;
         constexpr int CASE_ZERO = 0;
         constexpr int CASE_ONE = 1;
         constexpr int CASE_TWO = 2;
@@ -1516,7 +1576,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         uint64_t szUB = compileInfoPtr->ubSize;
         uint64_t szL0A = compileInfoPtr->l0ASize;
         uint64_t szL0C = compileInfoPtr->l0CSize;
-        SetA8W4HPTiling(&tilingDataA8W4.hpTilingData, groupNum, aic);
+        SetA8W4HPTiling(&tilingDataA8W4.hpTilingData, aic);
 
         // autotiling parameters
         tilingDataA8W4.hpTilingData.set_group_num(groupNum);
@@ -1538,17 +1598,14 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           tilingDataA8W4.hpTilingData.set_output_type(1);
         }
 
-        size_t workspaceSize = aic * GMM_WORKSPACE_AMOUNT * sizeof(uint32_t) +
-                               (static_cast<size_t>(SixteenAlign(M, true)) * K / TWO * sizeof(uint8_t)) +
-                               (static_cast<size_t>(SixteenAlign(M, true)) * SOFTWARE_WORKSPACE_ELE) +
-                               TWO * static_cast<size_t>(SixteenAlign(M, true)) * sizeof(float);
-
+        size_t workspaceSize = M * N * sizeof(int16_t) +
+                               (static_cast<size_t>(SixteenAlign(M, true)) * K / TWO * sizeof(uint8_t));
         context->SetScheduleMode(1); // set as batchmod for template using SyncAll
         context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
                                                  GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
                                                  GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_AUTOTILING,
                                                  GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
-                                                 GROUPED_MATMUL_AIV_AIC_RATIO_2));
+                                                 GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
 
         size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
         workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
@@ -1620,15 +1677,15 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         InitPlatformInfo(compileInfoPtr, platformInfo);
         matmul_tiling::MultiCoreMatmulTiling mm(platformInfo);
         //GEMM Tiling
-        int64_t tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
-                    (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;
+        int64_t tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
+                    (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX] : 0;
         uint32_t calc_m = 1U;
         if (groupNum != 0U) {
           calc_m = m / groupNum;
         }
         const uint32_t avg_m = tuningConfig != 0L ? static_cast<uint32_t>(tuningConfig) : calc_m;
         const bool isPerchannel = quantGroupNum == 1U;
-        const bool isMSD = isPerchannel == false || avg_m == 0U || n / avg_m > 4U || withOffset == true;
+        const bool isMSD = tuningConfig == 0L || avg_m == 0U || n / avg_m > 4U || withOffset == true;
         if (!isMSD) {
             constexpr uint32_t A8W4_BASE_M = 128;
             constexpr uint32_t A8W4_BASE_K = 64;
@@ -1651,7 +1708,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
                                                      GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
                                                      GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_PERGROUP_ANTIQUANT,
                                                      GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
-                                                     GROUPED_MATMUL_AIV_AIC_RATIO_2));
+                                                     GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
             tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
             context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
 
@@ -1724,7 +1781,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
                                                    GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
                                                    a8w4KernelTemplate,
                                                    GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
-                                                   GROUPED_MATMUL_AIV_AIC_RATIO_2));
+                                                   GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
           tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
           context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
 
@@ -1751,6 +1808,26 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
   ge::DataType weightDtype = w0Desc->GetDataType();
   auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
+  if (compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+      // 全量化：双8bits或双4bits(不会有A4W2)
+      bool isQuant = xDType == ge::DT_FLOAT4_E1M2 || xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 ||
+                     (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
+      if (isQuant) {
+          return TilingRegistry::GetInstance().DoTilingImpl(context);
+      } else if (xDType != weightDtype) {
+          GroupedWeightQuantBatchMatmulTiling groupedWeightQuantTiling;
+          OP_CHECK_IF(!groupedWeightQuantTiling.SetTiling(context),
+                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."), return ge::GRAPH_FAILED);
+          return ge::GRAPH_SUCCESS;
+      }
+      bool isUnQuant = (xDType == ge::DT_FLOAT16 || xDType == ge::DT_BF16) && (xDType == weightDtype);
+      if (isUnQuant) {
+        GroupedNoQuantMatmulTiling groupedNoQuantMatmulTiling;
+        OP_CHECK_IF(!groupedNoQuantMatmulTiling.SetTiling(context),
+                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."), return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+      }
+  }
   GMMTiling tiling;
   if(xDType == ge::DT_INT8 && weightDtype == ge::DT_INT4) {     // A8W4 Tiling
     ge::graphStatus A8W4TilingResult = tiling.A8W4Tiling(context, compileInfoPtr);

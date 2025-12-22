@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_WEIGHT_NZ_V2
 #define OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_WEIGHT_NZ_V2
@@ -46,7 +46,7 @@ extern "C" {
  * @param [in] transposeX2: 右矩阵是否转置，默认值：false。
  * @param [in] groupListType: GroupedMatmul分组类型，默认值：1，count模式，数据类型支持：int64。
  * @param [in] tuningConfigOptional:
- * 调优参数，数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
+ * 调优参数，数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。数组中的第二个元素设置为1，则算子tiling时会根据实际输入尝试使用更适合的算法，性能可能更优。
  * @param [out] out: 计算结果，数据类型：float32，float16, bfloat16。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。

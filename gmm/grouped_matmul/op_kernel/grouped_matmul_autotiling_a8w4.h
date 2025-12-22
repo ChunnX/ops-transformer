@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_autotiling_a8w4.h
@@ -46,13 +46,19 @@
 /* 计算过程中系数 */
 #define FACTOR_2                2
 #define FACTOR_4                4
-#define FACTOR_8                8
-#define FACTOR_16               16
-#define FACTOR_64               64
-#define FACTOR_22               22
 #define FACTOR_7                7
+#define FACTOR_8                8
+#define FACTOR_10               10
+#define FACTOR_12               12
+#define FACTOR_16               16
+#define FACTOR_22               22
+#define FACTOR_32               32
+#define FACTOR_64               64
 #define FACTOR_128              128
+#define FACTOR_256              256
+#define FACTOR_512              512
 #define FACTOR_4096             4096
+#define FACTOR_16384            16384
 /* 维度数值 */
 #define DIM_VAL1                1
 #define DIM_VAL2                2
@@ -67,19 +73,7 @@
 #define COPY_BLK_BYTES          32  // bytes of data for one data move
 #define MUL_BYTES               256 // bytes of mul each
 #define MAT_FRAC_BYTES          512 // bytes of matrix fractal
-/* 硬件同步ID */
-#define LOCAL_HWEVENT_ID0       0
-#define LOCAL_HWEVENT_ID1       1
-#define LOCAL_HWEVENT_ID2       2
-#define LOCAL_HWEVENT_ID3       3
-#define LOCAL_HWEVENT_ID4       4
-#define LOCAL_HWEVENT_ID5       5
-#define LOCAL_HWEVENT_ID6       6
-#define LOCAL_HWEVENT_ID7       7
-/* Mode ID */
-#define LOCAL_MODEID0           0x0
-#define LOCAL_MODEID1           0x1
-#define LOCAL_MODEID2           0x2
+/* Flag ID */
 #define LOCAL_FLAGID0           0x0
 #define LOCAL_FLAGID1           0x1
 #define LOCAL_FLAGID2           0x2
@@ -89,12 +83,8 @@
 #define LOCAL_FLAGID6           0x6
 #define LOCAL_FLAGID7           0x7
 
-#define HardWareSyncAmount      8388608     // (2048 * 4096)
-#define GmmWorkSpaceAmount      524288      // (256 * 2048)
-#define SoftwareWorkSpaceEle    (64)
 #define L0C_FORMAT_SIZE         4
-#define DEFAULT_BASEK           1088
-
+#define MAX_GROUP_LEN 256
 
 namespace GROUPED_MATMUL
 {
@@ -135,6 +125,16 @@ __aicore__ inline uint32_t ceilINT_64(uint32_t num)
     } else {
         return (num / FACTOR_64) * FACTOR_64 + FACTOR_64;
     }
+}
+
+__aicore__ inline uint32_t splitBy_64(uint32_t length)
+{
+    if (length <= FACTOR_64) {
+        return length;
+    }
+    uint32_t temp = length / FACTOR_2;
+    temp = ceilINT_64(temp);
+    return temp;
 }
 
 struct Dim0 {
@@ -230,7 +230,7 @@ public:
         return -1;
     }
 
-    __aicore__ inline bool operator == (Dim1 &in)
+    __aicore__ inline bool operator==(Dim1 &in)
     {
         return s[0] == in.s[0];
     }
@@ -351,7 +351,7 @@ public:
         return -1;
     }
 
-    __aicore__ inline bool operator == (Dim2 &in)
+    __aicore__ inline bool operator==(Dim2 &in)
     {
         return s[0] == in.s[0] && s[1] == in.s[1];
     }
@@ -482,7 +482,7 @@ public:
         return -1;
     }
 
-    __aicore__ inline bool operator == (Dim3 &in)
+    __aicore__ inline bool operator==(Dim3 &in)
     {
         return s[ARRAY_IDX0] == in.s[ARRAY_IDX0] && s[ARRAY_IDX1] == in.s[ARRAY_IDX1] && s[ARRAY_IDX2] == in.s[ARRAY_IDX2];
     }
@@ -661,8 +661,6 @@ public:
     float format_size;
     GlobalTensor<uint8_t> inputGlobal;
     TBuf<MemType> calcBuf;
-    GM_ADDR gm_addr = nullptr;
-    int64_t gm_datasize = 0;
 
     __aicore__ inline Unisor() : UnisorShape <Dim> (), Cartesian <Dim> ()
     {
@@ -684,8 +682,6 @@ public:
     {
         this->format_size = format_size;
         int64_t dataSize  = format_size * vec.size_16();
-        this->gm_addr = gm;
-        this->gm_datasize = dataSize;
         inputGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(gm), dataSize);
     }
 
@@ -693,8 +689,6 @@ public:
     {
         this->format_size = format_size;
         int64_t dataSize  = format_size * vec.size();
-        this->gm_addr = gm;
-        this->gm_datasize = dataSize;
         inputGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(gm), dataSize);
     }
 
@@ -782,9 +776,9 @@ public:
     bool offset_enable = false;
     uint32_t nCoreAIC;
     uint32_t nCoreAIV;
-    uint32_t szMemL0AB;
-    uint32_t szMemL0C;
-    uint32_t szMemUB;
+    uint32_t szAvailUB;
+    uint32_t szAvailL0A;
+    uint32_t szAvailL0C;
 
 public:
     __aicore__ inline void Init(TPipe* pipeIn)
@@ -796,36 +790,15 @@ public:
     {
         LocalTensor<uint16_t> srcLocal = out.get<uint16_t>();
         uint32_t dstShape = out.vec.s[0] / FACTOR_2;
+
         Duplicate(srcLocal, value, dstShape);
         PipeBarrier<PIPE_V>();
     }
 
-    template<typename T> __aicore__ inline void NPU_Adds(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in, const T &scalar_Value)
+    template<class T> __aicore__ inline void NPU_Adds(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in, const T &value)
     {
-        LocalTensor<half> outLocal = out.get<half>();
-        LocalTensor<half> inLocal = in.get<half>();
-        uint32_t width = in.vector_val.s[1];
-        uint32_t height = in.vector_val.s[0];
-
-        Dim2 vecOUT = out.vec;
-        uint32_t width_cal = vecOUT.s[1];
-
-        Dim2 posOUT = out.pos;
-        uint32_t posOUTHeight = posOUT.s[0];
-        uint32_t posOUTWidth = posOUT.s[1];
-
-        Dim2 posA = in.pos;
-        uint32_t posAHeight = posA.s[0];
-        uint32_t posAWidth = posA.s[1];
-
-        Adds(outLocal, inLocal, scalar_Value, width_cal * height);
-        PipeBarrier<PIPE_V>();
-    }
-
-    template<typename T> __aicore__ inline void NPU_Muls(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in, const T &scalar_Value)
-    {
-        LocalTensor<half> outLocal = out.get<half>();
-        LocalTensor<half> inLocal = in.get<half>();
+        LocalTensor<T> outLocal = out.get<T>();
+        LocalTensor<T> inLocal = in.get<T>();
 
         uint32_t width = in.vector_val.s[1];  // in的整个R轴长度
         uint32_t height = in.vector_val.s[0]; // in的整个D轴长度
@@ -841,31 +814,24 @@ public:
         Dim2 vecOUT = out.vec;
         uint32_t width_cal = vecOUT.s[1];  // 计算窗口 R 轴长度
 
-        Muls(outLocal, inLocal, scalar_Value, width_cal * height);
+        AscendC::Adds(outLocal, inLocal, value, width_cal * height);
         PipeBarrier<PIPE_V>();
     }
 
-    template<typename T> __aicore__ inline void NPU_Muls_int32_t(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in, const T &scalar_Value)
+    template<class Out, class In> __aicore__ inline void NPU_Cast(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in, const AscendC::RoundMode round_mode = AscendC::RoundMode::CAST_NONE)
     {
-        Dim2 vecOUT = out.vec;
-        uint32_t width_cal = vecOUT.s[1];  // 计算窗口 R 轴长度
-
-        Dim2 posOUT = out.pos;
-        uint32_t posOUTHeight = posOUT.s[0];
-        uint32_t posOUTWidth = posOUT.s[1];
-
-        Dim2 posA = in.pos;
-        uint32_t posAHeight = posA.s[0];
-        uint32_t posAWidth = posA.s[1];
-
-        LocalTensor<int32_t> outLocal = out.get<int32_t>();
-        LocalTensor<int32_t> inLocal = in.get<int32_t>();
-
-        uint32_t width = in.vector_val.s[1];  // in的整个R轴长度
-        uint32_t height = in.vector_val.s[0]; // in的整个D轴长度
-
-        Muls(outLocal, inLocal, scalar_Value, width_cal * height);
-        PipeBarrier<PIPE_V>();
+        LocalTensor<In> srcLocal = in.get<In>();
+        LocalTensor<Out> dstLocal = out.get<Out>();
+        Dim2 vec = in.vec;
+        if (vec.s[0] == 0 || vec.s[1] == 0) {
+            return;
+        }
+        uint32_t width = vec.s[1];
+        uint32_t height = vec.s[0];
+        uint32_t srcOffset = 0;
+        uint32_t dstOffset = 0;
+        AscendC::Cast(dstLocal, srcLocal, round_mode, width * height);
+        AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void NPU_Broadcast(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim1> &in)
@@ -890,27 +856,18 @@ public:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void NPU_SetZero(Unisor<UBMem, Dim1> &in)
-    {
-        LocalTensor<float> srcLocal = in.get<float>();
-        uint32_t dstShape = in.vec.s[0];
-
-        Duplicate<float>(srcLocal, 0, dstShape);
-        PipeBarrier<PIPE_V>();
-    }
-
     // 向量乘：需要A的输入是dim1的
-    __aicore__ inline void NPU_VecMul(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &unisorA, Unisor<UBMem, Dim2> &unisorB)
+    __aicore__ inline void NPU_VecMul(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &A, Unisor<UBMem, Dim2> &B)
     {
         Dim2 vec = out.vec;
         if (vec.s[0] == 0 || vec.s[1] == 0) {
             return;
         }
 
-        Dim2 vecB = unisorB.vec;
+        Dim2 vecB = B.vec;
         LocalTensor<float> outLocal = out.get<float>();
-        LocalTensor<float> aLocal = unisorA.get<float>();
-        LocalTensor<float> bLocal = unisorB.get<float>();
+        LocalTensor<float> aLocal = A.get<float>();
+        LocalTensor<float> bLocal = B.get<float>();
 
         uint32_t width = vec.s[1];
         uint32_t height = vec.s[0];
@@ -920,63 +877,41 @@ public:
     }
 
     // 向量乘：需要A的输入是[1:]的
-    __aicore__ inline void NPU_VecMuls(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &unisorA, Unisor<UBMem, Dim2> &unisorB)
+    __aicore__ inline void NPU_VecMuls(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &A, Unisor<UBMem, Dim2> &B)
     {
         Dim2 vec = out.vec;
         if (vec.s[0] == 0 || vec.s[1] == 0) {
             return;
         }
-        Dim2 vecA = unisorA.vec;
-        if (vecA.s[0] != 1) return;
+        Dim2 vecA = A.vec;
+        if (vecA.s[0] != 1) {
+            return;
+        }
 
         LocalTensor<float> outLocal = out.get<float>();
-        LocalTensor<float> aLocal = unisorA.get<float>();
-        LocalTensor<float> bLocal = unisorB.get<float>();
+        LocalTensor<float> aLocal = A.get<float>();
+        LocalTensor<float> bLocal = B.get<float>();
 
         uint32_t width = vec.s[1];
         uint32_t height = vec.s[0];
-        uint32_t ele = MUL_BYTES / FP32;
-        uint64_t mask = ele;
+
         // repeatTimes = 4, 一次迭代计算128个数, 共计算512个数
         // dstBlkStride, src0BlkStride, src1BlkStride = 1, 单次迭代内数据连续读取和写入
         // dstRepStride, src0RepStride, src1RepStride = 8, 相邻迭代间数据连续读取和写入
-        uint8_t dstRepStride = ceilINT(width, FACTOR_8);
-        uint8_t src0RepStride = ceilINT(width, FACTOR_8);
-        uint16_t repeat = ceilINT(width, ele);
-        for (int i = 0; i < repeat; i++)
-        {
-            uint32_t dstOffset = i * ele;
-            uint32_t srcOffset = i * ele;
-            if (i == repeat - 1)
-            {
-                mask = width - i * ele;
+        const uint8_t dstRepStride = ceilINT(width, FACTOR_8);
+        const uint8_t src0RepStride = ceilINT(width, FACTOR_8);
+
+        uint64_t mask = FACTOR_64;
+        uint16_t repeat = ceilINT(width, FACTOR_64);
+        for (int i = 0; i < repeat; i++) {
+            uint32_t dstOffset = FACTOR_64 * i;
+            uint32_t srcOffset = FACTOR_64 * i;
+            if (i == repeat - 1) {
+                mask = width - FACTOR_64 * i;
             }
-            AscendC::Mul(outLocal[dstOffset], bLocal[dstOffset], aLocal[srcOffset], mask, height, { 1, 1, 1, dstRepStride, src0RepStride, 0});
+            AscendC::Mul(outLocal[dstOffset], bLocal[dstOffset], aLocal[srcOffset], mask, height, {1, 1, 1, dstRepStride, src0RepStride, 0});
         }
         PipeBarrier<PIPE_V>();
-    }
-
-    __aicore__ void NPU_ReduceSum(Unisor<UBMem, Dim1> &out, Unisor<UBMem, Dim2> &in, Unisor<UBMem, Dim1> &workUnisor)
-    {
-        LocalTensor<float> srcLocal = in.get<float>();
-        LocalTensor<float> dstLocal = out.get<float>();
-
-        Dim2 posUB = in.pos;
-        uint32_t posUBHeight = posUB.s[0];
-        uint32_t posUBWidth = posUB.s[1];
-
-        Dim2 vecUB = in.vec;
-
-        uint32_t width = in.vec.s[1];  // k 轴长度
-        uint32_t height = vecUB.s[0]; // m 轴长度
-
-        LocalTensor<float> workLocal = workUnisor.get<float>();
-
-        for (uint32_t i = 0; i < height; i++) {
-            uint32_t srcOffset = i * width + posUBWidth;
-            ReduceSum(dstLocal[i], srcLocal[srcOffset], workLocal, vecUB.s[1]);
-            PipeBarrier<PIPE_V>();
-        }
     }
 
     __aicore__ inline void NPU_Add_Bias(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &bias)
@@ -992,22 +927,21 @@ public:
         uint32_t height = vec.s[0];
 
         uint32_t dstOffset = 0;
-        uint32_t ele = MUL_BYTES / FP32;
-        uint64_t mask = ele;
+
+        uint64_t mask = FACTOR_64;
         // repeatTimes = 4, 一次迭代计算128个数, 共计算512个数
         // dstBlkStride, src0BlkStride, src1BlkStride = 1, 单次迭代内数据连续读取和写入
         // dstRepStride, src0RepStride, src1RepStride = 8, 相邻迭代间数据连续读取和写入
-        uint16_t repeat = ceilINT(width, ele);
-        uint8_t src0RepStride = ceilINT(width, FACTOR_8);
         uint8_t dstRepStride = ceilINT(width, FACTOR_8);
-        for (int i = 0; i < repeat; i++)
-        {
+        uint8_t src0RepStride = ceilINT(width, FACTOR_8);
+        uint16_t repeat = ceilINT(width, FACTOR_64);
+        for (int i = 0; i < repeat; i++) {
+            uint32_t dstOffset = i * FACTOR_64;
+            uint32_t srcOffset = i * FACTOR_64;
             if (i == repeat - 1) {
-                mask = width - i * ele;
+                mask = width - i * FACTOR_64;
             }
-            uint32_t dstOffset = i * ele;
-            uint32_t srcOffset = i * ele;
-            AscendC::Add(outLocal[dstOffset], outLocal[dstOffset], biasLocal[srcOffset], mask, height, { 1, 1, 1, dstRepStride, src0RepStride, 0 });
+            AscendC::Add(outLocal[dstOffset], outLocal[dstOffset], biasLocal[srcOffset], mask, height, {1, 1, 1, dstRepStride, src0RepStride, 0});
         }
         PipeBarrier<PIPE_V>();
     }
@@ -1024,23 +958,22 @@ public:
 
         float format_size = in.format_size;
         int ele_num = COPY_BLK_BYTES;
-        int32_t width = vec.s[1] * format_size;
-        uint32_t widthBlock = ceilINT(width, ele_num);
         int32_t in_width = in.vector_val.s[1] * format_size;
-        int32_t posWidth = pos.s[1] * format_size;
-
-        uint32_t height = vec.s[0];
         uint32_t in_height = in.vector_val.s[0];
+        int32_t width = vec.s[1] * format_size;
+        uint32_t height = vec.s[0];
         uint32_t posHeight = pos.s[0];
+        int32_t posWidth = pos.s[1] * format_size;
+        uint32_t widthBlock = ceilINT(width, ele_num);
 
         //ND->ND
-        uint16_t dstStride = 0;
-        uint16_t srcStride = ceilINT(in_width, ele_num) - widthBlock;
         uint16_t blockCount = height;
         uint16_t blockLen = widthBlock;
+        uint16_t dstStride = 0;
+        uint16_t srcStride = ceilINT(in_width, ele_num) - widthBlock;
         int64_t srcOffset = posHeight * in_width + posWidth;
         int64_t dstOffset = 0;
-        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], { blockCount, blockLen, srcStride, dstStride});
+        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], {blockCount, blockLen, srcStride, dstStride});
     }
 
     __aicore__ void NPU_Store(Unisor<GlobalMem, Dim2> &out, Unisor<UBMem, Dim2> &in)
@@ -1073,7 +1006,7 @@ public:
         int64_t srcOffset = 0;
         int64_t dstOffset = posHeight * in_width + posWidth;
 
-        DataCopy(dst[dstOffset], src[srcOffset], { blockCount, blockLen, srcStride, dstStride});
+        DataCopy(dst[dstOffset], src[srcOffset], {blockCount, blockLen, srcStride, dstStride});
     }
 
     __aicore__ void NPU_And(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &a, Unisor<UBMem, Dim1> &b)
@@ -1082,41 +1015,24 @@ public:
         LocalTensor<uint16_t> outLocal = out.get<uint16_t>();
         LocalTensor<uint16_t> aLocal = a.get<uint16_t>();
         LocalTensor<uint16_t> bLocal = b.get<uint16_t>();
-        uint32_t width = a.vector_val.s[1] / FACTOR_2;  // a的整个R轴长度
-        uint32_t height = a.vector_val.s[0]; // a的整个D轴长度
+        uint32_t width = a.vec.s[1];  // a的整个R轴长度
+        uint32_t height = a.vec.s[0]; // a的整个D轴长度
 
-        Dim2 posA = a.pos;
-        uint32_t posAHeight = posA.s[0];
-        uint32_t posAWidth = posA.s[1] / FACTOR_2;
+        uint64_t mask = FACTOR_128;
+        uint8_t dstRepStride = FACTOR_8;
+        uint8_t src0RepStride = FACTOR_8;
+        uint8_t src1RepStride = 0;
 
-        Dim2 posOUT = out.pos;
-        uint32_t posOUTHeight = posOUT.s[0];
-        uint32_t posOUTWidth = posOUT.s[1] / FACTOR_2;
+        uint32_t dstOffset = 0;
+        uint32_t srcOffset = 0;
+        AscendC::And(outLocal[dstOffset], aLocal[dstOffset], bLocal[srcOffset], mask, height * width / FACTOR_128, {1, 1, 1, dstRepStride, src0RepStride, 0});
 
-        Dim2 vecOUT = out.vec;
-        uint32_t width_cal = vecOUT.s[1] / FACTOR_2;  // 计算窗口 R 轴长度
-
-        for (int i = 0 ; i < height; i++)
-        {
-            uint32_t srcOffset = (posAHeight + i) * width + posAWidth;
-            uint32_t dstOffset = (posOUTHeight + i) * width_cal + posOUTWidth;
-            And(outLocal[dstOffset], aLocal[srcOffset], bLocal, width_cal);
-        }
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void NPU_Add_int32_t(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &a, Unisor<UBMem, Dim2> &b)
-    {
-        LocalTensor<int32_t> outLocal = out.get<int32_t>();
-        LocalTensor<int32_t> aLocal = a.get<int32_t>();
-        LocalTensor<int32_t> bLocal = b.get<int32_t>();
-
-        outLocal = aLocal + bLocal;
-        PipeBarrier<PIPE_V>();
-    }
-
+    // 底层API
     // GM到UB
-    __aicore__ inline void NPU_Load_GMToUB(Unisor<UBMem, Dim2> &out, Unisor<GlobalMem, Dim2> &in)
+    __aicore__ inline void NPU_Load_GMToUB(Unisor<UBMem, Dim2> &out, Unisor<GlobalMem, Dim2> &in, int stride = 1)
     {
         Dim2 vec = in.vec;
         if (vec.s[0] == 0 || vec.s[1] == 0) {
@@ -1140,76 +1056,10 @@ public:
         uint16_t blockCount = height;
         uint16_t blockLen = widthBlock;
         uint16_t dstStride = 0;
-        uint16_t srcStride = in_width / ele_num - widthBlock;
+        uint16_t srcStride = stride * in_width / ele_num - widthBlock;
         int64_t srcOffset = posHeight * in_width + posWidth;
         int64_t dstOffset = 0;
-        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], { blockCount, blockLen, srcStride, dstStride});
-    }
-
-    // 带起始地址间隔搬数
-    __aicore__ inline void NPU_Load_GMToUB_ByStride_ByOffset(Unisor<UBMem, Dim2> &out, Unisor<GlobalMem, Dim2> &in, uint32_t offset)
-    {
-        Dim2 vec = in.vec;
-        if (vec.s[0] == 0 || vec.s[1] == 0) {
-            return;
-        }
-        GlobalTensor<uint8_t> srcLocal = in.getGM();
-        LocalTensor<uint8_t> dstLocal = out.get<uint8_t>();
-        Dim2 pos = in.pos;
-
-        float format_size = in.format_size;
-        int64_t ele_num = COPY_BLK_BYTES;
-        int64_t in_width = in.vector_val.s[1] * format_size;
-        int64_t width = vec.s[1] * format_size;
-        uint64_t widthBlock = ceilINT(width, ele_num);
-        int64_t posWidth = pos.s[1] * format_size;
-        uint64_t in_height = in.vector_val.s[0];
-        uint64_t height = vec.s[0];
-        uint64_t posHeight = pos.s[0];
-
-        //ND->ND
-        int64_t srcOffset = offset + posHeight * vec.s[1] * format_size;
-        int64_t dstOffset = 0;
-        uint16_t blockCount = height;
-        uint16_t blockLen = widthBlock;
-        uint16_t dstStride = 0;
-        uint16_t srcStride = widthBlock;
-        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], { blockCount, blockLen, srcStride, dstStride});
-    }
-
-    // UB到UB
-    template<class Out, class In> __aicore__ static void NPU_Cast(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in, const AscendC::RoundMode round_mode = AscendC::RoundMode::CAST_NONE)
-    {
-        LocalTensor<In> srcLocal = in.get<In>();
-        LocalTensor<Out> dstLocal = out.get<Out>();
-        Dim2 vec = in.vec;
-        if (vec.s[0] == 0 || vec.s[1] == 0) return;
-        uint32_t width = vec.s[1];
-        uint32_t height = vec.s[0];
-        uint32_t srcOffset = 0;
-        uint32_t dstOffset = 0;
-        AscendC::Cast(dstLocal, srcLocal, round_mode, width * height);
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-
-    __aicore__ inline void NPU_Cast_FP32ToBF16(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in)
-    {
-        NPU_Cast<bfloat16_t, float>(out, in, AscendC::RoundMode::CAST_RINT);
-    }
-
-    __aicore__ inline void NPU_Cast_FP32ToFP16(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in)
-    {
-        NPU_Cast<half, float>(out, in, AscendC::RoundMode::CAST_NONE);
-    }
-
-    __aicore__ inline void NPU_Cast_FP32ToFP16(Unisor<UBMem, Dim2> &in)
-    {
-        NPU_Cast_FP32ToFP16(in, in);
-    }
-
-    __aicore__ inline void NPU_Cast_INT32ToFP32(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in)
-    {
-        NPU_Cast<float, int32_t>(out, in, AscendC::RoundMode::CAST_NONE);
+        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], {blockCount, blockLen, srcStride, dstStride});
     }
 
     // UB到GM
@@ -1225,12 +1075,12 @@ public:
 
         float format_size = out.format_size;
         int64_t ele_num = COPY_BLK_BYTES;
+        int64_t in_width = out.vector_val.s[1] * format_size;
+        uint64_t in_height = out.vector_val.s[0];
         int64_t width = vec.s[1] * format_size;
         uint64_t height = vec.s[0];
         int64_t posWidth = pos.s[1] * format_size;
         uint64_t posHeight = pos.s[0];
-        int64_t in_width = out.vector_val.s[1] * format_size;
-        uint64_t in_height = out.vector_val.s[0];
         uint64_t nBlocks = ceilINT(width, ele_num);
         uint64_t mBlocks = ceilINT(height, ele_num);
         uint64_t t_nBlocks = ceilINT(in_width, ele_num);
@@ -1240,9 +1090,9 @@ public:
         uint16_t blockLen = nBlocks;
         uint16_t srcStride = 0;
         uint16_t dstStride = t_nBlocks - blockLen;
-        int64_t srcOffset = 0;
-        int64_t dstOffset = posHeight * in_width + posWidth;
-        DataCopy(dst[dstOffset], src[srcOffset], { blockCount, blockLen, srcStride, dstStride});
+        uint64_t srcOffset = 0;
+        uint64_t dstOffset = posHeight * in_width + posWidth;
+        DataCopy(dst[dstOffset], src[srcOffset], {blockCount, blockLen, srcStride, dstStride});
     }
 
     // 从 GM 到 L1A, ND -> Nz
@@ -1258,19 +1108,18 @@ public:
 
         float format_size = in.format_size;
         int64_t ele_num = COPY_BLK_BYTES;
+        int64_t in_posWidth = format_size * in.pos.s[1];
+        int64_t out_posWidth =  format_size * out.pos.s[1];
         uint64_t in_posHeight = in.pos.s[0];
-        int64_t in_posWidth = in.pos.s[1] * format_size;
         uint64_t out_posHeight = out.pos.s[0];
-        int64_t out_posWidth = out.pos.s[1] * format_size;
 
         int64_t in_width = in.vector_val.s[1] * format_size;
         int64_t out_height = ceilINT_16(out.vector_val.s[0]);
-
-        int64_t height = ceilINT_16(vec.s[0]);
+        int64_t height = vec.s[0];
         int64_t width = vec.s[1] * format_size;
 
-        int64_t srcOffset = in_posHeight * in_width + in_posWidth;
-        int64_t dstOffset = out_posWidth * out_height + out_posHeight * ele_num;
+        uint64_t srcOffset = in_posWidth + in_posHeight * in_width;
+        int64_t dstOffset = out_posHeight * ele_num + out_posWidth * out_height;
 
         AscendC::Nd2NzParams dataCopyA1Params;
         dataCopyA1Params.ndNum = 1;
@@ -1297,16 +1146,17 @@ public:
 
         float format_size = in.format_size;
         int64_t ele_num = COPY_BLK_BYTES;
+        uint64_t in_posHeight = in.pos.s[0];
+        int64_t in_posWidth = in.pos.s[1] * format_size;
+        uint64_t out_posHeight = out.pos.s[0];
+        int64_t out_posWidth = out.pos.s[1] * format_size;
+
         int64_t in_height = in.vector_val.s[0];
         int64_t in_width = in.vector_val.s[1] * format_size;
         int64_t out_height = out.vector_val.s[0];
         int64_t out_width = out.vector_val.s[1] * format_size;
         int64_t height = vec.s[0];
         int64_t width = vec.s[1] * format_size;
-        uint64_t in_posHeight = in.pos.s[0];
-        int64_t in_posWidth = in.pos.s[1] * format_size;
-        uint64_t out_posHeight = out.pos.s[0];
-        int64_t out_posWidth = out.pos.s[1] * format_size;
 
         // NZ -> NZ 格式
         uint16_t blockCount = width / ele_num;
@@ -1316,33 +1166,33 @@ public:
 
         uint64_t srcOffset = in_posWidth * in_height + in_posHeight * ele_num;
         uint64_t dstOffset = out_posWidth * out_height + out_posHeight * ele_num;
-        DataCopy(dst[dstOffset], src[srcOffset], { blockCount, blockLen, srcStride, dstStride});
+        DataCopy(dst[dstOffset], src[srcOffset], {blockCount, blockLen, srcStride, dstStride});
     }
 
     // 从 L1 到 L0A, 转格式
-    __aicore__ inline void NPU_Load_L1ToL0A(TBuf<L0AMem> &dst, TBuf<L1AMem> &src, Cartesian<Dim2> dstCart, Cartesian<Dim2> srcCart, Dim2 srcShape, float srcFormat)
+    __aicore__ inline void NPU_Load_L1ToL0A(Unisor<L0AMem, Dim2> &out, Unisor<L1AMem, Dim2> &in)
     {
-        Dim2 vec = dstCart.vec;
+        Dim2 vec = out.vec;
         if (vec.s[0] == 0 || vec.s[1] == 0) {
             return;
         }
 
-        LocalTensor<uint8_t> srcLocal = src.template Get<uint8_t>();
-        LocalTensor<uint8_t> dstLocal = dst.template Get<uint8_t>();
-        float format_size = srcFormat;
+        LocalTensor<uint8_t> src = in.get<uint8_t>();
+        LocalTensor<uint8_t> dst = out.get<uint8_t>();
+        float format_size = in.format_size;
         int ele_num = COPY_BLK_BYTES;
 
-        int32_t in_posHeight = srcCart.pos.s[0];
-        int32_t in_posWidth = srcCart.pos.s[1] * format_size;
+        int32_t in_posHeight = in.pos.s[0];
+        int32_t in_posWidth = in.pos.s[1] * format_size;
 
         uint32_t height = ceilINT_16(vec.s[0]);
         int32_t width = vec.s[1] * format_size;
-        uint32_t in_height = ceilINT_16(srcShape.s[0]);
+        uint32_t in_height = ceilINT_16(in.vector_val.s[0]);
 
-        uint32_t widthBlocks = width / COPY_BLK_BYTES;
-        uint32_t heightBlocks = height / ELEM_BASE_ALIGN;
+        uint32_t widthBlocks = width / FACTOR_32;
+        uint32_t heightBlocks = height / FACTOR_16;
 
-        uint32_t srcStrideOffset = COPY_BLK_BYTES * in_height;
+        uint32_t srcStrideOffset = FACTOR_32 * in_height;
         uint32_t dstStrideOffset = MAT_FRAC_BYTES;
 
         uint32_t srcOffset = in_posWidth * in_height + in_posHeight * ele_num;
@@ -1353,40 +1203,38 @@ public:
         loadL0AParams.dstGap = widthBlocks - 1;
         loadL0AParams.ifTranspose = false;
         for (uint32_t i = 0; i < widthBlocks; i++) {
-            AscendC::LoadData(dstLocal[dstOffset], srcLocal[srcOffset], loadL0AParams);
+            AscendC::LoadData(dst[dstOffset], src[srcOffset], loadL0AParams);
             srcOffset = srcOffset + srcStrideOffset;
             dstOffset = dstOffset + dstStrideOffset;
         }
     }
 
     // 从 L1 到 L0B, 转格式
-    __aicore__ inline void NPU_Load_L1ToL0B(TBuf<L0BMem> &dst, TBuf<L1BMem> &src, Cartesian<Dim2> dstCart, Cartesian<Dim2> srcCart, Dim2 srcShape, float srcFormat)
+    __aicore__ inline void NPU_Load_L1ToL0B(Unisor<L0BMem, Dim2> &out, Unisor<L1BMem, Dim2> &in)
     {
-        Dim2 vec = dstCart.vec;
+        Dim2 vec = out.vec;
         if (vec.s[0] == 0 || vec.s[1] == 0) {
             return;
         }
 
-        float format_size = srcFormat;
-        /* 一次传输的元素个数 */
-        uint32_t ele = static_cast<uint32_t>(static_cast<int32_t>((float)COPY_BLK_BYTES / format_size));
+        float format_size = in.format_size;
 
         // INT4类型
-        if (format_size - (float)INT4 <= 0.0f) {
-            LocalTensor<int4b_t> srcLocal = src.template Get<int4b_t>();
-            LocalTensor<int4b_t> dstLocal = dst.template Get<int4b_t>();
+        if (format_size == (float)INT4) {
+            LocalTensor<int4b_t> src = in.get<int4b_t>();
+            LocalTensor<int4b_t> dst = out.get<int4b_t>();
 
-            uint32_t in_posHeight = srcCart.pos.s[0];
-            uint32_t in_posWidth = srcCart.pos.s[1];
+            uint32_t in_posHeight = in.pos.s[0];
+            uint32_t in_posWidth = in.pos.s[1];
 
             uint32_t height = vec.s[0];
             uint32_t width = vec.s[1];
-            uint32_t in_height = srcShape.s[0];
-            uint32_t widthBlocks = width / ele;
-            uint32_t heightBlocks = height / ele;
-            uint32_t in_heightBlocks = in_height / ele;
+            uint32_t in_height = in.vector_val.s[0];
+            uint32_t widthBlocks = width / FACTOR_64;
+            uint32_t heightBlocks = height / FACTOR_64;
+            uint32_t in_heightBlocks = in_height / FACTOR_64;
 
-            uint32_t srcOffset = in_posWidth * in_height + in_posHeight * ele;
+            uint32_t srcOffset = in_posWidth * in_height + in_posHeight * FACTOR_64;
             uint32_t dstOffset = 0;
 
             // 非转置
@@ -1397,18 +1245,18 @@ public:
                     loadDataParams.repeatTimes = heightBlocks;
                     loadDataParams.dstGap = widthBlocks * FACTOR_4 - 1;//注意这是指原来相邻的两个方形搬到目的操作数之后的间隔大小
                     loadDataParams.dstFracGap = 0;
-                    AscendC::LoadDataWithTranspose(dstLocal[dstOffset], srcLocal[srcOffset], loadDataParams);
-                    srcOffset = srcOffset + ele * in_height;
+                    AscendC::LoadDataWithTranspose(dst[dstOffset], src[srcOffset], loadDataParams);
+                    srcOffset = srcOffset + FACTOR_64 * in_height;
                     dstOffset = dstOffset + MAT_FRAC_BYTES * FACTOR_8;
                 }
-            } else {//转置
+            } else { //转置
                 if (in_heightBlocks == heightBlocks) {
                     AscendC::LoadData2dParams loadL0BParams;
                     loadL0BParams.repeatTimes = heightBlocks * widthBlocks * FACTOR_4;
                     loadL0BParams.srcStride = 1;
                     loadL0BParams.dstGap = 0;
                     loadL0BParams.ifTranspose = false;
-                    AscendC::LoadData(dstLocal[dstOffset], srcLocal[srcOffset], loadL0BParams);
+                    AscendC::LoadData(dst[dstOffset], src[srcOffset], loadL0BParams);
                 } else {
                     for (uint32_t i = 0; i < widthBlocks; i++) {
                         AscendC::LoadData2dParams loadL0BParams;
@@ -1416,38 +1264,38 @@ public:
                         loadL0BParams.srcStride = 1;
                         loadL0BParams.dstGap = 0;
                         loadL0BParams.ifTranspose = false;
-                        AscendC::LoadData(dstLocal[dstOffset], srcLocal[srcOffset], loadL0BParams);
-                        srcOffset = srcOffset + in_height * ele;
-                        dstOffset = dstOffset + height * ele;
+                        AscendC::LoadData(dst[dstOffset], src[srcOffset], loadL0BParams);
+                        srcOffset = srcOffset + in_height * FACTOR_64;
+                        dstOffset = dstOffset + height * FACTOR_64;
                     }
                 }
             }
-        } else if ((format_size - (float)INT8) <= 0.0f) {// INT8类型
-            LocalTensor<uint8_t> srcLocal = src.template Get<uint8_t>();
-            LocalTensor<uint8_t> dstLocal = dst.template Get<uint8_t>();
+        } else if (format_size == (float)INT8) { // INT8类型
+            LocalTensor<uint8_t> src = in.get<uint8_t>();
+            LocalTensor<uint8_t> dst = out.get<uint8_t>();
 
-            uint32_t in_posHeight = srcCart.pos.s[0];
-            uint32_t in_posWidth = srcCart.pos.s[1];
+            uint32_t in_posHeight = in.pos.s[0];
+            uint32_t in_posWidth = in.pos.s[1];
 
             uint32_t height = vec.s[0];
             uint32_t width = vec.s[1];
-            uint32_t in_height = srcShape.s[0];
-            uint32_t widthBlocks = width / COPY_BLK_BYTES;
-            uint32_t heightBlocks = height / COPY_BLK_BYTES;
+            uint32_t in_height = in.vector_val.s[0];
+            uint32_t widthBlocks = width / FACTOR_32;
+            uint32_t heightBlocks = height / FACTOR_32;
 
-            uint32_t srcOffset = in_posWidth * in_height + in_posHeight * COPY_BLK_BYTES;
+            uint32_t srcOffset = in_posWidth * in_height + in_posHeight * FACTOR_32;
             uint32_t dstOffset = 0;
 
             // 非转置
-            if (vec.axis_name[0] == 'K') {
+            if (vec.axis_name[0]=='K') {
                 for (uint32_t i = 0; i < widthBlocks; i++) {
                     AscendC::LoadData2dTransposeParams loadDataParams;
                     loadDataParams.srcStride = 1;
                     loadDataParams.repeatTimes = heightBlocks;
                     loadDataParams.dstGap = widthBlocks * FACTOR_2 - 1;// 注意这是指原来相邻的两个方形搬到目的操作数之后的间隔大小
                     loadDataParams.dstFracGap = 0;
-                    AscendC::LoadDataWithTranspose(dstLocal[dstOffset], srcLocal[srcOffset], loadDataParams);
-                    srcOffset = srcOffset + ele * in_height;
+                    AscendC::LoadDataWithTranspose(dst[dstOffset], src[srcOffset], loadDataParams);
+                    srcOffset = srcOffset + FACTOR_32 * in_height;
                     dstOffset = dstOffset + MAT_FRAC_BYTES * FACTOR_2;
                 }
             } else {
@@ -1456,191 +1304,76 @@ public:
                 loadL0BParams.srcStride = 1;
                 loadL0BParams.dstGap = 0;
                 loadL0BParams.ifTranspose = false;
-                AscendC::LoadData(dstLocal[dstOffset], srcLocal[srcOffset], loadL0BParams);
+                AscendC::LoadData(dst[dstOffset], src[srcOffset], loadL0BParams);
             }
-        } else if ((format_size - (float)FP16) <= 0.0f) {// FP16类型
-            LocalTensor<half> srcLocal = src.template Get<half>();
-            LocalTensor<half> dstLocal = dst.template Get<half>();
+        } else if (format_size == (float)FP16) { // FP16类型
+            LocalTensor<half> src = in.get<half>();
+            LocalTensor<half> dst = out.get<half>();
 
-            uint32_t in_posHeight = srcCart.pos.s[0];
-            uint32_t in_posWidth = srcCart.pos.s[1];
+            uint32_t in_posHeight = in.pos.s[0];
+            uint32_t in_posWidth = in.pos.s[1];
 
             uint32_t height = vec.s[0];
             uint32_t width = vec.s[1];
-            uint32_t in_height = srcShape.s[0];
-            uint32_t widthBlocks = width / ele;
-            uint32_t heightBlocks = height / ele;
+            uint32_t in_height = in.vector_val.s[0];
+            uint32_t widthBlocks = width / FACTOR_16;
+            uint32_t heightBlocks = height / FACTOR_16;
 
-            uint32_t srcOffset = in_posWidth * in_height + in_posHeight * ele;
+            uint32_t srcOffset = in_posWidth * in_height + in_posHeight * FACTOR_16;
             uint32_t dstOffset = 0;
 
             // 非转置
-            if (vec.axis_name[0] == 'K') {
+            if (vec.axis_name[0]=='K') {
                 for (uint32_t i = 0; i < widthBlocks; i++) {
                     AscendC::LoadData2dTransposeParams loadDataParams;
                     loadDataParams.srcStride = 1;
                     loadDataParams.repeatTimes = heightBlocks;
                     loadDataParams.dstGap = widthBlocks - 1;// 注意这是指原来相邻的两个方形搬到目的操作数之后的间隔大小
-                    AscendC::LoadDataWithTranspose(dstLocal[dstOffset], srcLocal[srcOffset], loadDataParams);
-                    srcOffset = srcOffset + (ele * in_height);
+                    AscendC::LoadDataWithTranspose(dst[dstOffset], src[srcOffset], loadDataParams);
+                    srcOffset = srcOffset + (FACTOR_16 * in_height);
                     dstOffset = dstOffset + MUL_BYTES;
                 }
-            } else {// 转置
+            } else { // 转置
                 AscendC::LoadData2dParams loadL0BParams;
                 loadL0BParams.repeatTimes = heightBlocks * widthBlocks;
                 loadL0BParams.srcStride = 1;
                 loadL0BParams.dstGap = 0;
                 loadL0BParams.ifTranspose = false;
-                AscendC::LoadData(dstLocal[dstOffset], srcLocal[srcOffset], loadL0BParams);
+                AscendC::LoadData(dst[dstOffset], src[srcOffset], loadL0BParams);
             }
         }
     }
 
-    // MatMul计算, 输出到L0C
-    __aicore__ inline   void NPU_Matmul(TBuf<L0CMem> &dstC, TBuf<L0AMem> &srcA, TBuf<L0BMem> &srcB, Dim3 &realShape, float srcFormat, bool isBias)
-    {
-        if (realShape.s[ARRAY_IDX0] == 0 || realShape.s[ARRAY_IDX1] == 0 || realShape.s[ARRAY_IDX2] == 0) {
-            return;
-        }
-
-        float format_size = srcFormat;
-        // INT4类型
-        if ((format_size - (float)INT4) <= 0.0f) {
-            LocalTensor<int4b_t> src0 = srcA.template Get<int4b_t>();
-            LocalTensor<int4b_t> src1 = srcB.template Get<int4b_t>();
-            LocalTensor<int32_t> dst = dstC.template Get<int32_t>();
-
-            MmadParams mmadParams;
-            mmadParams.m = (uint16_t)ceilINT_16(realShape.s[ARRAY_IDX0]);
-            mmadParams.n = (uint16_t)realShape.s[ARRAY_IDX2];
-            mmadParams.k = (uint16_t)realShape.s[ARRAY_IDX1];
-            mmadParams.cmatrixInitVal=true;
-            mmadParams.cmatrixSource=false;
-            mmadParams.isBias=isBias;
-            Mmad(dst, src0, src1, mmadParams);
-        }
-    }
-
-    // 从 L0C 到 GM, NZ to ND
-    __aicore__ inline void NPU_Load_L0CToGM_New(GlobalTensor<int32_t> dst, TBuf<L0CMem> &src, Cartesian<Dim2> dstCart, Dim2 dstShape, float dstFormat)
-    {
-        Dim2 vec = dstCart.vec;
-        if (vec.s[0] == 0 || vec.s[1] == 0) {
-            return;
-        }
-
-        // int32_t 类型
-        LocalTensor<int32_t> srcLocal = src.template Get<int32_t>();
-
-        float format_size = dstFormat;
-        uint64_t out_posWidth = dstCart.pos.s[1];
-        uint64_t out_posHeight = dstCart.pos.s[0];
-
-        uint64_t height = vec.s[0];
-        uint64_t height_16 = ceilINT_16(vec.s[0]);
-        uint64_t width = vec.s[1];
-
-        int64_t srcOffset = 0;
-        int64_t dstOffset = out_posWidth * FACTOR_4096 * format_size;
-
-        AscendC::FixpipeParamsV220 fixpipeParams;
-        fixpipeParams.nSize = width;
-        fixpipeParams.mSize = height;
-        fixpipeParams.srcStride = height_16;
-        fixpipeParams.dstStride = width;
-        fixpipeParams.ndNum = 1;
-        fixpipeParams.srcNdStride = 0;
-        fixpipeParams.dstNdStride = 0;
-        AscendC::Fixpipe(dst[dstOffset], srcLocal[srcOffset], fixpipeParams);
-    }
-
-    // 封装API（带Set/Wait flag）
-    __aicore__ inline void npu_matmul_loadL1AToL0A(TBuf<L0AMem> &dst, TBuf<L1AMem> &src, Cartesian<Dim2> dstCart, Cartesian<Dim2> srcCart, Dim2 srcShape, float srcFormat, uint32_t M_MTE1_EventID)
-    {
-        WaitFlag<HardEvent::M_MTE1>(M_MTE1_EventID);
-        NPU_Load_L1ToL0A(dst, src, dstCart, srcCart, srcShape, srcFormat);
-        SetFlag<HardEvent::MTE1_M>(M_MTE1_EventID);
-    }
-
-    __aicore__ inline void npu_matmul_loadL1BToL0B(TBuf<L0BMem> &dst, TBuf<L1BMem> &src, Cartesian<Dim2> dstCart, Cartesian<Dim2> srcCart, Dim2 srcShape, float srcFormat, uint32_t M_MTE1_EventID)
-    {
-        WaitFlag<HardEvent::M_MTE1>(M_MTE1_EventID);
-        NPU_Load_L1ToL0B(dst, src, dstCart, srcCart, srcShape, srcFormat);
-        SetFlag<HardEvent::MTE1_M>(M_MTE1_EventID);
-    }
-
-    __aicore__ inline void npu_matmul_loadGMToL0B(Unisor<L0BMem, Dim2> &unisorB0, Unisor<L1BMem, Dim2> &unisorB1, Unisor<GlobalMem, Dim2> &unisorB, uint32_t MTE1_MTE2_EventID, uint32_t M_MTE1_EventID)
+    __aicore__ inline void NPU_Load_GMToL0B(Unisor<L0BMem, Dim2> &unisorB0, Unisor<L1BMem, Dim2> &unisorB1, Unisor<GlobalMem, Dim2> &B, uint32_t MTE1_MTE2_EventID, uint32_t M_MTE1_EventID)
     {
         WaitFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EventID);
-        NPU_Load_GMToL1B(unisorB1, unisorB);
+        NPU_Load_GMToL1B(unisorB1, B);
         SetFlag<HardEvent::MTE2_MTE1>(MTE1_MTE2_EventID);
         WaitFlag<HardEvent::MTE2_MTE1>(MTE1_MTE2_EventID);
 
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EventID);
-        NPU_Load_L1ToL0B(unisorB0.calcBuf, unisorB1.calcBuf, Cartesian<Dim2>(unisorB0.pos, unisorB0.vec), Cartesian<Dim2>(unisorB1.pos, unisorB1.vec), unisorB1.vector_val, unisorB1.format_size);
+        NPU_Load_L1ToL0B(unisorB0, unisorB1);
         SetFlag<HardEvent::MTE1_M>(M_MTE1_EventID);
         SetFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EventID);
     }
 
-    __aicore__ inline void npu_matmul_loadGMToL0A_cacheL1(Unisor<L0AMem, Dim2> &unisorA0, Unisor<L1AMem, Dim2> &unisorA1,
-        Unisor<GlobalMem, Dim2> &unisorA, uint32_t MTE1_MTE2_EventID_0, uint32_t MTE1_MTE2_EventID_1, uint32_t M_MTE1_EventID, bool NN_firstflag, bool NN_lastflag, bool firstNIter)
+    __aicore__ inline void NPU_Load_GMToL0A_CacheL1(Unisor<L0AMem, Dim2> &unisorA0, Unisor<L1AMem, Dim2> &unisorA1,
+        Unisor<GlobalMem, Dim2> &A, uint32_t MTE1_MTE2_EventID_0, uint32_t MTE1_MTE2_EventID_1, uint32_t M_MTE1_EventID, bool NN_firstflag, bool NN_lastflag, bool firstNIter)
     {
         if (firstNIter) {
             // ######## GM -> L1A
             WaitFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EventID_1);
-            NPU_Load_GMToL1A(unisorA1, unisorA);
+            NPU_Load_GMToL1A(unisorA1, A);
             SetFlag<HardEvent::MTE2_MTE1>(MTE1_MTE2_EventID_1);
             WaitFlag<HardEvent::MTE2_MTE1>(MTE1_MTE2_EventID_1);
         }
         // ######## L1A -> L0A
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EventID);
-        NPU_Load_L1ToL0A(unisorA0.calcBuf, unisorA1.calcBuf, Cartesian<Dim2>(unisorA0.pos, unisorA0.vec), Cartesian<Dim2>(unisorA1.pos, unisorA1.vec), unisorA1.vector_val, unisorA1.format_size);
+        NPU_Load_L1ToL0A(unisorA0, unisorA1);
         if (firstNIter) {
             SetFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EventID_1);
         }
         SetFlag<HardEvent::MTE1_M>(M_MTE1_EventID);
-    }
-
-    // loadEvenEventID是通过isEven决定的EventID！
-    __aicore__ inline void npu_matmulUnisor_ping(Unisor<L0CMem, Dim2> &unisorC0, Unisor<L0AMem, Dim2> &unisorA0, Unisor<L0BMem, Dim2> &unisorB0,
-            Dim3 &realShape, uint32_t loadEvenEventID, uint32_t loadEventID, uint32_t storeCEventID, bool firstKIter)
-    {
-        if (firstKIter) {
-            WaitFlag<HardEvent::FIX_M>(storeCEventID);// 与步骤4对称
-        }
-        WaitFlag<HardEvent::MTE1_M>(loadEvenEventID);
-        WaitFlag<HardEvent::MTE1_M>(loadEventID);
-        NPU_Matmul(unisorC0.calcBuf, unisorA0.calcBuf, unisorB0.calcBuf, realShape, unisorA0.format_size, !firstKIter);
-        SetFlag<HardEvent::M_MTE1>(loadEventID); // 与步骤2对称
-    }
-
-    // loadEvenEventID是通过isEven决定的EventID！
-    __aicore__ inline void npu_matmulUnisor_pong(Unisor<L0CMem, Dim2> &unisorC0, Unisor<L0AMem, Dim2> &unisorA0, Unisor<L0BMem, Dim2> &unisorB0,
-            Dim3 &realShape, uint32_t loadEvenEventID, uint32_t loadEventID, uint32_t storeCEventID, bool firstKIter)
-    {
-        if (firstKIter) {
-            WaitFlag<HardEvent::FIX_M>(storeCEventID);// 与步骤4对称
-        }
-        WaitFlag<HardEvent::MTE1_M>(loadEventID);
-        NPU_Matmul(unisorC0.calcBuf, unisorA0.calcBuf, unisorB0.calcBuf, realShape, unisorA0.format_size, !firstKIter);
-        SetFlag<HardEvent::M_MTE1>(loadEventID);
-        SetFlag<HardEvent::M_MTE1>(loadEvenEventID);
-    }
-
-    __aicore__ inline void npu_matmul_storeL0CToGM_New(Unisor<GlobalMem, Dim2> &unisorC, Unisor<L0CMem, Dim2> &unisorC0, uint32_t eventID, bool atomic_flag)
-    {
-        // int32_t 类型
-        if (atomic_flag) {
-            SetAtomicAdd<int32_t>();
-        }
-
-        SetFlag<HardEvent::M_FIX>(eventID);
-        WaitFlag<HardEvent::M_FIX>(eventID);
-        NPU_Load_L0CToGM_New(unisorC.getGM_32(), unisorC0.calcBuf, Cartesian<Dim2>(unisorC.pos, unisorC.vec), unisorC.vector_val, unisorC.format_size);
-        SetFlag<HardEvent::FIX_M>(eventID);
-        if (atomic_flag) {
-            SetAtomicNone();
-        }
     }
 
     __aicore__ inline void NPU_Add_float(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &a, Unisor<UBMem, Dim2> &b)
@@ -1649,7 +1382,9 @@ public:
         LocalTensor<float> aLocal = a.get<float>();
         LocalTensor<float> bLocal = b.get<float>();
 
-        outLocal = aLocal + bLocal;
+        Dim2 vec = a.vec;
+        uint32_t size = vec.s[0] * vec.s[1];
+        AscendC::Add(outLocal, aLocal, bLocal, size);
         PipeBarrier<PIPE_V>();
     }
 
@@ -1659,7 +1394,9 @@ public:
         LocalTensor<float> aLocal = a.get<float>();
         LocalTensor<float> bLocal = b.get<float>();
 
-        outLocal = aLocal + bLocal;
+        Dim1 vec = a.vec;
+        uint32_t size = vec.s[0];
+        AscendC::Add(outLocal, aLocal, bLocal, size);
         PipeBarrier<PIPE_V>();
     }
 
@@ -1675,19 +1412,19 @@ public:
 
         float format_size = in.format_size;
         int ele_num = COPY_BLK_BYTES;
+        int32_t in_width = in.vector_val.s[0] * format_size;
         int32_t width = vec.s[0] * format_size;
         int32_t posWidth = pos.s[0] * format_size;
-        int32_t in_width = in.vector_val.s[0] * format_size;
         uint32_t widthBlock = ceilINT(width, ele_num);
 
         //ND->ND
+        uint16_t blockCount = 1;
+        uint16_t blockLen = ceilINT(width, FACTOR_32);
         uint16_t srcStride = 0;
         uint16_t dstStride = 0;
-        uint16_t blockCount = 1;
-        uint16_t blockLen = ceilINT(width, COPY_BLK_BYTES);
         int64_t srcOffset = posWidth;
         int64_t dstOffset = 0;
-        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], { blockCount, blockLen, srcStride, dstStride});
+        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], {blockCount, blockLen, srcStride, dstStride});
     }
 
     __aicore__ inline void NPU_Load_UBToGM(Unisor<GlobalMem, Dim1> &out, Unisor<UBMem, Dim1> &in)
@@ -1708,27 +1445,127 @@ public:
 
         // ND->ND
         uint16_t blockCount = 1;
-        uint16_t blockLen = ceilINT(width, COPY_BLK_BYTES);
+        uint16_t blockLen = ceilINT(width, FACTOR_32);
         uint16_t srcStride = 0;
         uint16_t dstStride = 0;
         int64_t srcOffset = 0;
         int64_t dstOffset = posWidth;
-        DataCopy(dst[dstOffset], src[srcOffset], { blockCount, blockLen, srcStride, dstStride});
+        DataCopy(dst[dstOffset], src[srcOffset], {blockCount, blockLen, srcStride, dstStride});
     }
 
-    __aicore__ inline uint32_t ceilINT(uint32_t x, uint32_t y)
+    __aicore__ inline void NPU_Load_GMToL1A_ND(Unisor<L1AMem, Dim2> &out, Unisor<GlobalMem, Dim2> &in)
     {
-        return Ceil(x, y);
-    }
-
-    __aicore__ inline uint32_t splitBy_64(uint32_t length)
-    {
-        if (length <= FACTOR_64) {
-            return length;
+        Dim2 vec = in.vec;
+        if (vec.s[0] == 0 || vec.s[1] == 0) {
+            return;
         }
-        uint32_t temp = length / FACTOR_2;
-        temp = ceilINT_64(temp);
-        return temp;
+        GlobalTensor<uint8_t> srcLocal = in.getGM();
+        LocalTensor<uint8_t> dstLocal = out.get<uint8_t>();
+        Dim2 pos = in.pos;
+
+        float format_size = in.format_size;
+        int ele_num = COPY_BLK_BYTES;
+        int32_t in_width = format_size * in.vector_val.s[1];
+        int32_t width = format_size * vec.s[1];
+        int32_t posWidth = format_size * pos.s[1];
+        uint32_t in_height = in.vector_val.s[0];
+        uint32_t posHeight = pos.s[0];
+        uint32_t widthBlock = ceilINT(width, ele_num);
+
+        //ND->ND
+        uint16_t dstStride = 0;
+        uint16_t srcStride = 0;
+        int64_t dstOffset = 0;
+        uint16_t blockCount = 1;
+        uint16_t blockLen = widthBlock;
+        int64_t srcOffset = posWidth + posHeight * in_width;
+        DataCopy(dstLocal[dstOffset], srcLocal[srcOffset], {blockCount, blockLen, srcStride, dstStride});
+    }
+
+    __aicore__ inline void NPU_Load_L0CToGM(GlobalTensor<uint8_t> dst, TBuf<L0CMem> &src, TBuf<L1AMem> &deq, Cartesian<Dim2> dstCart, Cartesian<Dim2> deqCart, Dim2 dstShape, float dstFormat)
+    {
+        Dim2 vec = dstCart.vec;
+        if (vec.s[0] == 0 || vec.s[1] == 0) {
+            return;
+        }
+
+        // int32_t 类型
+        LocalTensor<int32_t> srcLocal = src.template Get<int32_t>();
+        LocalTensor<uint64_t> deqTensorLocal = deq.template Get<uint64_t>();
+        uint32_t deq_posWidth = deqCart.pos.s[1];
+
+        float format_size = dstFormat;
+        uint32_t out_posWidth = dstCart.pos.s[1];
+        uint32_t out_posHeight = dstCart.pos.s[0];
+
+        uint32_t out_width = dstShape.s[1];
+        uint32_t height = vec.s[0];
+        uint32_t height_16 = ceilINT_16(vec.s[0]);
+        uint32_t width = vec.s[1];
+
+        uint64_t srcOffset = 0;
+        uint64_t dstOffset = (out_posHeight * out_width + out_posWidth) * (int)format_size;
+        AscendC::FixpipeParamsV220 fixpipeParams;
+        fixpipeParams.nSize = width;
+        fixpipeParams.mSize = height;
+        fixpipeParams.srcStride = height_16;
+        fixpipeParams.dstStride = out_width;
+        fixpipeParams.ndNum = 1;
+        fixpipeParams.srcNdStride = 0;
+        fixpipeParams.dstNdStride = 0;
+        fixpipeParams.quantPre = QuantMode_t::VDEQF16;
+        AscendC::Fixpipe(dst[dstOffset], srcLocal[srcOffset], deqTensorLocal[deq_posWidth], fixpipeParams);
+    }
+
+    __aicore__ inline void NPU_Store_L0CToGM(Unisor<GlobalMem, Dim2> &C, Unisor<L0CMem, Dim2> &unisorC0, Unisor<L1AMem, Dim2> unisorDeq, uint32_t eventID, bool atomic_flag)
+    {
+        // int32_t 类型
+        if (atomic_flag) {
+            SetAtomicAdd<half>();
+        }
+
+        SetFlag<HardEvent::M_FIX>(eventID);
+        WaitFlag<HardEvent::M_FIX>(eventID);
+        NPU_Load_L0CToGM(C.getGM(), unisorC0.calcBuf, unisorDeq.calcBuf, Cartesian<Dim2>(C.pos, C.vec), Cartesian<Dim2>(unisorDeq.pos, unisorDeq.vec), C.vector_val, C.format_size);
+        SetFlag<HardEvent::FIX_M>(eventID);
+        if (atomic_flag) {
+            SetAtomicNone();
+        }
+    }
+
+    template<class T> __aicore__ inline void NPU_Muls(Unisor<UBMem, Dim2> &out, Unisor<UBMem, Dim2> &in, const T &value)
+    {
+        LocalTensor<T> outLocal = out.get<T>();
+        LocalTensor<T> inLocal = in.get<T>();
+
+        Dim2 posOUT = out.pos;
+        uint32_t posOUTHeight = posOUT.s[0];
+        uint32_t posOUTWidth = posOUT.s[1];
+
+        Dim2 vecOUT = out.vec;
+        uint32_t width_cal = vecOUT.s[1];  // 计算窗口 R 轴长度
+
+        uint32_t width = in.vector_val.s[1];  // in的整个R轴长度
+        uint32_t height = in.vector_val.s[0]; // in的整个D轴长度
+
+        Dim2 posA = in.pos;
+        uint32_t posAHeight = posA.s[0];
+        uint32_t posAWidth = posA.s[1];
+
+        AscendC::Muls(outLocal, inLocal, value, width_cal * height);
+        PipeBarrier<PIPE_V>();
+    }
+};
+
+class KernelMatmul: public KernelBase {
+public:
+    __aicore__ inline  KernelMatmul(): KernelBase() {}
+
+    __aicore__ inline void initBlockPos_3D(AxisTiling3Vector &splitRecord)
+    {
+        splitDim.s[ARRAY_IDX0] = splitRecord.s[ARRAY_IDX0];
+        splitDim.s[ARRAY_IDX1] = splitRecord.s[ARRAY_IDX1];
+        splitDim.s[ARRAY_IDX2] = splitRecord.s[ARRAY_IDX2];
     }
 
     __aicore__ inline uint32_t getMiniK_SplitBaseN(Dim2 baseCTiling, uint32_t total_k, float format_size)
@@ -1737,8 +1574,8 @@ public:
         int temp1 = 0;
 
         // split_N
-        temp0 = szMemL0AB / FACTOR_2 / baseCTiling.s[0] / format_size;
-        temp1 = szMemL0AB / baseCTiling.s[1] / format_size;
+        temp0 = szAvailL0A / FACTOR_32 / baseCTiling.s[0] / format_size;
+        temp1 = szAvailL0A / baseCTiling.s[1] / format_size;
 
         uint32_t temp =  temp0 > temp1 ? temp1 : temp0;
         uint32_t result = 0;
@@ -1757,50 +1594,127 @@ public:
         return  result;
     }
 
-    __aicore__ inline void initBlockPos_3D(AxisTiling3Vector &splitRecord)
+    __aicore__ inline void NPU_Matmul(Unisor<L0CMem, Dim2> &out, Unisor<L0AMem, Dim2> &in0, Unisor<L0BMem, Dim2> &in1, bool isBias, Dim3 &realShape)
     {
-        splitDim.s[ARRAY_IDX0] = splitRecord.s[ARRAY_IDX0];
-        splitDim.s[ARRAY_IDX1] = splitRecord.s[ARRAY_IDX1];
-        splitDim.s[ARRAY_IDX2] = splitRecord.s[ARRAY_IDX2];
-
-        uint32_t coreID = GetBlockIdx();
-        if (g_coreType == AscendC::AIV) {
-            coreID = coreID / FACTOR_2;
+        if (realShape.s[ARRAY_IDX0] == 0 || realShape.s[ARRAY_IDX1] == 0 || realShape.s[ARRAY_IDX2] == 0) {
+            return;
         }
-        block.s[ARRAY_IDX2] = coreID % splitRecord.s[ARRAY_IDX2];
-        uint32_t temp = coreID / splitRecord.s[ARRAY_IDX2];
-        block.s[ARRAY_IDX1] = temp % splitRecord.s[ARRAY_IDX1];
-        block.s[ARRAY_IDX0] = temp / splitRecord.s[ARRAY_IDX1];
+
+        float format_size = in0.format_size;
+        if (format_size == (float)INT4) {
+            // INT4类型
+            LocalTensor<int4b_t> src0 = in0.get<int4b_t>();
+            LocalTensor<int4b_t> src1 = in1.get<int4b_t>();
+            LocalTensor<int32_t> dst = out.get<int32_t>();
+            MmadParams mmadParams;
+            mmadParams.m = (uint16_t)ceilINT_16(realShape.s[ARRAY_IDX0]);
+            mmadParams.n = (uint16_t)realShape.s[ARRAY_IDX2];
+            mmadParams.k = (uint16_t)realShape.s[ARRAY_IDX1];
+            mmadParams.cmatrixInitVal = true;
+            mmadParams.cmatrixSource = false;
+            mmadParams.isBias=isBias;
+            Mmad(dst, src0, src1, mmadParams);
+        } else if (format_size == (float)INT8) {
+            // INT8类型
+            LocalTensor<int8_t> src0 = in0.get<int8_t>();
+            LocalTensor<int8_t> src1 = in1.get<int8_t>();
+            LocalTensor<int32_t> dst = out.get<int32_t>();
+            MmadParams mmadParams;
+            mmadParams.m = (uint16_t)ceilINT_16(realShape.s[ARRAY_IDX0]);
+            mmadParams.n = (uint16_t)realShape.s[ARRAY_IDX2];
+            mmadParams.k = (uint16_t)realShape.s[ARRAY_IDX1];
+            mmadParams.cmatrixInitVal=true;
+            mmadParams.cmatrixSource=false;
+            mmadParams.isBias=isBias;
+            Mmad(dst, src0, src1, mmadParams);
+        } else if (format_size == (float)FP16) {
+            // FP16类型
+            LocalTensor<half> src0 = in0.get<half>();
+            LocalTensor<half> src1 = in1.get<half>();
+            // 关键！！！
+            // unitFlag = unitFlagIn; 预留参数，用户无需关心，使用默认值0即可
+            // cmatrixSource = cmatrixSourceIn; 配置C矩阵初始值是否来源于C2（存放Bias的硬件缓存区）。默认值为false,Atlas 训练系列产品，仅支持配置为false。
+            // cmatrixInitVal = cmatrixInitValIn; 配置C矩阵初始值是否为0。默认值true
+            // isBias: 配置是否需要累加初始矩阵，默认值为false
+            if (L0C_FORMAT_SIZE == FP16) {
+                // L0C是FP16类型
+                LocalTensor<half> dst = out.get<half>();
+                MmadParams mmadParams;
+                mmadParams.m = (uint16_t)realShape.s[ARRAY_IDX0];
+                mmadParams.n = (uint16_t)realShape.s[ARRAY_IDX2];
+                mmadParams.k = (uint16_t)realShape.s[ARRAY_IDX1];
+                mmadParams.cmatrixInitVal = true;
+                mmadParams.cmatrixSource = false;
+                mmadParams.isBias = isBias;
+                Mmad(dst, src0, src1, mmadParams);
+            } else {
+                // L0C是FP32类型
+                LocalTensor<float> dst = out.get<float>();
+                MmadParams mmadParams;
+                mmadParams.m = (uint16_t)ceilINT_16(realShape.s[ARRAY_IDX0]);
+                mmadParams.n = (uint16_t)realShape.s[ARRAY_IDX2];
+                mmadParams.k = (uint16_t)realShape.s[ARRAY_IDX1];
+                mmadParams.cmatrixInitVal = true;
+                mmadParams.cmatrixSource = false;
+                mmadParams.isBias = isBias;
+                Mmad(dst, src0, src1, mmadParams);
+            }
+        }
     }
-};
 
-class KernelMatmul: public KernelBase {
-public:
-    __aicore__ inline  KernelMatmul(): KernelBase() {}
-
-    __aicore__ inline void npu_user_defined_matmul_kernel_switch(Unisor<GlobalMem, Dim2> &unisorA, Unisor<GlobalMem, Dim2> &unisorB, Unisor<GlobalMem, Dim2> &unisorC, Unisor<GlobalMem, Dim2> &workUnisor, Unisor<GlobalMem, Dim1> &RowsumUnisor, Unisor<GlobalMem, Dim2> &biasUnisor, Unisor<GlobalMem, Dim2> &offsetUnisor, Unisor<GlobalMem, Dim1> &saUnisor, Unisor<GlobalMem, Dim2> &swUnisor, Dim2 &baseCTiling, uint32_t group_index, uint8_t kernel_index)
+    // loadEvenEventID是通过isEven决定的EventID！
+    __aicore__ inline void npu_matmulUnisor_ping(Unisor<L0CMem, Dim2> &unisorC0, Unisor<L0AMem, Dim2> &unisorA0, Unisor<L0BMem, Dim2> &unisorB0,
+            Dim3 &realShape, uint32_t loadEvenEventID, uint32_t loadEventID, uint32_t storeCEventID, bool firstKIter)
     {
-        npu_user_defined_matmul_kernel_slave_CacheA_split_BaseN(unisorA, unisorB, unisorC, workUnisor, RowsumUnisor, biasUnisor, offsetUnisor, saUnisor, swUnisor, baseCTiling, group_index);
+        if (firstKIter) {
+            WaitFlag<HardEvent::FIX_M>(storeCEventID);// 与步骤4对称
+        }
+        WaitFlag<HardEvent::MTE1_M>(loadEvenEventID);
+        WaitFlag<HardEvent::MTE1_M>(loadEventID);
+        NPU_Matmul(unisorC0, unisorA0, unisorB0, !firstKIter, realShape);
+        SetFlag<HardEvent::M_MTE1>(loadEventID); // 与步骤2对称
     }
 
-    __aicore__ inline void npu_user_defined_matmul_kernel_slave_CacheA_split_BaseN(Unisor<GlobalMem, Dim2> &unisorA, Unisor<GlobalMem, Dim2> &unisorB, Unisor<GlobalMem, Dim2> &unisorC, Unisor<GlobalMem, Dim2> &workUnisor, Unisor<GlobalMem, Dim1> &RowsumUnisor, Unisor<GlobalMem, Dim2> &biasUnisor, Unisor<GlobalMem, Dim2> &offsetUnisor, Unisor<GlobalMem, Dim1> &saUnisor, Unisor<GlobalMem, Dim2> &swUnisor, Dim2 &baseCTiling, uint32_t group_index)
+    // loadEvenEventID是通过isEven决定的EventID！
+    __aicore__ inline void npu_matmulUnisor_pong(Unisor<L0CMem, Dim2> &unisorC0, Unisor<L0AMem, Dim2> &unisorA0, Unisor<L0BMem, Dim2> &unisorB0,
+            Dim3 &realShape, uint32_t loadEvenEventID, uint32_t loadEventID, uint32_t storeCEventID, bool firstKIter)
     {
-        float format_size = unisorA.format_size;
-        uint32_t split_k = unisorA.vec.getAxisByName('K');
-        uint32_t mk = getMiniK_SplitBaseN(baseCTiling, split_k, format_size);
+        if (firstKIter) {
+            WaitFlag<HardEvent::FIX_M>(storeCEventID);// 与步骤4对称
+        }
+        WaitFlag<HardEvent::MTE1_M>(loadEventID);
+        NPU_Matmul(unisorC0, unisorA0, unisorB0, !firstKIter, realShape);
+        SetFlag<HardEvent::M_MTE1>(loadEventID);
+        SetFlag<HardEvent::M_MTE1>(loadEvenEventID);
+    }
+
+    __aicore__ inline void npu_user_defined_matmul_kernel_switch(Unisor<GlobalMem, Dim2> &unisorA, Unisor<GlobalMem, Dim2> &unisorB, Unisor<GlobalMem, Dim2> &unisorC, Unisor<GlobalMem, Dim2> &workUnisor, Unisor<GlobalMem, Dim2> &biasUnisor, Unisor<GlobalMem, Dim1> &saUnisor, Unisor<GlobalMem, Dim2> &swUnisor, Dim2 &baseCTiling, uint32_t group_index, uint8_t kernel_index)
+    {
+        npu_user_defined_matmul_kernel_slave_CacheA_split_BaseN(unisorA, unisorB, unisorC, workUnisor, biasUnisor, saUnisor, swUnisor, baseCTiling, group_index);
+    }
+
+    __aicore__ inline void npu_user_defined_matmul_kernel_slave_CacheA_split_BaseN(Unisor<GlobalMem, Dim2> &A, Unisor<GlobalMem, Dim2> &B, Unisor<GlobalMem, Dim2> &C, Unisor<GlobalMem, Dim2> &workUnisor, Unisor<GlobalMem, Dim2> &biasUnisor, Unisor<GlobalMem, Dim1> &saUnisor, Unisor<GlobalMem, Dim2> &swUnisor, Dim2 &baseCTiling, uint32_t group_index)
+    {
+        if (g_coreType == AscendC::AIV)
+        {
+            return;
+        }
+        float format_size = A.format_size;
+        uint32_t split_k = A.vec.getAxisByName('K');
+        uint32_t mk = FACTOR_512;
         bool atomic_flag = (splitDim.s[0]>1);
-        uint32_t first_M = unisorA.pos.getAxisByName('M');
-        uint32_t Last_M = unisorA.pos.getAxisByName('M') + unisorA.vec.getAxisByName('M');
-        uint32_t first_N = unisorB.pos.getAxisByName('N');
-        uint32_t Last_N = unisorB.pos.getAxisByName('N') + unisorB.vec.getAxisByName('N');
+        uint32_t first_M = A.pos.getAxisByName('M');
+        uint32_t Last_M = A.pos.getAxisByName('M') + A.vec.getAxisByName('M');
+        uint32_t first_N = B.pos.getAxisByName('N');
+        uint32_t Last_N = B.pos.getAxisByName('N') + B.vec.getAxisByName('N');
         uint32_t Base_M = baseCTiling.getAxisByName('M');
         uint32_t Base_N = baseCTiling.getAxisByName('N');
-        Dim1 posN(unisorB.pos.getAxisByName('N'), 'N');
-        Dim1 vecN(unisorB.vec.getAxisByName('N'), 'N');
-        Dim1 posM(unisorA.pos.getAxisByName('M'), 'M');
-        Dim1 vecM(unisorA.vec.getAxisByName('M'), 'M');
+        Dim1 posN(B.pos.getAxisByName('N'), 'N');
+        Dim1 vecN(B.vec.getAxisByName('N'), 'N');
+        Dim1 posM(A.pos.getAxisByName('M'), 'M');
+        Dim1 vecM(A.vec.getAxisByName('M'), 'M');
 
-        uint32_t B_posK = unisorB.pos.getAxisByName('K');
+        uint32_t B_posK = B.pos.getAxisByName('K');
 
         // ping pong buffer
         Unisor<L1AMem, Dim2> cacheUnisorA;
@@ -1824,7 +1738,7 @@ public:
         uint32_t N_length22 = Base_N - N_length11;
 
         //BaseM x K
-        Dim2 vecAA = Dim2(Base_M, unisorA.vec.getAxisByName('K'), 'M', 'K');
+        Dim2 vecAA = Dim2(Base_M, A.vec.getAxisByName('K'), 'M', 'K');
 
         //miniK x BaseN
         Dim2 vecMiniAA = Dim2(Base_M, mk, 'M', 'K');
@@ -1837,40 +1751,51 @@ public:
         Dim2 vecCC11 = Dim2(Base_M, N_length11, 'M', 'N');
         Dim2 vecCC22 = Dim2(Base_M, N_length22, 'M', 'N');
 
-        if (g_coreType == AscendC::AIC) {
-            //L1A
-            cacheUnisorA.init(vecAA, unisorA.format_size, this->pipe);
-            //L1B
-            unisorBping.init(vecMiniBB11, unisorB.format_size, this->pipe);
-            unisorBpong.init(vecMiniBB22, unisorB.format_size, this->pipe);
+        //L1A
+        cacheUnisorA.init(vecAA, A.format_size, this->pipe);
+        //L1B
+        unisorBping.init(vecMiniBB11, B.format_size, this->pipe);
+        unisorBpong.init(vecMiniBB22, B.format_size, this->pipe);
 
-            //L0A
-            unisorA0ping.init(vecMiniAA, unisorA.format_size, this->pipe);
-            unisorA0pong.init(vecMiniAA, unisorA.format_size, this->pipe);
-            //L0B
-            unisorB0ping.init(vecMiniBB11, unisorB.format_size, this->pipe);
-            unisorB0pong.init(vecMiniBB22, unisorB.format_size, this->pipe);
-            //L0C
-            unisorC0ping.init(vecCC11, L0C_FORMAT_SIZE, this->pipe); //这里手动指定Float32
-            unisorC0pong.init(vecCC22, L0C_FORMAT_SIZE, this->pipe); //这里手动指定Float32
-        }
+        //L0A
+        unisorA0ping.init(vecMiniAA, A.format_size, this->pipe);
+        unisorA0pong.init(vecMiniAA, A.format_size, this->pipe);
+        //L0B
+        unisorB0ping.init(vecMiniBB11, B.format_size, this->pipe);
+        unisorB0pong.init(vecMiniBB22, B.format_size, this->pipe);
+        //L0C
+        unisorC0ping.init(vecCC11, L0C_FORMAT_SIZE, this->pipe); //这里手动指定Float32
+        unisorC0pong.init(vecCC22, L0C_FORMAT_SIZE, this->pipe); //这里手动指定Float32
 
-        if (g_coreType == AscendC::AIC) {
-            SetFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID0);
-            SetFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID1);
-            SetFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID2);
-            SetFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID3);
+        Unisor<L1AMem, Dim2> unisorDeq;
+        Dim2 vecDeq = Dim2(1, vecN.s[0]);
+        unisorDeq.init_RealShape(vecDeq, INT64, this->pipe);
 
-            SetFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID4);
-            SetFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID5);
-            SetFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID6);
-            SetFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID7);
-            SetFlag<HardEvent::FIX_M>(LOCAL_HWEVENT_ID6);
-            SetFlag<HardEvent::FIX_M>(LOCAL_HWEVENT_ID7);
-        }
+        Dim2 pos_sw = Dim2(group_index, posN.s[0]);
+        Cartesian<Dim2> cartesian_sw(pos_sw, vecDeq);
+        swUnisor.setCartesian(cartesian_sw);
+
+        Dim2 pos_deq = Dim2(0, 0);
+        Cartesian<Dim2> cartesian_deq(pos_deq, vecDeq);
+        unisorDeq.setCartesian(cartesian_deq);
+
+        bool first_flag = true;
+
+        SetFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID0);
+        SetFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID1);
+        SetFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID2);
+        SetFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID3);
+
+        SetFlag<HardEvent::M_MTE1>(LOCAL_FLAGID4);
+        SetFlag<HardEvent::M_MTE1>(LOCAL_FLAGID5);
+        SetFlag<HardEvent::M_MTE1>(LOCAL_FLAGID6);
+        SetFlag<HardEvent::M_MTE1>(LOCAL_FLAGID7);
+        SetFlag<HardEvent::FIX_M>(LOCAL_FLAGID6);
+        SetFlag<HardEvent::FIX_M>(LOCAL_FLAGID7);
 
         //K轴切分
-        for (uint32_t i=0; i<splitDim.s[0]; i++) {
+        for (uint32_t i=0; i<splitDim.s[0]; i++)
+        {
             if (i>0) {
                 atomic_flag = true;
             } else {
@@ -1878,11 +1803,11 @@ public:
             }
 
             bool isFirst_K = (i == 0);
-            bool isLast_K = (i == (splitDim.s[0] - 1));
+            bool isLast_K = (i == (splitDim.s[0]-1));
             uint32_t pos_K = i * split_k;
             uint32_t current_K = split_k;
-            if (i == (splitDim.s[0] - 1)) {
-                current_K = unisorA.vector_val.s[1] - (i * split_k);
+            if (i == (splitDim.s[0]-1)) {
+                current_K = A.vector_val.s[1] - (i*split_k);
             }
 
             uint32_t first_K = pos_K;
@@ -1912,8 +1837,10 @@ public:
 
             uint32_t count = 0;
             uint32_t write_point_count = 0;
-            while (unisorIteratorM.posIterator(cartesianUnisorM)) {
-                while (unisorIteratorN.posIterator(cartesianUnisorN)) {
+            while (unisorIteratorM.posIterator(cartesianUnisorM))
+            {
+                while (unisorIteratorN.posIterator(cartesianUnisorN))
+                {
                     Dim2 posC = Dim2(cartesianUnisorM.pos.getAxisByName('M'), cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
                     Dim2 vecC = Dim2(cartesianUnisorM.vec.getAxisByName('M'), cartesianUnisorN.vec.getAxisByName('N'), 'M', 'N');
 
@@ -1921,12 +1848,13 @@ public:
                     uint32_t N_length2 = vecC.getAxisByName('N') - N_length1;
 
                     //尾块处理
-                    if (vecC.getAxisByName('N') <= N_length11) {
+                    if (vecC.getAxisByName('N')<=N_length11) {
                         N_length1=vecC.getAxisByName('N');
                         N_length2=0;
                     }
 
-                    while (unisorIteratorK.posIterator(cartesianUnisorK)) {
+                    while (unisorIteratorK.posIterator(cartesianUnisorK))
+                    {
                         Dim1 posK = cartesianUnisorK.pos;
                         Dim1 vecK = cartesianUnisorK.vec;
                         Dim3 realShape1(vecC.getAxisByName('M'), vecK.getAxisByName('K'), N_length1, 'M', 'K', 'N');
@@ -1990,189 +1918,125 @@ public:
                         bool isFirstMN = (firstMIter && firstNIter);
                         bool isLastMN = (LastMIter && LastNIter);
                         bool postFlag = (isLast_K && lastKIter);
-                        bool isEven = (count % FACTOR_2 == 0);
+                        bool isEven = (count % 2 == 0);
 
-                        if (g_coreType == AscendC::AIC) {
-                            if (isEven) {
-                                unisorA.setCartesian(cartesianTempA_GM1);
-                                cacheUnisorA.setCartesian(cartesianTempA_L11);
-                                unisorA0ping.setCartesian(cartesianTempA_L11);
-                                npu_matmul_loadGMToL0A_cacheL1(unisorA0ping, cacheUnisorA, unisorA, LOCAL_HWEVENT_ID4, LOCAL_HWEVENT_ID0, LOCAL_HWEVENT_ID4, NN_firstflag, NN_lastflag, firstNIter);
-                            } else {
-                                unisorA.setCartesian(cartesianTempA_GM1);
-                                cacheUnisorA.setCartesian(cartesianTempA_L11);
-                                unisorA0pong.setCartesian(cartesianTempA_L11);
-                                npu_matmul_loadGMToL0A_cacheL1(unisorA0pong, cacheUnisorA, unisorA, LOCAL_HWEVENT_ID5, LOCAL_HWEVENT_ID1, LOCAL_HWEVENT_ID5, NN_firstflag, NN_lastflag, firstNIter);
-                            }
-
-                            unisorB.setCartesian(cartesianTempB_GM1);
-                            unisorBping.setCartesian(cartesianTempB_L11);
-                            unisorB0ping.setCartesian(cartesianTempB_L11);
-                            npu_matmul_loadGMToL0B(unisorB0ping, unisorBping, unisorB, LOCAL_HWEVENT_ID2, LOCAL_HWEVENT_ID6);
-
-                            if (isEven) {
-                                npu_matmulUnisor_ping(unisorC0ping, unisorA0ping, unisorB0ping, realShape1, LOCAL_HWEVENT_ID4, LOCAL_HWEVENT_ID6, LOCAL_HWEVENT_ID6, firstKIter);
-                            } else {
-                                npu_matmulUnisor_ping(unisorC0ping, unisorA0pong, unisorB0ping, realShape1, LOCAL_HWEVENT_ID5, LOCAL_HWEVENT_ID6, LOCAL_HWEVENT_ID6, firstKIter);
-                            }
-
-                            if (lastKIter) {
-                                if (isFirst_K && isFirstMN) {
-                                    AscendC::CrossCoreWaitFlag(LOCAL_FLAGID7);
-                                }
-                                Dim2 posC1 = Dim2(1, write_point_count, 'M', 'N');
-                                Dim2 vecC1 = Dim2(cartesianUnisorM.vec.getAxisByName('M'), N_length1, 'M', 'N');
-                                Cartesian<Dim2> cartesianTempC1(posC1, vecC1);
-                                workUnisor.setCartesian(cartesianTempC1);
-                                npu_matmul_storeL0CToGM_New(workUnisor, unisorC0ping, LOCAL_HWEVENT_ID6, atomic_flag);
-                            }
+                        if (isEven)
+                        {
+                            A.setCartesian(cartesianTempA_GM1);
+                            cacheUnisorA.setCartesian(cartesianTempA_L11);
+                            unisorA0ping.setCartesian(cartesianTempA_L11);
+                            NPU_Load_GMToL0A_CacheL1(unisorA0ping, cacheUnisorA, A, LOCAL_FLAGID4, LOCAL_FLAGID0, LOCAL_FLAGID4, NN_firstflag, NN_lastflag, firstNIter);
+                        }
+                        else
+                        {
+                            A.setCartesian(cartesianTempA_GM1);
+                            cacheUnisorA.setCartesian(cartesianTempA_L11);
+                            unisorA0pong.setCartesian(cartesianTempA_L11);
+                            NPU_Load_GMToL0A_CacheL1(unisorA0pong, cacheUnisorA, A, LOCAL_FLAGID5, LOCAL_FLAGID1, LOCAL_FLAGID5, NN_firstflag, NN_lastflag, firstNIter);
                         }
 
-                        //输出1
-                        if (postFlag && g_coreType == AscendC::AIC) {
-                            AscendC::CrossCoreSetFlag<LOCAL_MODEID2, PIPE_FIX>(LOCAL_FLAGID4);
+                        B.setCartesian(cartesianTempB_GM1);
+                        unisorBping.setCartesian(cartesianTempB_L11);
+                        unisorB0ping.setCartesian(cartesianTempB_L11);
+                        NPU_Load_GMToL0B(unisorB0ping, unisorBping, B, LOCAL_FLAGID2, LOCAL_FLAGID6);
+
+                        if (isEven)
+                        {
+                            npu_matmulUnisor_ping(unisorC0ping, unisorA0ping, unisorB0ping, realShape1, LOCAL_FLAGID4, LOCAL_FLAGID6, LOCAL_FLAGID6, firstKIter);
+                        }
+                        else
+                        {
+                            npu_matmulUnisor_ping(unisorC0ping, unisorA0pong, unisorB0ping, realShape1, LOCAL_FLAGID5, LOCAL_FLAGID6, LOCAL_FLAGID6, firstKIter);
                         }
 
-                        if (postFlag && g_coreType == AscendC::AIV) {
-                            AscendC::CrossCoreWaitFlag(LOCAL_FLAGID4);
-                            Dim2 pos_Bias(group_index, cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
-                            Dim2 vec_Bias(1, N_length1, 'M', 'N');
-                            biasUnisor.setCartesian(pos_Bias, vec_Bias);
-
-                            Dim2 pos_Offset(group_index, cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
-                            Dim2 vec_Offset(1, N_length1, 'M', 'N');
-                            offsetUnisor.setCartesian(pos_Offset, vec_Offset);
-
-                            Dim2 pos_Sw(group_index, cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
-                            Dim2 vec_Sw(1, N_length1, 'M', 'N');
-                            swUnisor.setCartesian(pos_Sw, vec_Sw);
-
-                            Dim2 posWork = Dim2(1, write_point_count, 'M', 'N');
-                            Dim2 vecC1 = Dim2(cartesianUnisorM.vec.getAxisByName('M'), N_length1, 'M', 'N');
-                            Cartesian<Dim2> cartesianTempWork(posWork, vecC1);
-                            workUnisor.setCartesian(cartesianTempWork);
-
+                        if (lastKIter)
+                        {
                             Dim2 posC1 = Dim2(cartesianUnisorM.pos.getAxisByName('M'), cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
+                            Dim2 vecC1 = Dim2(cartesianUnisorM.vec.getAxisByName('M'), N_length1, 'M', 'N');
                             Cartesian<Dim2> cartesianTempC1(posC1, vecC1);
-                            unisorC.setCartesian(cartesianTempC1);
+                            workUnisor.setCartesian(cartesianTempC1);
 
-                            if (offset_enable) {
-                                npu_user_defined_matmul_kernel_slave_Post_Processing(unisorC, workUnisor, RowsumUnisor, biasUnisor, offsetUnisor, saUnisor, swUnisor);
-                            } else {
-                                npu_user_defined_matmul_kernel_slave_Post_Processing_off(unisorC, workUnisor, biasUnisor, saUnisor, swUnisor);
-                            }
-                        }
-
-                        if (lastKIter) {
-                            write_point_count++;
-                        }
-
-                        if (g_coreType == AscendC::AIC) {
-                            // ######### GM -> L0B
-                            unisorB.setCartesian(cartesianTempB_GM2);
-                            unisorBpong.setCartesian(cartesianTempB_L12);
-                            unisorB0pong.setCartesian(cartesianTempB_L12);
-                            npu_matmul_loadGMToL0B(unisorB0pong, unisorBpong, unisorB, LOCAL_HWEVENT_ID3, LOCAL_HWEVENT_ID7);
-
-                            if (isEven) {
-                                npu_matmulUnisor_pong(unisorC0pong, unisorA0ping, unisorB0pong, realShape2, LOCAL_HWEVENT_ID4, LOCAL_HWEVENT_ID7, LOCAL_HWEVENT_ID7, firstKIter);
-                            } else {
-                                npu_matmulUnisor_pong(unisorC0pong, unisorA0pong, unisorB0pong, realShape2, LOCAL_HWEVENT_ID5, LOCAL_HWEVENT_ID7, LOCAL_HWEVENT_ID7, firstKIter);
+                            if (first_flag) {
+                                SetFlag<HardEvent::FIX_MTE2>(LOCAL_FLAGID0);
+                                WaitFlag<HardEvent::FIX_MTE2>(LOCAL_FLAGID0);
+                                NPU_Load_GMToL1A_ND(unisorDeq, swUnisor);
+                                SetFlag<HardEvent::MTE2_FIX>(LOCAL_FLAGID0);
+                                WaitFlag<HardEvent::MTE2_FIX>(LOCAL_FLAGID0);
+                                first_flag = false;
                             }
 
-                            // ######### L0C -> GM
-                            if (lastKIter)
-                            {
-                                Dim2 posC2 = Dim2(1, write_point_count, 'M', 'N');
-                                Dim2 vecC2 = Dim2(cartesianUnisorM.vec.getAxisByName('M'), N_length2, 'M', 'N');
-                                Cartesian<Dim2> cartesianTempC2(posC2, vecC2);
-                                workUnisor.setCartesian(cartesianTempC2);
-                                npu_matmul_storeL0CToGM_New(workUnisor, unisorC0pong, LOCAL_HWEVENT_ID7, atomic_flag);
-                            }
+                            Dim2 pos_deq = Dim2(0, cartesianUnisorN.pos.getAxisByName('N')-posN.s[0]);
+                            Dim2 vec_deq = Dim2(1, N_length2);
+                            Cartesian<Dim2> cartesian_deq(pos_deq, vec_deq);
+                            unisorDeq.setCartesian(cartesian_deq);
+
+                            NPU_Store_L0CToGM(workUnisor, unisorC0ping, unisorDeq, LOCAL_FLAGID6, atomic_flag);
                         }
 
-                        //输出2
-                        if (postFlag && g_coreType == AscendC::AIC) {
-                            AscendC::CrossCoreSetFlag<LOCAL_MODEID2, PIPE_FIX>(LOCAL_FLAGID5);
+                        // ######### GM -> L0B
+                        B.setCartesian(cartesianTempB_GM2);
+                        unisorBpong.setCartesian(cartesianTempB_L12);
+                        unisorB0pong.setCartesian(cartesianTempB_L12);
+                        NPU_Load_GMToL0B(unisorB0pong, unisorBpong, B, LOCAL_FLAGID3, LOCAL_FLAGID7);
+
+                        if (isEven)
+                        {
+                            npu_matmulUnisor_pong(unisorC0pong, unisorA0ping, unisorB0pong, realShape2, LOCAL_FLAGID4, LOCAL_FLAGID7, LOCAL_FLAGID7, firstKIter);
+                        }
+                        else
+                        {
+                            npu_matmulUnisor_pong(unisorC0pong, unisorA0pong, unisorB0pong, realShape2, LOCAL_FLAGID5, LOCAL_FLAGID7, LOCAL_FLAGID7, firstKIter);
                         }
 
-                        if (postFlag && g_coreType == AscendC::AIV) {
-                            AscendC::CrossCoreWaitFlag(LOCAL_FLAGID5);
-                            Dim2 pos_Bias(group_index, cartesianUnisorN.pos.getAxisByName('N') + N_length1, 'M', 'N');
-                            Dim2 vec_Bias(1, N_length2, 'M', 'N');
-                            biasUnisor.setCartesian(pos_Bias, vec_Bias);
-
-                            Dim2 pos_Offset(group_index, cartesianUnisorN.pos.getAxisByName('N') + N_length1, 'M', 'N');
-                            Dim2 vec_Offset(1, N_length2, 'M', 'N');
-                            offsetUnisor.setCartesian(pos_Offset, vec_Offset);
-
-                            Dim2 pos_Sw(group_index, cartesianUnisorN.pos.getAxisByName('N') + N_length1, 'M', 'N');
-                            Dim2 vec_Sw(1, N_length2, 'M', 'N');
-                            swUnisor.setCartesian(pos_Sw, vec_Sw);
-
-                            Dim2 posWork = Dim2(1, write_point_count, 'M', 'N');
-                            Dim2 vecC2 = Dim2(cartesianUnisorM.vec.getAxisByName('M'), N_length2, 'M', 'N');
-                            Cartesian<Dim2> cartesianTempWork(posWork, vecC2);
-                            workUnisor.setCartesian(cartesianTempWork);
-
+                        // ######### L0C -> GM
+                        if (lastKIter)
+                        {
                             Dim2 posC2 = Dim2(cartesianUnisorM.pos.getAxisByName('M'), cartesianUnisorN.pos.getAxisByName('N') + N_length1, 'M', 'N');
+                            Dim2 vecC2 = Dim2(cartesianUnisorM.vec.getAxisByName('M'), N_length2, 'M', 'N');
                             Cartesian<Dim2> cartesianTempC2(posC2, vecC2);
-                            unisorC.setCartesian(cartesianTempC2);
+                            workUnisor.setCartesian(cartesianTempC2);
 
-                            if (offset_enable) {
-                                npu_user_defined_matmul_kernel_slave_Post_Processing(unisorC, workUnisor, RowsumUnisor, biasUnisor, offsetUnisor, saUnisor, swUnisor);
-                            } else {
-                                npu_user_defined_matmul_kernel_slave_Post_Processing_off(unisorC, workUnisor, biasUnisor, saUnisor, swUnisor);
-                            }
-
-                            if (isLastMN) {
-                                AscendC::CrossCoreSetFlag<LOCAL_MODEID2, PIPE_MTE3>(LOCAL_FLAGID7);
-                            }
-                        }
-                        if (lastKIter) {
-                            write_point_count++;
+                            Dim2 pos_deq = Dim2(0, cartesianUnisorN.pos.getAxisByName('N') + N_length1 -posN.s[0]);
+                            Dim2 vec_deq = Dim2(1, N_length2);
+                            Cartesian<Dim2> cartesian_deq(pos_deq, vec_deq);
+                            unisorDeq.setCartesian(cartesian_deq);
+                            NPU_Store_L0CToGM(workUnisor, unisorC0pong, unisorDeq, LOCAL_FLAGID7, atomic_flag);
                         }
                         count++;
                     }
                 }
             }
         }
-        if (g_coreType == AscendC::AIC) {
-            WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID0);
-            WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID1);
-            WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID2);
-            WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_HWEVENT_ID3);
 
-            WaitFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID4);
-            WaitFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID5);
-            WaitFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID6);
-            WaitFlag<HardEvent::M_MTE1>(LOCAL_HWEVENT_ID7);
-            WaitFlag<HardEvent::FIX_M>(LOCAL_HWEVENT_ID6);
-            WaitFlag<HardEvent::FIX_M>(LOCAL_HWEVENT_ID7);
-        }
+        WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID0);
+        WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID1);
+        WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID2);
+        WaitFlag<HardEvent::MTE1_MTE2>(LOCAL_FLAGID3);
+
+        WaitFlag<HardEvent::M_MTE1>(LOCAL_FLAGID4);
+        WaitFlag<HardEvent::M_MTE1>(LOCAL_FLAGID5);
+        WaitFlag<HardEvent::M_MTE1>(LOCAL_FLAGID6);
+        WaitFlag<HardEvent::M_MTE1>(LOCAL_FLAGID7);
+        WaitFlag<HardEvent::FIX_M>(LOCAL_FLAGID6);
+        WaitFlag<HardEvent::FIX_M>(LOCAL_FLAGID7);
+
         this->pipe->Reset();
     }
 
-    //INT32转Fp16,只转单核的数据 baseM * baseN
-    __aicore__ inline void npu_user_defined_matmul_kernel_slave_Post_Processing(Unisor<GlobalMem, Dim2> &unisorC, Unisor<GlobalMem, Dim2> &workUnisor,
-                                                                                Unisor<GlobalMem, Dim1> &RowsumUnisor, Unisor<GlobalMem, Dim2> &biasUnisor,
-                                                                                Unisor<GlobalMem, Dim2> &offsetUnisor, Unisor<GlobalMem, Dim1> &saUnisor,
-                                                                                Unisor<GlobalMem, Dim2> &swUnisor)
-    {
-    }
-
-    //INT32转Fp16,只转单核的数据 baseM * baseN
-    __aicore__ inline void npu_user_defined_matmul_kernel_slave_Post_Processing_off(Unisor<GlobalMem, Dim2> &unisorC, Unisor<GlobalMem, Dim2> &workUnisor,
-                                                                                    Unisor<GlobalMem, Dim2> &biasUnisor, Unisor<GlobalMem, Dim1> &saUnisor, Unisor<GlobalMem, Dim2> &swUnisor)
+    __aicore__ inline void npu_user_defined_matmul_kernel_slave_Post_Processing_off(Unisor<GlobalMem, Dim2> &C, Unisor<GlobalMem, Dim2> &workUnisor,
+                                                                                    Unisor<GlobalMem, Dim2> &biasUnisor,
+                                                                                    Unisor<GlobalMem, Dim1> &saUnisor,
+                                                                                    Unisor<GlobalMem, Dim2> &swUnisor)
     {
         //注意下面值不一定是16的倍数
         uint32_t pos_Work_M = workUnisor.pos.getAxisByName('M');
         uint32_t pos_Work_N = workUnisor.pos.getAxisByName('N');
         uint32_t write_point_count = pos_Work_N;
         uint32_t work_N = workUnisor.vec.getAxisByName('N');
+        float format_size = workUnisor.format_size;
 
-        uint32_t startOffset1 = (szMemL0C / FACTOR_2) * write_point_count;
-        uint32_t startOffset2 = (szMemL0C / FACTOR_2) * write_point_count + work_N * FACTOR_4;
+        uint32_t startOffset1 = (szAvailL0C / FACTOR_2) * write_point_count;
+        uint32_t startOffset2 = (szAvailL0C / FACTOR_2) * write_point_count + (int)(work_N * format_size);
 
         uint32_t single_M = workUnisor.vec.getAxisByName('M');
         if (single_M == 0) {
@@ -2184,14 +2048,14 @@ public:
             current_M = single_M;
         }
         if (current_M % FACTOR_2 != 0) {
-            current_M = current_M + 1;
+            current_M = current_M +1;
         }
         uint32_t current_N = workUnisor.vec.getAxisByName('N');
         if (current_N == 0) {
             return;
         }
-        uint32_t pos_M = unisorC.pos.getAxisByName('M');
-        uint32_t pos_N = unisorC.pos.getAxisByName('N');
+        uint32_t pos_M = C.pos.getAxisByName('M');
+        uint32_t pos_N = C.pos.getAxisByName('N');
         uint32_t pos_MM = pos_M;
         uint32_t rowsum_m = ceilINT(current_M, FACTOR_2);
 
@@ -2213,11 +2077,11 @@ public:
             return;
         }
 
-        //UB内存是192KB 需要三块Half大小的内存 每块不能超过64KB Base_M * Base_N <= 32 * 1024
-        uint32_t UB_Size = szMemUB - FACTOR_8 * current_N - FACTOR_4 * current_M;
-        uint32_t Base_M = UB_Size / FACTOR_2 / FACTOR_4 / current_N;
+        //UB内存是192KB 需要三块Half大小的内存 每块不能超过64KB Base_M*Base_N <= 32*1024
+        uint32_t ubSize = szAvailUB - FACTOR_4 * current_N - FACTOR_4 * current_M;
+        uint32_t Base_M = ubSize / FACTOR_12 / current_N;
         if (Base_M % FACTOR_2 != 0) {
-            Base_M  = Base_M - 1;
+            Base_M  = Base_M -1;
         }
 
         if (Base_M > current_M) {
@@ -2240,51 +2104,56 @@ public:
         Dim1 baseN(Base_N, 'N');
         CartesianIterator<Dim1> unisorIteratorN(cartesianN, baseN);
         Cartesian<Dim1> cartesianUnisorN;
+
         Dim2 pos_work(0, 0, 'M', 'N');
         Dim1 pos_work_d1(0, 'M');
         Dim2 vec_work(Base_M / FACTOR_2, Base_N, 'M', 'N');
 
         //Bias初始化
         Dim2 vec_bias(1, current_N, 'M', 'N');
+
         Unisor<UBMem, Dim2> UBUnisor_Bias;
-        UBUnisor_Bias.init_RealShape(vec_bias, FP32, this->pipe);
+        UBUnisor_Bias.init_RealShape(vec_bias, FACTOR_4, this->pipe);
         UBUnisor_Bias.setCartesian(pos_work, vec_bias);
         NPU_Load_GMToUB(UBUnisor_Bias, biasUnisor);
 
         //Sa初始化
         Dim1 vec_sa(Base_M / FACTOR_2, 'M');
+
         Unisor<UBMem, Dim1> UBUnisor_sa;
-        UBUnisor_sa.init(vec_sa, FP32, this->pipe);
+        UBUnisor_sa.init(vec_sa, FACTOR_4, this->pipe);
+
         Unisor<UBMem, Dim2> UBUnisor_sa_broadcast;
-        UBUnisor_sa_broadcast.init_RealShape(vec_work, FP32, this->pipe);
+        UBUnisor_sa_broadcast.init_RealShape(vec_work, FACTOR_4, this->pipe);
         UBUnisor_sa_broadcast.setCartesian(pos_work, vec_work);
 
-        //Sw初始化
-        Dim2 vec_sw(1, current_N, 'M', 'N');
-        Unisor<UBMem, Dim2> UBUnisor_sw;
-        UBUnisor_sw.init_RealShape(vec_sw, FP32, this->pipe);
-        UBUnisor_sw.setCartesian(pos_work, vec_sw);
-        NPU_Load_GMToUB(UBUnisor_sw, swUnisor);
-        AscendC::PipeBarrier<PIPE_MTE2>();
-
-        //UB
         Unisor<UBMem, Dim2> UBUnisor_FP32_A1;
-        UBUnisor_FP32_A1.init_RealShape(vec_work, FP32, this->pipe);
+        UBUnisor_FP32_A1.init_RealShape(vec_work, FACTOR_4, this->pipe);
+
         Unisor<UBMem, Dim2> UBUnisor_FP32_A2;
-        UBUnisor_FP32_A2.init_RealShape(vec_work, FP32, this->pipe);
+        UBUnisor_FP32_A2.init_RealShape(vec_work, FACTOR_4, this->pipe);
+
+        Unisor<UBMem, Dim2> UBUnisor_FP32_A1_FP16;
+        UBUnisor_FP32_A1_FP16.init_RealShape(vec_work, FACTOR_2, this->pipe);
+
+        Unisor<UBMem, Dim2> UBUnisor_FP32_A2_FP16;
+        UBUnisor_FP32_A2_FP16.init_RealShape(vec_work, FACTOR_2, this->pipe);
+
         Unisor<UBMem, Dim2> UBUnisor_FP16;
-        UBUnisor_FP16.init_RealShape(vec_work, FP16, this->pipe);
+        UBUnisor_FP16.init_RealShape(vec_work, FACTOR_2, this->pipe);
 
         uint32_t count = 0;
-        AscendC::SetFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
-        AscendC::SetFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
-        while (unisorIteratorM.posIterator(cartesianUnisorM)) {
-            while (unisorIteratorN.posIterator(cartesianUnisorN)) {
+        AscendC::SetFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
+        AscendC::SetFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
+        while (unisorIteratorM.posIterator(cartesianUnisorM))
+        {
+            while (unisorIteratorN.posIterator(cartesianUnisorN))
+            {
                 bool isEven = (count % FACTOR_2 == 0);
-                Dim2 posC = Dim2(cartesianUnisorM.pos.getAxisByName('M')-pos_M, cartesianUnisorN.pos.getAxisByName('N')-pos_N, 'M', 'N');
+                Dim2 posC = Dim2(cartesianUnisorM.pos.getAxisByName('M'), cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
                 Dim2 out_posC = Dim2(cartesianUnisorM.pos.getAxisByName('M') / FACTOR_2, cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
                 Dim2 vecC = Dim2(cartesianUnisorM.vec.getAxisByName('M') / FACTOR_2, cartesianUnisorN.vec.getAxisByName('N'), 'M', 'N');
-                Dim1 pos_sa = Dim1((cartesianUnisorM.pos.getAxisByName('M')) / FACTOR_2, 'M');
+                Dim1 pos_sa = Dim1(cartesianUnisorM.pos.getAxisByName('M') / FACTOR_2, 'M');
                 Dim1 vec_sa = Dim1(cartesianUnisorM.vec.getAxisByName('M') / FACTOR_2, 'M');
                 Dim2 pos_sw = Dim2(0, cartesianUnisorN.pos.getAxisByName('N'), 'M', 'N');
                 Dim2 vec_sw = Dim2(1, cartesianUnisorN.vec.getAxisByName('N'), 'M', 'N');
@@ -2293,52 +2162,60 @@ public:
                 workUnisor.setCartesian(posC, vecC);
                 UBUnisor_FP32_A1.setCartesian(pos_work, vecC);
                 UBUnisor_FP32_A2.setCartesian(pos_work, vecC);
+                UBUnisor_FP32_A1_FP16.setCartesian(pos_work, vecC);
+                UBUnisor_FP32_A2_FP16.setCartesian(pos_work, vecC);
                 UBUnisor_FP16.setCartesian(pos_work, vecC);
                 saUnisor.setCartesian(pos_sa, vec_sa);
                 UBUnisor_sa.setCartesian(pos_work_d1, vec_sa);
                 UBUnisor_sa_broadcast.setCartesian(pos_work, vecC);
 
-                AscendC::WaitFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
-                NPU_Load_GMToUB_ByStride_ByOffset(UBUnisor_FP32_A1, workUnisor, startOffset1);
-                NPU_Load_GMToUB_ByStride_ByOffset(UBUnisor_FP32_A2, workUnisor, startOffset2);
+                AscendC::WaitFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
+                NPU_Load_GMToUB(UBUnisor_FP32_A1_FP16, workUnisor, FACTOR_2);
+                posC.s[0] = posC.s[0] + 1;
+                workUnisor.setCartesian(posC, vecC);
+                NPU_Load_GMToUB(UBUnisor_FP32_A2_FP16, workUnisor, FACTOR_2);
                 NPU_Load_GMToUB(UBUnisor_sa, saUnisor);
-                AscendC::SetFlag<HardEvent::MTE2_V>(LOCAL_HWEVENT_ID2);
-                AscendC::WaitFlag<HardEvent::MTE2_V>(LOCAL_HWEVENT_ID2);
+                AscendC::SetFlag<HardEvent::MTE2_V>(LOCAL_FLAGID2);
+                AscendC::WaitFlag<HardEvent::MTE2_V>(LOCAL_FLAGID2);
+
+                NPU_Cast<float, half>(UBUnisor_FP32_A1, UBUnisor_FP32_A1_FP16);
+                NPU_Cast<float, half>(UBUnisor_FP32_A2, UBUnisor_FP32_A2_FP16);
+
                 NPU_Broadcast(UBUnisor_sa_broadcast, UBUnisor_sa);
 
                 //A1乘16
-                const int32_t sixteen = FACTOR_16;
-                NPU_Muls_int32_t(UBUnisor_FP32_A1, UBUnisor_FP32_A1, sixteen);
-                //A1 + A2
-                NPU_Add_int32_t(UBUnisor_FP32_A1, UBUnisor_FP32_A1, UBUnisor_FP32_A2);
-                AscendC::PipeBarrier<PIPE_V>();
-                NPU_Cast_INT32ToFP32(UBUnisor_FP32_A1, UBUnisor_FP32_A1);
-                AscendC::PipeBarrier<PIPE_V>();
-                //A1反量化
-                NPU_VecMuls(UBUnisor_FP32_A1, UBUnisor_sw, UBUnisor_FP32_A1);
+                const float sixteen = 16.0;
+                NPU_Muls(UBUnisor_FP32_A1, UBUnisor_FP32_A1, sixteen);
+
+                //A1+A2
+                NPU_Add_float(UBUnisor_FP32_A1, UBUnisor_FP32_A1, UBUnisor_FP32_A2);
 
                 NPU_Add_Bias(UBUnisor_FP32_A1, UBUnisor_Bias);
-                AscendC::PipeBarrier<PIPE_V>();
+
                 // * Sa
                 NPU_VecMul(UBUnisor_FP32_A1, UBUnisor_sa_broadcast, UBUnisor_FP32_A1);
+
                 //2、FP32->FP16
-                AscendC::WaitFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
+                AscendC::WaitFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
                 if (this->output_type == 0) {
-                    NPU_Cast_FP32ToFP16(UBUnisor_FP16, UBUnisor_FP32_A1);
+                    NPU_Cast<half, float>(UBUnisor_FP16, UBUnisor_FP32_A1);
                 } else {
-                    NPU_Cast_FP32ToBF16(UBUnisor_FP16, UBUnisor_FP32_A1);
+                    NPU_Cast<bfloat16_t, float>(UBUnisor_FP16, UBUnisor_FP32_A1, AscendC::RoundMode::CAST_RINT);
                 }
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::SetFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
-                AscendC::SetFlag<HardEvent::V_MTE3>(LOCAL_HWEVENT_ID3);
-                AscendC::WaitFlag<HardEvent::V_MTE3>(LOCAL_HWEVENT_ID3);
-                unisorC.setCartesian(out_posC, vecC);
-                NPU_Load_UBToGM(unisorC, UBUnisor_FP16);
-                AscendC::SetFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
+
+                AscendC::SetFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
+                AscendC::SetFlag<HardEvent::V_MTE3>(LOCAL_FLAGID3);
+                AscendC::WaitFlag<HardEvent::V_MTE3>(LOCAL_FLAGID3);
+
+                //3、UB->GM
+                C.setCartesian(out_posC, vecC);
+                NPU_Load_UBToGM(C, UBUnisor_FP16);
+                AscendC::SetFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
             }
         }
-        AscendC::WaitFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
-        AscendC::WaitFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
+        AscendC::WaitFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
+        AscendC::WaitFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
+
         this->pipe->Reset();
     }
 
@@ -2349,23 +2226,24 @@ public:
         uint32_t BlockIdx = GetBlockIdx();
         uint32_t M_length = in.vec.s[0];
         uint32_t K_length = in.vec.s[1];
+
         //切分成40个Vector核计算
-        uint32_t singleM = ceilINT(M_length,nCoreAIV);
+        uint32_t singleM = ceilINT(M_length, nCoreAIV);
+        singleM = ceilINT_16(singleM);
+        if (singleM < FACTOR_32) {
+            singleM = FACTOR_32;
+        }
         uint32_t singleK = K_length;
 
         //注意！！！BaseM要根据下面使用了多少个UB Unisor来计算
-        uint32_t BaseM = 0;
-        if (singleK != 0) {
-            BaseM = (szMemUB-singleK) / singleK / FACTOR_7;
-        }
-
+        uint32_t BaseM = (szAvailUB - singleK) / singleK / FACTOR_7;
         if (BaseM > M_length) {
             BaseM = M_length;
         }
 
         Dim2 baseTiling(BaseM, singleK, 'M', 'K');
 
-        if (BlockIdx * singleM > M_length) {//已算完
+        if (BlockIdx * singleM > M_length) { //已算完
             return ;
         }
 
@@ -2395,81 +2273,6 @@ public:
         Dim2 posIn = Dim2(posM_in, posK_in, 'M', 'K');
         Dim2 vecIn = Dim2(current_M, singleK, 'M', 'K');
         inputUnisor.setCartesian(posIn, vecIn);
-
-        Dim2 posHighOut = Dim2(posM_out, posK_out, 'M', 'K');
-        Dim2 vecOut = Dim2(current_M, singleK, 'M', 'K');
-        outputHighUnisor.setCartesian(posHighOut, vecOut);
-
-        InternalRun_off(inputUnisor, outputHighUnisor, outputLowUnisor, baseTiling);
-        this->pipe->Reset();
-    }
-
-    // Note!, this function is only for 2 singleCoreAIV. That is to say, call this function once, two AIVs compute!
-    __aicore__ inline void npu_user_defined_matmul_kernel_slave_Double_A8ToA4_off(Unisor<GlobalMem, Dim2> in, Unisor<GlobalMem, Dim2> out, uint32_t a8M_length)
-    {
-        //多核切分
-        uint32_t BlockIdx = GetBlockIdx() % FACTOR_2;
-        uint32_t M_length = in.vec.s[0];
-        uint32_t K_length = in.vec.s[1];
-
-        if (in.pos.s[0] + M_length >= a8M_length) {
-            M_length = a8M_length - in.pos.s[0];
-        }
-
-        //切分成 2 个Vector核计算
-        uint32_t singleM = ceilINT(M_length, FACTOR_2); // must be a multiple of 8.
-        uint32_t singleK = K_length;
-
-        //注意！！！BaseM要根据下面使用了多少个UB Unisor来计算
-        uint32_t BaseM = 0;
-        if (singleK != 0) {
-            BaseM = (szMemUB - singleK) / singleK / FACTOR_7;
-        }
-
-        if (BaseM > M_length) {
-            BaseM = M_length;
-        }
-
-        Dim2 baseTiling(BaseM, singleK, 'M', 'K');
-
-        if (BlockIdx * singleM > M_length) {//已算完
-            return ;
-        }
-
-        uint32_t current_M = singleM;
-        if ((BlockIdx + 1) * singleM > M_length) {
-            current_M = M_length - (BlockIdx * singleM);
-        }
-
-        if (current_M == 0) {
-            return;
-        }
-
-        uint32_t posM_in = in.pos.s[0] + BlockIdx * singleM;
-        uint32_t posK_in = in.pos.s[1];
-        uint32_t posM_out = out.pos.s[0] + BlockIdx * singleM;
-        uint32_t posK_out = out.pos.s[1];
-
-        if (posM_in >= a8M_length) {//a8 complete
-            return;
-        }
-
-        in.pos.setAxisName('M', 'K');
-        in.vec.setAxisName('M', 'K');
-        out.pos.setAxisName('M', 'K');
-        out.vec.setAxisName('M', 'K');
-
-        Unisor<GlobalMem, Dim2> inputUnisor(in);
-        Unisor<GlobalMem, Dim2> outputHighUnisor(out);
-        Unisor<GlobalMem, Dim2> outputLowUnisor(out);
-
-        Dim2 posIn = Dim2(posM_in, posK_in, 'M', 'K');
-        Dim2 vecIn = Dim2(current_M, singleK, 'M', 'K');
-        inputUnisor.setCartesian(posIn, vecIn);
-
-        Dim2 posHighOut = Dim2(posM_out, posK_out, 'M', 'K');
-        Dim2 vecOut = Dim2(current_M, singleK, 'M', 'K');
-        outputHighUnisor.setCartesian(posHighOut, vecOut);
 
         InternalRun_off(inputUnisor, outputHighUnisor, outputLowUnisor, baseTiling);
         this->pipe->Reset();
@@ -2478,8 +2281,6 @@ public:
     __aicore__ inline void InternalRun_off(Unisor<GlobalMem, Dim2> in, Unisor<GlobalMem, Dim2> outHigh, Unisor<GlobalMem, Dim2> outLow, Dim2 &baseTiling)
     {
         uint32_t posM_in = in.pos.getAxisByName('M');
-        uint32_t posM_outHigh = outHigh.pos.getAxisByName('M');
-        uint32_t posM_outLow = outLow.pos.getAxisByName('M');
         Dim1 posM(0, 'M');
         Dim1 vecM(in.vec.getAxisByName('M'), 'M');
         Cartesian<Dim1> cartesianM(posM, vecM);
@@ -2506,7 +2307,7 @@ public:
         Unisor<UBMem, Dim2> lowUnisor;
         Unisor<UBMem, Dim2> lowInt4Unisor;
         {
-            Dim1 maskDim(baseK.getAxisByName('K'), 'K');
+            Dim1 maskDim(MUL_BYTES / INT8, 'K');
             maskUnisor.init_RealShape(maskDim, INT8, this->pipe);
             Dim2 vecIn(baseM.getAxisByName('M'), baseK.getAxisByName('K'), 'M', 'K');
             unisorIn.init_RealShape(vecIn, INT8, this->pipe);
@@ -2521,11 +2322,13 @@ public:
         // extract the lower 4 bits of each int8 of 'in'.
         NPU_Duplicate<uint16_t>(maskUnisor, 0x0f0fU);
 
-        SetFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
-        SetFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID0);
-        SetFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
-        while (unisorIteratorM.posIterator(cartesianUnisorM)) {
-            while (unisorIteratorK.posIterator(cartesianUnisorK)) {
+        SetFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
+        SetFlag<HardEvent::MTE3_V>(LOCAL_FLAGID0);
+        SetFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
+        while (unisorIteratorM.posIterator(cartesianUnisorM))
+        {
+            while (unisorIteratorK.posIterator(cartesianUnisorK))
+            {
                 Dim2 posIn(cartesianUnisorM.pos.getAxisByName('M') + posM_in,
                            cartesianUnisorK.pos.getAxisByName('K'),
                            'M', 'K');
@@ -2533,7 +2336,7 @@ public:
                            cartesianUnisorK.vec.getAxisByName('K'),
                            'M', 'K');
                 Dim2 posHighOut(cartesianUnisorM.pos.getAxisByName('M') * FACTOR_2 + posM_in * FACTOR_2,
-                               cartesianUnisorK.pos.getAxisByName('K'),
+                                cartesianUnisorK.pos.getAxisByName('K'),
                                'M', 'K');
                 Dim2 posLowOut(cartesianUnisorM.pos.getAxisByName('M') * FACTOR_2 + posM_in * FACTOR_2 + 1,
                                cartesianUnisorK.pos.getAxisByName('K'),
@@ -2545,58 +2348,66 @@ public:
                 in.setCartesian(cartesianIn);
                 outHigh.setCartesian(cartesianHighOut);
                 outLow.setCartesian(cartesianLowOut);
+
                 // Step 1: Load a unisor of input data into 'unisorIn'.
-                WaitFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
+                WaitFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
                 NPU_Load(unisorIn, in);
-                SetFlag<HardEvent::MTE2_V>(LOCAL_HWEVENT_ID0);
-                WaitFlag<HardEvent::MTE2_V>(LOCAL_HWEVENT_ID0);
+                SetFlag<HardEvent::MTE2_V>(LOCAL_FLAGID0);
+                WaitFlag<HardEvent::MTE2_V>(LOCAL_FLAGID0);
 
                 //
                 // Higher 4 bits
                 //
+
                 // Step 2: Cast 'unisorIn' to fp16, and save the results to 'highUnisor'.
                 NPU_Cast<half, int8_t>(highUnisor, unisorIn);
+
+                // Step 6: Extract the lower 4 bits of each int8.
+                NPU_And(lowInt8Unisor, unisorIn, maskUnisor);
+                SetFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
+
                 // Step 3: Divide 'highUnisor' by 1/16 element-wisely to extract
                 // the higher 4 bits of each number.
                 const half one_over_sixteen = 0.0625;
                 NPU_Muls(highUnisor, highUnisor, one_over_sixteen);
+
                 // Step 4: Cast 'highUnisor' to int4.
-                WaitFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID0);
+                WaitFlag<HardEvent::MTE3_V>(LOCAL_FLAGID0);
                 NPU_Cast<int4b_t, half>(highInt4Unisor, highUnisor, AscendC::RoundMode::CAST_FLOOR);
-                SetFlag<HardEvent::V_MTE3>(LOCAL_HWEVENT_ID0);
-                WaitFlag<HardEvent::V_MTE3>(LOCAL_HWEVENT_ID0);
+                SetFlag<HardEvent::V_MTE3>(LOCAL_FLAGID0);
+                WaitFlag<HardEvent::V_MTE3>(LOCAL_FLAGID0);
+
                 // Step 5: Store 'highInt4Unisor' back to global memory.
                 NPU_Store(outHigh, highInt4Unisor);
-                SetFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID0);
+                SetFlag<HardEvent::MTE3_V>(LOCAL_FLAGID0);
 
                 //
                 // Lower 4 bits
                 //
-                // Step 6: Extract the lower 4 bits of each int8.
-                NPU_And(lowInt8Unisor, unisorIn, maskUnisor);
-                SetFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
+
                 // Step 7: Cast 'lowInt8Unisor' to half.
                 NPU_Cast<half, int8_t>(lowUnisor, lowInt8Unisor);
+
                 // Step 8: Subtract 8 from 'lowUnisor'.
                 const half neg_eight = -8.0;
                 NPU_Adds(lowUnisor, lowUnisor, neg_eight);
+
                 // Step 9: Cast 'lowUnisor' to int4.
-                WaitFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
+                WaitFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
                 NPU_Cast<int4b_t, half>(lowInt4Unisor, lowUnisor);
-                SetFlag<HardEvent::V_MTE3>(LOCAL_HWEVENT_ID1);
-                WaitFlag<HardEvent::V_MTE3>(LOCAL_HWEVENT_ID1);
+                SetFlag<HardEvent::V_MTE3>(LOCAL_FLAGID1);
+                WaitFlag<HardEvent::V_MTE3>(LOCAL_FLAGID1);
+
                 // Step 10: Store 'lowInt4Unisor' back to global memory.
                 NPU_Store(outLow, lowInt4Unisor);
-                SetFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
+                SetFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
             }
         }
-        WaitFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID0);
-        WaitFlag<HardEvent::MTE3_V>(LOCAL_HWEVENT_ID1);
-        WaitFlag<HardEvent::V_MTE2>(LOCAL_HWEVENT_ID0);
+        WaitFlag<HardEvent::MTE3_V>(LOCAL_FLAGID0);
+        WaitFlag<HardEvent::MTE3_V>(LOCAL_FLAGID1);
+        WaitFlag<HardEvent::V_MTE2>(LOCAL_FLAGID0);
     }
 };
-
-#define MAX_GROUP_LEN 256
 
 __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_ADDR gmC, GM_ADDR gmGrpList,
                                                   GM_ADDR gmBias, GM_ADDR gmOffset, GM_ADDR gmSa, GM_ADDR gmSw,
@@ -2620,9 +2431,9 @@ __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_A
     op.pattern = pattern;
     op.nCoreAIC = numAic;
     op.nCoreAIV = numAiv;
-    op.szMemUB = tiling_data->szUb;
-    op.szMemL0AB = tiling_data->szL0A;
-    op.szMemL0C = tiling_data->szL0C;
+    op.szAvailUB = tiling_data->szUb;
+    op.szAvailL0A = tiling_data->szL0A;
+    op.szAvailL0C = tiling_data->szL0C;
     op.pattern = pattern;
     op.output_type = tiling_data->output_type;
 
@@ -2643,7 +2454,7 @@ __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_A
     uint32_t group_num = tiling_data->group_num;
 
     //Group总长度
-    uint32_t total_M = ori_out_shape[0];               // 16384
+    uint32_t total_M = 0;                              // 16384
     uint32_t total_N = ori_out_shape[1];               // 4096
     uint32_t total_K_A = ori_in0_shape[1];             // 7168
     uint32_t total_K_B = ori_in0_shape[1] * group_num; // 512
@@ -2663,13 +2474,43 @@ __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_A
     float format_in = tiling_data->format_in;
     float format_out = tiling_data->format_out;
 
+    GlobalTensor<uint64_t> groupListGm;
+    groupListGm.SetGlobalBuffer((__gm__ uint64_t *)gmGrpList);
+
+    uint32_t true_group_num = 0;
+    for (uint32_t group_idx = 0; group_idx < group_num; group_idx++) {
+        if (group_type == 0) { // 从m轴方向切割
+            int64_t mSizeInGroup = static_cast<int64_t>(groupListGm.GetValue(group_idx));
+            if (mSizeInGroup != 0) {
+                true_group_num += 1;
+            }
+            M_Lengths[group_idx] = mSizeInGroup * FACTOR_2;
+            total_M += M_Lengths[group_idx];
+        }
+    }
+
+    constexpr uint32_t TOTAL_N_THRESHOLD_1024 = 1024;
+    constexpr uint32_t TOTAL_N_THRESHOLD_512 = 512;
+    constexpr float USAGE_RATE_THRESHOLD_1024 = 0.9f;
+    constexpr float USAGE_RATE_THRESHOLD_512 = 0.8f;
+
+    uint32_t E_M_length = ceilINT(total_M, true_group_num);
+    int32_t UsageRate512 = ceilINT(total_N, TOTAL_N_THRESHOLD_512) * ceilINT(E_M_length, single_M) * true_group_num;
+    int32_t virtualCoreNum512 = ceilINT((uint32_t)UsageRate512, numAic) * numAic;
+    int32_t UsageRate1024 = ceilINT(total_N, TOTAL_N_THRESHOLD_1024) * ceilINT(E_M_length, single_M) * true_group_num;
+    int32_t virtualCoreNum1024 = ceilINT((uint32_t)UsageRate1024, numAic) * numAic;
+    if ((float)UsageRate1024/virtualCoreNum1024 >= USAGE_RATE_THRESHOLD_1024) {
+        single_N = TOTAL_N_THRESHOLD_1024;//single_N
+    } else if ((float)UsageRate512/virtualCoreNum512 >= USAGE_RATE_THRESHOLD_512) {
+        single_N = TOTAL_N_THRESHOLD_512;//single_N
+    }
     Dim2 vecC(total_M / FACTOR_2, total_N);
     Dim2 vecD(total_M, total_N);
     Dim2 vecB;
 
-    if (pattern == 1) {//B不转置
+    if (pattern == 1) { //B不转置
         vecB = Dim2(total_K_B, total_N);
-    } else {//B转置
+    } else { //B转置
         vecB = Dim2(total_N, total_K_B);
     }
 
@@ -2681,26 +2522,18 @@ __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_A
     Dim2 vec_sw(group_num, total_N);
     Dim2 vecWork(single_M, single_N);
     Dim1 vecWorkRow(total_M / FACTOR_2);
-    // workspaceSize的格式依次是：GMM的输出，a8转a4的空间，软同步的空间，offset的空间
-    uint32_t pingOffset = (blockId * GmmWorkSpaceAmount) * INT32;
-    Unisor<GlobalMem, Dim2> workUnisorPing((gmWorkspaceDevice + pingOffset), vecWork, INT32);
 
-    uint32_t Temp_A_Offset = numAic * GmmWorkSpaceAmount * INT32;
+    Unisor<GlobalMem, Dim2> workUnisorPing(gmWorkspaceDevice, vecD, INT16);
+    uint32_t Temp_A_Offset = total_M * total_N * INT16;
     Unisor<GlobalMem, Dim2> inputA_workUnisor(gmWorkspaceDevice + Temp_A_Offset, vecA_Work, INT4);
 
-    uint32_t SyncOffset = Temp_A_Offset + (ceilINT_16(total_M) * total_K_A / FACTOR_2 * sizeof(uint8_t));
-    GlobalTensor<uint64_t> SyncUnisor;
-    SyncUnisor.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(gmWorkspaceDevice + SyncOffset), ceilINT_16(total_M) * SoftwareWorkSpaceEle / sizeof(uint64_t));
-
-    uint32_t rowOffset = SyncOffset + ceilINT_16(total_M) * SoftwareWorkSpaceEle;
-    Unisor<GlobalMem, Dim1> RowsumUnisor((gmWorkspaceDevice + rowOffset), vecWorkRow, FP32, true);
     Unisor<GlobalMem, Dim2> inputAUnisor(gmA, vecA, INT8);
     Unisor<GlobalMem, Dim2> inputBUnisor(gmB, vecB, format_in);
     Unisor<GlobalMem, Dim2> outputCUnisor(gmC, vecC, format_out);
+
     Unisor<GlobalMem, Dim2> biasUnisor(gmBias, vec_bias, INT32, true);
-    Unisor<GlobalMem, Dim2> offsetUnisor(gmOffset, vec_offset, FP32, true);
     Unisor<GlobalMem, Dim1> saUnisor(gmSa, vec_sa, FP32, true);
-    Unisor<GlobalMem, Dim2> swUnisor(gmSw, vec_sw, FP32, true);
+    Unisor<GlobalMem, Dim2> swUnisor(gmSw, vec_sw, INT64, true);
 
     uint32_t work_count = 0;
 
@@ -2732,207 +2565,107 @@ __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_A
     workUnisorPing.vec.setAxisName('M', 'N');
     workUnisorPing.vector_val.setAxisName('M', 'N');
 
-    uint8_t required_core_num = tiling_data->required_core_num;
     uint8_t kernel_index = tiling_data->kernel_index;
-    uint32_t splitTimes = tiling_data->splitTimes;
-    uint32_t core_id = 0;
+    uint32_t aicCoreId = 0;
 
-    GlobalTensor<int64_t> groupListGm;
-    groupListGm.SetGlobalBuffer((__gm__ int64_t *)gmGrpList);
-
-    for (uint32_t group_idx = 0; group_idx < group_num; group_idx++) {
-        if (group_type == 0) { // 从m轴方向切割
-        int64_t mSizeInGroup = static_cast<int64_t>(groupListGm.GetValue(group_idx));
-        M_Lengths[group_idx] = mSizeInGroup * FACTOR_2;
-        }
-    }
-
-    uint32_t posInOffset = 0, posOutOffset = 0;
     uint32_t pos_M_Offset = 0;
-    // true：只有硬同步； false：硬 + 软同步混合;  我们可以将该变量加入到tiling_data中，这样可以由tiling自动选择是否开启软同步；default：硬 + 软同步混合
-    bool hardSyncFlag = true;
-    uint32_t hardSyncRounds = op.ceilINT(HardWareSyncAmount, single_M * numAic); // 硬 + 软同步混合中 硬同步的计算量
-    uint32_t preComputeAmount = single_M * numAic * hardSyncRounds;
+    {
+        if (g_coreType == AscendC::AIV) {
+            uint32_t mIn = total_M / FACTOR_2;
+            uint32_t mOut = total_M;
+            Dim2 vecIn(mIn, total_K_A);
+            Dim2 vecOut(mOut, total_K_A);
+            Dim2 posIn(0, 0);
+            Dim2 posOut(0, 0);
 
-    if (hardSyncFlag) {
-        preComputeAmount = total_M / FACTOR_2;
-    }
+            inputAUnisor.setCartesian(posIn, vecIn);
+            inputA_workUnisor.setCartesian(posOut, vecOut); //两倍关系
 
-    if (g_coreType == AscendC::AIV) {
-        uint32_t mIn = preComputeAmount;
-        mIn = mIn > (total_M / FACTOR_2) ? (total_M / FACTOR_2) : mIn;
-        uint32_t mOut = mIn * FACTOR_2;
-        Dim2 vecIn(mIn, total_K_A);
-        Dim2 vecOut(mOut, total_K_A);
-        Dim2 posIn(0, 0);
-        Dim2 posOut(0, 0);
-
-        inputAUnisor.setCartesian(posIn, vecIn);
-        inputA_workUnisor.setCartesian(posOut, vecOut); //两倍关系
-        Dim1 posRowsum(0);
-        Dim1 vecRowsum(mIn);
-        RowsumUnisor.setCartesian(posRowsum, vecRowsum);
-        if (op.offset_enable) {
-            return;
-        } else {
             op.npu_user_defined_matmul_kernel_slave_Single_A8ToA4_off(inputAUnisor, inputA_workUnisor);
+
+            SetFlag<HardEvent::MTE3_S>(LOCAL_FLAGID0);
+            WaitFlag<HardEvent::MTE3_S>(LOCAL_FLAGID0);
+
+            AscendC::SyncAll<false>();
         }
 
-        SetFlag<HardEvent::MTE3_S>(LOCAL_HWEVENT_ID0);
-        WaitFlag<HardEvent::MTE3_S>(LOCAL_HWEVENT_ID0);
+        if (g_coreType == AscendC::AIC){
+            AscendC::SyncAll<false>();
+        }
 
-        posInOffset = mIn;
-        posOutOffset = mOut;
-
-        SyncUnisor.SetValue(blockIdx * INT64, posOutOffset);
-        AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(SyncUnisor[blockIdx * INT64]);
-        AscendC::PipeBarrier<PIPE_ALL>();
-
-        AscendC::SyncAll<false>();
-    }
-
-    if (g_coreType == AscendC::AIC) {
-        AscendC::SyncAll<false>();
-    }
-
-    if (g_coreType == AscendC::AIV) {
-        AscendC::CrossCoreSetFlag<LOCAL_MODEID2, PIPE_MTE3>(LOCAL_FLAGID7);
-    }
-
-    //Cube计算 + 后处理
-    for (int32_t i=0; i<group_num; i++) {
-        auto M_Length = M_Lengths[i];
-
-        uint32_t pos_M = pos_M_Offset;
-        uint32_t pos_N = 0;
-        uint32_t pos_K_group = i * total_K_A;
-        uint32_t pos_N_group = i * total_N;
-
-        pos_M_Offset += M_Length;
-
-        Dim1 C0pos(pos_M, 'M'), C0vec(M_Length, 'M');
-        Cartesian<Dim1> multiCoreCartesianC0(C0pos, C0vec);
-        Dim1 singleCoreCTilingS0(single_M, 'M');
-        CartesianIterator<Dim1> multiCoreUnisorIterator0(multiCoreCartesianC0, singleCoreCTilingS0);
-        Cartesian<Dim1> multiCoreCartesianUnisorC0;
-
-        Dim1 C1pos(pos_N, 'N'), C1vec(N_Length, 'N');
-        Cartesian<Dim1> multiCoreCartesianC1(C1pos, C1vec);
-        Dim1 singleCoreCTilingS1(single_N, 'N');
-        CartesianIterator<Dim1> multiCoreUnisorIterator1(multiCoreCartesianC1, singleCoreCTilingS1);
-        Cartesian<Dim1> multiCoreCartesianUnisorC1;
-
-        while (multiCoreUnisorIterator0.posIterator(multiCoreCartesianUnisorC0)) {
-            bool once_flag = false;
-            while (multiCoreUnisorIterator1.posIterator(multiCoreCartesianUnisorC1)) {
-                if ((core_id % numAic) == blockId) {
-                    //前处理
-                    if (g_coreType == AscendC::AIV && !once_flag && !hardSyncFlag) {
-                        int mIn = single_M / FACTOR_2;
-                        int mOut = single_M;
-                        Dim2 vecIn(mIn, total_K_A);
-                        Dim2 vecOut(mOut, total_K_A);
-                        Dim2 posIn(posInOffset, 0);
-                        Dim2 posOut(posOutOffset, 0);
-
-                        inputAUnisor.setCartesian(posIn, vecIn);
-                        inputA_workUnisor.setCartesian(posOut, vecOut); //两倍关系
-                        Dim1 posRowsum(posInOffset);
-                        Dim1 vecRowsum(mIn);
-                        RowsumUnisor.setCartesian(posRowsum, vecRowsum);
-                        if (op.offset_enable) {
-                            return;
-                        } else {
-                            op.npu_user_defined_matmul_kernel_slave_Double_A8ToA4_off(inputAUnisor, inputA_workUnisor, total_M / FACTOR_2);
-                        }
-                        SetFlag<HardEvent::MTE3_S>(LOCAL_HWEVENT_ID0);
-                        WaitFlag<HardEvent::MTE3_S>(LOCAL_HWEVENT_ID0);
-
-                        //软同步
-                        if (blockIdx % FACTOR_2 != 0) {
-                        SyncUnisor.SetValue(blockIdx * INT64, posOutOffset + mOut / FACTOR_2);
-                        } else {
-                        SyncUnisor.SetValue(blockIdx * INT64, posOutOffset + mOut);
-                        }
-                        AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(SyncUnisor[blockIdx * INT64]);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-
-                        once_flag = true;
-                    }
-
-                    Dim2 posA = Dim2(multiCoreCartesianUnisorC0.pos.getAxisByName('M'), 0, 'M', 'K');
-                    Dim2 vecA = Dim2(multiCoreCartesianUnisorC0.vec.getAxisByName('M'), single_K, 'M', 'K');
-                    inputA_workUnisor.setCartesian(posA, vecA);
-
-                    //B不转置
-                    if (pattern == 1) {
-                        Dim2 posB = Dim2(pos_N_group, multiCoreCartesianUnisorC1.pos.getAxisByName('N'), 'K', 'N');
-                        Dim2 vecB = Dim2(single_K, multiCoreCartesianUnisorC1.vec.getAxisByName('N'), 'K', 'N');
-                        inputBUnisor.vector_val.s[0] = total_K_A;
-                        inputBUnisor.setCartesian(posB, vecB);
-                    } else {
-                        Dim2 posB = Dim2(multiCoreCartesianUnisorC1.pos.getAxisByName('N'), pos_K_group, 'N', 'K');
-                        Dim2 vecB = Dim2(multiCoreCartesianUnisorC1.vec.getAxisByName('N'), single_K, 'N', 'K');
-                        inputBUnisor.setCartesian(posB, vecB);
-                    }
-
-                    Dim2 posC(multiCoreCartesianUnisorC0.pos.getAxisByName('M'), multiCoreCartesianUnisorC1.pos.getAxisByName('N'), 'M', 'N');
-                    Dim2 vecC(multiCoreCartesianUnisorC0.vec.getAxisByName('M'), multiCoreCartesianUnisorC1.vec.getAxisByName('N'), 'M', 'N');
-                    outputCUnisor.setCartesian(posC, vecC);
-                    workUnisorPing.setCartesian(posC, vecC);
-                    bool isEven = (work_count % FACTOR_2 == 0);
-                    work_count++;
-
-                    //Cube核
-                    if (g_coreType == AscendC::AIC) {
-                        bool sync_flag = hardSyncFlag;
-                        uint8_t hit_count = 0;
-                        uint64_t index = 0;
-                        uint64_t aic_current_field = multiCoreCartesianUnisorC0.pos.getAxisByName('M') + single_M;
-                        if (aic_current_field > total_M ) {
-                            aic_current_field = total_M;
-                        }
-                        while(!sync_flag) {
-                            for (int sync_index = 0; sync_index < numAiv; sync_index++) {
-                                index = (uint64_t)SyncUnisor.GetValue(sync_index * INT64);
-                                if (index >= aic_current_field) {
-                                    hit_count++;
-                                }
-                                if(hit_count == numAiv){
-                                    sync_flag = true;
-                                }
-                            }
-                            if (sync_flag) {
-                                break;
-                            }
-
-                            for (int sync_index = 0; sync_index < numAiv; sync_index++) {
-                                AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(SyncUnisor[sync_index * FACTOR_64]);
-                                index = (uint64_t)SyncUnisor.GetValue(sync_index * INT64);
-                                if (index >= aic_current_field) {
-                                    hit_count++;
-                                }
-                                if(hit_count == numAiv){
-                                    sync_flag = true;
-                                }
-                            }
-                        }
-                    }
-                    op.npu_user_defined_matmul_kernel_switch(inputA_workUnisor, inputBUnisor, outputCUnisor, workUnisorPing, RowsumUnisor, biasUnisor, offsetUnisor, saUnisor, swUnisor, baseCTiling, i, kernel_index);
-                }
-                core_id++;
+        //Cube计算+后处理
+        for (int32_t i=0; i<group_num; i++) {
+            auto M_Length = M_Lengths[i];
+            if (M_Length == 0) {
+                continue;
             }
-            posInOffset += single_M / FACTOR_2;
-            posOutOffset += single_M;
-        }
-    }
 
-    if (g_coreType == AscendC::AIC) {
-        AscendC::CrossCoreWaitFlag(LOCAL_FLAGID7);
-        SetFlag<HardEvent::MTE3_S>(LOCAL_HWEVENT_ID0);
-        WaitFlag<HardEvent::MTE3_S>(LOCAL_HWEVENT_ID0);
-        M_Lengths[0] = 0; //没有意义，只是表达有一条scalar指令
-        AscendC::PipeBarrier<PIPE_ALL>();
+            uint32_t pos_M = pos_M_Offset;
+            uint32_t pos_N = 0;
+            uint32_t pos_K_group = i * total_K_A;
+            uint32_t pos_N_group = i * total_N;
+
+            pos_M_Offset += M_Length;
+
+            Dim1 C0pos(pos_M, 'M'), C0vec(M_Length, 'M');
+            Cartesian<Dim1> multiCoreCartesianC0(C0pos, C0vec);
+            Dim1 singleCoreCTilingS0(single_M, 'M');
+            CartesianIterator<Dim1> multiCoreUnisorIterator0(multiCoreCartesianC0, singleCoreCTilingS0);
+            Cartesian<Dim1> multiCoreCartesianUnisorC0;
+
+            Dim1 C1pos(pos_N, 'N'), C1vec(N_Length, 'N');
+            Cartesian<Dim1> multiCoreCartesianC1(C1pos, C1vec);
+            Dim1 singleCoreCTilingS1(single_N, 'N');
+            CartesianIterator<Dim1> multiCoreUnisorIterator1(multiCoreCartesianC1, singleCoreCTilingS1);
+            Cartesian<Dim1> multiCoreCartesianUnisorC1;
+
+            while (multiCoreUnisorIterator0.posIterator(multiCoreCartesianUnisorC0))//singleM
+            {
+                while (multiCoreUnisorIterator1.posIterator(multiCoreCartesianUnisorC1))//singleN
+                {
+                    if ((aicCoreId%numAic) == blockId)
+                    {
+                        Dim2 posA = Dim2(multiCoreCartesianUnisorC0.pos.getAxisByName('M'), 0, 'M', 'K');
+                        Dim2 vecA = Dim2(multiCoreCartesianUnisorC0.vec.getAxisByName('M'), single_K, 'M', 'K');
+                        inputA_workUnisor.setCartesian(posA, vecA);
+
+                        //B不转置
+                        if (pattern == 1) {
+                            Dim2 posB = Dim2(pos_N_group, multiCoreCartesianUnisorC1.pos.getAxisByName('N'), 'K', 'N');
+                            Dim2 vecB = Dim2(single_K, multiCoreCartesianUnisorC1.vec.getAxisByName('N'), 'K', 'N');
+                            inputBUnisor.vector_val.s[0] = total_K_A;
+                            inputBUnisor.setCartesian(posB, vecB);
+                        } else {
+                            Dim2 posB = Dim2(multiCoreCartesianUnisorC1.pos.getAxisByName('N'), pos_K_group, 'N', 'K');
+                            Dim2 vecB = Dim2(multiCoreCartesianUnisorC1.vec.getAxisByName('N'), single_K, 'N', 'K');
+                            inputBUnisor.setCartesian(posB, vecB);
+                        }
+
+                        Dim2 posC(multiCoreCartesianUnisorC0.pos.getAxisByName('M'), multiCoreCartesianUnisorC1.pos.getAxisByName('N'), 'M', 'N');
+                        Dim2 vecC(multiCoreCartesianUnisorC0.vec.getAxisByName('M'), multiCoreCartesianUnisorC1.vec.getAxisByName('N'), 'M', 'N');
+                        outputCUnisor.setCartesian(posC, vecC);
+                        workUnisorPing.setCartesian(posC, vecC);
+                        uint32_t event_id = work_count % FACTOR_10;
+
+                        if (g_coreType == AscendC::AIC) {
+                            op.npu_user_defined_matmul_kernel_switch(inputA_workUnisor, inputBUnisor, outputCUnisor, workUnisorPing, biasUnisor, saUnisor, swUnisor, baseCTiling, i, kernel_index);
+                            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(event_id);
+                        }
+
+                        if (g_coreType == AscendC::AIV) {
+                            AscendC::CrossCoreWaitFlag(event_id);
+                            Dim2 pos_Bias(i, multiCoreCartesianUnisorC1.pos.getAxisByName('N'), 'M', 'N');
+                            Dim2 vec_Bias(1, multiCoreCartesianUnisorC1.vec.getAxisByName('N'), 'M', 'N');
+                            biasUnisor.setCartesian(pos_Bias, vec_Bias);
+
+                            op.npu_user_defined_matmul_kernel_slave_Post_Processing_off(outputCUnisor, workUnisorPing, biasUnisor, saUnisor, swUnisor);
+                        }
+                        work_count++;
+                    }
+                    aicCoreId++;
+                }
+            }
+        }
     }
 }
 

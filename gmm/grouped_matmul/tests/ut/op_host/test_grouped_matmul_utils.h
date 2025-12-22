@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
  /*!
  * \file grouped_matmul_utils.h
@@ -47,7 +47,7 @@ namespace gmmTestUtils {
 #define GROUPED_MATMUL_AIV_AIC_RATIO_2 2
     inline uint64_t GMMEncodeTilingKey(int xDtype, int weightDtype, int yDtype, int transX, int transWeight,
                                 int groupListType, int isStaticTilingApi, int a8w4KernelTemplate,
-                                int a16w8KernelTemplate, int aivAicRatio) {
+                                int a16w8KernelTemplate, int aivAicRatio, bool isEnableFixedAxis) {
         uint64_t value = 0;
         int shift = 0;
 
@@ -79,6 +79,11 @@ namespace gmmTestUtils {
         shift += 2;
 
         value |= (uint64_t)(aivAicRatio & 0x3) << shift;
+        shift += 2;
+
+        value |= (uint64_t)(isEnableFixedAxis & 0x1) << shift;
+        shift += 1;
+
         return value;
     }
 

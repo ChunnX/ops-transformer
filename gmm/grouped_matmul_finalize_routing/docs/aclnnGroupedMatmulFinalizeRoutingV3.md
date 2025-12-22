@@ -1,11 +1,13 @@
 # aclnnGroupedMatmulFinalizeRoutingV3
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul_finalize_routing)
+
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 
 ## 功能说明
 
@@ -260,7 +262,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     <tr>
       <td>tuningConfigOptional</td>
       <td>输入</td>
-      <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。从第二个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入(即为nullptr)即可。</td>
+      <td>数组中的第一个元素表示各个专家处理的token数的预期值，算子tiling时会按照数组的第一个元素合理进行tiling切分，性能更优。从第二个元素开始预留，用户无须填写。未来会进行扩展。兼容历史版本，用户如不使用该参数，不传入（即为nullptr）即可。</td>
       <td></td>
       <td>INT64</td>
       <td></td>
@@ -382,6 +384,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+- 确定性计算：
+  - aclnnGroupedMatmulFinalizeRoutingV3默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+
 **伪量化场景支持类型**
 输入和输出支持以下数据类型组合：
 

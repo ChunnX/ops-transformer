@@ -1,12 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_tiling.h
@@ -58,95 +58,6 @@ TILING_DATA_FIELD_DEF_ARR(int32_t, 128, kList);
 TILING_DATA_FIELD_DEF_ARR(int32_t, 128, nList);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMArrayOp, GMMArray)
-
-BEGIN_TILING_DATA_DEF(GMMQuantParams)
-TILING_DATA_FIELD_DEF(uint32_t, groupNum);
-TILING_DATA_FIELD_DEF(uint32_t, activeType);
-TILING_DATA_FIELD_DEF(uint32_t, aQuantMode);
-TILING_DATA_FIELD_DEF(uint32_t, bQuantMode);
-TILING_DATA_FIELD_DEF(uint8_t, singleX);
-TILING_DATA_FIELD_DEF(uint8_t, singleW);
-TILING_DATA_FIELD_DEF(uint8_t, singleY);
-TILING_DATA_FIELD_DEF(int8_t, groupType);
-TILING_DATA_FIELD_DEF(uint8_t, groupListType);
-TILING_DATA_FIELD_DEF(uint8_t, hasBias);
-TILING_DATA_FIELD_DEF(uint16_t, reserved);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMQuantParamsOp, GMMQuantParams)
-
-BEGIN_TILING_DATA_DEF(GMMQuantTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(GMMQuantParams, gmmQuantParams);
-TILING_DATA_FIELD_DEF_STRUCT(GMMArray, gmmArray);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000000, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000001, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000010, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000100, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000101, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000110, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000200, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000201, GMMQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_20000000210, GMMQuantTilingData)
-
-BEGIN_TILING_DATA_DEF(GMMWeightQuantParam)
-TILING_DATA_FIELD_DEF(uint32_t, groupNum);
-TILING_DATA_FIELD_DEF(uint32_t, coreNum);
-TILING_DATA_FIELD_DEF(uint64_t, kSize);
-TILING_DATA_FIELD_DEF(uint64_t, nSize);
-TILING_DATA_FIELD_DEF(uint8_t, singleX);
-TILING_DATA_FIELD_DEF(uint8_t, singleWeight);
-TILING_DATA_FIELD_DEF(uint8_t, singleY);
-TILING_DATA_FIELD_DEF(int8_t, groupType);
-TILING_DATA_FIELD_DEF(uint8_t, groupListType);
-TILING_DATA_FIELD_DEF(uint8_t, hasBias);
-TILING_DATA_FIELD_DEF(uint8_t, cubeBlockDimN);
-TILING_DATA_FIELD_DEF(uint8_t, reserved);
-TILING_DATA_FIELD_DEF(uint32_t, groupSize);
-TILING_DATA_FIELD_DEF(uint32_t, mainBlockSize);
-TILING_DATA_FIELD_DEF(uint64_t, mainBlockCount);
-TILING_DATA_FIELD_DEF(uint16_t, firstTailBlockSize);
-TILING_DATA_FIELD_DEF(uint16_t, secondTailBlockSize);
-TILING_DATA_FIELD_DEF(uint16_t, firstTailBlockCount);
-TILING_DATA_FIELD_DEF(uint16_t, secondTailBlockCount);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMWeightQuantParamOp, GMMWeightQuantParam)
-
-BEGIN_TILING_DATA_DEF(GMMWeightQuantTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(GMMWeightQuantParam, gmmWeightQuantParam);
-TILING_DATA_FIELD_DEF_STRUCT(GMMArray, gmmArray);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_2000020003000012000, GMMWeightQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_2000020003000012020, GMMWeightQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_2000020004000002001, GMMWeightQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_2000020003000004001, GMMWeightQuantTilingData)
-
-BEGIN_TILING_DATA_DEF(GMMNoQuantBaseParams)
-TILING_DATA_FIELD_DEF(uint32_t, groupNum);
-TILING_DATA_FIELD_DEF(uint32_t, coreNum);
-TILING_DATA_FIELD_DEF(uint32_t, singleWeight);
-TILING_DATA_FIELD_DEF(uint32_t, singleX);
-TILING_DATA_FIELD_DEF(uint32_t, singleY);
-TILING_DATA_FIELD_DEF(int32_t, groupType);
-TILING_DATA_FIELD_DEF(uint32_t, groupListType);
-TILING_DATA_FIELD_DEF(uint32_t, hasBias);
-TILING_DATA_FIELD_DEF(uint32_t, mTailCnt);
-TILING_DATA_FIELD_DEF(uint32_t, nTailCnt);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMNoQuantBaseParamsOp, GMMNoQuantBaseParams)
-
-BEGIN_TILING_DATA_DEF(GMMNoQuantTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(GMMNoQuantBaseParams, gmmNoQuantParam);
-TILING_DATA_FIELD_DEF_STRUCT(GMMArray, gmmArray);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_10000900009000090000, GMMNoQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_10000900009000090001, GMMNoQuantTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_10000900009000090002, GMMNoQuantTilingData)
 
 // for autotiling w4a8
 BEGIN_TILING_DATA_DEF(A8W4HPTiling)
@@ -204,6 +115,9 @@ public:
     ge::graphStatus A8W4Tiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
 
 protected:
+    bool IsAivAicRatioTwoRequired();
+    bool IsFixedAxisMoveCondition();
+    bool IsIntDataType();
     ge::graphStatus CalMMTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     ge::graphStatus GMMSetMMTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     ge::graphStatus GMMGetAttrs(const gert::TilingContext *context);
@@ -284,14 +198,18 @@ private:
     uint32_t actType_ = 0;
     uint32_t usedCoreNum_ = 0;
     int64_t tuningConfig_ = 0L;
+    int64_t tuningConfigWorkspace_ = 0L;
+    uint64_t FixedAxisMoveWorkspace_ = 0L;
     bool isA4W4_ = false;
     bool isA8W4FakeA8W8_ = false;
+    bool isFixedAxisMove_ = false;
     uint64_t A8W4noMsdSpace_ = 0;
 
     ge::DataType xDType_ = ge::DT_UNDEFINED;
     ge::DataType mmDType_ = ge::DT_UNDEFINED;
     ge::DataType weightDtype_ = ge::DT_UNDEFINED;
     ge::DataType scaleDtype_ = ge::DT_UNDEFINED;
+    ge::DataType perTokenScaleDtype_ = ge::DT_UNDEFINED;
     ge::DataType yDtype_ = ge::DT_UNDEFINED;
     bool isA8W8_ = false;
     // in quant case, it indicates pertoken flag; in antiquant case, it represents pergroup size

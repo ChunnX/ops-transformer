@@ -1,13 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
-BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <vector>
 #include <array>
 #include <float.h>
@@ -73,6 +72,6 @@ TEST_F(l2_grouped_matmul_test, Ascend910B2_grouped_matmul_fp16)
                         OUTPUT(out,activationFeatureOutOptional, dynQuantScaleOutOptional));
     uint64_t workspaceSize = 0;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
-    /*此处校验561103是因为当前框架通过桩函数调用ut，导致无法正常infershape，正常现象*/
-    EXPECT_EQ(getWorkspaceResult, 561103);
+    /*此处校验161002是因为当前框架通过桩函数调用ut，导致无法正常infershape，正常现象*/
+    EXPECT_EQ(getWorkspaceResult, 161002);
 }
