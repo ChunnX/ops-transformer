@@ -1,41 +1,46 @@
 # AI Core算子开发指南
 
-> 说明：  
-> 算子开发过程中涉及的基本概念如Tiling、Kernel、Ascend C接口等请参考[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)。  
+> **说明：** 
+>
+> 1. 算子开发过程中涉及的基本概念如Tiling、Kernel、Ascend C接口等，详细介绍请参考[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)。  
+> 2. AI Core算子是使用Ascend C语言开发，运行在AI Core硬件单元算子。
+> 3. 针对基于[Ascend/samples](https://gitee.com/ascend/samples/tree/master)仓贡献的算子，请参考[附录 > 算子工程迁移](#算子工程迁移)完成存量算子往本项目工程迁移。
 
 开发指南以`AddExample`算子开发为例，介绍新算子开发流程以及涉及的交付件，完整样例代码请访问项目`examples`目录。
 
-1. [工程创建](#工程创建)：开发算子前，需完成环境部署并创建算子目录，方便后续算子的编译和部署。
+1. [工程创建](#工程创建)：开发算子前，需完成环境部署并创建算子目录，方便后续算子编译和部署。
 
-2. [算子定义](#算子定义)：算子功能说明与原型定义。
+2. [算子定义](#算子定义)：确定算子功能与原型定义。
 
 3. [Tiling实现](#Tiling实现)：实现Host侧算子Tiling函数。
 
 4. [Kernel实现](#Kernel实现)：实现Device侧算子核函数。
 
-5. [aclnn适配](#aclnn适配)：自定义算子推荐使用aclnn接口调用。如需入图，请参考[附录](#附录)。
+5. [aclnn适配](#aclnn适配)：自定义算子推荐aclnn接口调用，需提前完成二进制发布。**如采用图模式调用算子**，请参考[图模式适配指南](./graph_develop_guide.md)。
 
 6. [编译部署](#编译部署)：通过工程编译脚本完成自定义算子的编译和安装。 
 
-7. [算子验证](#算子验证)：通过常见算子调用方式，验证自定义算子的功能。  
+7. [算子验证](#算子验证)：通过常见算子调用方式，验证自定义算子功能。    
 
 ## 工程创建
-**1. 环境部署**
+**1. 环境部署** 
 
-开发算子前，请参考[环境准备](../context/quick_install.md#环境准备)完成基础环境搭建。
+开发算子前，请先参考[环境部署](../context/quick_install.md)完成基础环境搭建。
 
 **2. 目录创建**
 
-本项目支持通过`build.sh`快速创建算子目录。进入项目根目录，执行以下命令：
+目录创建是算子开发的重要步骤，为后续代码编写、编译构建和调试提供统一的目录结构和文件组织方式。
+
+可通过`build.sh`快速创建算子目录，进入项目根目录，执行如下命令：
 
 ```bash
-# 创建指定算子目录，如bash build.sh --genop=examples/div_example
-# ${op_class}表示算子类型，如transformer类。
+# 创建指定算子目录，如bash build.sh --genop=examples/add_example
+# ${op_class}表示算子类型，如attention类。
 # ${op_name}表示算子名的小写下划线形式，如`AddExample`算子对应为add_example。
 bash build.sh --genop=${op_class}/${op_name}
 ```
 
-如果命令执行成功，会看到如下提示信息：
+命令执行成功，会看到如下提示信息：
 
 ```bash
 Create the initial directory for ${op_name} under ${op_class} success
@@ -49,7 +54,7 @@ ${op_name}                              # 替换为实际算子名的小写下�
 ├── op_host                             # Host侧实现
 │   ├── ${op_name}_def.cpp              # 算子信息库，定义算子基本信息，如名称、输入输出、数据类型等
 │   ├── ${op_name}_infershape.cpp       # InferShape实现，实现算子形状推导，在运行时推导输出shape
-│   ├── ${op_name}_tiling.cpp           # Tiling实现，实现输入数据切分的逻辑
+│   ├── ${op_name}_tiling.cpp           # Tiling实现，将张量划分为多个小块，区分数据类型进行并行计算
 │   └── CMakeLists.txt                  # Host侧cmakelist文件
 └── op_kernel                           # Device侧Kernel实现
 │   ├── ${op_name}_tiling_key.h         # Tilingkey文件，定义Tiling策略的Key，标识不同的划分方式
@@ -61,6 +66,7 @@ ${op_name}                              # 替换为实际算子名的小写下�
 └── CMakeLists.txt                      # 算子cmakelist入口
 ```
 
+使用上述命令行创建算子工程后，若要手动删除新创建出的算子工程，需要同时删除与算子工程同目录CMakeLists.txt中新添加的add_subdirectory(${op_class})。
 ## 算子定义
 算子定义需要完成两个交付件：`README.md` `${op_name}_def.cpp`
 
@@ -89,13 +95,13 @@ Tiling一共需要三个交付件：`${op_name}_tiling.cpp` `${op_name}_tiling_k
 
 **交付件1：${op_name}_tiling.cpp**
 
-实现Tiling主要切分逻辑。
+Tiling主要切分逻辑。
 
 如需查看详细实现，请参考[add_example_tiling.cpp](../../../examples/add_example/op_host/add_example_tiling.cpp)。
 
 ```CPP
 // ${op_name}_tiling.cpp
-// 1.Tiling需要获取运行环境信息，包括可用核数、UB(Unified Buffer)大小，并将获取到的信息传递给CompileInfo，自动生成aclnn不调用该函数，直接返回ge::GRAPH_SUCCESS即可。
+// 1.Tiling需要获取运行环境信息，包括可用核数、UB(Unified Buffer)大小，并将获取到的信息传递给CompileInfo, 自动生成aclnn不调用该函数，直接返回ge::GRAPH_SUCCESS即可。
 static ge::graphStatus TilingParse(gert::TilingParseContext* context)
 {
     return ge::GRAPH_SUCCESS;
@@ -177,7 +183,8 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
 ```
 **交付件3：${op_name}_tiling_data.h**
 
-声明TilingData结构体用于存储Tiling的参数，比如总数据量大小、每个核数据切块数量。
+切分算法相关的参数，比如总数据量大小、每个核数据切块数量，通过结构体存储。
+
 如需查看详细实现，请参考[add_example_tiling_data.h](../../../examples/add_example/op_kernel/add_example_tiling_data.h)。
 
 ```CPP
@@ -187,36 +194,31 @@ struct ${op_name}TilingData {
     int64_t tileNum;
 };
 ```
-
 如需实现复杂参数组合完成分支选择（涉及多TilingKey场景），请参考[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)中"算子实现 > 工程化算子开发 > Host侧Tiling实现 > Tiling模板编程"。
 
 ## Kernel实现
 
 ### Kernel简介
-Kernel是算子在NPU执行的核心部分，通过调用计算、数据搬运、内存管理、任务同步API，实现算子逻辑。Kernel的实现需要与Tiling策略紧密配合，根据Tiling提供的`TilingData`、`TilingKey`信息进行内存分配和计算调度。Kernel实现包括如下步骤：
+Kernel是算子在NPU执行的核心部分，负责张量数据的加载、计算和存储，是算子功能实现的最终载体。Kernel的实现需要与Tiling策略紧密配合，根据Tiling提供的`TilingData`、`TilingKey`信息进行内存分配和计算调度。
 
+Kernel实现包括如下步骤，整个流程通过`Process`函数串联，实现完整的算子流程。
 
 ```mermaid
 graph LR
-	H([核函数定义]) -->A([定义Kernel类])
-	A -->B([初始化函数<br>Init])
-    B -->D([主处理函数<br>Process])
+    H([核函数定义]) -->A([定义Kernel类])
+    A -->B([初始化函数<br>Init])
+    B -->C([主处理函数<br>Process])
     subgraph C [主处理函数 Process]
         D([数据搬入<br>CopyIn]) -->E([计算<br>Compute]) -->F([数据搬出<br>CopyOut])
     end
     F -->G([Kernel执行完成])
-
-    %% 使用style语句为子图C定义样式
-    style C fill:#f5f7fa,stroke:#4E5969,stroke-width:1px
 ```
-
-
 
 ### 代码实现
 
-以自定义`AddExample`算子为例，该算子一共包含两个交付件：`add_example.cpp` `add_example.h`
+Kernel一共需要两个交付件：`${op_name}.cpp` `${op_name}.h`
 
-**交付件1：add_example.cpp**
+**交付件1：${op_name}.cpp**
 
 Kernel入口文件，包含主函数和调度逻辑。
 
@@ -244,7 +246,7 @@ __global__ __aicore__ void add_example(GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR 
     ....
 }
 ```
-**交付件2：add_example.h**
+**交付件2：${op_name}.h**
 
 定义Kernel头文件，包含函数声明、结构定义、逻辑实现等。
 
@@ -330,33 +332,25 @@ __aicore__ inline void AddExample<T>::Process()
 
 通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C 的API），可直接在应用程序中调用aclnn接口实现调用算子。
 
-为实现该调用方式，需提前生成算子对应的二进制包，增加二进制编译json文件，以`AddExample`算子为例：
-
-1. 在`examples/add_example/op_host`目录新建`config/${soc_version}`文件夹，用于存放配置文件。
-
-2. 在`${soc_version}`目录新建json文件，命名为`${op_name}_binary.json`，用于描述算子相关信息，包括二进制文件名称(命名无要求，当前是以`${op_type}`_哈希码命名)及算子输入、输出、shape、data type、format等信息，完整定义请参考[add_example_binary.json](../../../examples/add_example/op_host/config/ascend910b/add_example_binary.json)。
-
-3. 在`${soc_version}`目录新建ini文件，命名为`${op_name}_simplified_key.ini`，与二进制匹配逻辑相关，默认是0，示例参考[add_example_simplified_key.ini](../../../examples/add_example/op_host/config/ascend910b/add_example_simplified_key.ini)。
+为实现该调用方式，需提前生成算子对应的二进制包，本项目无需手动配置，通过${op_name}_def.cpp已自动生成算子二进制包，支持开发者直接使用。
 
 ## 编译部署
 
-算子开发完成后，需对算子工程进行编译，生成自定义算子安装包\*\.run，详细的编译操作如下：
+算子开发完成后，需对算子工程进行编译，生成自定义算子安装包\*\.run，具体操作如下：
 
 1. **准备工作。**
 
-    完成基础环境搭建，同时检查算子开发交付件是否完备，是否在对应算子分类目录下。
+    参考[工程创建](#工程创建)完成基础环境搭建，同时检查算子开发交付件是否完备，是否在对应算子分类目录下。
 
-2. **编译自定义算子包。** 
+2. **编译自定义算子包。**
 
     以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example)目录。
-
-    进入项目根目录，执行如下编译命令：
 
     ```bash
     # 编译指定算子，如--ops=add_example
     bash build.sh --pkg --soc=${soc_version} --vendor_name=${vendor_name} --ops=${op_list}
     ```
-
+   
     若提示如下信息，说明编译成功：
 
     ```bash
@@ -365,29 +359,349 @@ __aicore__ inline void AddExample<T>::Process()
 
 3. **安装自定义算子包。**
 
-    执行以下命令进行安装：
-    
     ```bash
     # 安装run包
     ./build_out/cann-ops-transformer-${vendor_name}_linux-${arch}.run
     ```
-    自定义算子包安装在`${ASCEND_HOME_PATH}/opp/vendors`路径中，`${ASCEND_HOME_PATH}`表示CANN软件安装目录，可提前在环境变量中配置。自定义算子包不支持卸载。
+    自定义算子包安装在`${ASCEND_HOME_PATH}/opp/vendors`路径中，`${ASCEND_HOME_PATH}`表示CANN软件安装目录，可提前在环境变量中配置。
     
+4. **（可选）删除自定义算子包。**
+
+    注意自定义算子包不支持卸载，如需卸载，请删除vendors\/\$\{vendor\_name}目录，并删除vendors/config.ini中load_priority对应\$\{vendor\_name\}的配置项。
 
 ## 算子验证
+
+验证算子前需确保已配置了环境变量，命令如下：
 ```bash
-    # 执行前需要导入环境变量
-    export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/${vendor_name}_transformer/op_api/lib:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/${vendor_name}_transformer/op_api/lib:${LD_LIBRARY_PATH}
 ```
 
-1. **UT验证。**
+- **UT验证**
 
-    算子开发过程中，可通过UT验证（如tiling/kernel UT）方式进行快速验证，方法请参考[算子调用->本地验证](../invocation/quick_op_invocation.md)。
+  算子开发过程中，可通过UT验证（如Tiling）方式进行快速验证，如需查看详细实现，请参考[Tiling UT](../../../examples/add_example/tests/ut/op_host/test_add_example_tiling.cpp)。
 
-2. **aclnn调用验证。**
+- **aclnn调用验证**
 
-    开发好的算子完成编译部署后，可通过aclnn方式验证功能，方法请参考[算子调用方式](../invocation/op_invocation.md)。
+  开发好的算子完成编译部署后，可通过aclnn方式验证功能，方法请参考[算子调用方式](../invocation/op_invocation.md)。
 
 ## 附录
 
-自定义算子如需运行图模式，不需要aclnn适配，详细内容请参考[图模式开发指南](./graph_develop_guide.md)。
+### 算子工程迁移
+
+由于[Ascend/samples](https://gitee.com/ascend/samples/tree/master)工程与本项目工程（参考[工程创建](#工程创建)）有差异，因此算子实现交付件和数量不同，可参考下表迁移`operator`目录中的算子样例。
+
+<table border="1">
+  <tr>
+    <th>Ascend/samples</th>
+    <th>本项目</th>
+    <th>迁移方法</th>
+    <th>代码示例</th>
+  </tr>
+  <tr>
+    <td rowspan="4">op_host/{op_name}.cpp</td>
+    <td>op_host/{op_name}_def.cpp</td>
+    <td>将原有op_host/{op_name}.cpp中算子原型描述部分独立出来</td>
+    <td><a href="#op_host/{op_name}_def.cpp">op_host/{op_name}_def.cpp</a>
+    </td>
+  </tr>
+  <tr>
+    <td>op_host/{op_name}_infershape.cpp</td>
+    <td>（可选）将原有op_host/{op_name}.cpp中shape推导部分独立出来</td>
+    <td><a href="#op_host/{op_name}_infershape.cpp">op_host/{op_name}_infershape.cpp</a>
+    </td>
+  </tr>
+  <tr>
+    <td>op_host/{op_name}_tiling.cpp</td>
+    <td>仅保留原有op_host/{op_name}.cpp中的TilingFunc</td>
+    <td><a href="#op_host/{op_name}_tiling.cpp">op_host/{op_name}_tiling.cpp</a></td>
+  </tr>
+  <tr>
+    <td>op_graph/{op_name}_graph_infer.cpp</td>
+    <td>（可选）将原有op_host/{op_name}.cpp中类型推导部分独立出来</td>
+    <td><a href="#op_graph/{op_name}_graph_infer.cpp">op_graph/{op_name}_graph_infer.cpp</a></td>
+  </tr>
+  <tr>
+    <td>op_host/{op_name}_tiling.h</td>
+    <td>op_kernel/{op_name}_tiling_data.h</td>
+    <td>将原有op_host目录下的宏定义Tiling结构体定义改成C++标准定义</td>
+    <td><a href="#op_kernel/{op_name}_tiling_data.h">op_kernel/{op_name}_tiling_data.h</a></td>
+  </tr>
+  <tr>
+    <td rowspan="2">op_kernel/{op_name}.cpp</td>
+    <td>op_kernel/{op_name}.h</td>
+    <td>保留原有op_host/{op_name}.cpp中Kernel实现的算子类定义部分</td>
+    <td><a href="#op_kernel/{op_name}.h">op_kernel/{op_name}.h</a></td>
+  </tr>
+  <tr>
+    <td>op_kernel/{op_name}.cpp</td>
+    <td>将原有op_host/{op_name}.cpp中Kernel实现的核函数迁移至cpp文件，同时:
+      <li>新增REGISTER_TILING_DEFAULT调用注册Tiling结构体，使用GET_TILING_DATA_WITH_STRUCT获取TilingData</li>
+      <li>添加Tiling模板，支持模板参数的传入，根据模板参数的分支选择不同的Kernel侧实现</li>
+    </td>
+    <td><a href="#op_kernel/{op_name}.cpp">op_kernel/{op_name}.cpp</a></td>
+  </tr>
+  <tr>
+    <td>op_kernel/tiling_key_{op_name}.h</td>
+    <td>op_kernel/{op_name}_tiling_key.h</td>
+    <td>保留原有op_kernel/tiling_key_{op_name}.h中算子的模板参数定义，若不存在op_kernel/tiling_key_{op_name}.h，新增定义模板参数和模板参数组合</td>
+    <td><a href="#op_kernel/{op_name}_tiling_key.h">op_kernel/{op_name}_tiling_key.h</a></td>
+  </tr>
+</table>
+
+<div id="op_host/{op_name}_def.cpp">
+<p style="font-size:18px;"><b>op_host/{op_name}_def.cpp</b></p>
+</div>
+
+将原有${op_name}.cpp中算子信息库内容独立迁移至该文件，需要去掉SetInferShape和SetTiling内容。
+
+```CPP
+// 原有${op_name}.cpp中算子信息库内容
+namespace ops {
+class AddCustom : public OpDef {
+public:
+    explicit AddCustom(const char *name) : OpDef(name)
+    {
+        this->Input("x")
+        ....
+        this->Output("z")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+
+        this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);   // 需要去掉SetInferShape
+        this->AICore()
+            .SetTiling(optiling::TilingFunc)                                       // 需要去掉SetTiling
+            .AddConfig("ascend910")
+            .AddConfig("ascend310p")
+            .AddConfig("ascend310b")
+            .AddConfig("ascend910b");
+    }
+};
+OP_ADD(AddCustom);
+} // namespace ops
+
+// 迁移至op_host/{op_name}_def.cpp后，代码中无SetInferShape和SetTiling内容
+namespace ops {
+class AddCustom : public OpDef {
+public:
+    explicit AddCustom(const char *name) : OpDef(name)
+    {
+        this->Input("x")
+        ....
+        this->Output("z")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+
+        this->AICore()
+            .AddConfig("ascend910")
+            .AddConfig("ascend310p")
+            .AddConfig("ascend310b")
+            .AddConfig("ascend910b");
+    }
+};
+OP_ADD(AddCustom);
+} // namespace ops
+```
+
+<div id="op_host/{op_name}_infershape.cpp">
+<p style="font-size:18px;"><b>op_host/{op_name}_infershape.cpp</b></p>
+</div>
+
+图模式场景需要适配该文件，将原有${op_name}.cpp中shape推导部分独立迁至该文件，调用接口IMPL_OP_INFERSHAPE完成InferShape注册。
+
+```CPP
+// 原有${op_name}.cpp中的InferShape
+namespace ge {
+static graphStatus InferShape(gert::InferShapeContext *context)
+{
+    const gert::Shape *x1_shape = context->GetInputShape(0);
+    gert::Shape *y_shape = context->GetOutputShape(0);
+    *y_shape = *x1_shape;
+    return GRAPH_SUCCESS;
+}
+} // namespace ge
+
+// 迁移至op_host/{op_name}_infershape.cpp后，调用接口IMPL_OP_INFERSHAPE完成InferShape注册
+namespace ge {
+static graphStatus InferShape(gert::InferShapeContext *context)
+{
+    const gert::Shape *x1_shape = context->GetInputShape(0);
+    gert::Shape *y_shape = context->GetOutputShape(0);
+    *y_shape = *x1_shape;
+    return GRAPH_SUCCESS;
+}
+IMPL_OP_INFERSHAPE(AddCustom).InferShape(InferShape);   // 在该文件中完成InferShape注册
+} // namespace ge
+```
+<div id="op_host/{op_name}_tiling.cpp">
+<p style="font-size:18px;"><b>op_host/{op_name}_tiling.cpp</b></p>
+</div>
+
+将原有${op_name}.cpp中TilingFunc迁移至该文件后，调用接口IMPL_OP_OPTILING完成TilingFunc注册。
+宏定义TilingData结构体改成标准C++结构体后，TilingFunc中对结构体成员变量不再使用tiling.set_xxx的方式进行赋值，而是直接对成员变量赋值。
+若是新增定义模板参数和模板参数组合，TilingFunc中需要同时配置模板参数tilingKey。
+可参考[add_example_tiling.cpp](../../../examples/add_example/op_host/add_example_tiling.cpp)。
+
+```CPP
+// 原有${op_name}.cpp中TilingFunc
+namespace optiling {
+const uint32_t BLOCK_DIM = 8;
+const uint32_t DEFAULT_TILE_NUM = 8;
+constexpr int MIN_LENGTH_FOR_SPLIT = 2048;
+static ge::graphStatus TilingFunc(gert::TilingContext *context)
+{
+    TilingData tiling;
+    uint32_t totalLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
+    ge::DataType dtype_x = context->GetInputDesc(0)->GetDataType();
+    ge::DataType dtype_y = context->GetInputDesc(1)->GetDataType();
+    ge::DataType dtype_z = context->GetOutputDesc(0)->GetDataType();
+    ....
+    tiling.set_totalLength(totalLength);
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(D_T_X, D_T_Y, D_T_Z, TILE_NUM, IS_SPLIT); // 模板参数tilingkey配置
+    context->SetTilingKey(tilingKey);
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    currentWorkspace[0] = 0;
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace optiling
+
+// 迁移至op_host/{op_name}_tiling.cpp后，调用接口IMPL_OP_OPTILING完成TilingFunc注册，直接对结构体成员变量赋值，
+namespace optiling {
+const uint32_t BLOCK_DIM = 8;
+const uint32_t DEFAULT_TILE_NUM = 8;
+constexpr int MIN_LENGTH_FOR_SPLIT = 2048;
+static ge::graphStatus TilingFunc(gert::TilingContext *context)
+{
+    // TilingData tiling;
+    TilingData* tiling = context->GetTilingData<TilingData>();
+    uint32_t totalLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
+    ge::DataType dtype_x = context->GetInputDesc(0)->GetDataType();
+    ge::DataType dtype_y = context->GetInputDesc(1)->GetDataType();
+    ge::DataType dtype_z = context->GetOutputDesc(0)->GetDataType();
+    ....
+    tiling->totalLength = totalLength;   // 直接对结构体成员变量赋值
+    // tiling.set_totalLength(totalLength);   // 不再使用tiling.set_xxx的方式进行赋值
+    // tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    // context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(D_T_X, D_T_Y, D_T_Z, TILE_NUM, IS_SPLIT); // 模板参数tilingkey配置
+    context->SetTilingKey(tilingKey);
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    currentWorkspace[0] = 0;
+    return ge::GRAPH_SUCCESS;
+}
+IMPL_OP_OPTILING(AddCustom).Tiling(TilingFunc);   // 在该文件中完成TilingFunc注册
+} // namespace optiling
+```
+
+<div id="op_graph/{op_name}_graph_infer.cpp">
+<p style="font-size:18px;"><b>op_graph/{op_name}_graph_infer.cpp</b></p>
+</div>
+图模式场景需要适配该文件，将原有${op_name}.cpp中类型推导独立迁移至该文件后，调用接口IMPL_OP完成InferDataType注册。
+
+```CPP
+// 原有${op_name}.cpp中InferDataType
+namespace ge {
+static graphStatus InferDataType(gert::InferDataTypeContext *context)
+{
+    const auto inputDataType = context->GetInputDataType(0);
+    context->SetOutputDataType(0, inputDataType);
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace ge
+
+// 迁移至op_graph/{op_name}_graph_infer.cpp后，调用接口IMPL_OP完成InferDataType注册
+namespace ge {
+static graphStatus InferDataType(gert::InferDataTypeContext *context)
+{
+    const auto inputDataType = context->GetInputDataType(0);
+    context->SetOutputDataType(0, inputDataType);
+    return ge::GRAPH_SUCCESS;
+}
+IMPL_OP(AddCustom).InferDataType(InferDataType);   // 在该文件中完成InferDataType函数注册
+} // namespace ge
+```
+
+<div id="op_kernel/{op_name}_tiling_data.h">
+<p style="font-size:18px;"><b>op_kernel/{op_name}_tiling_data.h</b></p>
+</div>
+
+```CPP
+// 原有op_host/{op_name}_tiling.h中的宏定义TilingData结构体
+namespace optiling {
+BEGIN_TILING_DATA_DEF(TilingData)
+TILING_DATA_FIELD_DEF(uint32_t, totalLength);
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(XXX, TilingData)
+} // namespace optiling
+
+// 迁移至op_kernel/{op_name}_tiling_data.h后，改成C++标准结构体
+struct TilingData {
+    uint32_t  totalLength;
+};
+```
+
+<div id="op_kernel/{op_name}.h">
+<p style="font-size:18px;"><b>op_kernel/{op_name}.h</b></p>
+</div>
+
+保留原有op_host/{op_name}.cpp中kernel实现的算子类定义部分。
+
+<div id="op_kernel/{op_name}.cpp">
+<p style="font-size:18px;"><b>op_kernel/{op_name}.cpp</b></p>
+</div>
+
+```CPP
+// 原有op_kernel/{op_name}.cpp中的核函数实现
+template<int D_T_X, int D_T_Y, int D_T_Z, int TILE_NUM, int IS_SPLIT>
+ __global__ __aicore__ void add_custom(GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling)
+{
+    GET_TILING_DATA(tiling_data, tiling);
+    if(D_T_X == ADD_TPL_FP32 && D_T_Y == ADD_TPL_FP32 && D_T_Z == ADD_TPL_FP32){
+        KernelAdd<float, float, float> op;
+        op.Init(x, y, z, tiling_data.totalLength, TILE_NUM);
+        op.Process1();
+    }else if(D_T_X == ADD_TPL_FP16 && D_T_Y == ADD_TPL_FP16 && D_T_Z == ADD_TPL_FP16){
+        KernelAdd<half, half, half> op;
+        if(IS_SPLIT == 0){
+            op.Init(x, y, z, tiling_data.totalLength, TILE_NUM);
+            op.Process1();
+        }else if(IS_SPLIT == 1){
+            op.Init(x, y, z, tiling_data.totalLength, TILE_NUM);
+            op.Process2();
+        }
+    }
+}
+
+// 迁移至op_kernel/{op_name}.cpp后，新增REGISTER_TILING_DEFAULT调用注册Tiling结构体，使用GET_TILING_DATA_WITH_STRUCT获取TilingData
+template<int D_T_X, int D_T_Y, int D_T_Z, int TILE_NUM, int IS_SPLIT>
+ __global__ __aicore__ void add_custom(GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling)
+{
+    // GET_TILING_DATA(tiling_data, tiling);
+    REGISTER_TILING_DEFAULT(TilingData);   // 新增REGISTER_TILING_DEFAULT调用注册TilingData结构体
+    GET_TILING_DATA_WITH_STRUCT(TilingData, tiling_data, tiling);   // 宏GET_TILING_DATA_WITH_STRUCT获取TilingData
+    if(D_T_X == ADD_TPL_FP32 && D_T_Y == ADD_TPL_FP32 && D_T_Z == ADD_TPL_FP32){
+        KernelAdd<float, float, float> op;
+        op.Init(x, y, z, tiling_data.totalLength, TILE_NUM);
+        op.Process1();
+    }else if(D_T_X == ADD_TPL_FP16 && D_T_Y == ADD_TPL_FP16 && D_T_Z == ADD_TPL_FP16){
+        KernelAdd<half, half, half> op;
+        if(IS_SPLIT == 0){
+            op.Init(x, y, z, tiling_data.totalLength, TILE_NUM);
+            op.Process1();
+        }else if(IS_SPLIT == 1){
+            op.Init(x, y, z, tiling_data.totalLength, TILE_NUM);
+            op.Process2();
+        }
+    }
+}
+```
+
+<div id="op_kernel/{op_name}_tiling_key.h">
+<p style="font-size:18px;"><b>op_kernel/{op_name}_tiling_key.h</b></p>
+</div>
+
+保留原有op_kernel/tiling_key_{op_name}.h中算子的模板参数定义，若不存在op_kernel/tiling_key_{op_name}.h，请参考[add_example_tiling_key.h](../../../examples/add_example/op_kernel/add_example_tiling_key.h)新增定义模板参数和模板参数组合。

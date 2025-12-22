@@ -10,7 +10,7 @@ build.sh是本项目的构建脚本，默认在项目根目录下，作用是将
    参考[环境准备](../invocation/quick_op_invocation.md#环境准备)完成环境变量配置。
    ```bash
    # 默认路径安装，以root用户为例
-   source /usr/local/Ascend/set_env.sh
+   source /usr/local/Ascend/cann/set_env.sh
    ```
 2. **构建命令格式**
 
@@ -18,7 +18,7 @@ build.sh是本项目的构建脚本，默认在项目根目录下，作用是将
    ```bash
    bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}]
    ```
-   参数含义参见下方参数说明章节，请按实际情况选择合适的参数。
+   全量参数含义参见下方参数说明章节，请按实际情况选择合适的参数。
 
 ## 参数说明
 build.sh支持多种功能，可通过如下命令查看所有功能参数。
@@ -46,4 +46,11 @@ bash build.sh --help
 | --ophost         | 可选     | 编译libophost_transformer.so库，不可与--pkg、--ops同时使用。                                     |
 | --opapi          | 可选     | 编译libopapi_transformer.so库，不可与--pkg、--ops同时使用。                                      |
 | --opgraph        | 可选     | 编译libopgraph_transformer.so库，不可与--pkg、--ops同时使用。                                    |
+| --ophost_test   | 可选     | 编译ophost相关单元测试，与-u --ophost组合等效。                                          |
+| --opapi_test    | 可选     | 编译opapi相关单元测试，与-u --opapi组合等效。                                            |
+| --opgraph_test  | 可选     | 预留参数，开发者暂不需要关注。                                                           |
+| --opkernel_test | 可选     | 编译opkernel相关单元测试，与-u --opkernel组合等效。                                      |
 | --run_example    | 可选     | 编译指定算子及模式的样例并执行编译后的可执行文件。                                                    |
+| --genop         | 可选     | 创建AI Core自定义算子初始目录。                                                       |
+| --experimental  | 可选     | 编译experimental目录下的用户算子。                                                   |
+| --oom           | 可选     | 开启kernel侧oom内存检测功能。                                                   |
