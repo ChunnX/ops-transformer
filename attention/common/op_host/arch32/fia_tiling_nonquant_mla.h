@@ -1,6 +1,6 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@
 #include "../fia_tiling_base.h"
 #include "../fia_tiling_info.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"
-#include "../../../fused_infer_attention_score/op_kernel/fused_infer_attention_score_tilingdata.h"
+#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_struct.h"
+#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_base.h"
+#include "../split_core.h"
 
 namespace optiling {
 
@@ -42,6 +44,8 @@ private:
     void ZeroTensorProcess() const;
     void InitParams();
 
+    void CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitParam) const;
+    void SetSplitOutput(SplitResult &res);
     void Split();
     void CalcInnerSize(uint32_t seqSize);
     void CalcMBaseSize();
@@ -69,7 +73,7 @@ private:
     bool splitKVFlag_ = false;
 
     uint32_t coreNum_ = 0;
-    IfaPerfMode perfMode_ = IfaPerfMode::NORMAL;
+    FiaTemplateId perfMode_ = FiaTemplateId::GENERAL_GQA;
     uint32_t kvSplitPart_ = 1;
     int64_t mm1ResSize_ = 0;
     int64_t mm2ResSize_ = 0;
@@ -83,10 +87,11 @@ private:
     // platform info
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
+    uint32_t cvRatio_ = 2; // 2表示CV1:2; 1表示CV 1:1
     size_t libapiSize_ = 0;
 
     // set info to context
-    FusedInferAttentionScoreTilingData *tilingData_ = GetContext()->GetTilingData<FusedInferAttentionScoreTilingData>();
+    FusedInferAttentionScoreTilingData tilingData_;
     uint32_t blockDim_{0};
     ScheduleMode scheduleMode_{ScheduleMode::NORMAL_MODE};
     uint64_t workspaceSize_{0};

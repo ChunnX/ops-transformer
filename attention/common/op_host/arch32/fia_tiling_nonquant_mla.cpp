@@ -1,6 +1,6 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -21,21 +21,16 @@
 #include "err/ops_err.h"
 #include "fia_tiling_nonquant_mla.h"
 #include "../fia_tiling_templates_registry.h"
-#include "../split_core_v1.h"
-#include "../../../fused_infer_attention_score/op_kernel/fused_infer_attention_score_template_tilingkey.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
 constexpr uint64_t PRE_LOAD_NUM_MLA = 2;
+constexpr uint32_t QK_HEAD_DIM_512 = 512U;
 
 constexpr uint64_t FIA_TILINGKEYOFFSET = uint64_t(100000000000000000UL); // 10^17
 constexpr uint64_t FIA_PERF_MODE_TILINGKEYOFFSET = uint64_t(1000000000000000UL); // 10^15
-
-constexpr uint8_t TILINGKEY_NUM_0 = 0;
-constexpr uint8_t TILINGKEY_NUM_3 = 3;
-constexpr uint8_t TILINGKEY_NUM_5 = 5;
 
 template <typename T> 
 inline auto Align(T num, T rnd) -> T
@@ -77,6 +72,10 @@ ge::graphStatus FiaTilingNonQuantMla::GetPlatformInfo()
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0,
         OPS_REPORT_VECTOR_INNER_ERR(fiaInfo_->opName, "num of core obtained is 0."), return GRAPH_FAILED);
 
+    // 设置CV1:1模式
+    cvRatio_ = aivNum_ / aicNum_;
+    OP_LOGI(fiaInfo_->opName, "FIA aicNum: %u, aivNum:%u, cvRatio:%u.", aicNum_, aivNum_, cvRatio_);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -89,7 +88,7 @@ bool FiaTilingNonQuantMla::IsCapable()
     ge::DataType qDataType = fiaInfo_->inputQType;
     ge::DataType kDataType = fiaInfo_->inputKvType;
 
-    if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
+    if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT && fiaInfo_->qkHeadDim == QK_HEAD_DIM_512) {
         // MLA非量化
         if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
             return true;
@@ -100,12 +99,37 @@ bool FiaTilingNonQuantMla::IsCapable()
 
 void FiaTilingNonQuantMla::GenTilingKey()
 {
-    uint8_t inputQVal{0}, inputKvVal{0}, outputVal{0};
+    uint8_t layoutVal{0};
+    uint8_t inputQVal{0};
+    uint8_t inputKvVal{0};
+    uint8_t outputVal{0};
+    uint8_t originVal{0};
+    uint8_t splitKvVal = kvSplit_ > 0U ? 1U : 0U;
+    uint8_t paVal = (fiaInfo_->pageAttentionFlag && fiaInfo_->s2Size != static_cast<int64_t>(0)) ?
+        static_cast<uint8_t>(1 * 2) : static_cast<uint8_t>(0);
+    uint8_t antiquantModeVal = 0;
+    uint64_t modeVal = fiaInfo_->sysPrefixFlag ? 2U : 1U;
+    uint8_t kvLayoutVal = 0;
+    uint8_t cvRatioVal = (cvRatio_ == 1) ? 1 : 0; // CV1:1场景为1，其他场景为0
+
+    const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U}, {TilingKeyLayout::TND, 3U}
+    };
+
+    const std::map<TilingKeyLayout, uint8_t> qLayoutMap = {
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::TND, 2U}
+    };
 
     const std::map<ge::DataType, uint8_t> typeMap = {
         {ge::DT_FLOAT16, 0U}, {ge::DT_BF16, 2U}, {ge::DT_INT8, 3U}, {ge::DT_INT4, 4U},
     };
 
+    if (kvLayoutMap.find(fiaInfo_->inputKvLayout) != kvLayoutMap.end()) {
+        kvLayoutVal = kvLayoutMap.at(fiaInfo_->inputKvLayout);
+    }
+    if (qLayoutMap.find(fiaInfo_->inputLayout) != qLayoutMap.end()) {
+        layoutVal = qLayoutMap.at(fiaInfo_->inputLayout);
+    }
     if (typeMap.find(fiaInfo_->inputQType) != typeMap.end()) {
         inputQVal = typeMap.at(fiaInfo_->inputQType);
     }
@@ -116,18 +140,18 @@ void FiaTilingNonQuantMla::GenTilingKey()
         outputVal = typeMap.at(fiaInfo_->outputType);
     }
 
-    bool isFlashDecode = (kvSplit_ > 0);
-    bool isPageAttention = (fiaInfo_->pageAttentionFlag && fiaInfo_->s2Size != 0);
-    tilingKey_ = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputQVal), static_cast<uint8_t>(inputKvVal), static_cast<uint8_t>(outputVal), static_cast<uint8_t>(isPageAttention),
-                                    static_cast<uint8_t>(fiaInfo_->inputLayout),
-                                    static_cast<uint8_t>(fiaInfo_->inputKvLayout), static_cast<uint8_t>(isFlashDecode), static_cast<uint8_t>(fiaInfo_->sysPrefixFlag),
-                                    TILINGKEY_NUM_0, TILINGKEY_NUM_0, TILINGKEY_NUM_0, TILINGKEY_NUM_0, TILINGKEY_NUM_3, TILINGKEY_NUM_5, TILINGKEY_NUM_0, TILINGKEY_NUM_0, TILINGKEY_NUM_0);
+    originVal = inputQVal;
+    uint64_t baseOffset =
+        modeVal * FIA_TILINGKEYOFFSET + (static_cast<uint64_t>(perfMode_)) * FIA_PERF_MODE_TILINGKEYOFFSET;
+    tilingKey_ = baseOffset + FIA_GET_TILINGKEY(layoutVal, inputQVal, inputKvVal, outputVal, originVal,
+        (paVal + splitKvVal), antiquantModeVal, kvLayoutVal, cvRatioVal);
+
     OP_LOGI(fiaInfo_->opName, "FIA tilingKey_: %lu.", tilingKey_);
 }
 
 bool FiaTilingNonQuantMla::IsFlashDecode()
 {
-    uint32_t tndFDCoreArrLen = tilingData_->fdParams.get_numOfFdHead();
+    uint32_t tndFDCoreArrLen = tilingData_.fdParams.get_numOfFdHead();
     return tndFDCoreArrLen > 0U;
 }
 
@@ -158,7 +182,7 @@ void FiaTilingNonQuantMla::ZeroTensorProcess() const
 
 void FiaTilingNonQuantMla::InitParams()
 {
-    perfMode_ = IfaPerfMode::CUBE_VIEW_MM_MLA;
+    perfMode_ = FiaTemplateId::HIGH_PERFORMANCE_MLA;
     coreNum_ = aicNum_;
     blockDim_ = aicNum_; // Tiling下沉首次Tiling也会校验blockDim_是否为0，为避免拦截报错，将blockDim_设置为aicNum_，实际不生效
 
@@ -238,12 +262,9 @@ void FiaTilingNonQuantMla::CalcMBaseSize()
     mBaseSize_ = mBaseSizeTmp;  // 满足以上条件则更新mBaseSize
 }
 
-void FiaTilingNonQuantMla::Split()
+void FiaTilingNonQuantMla::CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitParam) const
 {
-    CalcInnerSize(static_cast<uint32_t>(fiaInfo_->s2Size));
-
     //构造分核输入参数
-    BaseInfo baseInfo;
     baseInfo.bSize = fiaInfo_->bSize;
     baseInfo.n2Size = fiaInfo_->n2Size;
     baseInfo.gSize = fiaInfo_->gSize;
@@ -253,101 +274,134 @@ void FiaTilingNonQuantMla::Split()
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
-    baseInfo.slidingFlag = fiaInfo_->slidingFlag;
+    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
+    baseInfo.sparseMode = fiaInfo_->sparseMode;
+    baseInfo.attenMaskFlag = fiaInfo_->attenMaskFlag;
 
     if (fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor != nullptr) {
-        baseInfo.actualSeqS1Size = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
         baseInfo.isAccumSeqS1 = fiaInfo_->isAccumQSeq;
+        baseInfo.actualSeqS1Size.reserve(fiaInfo_->bSize);
+        const int64_t *s1Ptr = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
+        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
+            baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
+        }
     }
     if (fiaInfo_->opParamInfo.actualSeqLengths.tensor != nullptr) {
-        baseInfo.actualSeqS2Size = fiaInfo_->opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
         baseInfo.isAccumSeqS2 = fiaInfo_->isAccumKVSeq;
+        baseInfo.actualSeqS2Size.reserve(fiaInfo_->bSize);
+        const int64_t *s2Ptr = fiaInfo_->opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
+        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
+            baseInfo.actualSeqS2Size.emplace_back(s2Ptr[i]);
+        }
+    }
+    splitParam.mBaseSize = mBaseSize_;
+    splitParam.s2BaseSize = sInnerSize_;
+    splitParam.gS1BaseSizeOfFd = mFdBaseSize_;
+}
+
+void FiaTilingNonQuantMla::SetSplitOutput(SplitResult &res)
+{
+    uint32_t *bN2EndPtr = tilingData_.outerSplitParams.get_bN2End();
+    uint32_t *gS1EndPtr = tilingData_.outerSplitParams.get_gS1End();
+    uint32_t *s2EndPtr = tilingData_.outerSplitParams.get_s2End();
+    uint32_t *bN2IdxOfFdHead = tilingData_.fdParams.get_bN2IdxOfFdHead();
+    uint32_t *gS1IdxOfFdHead = tilingData_.fdParams.get_gS1IdxOfFdHead();
+    uint32_t *s2SplitNumOfFdHead = tilingData_.fdParams.get_s2SplitNumOfFdHead();
+    uint32_t *s2SplitStartIdxOfCore = tilingData_.fdParams.get_s2SplitStartIdxOfCore();
+    uint32_t *gS1SplitNumOfFdHead = tilingData_.fdParams.get_gS1SplitNumOfFdHead();
+    uint32_t *gS1LastPartSizeOfFdHead = tilingData_.fdParams.get_gS1LastPartSizeOfFdHead();
+    uint32_t *gS1IdxEndOfFdHead = tilingData_.fdParams.get_gS1IdxEndOfFdHead();
+    uint32_t *gS1IdxEndOfFdHeadSplit = tilingData_.fdParams.get_gS1IdxEndOfFdHeadSplit();
+
+    for (uint32_t i = 0; i < res.usedCoreNum; ++i) {
+        bN2EndPtr[i] = res.bN2End[i];
+        gS1EndPtr[i] = res.gS1End[i];
+        s2EndPtr[i] = res.s2End[i];
+        bN2IdxOfFdHead[i] = res.fdRes.bN2IdxOfFdHead[i];
+        gS1IdxOfFdHead[i] = res.fdRes.gS1IdxOfFdHead[i];
+        s2SplitNumOfFdHead[i] = res.fdRes.s2SplitNumOfFdHead[i];
+        s2SplitStartIdxOfCore[i] = res.fdRes.s2SplitStartIdxOfCore[i];
+        gS1SplitNumOfFdHead[i] = res.fdRes.gS1SplitNumOfFdHead[i];
+        gS1LastPartSizeOfFdHead[i] = res.fdRes.gS1LastPartSizeOfFdHead[i];
     }
 
-    InnerSplitParams innerSplitParams;
-    innerSplitParams.s1GBaseSize = mBaseSize_;
-    innerSplitParams.s2BaseSize = sInnerSize_;
-    tilingData_->innerSplitParams.set_mBaseSize(innerSplitParams.s1GBaseSize);
-    tilingData_->innerSplitParams.set_s2BaseSize(innerSplitParams.s2BaseSize);
+    for (uint32_t i = 0; i < res.usedCoreNum * 2; ++i) { // 2: cube : vector = 1:2
+        gS1IdxEndOfFdHead[i] = res.fdRes.gS1IdxEndOfFdHead[i];
+        gS1IdxEndOfFdHeadSplit[i] = res.fdRes.gS1IdxEndOfFdHeadSplit[i];
+    }
+}
+
+void FiaTilingNonQuantMla::Split()
+{
+    CalcInnerSize(static_cast<uint32_t>(fiaInfo_->s2Size));
+
+    //构造分核输入参数
+    BaseInfo baseInfo {};
+    SplitParam splitParam {};
+    CreateSplitInput(baseInfo, splitParam);
 
     //构造分核输出参数
-    OuterSplitParams outerSplitParams;
-    outerSplitParams.bN2End = tilingData_->outerSplitParams.get_bN2End();
-    outerSplitParams.gS1End = tilingData_->outerSplitParams.get_gS1End();
-    outerSplitParams.s2End = tilingData_->outerSplitParams.get_s2End();
-    FlashDecodeParams fDParams;
-    tilingData_->fdParams.set_gS1BaseSizeOfFd(mFdBaseSize_);
-    fDParams.bN2IdxOfFdHead = tilingData_->fdParams.get_bN2IdxOfFdHead();
-    fDParams.gS1IdxOfFdHead = tilingData_->fdParams.get_gS1IdxOfFdHead();
-    fDParams.s2SplitNumOfFdHead = tilingData_->fdParams.get_s2SplitNumOfFdHead();
-    fDParams.s2SplitStartIdxOfCore = tilingData_->fdParams.get_s2SplitStartIdxOfCore();
-    fDParams.gS1BaseSizeOfFd = tilingData_->fdParams.get_gS1BaseSizeOfFd();
-    fDParams.gS1SplitNumOfFdHead = tilingData_->fdParams.get_gS1SplitNumOfFdHead();
-    fDParams.gS1LastPartSizeOfFdHead = tilingData_->fdParams.get_gS1LastPartSizeOfFdHead();
-    fDParams.gS1IdxEndOfFdHead = tilingData_->fdParams.get_gS1IdxEndOfFdHead();
-    fDParams.gS1IdxEndOfFdHeadSplit = tilingData_->fdParams.get_gS1IdxEndOfFdHeadSplit();
-    SplitCoreRes res;
-    res.numOfFdHead = 0U;
-    res.maxS2SplitNum = 1U;
-    res.usedCoreNum = aicNum_;
-    SplitCore(baseInfo, innerSplitParams, aicNum_, outerSplitParams, fDParams, res);
+    SplitResult res {aicNum_, cvRatio_};
+    SplitCore(aicNum_, baseInfo, splitParam, res);
     if (res.numOfFdHead > aicNum_ || res.usedCoreNum > aicNum_ || res.maxS2SplitNum > aicNum_ + 1U) {
         OP_LOGE(fiaInfo_->opName, "used_core_num: %u, num_of_fd_head: %u, max_s2_split_num: %u, aic_num: %u", 
             res.usedCoreNum, res.numOfFdHead, res.maxS2SplitNum, aicNum_);
     }
-
-    tilingData_->fdParams.set_numOfFdHead(res.numOfFdHead);
-    usedCoreNum_ = res.usedCoreNum;
+    SetSplitOutput(res);
+    tilingData_.innerSplitParams.set_mBaseSize(mBaseSize_);
+    tilingData_.innerSplitParams.set_s2BaseSize(sInnerSize_);
+    tilingData_.fdParams.set_numOfFdHead(res.numOfFdHead);
+    tilingData_.fdParams.set_gS1BaseSizeOfFd(mFdBaseSize_);
+    usedCoreNum_ = res.usedCoreNum; 
 
     //kvSplitPart_,用于lse out workspace计算
     if (IsFlashDecode()) {
         splitKVFlag_ = true;
         kvSplit_++;
         kvSplitPart_ = res.maxS2SplitNum;
-        SplitFD(res, fDParams, usedCoreNum_);
-        tilingData_->fdParams.set_usedVecNumOfFd(res.usedVecNumOfFd);
+        tilingData_.fdParams.set_usedVecNumOfFd(res.usedVecNumOfFd);
     }
     CalcMmResSize();
 }
 
 void FiaTilingNonQuantMla::FillTilingBaseParams()
 {
-    tilingData_->baseParams.set_bSize(fiaInfo_->bSize);
-    tilingData_->baseParams.set_s2Size(fiaInfo_->s2Size);
-    tilingData_->baseParams.set_s1Size(fiaInfo_->s1Size);
-    tilingData_->baseParams.set_n2Size(fiaInfo_->n2Size);
-    tilingData_->baseParams.set_headDim(fiaInfo_->vHeadDim);
-    tilingData_->baseParams.set_headDimRope(fiaInfo_->ropeHeadDim);
-    tilingData_->baseParams.set_scaleValue(fiaInfo_->scaleValue);
-    tilingData_->baseParams.set_gSize(fiaInfo_->n1Size / fiaInfo_->n2Size);
-    tilingData_->baseParams.set_batchContinuous((fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) ? 0U : 1U);
-    tilingData_->baseParams.set_actualSeqS1Dims(fiaInfo_->actualLenQDims);
-    tilingData_->baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenDims);
-    tilingData_->baseParams.set_accumQSeqFlag(fiaInfo_->isAccumQSeq ? 1U : 0U);
-    tilingData_->baseParams.set_accumKVSeqFlag(fiaInfo_->isAccumKVSeq ? 1U : 0U);
-    tilingData_->baseParams.set_outputLayout(static_cast<uint32_t>(fiaInfo_->outputLayout));
-    tilingData_->baseParams.set_slidingFlag(fiaInfo_->slidingFlag);
-    tilingData_->baseParams.set_needInit(fiaInfo_->needInit);
-    tilingData_->baseParams.set_usedCoreNum(usedCoreNum_);
-    tilingData_->baseParams.set_softmaxLseFlag(fiaInfo_->softmaxLseFlag ? 1 : 0);
+    tilingData_.baseParams.set_bSize(fiaInfo_->bSize);
+    tilingData_.baseParams.set_s2Size(fiaInfo_->s2Size);
+    tilingData_.baseParams.set_s1Size(fiaInfo_->s1Size);
+    tilingData_.baseParams.set_n2Size(fiaInfo_->n2Size);
+    tilingData_.baseParams.set_headDim(fiaInfo_->vHeadDim);
+    tilingData_.baseParams.set_headDimRope(fiaInfo_->ropeHeadDim);
+    tilingData_.baseParams.set_scaleValue(fiaInfo_->scaleValue);
+    tilingData_.baseParams.set_gSize(fiaInfo_->n1Size / fiaInfo_->n2Size);
+    tilingData_.baseParams.set_batchContinuous((fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) ? 0 : 1);
+    tilingData_.baseParams.set_actualSeqS1Dims(fiaInfo_->actualLenQDims);
+    tilingData_.baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenDims);
+    tilingData_.baseParams.set_accumQSeqFlag(fiaInfo_->isAccumQSeq ? 1 : 0);
+    tilingData_.baseParams.set_accumKVSeqFlag(fiaInfo_->isAccumKVSeq ? 1 : 0);
+    tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(fiaInfo_->outputLayout));
+    tilingData_.baseParams.set_needInit(fiaInfo_->needInit);
+    tilingData_.baseParams.set_usedCoreNum(usedCoreNum_);
+    tilingData_.baseParams.set_softmaxLseFlag(fiaInfo_->softmaxLseFlag ? 1 : 0);
 }
 
 void FiaTilingNonQuantMla::FillTilingPageAttenParams()
 {
-    tilingData_->pageAttenParams.set_blockSize(fiaInfo_->blockSize);
-    tilingData_->pageAttenParams.set_maxBlockNumPerBatch(fiaInfo_->maxBlockNumPerBatch);
+    tilingData_.pageAttenParams.set_blockSize(fiaInfo_->blockSize);
+    tilingData_.pageAttenParams.set_maxBlockNumPerBatch(fiaInfo_->maxBlockNumPerBatch);
 }
 
 void FiaTilingNonQuantMla::FillTilingMaskParams()
 {
-    tilingData_->maskParams.set_attenMaskFlag(fiaInfo_->attenMaskFlag ? 1U : 0U);
-    tilingData_->maskParams.set_attenMaskSize(fiaInfo_->attenMaskSize);
-    tilingData_->maskParams.set_attenMaskStride(fiaInfo_->attenMaskStride);
-    tilingData_->maskParams.set_sparseMode(fiaInfo_->sparseMode);
-    tilingData_->maskParams.set_preToken(fiaInfo_->preToken);
-    tilingData_->maskParams.set_nextToken(fiaInfo_->nextToken);
+    tilingData_.maskParams.set_attenMaskFlag(fiaInfo_->attenMaskFlag ? 1 : 0);
+    tilingData_.maskParams.set_attenMaskSize(fiaInfo_->attenMaskSize);
+    tilingData_.maskParams.set_attenMaskStride(fiaInfo_->attenMaskStride);
+    tilingData_.maskParams.set_sparseMode(fiaInfo_->sparseMode);
+    tilingData_.maskParams.set_preToken(fiaInfo_->preToken);
+    tilingData_.maskParams.set_nextToken(fiaInfo_->nextToken);
+    tilingData_.baseParams.set_slidingFlag(fiaInfo_->slidingFlag);
     uint32_t isRowInvalid = static_cast<uint32_t>(fiaInfo_->innerPrecise) >> 1;
-    tilingData_->maskParams.set_isRowInvalid(isRowInvalid);
+    tilingData_.maskParams.set_isRowInvalid(isRowInvalid);
 }
 
 void FiaTilingNonQuantMla::FillTilingWorkspaceParams()
@@ -357,10 +411,10 @@ void FiaTilingNonQuantMla::FillTilingWorkspaceParams()
     uint32_t sumAndMaxElemNumOfOneFdTask = 2 * fiaInfo_->n2Size * mBaseSize_ * (BYTE_BLOCK / sizeof(float));
     // 每个核可能有头规约和尾规约，一共两份规约信息
     constexpr uint32_t MAX_FD_TASK_NUMS = 2;
-    tilingData_->workspaceParams.set_fdAccumOutSize(aicNum_ * MAX_FD_TASK_NUMS * accumOutElemNumOfOneFdTask);
-    tilingData_->workspaceParams.set_fdLogSumExpSize(aicNum_ * MAX_FD_TASK_NUMS * sumAndMaxElemNumOfOneFdTask);
-    tilingData_->workspaceParams.set_mm1ResSize(mm1ResSize_);
-    tilingData_->workspaceParams.set_mm2ResSize(mm2ResSize_);
+    tilingData_.workspaceParams.set_fdAccumOutSize(aicNum_ * MAX_FD_TASK_NUMS * accumOutElemNumOfOneFdTask);
+    tilingData_.workspaceParams.set_fdLogSumExpSize(aicNum_ * MAX_FD_TASK_NUMS * sumAndMaxElemNumOfOneFdTask);
+    tilingData_.workspaceParams.set_mm1ResSize(mm1ResSize_);
+    tilingData_.workspaceParams.set_mm2ResSize(mm2ResSize_);
 }
 
 void FiaTilingNonQuantMla::CalcMmResSize()
@@ -420,12 +474,6 @@ uint64_t FiaTilingNonQuantMla::CalcFlashDecodeWorkspace(const uint32_t coreNum) 
     return workspaceSize;
 }
 
-void FiaTilingNonQuantMla::CalcScheduleMode()
-{
-    scheduleMode_ = ScheduleMode::BATCH_MODE;  // 当前syncall场景需要使用batch mode，后续可根据具体情况扩展其他场景使用的模式
-    OP_LOGI(fiaInfo_->opName, "FIA schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
-}
-
 void FiaTilingNonQuantMla::CalcWorkspaceSize()
 {
     workspaceSize_ = libapiSize_;
@@ -447,10 +495,16 @@ void FiaTilingNonQuantMla::CalcBlockDim(uint32_t coreNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
     auto aicNum = coreNum;
-    auto aivNum = 2U * coreNum;  // vec核数量是cube核数量的两倍
+    auto aivNum = aicNum * cvRatio_;
 
     blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
     OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
+}
+
+void FiaTilingNonQuantMla::CalcScheduleMode()
+{
+    scheduleMode_ = ScheduleMode::BATCH_MODE;
+    OP_LOGI(fiaInfo_->opName, "FIA schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
 }
 
 ge::graphStatus FiaTilingNonQuantMla::DoOpTiling()
@@ -474,8 +528,8 @@ ge::graphStatus FiaTilingNonQuantMla::DoOpTiling()
     if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
         (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
-        (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)
-        ) {
+        (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
+        (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -487,5 +541,5 @@ ge::graphStatus FiaTilingNonQuantMla::DoOpTiling()
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingNonQuantMla,
-    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B)}), 1);
+    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B)}), 9);
 } // namespace optiling

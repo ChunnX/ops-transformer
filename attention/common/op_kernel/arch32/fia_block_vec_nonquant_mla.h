@@ -65,7 +65,7 @@ public:
         __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
         __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-            const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData);
+            const FusedInferAttentionScoreTilingData *__restrict tilingData);
     __aicore__ inline void InitParams(const struct AttentionCommon::ConstInfo &constInfo);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> mm2ResInt32Gm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<UPDATE_T> vec2ResGm,
@@ -76,6 +76,8 @@ public:
 
     // ================================Vector1==========================================
     __aicore__ inline void ProcessVec1SingleBuf(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo);
+    __aicore__ inline void CopySoftmaxLseToGmByLayout(const AttentionCommon::RunInfo &info, LocalTensor<T> &lseSrc,
+                                                      uint32_t mOffset, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm1ResBaseBlock(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
@@ -92,8 +94,6 @@ public:
     __aicore__ inline void ProcessAmlaNupdate(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
                                                        LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
-    __aicore__ inline void CopySoftmaxLseToGmByLayout(const AttentionCommon::RunInfo &info, LocalTensor<T> &lseSrc,
-                                                      uint32_t mOffset, const MSplitInfo &mSplitInfo);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm2ResBaseBlock(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -164,7 +164,7 @@ protected:
     AttentionCommon::ConstInfo constInfo = {};
     uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
 
-    static constexpr T SOFTMAX_MIN_NUM = -2e38;
+    T SOFTMAX_MIN_NUM = T(-1.0/0.0); // -inf
     static constexpr uint64_t headDim = 512ULL;
     static constexpr uint64_t headDimAlign = 512ULL;
     static constexpr uint64_t headDimRope = 64ULL;
@@ -211,7 +211,7 @@ private:
     // attention mask
     uint32_t attenMaskSizeAlign = 0U;
 
-    const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData = nullptr;
+    const FusedInferAttentionScoreTilingData *__restrict tilingData = nullptr;
 };
 
 template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Init(
@@ -224,7 +224,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::In
         __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
         __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-        const optiling::FusedInferAttentionScoreTilingData *__restrict tilingData)
+        const FusedInferAttentionScoreTilingData *__restrict tilingData)
 {
     attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
     // attenMaskBoolGm.SetGlobalBuffer((__gm__ bool *)attenMask); // 差异
@@ -253,7 +253,11 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::In
     pipe->InitBuffer(inputBuff1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
     pipe->InitBuffer(inputBuff2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_8K * 2);  // 2:pingpong
     pipe->InitBuffer(outputBuff1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(outputBuff2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K);
+    if (constInfo.subBlockNum == 1) { // CV1:1场景，vecDealM 变大一倍，需要的buffer变大一倍
+        pipe->InitBuffer(outputBuff2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_8K);
+    } else {
+        pipe->InitBuffer(outputBuff2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K);
+    }
 
     // tmpBuff
     pipe->InitBuffer(tmpBuff1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K);
@@ -360,7 +364,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
     uint64_t offset = (accumTmpOutNum * kvHeadNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * kvHeadNum * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                        fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                      fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
 
     LocalTensor<T> tmp = outputBuff2.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
@@ -726,6 +730,10 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1SingleBuf(const 
     if (mSplitSize > mSplitInfo.vecDealM) {
         mSplitSize = mSplitInfo.vecDealM;
     }
+
+    const uint32_t MAX_M_SPLIT_SIZE = 128; // CV1:1场景，M轴方向最大支持128
+    mSplitSize = (constInfo.subBlockNum == 1 && mSplitSize > MAX_M_SPLIT_SIZE) ? MAX_M_SPLIT_SIZE : mSplitSize;
+
     uint32_t loopCount = (mSplitInfo.vecDealM + mSplitSize - 1) / mSplitSize;
     uint32_t tailSplitSize = mSplitInfo.vecDealM - (loopCount - 1) * mSplitSize;
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
@@ -753,7 +761,8 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
     } else if (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBSND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
+        DataCopySoftmaxLseBSND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
+                               qActSeqLensParser, info.bIdx);
     } else {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
@@ -762,7 +771,8 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
     }
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1L(const AttentionCommon::RunInfo &info)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1L(const AttentionCommon::RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -775,7 +785,9 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Pr
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
                                                                 (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
         mSplitInfo.vecStartM = 0;
-        if (GetBlockIdx() % 2 == 1) {
+        if (constInfo.subBlockNum == 1) { // CV1:1场景
+            mSplitInfo.vecDealM = mSplitInfo.nBufferDealM;
+        } else if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
@@ -873,7 +885,8 @@ __aicore__ inline uint64_t FiaBlockVecNonQuantMla<FIAT>::CalcAccumOffset(uint32_
 #endif
     uint64_t accumTmpOutNum = 0;
     int taskId = 0;
-    while (bN2IdxOfFdHead[taskId] != bN2Idx || gS1IdxOfFdHead[taskId] * constInfo.mBaseSize != gS1Idx) {
+    uint32_t usedCoreNum = tilingData->baseParams.usedCoreNum;
+    while (taskId < usedCoreNum && (bN2IdxOfFdHead[taskId] != bN2Idx || gS1IdxOfFdHead[taskId] * constInfo.mBaseSize != gS1Idx)) {
         accumTmpOutNum += s2SplitNumOfFdHead[taskId]; // 计算前面的workspace数
         taskId++;
     }
@@ -908,7 +921,9 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Pr
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
                                                                 (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
         mSplitInfo.vecStartM = 0;
-        if (GetBlockIdx() % 2 == 1) {
+        if (constInfo.subBlockNum == 1) { // CV1:1场景
+            mSplitInfo.vecDealM = mSplitInfo.nBufferDealM;
+        } else if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
@@ -1121,7 +1136,7 @@ FiaBlockVecNonQuantMla<FIAT>::DealBmm2ResBaseBlock(const AttentionCommon::RunInf
     LocalTensor<T> tmpSumUb = attenMaskTmpBuff.Get<T>(); // sumUb用临时内存 16 * 32B  = 512B
     Brcb(tmpSumUb, aMlaSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8, {1, 8});
     AscendC::PipeBarrier<PIPE_V>();
-    RowDivs(bmm2ResUb, tmpBmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
+    fa_base_vector::RowDivs(bmm2ResUb, tmpBmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
     AscendC::PipeBarrier<PIPE_V>();
 
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);

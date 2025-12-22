@@ -28,13 +28,12 @@ static constexpr uint32_t FIA_LAYOUT_DIM4 = 4;
 static constexpr uint32_t FIA_LAYOUT_DIM_NUMS_1 = 1;
 static constexpr uint32_t FIA_LAYOUT_DIM_NUMS_3 = 3;
 static constexpr uint32_t FIA_LAYOUT_DIM_NUMS_4 = 4;
-static constexpr uint32_t LAYOUT_SH_DIM_NUMS = 2;
 static constexpr uint32_t LAYOUT_BSH_DIM_NUMS = 3;
-static constexpr uint32_t LAYOUT_NSD_DIM_NUMS = 3;
 static constexpr uint32_t LAYOUT_BNSD_DIM_NUMS = 4;
 static constexpr uint32_t LAYOUT_BSND_DIM_NUMS = 4;
-static constexpr uint32_t LAYOUT_BNSD_BSND_DIM_NUMS = 4;
 static constexpr uint32_t LAYOUT_TND_DIM_NUMS = 3;
+static constexpr uint32_t LAYOUT_NTD_DIM_NUMS = 3;
+static constexpr uint32_t LAYOUT_NSD_DIM_NUMS = 3;
 static constexpr int32_t FIA_UNKNOWN_DIMS = -2;
 static constexpr uint32_t LAYOUT_PA_BBH_DIM_NUMS = 3;
 static constexpr uint32_t LAYOUT_PA_BNBD_DIM_NUMS = 4;
@@ -65,7 +64,224 @@ static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_
     {15, ge::DT_BF16},
     {23, ge::DT_FLOAT8_E5M2},
     {24, ge::DT_FLOAT8_E4M3FN},
-    {290, ge::DT_HIFLOAT8}};
+    {290, ge::DT_HIFLOAT8}
+};
+
+static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
+                                            std::string& attentionOutLayout,
+                                            const gert::Shape *queryShape,
+                                            const char *inputLayoutPtr)
+{
+    struct parserLayout {
+        std::string qLayout;
+        std::string outLayout;
+        int32_t qDim;
+    };
+
+    const std::map<std::string, parserLayout> LAYOUT_MAP = {
+        {"BSH",              {"BSH", "BSH", LAYOUT_BSH_DIM_NUMS}},
+        {"BSND",             {"BSND", "BSND", LAYOUT_BSND_DIM_NUMS}},
+        {"BNSD",             {"BNSD", "BNSD", LAYOUT_BNSD_DIM_NUMS}},
+        {"TND",              {"TND", "TND", LAYOUT_TND_DIM_NUMS}},
+        {"NTD",              {"NTD", "NTD", LAYOUT_NTD_DIM_NUMS}},
+        {"BNSD_BSND",        {"BNSD", "BSND", LAYOUT_BNSD_DIM_NUMS}},
+        {"BSH_BNSD",         {"BSH", "BNSD", LAYOUT_BSH_DIM_NUMS}},
+        {"BSND_BNSD",        {"BSND", "BNSD", LAYOUT_BSND_DIM_NUMS}},
+        {"NTD_TND",          {"NTD", "TND", LAYOUT_NTD_DIM_NUMS}},
+        {"BSH_NBSD",         {"BSH", "NBSD", LAYOUT_BSH_DIM_NUMS}},
+        {"BSND_NBSD",        {"BSND", "NBSD", LAYOUT_BSND_DIM_NUMS}},
+        {"BNSD_NBSD",        {"BNSD", "NBSD", LAYOUT_BNSD_DIM_NUMS}},
+        {"TND_NTD",          {"TND", "NTD", LAYOUT_TND_DIM_NUMS}},
+        {"NSD",              {"NSD", "NSD", LAYOUT_NSD_DIM_NUMS}}
+    };
+
+    int32_t queryDim = 0;
+    auto it = LAYOUT_MAP.find(std::string(inputLayoutPtr));
+    if (it != LAYOUT_MAP.end()) {
+        queryLayout = it->second.qLayout;
+        attentionOutLayout = it->second.outLayout;
+        queryDim = it->second.qDim;
+
+        if (queryShape->GetDimNum() != queryDim) {
+            OP_LOGE("FusedInferAttentionScore", "Layout %s, query's dim(%zu) must be %zu!",
+                queryLayout.c_str(), queryShape->GetDimNum(), queryDim);
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        OP_LOGE("FusedInferAttentionScore", "Only support layout BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, "
+                "BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, but got %s.", *inputLayoutPtr);
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape,
+                                   const std::string queryLayout,
+                                   const int64_t *numHeadsPtr,
+                                   int64_t& b, int64_t& s1, int64_t& n1, int64_t& d1)
+{
+    if (queryLayout == "BSH") {
+        b = (*queryShape)[FIA_LAYOUT_DIM0];
+        s1 = (*queryShape)[FIA_LAYOUT_DIM1];
+        n1 = (*numHeadsPtr);
+        d1 = (*queryShape)[FIA_LAYOUT_DIM2] / (*numHeadsPtr);
+    } else if (queryLayout == "BSND") {
+        b = (*queryShape)[FIA_LAYOUT_DIM0];
+        s1 = (*queryShape)[FIA_LAYOUT_DIM1];
+        n1 = (*queryShape)[FIA_LAYOUT_DIM2];
+        d1 = (*queryShape)[FIA_LAYOUT_DIM3];
+    } else if (queryLayout == "BNSD") {
+        b = (*queryShape)[FIA_LAYOUT_DIM0];
+        s1 = (*queryShape)[FIA_LAYOUT_DIM2];
+        n1 = (*queryShape)[FIA_LAYOUT_DIM1];
+        d1 = (*queryShape)[FIA_LAYOUT_DIM3];
+    } else if (queryLayout == "NSD") {
+        b = 1;
+        s1 = (*queryShape)[FIA_LAYOUT_DIM1];
+        n1 = (*queryShape)[FIA_LAYOUT_DIM0];
+        d1 = (*queryShape)[FIA_LAYOUT_DIM2];
+    } else {
+        OP_LOGE("FusedInferAttentionScore", "Layout %s is not supported in GetQueryBSND function!", queryLayout.c_str());
+        return ge::GRAPH_FAILED;
+    }
+}
+
+static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
+                                  const std::string queryLayout,
+                                  int64_t& t, int64_t& n1, int64_t& d1)
+{
+    if (queryLayout == "TND") {
+        t = (*queryShape)[FIA_LAYOUT_DIM0];
+        n1 = (*queryShape)[FIA_LAYOUT_DIM1];
+        d1 = (*queryShape)[FIA_LAYOUT_DIM2];
+    } else if (queryLayout == "NTD") {
+        t = (*queryShape)[FIA_LAYOUT_DIM1];
+        n1 = (*queryShape)[FIA_LAYOUT_DIM0];
+        d1 = (*queryShape)[FIA_LAYOUT_DIM2];
+    } else {
+        OP_LOGE("FusedInferAttentionScore", "Layout %s is not supported in GetQueryTND function!", queryLayout.c_str());
+        return ge::GRAPH_FAILED;
+    }
+}
+
+static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
+                                 const gert::Shape *valueShape,
+                                 const gert::Shape *queryShape,
+                                 const std::string queryLayout,
+                                 int64_t numKeyValueHeads)
+{
+    if (isPageAttention) { // PA场景
+        if (valueShape->GetDimNum() == LAYOUT_PA_BBH_DIM_NUMS) {
+            valueD = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
+        } else if (valueShape->GetDimNum() == LAYOUT_PA_BNBD_DIM_NUMS) {
+            valueD = (*valueShape)[FIA_LAYOUT_DIM3];
+        } else if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) {
+            valueD = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
+        } else {
+            OP_LOGE("FusedInferAttentionScore", "when Page Attention enabled, value's dim should be 3/4/5, but got %zu.",
+                valueShape->GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+    } else { // 非PA场景
+        if (valueShape->GetDimNum() != queryShape->GetDimNum()) {
+            OP_LOGE("FusedInferAttentionScore", "when Page Attention not enabled, value'dim(%zu) should equal to query's dim(%zu)!",
+                valueShape->GetDimNum(), queryShape->GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+        if (queryLayout == "BSH") {
+            valueD = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
+        } else if (queryLayout == "BSND" || queryLayout == "BNSD") {
+            valueD = (*valueShape)[FIA_LAYOUT_DIM3];
+        } else if (queryLayout == "TND" || queryLayout == "NTD" || queryLayout == "NSD") {
+            valueD = (*valueShape)[FIA_LAYOUT_DIM2];
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus InferAttentionOutShape(std::string attentionOutLayout,
+                                              gert::Shape *attentionOutShape,
+                                              const gert::Shape *queryShape,
+                                              const gert::Shape *valueShape,
+                                              const std::string queryLayout,
+                                              const int64_t *numHeadsPtr, int64_t valueD)
+{
+    int64_t b = 0;
+    int64_t s1 = 0;
+    int64_t n1 = 0;
+    int64_t d1 = 0;
+    int64_t t = 0;
+    if (attentionOutLayout == "BSH") {
+        if (valueShape->GetDim(FIA_LAYOUT_DIM2) != -1) { // 动态图
+            attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_3);
+            GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
+            int64_t outH = (*numHeadsPtr) * valueD;
+            outH = (outH == 0 || (*queryShape)[FIA_LAYOUT_DIM2] == 0) ? (*queryShape)[FIA_LAYOUT_DIM2] : outH;
+            *attentionOutShape = {b, s1, outH};
+        }
+    } else if (attentionOutLayout == "BSND") {
+        attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_4);
+        GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
+        int64_t outD = valueD;
+        outD = (outD == 0 || d1 == 0) ? d1 : outD;
+        *attentionOutShape = {b, s1, n1, outD};
+    } else if (attentionOutLayout == "BNSD") {
+        attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_4);
+        GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
+        int64_t outD = valueD;
+        outD = (outD == 0 || d1 == 0) ? d1 : outD;
+        *attentionOutShape = {b, n1, s1, outD};
+    } else if (attentionOutLayout == "NBSD") {
+        attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_4);
+        GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
+        int64_t outD = valueD;
+        outD = (outD == 0 || d1 == 0) ? d1 : outD;
+        *attentionOutShape = {n1, b, s1, outD};
+    } else if (attentionOutLayout == "TND") {
+        attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_3);
+        GetQueryTND(queryShape, queryLayout, t, n1, d1);
+        int64_t outD = valueD;
+        outD = (outD == 0 || d1 == 0) ? d1 : outD;
+        *attentionOutShape = {t, n1, outD};
+    } else if (attentionOutLayout == "NTD") {
+        attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_3);
+        GetQueryTND(queryShape, queryLayout, t, n1, d1);
+        int64_t outD = valueD;
+        outD = (outD == 0 || d1 == 0) ? d1 : outD;
+        *attentionOutShape = {n1, t, outD};
+    } else if (attentionOutLayout == "NSD") {
+        attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_3);
+        GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
+        int64_t outD = valueD;
+        outD = (outD == 0 || d1 == 0) ? d1 : outD;
+        *attentionOutShape = {n1, s1, outD};   
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus InferLseOutShape(const char *inputLayoutPtr,
+                                        gert::Shape *softmaxLseShape,
+                                        const gert::Shape *queryShape,
+                                        const std::string queryLayout,
+                                        const int64_t *numHeadsPtr)
+{
+    int64_t b = 0;
+    int64_t s1 = 0;
+    int64_t n1 = 0;
+    int64_t d1 = 0;
+    int64_t t = 0;
+    if (strcmp(inputLayoutPtr, "TND") == 0 || strcmp(inputLayoutPtr, "NTD") == 0 ||
+        strcmp(inputLayoutPtr, "TND_NTD") == 0 || strcmp(inputLayoutPtr, "NTD_TND") == 0) {
+        softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_3);
+        GetQueryTND(queryShape, queryLayout, t, n1, d1);
+        *softmaxLseShape = {t, n1, NUM_1};
+    } else {
+        softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_4);
+        GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
+        *softmaxLseShape = {b, n1, s1, NUM_1};
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
 static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContext *context)
 {
@@ -88,6 +304,8 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
     // attentionOut
     gert::Shape *attentionOutShape = context->GetOutputShape(FIA_ATTENTION_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
+
+    // lseout
     gert::Shape *softmaxLseShape = context->GetOutputShape(FIA_SOFTMAX_LSE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
 
@@ -108,9 +326,6 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
     }
     int64_t numKeyValueHeads = (*numKeyValueHeadsPtr == 0) ? *numHeadsPtr : *numKeyValueHeadsPtr;
 
-    int64_t qSeqSize = 1;
-    int64_t batchOfQ = 1;
-
     // set AttentionOut shape
     *attentionOutShape = *queryShape;
 
@@ -124,286 +339,24 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
         return ge::GRAPH_SUCCESS;
     }
 
-    if (strcmp(inputLayoutPtr, "SH") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_SH_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout SH, queryDims(%zu) must be 2!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM0]; // already ensure not nullptr and out of bound.
-    } else if (strcmp(inputLayoutPtr, "BSH") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_BSH_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout BSH, queryDims(%zu) must be 3!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        if (valueShape->GetDim(FIA_LAYOUT_DIM2) != -1) {
-            int64_t outputH =  0;
-            if (!isPageAttention) {
-                if (valueShape->GetDimNum() != LAYOUT_BSH_DIM_NUMS) {
-                    OP_LOGE(context->GetNodeName(), "Layout BSH, valueDims(%zu) must be 3!", valueShape->GetDimNum());
-                    return ge::GRAPH_FAILED;
-                }
-                outputH = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads * (*numHeadsPtr);
-                outputH = (outputH == 0 || (*queryShape)[FIA_LAYOUT_DIM2] == 0) ? (*queryShape)[FIA_LAYOUT_DIM2] : outputH;
-            } else {
-                if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) {    // NZ [blockNum, N, D/16, blockSize, 16]
-                    outputH = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4] * (*numHeadsPtr);
-                    outputH = (outputH == 0 || (*queryShape)[FIA_LAYOUT_DIM2] == 0) ? (*queryShape)[FIA_LAYOUT_DIM2] : outputH;
-                } else if (valueShape->GetDimNum() == LAYOUT_PA_BBH_DIM_NUMS) { // BBH
-                    outputH = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads * (*numHeadsPtr);
-                    outputH = (outputH == 0 || (*queryShape)[FIA_LAYOUT_DIM2] == 0) ? (*queryShape)[FIA_LAYOUT_DIM2] : outputH;
-                } else {
-                    OP_LOGE(context->GetNodeName(), "Layout BSH with page attention,  valueDims(%zu) must be 3 or 5!", valueShape->GetDimNum());
-                    return ge::GRAPH_FAILED;
-                }
-            }
-            batchOfQ = (*queryShape)[FIA_LAYOUT_DIM0];
-            qSeqSize = (*queryShape)[FIA_LAYOUT_DIM1];
-            (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM0];
-            (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM1];
-            (*attentionOutShape)[FIA_LAYOUT_DIM2] = outputH;
-        }
-    } else if (strcmp(inputLayoutPtr, "BSND") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_BSND_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout BSND, queryDims(%zu) must be 4!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        int64_t outputD = 0;
-        if (!isPageAttention) {
-            if (valueShape->GetDimNum() != LAYOUT_BSND_DIM_NUMS) {
-                OP_LOGE(context->GetNodeName(), "Layout BSND, valueDims(%zu) must be 4!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-            outputD = (*valueShape)[FIA_LAYOUT_DIM3];
-            outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-        } else {
-            if (valueShape->GetDimNum() == LAYOUT_PA_BBH_DIM_NUMS) { // BBH
-                outputD = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
-                outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-            } else if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) { // NZ [blockNum, N, D/16, blockSize, 16]
-                outputD = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
-                outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-            } else {
-                OP_LOGE(context->GetNodeName(), "Layout BSND with page attention,  valueDims(%zu) must be 3 or 5!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-        }
-        batchOfQ = (*queryShape)[FIA_LAYOUT_DIM0];
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM3] = outputD;
-    } else if (strcmp(inputLayoutPtr, "NSD") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_NSD_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout NSD, queryDims(%zu) must be 3!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM1];
-    } else if (strcmp(inputLayoutPtr, "BNSD") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_BNSD_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout BNSD, queryDims(%zu) must be 4!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        int64_t outputD =  0;
-        if (!isPageAttention) {
-            if (valueShape->GetDimNum() != LAYOUT_BNSD_DIM_NUMS) {
-                OP_LOGE(context->GetNodeName(), "Layout BNSD, valueDims(%zu) must be 4!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-            outputD = (*valueShape)[FIA_LAYOUT_DIM3];
-            outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-        } else {
-            if (valueShape->GetDimNum() == LAYOUT_PA_BBH_DIM_NUMS) {
-                outputD = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
-                outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-            } else if (valueShape->GetDimNum() == LAYOUT_PA_BNBD_DIM_NUMS) {
-                outputD = (*valueShape)[FIA_LAYOUT_DIM3];
-                outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-            } else if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) { // NZ [blockNum, N, D/16, blockSize, 16]
-                outputD = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
-                outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-            } else {
-                OP_LOGE(context->GetNodeName(), "Layout BNSD with page attention,  valueDims(%zu) must be 3 or 4 or 5!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-        }
-        batchOfQ = (*queryShape)[FIA_LAYOUT_DIM0];
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM3] = outputD;
-    } else if (strcmp(inputLayoutPtr, "BNSD_BSND") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_BNSD_BSND_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout BNSD_BSND, queryDims(%zu) must be 4!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        int64_t outputD =  0;
-        if (!isPageAttention) {
-            if (valueShape->GetDimNum() != LAYOUT_BNSD_BSND_DIM_NUMS) {
-                OP_LOGE(context->GetNodeName(), "Layout BNSD_BSND, valueDims(%zu) must be 4!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-            outputD = (*valueShape)[FIA_LAYOUT_DIM3];
-            outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD; 
-        } else {
-            if (valueShape->GetDimNum() == LAYOUT_PA_BNBD_DIM_NUMS) {
-                outputD = (*valueShape)[FIA_LAYOUT_DIM3];
-                outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-            } else if (valueShape->GetDimNum() == LAYOUT_PA_BBH_DIM_NUMS) {
-                outputD = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
-                outputD = (outputD == 0 || (*queryShape)[FIA_LAYOUT_DIM3] == 0) ? (*queryShape)[FIA_LAYOUT_DIM3] : outputD;
-            } else {
-                OP_LOGE(context->GetNodeName(), "Layout BNSD_BSND with page attention,  valueDims(%zu) must be 3 or 4!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-        }
-        batchOfQ = (*queryShape)[FIA_LAYOUT_DIM0];
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM3] = outputD;
-    } else if (strcmp(inputLayoutPtr, "TND") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_TND_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout TND, queryDims(%zu) must be 3!",
-                queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        int64_t outputD =  0;
-        if (!isPageAttention) {
-            if (valueShape->GetDimNum() != LAYOUT_TND_DIM_NUMS) {
-                OP_LOGE(context->GetNodeName(), "Layout TND, valueDims(%zu) must be 3!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-            outputD = (*valueShape)[FIA_LAYOUT_DIM2];
-        } else {
-            if (valueShape->GetDimNum() == LAYOUT_PA_BNBD_DIM_NUMS) {
-                outputD = (*valueShape)[FIA_LAYOUT_DIM3];
-            } else if (valueShape->GetDimNum() == LAYOUT_PA_BBH_DIM_NUMS) {
-                outputD = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
-            } else if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) {
-                outputD = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
-            } else {
-                OP_LOGE(context->GetNodeName(), "Layout TND,  valueDims(%zu) must be 3 or 4 or 5!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-        }
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = outputD;
-    } else if (strcmp(inputLayoutPtr, "BNSD_NBSD") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_BNSD_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout BNSD_NBSD, queryDims(%zu) must be 4!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        batchOfQ = (*queryShape)[FIA_LAYOUT_DIM0];
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM3] = (*queryShape)[FIA_LAYOUT_DIM3];
-    } else if (strcmp(inputLayoutPtr, "BSND_NBSD") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_BSND_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout BSND_NBSD, queryDims(%zu) must be 4!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        batchOfQ = (*queryShape)[FIA_LAYOUT_DIM0];
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM2];
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM3] = (*queryShape)[FIA_LAYOUT_DIM3];
-    } else if (strcmp(inputLayoutPtr, "BSH_NBSD") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_BSH_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout BSH_NBSD, queryDims(%zu) must be 3!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_4);
-        batchOfQ = (*queryShape)[FIA_LAYOUT_DIM0];
-        qSeqSize = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = *numHeadsPtr;
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM3] = (*queryShape)[FIA_LAYOUT_DIM2] / (*numHeadsPtr);
-    } else if (strcmp(inputLayoutPtr, "TND_NTD") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_TND_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout TND_NTD, queryDims(%zu) must be 3!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-        (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-        (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*queryShape)[FIA_LAYOUT_DIM2];
-    } else if (strcmp(inputLayoutPtr, "NTD_TND") == 0) {
-        if (queryShape->GetDimNum() != LAYOUT_TND_DIM_NUMS) {
-            OP_LOGE(context->GetNodeName(), "Layout NTD_TND, queryDims(%zu) must be 3!", queryShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
+    std::string queryLayout = "BSH";
+    std::string attentionOutLayout = "BSH";
+    GetQueryAndOutLayout(queryLayout, attentionOutLayout, queryShape, inputLayoutPtr);
 
-        if (isPageAttention) {
-            if (valueShape->GetDimNum() == FIA_LAYOUT_DIM3) {
-                (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-                (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-                (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
-            } else if (valueShape->GetDimNum() == FIA_LAYOUT_DIM4) {
-                (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-                (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-                (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*valueShape)[FIA_LAYOUT_DIM3];
-            } else if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) {
-                (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-                (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-                (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
-            } else {
-                OP_LOGE(context->GetNodeName(), "Layout NTD_TND, keyValueDims(%zu) must be 3/4/5!", valueShape->GetDimNum());
-                return ge::GRAPH_FAILED;
-            }
-        } else {
-            (*attentionOutShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-            (*attentionOutShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-            (*attentionOutShape)[FIA_LAYOUT_DIM2] = (*valueShape)[FIA_LAYOUT_DIM2];
-        }
-    } else {
-        // not support layout
-        OP_LOGE(context->GetNodeName(), "Invalid input layout: %s, not support!", inputLayoutPtr);
-        return ge::GRAPH_FAILED;
-    }
+    int64_t valueD = 0;
+    GetValueD(isPageAttention, valueD, valueShape, queryShape, queryLayout, numKeyValueHeads);
+
+    InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr, valueD);
 
     const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(FIA_ATTR_INPUT_SOFTMAX_LSE_FLAG_INDEX);
     bool softmaxLseFlag = (softmaxLsePtr != nullptr) ? *softmaxLsePtr : false;
     if (softmaxLseFlag) {
-        if (strcmp(inputLayoutPtr, "TND") == 0 || strcmp(inputLayoutPtr, "TND_NTD") == 0) { // TN1
-            softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_3);
-            if (!isPageAttention) { // PFA
-                (*softmaxLseShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM0];
-                (*softmaxLseShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM1];
-                (*softmaxLseShape)[FIA_LAYOUT_DIM2] = NUM_1;
-            } else { //IFA
-                (*softmaxLseShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM0];
-                (*softmaxLseShape)[FIA_LAYOUT_DIM1] = *numHeadsPtr;
-                (*softmaxLseShape)[FIA_LAYOUT_DIM2] = NUM_1;
-            }
-        } else if (strcmp(inputLayoutPtr, "NTD_TND") == 0) {
-            softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_3);
-            if (!isPageAttention) { // PFA
-                (*softmaxLseShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-                (*softmaxLseShape)[FIA_LAYOUT_DIM1] = (*queryShape)[FIA_LAYOUT_DIM0];
-                (*softmaxLseShape)[FIA_LAYOUT_DIM2] = NUM_1;
-            } else { //IFA
-                (*softmaxLseShape)[FIA_LAYOUT_DIM0] = (*queryShape)[FIA_LAYOUT_DIM1];
-                (*softmaxLseShape)[FIA_LAYOUT_DIM1] = *numHeadsPtr;
-                (*softmaxLseShape)[FIA_LAYOUT_DIM2] = NUM_1;
-            }
-        } else { // BNS1
-            softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_4);
-            (*softmaxLseShape)[FIA_LAYOUT_DIM0] = batchOfQ;
-            (*softmaxLseShape)[FIA_LAYOUT_DIM1] = *numHeadsPtr;
-            (*softmaxLseShape)[FIA_LAYOUT_DIM2] = qSeqSize;
-            (*softmaxLseShape)[FIA_LAYOUT_DIM3] = NUM_1;
-        }
+        InferLseOutShape(inputLayoutPtr, softmaxLseShape, queryShape, queryLayout, numHeadsPtr);
     } else {
         softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_1);
         (*softmaxLseShape)[FIA_LAYOUT_DIM0] = NUM_0;
     }
+
     OP_LOGD(context->GetNodeName(), "FusedInferAttentionScore InferShape end.");
     return ge::GRAPH_SUCCESS;
 }

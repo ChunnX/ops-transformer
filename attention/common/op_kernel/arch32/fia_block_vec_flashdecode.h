@@ -74,6 +74,7 @@ protected:
                                            uint32_t columnCount);
     __aicore__ inline void DealInvalidMaskRows(LocalTensor<T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
                                                uint32_t columnCount, uint32_t cntM);
+
 private:
 // =================================常量区=================================
     static constexpr uint64_t SYNC_LSE_SUM_BUF1_FLAG = 6;
@@ -360,6 +361,7 @@ FiaBlockVecFlashDecode<FIAT>::ComputeScaleValue(LocalTensor<T> &lseExp,
     LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1.Get<T>() : fdSumBuf2.Get<T>();
     LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1.Get<T>() : fdMaxBuf2.Get<T>();
 
+    // 开双buff
     LocalTensor<T> lseMaxUb = cntM % 2 == 0 ? fdLseMaxUbBuf1.Get<T>() : fdLseMaxUbBuf2.Get<T>();
     LocalTensor<T> lseSumUb = cntM % 2 == 0 ? fdLseSumUbBuf1.Get<T>() : fdLseSumUbBuf2.Get<T>();
     uint64_t dealRowCountAlign = dealRowCount * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
@@ -416,7 +418,7 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOutTrans(LocalT
         FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
         outGmTensor.gmTensor = attentionOutGm;
         outGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize,
-                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
+                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
         CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
         copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
     } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
@@ -424,7 +426,7 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOutTrans(LocalT
         FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
         outGmTensor.gmTensor = attentionOutGm;
         outGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize,
-                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
+                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
         CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
         copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
     } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
@@ -517,7 +519,7 @@ FiaBlockVecFlashDecode<FIAT>::CalcPreNextTokens()
 {
     actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
     actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-    
+
     int64_t safePreToken = constInfo.preToken;
     int64_t safeNextToken = constInfo.nextToken;
 
@@ -649,13 +651,13 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 WaitFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
                 LocalTensor<T> lseftMaxLseUb = fdLseUbBuf.Get<T>();
                 fa_base_vector::ComputeSoftMaxLse(lseftMaxLseUb, lseSumUb, lseMaxUb, actualGSplitSize);
-                // 判断是否行无效       
+                // 判断是否行无效
                 bool isInValidRowsFlag = fa_base_vector::IsExistInvalidRows(nextTokensPerBatch, preTokensPerBatch, constInfo.sparseMode,
                                           constInfo.attenMaskFlag, constInfo.isRowInvalid);
                 if (isInValidRowsFlag) {
                     SoftMaxShapeInfo softmaxShapeInfo{
-                    static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(fa_base_vector::FP32_BLOCK_ELEMENT_NUM),
-                    static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(fa_base_vector::FP32_BLOCK_ELEMENT_NUM)};
+                    static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(FP32_BLOCK_ELEMENT_NUM),
+                    static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(FP32_BLOCK_ELEMENT_NUM)};
                     AdjustSoftMaxRes<T, T>(lseftMaxLseUb, lseMaxUb, negativeIntScalar, (T)3e+99, softmaxShapeInfo);
                 }
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
@@ -673,7 +675,7 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                     DataCopySoftmaxLseNTD(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, s1Size);
                 } else if (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    DataCopySoftmaxLseBSND(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+                    DataCopySoftmaxLseBSND(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, qActSeqLensParser, taskInfo.bIdx);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
                     DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, qActSeqLensParser, taskInfo.bIdx);

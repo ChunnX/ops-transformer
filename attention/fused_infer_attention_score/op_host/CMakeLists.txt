@@ -9,30 +9,42 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    set(fused_infer_attention_score_depends attention/incre_flash_attention attention/prompt_flash_attention attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for fused_infer_attention_score")
+    set(fused_infer_attention_score_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for fused_infer_attention_score")
     target_sources(op_host_aclnnInner PRIVATE
         fused_infer_attention_score_def.cpp
     )
-    
-    add_ops_compile_options(
-        OP_NAME FusedInferAttentionScore
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
-                -Werror
-                -mllvm -cce-vf-remove-membar=false
-                -mllvm -cce-aicore-hoist-movemask=false
-                --op_relocatable_kernel_binary=true
-    )
+endif()
+
+add_ops_compile_options(
+    OP_NAME FusedInferAttentionScore
+    OPTIONS --cce-auto-sync=off
+            -Wno-deprecated-declarations
+            -Werror
+            -mllvm -cce-vf-remove-membar=false
+            -mllvm -cce-aicore-hoist-movemask=false
+            --op_relocatable_kernel_binary=true
+)
+
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_modules_sources_with_soc(OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL) #
-    add_modules_sources(OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ../../common/op_host/fia_tiling_shape.cpp
-        ../../common/op_host/fia_tiling_info.cpp
-        ../../common/op_host/arch32/fia_tiling_nonquant_mla.cpp
-        ../../common/op_host/arch32/fia_tiling_nonquant.cpp
-        fallback_fused_infer_attention_score.cpp
+    ../../common/op_host/fia_tiling_shape.cpp
+    ../../common/op_host/fia_tiling_info.cpp
+    ../../common/op_host/split_core.cpp
+    ../../common/op_host/arch32/fia_tiling_nonquant_mla.cpp
+    ../../common/op_host/arch32/fia_tiling_nonquant.cpp
+    ../../common/op_host/arch32/fia_tiling_empty_tensor.cpp
+    ../op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
+    ../op_host/arch32/fused_infer_attention_score_tiling_info_parser.cpp
+    ../op_host/arch32/fused_infer_attention_score_tiling_check.cpp
+    ../op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
+    ../op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
+    ../op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
+    ../op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
+    fallback_fused_infer_attention_score.cpp
     )
 endif()

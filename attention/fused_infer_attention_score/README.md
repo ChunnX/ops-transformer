@@ -2,10 +2,42 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
+<col style="width: 600px">
+<col style="width: 100px">
+</colgroup>
+<thead>
+  <tr>
+    <th style="text-align: center;">产品</th>
+    <th style="text-align: center;">是否支持</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td><term>Atlas 200I/500 A2 推理产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td>Atlas 推理系列加速卡产品</td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td><term>Atlas 训练系列产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td>Atlas 200I/300/500 推理产品</td>
+    <td style="text-align: center;">×</td>
+  </tr>
+</tbody>
+</table>
 
 ## 功能说明
 
@@ -82,9 +114,9 @@
 
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 
-- 入参为空的处理：算子内部需要判断参数query是否为空，如果是空则直接返回。参数query不为空Tensor，参数key、value为空tensor(即S2为0)，则attentionOut填充为全零。attentionOut为空Tensor时，AscendCLNN框架会处理。其余在上述参数说明中标注了"可传入nullptr"的入参为空指针时，不进行处理。
+- 入参为空的处理：算子内部需要判断参数query是否为空，如果是空则直接返回。参数query不为空Tensor，参数key、value为空tensor(即S2为0)，则attentionOut填充为全零。attentionOut为空Tensor时，AscendCLNN框架会处理。其余在上述参数说明中标注了“可传入nullptr”的入参为空指针时，不进行处理。
 
-- 参数key、value中对应tensor的shape需要完全一致；非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256。
+- 参数key、value中对应Tensor的shape需要完全一致；非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256。
 
 - 当Q_S大于1时，query，key，value输入，功能使用限制如下：
     - 支持B轴小于等于65536。
@@ -93,7 +125,7 @@
 
   - 支持N轴小于等于256，支持D轴小于等于512。inputLayout为BSH或者BSND时，建议N*D小于65535。
 
-  - S支持小于等于20971520（20M）。部分长序列场景下，如果计算量过大可能会导致pfa算子执行超时（aicore error类型报错，errorStr为:timeout or trap error），此场景下建议做S切分处理，注：这里计算量会受B、S、N、D等的影响，值越大计算量越大。典型的会超时的长序列(即B、S、N、D的乘积较大)场景包括但不限于：
+  - S支持小于等于20971520（20M）。部分长序列场景下，如果计算量过大可能会导致pfa算子执行超时（aicore error类型报错，errorStr为:timeout or trap error），此场景下建议做S切分处理，注：这里计算量会受B、S、N、D等的影响，值越大计算量越大。典型的会超时的长序列（即B、S、N、D的乘积较大）场景包括但不限于：
 
     <div style="overflow-x: auto;">
     <table style="undefined;table-layout: fixed; width: 550px"><colgroup>

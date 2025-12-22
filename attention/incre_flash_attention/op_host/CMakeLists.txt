@@ -9,23 +9,19 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    set(incre_flash_attention_depends attention/prompt_flash_attention attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for incre_flash_attention")
+set(incre_flash_attention_depends attention/prompt_flash_attention attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for incre_flash_attention")
     target_sources(op_host_aclnnInner PRIVATE
         incre_flash_attention_def.cpp
     )
-    add_ops_compile_options(
-        OP_NAME IncreFlashAttention
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
-                -Werror
-    )
 endif()
 
-if(NOT BUILD_OPS_RTY_KERNEL) #
-    add_modules_sources(OPTYPE incre_flash_attention ACLNNTYPE aclnn_inner)
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        incre_flash_attention_tiling.cpp
-        incre_flash_attention_tiling_check.cpp
-        fallback_incre_flash_attention.cpp
-    )
+add_ops_compile_options(
+    OP_NAME IncreFlashAttention
+    OPTIONS --cce-auto-sync=off
+            -Wno-deprecated-declarations
+            -mllvm -cce-vf-remove-membar=false
+            -Werror
+)
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_modules_sources_with_soc(OPTYPE incre_flash_attention ACLNNTYPE aclnn_inner)
 endif()

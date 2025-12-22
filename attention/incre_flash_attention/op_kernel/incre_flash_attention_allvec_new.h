@@ -20,7 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "ifa_public_define.h"
+#include "./ifa_public_define.h"
 
 using namespace AscendC;
 using AscendC::MulAddDst;

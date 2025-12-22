@@ -87,6 +87,11 @@ struct AxisSlices {
     {
         return Sentinel{sizeAct_};
     }
+    
+    __aicore__ inline uint32_t size() const
+    {
+        return (sizeAct_ + (splitSize_ - 1)) / splitSize_;
+    }
 };
 
 __aicore__ inline AxisSlices Axis::Split(uint32_t splitSize) const

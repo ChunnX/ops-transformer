@@ -15,6 +15,8 @@
 
 #include "ts_pfa.h"
 class Ts_Pfa_Ascend910B2_Case : public Ts_Pfa_WithParam_Ascend910B2 {};
+class Ts_Pfa_Ascend310P3_Case : public Ts_Pfa_WithParam_Ascend310P3 {};
+
 
 TEST_F(Ts_Pfa_Ascend910B2, case_opapi_query)
 {

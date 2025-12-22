@@ -1,6 +1,6 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -30,14 +30,13 @@
 #include "fia_block_vec_nonquant.h"
 #include "fia_block_vec_flashdecode.h"
 
-using namespace optiling;
 using namespace matmul;
 using namespace AttentionCommon;
 using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-template <typename FIAT>
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 class FiaKernelNonQuant {
 public:
     __aicore__ inline FiaKernelNonQuant(){};
@@ -84,9 +83,9 @@ protected:
     using PSE_T = typename AscendC::Conditional<IsSameType<Q_T, int8_t>::value, half, Q_T>::type;
 
     // ==============================Service Define==============================
-    FiaBlockCubeNonQuantGqa<FIAT> matmulService;
-    FiaBlockVecNonQuant<FIAT> vectorService;
-    FiaBlockVecFlashDecode<FIAT> fdService;
+    CubeBlockType matmulService;
+    VecBlockType vectorService;
+    FdBlockType fdService;
 
     // =================================常量区=================================
     static constexpr uint32_t PRELOAD_NUM = 2;
@@ -102,7 +101,7 @@ protected:
     static constexpr int64_t fdPrefetchLen = 2;
 
     static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
-
+    static constexpr float FLOAT_MIN = -3.4e+38F;
     // ==============================TilingData&TPipe==============================
     const FusedInferAttentionScoreTilingData *__restrict tilingData = nullptr;
     TPipe *pipe = nullptr;
@@ -127,9 +126,6 @@ protected:
     GlobalTensor<float> quantOffset2Gm;
     GlobalTensor<bfloat16_t> quantScale2Bf16Gm;
     GlobalTensor<bfloat16_t> quantOffset2Bf16Gm;
-    // left padding
-    GlobalTensor<int64_t> queryPaddingSizeGm;
-    GlobalTensor<int64_t> kvPaddingSizeGm;
     // block table
     GlobalTensor<int32_t> blockTableGm;
     // share prefix
@@ -168,6 +164,9 @@ protected:
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
     uint32_t curS2Start;
     uint32_t curS2End;
+    uint32_t prevBIdx;
+    uint32_t prevBN2Idx;
+    uint32_t prevGS1Idx;
     // ===============================Util functions================================
     template <typename T>
     __aicore__ inline T Align(T num, T rnd)
@@ -192,10 +191,13 @@ protected:
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     __aicore__ inline void InitActualSeqLenQ(__gm__ uint8_t *actualSeqLengthsQ);
     __aicore__ inline void InitActualSeqLenKV(__gm__ uint8_t *actualSeqLengths);
+    __aicore__ inline bool IsInitAttentionOutGm();
     __aicore__ inline void InitOutputSingleCore();
     // ================================Tool============================================
     __aicore__ inline uint32_t GetBIdx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetN2Idx(uint32_t bN2Idx);
+    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preToken,
+                                           int64_t &nextToken);
     // ================================Process functions================================
     __aicore__ inline void FlashAttention();
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo &info);
@@ -208,7 +210,8 @@ protected:
     // ================================PIPE Control=====================================
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur);
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur);
-    __aicore__ inline void CalcCurS2StartEnd(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur);
+    __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur);
+    __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur);
     __aicore__ inline void UpdateAxisInfo(uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur);
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE]);
@@ -217,8 +220,8 @@ protected:
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE]);
 };
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::InitTilingData()
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::InitTilingData()
 {
     usedCoreNum = tilingData->baseParams.usedCoreNum;
 
@@ -229,7 +232,6 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitTilingData()
     constInfo.qHeadNum = constInfo.gSize * constInfo.kvHeadNum;
     constInfo.kvSeqSize = tilingData->baseParams.s2Size;
     constInfo.qSeqSize = tilingData->baseParams.s1Size;
-
     constInfo.attenMaskFlag = (tilingData->maskParams.attenMaskFlag != 0) ? true : false;
     constInfo.attenMaskSize = tilingData->maskParams.attenMaskSize;
     constInfo.attenMaskStride = tilingData->maskParams.attenMaskStride;
@@ -237,8 +239,13 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitTilingData()
     constInfo.preToken = tilingData->maskParams.preToken;
     constInfo.nextToken = tilingData->maskParams.nextToken;
     constInfo.isRowInvalid = (tilingData->maskParams.isRowInvalid != 0);
-
+    constInfo.isLegacyIfa = tilingData->baseParams.isLegacyIfa;
     constInfo.softmaxLseFlag = tilingData->baseParams.softmaxLseFlag;
+
+    constInfo.pseShiftFlag = tilingData->pseParams.pseShiftFlag;
+    constInfo.pseShiftByBatch = tilingData->pseParams.pseShiftByBatch;
+    constInfo.pseShiftS1 = tilingData->pseParams.pseShiftS1;
+    constInfo.pseShiftS2 = tilingData->pseParams.pseShiftS2;
 
     constInfo.maxBlockNumPerBatch = tilingData->pageAttenParams.maxBlockNumPerBatch;
     constInfo.kvCacheBlockSize = tilingData->pageAttenParams.blockSize;
@@ -264,10 +271,28 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitTilingData()
     constInfo.syncC2V2 = SYNC_C2_V2_FLAG;
     constInfo.syncC2V1 = SYNC_C2_V1_FLAG;
     constInfo.syncV1NupdateC2 = SYNC_V1_NUPDATE_C2_FLAG;
+    constInfo.isQHasLeftPadding = (tilingData->leftPaddingParams.qPaddingFlag != 0) ? true : false;
+    constInfo.isKVHasLeftPadding = (tilingData->leftPaddingParams.kvPaddingFlag != 0) ? true : false;
+    constInfo.systemPrefixMaxLen = tilingData->prefixParams.prefixMaxLen;
+    constInfo.systemPrefixFlag = tilingData->prefixParams.prefixFlag;
+    constInfo.systemPrefixLen = tilingData->prefixParams.prefixLen;
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::InitOutputSingleCore()
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline bool FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::IsInitAttentionOutGm()
+{
+    // TND、NTD场景且无attentionMask,不需要初始化
+    if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
+        if (!constInfo.attenMaskFlag) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::InitOutputSingleCore()
 {
     if (usedCoreNum != 0) {
         uint32_t initOutputEventId = 0U;
@@ -276,22 +301,30 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitOutputSingleCore()
         if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
             tSize = qActSeqLensParser.GetTSize();
         }
-        uint64_t totalOutputSize = tSize * constInfo.qHeadNum * constInfo.headDim;
-        uint64_t singleCoreSize = (totalOutputSize + (2 * usedCoreNum) - 1) / (2 * usedCoreNum); // 2 means c:v = 1:2
-        uint64_t tailSize = totalOutputSize - tmpBlockIdx * singleCoreSize;
-        uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
-        WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-        matmul::InitOutput<OUT_T>(attentionOutGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
-        SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+
+        if (IsInitAttentionOutGm()) {
+            uint64_t totalOutputSize = tSize * constInfo.qHeadNum * constInfo.headDim;
+            uint64_t singleCoreSize = (totalOutputSize + (2 * usedCoreNum) - 1) / (2 * usedCoreNum); // 2 means c:v = 1:2
+            uint64_t tailSize = totalOutputSize - tmpBlockIdx * singleCoreSize;
+            uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            if (tmpBlockIdx * singleCoreSize < totalOutputSize && singleInitOutputSize > 0) {
+                matmul::InitOutput<OUT_T>(attentionOutGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
+            }
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+        }
 
         if (constInfo.softmaxLseFlag) {
-            float lseInitValue = constInfo.FLOAT_INF;
+            // 兼容性考虑，IFA的LSE初值设置为-3.4e38，PFA设置为3e+99
+            float lseInitValue = constInfo.isLegacyIfa ? static_cast<float>(FLOAT_MIN) : static_cast<float>(constInfo.FLOAT_INF);
             uint64_t totalLseSize = tSize * constInfo.qHeadNum;
             uint64_t singleCoreLseSize = (totalLseSize + (2 * usedCoreNum) - 1) / (2 * usedCoreNum); // 2 means c:v = 1:2;
             uint64_t tailLseSize = totalLseSize - tmpBlockIdx * singleCoreLseSize;
             uint64_t singleInitOutputLseSize = tailLseSize < singleCoreLseSize ? tailLseSize : singleCoreLseSize;
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(softmaxLseGm[tmpBlockIdx * singleCoreLseSize], singleInitOutputLseSize, lseInitValue);
+            if (tmpBlockIdx * singleCoreLseSize < totalLseSize && singleInitOutputLseSize > 0) {
+                matmul::InitOutput<float>(softmaxLseGm[tmpBlockIdx * singleCoreLseSize], singleInitOutputLseSize, lseInitValue);
+            }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
         WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
@@ -299,8 +332,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitOutputSingleCore()
     }
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::InitActualSeqLenQ(__gm__ uint8_t *actualSeqLengthsQ)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::InitActualSeqLenQ(__gm__ uint8_t *actualSeqLengthsQ)
 {
     constInfo.actualLenQDims = tilingData->baseParams.actualSeqS1Dims;
     constInfo.accumQSeqFlag = tilingData->baseParams.accumQSeqFlag;
@@ -310,8 +343,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitActualSeqLenQ(__gm__ uint8_t
     qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.qSeqSize);
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::InitActualSeqLenKV(__gm__ uint8_t *actualSeqLengths)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::InitActualSeqLenKV(__gm__ uint8_t *actualSeqLengths)
 {
     constInfo.actualLenDims = tilingData->baseParams.actualSeqS2Dims;
     constInfo.accumKVSeqFlag = tilingData->baseParams.accumKVSeqFlag;
@@ -321,8 +354,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitActualSeqLenKV(__gm__ uint8_
     kvActSeqLensParser.Init(actualSeqLengthsGm, constInfo.actualLenDims, constInfo.kvSeqSize);
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::InitWorkspace(__gm__ uint8_t *workspace)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::InitWorkspace(__gm__ uint8_t *workspace)
 {
     // workspace 内存排布
     // |Q--|mm1ResGm(存S)|vec1ResGm(存A1,A2)|mm2ResGm(存O)|vec2ResGm
@@ -361,8 +394,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitWorkspace(__gm__ uint8_t *wo
     }
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::Init(
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
@@ -401,6 +434,20 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::Init(
     attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
     if (constInfo.softmaxLseFlag) {
         softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+    }
+
+    if (constInfo.isQHasLeftPadding) {
+        // left padding
+        GlobalTensor<int64_t> queryPaddingSizeGm;
+        queryPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t *)queryPaddingSize);
+        int64_t qPaddingSize = queryPaddingSizeGm.GetValue(0);
+        constInfo.qLeftPaddingSize = (qPaddingSize >= 0) ? qPaddingSize : 0;
+    }
+    if (constInfo.isKVHasLeftPadding) {
+        GlobalTensor<int64_t> kvPaddingSizeGm;
+        kvPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t *)kvPaddingSize);
+        int64_t kvPaddingSize = kvPaddingSizeGm.GetValue(0);
+        constInfo.kvLeftPaddingSize = (kvPaddingSize >= 0) ? kvPaddingSize : 0;
     }
 
     if ASCEND_IS_AIV {
@@ -447,8 +494,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::Init(
     }
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::InitCalcParamsEach()
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::InitCalcParamsEach()
 {
     // 这里是编译器优化写法，定义一个局部数组变量coreSidxEnd(存在栈上)，使用copy_data_align64接口
     // 可以只从ub中拷贝tiling中coreSidxEnd的内容到栈上，而非将整个increFlashAttentionCoreParams
@@ -485,16 +532,17 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::InitCalcParamsEach()
     constInfo.gS1End = gS1End[aiCoreIdx];
     constInfo.s2End = s2End[aiCoreIdx];
 
-    // 首个S1G块、最后一个S1G块的S2是否被切分
-    constInfo.headS2Split = (constInfo.s2Start != 0);
-    constInfo.tailS2Split = (constInfo.s2End != 0);
+
+    // 首个S1G块、最后一个S1G块的S2是否被切分，在sparse模式下，需要和mask之后的起止点对比才能确定
+    constInfo.headS2Split = false;
+    constInfo.tailS2Split = false;
 
     // xxx
     constInfo.coreStartKVSplitPos = s2SplitStartIdxOfCore[aiCoreIdx];
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::CalcAccumOffset(RunInfo &info)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::CalcAccumOffset(RunInfo &info)
 {
     if ASCEND_IS_AIV {
 #ifdef ASCENDC_CPU_DEBUG
@@ -513,9 +561,9 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcAccumOffset(RunInfo &info)
                         sizeof(s2SplitNumOfFdHead));
 #endif
         uint64_t accumTmpOutNum = 0;
-        int taskId = 0;
+        uint32_t taskId = 0;
         uint32_t curbN2Idx = info.bIdx * constInfo.kvHeadNum + info.n2Idx;
-        while (bN2IdxOfFdHead[taskId] != curbN2Idx || gS1IdxOfFdHead[taskId] * constInfo.mBaseSize != info.gS1Idx) {
+        while (taskId < usedCoreNum && (bN2IdxOfFdHead[taskId] != curbN2Idx || gS1IdxOfFdHead[taskId] * constInfo.mBaseSize != info.gS1Idx)) {  // 考虑在tiling阶段直接算出accumOut的偏置，则可以省略CalcAccumOffset()
             accumTmpOutNum += s2SplitNumOfFdHead[taskId]; // 计算前面的workspace数
             taskId++;
         }
@@ -523,9 +571,9 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcAccumOffset(RunInfo &info)
     }
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                                      RunInfo &info)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::CalcParams(
+    uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo &info)
 {
     info.loop = loop;
 
@@ -549,6 +597,13 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcParams(uint64_t loop, uint32
     info.actualSingleProcessSInnerSizeAlign =
         Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)fa_base_vector::BYTE_BLOCK);
 
+    if (constInfo.isQHasLeftPadding) {
+        info.qPaddingBeginOffset = constInfo.qSeqSize - actSeqLensQ - constInfo.qLeftPaddingSize;
+    }
+    if (constInfo.isKVHasLeftPadding) {
+        info.kvPaddingBeginOffset = constInfo.kvSeqSize - actSeqLensKv - constInfo.kvLeftPaddingSize;
+    }
+
     if (constInfo.batchContinuous) {
         info.isChangeBatch = false;
     } else {
@@ -562,7 +617,6 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcParams(uint64_t loop, uint32
     int64_t safePreToken = constInfo.preToken;
     int64_t safeNextToken = constInfo.nextToken;
     fa_base_vector::GetSafeActToken(info.actS1Size, info.actS2Size, safePreToken, safeNextToken, constInfo.sparseMode);
-
     if (constInfo.sparseMode == fa_base_vector::BAND) {
         info.preTokensPerBatch = safePreToken;
         info.nextTokensPerBatch =
@@ -612,32 +666,32 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CalcParams(uint64_t loop, uint32
     }
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::ComputeMm1(const RunInfo &info)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::ComputeMm1(const RunInfo &info)
 {
     matmulService.ComputeMm1(info);
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::ComputeMm2(const RunInfo &info)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::ComputeMm2(const RunInfo &info)
 {
     matmulService.ComputeMm2(info);
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::ComputeVec1(const RunInfo &info)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::ComputeVec1(const RunInfo &info)
 {
     vectorService.ComputeVec1(info);
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::ComputeVec2(const RunInfo &info)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::ComputeVec2(const RunInfo &info)
 {
     vectorService.ComputeVec2(info);
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::FlashDecode()
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::FlashDecode()
 {
     fdService.InitBuffers(pipe);
     AscendC::ICachePreLoad(fdPrefetchLen);
@@ -686,26 +740,26 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::FlashDecode()
     }
 }
 
-template <typename FIAT>
-__aicore__ inline uint32_t FiaKernelNonQuant<FIAT>::GetBIdx(uint32_t bN2Idx)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline uint32_t FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::GetBIdx(uint32_t bN2Idx)
 {
     return (bN2Idx / constInfo.kvHeadNum);
 }
 
-template <typename FIAT>
-__aicore__ inline uint32_t FiaKernelNonQuant<FIAT>::GetN2Idx(uint32_t bN2Idx)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline uint32_t FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::GetN2Idx(uint32_t bN2Idx)
 {
     return (bN2Idx % constInfo.kvHeadNum);
 }
 
-template <typename FIAT>
-__aicore__ inline bool FiaKernelNonQuant<FIAT>::ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline bool FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
 {
     return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1End) || (s2Cur != constInfo.s2End));
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::DealZeroActSeqLen(uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::DealZeroActSeqLen(uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
 {
     // 对整个batch的结果置0
     if constexpr (POST_QUANT) { // out int8
@@ -740,8 +794,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::DealZeroActSeqLen(uint32_t &bN2C
     }
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::UpdateAxisInfo(uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::UpdateAxisInfo(uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
 {
     uint64_t s2LoopTimes = (actSeqLensKv + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
@@ -765,8 +819,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::UpdateAxisInfo(uint32_t &bN2Cur,
     bN2Cur++;
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                                       RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE])
 {
     RunInfo &extraInfo0 = extraInfo[loop % FIA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
@@ -777,8 +831,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::CreateTask(uint64_t loop, uint32
     extraInfo0.isValid = true;
 }
 
-template <typename FIAT>
-__aicore__ inline bool FiaKernelNonQuant<FIAT>::ShouldExecuteTask(RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE])
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline bool FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::ShouldExecuteTask(RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE])
 {
     for (uint32_t i = 0; i < FIA_PRELOAD_TASK_CACHE_SIZE; i++) {
         if (extraInfo[i].isValid) {
@@ -788,8 +842,8 @@ __aicore__ inline bool FiaKernelNonQuant<FIAT>::ShouldExecuteTask(RunInfo extraI
     return false;
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::ExecuteTask(uint64_t loop, RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE])
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::ExecuteTask(uint64_t loop, RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE])
 {
     RunInfo &extraInfo0 = extraInfo[loop % FIA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
     RunInfo &extraInfo2 = extraInfo[(loop + 2) % FIA_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
@@ -816,18 +870,23 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::ExecuteTask(uint64_t loop, RunIn
     }
 }
 
-template <typename FIAT>
-__aicore__ inline TASK_DEAL_MODE FiaKernelNonQuant<FIAT>::GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline TASK_DEAL_MODE FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
 {
+    bool isFirstTask = (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1Start) && (s2Cur == constInfo.s2Start);
     uint32_t bIdx = GetBIdx(bN2Cur);
-    if (constInfo.actualLenDims == 0 && !constInfo.batchContinuous) {
-        actSeqLensKv = fa_base_kernel::SeqLenFromTensorList<LAYOUT_T>(keyPtr, bIdx);
-    } else {
-        actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
+    if (isFirstTask || prevBIdx != bIdx) {
+        prevBIdx = bIdx;
+        if (constInfo.actualLenDims == 0 && !constInfo.batchContinuous) {
+            actSeqLensKv = fa_base_kernel::SeqLenFromTensorList<LAYOUT_T>(keyPtr, bIdx);
+        } else {
+            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
+        }
+        actSeqLensKv += constInfo.systemPrefixLen;
+        actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
     }
-    uint64_t s2LoopTimes = (actSeqLensKv + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 
-    actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+    uint64_t s2LoopTimes = (actSeqLensKv + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
     uint64_t gS1LoopTimes = (gS1Size + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
 
@@ -838,78 +897,138 @@ __aicore__ inline TASK_DEAL_MODE FiaKernelNonQuant<FIAT>::GetTaskDealMode(uint32
         return TASK_DEAL_MODE::SKIP;
     }
 
-    CalcCurS2StartEnd(bN2Cur, gS1Cur, s2Cur);
+    // 对paddingSize设置不合理的任务结果置0
+    if ((constInfo.isQHasLeftPadding && (actSeqLensQ + constInfo.qLeftPaddingSize > constInfo.qSeqSize)) || 
+        (constInfo.isKVHasLeftPadding && (actSeqLensKv + constInfo.kvLeftPaddingSize > constInfo.kvSeqSize))) {
+        return TASK_DEAL_MODE::DEAL_ZERO;
+    }
+
+    // 计算每一行的起止点，只有当换行时（bN2Cur、gS1Cur更新）才需要重新计算
+    if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
+        if (constInfo.attenMaskFlag == 0U) {
+            CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
+        } else {
+            CalcCurS2StartEndWithSparse(bN2Cur, gS1Cur);
+        }
+        prevBN2Idx = bN2Cur;
+        prevGS1Idx = gS1Cur;
+    }
+    
     if (s2Cur < curS2Start || s2Cur >= curS2End) {
         return TASK_DEAL_MODE::SKIP;
     }
     return TASK_DEAL_MODE::CREATE_TASK;
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::CalcCurS2StartEnd(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp, int64_t &nextTokenLeftUp)
 {
-    uint32_t s2End;
-    if ((bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1End)) { // 当前任务属于最后一个S1G
-        s2End = constInfo.s2End;
-    } else {
-        s2End = (actSeqLensKv + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+    preTokenLeftUp = constInfo.preToken;
+    nextTokenLeftUp = constInfo.nextToken;
+    fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp, constInfo.sparseMode);
+
+    if (constInfo.sparseMode == fa_base_vector::BAND) {
+        preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
     }
 
-    if (constInfo.attenMaskFlag == 0 || FLASH_DECODE) {
-        curS2Start = 0;
-        curS2End = s2End;
-        return;
-    }
-
-    uint32_t gs1Idx = gS1Cur * constInfo.mBaseSize;
-    int64_t sIdx;
-    uint32_t s1BaseSize;
-    if constexpr (GetOutUbFormat<LAYOUT_T>() == UbFormat::S1G) {
-        sIdx = static_cast<int64_t>(gs1Idx / constInfo.gSize);
-        s1BaseSize = constInfo.mBaseSize / constInfo.gSize + 1;
-    } else {
-        sIdx = static_cast<int64_t>(gs1Idx % actSeqLensQ);
-        s1BaseSize = constInfo.mBaseSize;
-    }
-
-    if (sIdx + static_cast<int64_t>(s1BaseSize) > static_cast<int64_t>(actSeqLensQ)) {
-        curS2Start = 0;
-        curS2End = s2End;
-        return;
-    }
-
-    uint32_t s2Start = bN2Cur == constInfo.bN2Start ? constInfo.s2Start : 0;
-    int64_t safePreToken = constInfo.preToken;
-    int64_t safeNextToken = constInfo.nextToken;
-    fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken, constInfo.sparseMode);
-
-    int64_t preTokenLeftUp = (constInfo.sparseMode != fa_base_vector::BAND) ? safePreToken :
-        (static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + safePreToken);
-    int64_t nextTokenLeftUp;
-    if (constInfo.sparseMode == fa_base_vector::DEFAULT_MASK || constInfo.sparseMode == fa_base_vector::ALL_MASK 
-        || constInfo.sparseMode == fa_base_vector::LEFT_UP_CAUSAL) {
-        nextTokenLeftUp = safeNextToken;
-    } else if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
+    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
         nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-    } else {
-        nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + safeNextToken;
+    } else if (constInfo.sparseMode == fa_base_vector::BAND) {
+        nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
     }
-
-    int64_t s2FirstToken = ClipSInnerToken(sIdx - preTokenLeftUp, static_cast<int64_t>(s2Start), static_cast<int64_t>(actSeqLensKv));
-    curS2Start = static_cast<uint32_t>(s2FirstToken / constInfo.s2BaseSize);
-
-    int64_t s2LastToken = ClipSInnerToken(sIdx + nextTokenLeftUp + static_cast<int64_t>(s1BaseSize), 0, static_cast<int64_t>(s2End * constInfo.s2BaseSize));
-    curS2End = static_cast<uint32_t>((s2LastToken + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize);
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::FlashAttention()
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
+{
+    curS2Start = 0U;
+    curS2End = (static_cast<uint32_t>(actSeqLensKv) + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+
+    if ((bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1Start)) {
+        constInfo.headS2Split = constInfo.s2Start != 0U;
+        curS2Start = constInfo.s2Start;
+    }
+
+    if ((bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1End)) {
+        constInfo.tailS2Split = constInfo.s2End != 0U;
+        curS2End = constInfo.s2End;
+    }
+}
+
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
+{
+    // 1. Calc preTokenLeftUp, nextTokenLeftUp
+    int64_t preTokenLeftUp = 0;
+    int64_t nextTokenLeftUp = 0;
+    GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
+
+    // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
+    int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(constInfo.mBaseSize);
+    int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(constInfo.mBaseSize),
+        static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) - 1;
+
+    int64_t s1FirstToken = 0;
+    int64_t s1LastToken = 0;
+    if constexpr (GetOutUbFormat<LAYOUT_T>() == UbFormat::S1G) {
+        s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
+        s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
+    } else {
+        if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
+            // start and end locate in one G
+            s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ);
+            s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ);
+        } else {
+            // start and end locate in tow or more G, but working same as crossing one complete block
+            s1FirstToken = 0;
+            s1LastToken = static_cast<int64_t>(actSeqLensQ);
+        }
+    }
+
+    // 3. trans index of token to index of block
+    uint32_t s2StartWithSparse = 0U;
+    uint32_t s2EndWithSparse = 0U;
+    int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
+    int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
+    // no valid token
+    if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+        curS2Start = 0U;
+        curS2End = 0U;
+        return;
+    }
+    // get valid range
+    s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+    s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+
+    s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / constInfo.s2BaseSize;
+    s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / constInfo.s2BaseSize + 1U;
+
+    // 4. Calc curS2Start, curS2End
+    curS2Start = s2StartWithSparse;
+    curS2End = s2EndWithSparse;
+    
+    if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1Start) { // first line
+        constInfo.headS2Split = constInfo.s2Start > s2StartWithSparse ? true : false;
+        curS2Start = Max(s2StartWithSparse, constInfo.s2Start);
+    }
+    if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1End) {  // last line
+        constInfo.tailS2Split = constInfo.s2End > 0U ? true : false;
+        curS2End = constInfo.s2End > 0U ? Min(s2EndWithSparse, constInfo.s2End) : s2EndWithSparse;
+    }
+    return;
+}
+
+
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::FlashAttention()
 {
     RunInfo extraInfo[FIA_PRELOAD_TASK_CACHE_SIZE];
 
     uint32_t bN2Cur = constInfo.bN2Start;
     uint32_t gS1Cur = constInfo.gS1Start;
     uint32_t s2Cur = constInfo.s2Start;
+    prevBN2Idx = bN2Cur;
+    prevGS1Idx = gS1Cur;
 
     uint64_t createdTaskCount = 0;
     uint64_t executedTaskCount = 0;
@@ -944,8 +1063,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT>::FlashAttention()
     }
 }
 
-template <typename FIAT>
-__aicore__ inline void FiaKernelNonQuant<FIAT>::Process()
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
+__aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::Process()
 {
     // usedCoreNum: 使用的总核数
     if (aiCoreIdx < usedCoreNum) {

@@ -1,6 +1,6 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_prompt_flash_attention_v3.h"
 #include "securec.h"
-#include<unistd.h>
  
 using namespace std;
 
@@ -169,7 +168,7 @@ int ExecutePromptFlashAttention(TensorResources& resources, aclrtStream stream,
     constexpr const char LAYER_OUT_STR[] = "BNSD";
     constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);  
     char layerOut[LAYER_OUT_LEN];
-    memcpy(layerOut, LAYER_OUT_STR, LAYER_OUT_LEN);
+    memcpy_s(layerOut, LAYER_OUT_LEN, LAYER_OUT_STR, LAYER_OUT_LEN);
 
     aclOpExecutor* executor;
     int ret = aclnnPromptFlashAttentionV3GetWorkspaceSize(

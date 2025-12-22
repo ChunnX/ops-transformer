@@ -66,6 +66,8 @@ struct IncreFlashAttentionContext {
     OptionalParaInfo keyRope = {nullptr, nullptr};
     OptionalParaInfo keyRopeAntiquantScale = {nullptr, nullptr};
     OptionalParaInfo dequantScaleQuery = {nullptr, nullptr};
+    OptionalParaInfo qStartIdx = {nullptr, nullptr};
+    OptionalParaInfo kvStartIdx = {nullptr, nullptr};
 
     RequiredParaInfo attenOut = {nullptr, nullptr};
     RequiredParaInfo lseOut = {nullptr, nullptr};
@@ -84,6 +86,7 @@ struct IncreFlashAttentionContext {
     const int64_t *valueAntiquantMode = nullptr;
     const uint32_t *sparseMode = nullptr;
     const int64_t *queryQuantMode = nullptr;
+    const int64_t *pseType = nullptr;
     const int64_t *windowSize = nullptr;
 
     size_t *workSpaces = nullptr;

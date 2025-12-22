@@ -87,6 +87,7 @@ struct TilingIndexes {
 enum class KvCacheLayout : uint32_t {
     KV_CACHE_BSH = 0,
     KV_CACHE_BNSD = 1,
+    KV_CACHE_NZ = 2,
 };
 
 enum class TilingInOutMode : uint32_t {
@@ -100,6 +101,12 @@ enum class TilingInOutMode : uint32_t {
     FP16_FP16_SPLITKV = 7,
     BF16_INT8 = 8,
     INT8_BF16 = 9,
+    FP16_FP8_E4M3FN = 10,
+    FP16_FP8_E5M2 = 11,
+    FP16_HIFLOAT8 = 12,
+    BF16_FP8_E4M3FN = 13,
+    BF16_FP8_E5M2 = 14,
+    BF16_HIFLOAT8 = 15,
 };
 
 enum class IfaPerfMode : uint32_t {
@@ -138,6 +145,19 @@ enum class IfaMaskType : uint32_t {
     MASK_NORM = 1,
     MASK_SWA_NORM = 2,
     MASK_SWA_COMPRESS = 3,
+};
+
+enum class IfaPseShapeType : uint8_t {
+    PSE_B_N2_G_S1_S2 = 0,
+    PSE_B_N2_G_1_S2 = 1,
+    PSE_B_N2_G_SLOPE = 2,
+    PSE_1_N2_G_SLOPE = 3
+};
+
+enum class IfaPseType : int64_t {
+    PSE_OUTER_MUL_ADD_TYPE = 0,
+    PSE_INNER_MUL_ADD_TYPE = 2,
+    PSE_INNER_MUL_ADD_SQRT_TYPE = 3,
 };
 
 } // namespace optiling

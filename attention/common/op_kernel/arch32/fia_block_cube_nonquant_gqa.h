@@ -268,7 +268,7 @@ private:
     __aicore__ inline void CopyKToL1(uint32_t dstBufId, const RunInfo &info, uint32_t subNStart, uint32_t subNSize);
     template <CubeFormat Format>
     __aicore__ inline void CopyPToL1(uint32_t dstBufId, const RunInfo &info, uint32_t gmStride,
-                                         uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
+                                     uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
     __aicore__ inline void CopyVToL1(uint32_t dstBufId, const RunInfo &info, uint32_t subKStart, uint32_t subKSize);
 
     template <uint32_t M_L1_SIZE, bool FOECE=false>
@@ -276,11 +276,11 @@ private:
 
     template <uint32_t M_L1_SPLIT_Size, typename T1>
     __aicore__ inline void LoadAToL0(uint32_t dstBufId, const LocalTensor<T1> &l1Tensor, uint32_t mL1Size,
-                                         uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
+                                     uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
     __aicore__ inline void LoadBTransposeToL0(uint32_t dstBufId, const LocalTensor<KV_T> &l1Tensor, uint32_t nL1Size,
-                                         uint32_t subNStart, uint32_t subNSize, uint32_t subKStart, uint32_t subKSize);
+                                              uint32_t subNStart, uint32_t subNSize, uint32_t subKStart, uint32_t subKSize);
     __aicore__ inline void LoadBToL0(uint32_t dstBufId, const LocalTensor<KV_T> &l1Tensor, uint32_t kL1Size,
-                                         uint32_t subKStart, uint32_t subKSize, uint32_t subNStart, uint32_t subNSize);
+                                     uint32_t subKStart, uint32_t subKSize, uint32_t subNStart, uint32_t subNSize);
     template <CubeFormat GMFormat>
     __aicore__ inline void FixpipeCToGM(GlobalTensor<MM_OUT_T> &mmResGm, uint32_t cL0BufId,
                                         uint32_t dstStride, uint32_t subMStart, uint32_t subMSize,
@@ -294,7 +294,8 @@ private:
 
     static constexpr uint32_t L1_Q_BUFCNT = 2;
     static constexpr uint32_t L1_V_BUFCNT = CFG::S2_BASICSIZE_IS_1024 ? 4 : 2;
-    static constexpr uint32_t L1_KP_BUFCNT = CFG::S2_BASICSIZE_IS_1024 ? 2 : 3;    
+    static constexpr uint32_t L1_KP_BUFCNT = CFG::S2_BASICSIZE_IS_1024 ? 2 : 3;
+
     Array<LocalTensor<Q_T>, L1_Q_BUFCNT, L1_Q_SIZE> qL1Tensor;
     Array<LocalTensor<KV_T>, L1_V_BUFCNT, L1_V_SIZE> vL1Tensor;
     Array<LocalTensor<KV_T>, L1_KP_BUFCNT, L1_KP_SIZE> kpL1Tensor;
@@ -470,7 +471,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::UpdateKey(uint32_t
     InitKeyGm(bIdx);
     uint64_t s2Size = fa_base_kernel::SeqLenFromTensorList<KV_LAYOUT_T>(keyPtr, bIdx);
     keyGmTensor.gmTensor = keyGm;
-    keyGmTensor.offsetCalculator.Init(0, constInfo.kvHeadNum, s2Size, constInfo.headDim);
+    keyGmTensor.offsetCalculator.Init(0, constInfo.kvHeadNum, s2Size, constInfo.headDim, actualSeqLengthsGm, constInfo.actualLenDims);
 }
 
 template <typename FIAT, typename Config>
@@ -481,7 +482,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::UpdateValue(uint32
     InitValueGm(bIdx);
     uint64_t s2Size = fa_base_kernel::SeqLenFromTensorList<KV_LAYOUT_T>(valuePtr, bIdx);
     valueGmTensor.gmTensor = valueGm;
-    valueGmTensor.offsetCalculator.Init(0, constInfo.kvHeadNum, s2Size, constInfo.headDim);
+    valueGmTensor.offsetCalculator.Init(0, constInfo.kvHeadNum, s2Size, constInfo.headDim, actualSeqLengthsGm, constInfo.actualLenDims);
 }
 
 template <typename FIAT, typename Config>
@@ -496,9 +497,21 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::Init(
             __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
             __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse)
 {
-    uint32_t qkTensorD = constInfo.ropeSplitMode ? constInfo.headDim : (constInfo.headDim + constInfo.headDimRope);
+    // 先初始化基础参数
+    if (constInfo.actualLenQDims != 0) {
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+        this->actualSequenceLengthsQ = actualSeqLengthsQ;
+    }
+    if (constInfo.actualLenDims != 0) {
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualLenDims);
+        this->actualSeqLengths = actualSeqLengths;
+    }
+    if constexpr (PAGE_ATTENTION) {
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+    }
 
-    // init global buffer
+    // 再初始化复杂参数
+    uint32_t qkTensorD = constInfo.ropeSplitMode ? constInfo.headDim : (constInfo.headDim + constInfo.headDimRope);
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     {
         queryGmTensor.gmTensor = queryGm;
@@ -541,7 +554,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::Init(
         } else {
             if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
                 keyRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
-                                                      constInfo.headDimRope);
+                                                      constInfo.headDimRope, actualSeqLengthsGm, constInfo.actualLenDims);
             } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
                 keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDimRope, actualSeqLengthsGm,
                                                       constInfo.actualLenDims);
@@ -569,7 +582,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::Init(
             } else {
                 if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
                     keyGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
-                                                      qkTensorD);
+                                                      qkTensorD, actualSeqLengthsGm, constInfo.actualLenDims);
                 } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
                     keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, qkTensorD, actualSeqLengthsGm,
                                                       constInfo.actualLenDims);
@@ -593,25 +606,13 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::Init(
             } else {
                 if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
                     valueGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
-                                                        constInfo.headDim);
+                                                        constInfo.headDim, actualSeqLengthsGm, constInfo.actualLenDims);
                 } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
                     valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDim, actualSeqLengthsGm,
                                                         constInfo.actualLenDims);
                 }
             }
         }
-    }
-
-    if (constInfo.actualLenQDims != 0) {
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
-        this->actualSequenceLengthsQ = actualSeqLengthsQ;
-    }
-    if (constInfo.actualLenDims != 0) {
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualLenDims);
-        this->actualSeqLengths = actualSeqLengths;
-    }
-    if constexpr (PAGE_ATTENTION) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
 }
 
@@ -661,11 +662,12 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::InitBuffers(TPipe 
 template <typename FIAT, typename Config>
 __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::AllocEventID()
 {
-    for (uint32_t i = 0; i < L1_Q_BUFCNT; ++i) {
-        SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + i);
-    }
     for (uint32_t i = 0; i < L1_KP_BUFCNT; ++i) {
         SetFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + i);
+    }
+
+    for (uint32_t i = 0; i < L1_V_BUFCNT; ++i) {
+        SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + i);
     }
 
     SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
@@ -678,11 +680,12 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::AllocEventID()
 template <typename FIAT, typename Config>
 __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::FreeEventID()
 {
-    for (uint32_t i = 0; i < L1_Q_BUFCNT; ++i) {
-        WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + i);
-    }
     for (uint32_t i = 0; i < L1_KP_BUFCNT; ++i) {
         WaitFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + i);
+    }
+
+    for (uint32_t i = 0; i < L1_V_BUFCNT; ++i) {
+        WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + i);
     }
 
     WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
@@ -944,16 +947,16 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm1(const R
     auto mSlices = m.Split(M_SPLIT_SIZE);
     auto kL0Slices = k.Split(K_BASE);
 
+    bool canFullLoadQ = (mSlices.size() <= L1_Q_BUFCNT);
     uint64_t qCoord = ((uint64_t)info.bIdx << 48) | ((uint64_t)info.n2Idx << 32) | ((uint64_t)info.gS1Idx);
-    bool reuseQBuf = (qL1Snapshot.signature == qCoord);
+    bool reuseQBuf = canFullLoadQ && (qL1Snapshot.signature == qCoord);
     if (!reuseQBuf) {
         qL1Snapshot.bufCnt = 0;
-        qL1Snapshot.firstBufId = this->qL1BufId % L1_Q_BUFCNT;
+        qL1Snapshot.firstBufId = this->qL1BufId;
         qL1Snapshot.signature = qCoord;
     }
 
     for (auto& nL1 : n.Split(N_SPLIT_SIZE)) {
-
         WaitFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
         CopyKToL1(this->kpL1BufId, info, nL1.start, nL1.sizeAct);
 
@@ -967,15 +970,22 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm1(const R
             if (unlikely(mL1Id >= qL1Snapshot.bufCnt)) {
                 reuseQBuf = false;
             }
-            if (unlikely(!reuseQBuf)) {
-                WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + this->qL1BufId);
-                CopyQToL1(this->qL1BufId, info, mL1.start, mL1.sizeAct);
 
-                SetFlag<HardEvent::MTE2_MTE1>(Q_EVENT0 + this->qL1BufId);
-                WaitFlag<HardEvent::MTE2_MTE1>(Q_EVENT0 + this->qL1BufId);
-                ++qL1Snapshot.bufCnt;
+            uint32_t qBufId;
+            if (unlikely(!reuseQBuf)) {
+                qBufId = this->qL1BufId;
+                // 在需要搬入Q前才去Set MTE1->MTE2事件，而不是在L0算完后就去Set，是考虑到buf的生命周期可能跨越多轮MM1计算,
+                // 如果前一次MM1计算还未完成，还在复用Q_L1 buf，后一个MM1计算就开始搬入，就会覆盖前一次计算的数据
+                SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId);
+                WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId);
+                CopyQToL1(qBufId, info, mL1.start, mL1.sizeAct);
+
+                SetFlag<HardEvent::MTE2_MTE1>(Q_EVENT0 + qBufId);
+                WaitFlag<HardEvent::MTE2_MTE1>(Q_EVENT0 + qBufId);
+                qL1Snapshot.bufCnt += static_cast<uint32_t>(canFullLoadQ); // 不能全载Q时，不缓存到快照中
+            } else {
+                qBufId = (qL1Snapshot.firstBufId + mL1Id) % L1_Q_BUFCNT;
             }
-            uint32_t qBufId = (qL1Snapshot.firstBufId + mL1Id) % L1_Q_BUFCNT;
 
             auto nL0Slices = nL1.Split(N_BASE);
             for (auto& mL0 : mL1.Split(M_BASE)) {
@@ -987,7 +997,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm1(const R
 
                         LoadAToL0<M_SPLIT_SIZE>(this->abL0BufId, qL1Tensor[qBufId], mL1.AlignedSize(), mL0.start, mL0.AlignedSize(), kL0.start, kL0.AlignedSize());
                         LoadBTransposeToL0(this->abL0BufId, kpL1Tensor[this->kpL1BufId], nL1.AlignedSize(), nL0.start, nL0.AlignedSize(), kL0.start, kL0.AlignedSize());
-                        
+                           
                         SetFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
                         WaitFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
 
@@ -1020,14 +1030,13 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm1(const R
                 }
             }
             if (unlikely(!reuseQBuf)) {
-                SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + this->qL1BufId);
-                this->qL1BufId = (this->qL1BufId + 1)% L1_Q_BUFCNT;
-                reuseQBuf = true;
+                this->qL1BufId = (this->qL1BufId + 1) % L1_Q_BUFCNT;
+                reuseQBuf = canFullLoadQ;
             }
         }
         SetFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
         ++this->kpL1BufId;
-        if (this->kpL1BufId >= L1_KP_BUFCNT){
+        if (this->kpL1BufId >= L1_KP_BUFCNT) {
             this->kpL1BufId = 0;
         }
     }
@@ -1060,30 +1069,48 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
 
     auto KL1Slices = k.Split(K_SPLIT_SIZE);
 
+    bool canFullLoadV = (KL1Slices.size() <= L1_V_BUFCNT);
+    uint64_t vCoord = ((uint64_t)info.bIdx << 48) | ((uint64_t)info.n2Idx << 32) | ((uint64_t)info.s2Idx);
+    bool reuseVBuf = false;
+    vL1Snapshot.bufCnt = 0;
+    vL1Snapshot.firstBufId = this->vL1BufId;
+    vL1Snapshot.signature = vCoord;
+
     for (auto& mL1 : m.Split(M_SPLIT_SIZE)) {
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + this->cL0BufId);
 
         int32_t kL1Id = -1;
         for (auto& kL1 : KL1Slices) {
             ++kL1Id;
-
             WaitFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
             CopyPToL1<AFormat>(this->kpL1BufId, info, (AFormat == CubeFormat::NZ) ? m.AlignedSize() : info.actualSingleProcessSInnerSizeAlign, /* P为ND时，每行元素个数会按32对齐 */
-                                             mL1.start, mL1.AlignedSize(), kL1.start, kL1.sizeAct);
+                                             mL1.start, mL1.sizeAct, kL1.start, kL1.sizeAct);
             
             SetFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
             WaitFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
 
-            WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + this->vL1BufId);
-            CopyVToL1(this->vL1BufId, info, kL1.start, kL1.sizeAct);
+            if (unlikely(kL1Id >= vL1Snapshot.bufCnt)) {
+                reuseVBuf = false;
+            }
 
-            SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + this->vL1BufId);
-            WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + this->vL1BufId);
+            uint32_t vBufId;
+            if (unlikely(!reuseVBuf)) {
+                vBufId = this->vL1BufId;
+                WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId);
+                CopyVToL1(vBufId, info, kL1.start, kL1.sizeAct);
+
+                SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
+                WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
+                vL1Snapshot.bufCnt += static_cast<uint32_t>(canFullLoadV); // 不能全载V时，不缓存到快照中
+            } else {
+                vBufId = (vL1Snapshot.firstBufId + kL1Id) % L1_V_BUFCNT;
+            }
+
             for (auto& kL0 : kL1.Split(K_BASE)) {
                 WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + this->abL0BufId);
 
                 LoadAToL0<M_SPLIT_SIZE>(this->abL0BufId, kpL1Tensor[this->kpL1BufId], mL1.AlignedSize(), 0, mL1.AlignedSize(), kL0.start, kL0.AlignedSize());
-                LoadBToL0(this->abL0BufId, vL1Tensor[this->vL1BufId], kL1.AlignedSize(), kL0.start, kL0.AlignedSize(), 0, n.AlignedSize());
+                LoadBToL0(this->abL0BufId, vL1Tensor[vBufId], kL1.AlignedSize(), kL0.start, kL0.AlignedSize(), 0, n.AlignedSize());
                 SetFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
                 WaitFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
 
@@ -1105,12 +1132,20 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
                 this->abL0BufId = (this->abL0BufId + 1) % L0AB_BUFCNT;
             }
             SetFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
-            SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + this->vL1BufId);
             ++this->kpL1BufId;
-            if (this->kpL1BufId >= L1_KP_BUFCNT){
+            if (this->kpL1BufId >= L1_KP_BUFCNT) {
                 this->kpL1BufId = 0;
             }
-            this->vL1BufId = (this->vL1BufId + 1) % L1_V_BUFCNT;
+            
+            if (unlikely(!canFullLoadV || mL1.IsTailOf(m))) {
+                // 当可以复用V_L1 buf时，它的生命周期跨越整个mL1的迭代，在mL1迭代完成释放
+                SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId);
+            }
+
+            if (unlikely(!reuseVBuf)) {
+                this->vL1BufId = (this->vL1BufId + 1) % L1_V_BUFCNT;
+                reuseVBuf = canFullLoadV;
+            }
         }
         if constexpr (! CFG::ENABLE_UNIFLAG) {
             SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + this->cL0BufId);

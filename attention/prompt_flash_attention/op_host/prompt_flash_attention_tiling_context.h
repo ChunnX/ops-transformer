@@ -17,6 +17,7 @@
 #include "tiling_base/data_copy_transpose_tiling_def.h"
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
+#include "prompt_flash_attention_tiling_compile_info.h"
 
 namespace optiling {
 
@@ -41,10 +42,11 @@ struct ContextParamsForPFATiling {
     const gert::Tensor *actualSharedPrefixLen = nullptr;
     const gert::Tensor *learnableSink = nullptr;
 
-    const gert::Tensor *KeyAntiquantScale = nullptr;
+    const gert::Tensor *keyAntiquantScale = nullptr;
     const gert::Tensor *valueAntiquantScale = nullptr;
     const gert::Tensor *KeyAntiquantOffset = nullptr;
     const gert::Tensor *valueAntiquantOffset = nullptr;
+    const gert::Tensor *dequantScaleQuery =nullptr;
 
     const gert::Tensor *qStartIdx = nullptr;
     const gert::Tensor *kvStartIdx = nullptr;
@@ -77,6 +79,7 @@ struct ContextParamsForPFATiling {
     const gert::StorageShape *outputShape = nullptr;
     const gert::StorageShape *lseoutputShape = nullptr;
 
+    const gert::StorageShape *dequantScaleQueryShape = nullptr;
     const gert::StorageShape *KeyAntiquantScaleShape = nullptr;
     const gert::StorageShape *valueAntiquantScaleShape = nullptr;
     const gert::StorageShape *KeyAntiquantOffsetShape = nullptr;
@@ -84,6 +87,7 @@ struct ContextParamsForPFATiling {
     const gert::StorageShape *queryRope = nullptr;
     const gert::StorageShape *keyRope = nullptr;
     const gert::StorageShape *learnableSinkShape = nullptr;
+    ge::DataType dequantScaleQueryType = ge::DataType::DT_FLOAT16;   
     ge::DataType KeyAntiquantScaleType = ge::DataType::DT_FLOAT16;
     ge::DataType valueAntiquantScaleType = ge::DataType::DT_FLOAT16;
     ge::DataType KeyAntiquantOffsetType = ge::DataType::DT_FLOAT16;
@@ -120,6 +124,7 @@ struct ContextParamsForPFATiling {
     uint32_t isMsd = 0;
     const int64_t *keyAntiquantMode = nullptr;
     const int64_t *valueAntiquantMode = nullptr;
+    const int64_t *queryQuantMode = nullptr;
     bool hasKeyAntiquantOffset = 0;
     bool hasLearnableSink = 0;
 };

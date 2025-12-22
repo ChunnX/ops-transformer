@@ -25,25 +25,30 @@
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
+#include "incre_flash_attention_tiling_mla.h"
 #include "incre_flash_attention_tiling_context.h"
 #include "incre_flash_attention_tiling_base.h"
 #include "incre_flash_attention_tiling_struct.h"
-#include "../../incre_flash_attention/op_kernel/incre_flash_attention_tiling.h"
-
+#include "incre_flash_attention_tiling.h"
+#include "../../common/op_host/fia_tiling_base.h"
+#include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling_context.h"
 #ifdef ASCENDC_OP_TEST
 #define IFA_EXTERN_C extern "C"
 #else
 #define IFA_EXTERN_C
 #endif
 namespace optiling {
-class IFATiling {
+class IFATiling : public FiaTilingBase {
 public:
-    IFATiling() = default;
+    explicit IFATiling(gert::TilingContext *context) : FiaTilingBase(context) {};
     ~IFATiling() = default;
-
+    void InitTilingInfo(TilingInfo *tilingInfo) override {}
+    bool IsCapable() override {return true;}
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus DoSubOpTiling(IncreFlashAttentionContext& ifaContext);
     ge::graphStatus DoTiling(gert::TilingContext &context);
     ge::graphStatus RunBigKernelTiling(IncreFlashAttentionContext &context,
-        IncreFlashAttentionTilingDataV2* tilingData, bool isWorkspace = false);
+        IncreFlashAttentionTilingDataV2 &tilingData, bool isWorkspace = false);
     ge::graphStatus IncreFlashAttentionSetTilingData(gert::TilingContext &context, IncreFlashAttentionTilingDataV2 &tilingData);
     static ge::graphStatus ConvertContext(gert::TilingContext &context, IncreFlashAttentionContext &ifaContext);
     bool NeedRollBack() const
@@ -57,9 +62,7 @@ public:
     }
     uint32_t GetAntiquantSeqLength() const;
     bool IsBalanceSplitCore() const;
-    IncreFlashAttentionTilingAtbDataV2* ifaTilingAtbData;
-    IncreFlashAttentionTilingDataMla* tilingDataMla_;
-    gert::TilingContext *geContext_ = nullptr;
+
 private:
     ge::graphStatus GetNpuInfo();
     ge::graphStatus PreProcess();
@@ -93,6 +96,7 @@ private:
     ge::graphStatus ProcessSharedPrefix();
     ge::graphStatus ProcessSharedPrefixLen();
     ge::graphStatus ProcessMlaRope();
+    ge::graphStatus ProcessCvRatio();
     ge::graphStatus ProcessCheckAtbFormat();
     ge::graphStatus AtbTilingProcess();
     ge::graphStatus AtbTilingCheck();
@@ -354,6 +358,7 @@ private:
     uint32_t coreNum_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
+    uint32_t cvRatio_ = 2; // 2表示CV1:2; 1表示CV 1:1
     IfaSocVersion socVersion_ = IfaSocVersion::SOC_ASCEND_910B;
     size_t libapiSize_ = 0;
 
@@ -429,7 +434,7 @@ private:
     uint32_t usedCoreNum_ = 0;
 
     uint32_t startIdxEachCore_[MAX_CORE_NUM] = {};
-    IncreFlashAttentionContext *context_ = nullptr;
+    IncreFlashAttentionContext *ifaContext_ = nullptr;
     IncreFlashAttentionTilingData *tilingData_ = nullptr;
     IncreFlashAttentionTilingDataPrefix *tilingDataPrefix_ = nullptr;
     IncreFlashAttentionBaseParams *tilingDataBase_ = nullptr;
@@ -473,6 +478,9 @@ private:
     uint32_t tailSplitedBatchRangeSp_ = 0;
     uint32_t combinUsedCore_ = 0;
 
+    IncreFlashAttentionTilingAtbDataV2 ifaTilingAtbData;
+    IncreFlashAttentionTilingDataMla tilingDataMla_;
+
     bool balanceModeFlag_ = false;
 
     // Atb param
@@ -482,9 +490,10 @@ private:
 
 std::string DataTypeToSerialString(ge::DataType type);
 
+ge::graphStatus PFAConvertContext(ContextParamsForPFATiling& contextKeyParams, gert::TilingContext* context);
+
 ge::graphStatus TilingPrepareForIncreFlashAttention(gert::TilingParseContext* context);
-ge::graphStatus TilingIncreFlashAttentionAdapter(gert::TilingContext* context, IncreFlashAttentionContext& ifaContext,
-    IncreFlashAttentionTilingDataV2* ifaTilingData);
+ge::graphStatus TilingIncreFlashAttentionAdapter(gert::TilingContext* context);
 
 IFA_EXTERN_C ge::graphStatus TilingIncreFlashAttention(gert::TilingContext* context);
 

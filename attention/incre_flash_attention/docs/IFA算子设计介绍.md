@@ -13,7 +13,7 @@
 
 图1 计算流程图：
 
-![IFA图](../../../docs/zh/figures/IncreFlashAttention.png)
+![IFA图](../../../docs/figures/IncreFlashAttention.png)
 
 
 
@@ -39,27 +39,28 @@
 ### 模板类型
 
 1. C+V模板：对应文件名incre_flash_attention_split_Bbn2s2_Us2.h, IFA 基础模板, 支持绝大多数输入场景, 计算时同时使能VectorCore 和 CubeCore, matmul计算放在CubeCore执行; matmul计算为调用AscendC提供的高阶API;
-2. All-Vector模板：对应文件名incre_flash_attention_allvec_new.h, 对C+V模板的补充, 主流程与C+V模板基本一致, matmul计算由vector实现,  降低Cube启动和CV通信开销, 对于部分输入类型有更好的性能表现;支持场景：
+2. All-Vector模板：对应文件名incre_flash_attention_allvec_new.h, 对C+V模板的补充, 主流程与C+V模板基本一致, matmul计算由vector实现,  降低Cube启动和CV通信开销, 对于部分输入类型有更好的性能表现；支持场景：
 
+- <term>Atlas 推理系列加速卡产品</term>：全部使用该模板。
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：非PA, 非GQA, 且Q、KV 、Output类型全部为FP16 。
 3. matmul基础API模板: 对应文件名incre_flash_attention_preload.h, 为了优化性能, 基于C+V模板使用AscendC提供的matmul基础API对matmul部分重写。在C+V模板的基础上主要做了如下改动：
-- 切换编程视角。C+V模板使用基于VEC的编程视角, 1个VEC需要处理1次matmul的全部计算结果;本模板使用基于CUBE的编程视角, 1次matmul的计算结果会被切分为2份, 2个VEC分别处理1份。
-- 优化CUBE和VEC之间的核间流水优化。C+V模板使用顺序流水, 本模板使用N-Buffer流水; 所谓N-Buffer流水, 是指连续执行N次某个计算阶段之后再连续N次下一个计算阶段。
+- 切换编程视角。C+V模板使用基于VEC的编程视角, 1个VEC需要处理1次matmul的全部计算结果；本模板使用基于CUBE的编程视角, 1次matmul的计算结果会被切分为2份, 2个VEC分别处理1份。
+- 优化CUBE和VEC之间的核间流水优化。C+V模板使用顺序流水, 本模板使用N-Buffer流水；所谓N-Buffer流水, 是指连续执行N次某个计算阶段之后再连续N次下一个计算阶段。
 - 优化CUBE核内的流水。将CUBE核内的Buffer资源在FA的两个matmul计算之间统一调度, 使得CUBE核内的搬运和计算流水更加紧凑, 从而提升性能。
 本模板支持范围参考Tiling中的EnableCubeViewMM函数。
-4. 伪量化MSD DD模板：对应文件为incre_flash_attention_preload_dd.h, 基于incre_flash_attention_preload.h开发, 用于伪量化MTP场景, 优化了MSD算法;该模板基于incre_flash_attention_preload.h开发;当前仅支持FIA算子调用, IFA算子不会调用到这个模板。
-5. MLA全量化模板：对应文件为incre_flash_attention_preload_mla.h, 适用于MLA场景query、key、value为INT8并且query_rope、key_rope为BF16时的attention计算;该模板基于incre_flash_attention_preload.h开发, 并将matmul相关的计算抽取到了文件ifa_service_matmul_full_quant.h中;当前仅支持FIA算子调用, IFA算子不会调用到这个模板。
+4. 伪量化MSD DD模板：对应文件为incre_flash_attention_preload_dd.h, 基于incre_flash_attention_preload.h开发, 用于伪量化MTP场景, 优化了MSD算法；该模板基于incre_flash_attention_preload.h开发；当前仅支持FIA算子调用, IFA算子不会调用到这个模板。
+5. MLA全量化模板：对应文件为incre_flash_attention_preload_mla.h, 适用于MLA场景query、key、value为INT8并且query_rope、key_rope为BF16时的attention计算；该模板基于incre_flash_attention_preload.h开发, 并将matmul相关的计算抽取到了文件ifa_service_matmul_full_quant.h中；当前仅支持FIA算子调用, IFA算子不会调用到这个模板。
 下面主要介绍C+V模板, 其它模板后续将逐步收编至FIA算子, 暂不做介绍。
 
 ### 计算过程
 
 #### 数据切分
 
-由于硬件buffer大小是有限的, 而计算的数据量又是巨大的, 无法一次计算完, 那么就需要进行tiling切分, shape不同会导致算子的切分轴不同, 而算子的切分轴, 会影响模板的功能及性能。简单的elewise类算子, 往往会将所有的轴fuse成一根轴进行切分, 逻辑简单, 因此模板也比较单一。而融合算子融合了elewise、broadcast、reduce及matmul等多类场景, 功能复杂, 为达到较高的性能要求, 往往需要根据切分轴进行模板拆分, 模板拆分时为了达到性能最优, 需要考虑如下几个点：
+由于硬件buffer大小是有限的, 而计算的数据量又是巨大的, 无法一次计算完, 那么就需要进行tiling切分, shape不同会导致算子的切分轴不同, 而算子的切分轴, 会影响模板的功能及性能。简单的element-wise类算子, 往往会将所有的轴fuse成一根轴进行切分, 逻辑简单, 因此模板也比较单一。而融合算子融合了element-wise、broadcast、reduce及matmul等多类场景, 功能复杂, 为达到较高的性能要求, 往往需要根据切分轴进行模板拆分, 模板拆分时为了达到性能最优, 需要考虑如下几个点：
 
 a. 将核心的数量用满, 防止部分核闲置 ;
 
-b. 每一个核心被分配的计算量相对均匀, 避免出现某些核计算的数据量过大, 其余核在围观的情况;
+b. 每一个核心被分配的计算量相对均匀, 避免出现某些核计算的数据量过大, 其余核空闲的情况;
 
 c. AIC和AIV之间处理的数据量要符合其对应的算力, 避免AIC或AIV出现长时间的空闲。 
 
@@ -72,7 +73,7 @@ IFA算子包含B、N2(key和value的N)、G(query_N/kv_N)、S1(query的S)、S2(ke
 #### 主流程
 
 ```c
-// 单核计算伪码
+// 单核计算伪代码
 void compute() {
   loops = blocks_to_compute_of_this_core(); // 当前核需要计算几个数据块
       
@@ -140,13 +141,13 @@ C = A * (B + offset)\times scale
 $$
 A矩阵为FP16/BF16类型,  B矩阵为int8类型。
 
-经典的反量化方案, 对整个B矩阵进行反量化操作, 需要对矩阵B搬入vector处理, 矩阵B的数据量较大, 严重影响计算性能。
+经典的反量化方案, 对整个B矩阵进行反量化操作, 需要对矩阵B搬入Vector处理, 矩阵B的数据量较大, 严重影响计算性能。
 
 IFA场景下, A矩阵较小, 可以通过变换A矩阵来适配B矩阵, 基本流程：
 
 1. 矩阵A进入Vector展开成多行, 每行An均用int8 格式存储;
 2. 将这些An 打包成新的矩阵 AA 计算 CC = AA * B （按 int8 * int8 = int32来计算）;
-3. 对matmul 结果CC进行Reduce操作得到C。
+3. 对MatMul 结果CC进行Reduce操作得到C。
 
 #### PageAttention
 
@@ -232,7 +233,7 @@ GenTilingKey()
 | 5 [bit1] | paVal                    | 使能PageAttention标志, 1:enable;  0: disable;                 |
 | 5 [bit2] | antiquantModeVal         | 使能PerToken伪量化标记, 1:enable;  0: disable;                 |
 | 6        | antiquantMode_           | 量化模式, 0:无效值 2:K-perChannel-V-perToken                   |
-| 7        | kvLayoutInfo.kvLayoutVal | KV的shape格式, 仅伪量化MSD DD模板和MLA全量化模板该字段有效,其余模板该字段的值为0, 0:BNSD 1:BSH/BSND 2：NZ |
+| 7        | kvLayoutInfo.kvLayoutVal | KV的shape格式, 仅伪量化MSD DD模板和MLA全量化模板该字段有效，其余模板该字段的值为0, 0:BNSD 1:BSH/BSND 2：NZ |
 | 8        | kvLayoutInfo.amlaMode    | 该字段废弃，取值只能为0 |
 | 9        | balanceMode              | 使能新的负载均衡算法的标志，1:enable;  0: disable; 仅MLA全量化模板可使能 |
 | 10...14   |                         | 预留字段, 值为0              |

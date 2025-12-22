@@ -9,8 +9,8 @@
  */
 
 #include <vector>
-#include "fallback/fallback_comm.h"
-#include "fallback/fallback.h"
+#include "fallback/fallback_comm_2stages.h"
+#include "fallback/fallback_2stages.h"
 #include "log/log.h"
 #include "log/error_code.h"
 
@@ -43,7 +43,7 @@ static const size_t KV_HEAD_NUM_INDEX = 3;
 static const size_t BLOCK_SIZE_INDEX = 4;
 static const size_t INNER_PRECISE_INDEX = 5;
 
-graphStatus IncreHostExecuteFunc(OpExecuteContext *host_api_ctx)
+graphStatus IncreHostExecuteFunc(OpExecutePrepareContext *host_api_ctx)
 {
     OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
 
@@ -97,21 +97,23 @@ graphStatus IncreHostExecuteFunc(OpExecuteContext *host_api_ctx)
         OP_LOGE(host_api_ctx->GetNodeName(),  
             "In block-wise attention computation, blockSize is a required parameter (controls matrix block dimension), must not be null, but a null was actually passed."), 
         return GRAPH_FAILED);
+
     const uint32_t *innerPrecise = attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
     OP_CHECK_IF(innerPrecise == nullptr, 
         OP_LOGE(host_api_ctx->GetNodeName(), 
             "In internal operations (e.g., attention matrix multiplication, softmax), innerPrecise is a required parameter (specifies precision), must not be null, but a null was actually passed."), 
         return GRAPH_FAILED);
-    
+
     OP_CHECK_IF(scaleValue == nullptr,  
         OP_LOGE(host_api_ctx->GetNodeName(),  
-            "When computing attention weights, scaleValue is a required parameter (normalizes QK^T to prevent softmax gradient vanishing), must not be null, but a null was actually passed."),
+            "When computing attention weights, scaleValue is a required parameter (normalizes QK^T to prevent softmax gradient vanishing), must not be null, but a null was actually passed."), 
         return GRAPH_FAILED);
+
     double dScaleValue = *scaleValue;
 
     // execute opapi
     auto api_ret =
-        EXEC_OPAPI_CMD(aclnnIncreFlashAttentionV4, query, ge_tenserListKey, ge_tenserListValue, pseShiftGe, attenMaskGe,
+        EXEC_OPAPI_PREPARE_CMD(aclnnIncreFlashAttentionV4, query, ge_tenserListKey, ge_tenserListValue, pseShiftGe, attenMaskGe,
                        actSeqArray, dequantScale1Ge, quantScale1Ge, dequantScale2Ge, quantScale2Ge, quantOffset2Ge,
                        antiquantScaleGe, antiquantOffsetGe, blocktableGe, kvPaddingSizeGe, *num_heads, dScaleValue,
                        layout, *kvHeadNum, *blockSize, *innerPrecise, output);
@@ -120,7 +122,7 @@ graphStatus IncreHostExecuteFunc(OpExecuteContext *host_api_ctx)
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP(IncreFlashAttention).OpExecuteFunc(IncreHostExecuteFunc).HostInputs({5});
+IMPL_OP(IncreFlashAttention).Op2StageExecuteFuncs(IncreHostExecuteFunc, ExecuteOpLaunch).HostInputs({5});
 
 } // namespace fallback
 

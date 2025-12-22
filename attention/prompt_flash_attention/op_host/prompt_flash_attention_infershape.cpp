@@ -182,12 +182,11 @@ static ge::graphStatus InferDataTypePromptFlashAttention(gert::InferDataTypeCont
     OP_LOGD(context->GetNodeName(), "Enter PromptFlashAttention inferDataType impl.");
     // default set q's dtype as PFA's output type
     ge::DataType outputType = context->GetInputDataType(PFA_QUERY_INDEX);
-    if (context->GetOptionalInputDataType(PFA_QUANT_SCALE2_INDEX) != ge::DT_UNDEFINED) { // 10 is quant_scale2's index
+    if (context->GetOptionalInputDataType(PFA_QUANT_SCALE2_INDEX) != ge::DT_UNDEFINED) {
         outputType = ge::DT_INT8;
     } else if (outputType == ge::DT_INT8) {
         outputType = ge::DT_FLOAT16;
     }
-    // attention_out, outidx:0
     context->SetOutputDataType(PFA_ATTENTION_OUT_INDEX, outputType);
     OP_LOGD(context->GetNodeName(), "PromptFlashAttention inferDataType end.");
     return GRAPH_SUCCESS;

@@ -26,7 +26,8 @@ enum class FiaCompareType : uint32_t {
     GREATER_EQUAL = 2,
     LESS = 3,
     LESS_EQUAL = 4,
-    NOT_EQUAL = 5
+    NOT_EQUAL = 5,
+    IGNORE_INPUT = 6
 };
 
 struct FiaTilingShapeCompareParam {
@@ -53,7 +54,7 @@ public:
         int64_t N = std::numeric_limits<int64_t>::min()) :
         shape_(shape), layout_(layout), name_(name), opName_(opName)
     {
-        if (HasH() && N != std::numeric_limits<int64_t>::min()) {
+        if (HasShapeH() && N != std::numeric_limits<int64_t>::min()) {
             N_ = N;
             hasSetN_ = true;
         }
@@ -69,62 +70,62 @@ public:
 
     size_t GetDimNum() const { return shape_.GetDimNum(); }
 
-    bool HasB() const 
+    bool HasShapeB() const 
     { 
         return HasAxis(FiaAxis::B); 
     }
-    bool HasS() const 
+    bool HasShapeS() const 
     { 
         return HasAxis(FiaAxis::S); 
     }
-    bool HasH() const { 
+    bool HasShapeH() const { 
         return HasAxis(FiaAxis::H); 
     }
-    bool HasN() const 
+    bool HasShapeN() const 
     { 
         return HasAxis(FiaAxis::N); 
     }
-    bool HasT() const 
+    bool HasShapeT() const 
     { 
         return HasAxis(FiaAxis::T); 
     }
-    bool HasD1() const 
+    bool HasShapeD1() const 
     { 
         return HasAxis(FiaAxis::D1); 
     }
-    bool HasD0() const 
+    bool HasShapeD0() const 
     { 
         return HasAxis(FiaAxis::D0); 
     }
-    bool HasD() const
+    bool HasShapeD() const
     {
         if (HasAxis(FiaAxis::D)) { return true; }
-        if (HasH() && hasSetN_ && N_ != 0 && GetH() % N_ == 0) { return true; }
-        if (HasD1() && HasD0()) { return true; }
+        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) { return true; }
+        if (HasShapeD1() && HasShapeD0()) { return true; }
         return false;
     }
 
-    int64_t GetB() const { return GetAxisNum(FiaAxis::B); }
-    int64_t GetS() const { return GetAxisNum(FiaAxis::S); }
-    int64_t GetN() const { return GetAxisNum(FiaAxis::N); }
-    int64_t GetH() const { return GetAxisNum(FiaAxis::H); }
-    int64_t GetT() const { return GetAxisNum(FiaAxis::T); }
-    int64_t GetD1() const { return GetAxisNum(FiaAxis::D1); }
-    int64_t GetD0() const { return GetAxisNum(FiaAxis::D0); }
-    int64_t GetD() const
+    int64_t GetShapeB() const { return GetAxisNum(FiaAxis::B); }
+    int64_t GetShapeS() const { return GetAxisNum(FiaAxis::S); }
+    int64_t GetShapeN() const { return GetAxisNum(FiaAxis::N); }
+    int64_t GetShapeH() const { return GetAxisNum(FiaAxis::H); }
+    int64_t GetShapeT() const { return GetAxisNum(FiaAxis::T); }
+    int64_t GetShapeD1() const { return GetAxisNum(FiaAxis::D1); }
+    int64_t GetShapeD0() const { return GetAxisNum(FiaAxis::D0); }
+    int64_t GetShapeD() const
     {
         if (HasAxis(FiaAxis::D)) { return shape_.GetDim(GetAxisIdx(FiaAxis::D)); }
-        if (HasH() && hasSetN_ && N_ != 0 && GetH() % N_ == 0) { return GetH() / N_; }
-        if (HasD1() && HasD0()) { return GetD1() * GetD0(); }
+        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) { return GetShapeH() / N_; }
+        if (HasShapeD1() && HasShapeD0()) { return GetShapeD1() * GetShapeD0(); }
         return invalidDimValue_;
     }
 
-    ge::graphStatus CheckHasB(const std::string &funcName) const { return CheckHasAxis(FiaAxis::B, funcName); }
-    ge::graphStatus CheckHasS(const std::string &funcName) const { return CheckHasAxis(FiaAxis::S, funcName); }
-    ge::graphStatus CheckHasD(const std::string &funcName) const { return CheckHasAxis(FiaAxis::D, funcName); }
-    ge::graphStatus CheckHasN(const std::string &funcName) const { return CheckHasAxis(FiaAxis::N, funcName); }
-    ge::graphStatus CheckHasH(const std::string &funcName) const { return CheckHasAxis(FiaAxis::H, funcName); }
-    ge::graphStatus CheckHasT(const std::string &funcName) const { return CheckHasAxis(FiaAxis::T, funcName); }
+    ge::graphStatus CheckHasShapeB(const std::string &funcName) const { return CheckHasAxis(FiaAxis::B, funcName); }
+    ge::graphStatus CheckHasShapeS(const std::string &funcName) const { return CheckHasAxis(FiaAxis::S, funcName); }
+    ge::graphStatus CheckHasShapeD(const std::string &funcName) const { return CheckHasAxis(FiaAxis::D, funcName); }
+    ge::graphStatus CheckHasShapeN(const std::string &funcName) const { return CheckHasAxis(FiaAxis::N, funcName); }
+    ge::graphStatus CheckHasShapeH(const std::string &funcName) const { return CheckHasAxis(FiaAxis::H, funcName); }
+    ge::graphStatus CheckHasShapeT(const std::string &funcName) const { return CheckHasAxis(FiaAxis::T, funcName); }
 
 private:
     bool HasAxis(const FiaAxis &axis) const;

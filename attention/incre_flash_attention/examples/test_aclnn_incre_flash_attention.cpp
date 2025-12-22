@@ -12,7 +12,7 @@
  * \file test_incre_flash_attention_v4.cpp
  * \brief
  */
-
+//testci
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -20,7 +20,6 @@
 #include "securec.h"
 #include "acl/acl.h"
 #include "aclnnop/aclnn_incre_flash_attention_v4.h"
-#include<unistd.h>
  
 using namespace std;
 

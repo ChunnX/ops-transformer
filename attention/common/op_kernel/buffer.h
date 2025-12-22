@@ -21,18 +21,36 @@
 #include"kernel_tpipe.h"
 using namespace AscendC;
 namespace fa_base_matmul {
+__BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
+#define MAKE_ID ((++idCounterNum) % 16)
+
+// 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
+#define AIV0_AIV1_OFFSET 16
+
 enum class BufferType {
     L1 = 0,
     L0A = 1,
     L0B = 2,
     L0C = 3,
+    UB = 4,
+    GM = 5,
 };
+
+enum class SyncType {
+    NO_SYNC,
+    INNER_CORE_SYNC,
+    CROSS_CORE_SYNC_FORWARD,
+    CROSS_CORE_SYNC_BOTH,
+};
+
+constexpr uint32_t INVALID_CROSS_CORE_EVENT_ID = 16;
+static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
 
 template<BufferType Type>
 struct BufferInfo{
     // Cons 消费者，Prod 生产者
     __aicore__ const static constexpr HardEvent ConsWaitProdStatus() {
-        if constexpr (Type == BufferType::L1){
+        if constexpr (Type == BufferType::L1) {
             return HardEvent::MTE2_MTE1;
         } else if constexpr (Type == BufferType::L0A) {
             return HardEvent::MTE1_M;
@@ -44,7 +62,7 @@ struct BufferInfo{
     }
 
     __aicore__ const static constexpr HardEvent ProdWaitConsStatus() {
-        if constexpr (Type == BufferType::L1){
+        if constexpr (Type == BufferType::L1) {
             return HardEvent::MTE1_MTE2;
         } else if constexpr (Type == BufferType::L0A) {
             return HardEvent::M_MTE1;
@@ -56,7 +74,7 @@ struct BufferInfo{
     }
 
     __aicore__ const static constexpr TPosition GetTPosition() {
-        if constexpr (Type == BufferType::L1){
+        if constexpr (Type == BufferType::L1) {
             return TPosition::A1;
         } else if constexpr (Type == BufferType::L0A) {
             return TPosition::A2;
@@ -64,6 +82,10 @@ struct BufferInfo{
             return TPosition::B2;
         } else if constexpr (Type == BufferType::L0C) {
             return TPosition::CO1;
+        } else if constexpr (Type == BufferType::UB) {
+            return TPosition::VECIN;
+        } else if constexpr (Type == BufferType::GM) {
+            return TPosition::GM;
         }
     }
 
@@ -73,35 +95,49 @@ struct BufferInfo{
 };
 
 // buffer绑定生产者、消费者关系
-// L1 buffer的生产者为MTE2，消费者为MTE1
+// L1 buffer的生产者为MTE2或者MTE3，消费者为MTE1
 // L0A buffer的生产者为MTE1，消费者为M
 // L0B buffer的生产者为MTE1，消费者为M
 // L0C buffer的生产者为M，消费者为FIX
-template<BufferType Type, bool sync = true>
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class Buffer {
+    using TensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<uint8_t>, LocalTensor<uint8_t>>;
+
+    template <typename T>
+    using TargetTensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<T>, LocalTensor<T>>;
 public:
     __aicore__ inline Buffer() {}
-    __aicore__ inline Buffer(LocalTensor<uint8_t> tensor, uint32_t size) {
+    __aicore__ inline Buffer(TensorType tensor, uint32_t size) {
         tensor_ = tensor;
         size_ = size;
+        if constexpr (syncType == SyncType::CROSS_CORE_SYNC_FORWARD) {
+            id0_ = MAKE_ID;
+            id1_ = INVALID_CROSS_CORE_EVENT_ID;
+        } else if constexpr (syncType == SyncType::CROSS_CORE_SYNC_BOTH) {
+            id0_ = MAKE_ID;
+            id1_ = MAKE_ID;
+        } else {
+            id0_ = INVALID_CROSS_CORE_EVENT_ID;
+            id1_ = INVALID_CROSS_CORE_EVENT_ID;
+        }
     }
 
     __aicore__ inline void Init() {
         if ASCEND_IS_AIC {
-            if constexpr (sync) {
-                p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<Type>::EventP2C>(); // 确保只能被调用一次
-                c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<Type>::EventC2P>();
-                SetFlag<BufferInfo<Type>::EventC2P>(c2pEventId_);
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
+                c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
+                SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
             }
         }
     }
 
     __aicore__ inline void UnInit() {
         if ASCEND_IS_AIC {
-            if constexpr (sync) {
-                WaitFlag<BufferInfo<Type>::EventC2P>(c2pEventId_);
-                GetTPipePtr()->ReleaseEventID<BufferInfo<Type>::EventP2C>(p2cEventId_); // 确保只能被调用一次
-                GetTPipePtr()->ReleaseEventID<BufferInfo<Type>::EventC2P>(c2pEventId_);
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
+                GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 确保只能被调用一次
+                GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
             }
         }
     }
@@ -109,11 +145,11 @@ public:
     template<HardEvent EventType>
     __aicore__ inline void Wait() {
         if ASCEND_IS_AIC {
-            if constexpr (sync) {
-                if constexpr (EventType == BufferInfo<Type>::EventP2C) {
-                    WaitFlag<BufferInfo<Type>::EventP2C>(p2cEventId_); // 消费者等待生产者完成生产
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
+                    WaitFlag<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 消费者等待生产者完成生产
                 } else {
-                    WaitFlag<BufferInfo<Type>::EventC2P>(c2pEventId_); // 生产者等待消费者完成消费
+                    WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_); // 生产者等待消费者完成消费
                 }
             }
         }
@@ -122,32 +158,78 @@ public:
     template<HardEvent EventType>
     __aicore__ inline void Set() {
         if ASCEND_IS_AIC {
-            if constexpr (sync) {
-                if constexpr (EventType == BufferInfo<Type>::EventP2C) {
-                    SetFlag<BufferInfo<Type>::EventP2C>(p2cEventId_); // 生产者通知消费者已完成生产
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
+                    SetFlag<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 生产者通知消费者已完成生产
                 } else {
-                    SetFlag<BufferInfo<Type>::EventC2P>(c2pEventId_); // 消费者通知生产者已完成消费
+                    SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_); // 消费者通知生产者已完成消费
                 }
             }
         }
     }
 
+    __aicore__ inline void WaitCrossCore() {
+        if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
+            // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
+            if ASCEND_IS_AIC {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_ + AIV0_AIV1_OFFSET);
+            } else {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id0_);
+            }
+        } else if constexpr (bufferType == BufferType::L1) {
+            // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
+            if ASCEND_IS_AIC {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id0_);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id0_ + AIV0_AIV1_OFFSET);
+            } else {
+                if constexpr (syncType == SyncType::CROSS_CORE_SYNC_BOTH) {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
+                }
+            }
+        }
+    }
+
+    __aicore__ inline void SetCrossCore() {
+        if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
+            // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
+            if ASCEND_IS_AIC {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
+            } else {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+            }
+        } else if constexpr (bufferType == BufferType::L1) {
+            // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
+            if ASCEND_IS_AIC {
+                if constexpr (syncType == SyncType::CROSS_CORE_SYNC_BOTH) {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id1_);
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id1_ + AIV0_AIV1_OFFSET);
+                }
+            } else {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_);
+            }
+        }
+    }
+
     template<typename T>
-    __aicore__ inline LocalTensor<T> GetTensor() {
+    __aicore__ inline TargetTensorType<T> GetTensor() {
         return tensor_.template ReinterpretCast<T>();
     }
 
     template<typename T>
-    __aicore__ inline LocalTensor<T> GetTensor(uint64_t startindex) {
-        LocalTensor<T> tmpTensor = tensor_.template ReinterpretCast<T>();
+    __aicore__ inline TargetTensorType<T> GetTensor(uint64_t startindex) {
+        TargetTensorType<T> tmpTensor = tensor_.template ReinterpretCast<T>();
         return tmpTensor[startindex];
     }
 
 private:
-    LocalTensor<uint8_t> tensor_;
+    TensorType tensor_;
     uint32_t size_;
     TEventID p2cEventId_;
     TEventID c2pEventId_;
+    uint32_t id0_;      // 用作正向同步：生产者通知消费者，或者消费者等待生产者；
+    uint32_t id1_;      // 用作反向同步：消费者通知生产者，或者生产者等待消费者；
 };
 }
 #endif

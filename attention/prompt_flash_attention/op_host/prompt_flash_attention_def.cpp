@@ -112,7 +112,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false"); //set jit compile flag
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
-    
+
         OpAICoreConfig config_310p;
         config_310p.Input("query")
             .ParamType(REQUIRED)

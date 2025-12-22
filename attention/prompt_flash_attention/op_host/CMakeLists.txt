@@ -12,28 +12,21 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         prompt_flash_attention_def.cpp
     )
+endif()
+
 add_ops_compile_options(
     OP_NAME PromptFlashAttention
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -Werror
+            -mllvm -cce-vf-remove-membar=false
             -mllvm -cce-aicore-hoist-movemask=false
 )
-    set(prompt_flash_attention_depends attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
-endif()
 
-if(NOT BUILD_OPS_RTY_KERNEL) #
-    add_modules_sources(OPTYPE prompt_flash_attention ACLNNTYPE aclnn_inner)
-    add_ops_compile_options(
-        OP_NAME PromptFlashAttention
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
-                -Werror
-                -mllvm -cce-vf-remove-membar=false
-                -mllvm -cce-aicore-hoist-movemask=false
-    )
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        prompt_flash_attention_tiling.cpp
-        fallback_prompt_flash_attention.cpp
-    )
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
+    set(prompt_flash_attention_depends attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
+else()
+    set(prompt_flash_attention_depends attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
+    add_modules_sources_with_soc(OPTYPE prompt_flash_attention ACLNNTYPE aclnn_inner)
 endif()
