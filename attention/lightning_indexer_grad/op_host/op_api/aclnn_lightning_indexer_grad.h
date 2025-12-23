@@ -36,7 +36,7 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
  * @brief aclnnLightningIndexerGrad的第二段接口，用于执行计算。
  */
 aclnnStatus aclnnLightningIndexerGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                          aclrtStream stream);
+                                      aclrtStream stream);
 
 #ifdef __cplusplus
 }

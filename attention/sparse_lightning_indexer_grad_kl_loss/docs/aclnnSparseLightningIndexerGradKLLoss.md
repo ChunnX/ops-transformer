@@ -94,7 +94,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     const aclTensor     *dWeights
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
-    aclOpExecutor       *executor)
+    aclOpExecutor       **executor)
 ```
 
 ```c++
@@ -102,7 +102,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     void             *workspace, 
     uint64_t          workspaceSize, 
     aclOpExecutor    *executor, 
-    const aclrtStream stream)
+    aclrtStream stream)
 ```
 
 ## aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize
