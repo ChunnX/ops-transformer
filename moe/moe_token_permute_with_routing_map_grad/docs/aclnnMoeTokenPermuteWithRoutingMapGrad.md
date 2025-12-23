@@ -56,8 +56,8 @@ $$
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMapGrad”接口执行计算。
 
-* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(const aclTensor *permutedTokenOutputGrad, const aclTensor *permutedProbsOutputGradOptional, const aclTensor *sortedIndices, const aclTensor *routingMapOptional, int64_t experts_num, int64_t tokens_num, bool dropAndPad, aclTensor *tokensGradOut, aclTensor *probsGradOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
+* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(const aclTensor *permutedTokenOutputGrad, const aclTensor *permutedProbsOutputGradOptional, const aclTensor *sortedIndices, const aclTensor *routingMapOptional, int64_t numExperts, int64_t tokensNum, bool dropAndPad, aclTensor *tokensGradOut, aclTensor *probsGradOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)`
+* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)`
 
 ## aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize
 
