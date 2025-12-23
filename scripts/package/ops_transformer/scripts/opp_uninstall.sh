@@ -58,6 +58,7 @@ get_opts() {
   IN_FEATURE="$4"
   IS_DOCKER_INSTALL="$5"
   DOCKER_ROOT="$6"
+  PKG_VERSION_DIR="$7"
   local paramter_num="$#"
 
   if [ "${paramter_num}" != 0 ]; then
@@ -158,7 +159,6 @@ get_installed_param() {
   TARGET_USERNAME=$(get_installed_info "${KEY_INSTALLED_UNAME}")
   TARGET_USERGROUP=$(get_installed_info "${KEY_INSTALLED_UGROUP}")
   get_package_version "RUN_PKG_VERSION" "$VERSION_INFO_FILE"
-  get_version_dir "PKG_VERSION_DIR" "$VERSION_INFO_FILE"
   if [ "${PKG_VERSION_DIR}" = "" ]; then
     TARGET_INSTALL_PATH=${TARGET_VERSION_DIR}
   else
