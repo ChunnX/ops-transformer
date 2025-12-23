@@ -56,10 +56,10 @@ public:
                 {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16,
                  ge::DT_FLOAT16, ge::DT_FLOAT}).Format(formats).UnknownShapeFormat(formats);
                  
-        this->Attr("range").AttrType(OPTIONAL).ListInt({-1, -1});
-        this->Attr("topk_num").AttrType(OPTIONAL).Int(1);
         this->Attr("padded_mode").AttrType(OPTIONAL).Bool(false);
         this->Attr("restore_shape").AttrType(OPTIONAL).ListInt({1, 1});
+        this->Attr("range").AttrType(OPTIONAL).ListInt({-1, -1});
+        this->Attr("topk_num").AttrType(OPTIONAL).Int(1);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
     }
