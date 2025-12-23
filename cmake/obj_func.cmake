@@ -302,7 +302,6 @@ macro(add_mc2_modules_sources)
       ${OPS_TRANSFORMER_DIR}/mc2/common/src/mc2_log.cpp
       ${OPS_TRANSFORMER_DIR}/mc2/3rd/ops_legacy/op_tiling/op_cache_tiling.cpp
       ${OPS_TRANSFORMER_DIR}/mc2/3rd/ops_legacy/op_tiling/runtime_kb_api.cpp
-      $<$<NOT:$<BOOL:${ENABLE_STATIC}>>:${OPS_TRANSFORMER_DIR}/mc2/3rd/ops_legacy/op_api/op_legacy_api.cpp>
     )
   endif()
 
