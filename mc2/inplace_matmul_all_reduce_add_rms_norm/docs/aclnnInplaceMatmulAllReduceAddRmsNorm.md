@@ -36,26 +36,26 @@
 
 ```cpp
 aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor *x1, 
-    const aclTensor *x2, 
-    const aclTensor *bias, 
-    const aclTensor *residual, 
-    const aclTensor *gamma, 
-    double          epsilon, 
-    const char*     group, 
-    const char      *reduceOp, 
-    int64_t         commTurn, 
-    int64_t         streamMode, 
-    const aclTensor *normOut, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *x1,
+    const aclTensor *x2,
+    const aclTensor *bias,
+    const aclTensor *residual,
+    const aclTensor *gamma,
+    double          epsilon,
+    const char*     group,
+    const char      *reduceOp,
+    int64_t         commTurn,
+    int64_t         streamMode,
+    const aclTensor *normOut,
+    uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
-    void                *workspace, 
-    uint64_t            workspaceSize, 
-    aclOpExecutor       *executor, 
+    void                *workspace,
+    uint64_t            workspaceSize,
+    aclOpExecutor       *executor,
     const aclrtStream   stream)
 ```
 
@@ -65,10 +65,10 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 330px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 330px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -88,7 +88,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
           <td>x1</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
-          <td><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></td>
+          <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>2-3</td>
@@ -98,7 +98,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
           <td>x2</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持两维输入，支持转置/不转置场景。</li><li>支持最后两轴转置情况下的非连续的tensor</li></td>
+          <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持两维输入，支持转置/不转置场景。</li><li>支持最后两轴转置情况下的非连续的tensor</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -108,7 +108,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
           <td>bias</td>
           <td>输入</td>
           <td>Device侧的aclTensor，即计算公式中的bias。</td>
-          <td><li>支持传入空指针场景。</li><li>当前版本仅支持一维输入。</li></td>
+          <td><ul><li>支持传入空指针场景。</li><li>当前版本仅支持一维输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>1</td>
@@ -188,7 +188,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
           <td>normOut</td>
           <td>输出</td>
           <td>Device侧的aclTensor，mm + all_reduce + add + rms_norm的结果，即计算公式中的normOut。</td>
-          <td><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></td>
+          <td><ul><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -220,8 +220,8 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
-    第一段接口完成入参校验，出现以下场景时报错：
+    <p>aclnnStatus：返回状态码，具体参见<a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。</p>
+    <p>第一段接口完成入参校验，出现以下场景报错：</p>
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
@@ -284,9 +284,9 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-- **返回值：**
+-   **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -303,7 +303,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 ```Cpp

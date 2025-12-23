@@ -75,7 +75,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
           <td>x1</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
-          <td><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></td>
+          <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
           <td>2-3</td>
@@ -85,7 +85,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
           <td>x2</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li></td>
+          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
           <td>2</td>
@@ -195,12 +195,12 @@ aclnnStatus aclnnQuantMatmulAllReduce(
     </table>
 
     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：x2输入的数据格式支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。当x2的数据格式为FRACTAL_NZ时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight完成数据格式ND到数据格式NZ的转换，非连续的tensor仅支持transpose场景。
-    
+
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
-    第一段接口完成入参校验，出现以下场景时报错：
+    <p>aclnnStatus：返回状态码，具体参见<a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。</p>
+    <p>第一段接口完成入参校验，出现以下场景报错：</p>
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
@@ -266,9 +266,9 @@ aclnnStatus aclnnQuantMatmulAllReduce(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-- **返回值：**
+-   **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -284,7 +284,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     ```Cpp

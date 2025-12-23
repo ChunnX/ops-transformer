@@ -30,13 +30,13 @@
     $$
     output= allReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
     $$
-  - 情形5：对量化后的入参x1、x2进行MatMul、Dequant和pertoken计算，接着与x3进行Add操作，再对输出进行per-channel量化，然后进行AllToAll通信，对第一次通讯结果进行reduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行Dequant，得到最终输出。
+  - 情形5：对量化后的入参x1、x2进行MatMul、Dequant和pertoken计算，接着与x3进行Add操作，再对输出进行perchannel量化，然后进行AllToAll通信，对第一次通讯结果进行reduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行Dequant，得到最终输出。
     $$
     matmulAddOutput = (dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
     $$
 
     $$
-    alltoallOutPut_{int8} = alltoall(matmulAddOutput / commQuantScale1Optional); 
+    alltoallOutPut_{int8} = alltoall(matmulAddOutput / commQuantScale1Optional);
     $$
 
     $$
@@ -171,14 +171,14 @@
     <tr>
       <td>comm_quant_scale_1</td>
       <td>可选输入</td>
-      <td>matmulAdd计算后的per-channel量化系数，即公式中的输入comm_quant_scale_1。</td>
+      <td>matmulAdd计算后的perchannel量化系数，即公式中的输入comm_quant_scale_1。</td>
       <td>FLOAT、BFLOAT16、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>comm_quant_scale_2</td>
       <td>可选输入</td>
-      <td>allGather计算后的per-channel量化系数，即公式中的输入comm_quant_scale_2。</td>
+      <td>allGather计算后的perchannel量化系数，即公式中的输入comm_quant_scale_2。</td>
       <td>FLOAT、BFLOAT16、FLOAT16</td>
       <td>ND</td>
     </tr>
@@ -192,56 +192,56 @@
     <tr>
       <td>group</td>
       <td>属性</td>
-      <td><li>Host侧标识列组的字符串，通信域名称。</li><li>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</li></td>
+      <td><ul><li>Host侧标识列组的字符串，通信域名称。</li><li>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</li></ul></td>
       <td>CHAR*、STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>reduceOp</td>
       <td>可选属性</td>
-      <td><li>reduce操作类型。</li><li>默认值为"sum"。</li></td>
+      <td><ul><li>reduce操作类型。</li><li>默认值为"sum"。</li></ul></td>
       <td>CHAR*、STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>is_trans_a</td>
       <td>可选属性</td>
-      <td><li>决定x1是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></td>
+      <td><ul><li>决定x1是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></ul></td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
       <td>is_trans_b</td>
       <td>可选属性</td>
-      <td><li>决定x2是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></td>
+      <td><ul><li>决定x2是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></ul></td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
       <td>commTurn</td>
       <td>可选属性</td>
-      <td><li>通信数据切分数，即总数据量/单次通信量。</li><li>默认值为0。</li></td>
+      <td><ul><li>通信数据切分数，即总数据量/单次通信量。</li><li>默认值为0。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
       <td>antiquant_group_size</td>
       <td>可选属性</td>
-      <td>伪量化per-group模式下，对x2进行反量化计算的groupSize输入。</td>
+      <td>伪量化pergroup模式下，对x2进行反量化计算的groupSize输入。</td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
       <td>group_size</td>
       <td>可选属性</td>
-      <td><li>在输入张量 x1/x2 中，M、N、K 维度上的数值数量共同对应一个反量化系数。</li><li>默认值为0。</li><li>保留属性</li></td>
+      <td><ul><li>在输入张量 x1/x2 中，M、N、K 维度上的数值数量共同对应一个反量化系数。</li><li>默认值为0。</li><li>保留属性</li></ul></td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
       <td>comm_quant_mode</td>
       <td>可选属性</td>
-      <td><li>静态量化和动态量化的标志位，数值为0和1。</li><li>默认值为0。</li></td>
+      <td><ul><li>静态量化和动态量化的标志位，数值为0和1。</li><li>默认值为0。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
     </tr>
@@ -257,10 +257,10 @@
 * 传入的x1、x2、antiquantScale或者output不为空指针。
 * 当输入x1的shape为(b, s, k)时，x3（非空场景）与输出output的shape为(b, s, n)，pertoken_scale的shape为(b*s)；当输入x1的shape为(m, k)时，x3（非空场景）与输出output的shape为(m, n)，pertoken_scale的shape为(m)。
 * 输入comm_quant_scale_1和comm_quant_scale_2可选，可为空，当x2为(k, n)时, shape可为(n)或者(1,n)。
-* 输入dequantScale可选，可为空，shape在pertensor场景为(1)，per-channel场景为(n)/(1, n)。输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。输出为FLOAT16时，如果pertokenScale不为空，可直接将FLOAT32类型的dequantScale传入本接口，如果pertokenScale为空，则需提前调用TransQuantParamV2算子的aclnn接口来将dequantScale转成INT64/UINT64数据类型。
-* bias若非空，当前版本仅支持一维，shape大小与output最后一维大小相等。antiquantScale在per-tensor场景下shape为(1)，在per-channel场景下shape为(1,n)/(n)，在per-group场景shape为(ceil(k,antiquantGroupSize), n)。antiquantOffset若非空，其shape与antiquantScale一致。
+* 输入dequantScale可选，可为空，shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。输出为FLOAT16时，如果pertokenScale不为空，可直接将FLOAT32类型的dequantScale传入本接口，如果pertokenScale为空，则需提前调用TransQuantParamV2算子的aclnn接口来将dequantScale转成INT64/UINT64数据类型。
+* bias若非空，当前版本仅支持一维，shape大小与output最后一维大小相等。antiquantScale在pertensor场景下shape为(1)，在perchannel场景下shape为(1,n)/(n)，在pergroup场景shape为(ceil(k,antiquantGroupSize), n)。antiquantOffset若非空，其shape与antiquantScale一致。
 * x1和x2，x3（非空场景）、antiquantScale、antiquantOffset（非空场景）、output、bias（非空场景）的数据类型和数据格式需要在支持的范围之内。
-* x1，antiquantScale，antiquantOffset（非空场景），x3（非空场景）、bias（非空场景）output的数据类型相同。antiquantGroupSize在不支持per-group场景时，传入0，在支持per-group场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与mm接口保持一致。
+* x1，antiquantScale，antiquantOffset（非空场景），x3（非空场景）、bias（非空场景）output的数据类型相同。antiquantGroupSize在不支持pergroup场景时，传入0，在支持pergroup场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与mm接口保持一致。
 * group_size在perblock场景下，只支持549764202624。其他场景，只支持0。
 * 只支持x2矩阵转置/不转置，x1矩阵不支持转置场景。
 * 属性reduceOp当前版本仅支持输入"sum"。

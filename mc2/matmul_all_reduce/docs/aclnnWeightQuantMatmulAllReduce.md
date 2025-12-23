@@ -24,26 +24,26 @@
 
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
-    const aclTensor  *x1, 
-    const aclTensor  *x2, 
-    const aclTensor  *bias, 
-    const aclTensor  *antiquantScale,  
-    const aclTensor  *antiquantOffset,  
-    const aclTensor  *x3, 
-    const char       *group, 
-    const char       *reduceOp, 
-    int64_t          commTurn, 
-    int64_t          streamMode, 
-    int64_t          antiquantGroupSize, 
-    const aclTensor *output, 
-    uint64_t        *workspaceSize, 
+    const aclTensor  *x1,
+    const aclTensor  *x2,
+    const aclTensor  *bias,
+    const aclTensor  *antiquantScale,
+    const aclTensor  *antiquantOffset,
+    const aclTensor  *x3,
+    const char       *group,
+    const char       *reduceOp,
+    int64_t          commTurn,
+    int64_t          streamMode,
+    int64_t          antiquantGroupSize,
+    const aclTensor *output,
+    uint64_t        *workspaceSize,
     aclOpExecutor **executor)
 ```
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduce(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
@@ -53,10 +53,10 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 330px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 330px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -76,7 +76,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>x1</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
-          <td><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></td>
+          <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>2-3</td>
@@ -86,7 +86,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>x2</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li></td>
+          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li></ul></td>
           <td>-</td>
           <td>ND</td>
           <td>2</td>
@@ -106,7 +106,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>antiquantScale</td>
           <td>输入</td>
           <td>Device侧的aclTensor，即计算公式中的antiquantScale。</td>
-          <td>pertensor场景shape为(1)；per_channel场景shape为(n)/(1,n)，n为x2最后一维的大小；pergroup场景shape为(ceil(k,antiquantGroupSize),n)。</td>
+          <td>pertensor场景shape为(1)；perchannel场景shape为(n)/(1,n)，n为x2最后一维的大小；pergroup场景shape为(ceil(k,antiquantGroupSize),n)。</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <tr>
           <td>antiquantGroupSize</td>
           <td>输入</td>
-          <td>伪量化per_group模式下，对x2进行反量化计算的groupSize输入。</td>
+          <td>伪量化pergroup模式下，对x2进行反量化计算的groupSize输入。</td>
           <td>当不支持pergroup时，传入0，支持时，传入值的范围为[32,min(k-1,INT_MAX)]，且为32的倍数；k取值范围与[mm接口](aclnnMatmulAllReduce.md)保持一致。</td>
           <td>INT64</td>
           <td>-</td>
@@ -302,9 +302,9 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-- **返回值：**
+-   **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -313,7 +313,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 - x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。
 - 传入的x1、x2、antiquantScale或者output不为空指针。
 - 当输入x1的shape为(b, s, k)时，x3（非空场景）与输出output的shape为(b, s, n)；当输入x1的shape为(m, k)时，x3（非空场景）与输出output的shape为(m, n)。
-- bias若非空，shape大小与output最后一维大小相等。antiquantScale在per-tensor场景下shape为(1)，在per-channel场景下shape为(1,n)/(n)，在per-group场景shape为(ceil(k,antiquantGroupSize), n)。antiquantOffset若非空，其shape与antiquantScale一致。
+- bias若非空，shape大小与output最后一维大小相等。antiquantScale在pertensor场景下shape为(1)，在perchannel场景下shape为(1,n)/(n)，在pergroup场景shape为(ceil(k,antiquantGroupSize), n)。antiquantOffset若非空，其shape与antiquantScale一致。
 - x1和x2，x3（非空场景）、antiquantScale、antiquantOffset（非空场景）、output、bias（非空场景）的数据类型和数据格式需要在支持的范围之内。
 - x1，antiquantScale，antiquantOffset（非空场景），x3（非空场景）、bias（非空场景）output的数据类型相同。antiquantGroupSize取值满足取值范围且为32倍数。
 - 在长序列场景，随着b/s或者m的增大，可能出现OOM或者计算超时。
@@ -559,7 +559,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
             args[rankId].stream = stream[rankId];
             args[rankId].context = context[rankId];
             threads[rankId].reset(
-                    new(std::nothrow) std::thread(&launchOneThreadweightQuantmatmulAllReduce, std::ref(args [rankId])));
+                    new(std::nothrow) std::thread(&launchOneThreadweightQuantmatmulAllReduce, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < ndev; rankId++) {
             threads[rankId]->join();

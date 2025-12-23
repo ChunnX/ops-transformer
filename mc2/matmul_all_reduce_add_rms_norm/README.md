@@ -126,63 +126,63 @@
     <tr>
       <td>y</td>
       <td>输出</td>
-      <td><li>mm + all_reduce + add的结果。</li></td>
+      <td><ul><li>mm + all_reduce + add的结果。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>norm_out</td>
       <td>输出</td>
-      <td><li>公式中的输出normOut。</li><li>mm + all_reduce + add + rms_norm的结果。</li></td>
+      <td><ul><li>公式中的输出normOut。</li><li>mm + all_reduce + add + rms_norm的结果。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>group</td>
       <td>属性</td>
-      <td><li>通信域名称。</li><li>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</li></td>
+      <td><ul><li>通信域名称。</li><li>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</li></ul></td>
       <td>CHAR*、STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>reduceOp</td>
       <td>可选属性</td>
-      <td><li>reduce操作类型。</li><li>默认值为"sum"。</li></td>
+      <td><ul><li>reduce操作类型。</li><li>默认值为"sum"。</li></ul></td>
       <td>CHAR*、STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>is_trans_a</td>
       <td>可选属性</td>
-      <td><li>决定x1是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></td>
+      <td><ul><li>决定x1是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></ul></td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
       <td>is_trans_b</td>
       <td>可选属性</td>
-      <td><li>决定x2是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></td>
+      <td><ul><li>决定x2是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></ul></td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
       <td>commTurn</td>
       <td>可选属性</td>
-      <td><li>通信数据切分数，即总数据量/单次通信量。</li><li>默认值为0。</li></td>
+      <td><ul><li>通信数据切分数，即总数据量/单次通信量。</li><li>默认值为0。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
       <td>antiquant_group_size</td>
       <td>可选属性</td>
-      <td><li>伪量化per_group模式下，对x2进行反量化计算的groupSize输入。</li><li>默认值为0。</li></td>
+      <td><ul><li>伪量化pergroup模式下，对x2进行反量化计算的groupSize输入。</li><li>默认值为0。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
       <td>epsilon</td>
       <td>可选属性</td>
-      <td><li>用于防止除0错误，即公式中的输入epsilon。</li><li>epsilon取值满足取值范围(0,1)。</li><li>默认值为1e-6。</li></td>
+      <td><ul><li>用于防止除0错误，即公式中的输入epsilon。</li><li>epsilon取值满足取值范围(0,1)。</li><li>默认值为1e-6。</li></ul></td>
       <td>DOUBLE</td>
       <td>-</td>
     </tr>
@@ -192,11 +192,11 @@
 * 使用场景同融合算子aclnnWeightQuantMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2
 * 输入x1可为二维或者三维，其shape为(b, s, k)或者(s, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。bias若非空，bias为一维，其shape为(n)。bias可选，可为空，非空时当前版本仅支持一维输入。
 * 输入residual必须是三维，其shape为(b, s, n)，当x1为二维时，residual的(b*s)等于x1的s，不支持非连续的tensor。输入gamma必须是一维，其shape为(n)，不支持非连续的tensor。
-* antiquantScale满足per-tensor场景shape为(1)，per-channel场景shape为(1,n)/(n)，per-group场景shape为(ceil(k,antiquantGroupSize),n)。antiquantOffset可选，可为空，非空时shape与antiquantScale一致。
-* dequantScale的shape在per-tensor场景为(1)，per-channel场景为(n)/(1, n)。
+* antiquantScale满足pertensor场景shape为(1)，perchannel场景shape为(1,n)/(n)，pergroup场景shape为(ceil(k,antiquantGroupSize),n)。antiquantOffset可选，可为空，非空时shape与antiquantScale一致。
+* dequantScale的shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。
 * 输出y和normOut的维度和数据类型同residual。bias若非空，shape大小与normOut最后一维相等。
 * x2的数据类型需为int8或者int4，x1、bias、residual、gamma、y、normOut计算输入的数据类型要一致。
-* antiquantGroupSize在不支持per_group场景时，传入0，在支持per_group场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与mm接口保持一致。
+* antiquantGroupSize在不支持pergroup场景时，传入0，在支持pergroup场景时，传入值的范围为[32, min(k-1,INT_MAX)]，且为32的倍数。k取值范围与mm接口保持一致。
 * 支持(b*s)、n为0的空tensor，不支持k为0的空tensor。
 * 只支持x2矩阵转置/不转置，x1矩阵支持不转置场景。
 * 属性reduceOp当前版本仅支持输入"sum"。

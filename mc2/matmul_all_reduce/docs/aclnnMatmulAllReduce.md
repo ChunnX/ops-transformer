@@ -23,23 +23,23 @@
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
-    const aclTensor *x1, 
-    const aclTensor *x2, 
-    const aclTensor *bias, 
-    const char*     group, 
-    const char      *reduceOp, 
-    int64_t         commTurn, 
-    int64_t         streamMode, 
-    const aclTensor *output, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *x1,
+    const aclTensor *x2,
+    const aclTensor *bias,
+    const char*     group,
+    const char      *reduceOp,
+    int64_t         commTurn,
+    int64_t         streamMode,
+    const aclTensor *output,
+    uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduce(
-    void              *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor     *executor, 
+    void              *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor     *executor,
     const aclrtStream stream)
 ```
 
@@ -49,10 +49,10 @@ aclnnStatus aclnnMatmulAllReduce(
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 330px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 330px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -72,7 +72,7 @@ aclnnStatus aclnnMatmulAllReduce(
           <td>x1</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
-          <td><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></td>
+          <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>2-3</td>
@@ -82,7 +82,7 @@ aclnnStatus aclnnMatmulAllReduce(
           <td>x2</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li><li>支持最后两轴转置情况下的非连续的tensor</li></td>
+          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li><li>支持最后两轴转置情况下的非连续的tensor</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -238,9 +238,9 @@ aclnnStatus aclnnMatmulAllReduce(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-- **返回值：**
+-   **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -251,12 +251,12 @@ aclnnStatus aclnnMatmulAllReduce(
 - x1、x2、bias计算输入的数据类型要和output计算输出的数据类型一致。
 - 仅支持hccs链路all mesh组网。
     - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持1、2、4、8卡。
-    
+
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     ```Cpp

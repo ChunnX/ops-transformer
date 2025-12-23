@@ -85,7 +85,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
           <td>x1</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
-          <td><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></td>
+          <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
           <td>2-3</td>
@@ -95,7 +95,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
           <td>x2</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li></td>
+          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
           <td>2</td>
@@ -125,7 +125,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
           <td>dequantScale</td>
           <td>输入</td>
           <td>Device侧的aclTensor，MatMul计算后的去量化系数，即计算公式中的dequantScale。</td>
-          <td><li>shape在pertensor场景为(1)，PerChannel场景为(n)/(1, n)</li><li>输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。</li><li>输出为FLOAT16时，如果pertokenScale不为空，可直接将FLOAT32类型的dequantScale传入本接口，如果pertokenScale为空，则需提前调用TransQuantParamV2算子的aclnn接口来将dequantScale转成INT64/UINT64数据类型。</li></td>
+          <td><ul><li>shape在pertensor场景为(1)，PerChannel场景为(n)/(1, n)</li><li>输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。</li><li>输出为FLOAT16时，如果pertokenScale不为空，可直接将FLOAT32类型的dequantScale传入本接口，如果pertokenScale为空，则需提前调用TransQuantParamV2算子的aclnn接口来将dequantScale转成INT64/UINT64数据类型。</li></ul></td>
           <td>INT64、UINT64、FLOAT32、BFLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -218,8 +218,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
-    第一段接口完成入参校验，出现以下场景时报错：
+    <p>aclnnStatus：返回状态码，具体参见<a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。</p>
+    <p>第一段接口完成入参校验，出现以下场景报错：</p>
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
@@ -285,9 +285,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-- **返回值：**
+-   **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -306,7 +306,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     ```Cpp
