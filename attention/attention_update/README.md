@@ -42,7 +42,7 @@
 ## 功能说明
 
 + 算子功能：将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。
-+ 计算公式：输入$lse_i$和$O_i$、输出$O$。
++ 计算公式：输入$lse_i$和$O_i$、输出$O$和$lse_m$。
 
 $$
 lse_{max} = \text{max}lse_i
@@ -94,7 +94,7 @@ $$
   </tr>
   <tr>
     <td class="tg-0pky">O</td>
-    <td class="tg-0pky">输入</td>
+    <td class="tg-0pky">输出</td>
     <td class="tg-0pky">更新后的全局attentionout。</td>
     <td class="tg-0pky">FLOAT32，FLOAT16，BFLOAT16</td>
     <td class="tg-0pky">ND</td>
