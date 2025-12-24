@@ -180,7 +180,7 @@ function(OpsTest_AddOpApiShared)
                 $<BUILD_INTERFACE:intf_pub_utest>
                 $<BUILD_INTERFACE:_OpsTestUt_OpApi_Wno>
                 -Wl,--no-whole-archive
-                PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi>>
+                PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>
                 nnopbase
                 profapi
                 ge_common_base

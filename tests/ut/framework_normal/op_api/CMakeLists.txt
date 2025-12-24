@@ -36,7 +36,7 @@ if(UT_TEST_ALL OR OP_API_UT)
   target_link_libraries(${OPAPI_NAME}_ut PRIVATE
           ${OPHOST_NAME}_opapi_obj
           opapi_stub
-          PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi>>
+          PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>
           $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
           )
 

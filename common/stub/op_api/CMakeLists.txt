@@ -12,14 +12,14 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build)
 
 file(GLOB_RECURSE OP_API_FILES "*.cpp")
 
-add_library(opapi SHARED ${OP_API_FILES})
+add_library(opapi_math SHARED ${OP_API_FILES})
 
-target_compile_definitions(opapi PRIVATE
+target_compile_definitions(opapi_math PRIVATE
     _GLIBCXX_USE_CXX11_ABI=0
     LOG_CPP
 )
 
-target_include_directories(opapi PRIVATE
+target_include_directories(opapi_math PRIVATE
     ${OPAPI_INCLUDE}
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
 )

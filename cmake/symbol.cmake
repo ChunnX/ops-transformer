@@ -101,7 +101,7 @@ function(gen_opapi_symbol)
     ge_common_base
     ascend_dump
     ascendalog
-    opapi
+    opapi_math
     dl
   )
 endfunction()
