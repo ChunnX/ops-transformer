@@ -13,7 +13,7 @@ observability:
      cpeName: protobuf
      groupId:
      url: https://github.com/protocolbuffers/protobuf.git
-     version: v3.13.0
+     version: v25.1
   json:
      cpeName: json
      groupId:

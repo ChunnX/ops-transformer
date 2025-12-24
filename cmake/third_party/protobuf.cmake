@@ -9,13 +9,12 @@
 # -----------------------------------------------------------------------------------------------------------
 set(_protobuf_url "")
 if(CANN_PKG_SERVER)
-  set(_protobuf_url "${CANN_PKG_SERVER}/libs/protobuf/v3.13.0.tar.gz")
+  set(_protobuf_url "${CANN_PKG_SERVER}/libs/protobuf/v25.1.tar.gz")
 endif()
 include(ExternalProject)
 ExternalProject_Add(external_protobuf
   URL               ${_protobuf_url}
-                    https://gitcode.com/cann-src-third-party/protobuf/releases/download/v3.13.0/protobuf-3.13.0.tar.gz
-  URL_MD5           1a6274bc4a65b55a6fa70e264d796490
+                    https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz
   DOWNLOAD_DIR      download/protobuf
   PREFIX            third_party
   SOURCE_SUBDIR     cmake
