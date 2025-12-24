@@ -263,6 +263,7 @@ aclnnStatus aclnnMatmulAllReduce(
     #include <iostream>
     #include <vector>
     #include <thread>
+    #include "hccl/hccl.h"
     #include "../op_api/aclnn_matmul_all_reduce.h"
 
     int ndev = 8;
