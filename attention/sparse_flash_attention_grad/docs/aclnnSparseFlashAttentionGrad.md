@@ -86,8 +86,8 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor     *actualSeqLengthskvOptional,
     const aclTensor     *queryRopeOptional,
     const aclTensor     *keyRopeOptional,
-    double               scaleValue
-    int64_t              sparseBlockSize
+    double               scaleValue,
+    int64_t              sparseBlockSize,
     char                *layoutOptional,
     int64_t              sparseMode,
     int64_t              preTokens,
