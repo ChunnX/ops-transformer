@@ -9,13 +9,14 @@
  */
 
 /*!
- * \file add_example.cpp
+ * \file add_example_def.cpp
  * \brief
  */
 #include "register/op_def_registry.h"
 
 namespace ops {
-class AddExample : public OpDef {
+class AddExample : public OpDef
+{
 public:
     explicit AddExample(const char* name) : OpDef(name)
     {
@@ -47,6 +48,7 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("opFile.value", "add_example");    // 这里制定的值会对应到kernel入口文件名.cpp
         this->AICore().AddConfig("ascend910b", aicoreConfig); // 其他的soc版本补充部分配置项
+        this->AICore().AddConfig("ascend910_93", aicoreConfig);
     }
 };
 OP_ADD(AddExample); // 添加算子信息库
