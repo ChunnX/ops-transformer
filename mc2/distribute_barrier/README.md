@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
@@ -48,7 +48,7 @@
   <tr>
    <td>elasticInfoOptional</td>
    <td>输入</td>
-   <td>当前不支持。</td>
+   <td>EP通信域动态缩容信息：<br><term>Atlas A2系列产品</term>：不支持，传空指针；<br><term>Atlas A3系列产品</term>：1D Tensor（shape <code>4 + 2 * epWorldSize,</code>），INT32类型，前4位为缩容配置，后2*epWorldSize为rank映射表。</td>
    <td>INT32</td>
    <td>ND（支持非连续Tensor）</td>
   </tr>
@@ -79,7 +79,7 @@
 
 - 使用场景说明：
     - 在需要进行全卡同步的网络模型中调用该算子，可以屏蔽快慢卡引入的性能波动问题，协助分析性能。
-    - 可以连续调用，入图时，需将上个算子的输出、下个算子的输入作为入参传入接口。
+    - 可以连续调用，入图时，需将上个算子的输入、下个算子的输出作为入参传入接口。
     - 当使能elasticInfo时，要确保Dispatch/Combine也传入了此参数，并且此elasticInfo与Dispatch/Combine中的elasticInfo保持一致。
 
 ## 调用说明

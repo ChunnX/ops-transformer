@@ -5,13 +5,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 
 ## 功能说明
@@ -58,7 +53,7 @@
 
 -   **参数说明：**
     -   permutedTokens（aclTensor\*，计算输入）：Device侧的aclTensor，输入token，要求为一个维度为2D的Tensor，shape为（tokens_num \* topK_num，hidden_size），数据类型支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持非连续输入。
-        - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
+        - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
     -   unpermutedTokensGrad（aclTensor\*，计算输入）：Device侧的aclTensor，正向输出unpermutedTokens的梯度，要求为一个维度为2D的Tensor，shape为（tokens_num，hidden_size），数据类型同permutedTokens，支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持非连续输入。
     -   sortedIndices（aclTensor\*，计算输入）：Device侧的aclTensor，要求shape为一个1D的（tokens_num \* topK_num，），数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。取值范围是[0, tokens_num \* topK_num - 1]，且没有重复索引。支持非连续输入。
     -   probsOptional（aclTensor\*，计算输入）：Device侧的aclTensor，可选输入，要求shape为一个2D的（tokens_num，topK_num），数据类型支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。当probs传时，topK_num等于probs第2维；当probs不传时，topK_num=1。支持非连续输入。
@@ -93,17 +88,7 @@
 ## 约束说明
 - 确定性计算：
   - aclnnMoeTokenUnpermuteGrad默认确定性实现。
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
-- <term>昇腾910_95 AI处理器</term>：
-  在调用本接口时，框架内部会转调用[aclnnMoeFinalizeRoutingV2Grad](aclnnMoeFinalizeRoutingV2Grad.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
-  - permutedTokens输入等同于aclnnMoeFinalizeRoutingV2Grad接口的expandedXOptional输入。
-  - unpermutedTokensGrad输入等同于aclnnMoeFinalizeRoutingV2Grad接口的gradY输入。
-  - sortedIndices输入等同于aclnnMoeFinalizeRoutingV2Grad接口的expandedRowIdx输入。
-  - probsOptional输入等同于aclnnMoeFinalizeRoutingV2Grad接口的scalesOptional输入。
-  - paddedMode输入等同于aclnnMoeFinalizeRoutingV2Grad接口的dropPadMode输入。
-  - permutedTokensGradOut输出等同于aclnnMoeFinalizeRoutingV2Grad接口的gradExpandedXOut输出。
-  - probsGradOut输出等同于aclnnMoeFinalizeRoutingV2Grad接口的gradScalesOut输出。
-
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。

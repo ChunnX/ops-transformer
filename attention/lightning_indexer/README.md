@@ -11,9 +11,11 @@
 -   API功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
 
 -   计算公式：
+
      $$
      Indices=\text{Top-}k\left\{[1]_{1\times g}@\left[(W@[1]_{1\times S_{k}})\odot\text{ReLU}\left(Q_{index}@K_{index}^T\right)\right]\right\}
      $$
+
      对于某个token对应的Index Query $Q_{index}\in\R^{g\times d}$，给定上下文Index Key $K_{index}\in\R^{S_{k}\times d},W\in\R^{g\times 1}$，其中$g$为GQA对应的group size，$d$为每一个头的维度，$S_{k}$是上下文的长度。
 
 ## 函数原型

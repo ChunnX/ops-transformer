@@ -4,13 +4,8 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200/300/500 推理产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
 -  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
@@ -95,7 +90,7 @@ aclnnStatus aclnnMlaPreprocessV2GetWorkspaceSize(
   int64_t          wdqDim, 
   int64_t          qRopeDim, 
   int64_t          kRopeDim, 
-  float            epsilon, 
+  double           epsilon, 
   int64_t          qRotaryCoeff, 
   int64_t          kRotaryCoeff, 
   bool             transposeWdq, 
@@ -434,7 +429,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>输入</td>
       <td>表示加在分母上防止除0。</td>
       <td>-</td>
-      <td>float</td>
+      <td>double</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -952,7 +947,7 @@ int main() {
   int64_t wdqDim = 128;
   int64_t qRopeDim = 0; 
   int64_t kRopeDim = 0;
-  float epsilon = 1e-05f;
+  double epsilon = 1e-05;
   int64_t qRotaryCoeff = 2;
   int64_t kRotaryCoeff = 2;
   bool transposeWdq = true;

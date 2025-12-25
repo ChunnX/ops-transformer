@@ -74,13 +74,10 @@ TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个�
 |-------|------|----|-------|
 |0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
 |4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
-|6-9|QUANT_MODE|量化场景|0-非量化，1-MMQcQr量化，2-MMQcQr量化+KVcache量化，3-MMcqCkvKr量化+MMQcQr量化，4-MMCqCkvkr量化+MMQcQr量化+KVcache量化，5-MMQcQr量化+KVcache pertile量化，6-MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化，7-Mxfp8量化+MMQcQr量化 8-Mxfp8量化+MMQcQr量化+KVcache量化|
+|6-9|QUANT_MODE|量化场景|0-MMQcQr量化，1-MMQcQr量化+KVCache量化，2-MMcqCkvKr量化+MMQcQr量化，3-MMCqCkvkr量化+MMQcQr量化+KVCache量化|
 |10|ENABLE_DEQUANT_OPTIONAL|反量化使能，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
-|14-15|ACTUAL_SEQ_LEN_MODE|actualSeqLen使能场景|0-关闭 1-使能actualSeqLen|
-|16-17|SPLIT_M_MODE|切M模式 |0-关闭(切N) 1-使能(切M)|
-|18-25|CV_MODE|CV模式|ASCENDC_TPL_MIX_AIC_1_1(6)：1:1模式, ASCENDC_TPL_MIX_AIC_1_2(7)：1:2模式|
 
 ## 主流程
 

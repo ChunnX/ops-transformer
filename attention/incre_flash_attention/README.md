@@ -2,42 +2,10 @@
 
 ## 产品支持情况
 
-<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
-<col style="width: 600px">
-<col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th style="text-align: center;">产品</th>
-    <th style="text-align: center;">是否支持</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td><term>Atlas 200I/500 A2 推理产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 推理系列加速卡产品</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td><term>Atlas 训练系列产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/300/500 推理产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-</tbody>
-</table>
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ##  功能说明
 
@@ -141,13 +109,9 @@
 - 参数query和attentionOut的shape需要完全一致，参数key、value 中对应tensor的shape需要完全一致。
 - 非连续场景下，参数key、value的tensorlist中tensor的个数等于query的B(由于tensorlist限制, 非连续场景下B需要小于等于256)。shape除S外需要完全一致，且batch只能为1。
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
-- Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品：
   - 支持B轴小于等于65536，N轴小于等于256，D轴小于等于512。
   - numHeads与numKeyValueHeads的比值不能大于64。
-- Atlas 推理系列加速卡产品：
-  - 支持B轴小于等于256，N轴小于等于256，D轴小于等于512，key、value的S轴小于等于65536。
-  - query、key、value和ttentionOut数据类型仅支持FLOAT16。
-  - 在数据排布格式为BNSD时，需要满足numHeads与numKeyValueHeads的比值不大于8，其他情况仅支持取值0；
 - INT8量化相关入参数量与输入、输出数据格式的综合限制：
   - query、key、value输入为FLOAT16，输出为INT8的场景：入参quantScale2必填，quantOffset2可选，不能传入dequantScale1、quantScale1、dequantScale2（即为nullptr）参数。
 

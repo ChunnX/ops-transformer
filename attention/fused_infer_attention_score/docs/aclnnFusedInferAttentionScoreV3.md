@@ -2,42 +2,10 @@
 
 ## 产品支持情况
 
-<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
-<col style="width: 600px">
-<col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th style="text-align: center;">产品</th>
-    <th style="text-align: center;">是否支持</th>
-  </tr></thead>
-<tbody>
-  <tr>
-      <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-      <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 200I/500 A2 推理产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 推理系列加速卡产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 训练系列产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 200I/300/500 推理产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-</tbody>
-</table>
+| 产品                                                         |  是否支持   |
+| :----------------------------------------------------------- |:-------:|
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 
 ## 功能说明
 
@@ -791,7 +759,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 - TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制：
 
   - actualSeqLengths和actualSeqLengthsKv必须传入，且以该入参元素的数量作为Batch值。该入参中每个元素的值表示当前Batch与之前所有Batch的Sequence Length和，因此后一个元素的值必须大于等于前一个元素的值；
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：
     - sparse模式仅支持sparse=0且不传mask，或sparse=3且传入mask，或sparse=4且传入mask；
     - 当query的d等于512时：
       - 支持TND、TND_NTD;
@@ -829,7 +797,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   - 输入queryRope和keyRope时，仅支持如下特性：
     - dtype：FP16、BF16；
     - query的d只支持512/128；
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：
       - 当配置Q_S大于1（即MTP）时，仅inputLayout为TND时支持配置actualSeqLengths参数，其他layout不支持。
       - 当query的d等于512时：
         - queryRope配置时要求query的s为1-16、n为1、2、4、8、16、32、64、128，queryRope的shape中d为64，其余维度与query一致；
@@ -1016,12 +984,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         </table>
     </div>
 
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：Q_S等于1时传入0，1，2，3，4，5之外的其他值会执行异常。Q_S大于等于2时仅支持传入值为0、1，其他值会执行异常。
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：Q_S等于1时传入0，1，2，3，4，5之外的其他值会执行异常。Q_S大于等于2时仅支持传入值为0、1，其他值会执行异常。
 
 - valueAntiquantMode使用限制如下：
 
   - 除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，需要与 keyAntiquantMode 一致。
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：Q_S等于1时传入0，1，2，3，4，5之外的其他值会执行异常。Q_S大于等于2时仅支持传入值为0、1，其他值会执行异常。
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：Q_S等于1时传入0，1，2，3，4，5之外的其他值会执行异常。Q_S大于等于2时仅支持传入值为0、1，其他值会执行异常。
 
 - softmaxLse使用限制如下：
 
@@ -1036,7 +1004,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
     - 支持B轴小于等于65536。
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
 
     - 支持N轴小于等于256，支持D轴小于等于512。inputLayout为BSH或者BSND时，建议N*D小于65535。
 
@@ -1096,14 +1064,14 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       </table>
       </div>
 
-    - D轴限制：<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
+    - D轴限制：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
   - actualSeqLengths入参，传入时应为非负数。
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该入参中每个batch的有效Sequence Length应该不大于query中对应batch的Sequence Length。seqlen的传入长度为1时，每个Batch使用相同seqlen；传入长度大于等于Batch时取seqlen的前Batch个数。其他长度不支持。当query的inputLayout为TND/NTD_TND时。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该入参中每个batch的有效Sequence Length应该不大于query中对应batch的Sequence Length。seqlen的传入长度为1时，每个Batch使用相同seqlen；传入长度大于等于Batch时取seqlen的前Batch个数。其他长度不支持。当query的inputLayout为TND/NTD_TND时。
   - actualSeqLengthsKv入参，传入时应为非负数。
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该入参中每个batch的有效Sequence Length应该不大于key/value中对应batch的Sequence Length。seqlenKv的传入长度为1时，每个Batch使用相同seqlenKv；传入长度大于等于Batch时取seqlenKv的前Batch个数。其他长度不支持。当key/value的inputLayout为TND/NTD_TND时。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该入参中每个batch的有效Sequence Length应该不大于key/value中对应batch的Sequence Length。seqlenKv的传入长度为1时，每个Batch使用相同seqlenKv；传入长度大于等于Batch时取seqlenKv的前Batch个数。其他长度不支持。当key/value的inputLayout为TND/NTD_TND时。
   - 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
 
     - sparseMode = 0时，attenMask如果为空指针，或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
@@ -1113,13 +1081,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   - page attention场景：
 
     - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-      -  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8。
+      -  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8。
     - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention 伪量化场景
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持query为FLOAT16/BFLOAT16，支持key、value为INT8。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持query为FLOAT16/BFLOAT16，支持key、value为INT8。
     - page attention 全量化场景
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持query dtype为INT8。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持query dtype为INT8。
     - page attention 不支持tensorlist场景，不支持左padding场景。
     - page attention场景下，必须传入actualSeqLengthsKv。
     - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
@@ -1165,7 +1133,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - prefix场景，不支持输入qkv全部为int8的情况
   - kv伪量化参数分离：
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
       - keyAntiquantMode 和 valueAntiquantMode需要保持一致
       - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
       - KeyAntiquantScale 和valueAntiquantScale都不为空时，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，其shape需要保持一致
@@ -1183,21 +1151,21 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - 在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
     - 在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
     - key、value在特定数据数据类型下存在对于D轴的限制
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：key、value输入类型为INT4（INT32）时，D轴需要64对齐（INT32仅支持D 8对齐）。
   - actualSeqLengths入参，传入时应为非负数。
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当query的inputLayout不为TND时，Q_S为1时该参数无效。当query的inputLayout为TND/TND_NTD时。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：当query的inputLayout不为TND时，Q_S为1时该参数无效。当query的inputLayout为TND/TND_NTD时。
   - actualSeqLengthsKv入参，传入时应为非负数。
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该入参中每个batch的有效Sequence Length应该不大于key/value中对应batch的Sequence Length。seqlenKv的传入长度为1时，每个Batch使用相同seqlenKv；传入长度大于等于Batch时取seqlenKv的前Batch个数。其他长度不支持。当key/value的inputLayout为TND/TND_NTD时。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该入参中每个batch的有效Sequence Length应该不大于key/value中对应batch的Sequence Length。seqlenKv的传入长度为1时，每个Batch使用相同seqlenKv；传入长度大于等于Batch时取seqlenKv的前Batch个数。其他长度不支持。当key/value的inputLayout为TND/TND_NTD时。
   - page attention场景：
     - page attention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8。
     - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value 输入类型为INT8时需要32对齐，推荐使用128。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value 输入类型为INT8时需要32对齐，推荐使用128。
     - page attention场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）和BnNBsD（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
     - page attention使能场景下，当输入kv cache排布格式为BnBsH，且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为BnNBsD解决。
     - page attention不支持tensorlist场景，不支持左padding场景。
-        -  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+        -  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
     - page attention场景下，必须传入actualSeqLengthsKv。
     - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
     - page attention的使能场景下，以下场景输入S需要大于等于blockTable的第二维 * blockSize。
@@ -1207,7 +1175,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - 使能per-token叠加per-head模式：两个参数的shape均为\(B, N, S\)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。
       - 使能per-token-group模式：antiquantScale的shape为\(1, B, N, S, D/32\), 数据类型固定为FLOAT8_E8M0，不支持带antiquantOffset。当key、value数据类型为FLOAT4_E1M2、FLOAT4_E2M1时支持。
     - kv左padding场景：
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持Q为BF16/FP16、KV为INT4（INT32）的场景。
       - kvCache的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengths。kvCache的搬运终点计算公式为：KV_S - kvPaddingSize。其中kvCache的搬运起点或终点小于0时，返回数据结果为全0。
       - kvPaddingSize小于0时将被置为0。
       - 需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。
@@ -1219,7 +1187,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - 除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，keyAntiquantMode 和 valueAntiquantMode需要保持一致
       - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
       - KeyAntiquantScale 和valueAntiquantScale都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致
-      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持per-channel、per-tensor、per-token、per-tensor叠加per-head、per-token叠加per-head、per-token使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset、key支持per-channel叠加value支持per-token八种模式，以下N均为numKeyValueHeads。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持per-channel、per-tensor、per-token、per-tensor叠加per-head、per-token叠加per-head、per-token使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset、key支持per-channel叠加value支持per-token八种模式，以下N均为numKeyValueHeads。
         - per-channel模式：两个参数的shape可支持\(1, N, 1, D\)，\(1, N, D\)，\(1, H\)。参数数据类型和query数据类型相同，当key、value数据类型为INT8、INT4\(INT32\)时支持。
         - per-tensor模式：两个参数的shape均为\(1\)，数据类型和query数据类型相同，当key、value数据类型为INT8时支持。
         - per-token模式：两个参数的shape均为\(1, B, S\)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。

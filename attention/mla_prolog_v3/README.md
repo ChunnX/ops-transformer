@@ -3,13 +3,8 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾910_95 AI处理器</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 ## 功能说明
 -  **功能更新**：（相对与aclnnMlaPrologV2weightNz的差异）
     -  新增query与key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
@@ -52,6 +47,7 @@
     $$
     q^N = q^C \cdot W^{UK}
     $$
+
     其中 $\alpha_q$ 是 Query 的尺度矫正参数。
 
     对Query进行ROPE旋转位置编码
@@ -69,6 +65,7 @@
     $$
     k^C = \mathrm{Cache}(c^{KV})
     $$
+
     其中 $\alpha_{kv}$ 是 Key 的尺度矫正参数。
 
     对Key进行ROPE旋转位置编码，并将结果存入cache
@@ -124,7 +121,7 @@
 -   shape约束
     -   若token_x的维度采用BS合轴，即(T, He)
         - rope_sin和rope_cos的shape为(T, Dr)
-        - cache_index的shape为(T,)
+        - cache_index的shape为(T)
         - dequant_scale_x的shape为(T, 1)
         - query的shape为(T, N, Hckv)
         - query_rope的shape为(T, N, Dr)

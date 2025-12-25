@@ -5,22 +5,24 @@
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 ## 功能说明
 
 算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 - 不存在TP域通信时：
+
 $$
 expandXOut = AllToAllV(X)\\
 $$
 
 - 存在TP域通信时：
+
 $$
 ataOut = AllToAllV(X)\\
 expandXOut = AllGatherV(ataOut)\\
 $$
 
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该算子必须与`MoeDistributeCombineV2`配套使用。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该算子必须与`MoeDistributeCombineV2`配套使用。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该算子必须与`MoeDistributeCombineV2`或`MoeDistributeCombineAddRmsNorm`配套使用。
 
 > 说明：MoeDistributeCombineV2、MoeDistributeCombineAddRmsNorm算子在后续文档中统称为CombineV2系列算子。
@@ -89,15 +91,8 @@ $$
   <tr>
    <td>elasticInfoOptional</td>
    <td>可选输入</td>
-   <td>当前不支持。</td>
+   <td>EP通信域动态缩容信息。当某些通信卡因异常而从通信域中剔除，实际参与通信的卡数可从本参数中获取。</td>
    <td>FLOAT32</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>performanceInfoOptional</td>
-   <td>可选输入</td>
-   <td>表示各卡通信耗时打点信息。结合DeepXTrace工具使用，可动态记录各卡通信时间。单次算子调用各卡通信耗时会累加到该Tensor上，用户使用前按需清零。</td>
-   <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
@@ -257,7 +252,7 @@ $$
   <tr>
    <td>tpRecvCountsOut</td>
    <td>输出</td>
-   <td>从TP通信域各卡接收的token数（对应CombineV2系列算子中的tpSendCounts），有TP域通信则有该输出，无TP域通信则无该输出。</td>
+   <td>从TP通信域各卡接收的token数（对应CombineV2系列算子中的tpSendCountsOptional），有TP域通信则有该输出，无TP域通信则无该输出。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -271,7 +266,7 @@ $$
  </tbody>
 </table>
 
-* <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`elasticInfoOptional`。
@@ -279,7 +274,6 @@ $$
     * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     * 不支持`expandScalesOut`。
-    * 不支持`performanceInfoOptional`。
 ## 约束说明
 
 - `MoeDistributeDispatchV2`与`CombineV2`系列算子必须配套使用，具体参考调用示例。
@@ -290,9 +284,9 @@ $$
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `Bs` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum。`
+        - 对于共享专家，要满足`A` = `Bs` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`。
         - 对于MoE专家，当`globalBs`为0时，要满足`A` >= `Bs` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBs`非0时，要满足`A` >= `globalBs` * min(`localExpertNum`, `K`)。
-    - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum。`
+    - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum`。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
         - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
@@ -308,19 +302,18 @@ $$
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
 
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数约束：
-        - `performanceInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(`ep_world_size`,)。
         - `commAlg`：当前版本支持nullptr， ""， "fullmesh"， "hierarchy"四种输入方式，若配置"hierarchy"，建议搭配搭配25.0.RC1.1及以上版本驱动使用。
             - nullptr和""：仅在此场景下，`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`配置生效。当`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0时，调用"hierarchy"算法，否则调用"fullmesh"算法。不推荐使用该方式。
             - "fullmesh"：token数据直接通过RDMA方式发往topk个目标专家所在的卡。
             - "hierarchy"：token数据经过跨机、机内两次发送，仅不同server同号卡之间使用RDMA通信，server内使用HCCS通信。
-        - `epWorldSize`：依commAlg取值，"fullmesh"支持16、32、64、128、192、256；"hierarchy"支持16、32、64。
+        - `epWorldSize`：依commAlg取值，"fullmesh"支持16、32、64、128、256；"hierarchy"支持16、32、64。
         - `moeExpertNum`：取值范围(0, 512]。
             -  还需满足`moeExpertNum` / `epWorldSize` <= 24，`commAlg` = "hierarchy"无此约束。
         - `epRecvCountsOut`：要求shape为 (`moeExpertNum` + 2 * `globalBs` * `K` * `serverNum`, )，前`moeExpertNum`个数表示从EP通信域各卡接收的token数，2 * `globalBs` * `K` * `serverNum`存储了机间机内做通信前combine可以提前做reduce的token个数和token在通信区中的偏移，`globalBs`传入0时在此处应当按照`Bs` * `epWorldSize`计算。
     - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：不推荐使用该环境变量控制通信算法，原`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0场景，下文均通过`commAlg` = "hierarchy"替代，默认场景使用`commAlg` = "fullmesh"替代。
-    - `commAlg`配置"hierarchy"时，不支持`scalesOptional`、`xActiveMaskOptional`、`oriXOptional`、`zeroExpertNum`、`copyExpertNum`、`constExpertNum`。
+    - `commAlg`配置"hierarchy"时，不支持`scalesOptional`、`xActiveMaskOptional`、`oriXOptional`、`zeroExpertNum`、`copyExpertNum`。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小。
             - `commAlg` = "fullmesh"：取值范围(0, 7168]，且保证是32的整数倍。
@@ -333,6 +326,7 @@ $$
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数约束：
+        - `elasticInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能动态缩容功能；当传入有效数据时，要求是一个1D的Tensor，shape为 (4 + 2 * `epWorldSize`, )。Tensor中的前四个数字分别表示（是否缩容，缩容后实际rank数，缩容后共享专家使用的rank数，缩容后moe专家的个数），后2 * `epWorldSize`表示2个rank映射表，缩容后本卡中因部分rank异常而从EP通信域中剔除，第一个Table的映射关系为Table1[epRankId]=`localEpRankId`或-1，`localEpRankId`表示新EP通信域中的rank Index，-1表示`epRankId`这张卡从通信域中被剔除，第二个Table映射关系为Table2[localEpRankId] = `epRankId`。
         - `epWorldSize`：取值范围[2, 768]。
         - `moeExpertNum`：取值范围(0, 1024]。
         - `groupTp`：字符串长度范围为[1, 128)，不能和`groupEp`相同。

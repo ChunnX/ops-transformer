@@ -4,13 +4,8 @@
 
 | 产品 | 是否支持 |
 | ---- | :----:|
-|昇腾910_95 AI处理器|×|
 |Atlas A3 训练系列产品/Atlas A3 推理系列产品|√|
-|Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件|√|
-|Atlas 200I/500 A2推理产品|×|
-|Atlas 推理系列产品|×|
-|Atlas 训练系列产品|×|
-|Atlas 200/300/500 推理产品|×|
+|Atlas A2 训练系列产品/Atlas A2 推理系列产品|√|
 
 ## 功能说明
 
@@ -18,11 +13,13 @@
 
 - 计算公式：
   - **LayerNorm反向推导：**
+
     $$
         \frac{\partial L}{\partial x} = \text{rstd} \cdot \Bigg( \frac{\partial L}{\partial y} - \text{Mean}\left( \frac{\partial L}{\partial y} \right) - \hat{x} \cdot \text{Mean}\left( \frac{\partial L}{\partial y} \odot \hat{x} \right) \Bigg)  \quad \quad \quad \quad \quad \quad \quad \text{[Mean over headDim dimension]}
     $$
 
   - **LayerNorm（带仿射变换参数）反向推导：**
+
     $$
         \left\{
         \begin{aligned}
@@ -34,16 +31,19 @@
     $$
 
   - **其中（μ为均值，σ^2为方差）:**
+
     $$
       \hat{x} = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}}, \quad \quad \frac{\partial L}{\partial \hat{x}} = \frac{\partial L}{\partial y} \odot \gamma, \quad \quad \text{rstd} = \frac{1}{\sqrt{\sigma^2 + \epsilon}}
     $$
 
   - **Rope-Interleave反向推导：**
+
     $$
         \frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \text{cos} + Interleave({\frac{\partial L}{\partial y} \cdot \text{sin}}) \odot  \text{negMask}
     $$
 
   - **Rope-Half反向推导：**
+
     $$
         \frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \text{cos} + Half({\frac{\partial L}{\partial y} \cdot \text{sin}}) \odot  \text{negMask}
     $$

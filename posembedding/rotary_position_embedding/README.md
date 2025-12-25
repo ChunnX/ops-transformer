@@ -4,21 +4,17 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 ## 功能说明
 -  **算子功能**：执行单路旋转位置编码计算。
 -  **计算公式**：
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     （1）half模式（mode等于0）：
+
     $$
     x1 = x[..., : x.shape[-1] // 2]
     $$
@@ -34,7 +30,9 @@
     $$
     y = x * cos + x\_rotate * sin
     $$
+
     （2）interleave模式（mode等于1）：
+
     $$
     x1 = x[..., ::2].view(-1, 1)
     $$
@@ -42,16 +40,19 @@
     $$
     x2 = x[..., 1::2].view(-1, 1)
     $$    
+
+
     $$
     x\_rotate = torch.cat((-x2, x1), dim=-1).view(x.shape[0], x.shape[1], x.shape[2], x.shape[3])
     $$    
+
+
     $$
     y = x * cos + x\_rotate * sin
     $$
 
-    - <term>昇腾910_95 AI处理器</term>：
-    
     （3）quarter模式（mode等于2）：
+
     $$
     x1 = x[..., : x.shape[-1] // 4]
     $$
@@ -59,9 +60,13 @@
     $$
     x2 = x[..., x.shape[-1] // 4 : x.shape[-1] // 2]
     $$    
+
+
     $$
     x3 = x[..., x.shape[-1] // 2 : x.shape[-1] // 4 * 3]
     $$    
+
+
     $$
     x4 = x[..., x.shape[-1] // 4 * 3 :]
     $$
@@ -73,7 +78,9 @@
     $$
     y = x * cos + x\_rotate * sin
     $$    
+
     （4）interleave-half模式（mode等于3），该模式会先将奇数位的输入抽取到前半部分，将偶数位的输入抽取到后半部分，再进行half处理：
+
     $$
     x1 = x[..., ::2]
     $$
@@ -81,6 +88,8 @@
     $$
     x2 = x[..., 1::2]
     $$    
+
+
     $$
     x\_part1 = torch.cat((x1, x2), dim=-1)
     $$
@@ -88,6 +97,8 @@
     $$
     x\_part2 = torch.cat((-x2, x1), dim=-1)
     $$    
+
+
     $$
     y = x\_part1 * cos + x\_part2 * sin
     $$  
@@ -152,19 +163,7 @@
 
 
 ## 约束说明
-  - <term>昇腾910_95 AI处理器</term>：
-
-    用(B, S, N, D)表示四维输入x的shape，在该表示下，各参数的shape约束可以描述如下：
-    - 输入张量x、cos、sin及输出张量y的D维度大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，D必须能被2整除，对于quarter模式，D必须能被4整除。
-    - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，且必须满足下列条件之一：
-      - 前三维大小都为1，即shape为(1, 1, 1, D)。
-      - 前三维的大小和x前三维的大小完全相等，即shape为(B, S, N, D)。
-      - 前三维中，第二维和第三维中的一个大小为1，剩余的维度及第一维大小与x的对应维度相等，即shape为(B, 1, N, D)或(B, S, 1, D)。
-      - 前三维中，两个维度大小为1，剩余的一个维度大小与x的对应维度相等，即shape为(1, 1, N, D)，(1, S, 1, D)或(B, 1, 1, D)。
-    当x为空tensor时，输出也为空tensor，且不受上述shape约束限制。
-
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     
     输入张量x支持BNSD、BSND、SBND排布。
     输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。

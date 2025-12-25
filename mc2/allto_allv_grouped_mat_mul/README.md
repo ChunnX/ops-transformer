@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
@@ -13,12 +13,15 @@
 
 计算公式：
 - 路由专家：
+
   $$
   ataOut = AlltoAllv(gmmX) \\
   permuteOut = Permute(ataOut) \\
   gmmY = permuteOut \times gmmWeight
   $$
+
 - 共享专家：
+
   $$
   mmY = mmX \times mmWeight
   $$
@@ -87,14 +90,14 @@
   <tr>
    <td>group</td>
    <td>输入</td>
-   <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
+   <td>专家并行的通信域，字符串长度要求(0, 128)。</td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>epWorldSize</td>
    <td>输入</td>
-   <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64。</td>
+   <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -168,6 +171,7 @@
   - N1：表示路由专家的head_num，取值范围(0, 65536)。
   - N2：表示共享专家的head_num，取值范围(0, 65536)。
   - BS：batch sequence size。
+  - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡收到的token数，是recvCounts参数累加之和。
   - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
 

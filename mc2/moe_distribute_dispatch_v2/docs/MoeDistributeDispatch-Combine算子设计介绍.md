@@ -1,6 +1,6 @@
 # MoeDistributeDispatch和MoeDistributeCombine算子设计介绍
 
-**本篇算子设计介绍基于<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>**
+**本篇算子设计介绍基于<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>**
 
 ## 1. 背景与总体设计方案
 

@@ -6,12 +6,12 @@
 |:----------------------------|:-----------:|
 |<term>昇腾910_95 AI处理器</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
 - 算子功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
 - 计算公式：
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     <details>
     <summary>量化场景A8W8（A指激活矩阵，W指权重矩阵，8指INT8数据类型）：</summary>
     <a id="量化场景A8W8"></a>
@@ -325,7 +325,7 @@
 </tbody>
 </table>
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：不支持FLOAT8_XX量化数据类型，支持其他数据类型。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持FLOAT8_XX量化数据类型，支持其他数据类型。
 - <term>昇腾910_95 AI处理器</term>：仅支持FLOAT8_XX量化数据类型，不支持其他数据类型。
 
 ## 约束说明

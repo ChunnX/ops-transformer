@@ -4,15 +4,9 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas 800I A2 推理产品</term>|      ×     |
-|<term>A200I A2 Box 异构组件</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
+|<term>Atlas A2 推理系列产品</term>|      ×     |
 
 
 ## 功能说明
@@ -22,6 +16,7 @@
 - 计算公式：
 
     Nsa Compress正向计算公式如下：
+
 $$
 \tilde{K}_t^{\text{cmp}} = f_K^{\text{cmp}}(k_{:t}) = \left\{ \varphi(k_{id+1:id+l}) \bigg| 0 \leq i \leq \left\lfloor \frac{t-l}{d} \right\rfloor \right\}
 $$

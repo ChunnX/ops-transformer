@@ -1,25 +1,25 @@
 # aclnnMatmulAllReduce
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :---- | :----: |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | x |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> | √ |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
 ## 功能说明
 
-- **算子功能**：完成MatMul计算与AllReduce通信融合。
+- **接口功能**：完成MatMul计算与AllReduce通信融合。
 - **计算公式**：
 
     $$
-    output = allreduce(x1 @ x2 + bias)
+    output = AllReduce(x1 @ x2 + bias)
     $$
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnMatmulAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAllReduce”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMatmulAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAllReduce”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
@@ -71,7 +71,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>x1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
+          <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
           <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -81,7 +81,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>x2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
+          <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
           <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li><li>支持最后两轴转置情况下的非连续的tensor</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -91,7 +91,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>bias</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，对应计算公式中的bias偏移。。</td>
+          <td>对应计算公式中的bias偏移。</td>
           <td>当前版本仅支持一维输入。</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -101,7 +101,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>group</td>
           <td>输入</td>
-          <td>Host侧标识列组的字符串，通信域名称。</td>
+          <td>通信域名称。</td>
           <td>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</td>
           <td>String</td>
           <td>-</td>
@@ -121,7 +121,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>commTurn</td>
           <td>输入</td>
-          <td>Host侧的整型，通信数据切分数，即总数据量/单次通信量。</td>
+          <td>通信数据切分数，即总数据量/单次通信量。</td>
           <td>当前版本仅支持输入0。</td>
           <td>INT64</td>
           <td>-</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>streamMode</td>
           <td>输入</td>
-          <td>Host侧的整型，AscendCL流模式的枚举。</td>
+          <td>流模式的枚举。</td>
           <td>当前版本仅支持枚举值1。</td>
           <td>INT64</td>
           <td>-</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>output</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，MatMul计算与AllReduce通信的结果，即计算公式中的output。</td>
+          <td>MatMul计算与AllReduce通信的结果，即计算公式中的output。</td>
           <td>output的维数与x1一致。</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnMatmulAllReduce(
         <tr>
           <td>workspaceSize</td>
           <td>输出</td>
-          <td>返回需要在Device侧申请的workspace大小。</td>
+          <td>返回需要在device侧申请的workspace大小。</td>
           <td>-</td>
           <td>-</td>
           <td>-</td>
@@ -172,6 +172,9 @@ aclnnStatus aclnnMatmulAllReduce(
     </table>
 
 - **返回值：**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
     第一段接口完成入参校验，出现以下场景时报错：
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
@@ -220,12 +223,12 @@ aclnnStatus aclnnMatmulAllReduce(
     <tr>
         <td>workspace</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
+        <td>在device侧申请的workspace内存地址。</td>
     </tr>
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnMatmulAllReduceGetWorkspaceSize获取。</td>
+        <td>在device侧申请的workspace大小，由第一段接口aclnnMatmulAllReduceGetWorkspaceSize获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -235,7 +238,7 @@ aclnnStatus aclnnMatmulAllReduce(
     <tr>
         <td>stream</td>
         <td>输入</td>
-        <td>指定执行任务的Stream。</td>
+        <td>指定执行任务的stream。</td>
     </tr>
     </tbody></table>
 -   **返回值：**
@@ -244,27 +247,29 @@ aclnnStatus aclnnMatmulAllReduce(
 
 ## 约束说明
 
+- 确定性计算：
+  - aclnnMatmulAllReduce默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，其shape为(n)。
 - b*s、m、k、n的值均不得超过2147483647(INT32_MAX)。
 - 当输入x1的shape为(b, s, k)时，输出output的shape为(b, s, n)，当输入x1的shape为(m, k)时，输出output的shape为(m, n)。
 - x1、x2、bias计算输入的数据类型要和output计算输出的数据类型一致。
-- 仅支持hccs链路all mesh组网。
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持1、2、4、8卡。
-
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- 仅支持HCCS链路all mesh组网。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     ```Cpp
     #include <iostream>
     #include <vector>
     #include <thread>
     #include "hccl/hccl.h"
-    #include "../op_api/aclnn_matmul_all_reduce.h"
+    #include "aclnnop/aclnn_matmul_all_reduce.h"
 
     int ndev = 8;
 
@@ -457,4 +462,3 @@ aclnnStatus aclnnMatmulAllReduce(
         return 0;
     }
     ```
-

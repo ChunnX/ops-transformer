@@ -5,22 +5,29 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
 算子功能：BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
 
 计算公式：大体计算流程为：BatchMatMul计算-->转置（yShardType等于0时需要）-->ReduceScatter集合通信-->Add-->AllToAll集合通信。计算逻辑如下，其中y为输出
+
 $$
 temp1 = BatchMatMul(x, weight)
 $$
+
+
 $$
 temp2 = ReduceScatter(temp1)
 $$
+
+
 $$
 temp3 = Add(temp2, bias)
 $$
+
+
 $$
 y = AllToAll(temp3)
 $$
@@ -112,18 +119,18 @@ $$
 
 ## 约束说明
 
-因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=epWorldSize，tp=tpWorldSize，E表示专家数，C表示Capacity即一个专家里的token数，H表示每个token的长度，M表示tensor的高）
+因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=epWorldSize，tp=tpWorldSize）
 - 按H轴进行ReduceScatter场景，即yShardType为0场景：
-  - x: $(E/ep, ep*C, M/tp)$
-  - weight：$(E/ep, M/tp, H)$
-  - biasOptional：非空指针情况下，三维时为$(E/ep, 1, H/tp)$，两维时为$(E/ep, H/tp)$
-  - y：$(E, C, H/tp)$
+  - x: (E/ep, ep*C, M/tp) 
+  - weight：(E/ep, M/tp, H)
+  - biasOptional：非空指针情况下，三维时为(E/ep, 1, H/tp)，两维时为(E/ep, H/tp)
+  - y：(E, C, H/tp)
 
 - 按C轴进行ReduceScatter场景，即yShardType为1场景：
-  - x: $(E/ep, ep*tp*C/tp, M/tp)$
-  - weight：$(E/ep, M/tp, H)$
-  - biasOptional：非空指针情况下，三维时为$(E/ep, 1, H)$，两维时为$(E/ep, H)$
-  - y：$(E, C/tp, H)$
+  - x: (E/ep, ep*tp*C/tp, M/tp)
+  - weight：(E/ep, M/tp, H)
+  - biasOptional：非空指针情况下，三维时为(E/ep, 1, H)，两维时为(E/ep, H)
+  - y：(E, C/tp, H)
 
 - 数据关系说明：
   - 比如x.size(0)等于E/tp，y.size(0)等于E，则表示，y.size(0) = ep*x.size(0)，y.size(0)是ep的整数倍；其他关系类似。

@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
@@ -163,6 +163,9 @@ aclnnStatus aclnnDistributeBarrier(
 
 ## 约束说明
 
+- 确定性计算：
+  - aclnnDistributeBarrier默认确定性实现。
+
 - 通信域使用约束：
     - 一个模型中的aclnnDistributeBarrier需要使用单独通信域，该通信域中不允许有其他算子。
 
@@ -172,7 +175,7 @@ aclnnStatus aclnnDistributeBarrier(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
@@ -182,9 +185,9 @@ aclnnStatus aclnnDistributeBarrier(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "../../moe_distribute_dispatch_v2/op_api/aclnn_moe_distribute_dispatch_v2.h"
-    #include "../op_api/aclnn_distribute_barrier.h"
-    #include "../../moe_distribute_combine_v2/op_api/aclnn_moe_distribute_combine_v2.h"
+    #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
+    #include "aclnnop/aclnn_distribute_barrier.h"
+    #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
     
     #define CHECK_RET(cond, return_expr) \
         do {                             \

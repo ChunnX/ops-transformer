@@ -1,12 +1,11 @@
 # MoeDistributeDispatch
 
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 
 
@@ -16,11 +15,13 @@
 算子功能：对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 
 - 不存在TP域通信时：
+
 $$
 expandXOut = AllToAllV(X)\\
 $$
 
 - 存在TP域通信时：
+
 $$
 ataOut = AllToAllV(X)\\
 expandXOut = AllGatherV(ataOut)\\
@@ -52,7 +53,7 @@ $$
 <td>x</td>
 <td>输入</td>
 <td>本卡发送的token数据。</td>
-<td>FLOAT16、BFLOAT16</td>
+<td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
 <td>ND</td>
 </tr>
 <tr>
@@ -66,7 +67,7 @@ $$
 <td>scales</td>
 <td>可选输入</td>
 <td>每个专家的平滑权重、融合量化平滑权重的量化系数或量化系数。</td>
-<td>FLOAT32</td>
+<td>FLOAT32、FLOAT8_E8M0</td>
 <td>ND</td>
 </tr>
 <tr>
@@ -156,7 +157,7 @@ $$
 <tr>
 <td>quantMode</td>
 <td>可选属性</td>
-<td><li>表示量化模式，支持0：非量化，2：pertoken动态量化。</li><li>默认值为0。</li></td>
+<td><li>表示量化模式，支持0：非量化，1：静态量化，2：pertoken动态量化，3：pergroup动态量化，4：mx量化。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
@@ -178,14 +179,14 @@ $$
 <td>expandX</td>
 <td>输出</td>
 <td>根据expertIds进行扩展过的token特征。</td>
-<td>FLOAT16、BFLOAT16、INT8</td>
+<td>FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>dynamicScales</td>
 <td>输出</td>
 <td>量化场景下，表示本卡输出Token的量化系数。</td>
-<td>FLOAT32</td>
+<td>FLOAT32、FLOAT32_E8M0</td>
 <td>ND</td>
 </tr>
 <tr>
@@ -226,12 +227,16 @@ $$
 </tbody>
 </table>
 
-* <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT32_E8M0`数据类型。
+    * `quantMode`属性仅支持0和2。
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。
     * 仅设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，`expandScales`内容有效。
 
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT32_E8M0`数据类型。
+    * `quantMode`属性仅支持0和2。
     * 不支持`expandScales`。
 
 ## 约束说明
@@ -244,11 +249,11 @@ $$
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum。`
+        - 对于共享专家，要满足`A` = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`。
         - 对于MoE专家，当`globalBs`为0时，要满足`A` >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBs`非0时，要满足`A` >= `globalBs` * min(`localExpertNum`, `K`)。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
-        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)`，localExpertNum` > 1时，不支持TP域通信。
+        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
 
 - 本文公式中的"/"表示整除。
 
@@ -257,13 +262,13 @@ $$
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
 
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围(0, 7168]，且保证是32的整数倍。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 256]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 16]。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
-    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。 此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * 2 + 16 * Align8(`K`))B + 104MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，但不支持`scales`特性，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
+    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * 2 + 16 * Align8(`K`))B + 104MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，但不支持`scales`特性，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
     - `epWorldSize`：取值支持16、32、64。
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。

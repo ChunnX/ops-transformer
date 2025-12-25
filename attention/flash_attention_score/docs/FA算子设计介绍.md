@@ -51,20 +51,7 @@
 
   上述示例中，仅在S1方向开了配比，S2方向C/V计算的长度是一致的，当然，也可以在S1/S2方向均开启配比；这样做的好处是，Cube一次可以发射大块的数据，避免因为小块数据不断发射带来的通信开销，也能最大程度地使用Cube单元的buffer。
 
-2. 昇腾910_95 AI处理器
-  昇腾910_95 AI处理器既支持AIC&AIV分离架构，又支持AIC&AIV融合架构；AIC和AIV之间的交互通路包括L2、GM以及UB(Unified Buffer)，UB是AIC&AIV之间相较于GM更高效的交互通路。AIC可以直接输出到UB上，AIV利用UB上的数据进行vec运算，极大降低了数据搬运的时间。由于UB的容量有限，D_v>128时，mm2的输出依旧需要先保存到GM；mm1的输出始终保存在UB。
 
-  在进行UB分配时，和A2类似需要考虑计算过程中的中间结果、double-buffer设计等，UB上分配的最大的buffer大小为32K。由于cube直接输出到UB上，CV之间的计算量不再需要配比，可以将UB上一个基本块大小设为（64 * 128） * 4B = 32KB；CV比例为1：2，则cube侧的一次输出的基本块为128 * 128。
-
-  ```c++
-  // C-Tiling: (S1_c_i,D)x(D,S2_c_i) => (S1_c_i, S2_c_i):(128,128)
-  // V-Tiling: (S1_c_i / 2, S2_c_i) => (64,128)
-
-  // C侧 matmul计算
-  Bmm((S1_c_i,D)x(D,S2_c_i)) => 128*128  // 输出结果128*128，放到UB上时分给两个V核
-  // V侧 Vector计算
-  Vector(S1_c_i / 2,S2_c_i)              // 进行Vector计算
-  ```
 
 ## 4 流水设计
 
@@ -92,8 +79,7 @@ V侧流水设计需要考虑Vector的搬运及计算过程，实施的优化手�
 
   ![FA流水.jpg](../../../docs/figures/FA流水.png)
 
-2. 昇腾910_95 AI处理器
-  昇腾910_95 AI处理器的CV流水设计思路和A2基本一致。差异点在于910_95 AI处理器cube的preload次数为3次：完成3次mm1的计算后才会开启mm2的计算；目的是优化启动阶段的CV流水，使其更紧密，以达到整体性能的最优。
+
 
 ## 5 多模板设计
 
@@ -171,9 +157,6 @@ FA（FlashAttentionScore，简称FA）融合算子的多模板设计思路主要
     </table>
 
     每一类模板都有其独特的UB及Block切分轴，能处理某一类具备特定shape特征输入的场景，针对该类shape特征进行模板设计。
-    - 昇腾910_95 AI处理器
-
-    由于910_95 AI处理器上核内切分的基本块为128 * 128，在各种shape情况下性能都可以达到最优的水平。因此只设计一套模板，支持全量shape，这套模板亦不区分layout是否为TND。
 
 - **根据特殊场景及特定优化进行模板特化**
 
@@ -251,18 +234,7 @@ FA（FlashAttentionScore，简称FA）融合算子的多模板设计思路主要
     >    条件：无法走到上述两个模板的其他shape
     >    依据：当S1、S2、D都比较小的时候，CV的基本块较小，我们将B.i, N2, G也纳入到CV基本块中，一次CV交互的数据量更大，提升执行性能。
 
-  - 昇腾910_95 AI处理器
-    > 1. 核间切分B、N2、G、S1轴，核内切分S1轴、S2轴模板，该模板是最通用模板，支持所有输入（TND除外）：
-    >
-    >    tiling代码文件：attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp
-    >
-    >    tiling代码类：FlashAttentionScoreTilingS1S2Const、FlashAttentionScoreTilingVarLenConst
-    >
-    >    kernel代码：attention/flash_attention_score/op_kernel/arch35/flash_attention_score_kernel_train.h
-    >
-    >    CV基本块选择:
-    >    S1.i: 128，少量场景下为64
-    >    S2.i: 128，少量场景下为256
+
 
 ## 6 编程视角
 
@@ -292,4 +264,3 @@ ops-transformer-dev/attention/flash_attention_score_grad/op_kernel/flash_attenti
 
 这个模板更加彻底地使用了以Cube为主核，Vector为从核，这时Matmul的任务都已经完全从Cube侧发起，通过同步通知Vector侧。
 
-昇腾910_95 AI处理器上FA通过AscendC低阶API实现。

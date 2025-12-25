@@ -4,13 +4,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 
 ## 功能说明
@@ -43,7 +38,7 @@
   - permutedOutputGrad（aclTensor\*，计算输入）：Device侧的aclTensor，正向输出permutedTokens的梯度，要求为一个维度为2D的Tensor，shape为（tokens_num * topK_num，hidden_size），tokens_num为token数目，topK_num为numTopk的值，数据类型支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
   - sortedIndices （aclTensor\*，计算输入）：Device侧的aclTensor，shape为（tokens_num * topK_num），数据类型支持INT32，取值范围是[0, tokens_num \* topK_num - 1]，且没有重复索引。[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
   - numTopk（int64\_t，计算输入）：被选中的专家个数。
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numTopk <= 512。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numTopk <= 512。
   - paddedMode（bool，计算输入）：true表示开启paddedMode，false表示关闭paddedMode，目前仅支持false。
   - out（aclTensor\*，计算输出）：输入token的梯度，要求为一个维度为2D的Tensor，shape为（tokens_num，hidden_size），数据类型同permutedOutputGrad，支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
   - workspaceSize（uint64\_t\*，出参）：返回需要在Device侧申请的workspace大小。
@@ -75,15 +70,7 @@
 - 确定性计算：
   - aclnnMoeTokenPermuteGrad默认确定性实现。
 
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numTopk <= 512。
-- <term>昇腾910_95 AI处理器</term>：
-  在调用本接口时，框架内部会转调用[aclnnMoeInitRoutingV2Grad](aclnnMoeInitRoutingV2Grad.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
-  - permutedOutputGrad输入等同于aclnnMoeInitRoutingV2Grad接口的gradExpandedX输入。
-  - sortedIndices输入等同于aclnnMoeInitRoutingV2Grad接口的expandedRowIdx输入。
-  - numTopk输入等同于aclnnMoeInitRoutingV2Grad接口的topK输入。
-  - paddedMode输入等同于aclnnMoeInitRoutingV2Grad接口的dropPadMode输入。
-  - out输出等同于aclnnMoeInitRoutingV2Grad接口的out输出。
-
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numTopk <= 512。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。

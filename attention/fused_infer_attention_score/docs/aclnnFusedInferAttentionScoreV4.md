@@ -6,11 +6,7 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
 
@@ -929,53 +925,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
     - PagedAttention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：</term>
-
-        <table style="undefined;table-layout: fixed; width: 1354px"><colgroup>
-            <col style="width: 155px">
-            <col style="width: 169px">
-            <col style="width: 550px">
-            <col style="width: 600px">
-            </colgroup>
-            <thead>
-            <tr>
-                <th>参数所属场景或特性</th>
-                <th>参数</th>
-                <th>约束</th>
-                <th>备注</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr>
-                <td rowspan="2">PagedAttention</td>
-                <td>blockSize</td>
-                <td>在使能PagedAttention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。</td>
-                <td>blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降。</td>
-            </tr>
-            <tr>
-                <td>blockTable</td>
-                <td>PagedAttention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td rowspan="2">通用场景</td>
-                <td>key、value</td>
-                <td>
-                支持key、value dtype为FLOAT16/BFLOAT16/INT8。
-                PagedAttention场景下，支持的KV Cache layout有BnBsH（BlockNum，BlockSize，H）、BnNBsD（BlockNum，N，BlockSize，D）、NZ（BlockNum，N，D/16，BlockSize，16），支持Q的layout（BSH/BSND、BNSD、TND、NTD）交叉。</td>
-                <td>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。<br>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。<br>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</td>
-            </tr>
-            <tr>
-                <td>actualSeqLengthsKv</td>
-                <td>PagedAttention场景下，必须传入actualSeqLengthsKv。</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td colspan="4">PagedAttention 不支持tensorlist场景，不支持左padding场景。</td>
-            </tr>
-            </tbody>
-        </table>
-
 - <a id="innerPrecise"></a>innerPrecise
 
     **说明**：
@@ -1113,144 +1062,10 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - <a id="INT8"></a>int8量化场景：
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：</term>
-        <table style="undefined;table-layout: fixed;  width: 1190px">
-            <colgroup>
-                <col style="width: 320px">
-                <col style="width: 120px">
-                <col style="width: 750px">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th>场景</th>
-                    <th>参数</th>
-                    <th>约束内容</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td rowspan="9">输入，输出为INT8的场景</td>
-                    <td>query</td>
-                    <td>类型为INT8。</td>
-                </tr>
-                <tr>
-                    <td>key</td>
-                    <td>类型为INT8。</td>
-                </tr>
-                <tr>
-                    <td>value</td>
-                    <td>类型为INT8。</td>
-                </tr>
-                <tr>
-                    <td>deqScale1</td>
-                    <td rowspan="3">需要同时存在。</td>
-                </tr>
-                <tr>
-                    <td>quantScale1</td>
-                </tr>
-                <tr>
-                    <td>deqScale2</td>
-                </tr>
-                <tr>
-                    <td>quantScale2</td>
-                    <td>类型为FLOAT32/BFLOAT16,支持 per-tensor/per-channel 两种格式。
-                    </td>
-                </tr>
-                <tr>
-                    <td>quantOffset2</td>
-                    <td>可选参数，若传入 quantOffset2 ，需保证其类型和shape信息与quantScale2 一致。不传时默认为nullptr,表示为0。
-                    </td>
-                </tr>
-                <tr>
-                    <td>attentionOut</td>
-                    <td>类型为INT8。</td>
-                </tr>
-                <tr>
-                    <td rowspan="9">输入INT8，输出为FLOAT16的场景</td>
-                    <td>query</td>
-                    <td>类型为INT8。</td>
-                </tr>
-                <tr>
-                    <td>key</td>
-                    <td>类型为INT8。</td>
-                </tr>
-                <tr>
-                    <td>value</td>
-                    <td>类型为INT8。</td>
-                </tr>
-                <tr>
-                    <td>deqScale1</td>
-                    <td rowspan="3">需要同时存在。</td>
-                </tr>
-                <tr>
-                    <td>quantScale1</td>
-                </tr>
-                <tr>
-                    <td>deqScale2</td>
-                </tr>
-                <tr>
-                    <td>quantScale2</td>
-                    <td>存在入参quantScale2则报错并返回。
-                    </td>
-                </tr>
-                <tr>
-                    <td>quantOffset2</td>
-                    <td>存在入参quantOffset2则报错并返回。</td>
-                </tr>
-                <tr>
-                    <td>attentionOut</td>
-                    <td>类型为FLOAT16。</td>
-                </tr>
-                <tr>
-                    <td rowspan="9">输入FLOAT16或BFLOAT16，输出为INT8的场景</td>
-                    <td>query</td>
-                    <td>类型为FLOAT16或BFLOAT16。</td>
-                </tr>
-                <tr>
-                    <td>key</td>
-                    <td>类型为FLOAT16或BFLOAT16。</td>
-                </tr>
-                <tr>
-                    <td>value</td>
-                    <td>类型为FLOAT16或BFLOAT16。</td>
-                </tr>
-                <tr>
-                    <td>deqScale1</td>
-                    <td>存在入参deqScale1则报错并返回。</td>
-                </tr>
-                <tr>
-                    <td>quantScale1</td>
-                    <td>存在入参quantScale1则报错并返回。</td>
-                </tr>
-                <tr>
-                    <td>deqScale2</td>
-                    <td>存在入参deqScale2则报错并返回。</td>
-                </tr>
-                <tr>
-                    <td>quantScale2</td>
-                    <td>支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型
-                        <ul>
-                        <li>当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32。</li>
-                        <li>per-channel 格式：当输出layout为BSH时，要求 quantScale2 所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。</li>
-                        </ul>
-                    </td>
-                </tr>
-                <tr>
-                    <td>quantOffset2</td>
-                    <td>可选参数，若传入 quantOffset2 ，需保证其类型和shape信息与quantScale2 一致。不传时默认为nullptr,表示为0。
-                    </td>
-                </tr>
-                <tr>
-                    <td>attentionOut</td>
-                    <td>类型为INT8。</td>
-                </tr>
-            </tbody>
-        </table>
-
 - <a id="AntiQuant"></a>伪量化参数约束：
     - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         <table style="undefined;table-layout: fixed;  width: 1840px">
             <colgroup>
                 <col style="width: 90px">
@@ -1393,7 +1208,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 - <a id="TND"></a>TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制：
     - actualSeqLengths和actualSeqLengthsKv必须传入
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         <div style="overflow-x: auto;">
         <table style="undefined;table-layout: fixed; width: 1390px"><colgroup>
             <col style="width: 210px">
@@ -1738,7 +1553,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - **当Q_S大于1时**：
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
         <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
         <col style="width: 180px">
@@ -1911,7 +1726,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - **当Q_S等于1时（IFA非MTP场景）**：
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         <div style="overflow-x: auto;">
         <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
         <col style="width: 180px">

@@ -4,13 +4,8 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>昇腾910_95 AI处理器</term>                             |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    √    |
-| <term>Atlas 训练系列产品</term>                              |    x    |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 
 ## 功能说明
 -  接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
@@ -20,6 +15,7 @@
 -  计算公式：
 
   （1）rotaryMode为"half"：
+
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
   $$
@@ -51,7 +47,9 @@
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
+
   （2）rotaryMode为"quarter"：
+
   $$
   query\_q1 = query[..., : query.shape[-1] // 4]
   $$
@@ -99,7 +97,9 @@
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
+
   （3）rotaryMode为"interleave"：
+
   $$
   query\_q1 = query[..., ::2].view(-1, 1)
   $$
@@ -188,15 +188,10 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>表示要执行旋转位置编码的第一个张量，公式中的query，计算结果原地更新。</td>
       <td>
         <ul>
-          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
+          <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
             <ul>
               <li>不支持空Tensor。</li>
               <li>shape最后一维（D）必须等于128或者64。</li>
-            </ul>
-          <li><term>昇腾910_95 AI处理器</term>：</li>
-            <ul>
-              <li>支持空Tensor。</li>
-              <li>shape最后一维（D）小于等于1024。</li>
             </ul>
         </ul>
       </td>
@@ -211,15 +206,10 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>表示要执行旋转位置编码的第二个张量，公式中的key，计算结果原地更新。</td>
       <td>
         <ul>
-          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
+          <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
             <ul>
               <li>不支持空Tensor。</li>
               <li>shape最后一维（D）必须等于128或者64。</li>
-            </ul>
-          <li><term>昇腾910_95 AI处理器</term>：</li>
-            <ul>
-              <li>支持空Tensor。</li>
-              <li>shape最后一维（D）小于等于1024。</li>
             </ul>
         </ul>
       </td>
@@ -234,19 +224,12 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>表示参与计算的位置编码张量，公式中的cos。</td>
       <td>
         <ul>
-          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
+          <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
             <ul>
               <li>不支持空Tensor。</li>
               <li>shape中B维度与queryRef、keyRef的B维度一致。</li>
               <li>shape第3维（N）必须等于1。</li>
               <li>shape最后一维（D）必须等于128或者64。</li>
-            </ul>
-          <li><term>昇腾910_95 AI处理器</term>：</li>
-            <ul>
-              <li>支持空Tensor。</li>
-              <li>shape中B维度与queryRef、keyRef的B维度一致，或者等于1。</li>
-              <li>shape中N维度必须等于1。</li>
-              <li>shape最后一维（D）小于等于1024。</li>
             </ul>
         </ul>
       </td>
@@ -261,19 +244,12 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>表示参与计算的位置编码张量，公式中的sin。</td>
       <td>
         <ul>
-          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
+          <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
             <ul>
               <li>不支持空Tensor。</li>
               <li>shape中B维度与queryRef、keyRef的B维度一致。</li>
               <li>shape第3维（N）必须等于1。</li>
               <li>shape最后一维（D）必须等于128或者64。</li>
-            </ul>
-          <li><term>昇腾910_95 AI处理器</term>：</li>
-            <ul>
-              <li>支持空Tensor。</li>
-              <li>shape中B维度与queryRef、keyRef的B维度一致，或者等于1。</li>
-              <li>shape中N维度必须等于1。</li>
-              <li>shape最后一维（D）小于等于1024。</li>
             </ul>
         </ul>
       </td>
@@ -289,8 +265,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>
         <ul>
           <li>取值范围：1-BSND、2-SBND、3-BNSD、4-TND。</li>
-          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1-BSND的4维Tensor、4-TND的3维Tensor。</li>
-          <li><term>昇腾910_95 AI处理器</term>：支持1-BSND、2-SBND、3-BNSD的4维Tensor。</li>
+          <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1-BSND的4维Tensor、4-TND的3维Tensor。</li>
         </ul>
       </td>
       <td>int64</td>
@@ -305,8 +280,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>
         <ul>
           <li>取值范围："half"、"interleave"、"quarter"。</li>
-          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持"half"模式。</li>
-          <li><term>昇腾910_95 AI处理器</term>：支持"half"、"interleave"、"quarter"模式。</li>
+          <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持"half"模式。</li>
         </ul>
       </td>
       <td>char</td>
@@ -336,8 +310,6 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
     </tr>
   </tbody>
   </table>
-
-  - <term>Atlas 推理系列产品</term>：不支持BFLOAT16
 
 - **返回值：**
 
@@ -412,7 +384,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 - 确定性计算：
   - aclnnApplyRotaryPosEmbV2默认确定性实现。
 
-  - <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - layout为1时，queryRef、keyRef、cos、sin输入shape的前2维（B、S）必须相等；layout为4时，第1维（T）必须相等。
     - queryRef、keyRef、cos、sin输入shape的最后一维（D）必须相等。
     - 输入张量queryRef、keyRef、cos、sin的dtype必须相同。
@@ -424,11 +396,6 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       使用lastDim表示输入shape最后一维head_dim的值，计算需要使用的UB空间大小：
       `ub_required = (q_n + k_n) * lastDim * castSize * 2 + lastDim * DtypeSize * 4 + (q_n + k_n) * lastDim * castSize + (q_n + k_n) * lastDim * castSize * 2 + cast * (lastDim * 4 * 2)`，
       当计算出`ub_required`的大小超过当前AI处理器的UB空间总大小时，不支持使用该融合算子。
-
-  - <term>昇腾910_95 AI处理器</term>：
-    - 对于任意layout，queryRef与keyRef除N维度外其他维度必须相同；queryRef、keyRef、cos、sin的S,D维度必须相同。
-    - 输入张量queryRef、keyRef、cos、sin的dtype必须相同。
-    - rotaryMode为"half"和"interleave"时，输入shape最后一维必须被2整除；rotaryMode为"quarter"时，输入shape最后一维必须被4整除。
 
 ## 调用示例
 

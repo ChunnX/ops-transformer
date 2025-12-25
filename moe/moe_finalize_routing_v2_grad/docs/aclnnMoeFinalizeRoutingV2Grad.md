@@ -4,13 +4,8 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>昇腾910_95 AI处理器</term>                             |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 
 ## 功能说明
 
@@ -78,8 +73,7 @@
     -   expandedRowIdx（aclTensor*，计算输入）：Device侧的aclTensor，表示token按照专家序排序索引，要求是一个1D的Tensor，shape为(R * K)，当scalesOptional传入空指针的时候，K必须为1，当dropPadMode是0时，取值范围是[0, R * K - 1]，且没有重复索引；当dropPadMode是1时，取值范围是[-1, expertNum * expertCapacity - 1]，且除-1外，不允许有其它重复索引，数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
     -   expandedXOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示根据expertIdx进行扩展过的特征，当scalesOptional非空指针时，其也不能是空指针，当dropPadMode是0时，要求是一个2D的Tensor，当activeNum大于0且小于R * K时，shape为(activeNum, H)，否则shape为(R * K, H)；当dropPadMode是1时，要求是一个3D的Tensor，shape为(expertNum, expertCapacity, H)，数据类型同gradY，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
     -   scalesOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示对特征进行的缩放，要求是一个2D的Tensor，shape为(R, K)，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
-      -   <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型要求与gradY一致。
-      -   <term>昇腾910_95 AI处理器</term>：数据类型可以与gradY不一致。
+      -   <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型要求与gradY一致。
     -   expertIdxOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示每一个特征对应的处理专家索引，当biasOptional非空指针时，其也不能是空指针，要求是一个2D的Tensor，shape为(R, K)，取值范围是[0, E - 1], E >= 1, 允许有重复索引，数据类型同expandedRowIdx，支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
     -   biasOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示对特征进行的偏移，要求是一个2D的Tensor，shape为(E, H)，数据类型同gradY，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
     -   dropPadMode（int64_t, 计算输入）：int64数据类型，表示使用不同的场景，取值为0和1，0代表dropless场景，不校验expertNum和expertCapacity；1代表drop场景，需要校验expertNum和expertCapacity，对于每个专家处理的超过和不足expertCapacity的值会做相应的处理。

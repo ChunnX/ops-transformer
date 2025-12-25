@@ -190,6 +190,8 @@ bash build.sh --soc=Ascend910B3
 
 ## 相关文档
 
+- [CATLASS模板库文档](../../catlass/README.md)
+- [32_sparse_attention_infer原始实现](../../catlass/examples/32_sparse_attention_infer/)
 - [Fused Infer Attention Score算子](../fused_infer_attention_score/)
 
 ## 版本历史

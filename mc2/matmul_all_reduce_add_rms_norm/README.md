@@ -5,7 +5,7 @@
 | 产品 | 是否支持 |
 | ---- | :----: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | x |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> | √ |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
 
 ## 功能说明
 
@@ -13,6 +13,7 @@
 - 算子功能：完成mm + all_reduce + add + rms_norm计算。
 - 计算公式：
  - 情景一：
+
     $$
     mm\_out = allReduce(x1 @ x2 + bias)
     $$
@@ -24,7 +25,9 @@
     $$
     normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
     $$
+
  - 情景二：
+
     $$
     mm_out = allReduce(dequantScale * (x1_{int8}@x2_{int8} + bias_{int32}))
     $$
@@ -36,7 +39,9 @@
     $$
     normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
     $$
+
   - 情景三：
+
     $$
     mm\_out = allReduce(x1 @ (x2*antiquantScale + antiquantOffset) + bias)
     $$
@@ -48,15 +53,16 @@
     $$
     normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
     $$
+
 ## 参数说明
 
 
-<table style="undefined;table-layout: fixed; width: 1260px"><colgroup>
-  <col style="width: 160px">
-  <col style="width: 150px">
-  <col style="width: 550px">
-  <col style="width: 300px">
-  <col style="width: 100px">
+<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 170px">
+  <col style="width: 200px">
+  <col style="width: 200px">
+  <col style="width: 170px">
   </colgroup>
   <thead>
     <tr>
@@ -105,7 +111,7 @@
     <tr>
       <td>antiquant_scale</td>
       <td>可选输入</td>
-      <td>公式中的输入antiquantScale。</td>
+      <td>公式中的输入antiquant_scale。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
@@ -119,7 +125,7 @@
     <tr>
       <td>dequant_scale</td>
       <td>可选输入</td>
-      <td>mm计算后的全量化系数，公式中的输入dequantScale。</td>
+      <td>mm计算后的全量化系数，公式中的输入dequant_scale。</td>
       <td>FLOAT16、BFLOAT16、UINT64、INT64</td>
       <td>ND</td>
     </tr>
@@ -133,7 +139,7 @@
     <tr>
       <td>norm_out</td>
       <td>输出</td>
-      <td><ul><li>公式中的输出normOut。</li><li>mm + all_reduce + add + rms_norm的结果。</li></ul></td>
+      <td><ul><li>公式中的输出norm_out。</li><li>mm + all_reduce + add + rms_norm的结果。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
@@ -161,7 +167,7 @@
     <tr>
       <td>is_trans_b</td>
       <td>可选属性</td>
-      <td><ul><li>决定x2是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></ul></td>
+      <td><li>决定x2是否执行矩阵乘前进行转置。</li><li>默认值为false。</li></td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
@@ -202,7 +208,7 @@
 * 属性reduceOp当前版本仅支持输入"sum"。
 * 属性commTurn当前版本仅支持输入0。
 * 支持1、2、4、8卡，并且仅支持hccs链路all mesh组网。
-* <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。类型要一致。
+* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。类型要一致。
 
 ## 调用说明
 

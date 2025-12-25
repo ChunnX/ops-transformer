@@ -4,13 +4,8 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>昇腾910_95 AI处理器</term>   |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |    ×     |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 
 ## 功能说明
 
@@ -21,9 +16,12 @@
   Recurrent Gated Delta Rule（循环门控Delta规则，RGDR）是一种应用于循环神经网络的算子，也被应用于一种线性注意力机制中。
   在每个时间步 $t$，网络根据当前的输入 $q_t$、$k_t$、$v_t$ 和上一个隐藏状态 $S_{t-1}$，计算当前的注意力输出 $o_t$ 和新的隐藏状态 $S_t$。
   在这个过程中，门控单元会决定有多少新信息存入隐藏状态，以及有多少旧信息需要被遗忘。
+
   $$
   S_t := S_{t-1}(\alpha_t(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1}k_t)k_t^T
   $$
+
+
   $$
   o := \frac{S_t q_t}{\sqrt{d_k}}
   $$
@@ -344,21 +342,18 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
-    std::vector<aclFloat16> resultData(size, 0);
+    std::vector<int16_t> resultData(size, 0);
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
                            size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
-        if (i >= 5) { // print the first five data
-            break;
-        }
-        LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
+        LOG_PRINT("mean result[%ld] is: %f\n", i, int16_tToFloat(resultData[i]));
     }
 }
 
 int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
 {
-    // AscendCL初始化
+    // 固定写法，AscendCL初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -393,7 +388,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 int main()
 {
-    // 1.device/context/stream初始化，参考AscendCL对外接口列表
+    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -459,10 +454,10 @@ int main()
         keyHostData[i] = 1;
     }
     for (int i = 0; i < valueHostData.size(); i++) {
-        valueHostData[i] = 0;
+        valueHostData[i] = z;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
-        betaHostData[i] = 0;
+        betaHostData[i] = z;
     }
     for (int i = 0; i < ssmStaIdHostData.size(); i++) {
         ssmStaIdHostData[i] = i;
@@ -497,7 +492,8 @@ int main()
     aclOpExecutor *executor;
     // 调用aclnnRecurrentGatedDeltaRuleGetWorkspaceSize第一段接口
     ret = aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(query, key, value, beta, stateRef, actSeqLen, ssmStaId, gama,
-                                                       gamak, numAccTok, scale, attnOut, &workspaceSize, &executor);
+                                                       gamak, numAccTok, scale, attnOut, &workspaceSize,
+                                                       &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRecurrentGatedDeltaRuleGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -512,7 +508,7 @@ int main()
     ret = aclnnRecurrentGatedDeltaRule(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRecurrentGatedDeltaRule failed. ERROR: %d\n", ret); return ret);
 
-    // 4. 同步等待任务执行结束
+    // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

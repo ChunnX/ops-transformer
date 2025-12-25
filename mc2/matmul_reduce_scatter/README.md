@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -14,6 +14,7 @@
 算子功能：完成mm + reduce_scatter_base计算。
 
 计算公式：
+
 $$
 output=reduce\_scatter\_base(x1@x2+bias)
 $$
@@ -109,9 +110,9 @@ $$
 - x1、x2计算输入的数据类型要和output计算输出的数据类型一致。
 - bias暂不支持输入为非0的场景。
 - 输出为2维，其shape为(m/rank_size, n), rank_size为卡数。
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用说明
 

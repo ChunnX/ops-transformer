@@ -4,13 +4,8 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>昇腾910_95 AI处理器</term>   |     √    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 
 ## 功能说明
 
@@ -18,28 +13,38 @@
 - 计算公式：
 
     对输入做Sigmoid或者SoftMax：
+
     $$
     if normType==1:
         normOut=Sigmoid(x)
     else:
         normOut=SoftMax(x)
     $$
+
     如果bias不为空：
+
     $$
     normOut = normOut + bias
     $$
+
     对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
+
     $$
     groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
     $$
+
     根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
+
     $$
     y,expertIdxOut=TopK(normOut[groupId, :],k=k)
     $$
+
     对y按照输入的routedScalingFactor和eps参数进行计算，得到yOut的结果：
+
     $$
     yOut = y / (ReduceSum(y, dim=-1)+eps)*routedScalingFactor
     $$
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>

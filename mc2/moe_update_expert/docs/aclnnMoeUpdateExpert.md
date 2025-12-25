@@ -2,10 +2,10 @@
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×    |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
@@ -207,7 +207,7 @@ aclnnStatus aclnnMoeUpdateExpert(
   <tr>
    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
    <td>561002</td>
-   <td>1. 输入和输出的shape不在支持的范围内；<br>2. 参数的取值不在支持的范围。</td>
+   <td>1. 输入和输出的shape不在支持的范围内；<br>2. 参数的取值不在支持的范围内。</td>
   </tr>
  </tbody>
 </table>
@@ -258,20 +258,23 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 ## 约束说明
 
-1. **接口配套与调用顺序**：  
+1. 确定性计算：
+     - aclnnMoeUpdateExpert默认确定性实现。
+
+2. **接口配套与调用顺序**：  
     该接口必须与`aclnnMoeDistributeDispatchV2`及`aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`接口配套使用，**调用顺序固定为**：  
     `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV2` → `aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`；
 
     或与`aclnnMoeDistributeDispatchV3`及`aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`接口配套使用，**调用顺序固定为**：  
-    `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV3` → `aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`；具体参考调用示例。
+    `aclnnMoeUpdateExpert` → `aclnnMoeDistributeDispatchV3` → `aclnnMoeDistributeCombineV3`/`aclnnMoeDistributeCombineAddRmsNormV2`；具体参考[调用示例](#调用示例)。
 
-2. **参数一致性要求**：  
+3. **参数一致性要求**：  
    调用过程中使用的`worldSize`、`moeExpertNum`参数取值，所有卡需保持一致，网络不同层中也需保持一致，且需与`aclnnMoeDistributeDispatchV2`、`aclnnMoeDistributeCombineV2`/`aclnnMoeDistributeCombineAddRmsNorm`的对应参数一致。
 
-3. **硬件相关定义**：  
+4. **硬件相关定义**：  
    <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：单卡包含双DIE（“晶粒”或“裸片”），因此参数说明中的“本卡”均指**单DIE**。
 
-4. **参数shape格式约束**：
+5. **参数shape格式约束**：
    - **BS**：本卡最终输出的token数量，取值范围 ( 0 < BS ≤ 512 )。
    - **K**：选取的topK个专家，取值范围 ( 0 < K ≤ 16 )，且需满足 ( 0 < K ≤ moeExpertNum )。
    - **moeExpertNum**：MoE专家数量，取值范围 (0, 1024]。
@@ -281,9 +284,9 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
+以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
+- 示例代码如下，仅供参考
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -291,10 +294,9 @@ aclnnStatus aclnnMoeUpdateExpert(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "../op_api/aclnn_moe_update_expert.h"
-    #include "../../moe_distribute_dispatch_v2/op_api/aclnn_moe_distribute_dispatch_v2.h"
-    #include "../../moe_distribute_combine_add_rms_norm/op_api/aclnn_moe_distribute_combine_add_rms_norm.h"
-    #include <unistd.h>
+    #include "aclnnop/aclnn_moe_update_expert.h"
+    #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
+    #include "aclnnop/aclnn_moe_distribute_combine_add_rms_norm.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \

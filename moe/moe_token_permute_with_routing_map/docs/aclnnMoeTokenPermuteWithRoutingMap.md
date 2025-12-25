@@ -4,13 +4,8 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 
 ## 功能说明
 - **算子功能**：MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMaps将tokens和可选probsOptional广播后排序
@@ -47,9 +42,12 @@
   $$
   
   dropAndPad为`true`时
+
   $$
   capacity = numOutTokens // expert\_num
   $$
+
+
   $$
   outToken = capacity * expert\_num
   $$
@@ -90,7 +88,7 @@
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMap”接口执行计算。
 
 * `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(const aclTensor *tokens, const aclTensor *routingMap, const aclTensor *probsOptional,  int64_t numOutTokens,  bool dropAndPad, aclTensor *permuteTokensOut, aclTensor *permuteProbsOutOptional, aclTensor *sortedIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)`
+* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
 ## aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize
 
 - **参数说明：**

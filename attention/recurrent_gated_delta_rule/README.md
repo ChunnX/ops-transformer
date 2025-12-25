@@ -4,13 +4,8 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>昇腾910_95 AI处理器</term>   |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |    ×     |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 
 
 ## 功能说明
@@ -22,9 +17,12 @@
   Recurrent Gated Delta Rule（循环门控Delta规则，RGDR）是一种应用于循环神经网络的算子，也被应用于一种线性注意力机制中。
   在每个时间步 $t$，网络根据当前的输入 $q_t$、$k_t$、$v_t$ 和上一个隐藏状态 $S_{t-1}$，计算当前的输出 $o_t$ 和新的隐藏状态 $S_t$。
   在这个过程中，门控单元会决定有多少新信息存入隐藏状态，以及有多少旧信息需要被遗忘。
+
   $$
   S_t := S_{t-1}(\alpha_t(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1}k_t)k_t^T
   $$
+
+
   $$
   o_t := \frac{S_t q_t}{\sqrt{d_k}}
   $$

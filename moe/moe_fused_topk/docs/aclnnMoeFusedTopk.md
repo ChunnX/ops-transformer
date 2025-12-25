@@ -3,13 +3,8 @@
 ## 产品支持情况
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>昇腾910_95 AI处理器</term>   |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 
 ## 功能说明
 
@@ -17,29 +12,41 @@
 -   计算公式：
 
     对输入做sigmoid：
+
     $$
     sigmoidRes=sigmoid(x)
     $$
+
     加上addNum：
+
     $$
     normOut = sigmoidRes + addNum
     $$
+
     对计算结果按照groupNum进行分组，每组按照topN的sum值对group进行排序，取前groupTopk个组：
+
     $$
     groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
     $$
+
     根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到indices的结果：
+
     $$
     normY,indices=TopK(normOut[groupId, :],k=k)
     $$
+
     根据indices从sigmoidRes中选出y:
+
     $$
     y = gather(sigmoidRes, indices)
     $$
+
     如果isNorm为true，对y按照输入的scale参数进行计算，得到y的结果：
+
     $$
     y = y / (ReduceSum(y, dim=-1))*scale
     $$
+
     如果enableExpertMapping为true，再将indices中的物理专家按照输入的mappingNum和mappingTable映射到逻辑专家，得到输出的indices。
 
 

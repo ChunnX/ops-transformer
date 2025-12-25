@@ -5,13 +5,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 ## 功能说明
 
@@ -98,19 +93,7 @@
 ## 约束说明
 - 确定性计算：
   - aclnnMoeTokenUnpermute默认确定性实现。
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
-- <term>昇腾910_95 AI处理器</term>：
-  在调用本接口时，框架内部会转调用[aclnnMoeFinalizeRoutingV2](aclnnMoeFinalizeRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
-  - permutedTokens输入等同于aclnnMoeFinalizeRoutingV2接口的expandedX输入。
-  - sortedIndices输入等同于aclnnMoeFinalizeRoutingV2接口的expandedRowIdx输入。
-  - probsOptional输入等同于aclnnMoeFinalizeRoutingV2接口的scalesOptional输入。
-  - paddedMode输入等同于aclnnMoeFinalizeRoutingV2接口的dropPadMode输入。
-  - out输出等同于aclnnMoeFinalizeRoutingV2接口的out输出。
-- <term>Atlas 推理系列产品</term>：
-  - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
-  - topK_num <= 512。
-  - hiddenSize是128的倍数且小于10240。
-
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。

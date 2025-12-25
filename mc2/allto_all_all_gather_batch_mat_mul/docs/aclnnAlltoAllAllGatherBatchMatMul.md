@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
@@ -13,15 +13,22 @@
 
 - **计算公式**：
 计算逻辑如下，其中y1、y2、y3为输出
+
 $$
 x1 = AllToAll(x)
 $$
+
+
 $$
 y2 = AllGather(x1)
 $$
+
+
 $$
 y3 = BatchMatMul(y2, weight, bias)
 $$
+
+
 $$
 y1 = 激活函数(y3)
 $$
@@ -60,12 +67,12 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 
 **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
- <col style="width: 120px">
- <col style="width: 120px">
- <col style="width: 160px">
- <col style="width: 150px">
- <col style="width: 80px">
+<table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
+ <col style="width: 170px">
+ <col style="width: 170px">
+ <col style="width: 800px">
+ <col style="width: 800px">
+ <col style="width: 200px">
  </colgroup>
  <thead>
   <tr>
@@ -179,10 +186,10 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 **返回值**
 第一段接口完成入参校验，出现以下场景时报错：
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
- <col style="width: 800px">
+<table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
+ <col style="width: 170px">
+ <col style="width: 170px">
+ <col style="width: 400px">
  </colgroup>
  <thead>
   <tr>
@@ -207,9 +214,9 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 
 **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
+<table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
+ <col style="width: 170px">
+ <col style="width: 170px">
  <col style="width: 800px">
  </colgroup>
  <thead>
@@ -227,7 +234,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
   <tr>
    <td>workspaceSize</td>
    <td>输入</td>
-   <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize</code>获取。</td>
+   <td>在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize获取。</td>
   </tr>
   <tr>
    <td>executor</td>
@@ -246,6 +253,9 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
+
+- 确定性计算：
+  - aclnnAlltoAllAllGatherBatchMatMul默认确定性实现。
 
 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=epWorldSize，tp=tpWorldSize）
 
@@ -279,7 +289,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 ```Cpp
@@ -289,7 +299,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
-#include "../op_api/aclnn_all_to_all_all_gather_batch_matmul.h"
+#include "aclnnop/aclnn_all_to_all_all_gather_batch_matmul.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \

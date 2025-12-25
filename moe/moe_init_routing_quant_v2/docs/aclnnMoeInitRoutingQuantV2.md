@@ -4,13 +4,8 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 
 ## 功能说明
 
@@ -51,24 +46,34 @@
 
   5.计算quant结果：
     - 静态quant：
+
         $$
         quantResult = round((x * scaleOptional) + offsetOptional)
         $$
+
     - 动态quant：
         - 若不输入scale：
+
             $$
             dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
             $$
+
+
             $$
             quantResult = round(x / dynamicQuantScaleOutOptional)
             $$
+
         - 若输入scale:
+
             $$
             dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
             $$
+
+
             $$
             quantResult = round(x / dynamicQuantScaleOutOptional)
             $$
+
   6.对quantResult取前NUM\_ROWS个sortedRowIdx的对应位置的值，得出expandedXOut：
 
     $$

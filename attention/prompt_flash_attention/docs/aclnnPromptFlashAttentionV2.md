@@ -2,42 +2,10 @@
 
 ## 产品支持情况
 
-<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
-<col style="width: 600px">
-<col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th style="text-align: center;">产品</th>
-    <th style="text-align: center;">是否支持</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td><term>Atlas 200I/500 A2 推理产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 推理系列加速卡产品</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td><term>Atlas 训练系列产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/300/500 推理产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-</tbody>
-</table>
+| 产品                                                         |  是否支持   |
+| :----------------------------------------------------------- |:-------:|
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 
 ## 功能说明
 
@@ -239,7 +207,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
         <td>输出的量化因子。</td>
         <td><ul><li>支持per-tensor，per-channel。 </li></ul>
             <ul><li>不使用该功能时可传入nullptr。</li></ul></td>
-        <td>FLOAT32、nullptr</td>
+        <td>FLOAT32、BFLOAT16、nullptr</td>
         <td>ND</td>
         <td>1</td>
         <td>-</td>
@@ -250,7 +218,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
         <td>输出的量化偏移。</td>
         <td><ul><li>支持per-tensor，per-channel。 </li></ul>
             <ul><li>不使用该功能时可传入nullptr。</li></ul></td>
-        <td>FLOAT32、nullptr</td>
+        <td>FLOAT32、BFLOAT16、nullptr</td>
         <td>ND</td>
         <td>1</td>
         <td>-</td>
@@ -454,7 +422,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 
 - query，key，value输入，功能使用限制如下：
 
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：
   
     - 支持B轴小于等于65536（64k），输入类型包含INT8时D轴非32对齐或输入类型为FLOAT16或BFLOAT16时D轴非16对齐时，B轴仅支持到128；
 
@@ -514,29 +482,21 @@ aclnnStatus aclnnPromptFlashAttentionV2(
             </table>
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
     
-  - Atlas 推理系列加速卡产品：
-      - 支持B轴小于等于128；
-      - 支持N轴小于等于256；
-      - 支持S轴小于等于65535(64k), Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；
-      - 支持D轴小于等于512。
   
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持FLOAT16、BFLOAT16、INT8
-    - Atlas 推理系列加速卡产品：数据类型仅支持FLOAT16
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持FLOAT16、BFLOAT16、INT8
   
 - pseShift功能使用限制如下：
   
   - 预留参数，暂未使用。Device侧的aclTensor，数据类型与query的数据类型需满足数据类型推导规则。目前该参数会被强制设置为nullptr。
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持FLOAT16、BFLOAT16
-    - Atlas 推理系列加速卡产品：仅支持nullptr
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持FLOAT16、BFLOAT16
   
 - attenMask功能使用限制如下：
   
   - 输入shape限制：如果不使用该功能可传入nullptr。通常建议shape输入Q_S,KV_S;B,Q_S,KV_S;1,Q_S,KV_S;B,1,Q_S,KV_S;1,1,Q_S,KV_S，其中Q_S为query的shape中的S，KV_S为key和value的shape中的S，对于attenMask的KV_S为非32对齐的场景，建议padding到32对齐来提高性能，多余部分填充成1。
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持BOOL、INT8和UINT8。
-    - Atlas 推理系列加速卡产品：仅支持BOOL。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持BOOL、INT8和UINT8。
   - 当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。
   
 - actualSeqLengths，actualSeqLengthsKv输入，功能使用限制如下：
@@ -546,38 +506,32 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     - 对于actualSeqLengthsKv，如果不指定序列长度，可以传入nullptr，这表示有效序列长度与key/value的shape中的S长度相同。需要注意的是，该参数中每个batch的有效序列长度不应超过key/value中对应batch的序列长度。
   - 输入属性限制：关于seqlen的传入长度有以下规则：当传入长度为1时，所有Batch将使用相同的seqlen；当传入长度大于或等于Batch数量时，将取seqlen的前Batch个数值；其他长度的传入将不被支持。
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持INT64。
-    - Atlas 推理系列加速卡产品：数据类型支持INT64。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持INT64。
   
 - deqScale1，deqScale2输入，功能使用限制如下：
   
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持UINT64、FLOAT32。
-    - Atlas 推理系列加速卡产品：仅支持nullptr。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持UINT64、FLOAT32。
   
-- quantScale1，quantScale2输入，功能使用限制如下：
-  
-  - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持FLOAT32。
-    - Atlas 推理系列加速卡产品：仅支持nullptr。
-  
-- quantOffset2输入，功能使用限制如下：
+- quantScale1输入，功能使用限制如下：
   
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持FLOAT32。
-    - Atlas 推理系列加速卡产品：仅支持nullptr。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持FLOAT32。
+  
+- quantScale2，quantOffset2输入，功能使用限制如下：
+  
+  - 输入数据类型限制：
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持FLOAT32和BFLOAT16。
   
 - preTokens输入，功能使用限制如下：
   
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持INT64。
-    - Atlas 推理系列加速卡产品：仅支持取值2147483647。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持INT64。
   
 - nextTokens输入，功能使用限制如下：
   
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持INT64。
-    - Atlas 推理系列加速卡产品：仅支持取值0和2147483647。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持INT64。
   
 - inputLayout输入，功能使用限制如下：
   
@@ -589,12 +543,11 @@ aclnnStatus aclnnPromptFlashAttentionV2(
   
   - Host侧的int，代表key、value中head个数，用于支持GQA（Grouped-Query Attention，分组查询注意力）场景。用户不特意指定时建议传入0，表示key/value和query的head个数相等。限制：需要满足numHeads整除numKeyValueHeads，numHeads与numKeyValueHeads的比值不能大于64，且在BSND、BNSD、BNSD_BSND场景下，需要与shape中的key/value的N轴shape值相同，否则报错。
   - 输入数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持INT64。
-    - Atlas 推理系列加速卡产品：仅支持取值0。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持INT64。
   
 - sparseMode输入，功能使用限制如下：
   
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：
     - sparseMode为0时，代表defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；如果传入，则需要传入完整的attenmask矩阵（S1 * S2），表示preTokens和nextTokens之间的部分需要计算。
     - sparseMode为1时，代表allMask，必须传入完整的attenmask矩阵（S1 * S2）。
     - sparseMode为2时，代表leftUpCausal模式的mask，需要传入优化后的attenmask矩阵（2048*2048）。
@@ -602,14 +555,12 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     - sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）。
     - sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block_local，**均暂不支持**。用户不特意指定时建议传入0。
   
-  - Atlas 推理系列加速卡产品：仅支持取值0
   
 - attentionOut输出，功能使用限制如下：
   
   - shape限制：当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出shape为BSND；其余情况该入参的shape需要与入参query的shape保持一致。
   - 数据类型限制：
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：数据类型支持FLOAT16、BFLOAT16、INT8。
-    - Atlas 推理系列加速卡产品：仅支持FLOAT16。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持FLOAT16、BFLOAT16、INT8。
   
 - 其它约束：
   - int8量化相关入参数量与输入、输出数据格式的综合限制：

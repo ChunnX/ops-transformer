@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
@@ -13,12 +13,15 @@
 
 计算公式：
 - 路由专家：
+
   $$
   gmmY = gmmX \times gmmWeight \\
   unpermuteOut = Unpermute(gmmY) \\
   y = AlltoAllv(unpermuteOut)
   $$
+
 - 共享专家：
+
   $$
   mmY = mmX \times mmWeight
   $$
@@ -26,6 +29,7 @@
 ## 函数原型
 
 每个算子分为两段式接口，必须先调用“aclnnGroupedMatMulAlltoAllvGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAlltoAllv”接口执行计算。
+
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor*   gmmX,
@@ -126,7 +130,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
   <tr>
    <td>epWorldSize</td>
    <td>输入</td>
-   <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128。</td>
+   <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -260,6 +264,9 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 ## 约束说明
 
+- 确定性计算：
+  - aclnnGroupedMatMulAlltoAllv默认确定性实现。
+
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
   - H1：表示路由专家hidden size隐藏层大小，取值范围(0, 65536)。
@@ -272,10 +279,10 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
   - A：本卡发送的token数，是sendCounts参数累加之和。
   - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>: 单卡通信量取值需大于等于2MB。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>: 单卡通信量取值范围需大于等于2MB。
 
 ## 调用示例
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。本示例代码仅支持Atlas A3。
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
@@ -285,7 +292,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
-    #include "../op_api/aclnn_grouped_mat_mul_allto_allv.h"
+    #include "aclnnop/aclnn_grouped_mat_mul_allto_allv.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \

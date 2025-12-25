@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 
 ## 功能说明
 
@@ -13,15 +13,22 @@
 
 计算公式：
 计算逻辑如下，其中y1、y2、y3为输出
+
 $$
 x1 = AllToAll(x)
 $$
+
+
 $$
 y2 = AllGather(x1)
 $$
+
+
 $$
 y3 = BatchMatMul(y2, weight, bias)
 $$
+
+
 $$
 y1 = 激活函数(y3)
 $$

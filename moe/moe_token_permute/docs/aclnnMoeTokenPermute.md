@@ -5,13 +5,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
 ## 功能说明
 
@@ -54,7 +49,7 @@
   
   - tokens（aclTensor\*，计算输入）：输入token，要求为一个维度大于等于2的Tensor，第一维的大小为num\_tokens，数据类型支持FLOAT16、BFLOAT16、FLOAT32，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
   - indices （aclTensor\*，计算输入）：输入indices，要求shape为2D或1D。paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为（num\_tokens，topK）或（num\_tokens），paddedMode为true时表示每个专家选中的token索引（暂不支持），数据类型支持INT32、INT64，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。要求元素个数小于16777215，值大于等于0小于16777215（单点支持int32或int64的最大或最小值）。
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
   - numOutTokens（int64\_t，计算输入）：有效输出token数，设置为0时，表示不会删除任何token。不为0时，会按照numOutTokens进行切片丢弃按照indices排序好的token中超过numOutTokens的部分，为负数时按照切片索引为负数时处理。
   - paddedMode（bool，计算输入）：paddedMode为true时表示indices已被填充为代表每个专家选中的token索引，此时不对indices进行排序。目前仅支持paddedMode为false。
   - permuteTokensOut（aclTensor\*，计算输出）：根据indices进行扩展并排序过的tokens，要求是一个维度大于等于2的Tensor，第一维的大小为min\(num\_tokens \* topK, numOutTokens\)，除第一维外其余维度大小乘积与tokens除第一维外其余维度大小乘积相同。数据类型同tokens，支持FLOAT16、BFLOAT16、FLOAT32，不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
@@ -88,16 +83,7 @@
 
 - indices 要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余不在范围内的排序结果不正确)。
 - 不支持paddedMode为`True`。
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
-- <term>昇腾910_95 AI处理器</term>：
-  在调用本接口时，框架内部会转调用[aclnnMoeInitRoutingV2](aclnnMoeInitRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
-  - token输入等同于aclnnMoeInitRoutingV2接口的x输入。
-  - indices输入等同于aclnnMoeInitRoutingV2接口的expertIdx输入。
-  - numOutTokens输入等同于aclnnMoeInitRoutingV2接口的activeNum输入。
-  - paddedMode输入等同于aclnnMoeInitRoutingV2接口的dropPadMode输入。
-  - permuteTokensOut输出等同于aclnnMoeInitRoutingV2接口的expandedXOut输出。
-  - sortedIndicesOut输出等同于aclnnMoeInitRoutingV2接口的expandedRowIdxOut输出。
-
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
