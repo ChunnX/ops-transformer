@@ -19,8 +19,10 @@ add_ops_compile_options(
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -Werror
+            -mllvm -cce-vf-remove-membar=false
+            -mllvm -cce-aicore-hoist-movemask=false
 )
 
-if (NOT BUILD_OPS_RTY_KERNEL) # 回黄kernel
+if (NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE sparse_flash_attention ACLNNTYPE aclnn)
 endif()
