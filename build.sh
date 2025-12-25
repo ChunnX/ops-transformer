@@ -639,6 +639,7 @@ package_static() {
 
 function process_soc_input(){
     local input_string="$1"
+    input_string=$(echo "$input_string" | sed 's/ascend950/ascend910_95/g')
     local value_part="${input_string#*=}"
     ASCEND_SOC_UNITS="${value_part//,/;}"
 }

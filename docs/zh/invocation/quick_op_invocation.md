@@ -25,7 +25,7 @@
     # 编译experimental贡献目录下的算子
     # bash build.sh --pkg --experimental --soc=ascend910b --ops=${experimental_op}
     ```
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
     - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
     - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"apply_rotary_pos_emb,rope_quant_kvcache,..."，多算子之间用英文逗号","分隔。
     - --experimental（可选）：表示编译experimental贡献目录下的算子，${experimental_op}为新贡献算子目录名。
@@ -63,7 +63,7 @@
     # bash build.sh --pkg --experimental [--jit] --soc=${soc_version}
     ```
     - --jit（可选）：推荐设置，表示不编译算子的二进制文件。
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
     - --experimental（可选）：表示编译experimental贡献目录下的算子。
 
     若提示如下信息，说明编译成功。
@@ -106,7 +106,8 @@
         - \$\{op\}：表示待执行算子，算子名小写下划线形式，如flash_attention_score。            
         - \$\{mode\}：表示执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
         - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。         
-        - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。        
+        - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。
+        - \$\{soc_version\}（可选）：表示NPU型号。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。        
         
         说明：\$\{mode\}为graph时，不指定\$\{pkg_mode\}和\$\{vendor\_name\}
 
@@ -119,7 +120,7 @@
         
         - \$\{op\}：表示待执行算子，算子名小写下划线形式，如flash_attention_score。       
         - \$\{mode\}：表示算子执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
-        - \$\{soc\_version\}（可选）：表示NPU型号。
+        - \$\{soc_version\}（可选）：表示NPU型号。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。
 
         执行算子样例后会打印结果，以FlashAttentionScore算子执行为例：
     
