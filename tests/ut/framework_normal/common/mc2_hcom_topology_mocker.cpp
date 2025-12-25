@@ -121,4 +121,14 @@ HcclResult MC2HcomTopology::CallCommGetCCLBufSizeCfg([[maybe_unused]] HcclComm c
     return HCCL_SUCCESS;
 }
 
+HcclResult MC2HcomTopology::CallHcomGetRankSizeEx(const char *group, uint32_t *ranksize, uint32_t flag) const
+{
+    return HCCL_SUCCESS;
+}
+
+HcclResult MC2HcomTopology::CallHcomGetL0TopoTypeEx(const char *group, CommTopo *topoType, uint32_t flag) const
+{
+    return HCCL_SUCCESS;
+}
+
 }  // namespace Mc2Hcom
