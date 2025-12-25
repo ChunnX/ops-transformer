@@ -149,17 +149,6 @@ function(pack_built_in)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/package/latest_manager/scripts/
       DESTINATION latest_manager
   )
-  set(BIN_FILES
-      ${CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/prereq_check.bash
-      ${CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/prereq_check.csh
-      ${CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/prereq_check.fish
-      ${CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/setenv.bash
-      ${CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/setenv.csh
-      ${CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/setenv.fish
-  )
-  install(FILES ${BIN_FILES}
-      DESTINATION share/info/ops_transformer/bin
-  )
 
   string(FIND "${ASCEND_COMPUTE_UNIT}" ";" SEMICOLON_INDEX)
   if (SEMICOLON_INDEX GREATER -1)
@@ -189,9 +178,17 @@ function(pack_built_in)
     set(CPACK_PACKAGE_FILE_NAME "CANN--${CPACK_PACKAGE_NAME}.run")
   else()
     if("${VERSION}" STREQUAL "")
+      if("${soc_version}" STREQUAL "910_93")
+        set(CPACK_PACKAGE_FILE_NAME "cann-A3-ops-transformer_linux-${ARCH}.run")
+      else()
         set(CPACK_PACKAGE_FILE_NAME "cann-${soc_version}-ops-transformer_linux-${ARCH}.run")
+      endif()
     else()
+      if("${soc_version}" STREQUAL "910_93")
+        set(CPACK_PACKAGE_FILE_NAME "cann-A3-ops-transformer_${VERSION}_linux-${ARCH}.run")
+      else()
         set(CPACK_PACKAGE_FILE_NAME "cann-${soc_version}-ops-transformer_${VERSION}_linux-${ARCH}.run")
+      endif()
     endif()
     
   endif()

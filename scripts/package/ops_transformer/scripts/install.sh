@@ -37,7 +37,6 @@ RUN_PKG_INFO_FILE="${CURR_PATH}/../scene.info"
 VERSION_INFO_FILE="${CURR_PATH}/../version.info"
 COMMON_INC_FILE="${CURR_PATH}/common_func.inc"
 VERCHECK_FILE="${CURR_PATH}/ver_check.sh"
-PRE_CHECK_FILE="${CURR_PATH}/../bin/prereq_check.bash"
 VERSION_COMPAT_FUNC_PATH="${CURR_PATH}/version_compatiable.inc"
 COMMON_FUNC_V2_PATH="${CURR_PATH}/common_func_v2.inc"
 VERSION_CFG_PATH="${CURR_PATH}/version_cfg.inc"
@@ -82,7 +81,6 @@ IS_UPGRADE=n
 IS_QUIET=n
 IS_INPUT_PATH=n
 IS_CHECK=n
-IS_PRE_CHECK=n
 IN_INSTALL_TYPE=""
 IN_INSTALL_PATH=""
 IS_DOCKER_INSTALL=n
@@ -289,34 +287,6 @@ check_install_path() {
   fi
 }
 
-# execute prereq_check file
-exec_pre_check() {
-  bash "${PRE_CHECK_FILE}"
-}
-
-# execute prereq_check file and interact with user
-interact_pre_check() {
-  exec_pre_check
-  if [ "$?" != 0 ]; then
-    if [ "${IS_QUIET}" = y ]; then
-      logandprint "[WARNING]: Precheck of opp module execute failed! do you want to continue install? y"
-    else
-      logandprint "[WARNING]: Precheck of opp module execute failed! do you want to continue install?  [y/n] "
-      while true; do
-        read yn
-        if [ "$yn" = "n" ]; then
-          echo "stop install opp module!"
-          exit 1
-        elif [ "$yn" = y ]; then
-          break
-        else
-          echo "[WARNING]: Input error, please input y or n to choose!"
-        fi
-      done
-    fi
-  fi
-}
-
 #get the dir of xxx.run
 #opp_install_path_curr=`echo "$2" | cut -d"/" -f2- `
 # cut first two params from *.run
@@ -406,12 +376,6 @@ get_opts() {
 
 # pre-check
 check_opts() {
-  if [ "${CONFLICT_CMD_NUMS}" -eq 0 ] && [ "x${IS_PRE_CHECK}" = "xy" ]; then
-    interact_pre_check
-    exitlog
-    exit 0
-  fi
-
   if [ "${CONFLICT_CMD_NUMS}" != 1 ]; then
     echo "[OpsTransformer] [ERROR]: ERR_NO:${PARAM_INVALID};ERR_DES:\
  only support one type: full/run/devel/upgrade/uninstall/check, operation execute failed!\
@@ -519,10 +483,7 @@ install_package() {
   if [ "${IS_INSTALL}" = "n" ] && [ "${IS_UPGRADE}" = "n" ]; then
     return
   fi
-  # precheck before install opp module
-  if [ "${IS_PRE_CHECK}" = "y" ]; then
-    interact_pre_check
-  fi
+
   local architecture=$(uname -m)
   local graph_so_dir_path="${TARGET_VERSION_DIR}/opp/built-in/op_graph/lib/linux/${ARCH_INFO}"
   local host_so_dir_path="${TARGET_VERSION_DIR}/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/${ARCH_INFO}"
@@ -626,17 +587,9 @@ uninstall_package() {
   fi
 
   bash "${UNINSTALL_SHELL_FILE}" "${TARGET_INSTALL_PATH}" "uninstall" "${IS_QUIET}" ${IN_FEATURE} "${IS_DOCKER_INSTALL}" "${DOCKER_ROOT}" "$pkg_version_dir"
-  # remove precheck info in ${TARGET_VERSION_DIR}/bin/prereq_check.bash
   logandprint "[INFO]: Remove precheck info."
 
   comm_log_operation "Uninstall" "${IN_INSTALL_TYPE}" "OpsTransformer" "$?" "${CMD_LIST}"
-}
-
-pre_check_only() {
-  if [ "${IS_PRE_CHECK}" = "y" ]; then
-    exec_pre_check
-    exit $?
-  fi
 }
 
 main() {
@@ -658,7 +611,6 @@ main() {
 
   uninstall_package
 
-  pre_check_only
 }
 
 main "$@"

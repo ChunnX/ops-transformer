@@ -20,7 +20,6 @@
     </generate_info>
     <file_info value="ops_transformer_script" copy_type="source" src_path="" dst_path="share/info/ops_transformer" install_path="share/info/ops_transformer">
         <file value="script" entity="true"/>
-        <file value="bin" entity="true"/>
         <file value="version.info"/>
     </file_info>
     <block_info dependtree="false" dst_path="ops_transformer" block_conf_path="ascend">
@@ -33,7 +32,6 @@
         <path value="share" install_mod="550"/>
         <path value="share/info" install_mod="750"/>
         <path value="share/info/ops_transformer" install_mod="550"/>
-        <path value="share/info/ops_transformer/bin" install_mod="550"/>
         <path value="share/info/ops_transformer/script" install_mod="550"/>
     </dir_info>
     <dir_info value="opp" install_path="opp" install_type="all">

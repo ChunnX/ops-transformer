@@ -117,12 +117,6 @@ check_installed_files() {
 
   check_file_exist "${COMMON_PARSER_FILE}"
 
-  check_file_exist "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/bin/setenv.bash"
-
-  check_file_exist "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/bin/setenv.csh"
-
-  check_file_exist "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/bin/setenv.fish"
-
 }
 
 check_installed_type() {
