@@ -236,7 +236,50 @@ attention:
     # options:
       # - prompt_flash_attention
       # - fused_infer_attention_score
+  mla_prolog:
+      module: True
+      src:
+        - attention/mla_prolog
+      ut_cov_exclude:
+        - attention/mla_prolog
+      exclude:
+        - attention/mla_prolog/docs
+        - attention/mla_prolog/README.md
+      test:
+        examples: False
+        ut: True
+      options:
+        - mla_prolog
+        
+  mla_prolog_v2:
+      module: True
+      src:
+        - attention/mla_prolog_v2
+      exclude:
+        - attention/mla_prolog_v2/docs
+        - attention/mla_prolog_v2/README.md
+      ut_cov_exclude:
+        - attention/mla_prolog_v2
+      test:
+        examples: False
+        ut: True
+      options:
+        - mla_prolog_v2
 
+  mla_prolog_v3:
+      module: True
+      src:
+        - attention/mla_prolog_v3
+      exclude:
+        - attention/mla_prolog_v3/docs
+        - attention/mla_prolog_v3/README.md
+      ut_cov_exclude:
+        - attention/mla_prolog_v3
+      test:
+        examples: False
+        ut: False
+      options:
+        - mla_prolog_v3
 gmm:
   grouped_matmul:
     module: True

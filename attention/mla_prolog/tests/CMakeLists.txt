@@ -8,35 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-########################################################################################################################
-# 调用编译方法, 生成对应编译目标
-########################################################################################################################
-
-set(_Mla_Prolog_TilingSourcesExt
-        ${OPS_TRANSFORMER_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling_check.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-)
-
-set(_Mla_Prolog_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
-        ${CMAKE_SOURCE_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling.h
-)
-
-set(_Mla_Prolog_TargetPrivateLinkLibrariesExt
-        ${UTest_NamePrefix}_OpTiling
-        error_manager
-)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/attention/mla_prolog/op_kernel _Mla_Prolog_KernelSourcesExt)
-
-OpsTest_Level2_AddOp(
-        SUB_SYSTEM                              transformer
-        BRIEF                                   MlaProlog
-        SNAKE                                   mla_prolog
-        KERNEL_TILING_DATA_DEF_H                ${_Mla_Prolog_KernelTilingDataDefH}
-        KERNEL_SOURCES_EXT                      ${_Mla_Prolog_KernelSourcesExt}
-        KERNEL_PRIVATE_INCLUDES_EXT             ${OPS_ADV_DIR}/common/include/kernel
-        TILING_SOURCES_EXT                      ${_Mla_Prolog_TilingSourcesExt}
-        UTEST_COMMON_PRIVATE_LINK_LIBRARIES_EXT ${_Mla_Prolog_TargetPrivateLinkLibrariesExt}
-)
+message(STATUS "=== Debug: start ops.transformer.mla_prolog.tests.CMakeLists.txt ")
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()

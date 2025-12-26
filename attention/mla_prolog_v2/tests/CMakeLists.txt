@@ -8,38 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-########################################################################################################################
-# 调用编译方法, 生成对应编译目标
-########################################################################################################################
-
-set(_mla_prolog_v2_TilingSourcesExt
-        ${OPS_TRANSFORMER_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling_check.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/mla_prolog_v2/op_host/mla_prolog_v2_tiling_register.cpp
-)
-
-set(_mla_prolog_v2_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
-        ${CMAKE_SOURCE_DIR}/attention/mla_prolog/op_host/mla_prolog_tiling.h
-)
-
-set(_mla_prolog_v2_TargetPrivateLinkLibrariesExt
-        ${UTest_NamePrefix}_OpTiling
-        error_manager
-)
-
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/attention/mla_prolog_v2/op_kernel _mla_prolog_v2_KernelSourcesExt)
-
-OpsTest_Level2_AddOp(
-        SUB_SYSTEM                              transformer
-        BRIEF                                   MlaPrologV2
-        SNAKE                                   mla_prolog_v2
-        KERNEL_TILING_DATA_DEF_H                ${_mla_prolog_v2_KernelTilingDataDefH}
-        KERNEL_SOURCES_EXT                      ${_mla_prolog_v2_KernelSourcesExt}
-        KERNEL_PRIVATE_INCLUDES_EXT             ${OPS_ADV_DIR}/common/include/kernel
-        TILING_SOURCES_EXT                      ${_mla_prolog_v2_TilingSourcesExt}
-        TILING_PRIVATE_INCLUDES_EXT             ${CMAKE_SOURCE_DIR}/src/transformer/attention/mla_prolog/op_host/
-        UTEST_COMMON_PRIVATE_LINK_LIBRARIES_EXT ${_mla_prolog_v2_TargetPrivateLinkLibrariesExt}
-)
+message(STATUS "=== Debug: start ops.transformer.mla_prolog_v2.tests.CMakeLists.txt ")
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()
