@@ -162,6 +162,7 @@ private:
 
     GatherParams gatherParams;
 
+    static constexpr uint32_t N_QUERY_INDEX_SPECIAL = 8;
     static constexpr int64_t UB_ROW_SIZE = 8;
     static constexpr event_t EVENT_ID0 = (event_t)4;
     static constexpr event_t EVENT_ID2 = (event_t)6;
@@ -804,7 +805,13 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::PreloadWeight(SLIGradKLLoss
     // weight 可以常驻, 所以直接搬运, 减少搬运切片
 
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2Weight[runInfo.taskIdMod2]);
-    AscendC::DataCopy(weightInUb[weightDBOffset], weightGm[weightOffset], AlignTo(constInfo.gSizeQueryIndex, static_cast<uint32_t>(16)));
+    if (constInfo.gSizeQueryIndex == N_QUERY_INDEX_SPECIAL) {
+        DataCopyExtParams copyParams = {1, static_cast<uint32_t>(constInfo.gSizeQueryIndex * sizeof(KV_T)), 0, 0, 0};
+        DataCopyPadExtParams<KV_T> copyPadParams = {true, 0, (uint8_t)(N_QUERY_INDEX_SPECIAL), 0.0};
+        AscendC::DataCopyPad(weightInUb[weightDBOffset], weightGm[weightOffset], copyParams, copyPadParams);
+    } else {
+        AscendC::DataCopy(weightInUb[weightDBOffset], weightGm[weightOffset], constInfo.gSizeQueryIndex);
+    }    
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV);
     AscendC::Cast(weightUb[weightDBOffset], weightInUb[weightDBOffset], AscendC::RoundMode::CAST_NONE, constInfo.gSizeQueryIndex);
