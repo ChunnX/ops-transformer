@@ -624,26 +624,35 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::WorkspaceInit(__gm__ uint8_t 
                        static_cast<int64_t>(sizeof(mmCkvKrOutputType));
 
     mmCqResGm_.SetGlobalBuffer((__gm__ mmCqOutputType *)(workspace + workspaceOffset));
-    if constexpr (!std::is_same<rmsNormCqOutputType, mmCqOutputType>::value) {
-        workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeCq) * static_cast<int64_t>(sizeof(mmCqOutputType));
-    }
 
     if (baseParams_->queryNormFlag == 0U) {
+        // 全量化场景下`mmCqResGm_`与`rmsNormCqResGm_`的dtype不同，无法共用workspace，此处需要偏移`mmCqResGm_`占用的大小；
+        if constexpr (!std::is_same<rmsNormCqOutputType, mmCqOutputType>::value) {
+            workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                               static_cast<int64_t>(baseParams_->headSizeCq) *
+                               static_cast<int64_t>(sizeof(mmCqOutputType));
+        }
+        // 不返回queryNorm时，rmsNormCq结果放在workspace
         rmsNormCqResGm_.SetGlobalBuffer((__gm__ rmsNormCqOutputType *)(workspace + workspaceOffset));
         workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
                            static_cast<int64_t>(baseParams_->headSizeCq) * sizeof(rmsNormCqOutputType);
+    } else {
+        // 返回queryNorm时，rmsNormCq结果直接输出gm，此处需要偏移`mmCqResGm_`占用的大小
+        workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
+                           static_cast<int64_t>(baseParams_->headSizeCq) * static_cast<int64_t>(sizeof(mmCqOutputType));
     }
 
     mmQcQrResGm_.SetGlobalBuffer((__gm__ mmQcQrOutputType *)(workspace + workspaceOffset));
     if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value) {
         workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
-                           static_cast<int64_t>(baseParams_->headSizeQc + baseParams_->headSizeQr) * static_cast<int64_t>(sizeof(mmQcQrOutputType));
+                           static_cast<int64_t>(baseParams_->headSizeQc + baseParams_->headSizeQr) *
+                           static_cast<int64_t>(sizeof(mmQcQrOutputType));
     }
 
     mmQcQrResDequantGm_.SetGlobalBuffer((__gm__ mmQnInputType *)(workspace + workspaceOffset));
-    if constexpr (((std::is_same<mmInputType, int8_t>::value && std::is_same<kvCacheType, int8_t>::value) || 
-                   (std::is_same<mmInputType, FP8E4M3>::value && std::is_same<kvCacheType, FP8E4M3>::value)) && 
-                   !isPertile) {
+    if constexpr (((std::is_same<mmInputType, int8_t>::value && std::is_same<kvCacheType, int8_t>::value) ||
+                   (std::is_same<mmInputType, FP8E4M3>::value && std::is_same<kvCacheType, FP8E4M3>::value)) &&
+                  !isPertile) {
         workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
                            static_cast<int64_t>(baseParams_->numHeadSize) *
                            static_cast<int64_t>(baseParams_->dimHeadSizeQc) * sizeof(mmQnInputType);
