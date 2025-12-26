@@ -312,7 +312,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>tuningConfigOptional</td>
     <td>可选输入</td>
     <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。</td>
-    <td>兼容历史版本，用户如不适用该参数，不传（即为nullptr）即可。</td>
+    <td>兼容历史版本，用户如不使用该参数，不传（即为nullptr）即可。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
