@@ -88,7 +88,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>x1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
+          <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
           <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
@@ -98,7 +98,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>x2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
+          <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
           <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>支持转置场景下的非连续的tensor</li></ul></td>
           <td>INT8</td>
           <td>ND</td>
@@ -108,7 +108,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>bias</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，即计算公式中的bias。</td>
+          <td>即计算公式中的bias。</td>
           <td><ul><li>支持传入空指针场景。</li><li>当前版本仅支持一维输入。</li></ul></td>
           <td>INT32</td>
           <td>ND</td>
@@ -118,7 +118,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>dequantScale</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算后的全量化系数，即计算公式中的dequantScale。</td>
+          <td>MatMul计算后的全量化系数，即计算公式中的dequantScale。</td>
           <td>shape在pertensor场景为(1)，perchannel场景为(n)或(1, n)。</td>
           <td>UINT64、INT64、BFLOAT16</td>
           <td>ND</td>
@@ -128,7 +128,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>residual</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，AddRmsNorm融合算子的残差输入，即计算公式中的residual。</td>
+          <td>AddRmsNorm融合算子的残差输入，即计算公式中的residual。</td>
           <td>inplace场景将residual作为y的输出地址。当前版本仅支持三维输入。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -138,7 +138,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>gamma</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，AddRmsNorm融合算子的RmsNorm计算输入，即计算公式中的gamma。</td>
+          <td>AddRmsNorm融合算子的RmsNorm计算输入，即计算公式中的gamma。</td>
           <td>当前版本仅支持一维输入。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -198,7 +198,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>y</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，mm + all_reduce + add的结果，即计算公式中的y。</td>
+          <td>mm + all_reduce + add的结果，即计算公式中的y。</td>
           <td><ul><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -208,7 +208,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>normOut</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，mm + all_reduce + add + rms_norm的结果，即计算公式中的normOut。</td>
+          <td>mm + all_reduce + add + rms_norm的结果，即计算公式中的normOut。</td>
           <td><ul><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>

@@ -77,7 +77,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>x</td>
       <td>输入</td>
-      <td>Device侧的aclTensor类型，公式中的输入x。</td>
+      <td>公式中的输入x。</td>
       <td>
         <ul>
           <li>x必须转置。</li>
@@ -92,7 +92,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>weight</td>
       <td>输入</td>
-      <td>表示权重，Device侧的aclTensor类型，公式中的weight。</td>
+      <td>表示权重，公式中的weight。</td>
       <td>
         <ul>
           <li>weight不支持转置。</li>
@@ -107,7 +107,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>groupList</td>
       <td>输入</td>
-      <td>表示输入和输出分组轴方向的matmul大小分布，Device侧的aclTensor类型。</td>
+      <td>表示输入和输出分组轴方向的matmul大小分布。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -117,7 +117,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>y</td>
       <td>输入</td>
-      <td>表示原地累加的输入矩阵，Device侧的aclTensor类型，公式中的y。</td>
+      <td>表示原地累加的输入矩阵，公式中的y。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>yRef</td>
       <td>输出</td>
-      <td>表示原地累加的输入矩阵y的引用（与y完全相同），Device侧的aclTensor类型，公式中的yRef</td>
+      <td>表示原地累加的输入矩阵y的引用（与y完全相同），公式中的yRef</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>

@@ -88,7 +88,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>x1</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的输入x1。</td>
+      <td>公式中的输入x1。</td>
       <td>-</td>
       <td>FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
       <td>ND</td>
@@ -98,7 +98,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>x2</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的输入x2。</td>
+      <td>公式中的输入x2。</td>
       <td>-</td>
       <td>FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
       <td>ND</td>
@@ -108,7 +108,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>scale1Optional</td>
       <td>可选输入</td>
-      <td>表示量化参数中的由x1量化引入的缩放因子，Device侧的aclTensor。</td>
+      <td>表示量化参数中的由x1量化引入的缩放因子。</td>
       <td>
         <ul>
           <li>综合约束请参见<a href="#约束说明" target="_blank">约束说明</a>。</li>
@@ -122,7 +122,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>scale2</td>
       <td>输入</td>
-      <td>表示量化参数中的由x2量化引入的缩放因子，Device侧的aclTensor。</td>
+      <td>表示量化参数中的由x2量化引入的缩放因子。</td>
       <td>
         <ul>
           <li>综合约束请参见<a href="#约束说明" target="_blank">约束说明</a>。</li>
@@ -136,7 +136,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>groupList</td>
       <td>输入</td>
-      <td>表示输入和输出分组轴方向的matmul大小分布，Device侧的aclTensor。</td>
+      <td>表示输入和输出分组轴方向的matmul大小分布。</td>
       <td>
         <ul>
           <li>当groupListType为0时，groupList必须为非负单调非递减数列，当groupListType为1时，groupList必须为非负数列。</li>
@@ -151,7 +151,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>yRef</td>
       <td>输入输出</td>
-      <td>Device侧的aclTensor，对应公式中的输入输出y。</td>
+      <td>对应公式中的输入输出y。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>

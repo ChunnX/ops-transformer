@@ -82,7 +82,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的query。</td>
+      <td>公式中的query。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -92,7 +92,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>公式中的key。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -102,7 +102,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>value</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的value。</td>
+      <td>公式中的value。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -112,7 +112,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的atten_mask。</td>
+      <td>公式中的atten_mask。</td>
       <td>
         <ul>
           <li>输入shape需为[S,S]。</li>
@@ -127,7 +127,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>actualSeqQLenOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的query S大小(Sq)。</td>
+      <td>描述每个Batch对应的query S大小(Sq)。</td>
       <td>-</td>
       <td>INT64</td>
       <td>ND</td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>outputGrad</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，正向算子输出的反向梯度。</td>
+      <td>正向算子输出的反向梯度。</td>
       <td>-</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>input</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，待压缩张量。</td>
+      <td>待压缩张量。</td>
       <td>-</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>weight</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，压缩的权重，与input的shape满足broadcast关系。</td>
+      <td>压缩的权重，与input的shape满足broadcast关系。</td>
       <td>数据类型与input一致。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>actSeqLenOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的S大小，各batch长度不等时需要输入。</td>
+      <td>描述每个Batch对应的S大小，各batch长度不等时需要输入。</td>
       <td>-</td>
       <td>INT64</td>
       <td>ND</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>compressBlockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，压缩滑窗大小。</td>
+      <td>压缩滑窗大小。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -187,7 +187,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>compressStride</td>
       <td>输入</td>
-      <td>Host侧的int64_t，两次压缩滑窗间隔大小。</td>
+      <td>两次压缩滑窗间隔大小。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -197,7 +197,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>actSeqLenType</td>
       <td>输入</td>
-      <td>Host侧的int64_t，取值0或1，当前仅支持0。</td>
+      <td>取值0或1，当前仅支持0。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -207,7 +207,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>layoutOptional</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入input的数据排布格式，支持TND。</td>
+      <td>代表输入input的数据排布格式，支持TND。</td>
       <td>-</td>
       <td>string</td>
       <td>-</td>
@@ -217,7 +217,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>inputGrad</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，input的梯度，与input shape一致。</td>
+      <td>input的梯度，与input shape一致。</td>
       <td>数据类型与input一致。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -227,7 +227,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>weightGrad</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，weight的梯度，与weight shape一致。</td>
+      <td>weight的梯度，与weight shape一致。</td>
       <td>数据类型与weight一致。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -259,48 +259,51 @@ aclnnStatus aclnnNsaCompressGrad(
 
 - **返回值：**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-<col style="width: 319px">
-<col style="width: 144px">
-<col style="width: 671px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>传入的input、weight、outputGrad、inputGrad或weightGrad是空指针。</td>
-  </tr>
-  <tr>
-    <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-    <td rowspan="3">161002</td>
-    <td>input和weight的数据类型不在支持的范围之内。</td>
-  </tr>
-  <tr>
-    <td>input和weight的shape无法做broadcast。</td>
-  </tr>
-  <tr>
-    <td>layoutOptional不合法。</td>
-  </tr>
-</tbody>
-</table>
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口会完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入的input、weight、outputGrad、inputGrad或weightGrad是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
+      <td>input和weight的数据类型不在支持的范围之内。</td>
+    </tr>
+    <tr>
+      <td>input和weight的shape无法做broadcast。</td>
+    </tr>
+    <tr>
+      <td>layoutOptional不合法。</td>
+    </tr>
+  </tbody>
+  </table>
 
 
 ### aclnnNsaCompressGrad
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
   </colgroup>
   <thead>
     <tr>

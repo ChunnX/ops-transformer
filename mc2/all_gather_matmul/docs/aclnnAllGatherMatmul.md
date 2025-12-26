@@ -77,7 +77,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <tr>
           <td>x1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，即计算公式中的x1。</td>
+          <td>即计算公式中的x1。</td>
           <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维shape输入，且仅支持不转置场景。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -87,7 +87,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <tr>
           <td>x2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，即计算公式中的x2。</td>
+          <td>即计算公式中的x2。</td>
           <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>支持通过转置构造非连续Tensor。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -97,7 +97,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <tr>
           <td>bias</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，即计算公式中的bias。</td>
+          <td>即计算公式中的bias。</td>
           <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持bias输入为非0的场景。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <tr>
           <td>output</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
+          <td>AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
           <td><ul><li>不支持空Tensor。</li><li>与x1的数据类型保持一致。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <tr>
           <td>gatherOut</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，仅输出AllGather通信后的结果，即计算公式中的gatherOut。</td>
+          <td>仅输出AllGather通信后的结果，即计算公式中的gatherOut。</td>
           <td><ul><li>不支持空Tensor。</li><li>与x1的数据类型保持一致。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -190,6 +190,9 @@ aclnnStatus aclnnAllGatherMatmul(
 -   **返回值：**
 
     返回aclnnStatus状态码，第一段接口完成入参校验，出现以下场景时报错：
+
+    第一段接口会完成入参校验，出现以下场景时报错：
+    
     <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
     <col style="width: 250px">
     <col style="width: 130px">

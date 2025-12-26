@@ -66,7 +66,7 @@
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/gather_pa_kv_cache/README.md">gather_pa_kv_cache</a></td>
+    <td><a href="../attention/gather_pa_kv_cache/README.md">gather_pa_kv_cache</a></td>
     <td>√</td>
     <td>√</td>
     <td>√</td>
@@ -83,6 +83,26 @@
     <td>√</td>
     <td>AI Core</td>
     <td>增量推理场景的FlashAttention算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/kv_quant_sparse_flash_attention/README.md">kv_quant_sparse_flash_attention</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>在Sparse Flash Attention的基础上支持了[Per-Token-Head-Tile-128量化]输入。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/lightning_indexer/README.md">lightning_indexer</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>基于一系列操作得到每一个token对应的Top-k个位置。</td>
   </tr>
     <tr>
     <td>attention</td>
@@ -216,6 +236,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/quant_lightning_indexer/README.md">quant_lightning_indexer</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>推理场景下，SparseFlashAttention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/recurrent_gated_delta_rule/README.md">recurrent_gated_delta_rule</a></td>
     <td>√</td>
     <td>√</td>
@@ -233,6 +263,16 @@
     <td>×</td>
     <td>AI Core</td>
     <td>训练场景下，更新两次FlashAttention的结果。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_flash_attention/README.md">sparse_flash_attention</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>针对大序列长度推理场景的高效注意力计算模块。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -263,6 +303,16 @@
     <td>√</td>
     <td>AI Core</td>
     <td>完成fp16权重场景下的Swin Transformer 网络模型的Q、K、V 的计算。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
+    <td><a href="../../ffn/swin_transformer_ln_qkv_quant/README.md">swin_transformer_ln_qkv_quant</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>Swin Transformer 网络模型 完成 Q、K、V 的计算。</td>
   </tr>
   <tr>
     <td>gmm</td>
@@ -303,6 +353,16 @@
     <td>×</td>
     <td>AI Core</td>
     <td>融合GroupedMatmul 、dequant、swiglu和quant。</td>
+  </tr>
+  <tr>
+    <td>gmm</td>
+    <td><a href="../../gmm/quant_grouped_matmul_inplace_add/README.md">quant_grouped_matmul_inplace_add</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>AI Core</td>
+    <td>实现分组矩阵乘计算和加法计算。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -353,6 +413,36 @@
     <td>√</td>
     <td>AI Core</td>
     <td>完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/elastic_receivable_info_collect/README.md">elastic_receivable_info_collect</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>AI Core</td>
+    <td>收集一个通信域内的所有卡发送的数据并整理输出，以检测通信链路是否正常。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/elastic_receivable_test/README.md">elastic_receivable_test</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>对一个通信域内的所有卡发送数据并写状态位，以检测通信链路是否正常。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/grouped_mat_mul_all_reduce/README.md">grouped_mat_mul_all_reduce</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>在融合GroupedMatMul的基础上实现多卡并行AllReduce功能，实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -453,6 +543,16 @@
     <td>√</td>
     <td>AI Core</td>
     <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/moe_distribute_buffer_reset/README.md">moe_distribute_buffer_reset</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>故障检测流程中，对EP通信域做数据区与状态区的清理。</td>
   </tr>
   <tr>
     <td>mc2</td>

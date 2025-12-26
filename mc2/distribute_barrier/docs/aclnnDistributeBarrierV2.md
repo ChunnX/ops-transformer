@@ -68,7 +68,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <tr>
     <td>xRef</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
+    <td>无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
     <td>无</td>
     <td>BFLOAT16、FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
     <td>ND</td>

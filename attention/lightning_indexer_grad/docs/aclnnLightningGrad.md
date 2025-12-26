@@ -101,7 +101,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的query。</td>
+      <td>公式中的query。</td>
       <td>shape支持[B, S1, N1, D]/[T1, N1, D]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -111,7 +111,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>公式中的key。</td>
       <td>shape支持[B, S2, N2, D]/[T2, N2, D]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -121,7 +121,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>dy</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的value。</td>
+      <td>公式中的value。</td>
       <td>shape支持[B, S1, N1, D]/[T1, N1, D]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>sparseIndices</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的sparseIndices。</td>
+      <td>公式中的sparseIndices。</td>
       <td>shape支持[B, S1, K]/[T1, K]。</td>
       <td>INT64</td>
       <td>ND</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>weights</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的weights。</td>
+      <td>公式中的weights。</td>
       <td>shape支持[B, S1, N1]/[T1, N1]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>actucalSeqLengthsQuery</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，表示query每个Batch S的累加和长度。</td>
+      <td>表示query每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
       <td>INT64</td>
       <td>ND</td>
@@ -161,7 +161,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>actucalSeqLengthsKey</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，表示key每个Batch S的累加和长度。</td>
+      <td>表示key每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
       <td>INT64</td>
       <td>ND</td>
@@ -171,7 +171,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>headNum</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表head个数。</td>
+      <td>代表head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -181,7 +181,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>layout</td>
       <td>输入</td>
-      <td>Host侧的string，代表query/key的数据排布格式。</td>
+      <td>代表query/key的数据排布格式。</td>
       <td>当前支持TND/BSND。</td>
       <td>String</td>
       <td>-</td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>sparseMode</td>
       <td>输入</td>
-      <td>Host侧的int64_t，表示sparse模式。</td>
+      <td>表示sparse模式。</td>
       <td>支持取值0/3。</td>
       <td>INT64</td>
       <td>-</td>
@@ -201,7 +201,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>preTokens</td>
       <td>输入</td>
-      <td>Host侧的int64_t，用于稀疏计算 ，表示slides window的左边界。</td>
+      <td>用于稀疏计算 ，表示slides window的左边界。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -211,7 +211,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>nextTokens</td>
       <td>输入</td>
-      <td>Host侧的int64_t，用于稀疏计算 ，表示slides window的右边界。</td>
+      <td>用于稀疏计算 ，表示slides window的右边界。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -221,7 +221,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>determinstic</td>
       <td>输入</td>
-      <td>Host侧的bool，表示当前是否支持确定性计算。</td>
+      <td>表示当前是否支持确定性计算。</td>
       <td>-</td>
       <td>BOOL</td>
       <td>-</td>
@@ -231,7 +231,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>dQuery</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，dQuery梯度。</td>
+      <td>dQuery梯度。</td>
       <td>数据类型与query一致。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>dKey</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，dKey梯度。</td>
+      <td>dKey梯度。</td>
       <td>数据类型与key一致。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -251,7 +251,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>dWeights</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，dWeights梯度。</td>
+      <td>dWeights梯度。</td>
       <td>数据类型与weights一致。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>

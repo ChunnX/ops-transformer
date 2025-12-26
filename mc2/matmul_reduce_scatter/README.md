@@ -41,21 +41,21 @@ $$
   <tr>
    <td>x1</td>
    <td>输入</td>
-   <td>Device侧的aclTensor，即计算公式中的x1，数据类型与x2保持一致。当前版本仅支持二维输入，且仅支持不转置场景。</td>
+   <td>即计算公式中的x1，数据类型与x2保持一致。当前版本仅支持二维输入，且仅支持不转置场景。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>x2</td>
    <td>输入</td>
-   <td>Device侧的aclTensor，即计算公式中的x2，数据类型与x1保持一致。支持通过转置构造的非连续的Tensor，当前版本仅支持二维输入。</td>
+   <td>即计算公式中的x2，数据类型与x1保持一致。支持通过转置构造的非连续的Tensor，当前版本仅支持二维输入。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>bias</td>
    <td>输入</td>
-   <td>Device侧的aclTensor，即计算公式中的bias，支持传入空指针。当前版本仅支持一维输入，且暂不支持bias输入为非0的场景。</td>
+   <td>即计算公式中的bias，支持传入空指针。当前版本仅支持一维输入，且暂不支持bias输入为非0的场景。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -90,7 +90,7 @@ $$
   <tr>
    <td>output</td>
    <td>输出</td>
-   <td>Device侧的aclTensor，mm计算+reducescatter通信的结果，数据类型与x1保持一致。</td>
+   <td>mm计算+reducescatter通信的结果，数据类型与x1保持一致。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>

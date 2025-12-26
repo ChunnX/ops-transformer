@@ -90,7 +90,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>x1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
+          <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
           <td><ul><li>支持空Tensor。</li><li>当前版本仅支持二维或者三维输入。</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -100,7 +100,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>x2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
+          <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
           <td><ul><li>支持空Tensor。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>支持转置场景下的非连续的tensor。</li></ul></td>
           <td>INT8、INT4</td>
           <td>ND</td>
@@ -110,7 +110,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>bias</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，即计算公式中的bias。</td>
+          <td>即计算公式中的bias。</td>
           <td><ul><li>支持传入空指针场景。</li><li>当前版本仅支持一维输入。</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>antiquantScale</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，即计算公式中的antiquantScale。</td>
+          <td>即计算公式中的antiquantScale。</td>
           <td>pertensor场景shape为(1)；PerChannel场景shape为(n)/(1,n)，n为x2最后一维的大小；pergroup场景shape为(ceil(k,antiquantGroupSize),n)。</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>antiquantOffset</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，对x2进行伪量化计算的offset参数，即计算公式中的antiquantOffset。</td>
+          <td>对x2进行伪量化计算的offset参数，即计算公式中的antiquantOffset。</td>
           <td>可选，可为空，非空时shape与antiquantScale一致。</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>residual</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，AddRmsNorm融合算子的残差输入，即计算公式中的residual。</td>
+          <td>AddRmsNorm融合算子的残差输入，即计算公式中的residual。</td>
           <td>当前版本仅支持三维输入。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -150,7 +150,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>gamma</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，AddRmsNorm融合算子的RmsNorm计算输入，即计算公式中的gamma。</td>
+          <td>AddRmsNorm融合算子的RmsNorm计算输入，即计算公式中的gamma。</td>
           <td>当前版本仅支持一维输入。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>y</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，mm + all_reduce + add的结果，即计算公式中的y。</td>
+          <td>mm + all_reduce + add的结果，即计算公式中的y。</td>
           <td><ul><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>normOut</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，mm + all_reduce + add + rms_norm的结果，即计算公式中的normOut。</td>
+          <td>mm + all_reduce + add + rms_norm的结果，即计算公式中的normOut。</td>
           <td><ul><li>不支持空Tensor。</li><li>数据类型同residual输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>

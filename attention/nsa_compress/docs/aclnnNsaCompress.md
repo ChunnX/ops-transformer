@@ -74,7 +74,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>input</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，表示待压缩张量。</td>
+      <td>表示待压缩张量。</td>
       <td>
         <ul>
           <li>不支持空Tensor。</li>
@@ -90,7 +90,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>weight</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，表示压缩权重。</td>
+      <td>表示压缩权重。</td>
       <td>
         <ul>
           <li>不支持空Tensor。</li>
@@ -106,7 +106,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>actSeqLenOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的S大小。</td>
+      <td>描述每个Batch对应的S大小。</td>
       <td>
         <ul>
           <li>当前不能为空。</li>
@@ -120,7 +120,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>layoutOptional</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入input的数据排布格式。</td>
+      <td>代表输入input的数据排布格式。</td>
       <td>
         <ul>
           <li>支持BSH、SBH、BSND、BNSD、TND。</li>
@@ -135,7 +135,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>compressBlockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，压缩滑窗大小。</td>
+      <td>压缩滑窗大小。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -145,7 +145,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>compressStride</td>
       <td>输入</td>
-      <td>Host侧的int64_t，两次压缩滑窗间隔大小。</td>
+      <td>两次压缩滑窗间隔大小。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -155,7 +155,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>actSeqLenType</td>
       <td>输入</td>
-      <td>Host侧的int64_t，描述actSeqLenOptional数值类型。</td>
+      <td>描述actSeqLenOptional数值类型。</td>
       <td>
         <ul>
           <li>可取值0或1。</li>
@@ -171,7 +171,7 @@ aclnnStatus aclnnNsaCompress(
     <tr>
       <td>output</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，压缩后的结果。</td>
+      <td>压缩后的结果。</td>
       <td>
         <ul>
           <li>不支持空Tensor。</li>
@@ -211,48 +211,51 @@ aclnnStatus aclnnNsaCompress(
 
 - **返回值：**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-<col style="width: 319px">
-<col style="width: 144px">
-<col style="width: 671px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>传入input、weight、actSeqLenOptional或output是空指针。</td>
-  </tr>
-  <tr>
-    <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-    <td rowspan="3">161002</td>
-    <td>input和weight的数据类型不在支持的范围之内。</td>
-  </tr>
-  <tr>
-    <td>input和weight的shape无法做broadcast。</td>
-  </tr>
-  <tr>
-    <td>layoutOptional不合法。</td>
-  </tr>
-</tbody>
-</table>
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口会完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入input、weight、actSeqLenOptional或output是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
+      <td>input和weight的数据类型不在支持的范围之内。</td>
+    </tr>
+    <tr>
+      <td>input和weight的shape无法做broadcast。</td>
+    </tr>
+    <tr>
+      <td>layoutOptional不合法。</td>
+    </tr>
+  </tbody>
+  </table>
 
 
 ## aclnnNsaCompress
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
   </colgroup>
   <thead>
     <tr>

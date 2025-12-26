@@ -34,132 +34,135 @@ aclnnStatus aclnnDistributeBarrier(
 
 ## aclnnDistributeBarrierGetWorkspaceSize
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
- <col style="width: 120px">
- <col style="width: 120px">
- <col style="width: 160px">
- <col style="width: 150px">
- <col style="width: 80px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>xRef</td>
-   <td>输入</td>
-   <td>Device侧的aclTensor，无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
-   <td>BFLOAT16, FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>group</td>
-   <td>输入</td>
-   <td>通信域名称，进行所有卡同步的通信域。</td>
-   <td>STRING</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>worldSize</td>
-   <td>输入</td>
-   <td>通信域大小。</td>
-   <td>UINT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输出</td>
-   <td>返回需要在Device侧申请的workspace大小。</td>
-   <td>UINT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输出</td>
-   <td>返回op执行器，包含了算子的计算流程。</td>
-   <td>UINT64</td>
-   <td>ND</td>
-  </tr>
- </tbody></table>
+    <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
+    <col style="width: 120px">
+    <col style="width: 120px">
+    <col style="width: 160px">
+    <col style="width: 150px">
+    <col style="width: 80px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>xRef</td>
+    <td>输入</td>
+    <td>无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
+    <td>BFLOAT16, FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>group</td>
+    <td>输入</td>
+    <td>通信域名称，进行所有卡同步的通信域。</td>
+    <td>STRING</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>worldSize</td>
+    <td>输入</td>
+    <td>通信域大小。</td>
+    <td>UINT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输出</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>UINT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输出</td>
+    <td>返回op执行器，包含了算子的计算流程。</td>
+    <td>UINT64</td>
+    <td>ND</td>
+    </tr>
+    </tbody></table>
 
     
-**返回值**
-第一段接口完成入参校验，出现以下场景时报错：
+- **返回值**
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
- <col style="width: 800px">
- </colgroup>
- <thead>
-  <tr>
-   <th>返回值</th>
-   <th>错误码</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>ACLNN_ERR_PARAM_NULLPTR</td>
-   <td>161001</td>
-   <td>输入的必选参数Tensor是空指针。</td>
-  </tr>
-  <tr>
-   <td>ACLNN_ERR_INNER_TILING_ERROR</td>
-   <td>561002</td>
-   <td>参数的取值不在支持的范围。</td>
-  </tr>
- </tbody></table>
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    第一段接口完成入参校验，出现以下场景时报错：
+
+    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
+    <col style="width: 250px">
+    <col style="width: 130px">
+    <col style="width: 800px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
+    <td>输入的必选参数Tensor是空指针。</td>
+    </tr>
+    <tr>
+    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+    <td>561002</td>
+    <td>参数的取值不在支持的范围。</td>
+    </tr>
+    </tbody></table>
 
 
 ## aclnnDistributeBarrier
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
- <col style="width: 800px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>workspace</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace内存地址。</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnDistributeBarrierGetWorkspaceSize</code>获取。</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输入</td>
-   <td>op执行器，包含了算子计算流程。</td>
-  </tr>
-  <tr>
-   <td>stream</td>
-   <td>输入</td>
-   <td>指定执行任务的Stream。</td>
-  </tr>
- </tbody></table>
+    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
+    <col style="width: 250px">
+    <col style="width: 130px">
+    <col style="width: 800px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnDistributeBarrierGetWorkspaceSize</code>获取。</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的Stream。</td>
+    </tr>
+    </tbody></table>
 
     
-**返回值**
+- **返回值**
 
-返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 

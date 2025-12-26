@@ -75,28 +75,28 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
   <tr>
    <td>x</td>
    <td>输入</td>
-   <td>必选参数，Device侧的aclTensorList，公式中的输入x，支持的最大长度为64个。</td>
+   <td>必选参数，公式中的输入x，支持的最大长度为64个。</td>
    <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>weight</td>
    <td>输入</td>
-   <td>必选参数，Device侧的aclTensorList，公式中的weight，支持的最大长度为64个。</td>
+   <td>必选参数，公式中的weight，支持的最大长度为64个。</td>
    <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>bias</td>
    <td>输入</td>
-   <td>可选参数，Device侧的aclTensorList，公式中的bias，支持的最大长度为64个。</td>
+   <td>可选参数，公式中的bias，支持的最大长度为64个。</td>
    <td>FLOAT16、FLOAT32（列表内张量数据类型）</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>groupListOptional</td>
    <td>输入</td>
-   <td>可选参数，Host侧的aclIntArray类型，代表输入和输出M方向的matmul大小分布，支持的最大长度为64个。</td>
+   <td>可选参数，代表输入和输出M方向的matmul大小分布，支持的最大长度为64个。</td>
    <td>INT64（数组元素类型）</td>
    <td>ND</td>
   </tr>
@@ -110,7 +110,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
   <tr>
    <td>group</td>
    <td>输入</td>
-   <td>Host侧标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
+   <td>即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
@@ -124,21 +124,21 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
   <tr>
    <td>commTurn</td>
    <td>输入</td>
-   <td>Host侧整型，通信数据切分数（总数据量/单次通信量），当前版本仅支持输入0。</td>
+   <td>通信数据切分数（总数据量/单次通信量），当前版本仅支持输入0。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>streamMode</td>
    <td>输入</td>
-   <td>Host侧整型，acl流模式的枚举，当前只支持值1。</td>
+   <td>acl流模式的枚举，当前只支持值1。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>y</td>
    <td>输出</td>
-   <td>Device侧的aclTensorList，公式中的输出y，支持的最大长度为64个。</td>
+   <td>公式中的输出y，支持的最大长度为64个。</td>
    <td>FLOAT16、BFLOAT16（列表内张量数据类型）</td>
    <td>ND</td>
   </tr>
@@ -159,6 +159,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
  </tbody></table>
 
 **返回值**
+
 第一段接口完成入参校验，出现以下场景时报错：
 
 <table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>

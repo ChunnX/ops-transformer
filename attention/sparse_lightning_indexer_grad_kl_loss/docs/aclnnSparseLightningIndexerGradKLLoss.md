@@ -190,7 +190,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>softmaxMax</td>
             <td>输入</td>
-            <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+            <td>注意力正向计算的中间输出。</td>
             <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>softmaxSum</td>
             <td>输入</td>
-            <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+            <td>注意力正向计算的中间输出。</td>
             <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>

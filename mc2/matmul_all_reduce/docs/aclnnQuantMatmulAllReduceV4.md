@@ -114,7 +114,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>x1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的左矩阵，即计算公式中的x1。</td>
+          <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
           <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2。</td>
           <td>ND</td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>x2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算的右矩阵，即计算公式中的x2。</td>
+          <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
           <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li></ul></td>
           <td>INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2。</td>
           <td>ND</td>
@@ -134,7 +134,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>biasOptional</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，bias偏移，即计算公式中的biasOptional。</td>
+          <td>bias偏移，即计算公式中的biasOptional。</td>
           <td>当前版本仅支持一维输入。</td>
           <td>INT32、FLOAT32</td>
           <td>ND</td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>x3Optional</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算后的add计算，即计算公式中的x3Optional。</td>
+          <td>MatMul计算后的add计算，即计算公式中的x3Optional。</td>
           <td>低比特通信场景下仅支持输出为BFLOAT16场景，且仅支持非空输入，要求维度与output的维度一致。</td>
           <td>FLOAT16、BFLOAT16、FLOAT32</td>
           <td>ND</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>x1ScaleOptional</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算后的pertoken去量化系数，即计算公式中的x1ScaleOptional。</td>
+          <td>MatMul计算后的pertoken去量化系数，即计算公式中的x1ScaleOptional。</td>
           <td>x1为(b, s, k)时shape为(b*s)，x1为(m, k)时shape为(m)。perblock场景下，x1为(b, s, k)时shape为[b, ceilDiv(s, 128), ceilDiv(k, 128)]，x1为(m, k)时shape为[ceilDiv(m, 128), ceilDiv(k, 128)]。数据类型为FLOAT8_E8M0时，shape为[b, s, ceilDiv(k, 32)]或者[m, ceilDiv(k, 32)]，且必须保证ceilDiv(k, 32)为偶数。</td>
           <td>FLOAT32、FLOAT8_E8M0</td>
           <td>ND</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>x2Scale</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul计算后的去量化系数，即计算公式中的x2Scale。</td>
+          <td>MatMul计算后的去量化系数，即计算公式中的x2Scale。</td>
           <td><ul><li>shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。</li><li>输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。</li><li>输出为FLOAT16且输入为INT8时，x1ScaleOptional不为空，可直接将FLOAT32类型的x2Scale传入本接口，如果x1ScaleOptional为空，则需提前调用TransQuantParamV2算子的aclnn接口来将x2Scale转成INT64/UINT64数据类型。数据类型为FLOAT8_E8M0时，仅支持转置，shape为[n, k]时，x2Scale的shape为[n, ceilDiv(k, 32)]，且必须保证ceilDiv(k, 32)为偶数。perblock场景下，x2的shape为[ceilDiv(k, 128), ceilDiv(n, 128)]，x2转置时，x2Scale的shape为[ceilDiv(n, 128), ceilDiv(k, 128)]。</li></ul></td>
           <td>ND</td>
           <td>1-2</td>
@@ -173,7 +173,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>commQuantScale1Optional</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，MatMul+Add计算后的perchannel量化系数，即计算公式中的commQuantScale1。</td>
+          <td>MatMul+Add计算后的perchannel量化系数，即计算公式中的commQuantScale1。</td>
           <td>x2为(k, n)时, shape可为(n)或者(1,n)</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>commQuantScale2Optional</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，AllGather计算后的perchannel量化系数，即计算公式中的commQuantScale2。</td>
+          <td>AllGather计算后的perchannel量化系数，即计算公式中的commQuantScale2。</td>
           <td>x2为(k, n)时, shape可为(n)或者(1,n)</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         <tr>
           <td>output</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，MatMul计算与AllReduce通信的结果，即计算公式中的output。</td>
+          <td>MatMul计算与AllReduce通信的结果，即计算公式中的output。</td>
           <td>output的维数与x1一致。</td>
           <td>FLOAT16、BFLOAT16、FLOAT32</td>
           <td>ND</td>

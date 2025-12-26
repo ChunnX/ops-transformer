@@ -51,98 +51,98 @@
   <tr>
     <td>x</td>
     <td>输入</td>
-    <td>必选参数，Device侧的aclTensor，公式中的输入x，支持输入的维度最少是2维[M, K1]，最多是8维。</td>
+    <td>必选参数，公式中的输入x，支持输入的维度最少是2维[M, K1]，最多是8维。</td>
     <td>FLOAT16、BFLOAT16、INT8</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>weight1</td>
     <td>输入</td>
-    <td>必选参数，Device侧的aclTensor，专家的权重数据，公式中的W1，输入在有/无专家时分别为[E, K1, N1]/[K1, N1]。</td>
+    <td>必选参数，专家的权重数据，公式中的W1，输入在有/无专家时分别为[E, K1, N1]/[K1, N1]。</td>
     <td>FLOAT16、BFLOAT16、INT8、INT4</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>weight2</td>
     <td>输入</td>
-    <td>必选参数，Device侧的aclTensor，专家的权重数据，公式中的W2，输入在有/无专家时分别为[E, K2, N2]/[K2, N2]。</td>
+    <td>必选参数，专家的权重数据，公式中的W2，输入在有/无专家时分别为[E, K2, N2]/[K2, N2]。</td>
     <td>FLOAT16、BFLOAT16、INT8、INT4</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>expertTokens</td>
     <td>输入</td>
-    <td>可选参数，Host侧的aclIntArray类型，代表各专家的token数，若不为空时可支持的最大长度为256个。</td>
+    <td>可选参数，代表各专家的token数，若不为空时可支持的最大长度为256个。</td>
     <td>INT64</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>bias1</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，权重数据修正值，公式中的b1，输入在有/无专家时分别为[E, N1]/[N1]。</td>
+    <td>可选参数，权重数据修正值，公式中的b1，输入在有/无专家时分别为[E, N1]/[N1]。</td>
     <td>FLOAT16、FLOAT32、INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>bias2</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，权重数据修正值，公式中的b2，输入在有/无专家时分别为[E, N2]/[N2]。</td>
+    <td>可选参数，权重数据修正值，公式中的b2，输入在有/无专家时分别为[E, N2]/[N2]。</td>
     <td>FLOAT16、FLOAT32、INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>scale</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，量化参数，量化缩放系数，per-tensor下输入在有/无专家时均为一维向量，输入元素个数在有/无专家时分别为[E]/[1]；per-channel下输入在有/无专家时为二维向量/一维向量，输入元素个数在有/无专家时分别为[E, N1]/[N1]。</td>
+    <td>可选参数，量化参数，量化缩放系数，per-tensor下输入在有/无专家时均为一维向量，输入元素个数在有/无专家时分别为[E]/[1]；per-channel下输入在有/无专家时为二维向量/一维向量，输入元素个数在有/无专家时分别为[E, N1]/[N1]。</td>
     <td>FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>offset</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，量化参数，量化偏移量，一维向量，输入元素个数在有/无专家时分别为[E]/[1]。</td>
+    <td>可选参数，量化参数，量化偏移量，一维向量，输入元素个数在有/无专家时分别为[E]/[1]。</td>
     <td>FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>deqScale1</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，量化参数，第一个matmul的反量化缩放系数，输入在有/无专家时分别为[E, N1]/[N1]。</td>
+    <td>可选参数，量化参数，第一个matmul的反量化缩放系数，输入在有/无专家时分别为[E, N1]/[N1]。</td>
     <td>UINT64、INT64、FLOAT32、BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>deqScale2</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，量化参数，第二个matmul的反量化缩放系数，输入在有/无专家时分别为[E, N2]/[N2]。</td>
+    <td>可选参数，量化参数，第二个matmul的反量化缩放系数，输入在有/无专家时分别为[E, N2]/[N2]。</td>
     <td>UINT64、INT64、FLOAT32、BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>antiquantScale1</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，伪量化参数，第一个matmul的缩放系数，per-channel下输入在有/无专家时分别为[E, N1]/[N1]，per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]。</td>
+    <td>可选参数，伪量化参数，第一个matmul的缩放系数，per-channel下输入在有/无专家时分别为[E, N1]/[N1]，per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>antiquantScale2</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，伪量化参数，第二个matmul的缩放系数，per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]。</td>
+    <td>可选参数，伪量化参数，第二个matmul的缩放系数，per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>antiquantOffset1</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，伪量化参数，第一个matmul的偏移量，per-channel下输入在有/无专家时分别为[E, N1]/[N1]，per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]。</td>
+    <td>可选参数，伪量化参数，第一个matmul的偏移量，per-channel下输入在有/无专家时分别为[E, N1]/[N1]，per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>antiquantOffset2</td>
     <td>输入</td>
-    <td>可选参数，Device侧的aclTensor，伪量化参数，第二个matmul的偏移量，per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]。</td>
+    <td>可选参数，伪量化参数，第二个matmul的偏移量，per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
   </tr>

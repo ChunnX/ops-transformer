@@ -138,7 +138,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
   <tr>
    <td>out</td>
    <td>输出</td>
-   <td>Device侧的aclTensor，为batch_matmul计算+reduce_scatter计算+all_to_all通信的结果，数据类型与输入x保持一致，必须为3维。</td>
+   <td>为batch_matmul计算+reduce_scatter计算+all_to_all通信的结果，数据类型与输入x保持一致，必须为3维。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>

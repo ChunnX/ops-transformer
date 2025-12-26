@@ -114,7 +114,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的query。</td>
+      <td>公式中的query。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>公式中的key。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -134,7 +134,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>value</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的value。</td>
+      <td>公式中的value。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的atten_mask。</td>
+      <td>公式中的atten_mask。</td>
       <td>
         <ul>
           <li>输入shape需为[S,S]。</li>
@@ -159,7 +159,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>actualSeqQLenOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的query S大小(Sq)。</td>
+      <td>描述每个Batch对应的query S大小(Sq)。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>actualCmpSeqKvLenOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述compress attention的每个Batch对应的key/value S大小(CmpSkv)。</td>
+      <td>描述compress attention的每个Batch对应的key/value S大小(CmpSkv)。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -179,7 +179,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>actualSelSeqKvLenOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述经importance score计算压缩后的每个Batch对应的key/value S大小(SelSkv)。</td>
+      <td>描述经importance score计算压缩后的每个Batch对应的key/value S大小(SelSkv)。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>topkMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的topk_mask。</td>
+      <td>公式中的topk_mask。</td>
       <td>
         <ul>
           <li>输入shape需为[S,S]。</li>
@@ -205,7 +205,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>headNum</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表query的head个数。</td>
+      <td>代表query的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -225,7 +225,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>inputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query、key、value的数据排布格式。</td>
+      <td>代表输入query、key、value的数据排布格式。</td>
       <td>当前支持TND。</td>
       <td>String</td>
       <td>-</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>sparseMode</td>
       <td>输入</td>
-      <td>Host侧的int64_t，稀疏模式选择。</td>
+      <td>稀疏模式选择。</td>
       <td>仅支持0和1。</td>
       <td>INT64</td>
       <td>-</td>
@@ -245,7 +245,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>compressBlockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，对应公式中的l。</td>
+      <td>对应公式中的l。</td>
       <td>压缩滑窗大小。</td>
       <td>INT64</td>
       <td>-</td>
@@ -255,7 +255,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>compressStride</td>
       <td>输入</td>
-      <td>Host侧的int64_t，对应公式中的d。</td>
+      <td>对应公式中的d。</td>
       <td>两次压缩滑窗间隔大小。</td>
       <td>INT64</td>
       <td>-</td>
@@ -265,7 +265,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>selectBlockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，对应公式中的l'。</td>
+      <td>对应公式中的l'。</td>
       <td>选择块大小。</td>
       <td>INT64</td>
       <td>-</td>
@@ -275,7 +275,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>selectBlockCount</td>
       <td>输入</td>
-      <td>Host侧的int64_t，对应公式中topK选择个数。</td>
+      <td>对应公式中topK选择个数。</td>
       <td>选择块个数。</td>
       <td>INT64</td>
       <td>-</td>
@@ -285,7 +285,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>softmaxMaxOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，Softmax计算的Max中间结果。</td>
+      <td>Softmax计算的Max中间结果。</td>
       <td>用于反向计算。</td>
       <td>FLOAT</td>
       <td>ND</td>
@@ -295,7 +295,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>softmaxSumOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，Softmax计算的Sum中间结果。</td>
+      <td>Softmax计算的Sum中间结果。</td>
       <td>用于反向计算。</td>
       <td>FLOAT</td>
       <td>ND</td>
@@ -305,7 +305,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>attentionOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，公式中的attentionOut。</td>
+      <td>公式中的attentionOut。</td>
       <td>数据类型和shape与query保持一致。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -315,7 +315,7 @@ aclnnStatus aclnnNsaCompressAttention(
     <tr>
       <td>topkIndicesOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，公式中的topkIndices。</td>
+      <td>公式中的topkIndices。</td>
       <td>-</td>
       <td>INT32</td>
       <td>-</td>
@@ -348,48 +348,51 @@ aclnnStatus aclnnNsaCompressAttention(
 
 - **返回值：**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-<col style="width: 319px">
-<col style="width: 144px">
-<col style="width: 671px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>输入query，key，value 传入的是空指针。</td>
-  </tr>
-  <tr>
-    <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-    <td rowspan="3">161002</td>
-    <td>query，key，value 数据类型不在支持的范围之内。</td>
-  </tr>
-  <tr>
-    <td>inputLayout不合法。</td>
-  </tr>
-  <tr>
-    <td>sparseMode不合法。</td>
-  </tr>
-</tbody>
-</table>
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口会完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>输入query，key，value 传入的是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
+      <td>query，key，value 数据类型不在支持的范围之内。</td>
+    </tr>
+    <tr>
+      <td>inputLayout不合法。</td>
+    </tr>
+    <tr>
+      <td>sparseMode不合法。</td>
+    </tr>
+  </tbody>
+  </table>
 
 
 ### aclnnNsaCompressAttention
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
   </colgroup>
   <thead>
     <tr>
