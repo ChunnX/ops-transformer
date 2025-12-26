@@ -4,6 +4,7 @@
 ## 产品支持情况
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>昇腾 950PR/950DT AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas 800I A2 推理产品</term>|      ×     |
@@ -15,37 +16,37 @@
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。增加`sinkInOptional`可选输入。
 
 - 计算公式：
-
+  
   已知注意力的正向计算公式为：
-
+  
   $$
   =Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
   $$
-
+  
   为方便表达，以变量$S$和$P$表示计算公式：
-
+  
   $$
   =Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask
   $$
-
+  
   $$
   =Dropout(Softmax(S),keep\_prob)
   $$
-
+  
   $$
   =PV
   $$
-
+  
   则注意力的反向计算公式为：
-
+  
   $$
   V=P^TdY
   $$
-
+  
   $$
   Q=\frac{((dS)*K)}{\sqrt{d}}
   $$
-
+  
   $$
   K=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
@@ -593,7 +594,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
     -   T(B*S)：取值范围为1\~1M。
-    -   B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+    -   B：取值范围为1\~2M。带prefixOptional的时候B最大支持1K。
     -   N：取值范围为1\~256。
     -   S：取值范围为1\~1M。
     -   D：取值范围为1\~768。
@@ -611,7 +612,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   | 1 | 外部传入pse 先add再mul | 跟[FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现一致。 |
   | 2 | 内部生成pse 先mul再add | - |
   | 3 | 内部生成pse 先mul再add再sqrt | - |
-- sparseMode的约束如下:
+- sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
   - sparseMode配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
@@ -622,7 +623,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - 不同数据格式详情请参见[数据格式](../../../docs/zh/context/数据格式.md)。
 - 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
-  [0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
+[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]，TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。

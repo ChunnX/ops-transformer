@@ -1511,15 +1511,14 @@ private:
             // 处理中间块
             uint64_t gmOffset = queryGmbaseOffset + offsetCalculator.GetStrideS1();
             uint64_t l1Offset = headSize * 16U;
-
-            if (s1IdxEnd - s1IdxStart > 1)  {
+            if (s1IdxEnd - s1IdxStart > 1) {
                 CopyMultiMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset],
                         s1IdxEnd - s1IdxStart - 1, offsetCalculator.GetStrideS1(), offsetCalculator.GetDimG() * 16U,
                         offsetCalculator.GetDimG(), gmCoord.dDealSize,
                         offsetCalculator.GetStrideG(), dstTensor.rowCount);
                 gmOffset += (s1IdxEnd - s1IdxStart - 1) * offsetCalculator.GetStrideS1();
                 l1Offset += (s1IdxEnd - s1IdxStart - 1) * offsetCalculator.GetDimG() * 16U;
-            } 
+            }
 
             // 处理尾块
             if (gIdxEnd > 0) {

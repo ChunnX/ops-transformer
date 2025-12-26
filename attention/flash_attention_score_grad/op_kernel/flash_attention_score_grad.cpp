@@ -475,14 +475,13 @@ constexpr static const uint32_t TND = 3;
                       actual_seq_qlen, actual_seq_kvlen, dq, dk, dv, user, mlaTilingData);                             \
     } while (0)
 
-#define INVOKE_FAG_DETERMINISTIC_BASIC_IMPL(INPUT_TYPE, SEQLEN_TYPE, DROP_ENABLE, DETERMINISTIC_ENABLE)                \
+#define INVOKE_FAG_DETERMINISTIC_BASIC_IMPL(INPUT_TYPE, SEQLEN_TYPE, DROP_ENABLE, DETERMINISTIC_ENABLE)                                                                      \
     do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(FlashAttentionGradBasicDetTilingData, det_tiling_data, tiling_data);               \
-        const FlashAttentionGradBasicDetTilingData *__restrict detTilingData = &det_tiling_data;                       \
-        FlashAttentionScoreGradBasicDet<FAG_TYPE<INPUT_TYPE, FlashAttentionGradBasicDetTilingData, SEQLEN_TYPE,        \
-                                                 DROP_ENABLE, DETERMINISTIC_ENABLE>> opDet;                            \
+        GET_TILING_DATA_WITH_STRUCT(FlashAttentionGradBasicDetTilingData, det_tiling_data, tiling_data);                    \
+        const FlashAttentionGradBasicDetTilingData *__restrict detTilingData = &det_tiling_data;                            \
+        FlashAttentionScoreGradBasicDet<FAG_TYPE<INPUT_TYPE, FlashAttentionGradBasicDetTilingData, SEQLEN_TYPE, DROP_ENABLE, DETERMINISTIC_ENABLE>> opDet;                               \
         pipeIn.Destroy();                                                                                              \
-        opDet.Process(query, key ,value, dy, drop_mask, atten_mask, softmax_max, softmax_sum, attention_in,            \
+        opDet.Process(query, key ,value, dy, drop_mask, atten_mask, softmax_max, softmax_sum, attention_in,                       \
                       actual_seq_qlen, actual_seq_kvlen, dq, dk, dv, user, detTilingData);                             \
     } while (0)
 

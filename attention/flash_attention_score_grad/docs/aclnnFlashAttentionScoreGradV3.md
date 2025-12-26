@@ -4,6 +4,7 @@
 
 | 产品                                           | 是否支持 |
 |:---------------------------------------------|:----:|
+| <term>昇腾 950PR/950DT AI处理器</term>                  |  ×   |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |  √   |
 | <term>Atlas A2 训练系列产品</term>                 |  √   |
 | <term>Atlas A2 推理系列产品</term>              |  ×   |
@@ -524,11 +525,11 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
   | 2 | 内部生成pse 先mul再add | - |
   | 3 | 内部生成pse 先mul再add再sqrt | - |
 - sparseMode的约束如下:
-  - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
-  - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
-  - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
-  - 用户不特意指定时建议传入0。
-  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+    - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
+    - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
+    - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
+    - 用户不特意指定时建议传入0。
+    - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
 - 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)
   ，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[T, N, 8\],注：T=B*S。

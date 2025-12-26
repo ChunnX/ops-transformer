@@ -18,10 +18,12 @@
 #include <cfloat>
 #include <register/op_impl_registry.h>
 #include "log/log.h"
+#include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "tiling_base/data_copy_transpose_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "flash_attention_score_tiling_common.h"
 #include "../op_kernel/arch32/flash_attention_score_tiling.h"
+#include "../op_kernel/arch35/flash_attention_score_template_tiling_key.h"
 
 
 using namespace ge;
@@ -224,6 +226,72 @@ static bool GetEmptyArgs(EmptyArgs &emptyArgs, gert::TilingContext *context, con
     return true;
 }
 
+static bool IsEmptyInputRegbase(gert::TilingContext *context)
+{
+    auto attentionOutShape = context->GetOutputShape(ATTENTIONOUT_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
+    auto queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
+    auto keyShape = context->GetInputShape(KEY_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
+    auto valueShape = context->GetInputShape(VALUE_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, valueShape);
+    auto softmaxSumShape = context->GetOutputShape(SOFTMAXSUM_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, softmaxSumShape);
+
+    uint64_t attentionOutShapeSize = attentionOutShape->GetStorageShape().GetShapeSize();
+    int64_t queryShapeSize = queryShape->GetStorageShape().GetShapeSize();
+    int64_t keyShapeSize = keyShape->GetStorageShape().GetShapeSize();
+    int64_t valueShapeSize = valueShape->GetStorageShape().GetShapeSize();
+    int64_t softmaxSumShapeSize = softmaxSumShape->GetStorageShape().GetShapeSize();
+    if ((queryShapeSize == 0 || keyShapeSize == 0 || valueShapeSize == 0) &&
+        (attentionOutShapeSize != 0 || softmaxSumShapeSize != 0)) {
+        /* 以 MIN_COPY_UINT_SIZE 为 32Byte说明, blocks为数据的块数, blocks与coreNum存在三种关系:
+          (1) blocks % coreNum == 0
+             主核数量为coreNum,主核处理块数为blocks / coreNum, 最后一个核处理非32Byte对齐的数据, 尾核数量为0
+          (2) blocks % coreNum != 0
+              (2.1) blocks < coreNum
+                    主核数量为blocks,主核处理块数为1, 最后一个核处理非32Byte对齐的数据, 尾核数量为0
+              (2.2) blocks > coreNum
+                    主核数量为blocks % coreNum, 尾核数量为coreNum - (blocks % coreNum), 尾核处理块数为blocks / coreNum
+                    主核处理块数为blocks / coreNum + 1,最后一个尾核处理非对齐场景
+        (2.2)情况如下:
+        |-------------主核块-----------------|------------尾核块-----------|非对齐块|
+        |                                   |                             |       |
+        |                                   |                             |       |
+        |--------n*(blocks/coreNum+1)-------|-----m*(blocks/coreNum)------|<32Byte|
+        */
+        FlashAttentionScoreEmptyInputTilingDataRegbase* regbaseEmptyInputTiling =
+            context->GetTilingData<FlashAttentionScoreEmptyInputTilingDataRegbase>();
+        auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreCompileInfo *>(context->GetCompileInfo());
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"),
+                   return false);
+
+        EmptyArgs emptyArgs;
+        if (!GetEmptyArgs(emptyArgs, context, compileInfoPtr->aivNum, attentionOutShapeSize, softmaxSumShapeSize)){
+            return false;
+        }
+        regbaseEmptyInputTiling->set_coreNum(emptyArgs.coreNum);
+        regbaseEmptyInputTiling->set_attentionOutFormerNum(emptyArgs.attentionOutFormerNum);
+        regbaseEmptyInputTiling->set_attentionOutTailNum(emptyArgs.attentionOutTailNum);
+        regbaseEmptyInputTiling->set_softmaxMaxFormerNum(emptyArgs.softmaxMaxFormerNum);
+        regbaseEmptyInputTiling->set_softmaxMaxTailNum(emptyArgs.softmaxMaxTailNum);
+        regbaseEmptyInputTiling->set_attentionOutSingleCoreDataSize(emptyArgs.attentionOutSingleCoreDataSize);
+        regbaseEmptyInputTiling->set_attentionOutTailCoreDataSize(emptyArgs.attentionOutTailCoreDataSize);
+        regbaseEmptyInputTiling->set_softmaxMaxSingleCoreDataSize(emptyArgs.softmaxMaxSingleCoreDataSize);
+        regbaseEmptyInputTiling->set_softmaxMaxTailCoreDataSize(emptyArgs.softmaxMaxTailCoreDataSize);
+        regbaseEmptyInputTiling->set_attentionOutLastCoreDataSize(emptyArgs.attentionOutLastCoreDataSize);
+        regbaseEmptyInputTiling->set_attentionOutLastCoreIndex(emptyArgs.attentionOutLastCoreIndex);
+        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1));
+        context->SetBlockDim(compileInfoPtr->aicNum);
+        size_t *workspaces = context->GetWorkspaceSizes(1);
+        // workspace上预留100M
+        workspaces[0] = VALUE_100 * VALUE_1024 * VALUE_1024;
+        return true;
+    }
+    return false;
+}
+
 static bool IsEmptyInput(gert::TilingContext *context)
 {
     auto attentionOutShape = context->GetOutputShape(ATTENTIONOUT_OUTPUT_INDEX);
@@ -305,9 +373,16 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionScore(gert::TilingContext *
         return ge::GRAPH_FAILED);
  
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    OP_LOGW(context, "Current soc version is not ASCEND910_95.");
-    if (IsEmptyInput(context)) {
-        return ge::GRAPH_SUCCESS;
+    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_95) {
+        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+        if (IsEmptyInputRegbase(context)) {
+            return ge::GRAPH_SUCCESS;
+        }
+    } else {
+        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        if (IsEmptyInput(context)) {
+            return ge::GRAPH_SUCCESS;
+        }
     }
 
     auto resultCode = TilingRegistryNew::GetInstance().DoTilingImpl(context);

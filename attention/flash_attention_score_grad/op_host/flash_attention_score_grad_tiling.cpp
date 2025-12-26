@@ -18,6 +18,8 @@
 #include "log/log.h"
 #include "tiling_base/data_copy_transpose_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
+#include "../op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h"
+#include "../op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -124,6 +126,76 @@ public:
         }
 
         context->SetTilingKey(FAG_EMPTY_TILING_KEY);
+        auto sliceNum =
+            (dqNum < aivNum && dkNum < aivNum && dpseNum < aivNum) ? std::max(std::max(dqNum, dkNum), dpseNum) : aivNum;
+        context->SetBlockDim(CalculateTschBlockDim(sliceNum, aicNum, aivNum));
+        size_t *workspaces = context->GetWorkspaceSizes(1);
+        workspaces[0] = WORKSPACE_SIZE;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus RunEmptyTilingRegbase(gert::TilingContext *context)
+    {
+        fag::FlashAttentionScoreGradEmptyTensorTilingDataRegbase* emptyTensorTilingDataRegbase = context->GetTilingData<fag::FlashAttentionScoreGradEmptyTensorTilingDataRegbase>();
+        uint64_t aicNum = 32; // 32: A5 default aicNum
+        uint64_t aivNum = 64; // 64: A5 default aivNum
+        auto platformInfoPtr = context->GetPlatformInfo();
+        if (platformInfoPtr == nullptr) {
+            auto compilePtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
+            OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
+                       return ge::GRAPH_FAILED);
+            aivNum = compilePtr->aivNum;
+            aicNum = compilePtr->aicNum;
+        } else {
+            auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+            aicNum = ascendcPlatform.GetCoreNumAic();
+            aivNum = ascendcPlatform.GetCoreNumAiv();
+        }
+        OP_CHECK_IF(aivNum == 0, OP_LOGE("flash_attention_score_grad", "num of aiv is 0."),
+                   return GRAPH_FAILED);
+        uint64_t dqNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DQ)->GetStorageShape().GetShapeSize());
+        if (dqNum % aivNum == 0ULL) {
+            emptyTensorTilingDataRegbase->set_formerDqNum(aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDqNum(dqNum / aivNum);
+            emptyTensorTilingDataRegbase->set_tailCoreDqNum(0);
+        } else {
+            emptyTensorTilingDataRegbase->set_formerDqNum(dqNum % aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDqNum(dqNum / aivNum + 1);
+            emptyTensorTilingDataRegbase->set_tailCoreDqNum(dqNum / aivNum);
+        }
+        uint64_t dkNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DK)->GetStorageShape().GetShapeSize());
+        if (dkNum % aivNum == 0ULL) {
+            emptyTensorTilingDataRegbase->set_formerDkNum(aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDkNum(dkNum / aivNum);
+            emptyTensorTilingDataRegbase->set_tailCoreDkNum(0);
+        } else {
+            emptyTensorTilingDataRegbase->set_formerDkNum(dkNum % aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDkNum(dkNum / aivNum + 1);
+            emptyTensorTilingDataRegbase->set_tailCoreDkNum(dkNum / aivNum);
+        }
+        uint64_t dvNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DV)->GetStorageShape().GetShapeSize());
+        if (dvNum % aivNum == 0ULL) {
+            emptyTensorTilingDataRegbase->set_formerDvNum(aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDvNum(dvNum / aivNum);
+            emptyTensorTilingDataRegbase->set_tailCoreDvNum(0);
+        } else {
+            emptyTensorTilingDataRegbase->set_formerDvNum(dvNum % aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDvNum(dvNum / aivNum + 1);
+            emptyTensorTilingDataRegbase->set_tailCoreDvNum(dvNum / aivNum);
+        }
+        const gert::StorageShape *dpseShape = context->GetOutputShape(OUTPUT_IDX_DPSE);
+        uint64_t dpseNum = (dpseShape == nullptr) ? 0 : static_cast<uint64_t>(dpseShape->GetStorageShape().GetShapeSize());
+        if (dpseNum % aivNum == 0ULL) {
+            emptyTensorTilingDataRegbase->set_formerDpseNum(aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDpseNum(dpseNum / aivNum);
+            emptyTensorTilingDataRegbase->set_tailCoreDpseNum(0);
+        } else {
+            emptyTensorTilingDataRegbase->set_formerDpseNum(dpseNum % aivNum);
+            emptyTensorTilingDataRegbase->set_singleCoreDpseNum(dpseNum / aivNum + 1);
+            emptyTensorTilingDataRegbase->set_tailCoreDpseNum(dpseNum / aivNum);
+        }
+ 
+        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, TILING_KEY_1));
         auto sliceNum =
             (dqNum < aivNum && dkNum < aivNum && dpseNum < aivNum) ? std::max(std::max(dqNum, dkNum), dpseNum) : aivNum;
         context->SetBlockDim(CalculateTschBlockDim(sliceNum, aicNum, aivNum));
@@ -277,10 +349,18 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
     OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
                return ge::GRAPH_FAILED);
     auto socVersion = compilePtr->socVersion;
-    OP_LOGW(context, "Current soc version is not ASCEND910_95.");
-    if (IsEmptyOutput(context)) {
-        FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
-        return flashAttentionScoreGradTiling.RunEmptyTiling(context);
+    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+        if (IsEmptyOutput(context)) {
+            FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
+            return flashAttentionScoreGradTiling.RunEmptyTilingRegbase(context);
+        }
+    } else {
+        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        if (IsEmptyOutput(context)) {
+            FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
+            return flashAttentionScoreGradTiling.RunEmptyTiling(context);
+        }
     }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);
 }

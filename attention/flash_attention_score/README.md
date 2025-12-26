@@ -54,21 +54,21 @@
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入query。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
       <td>公式中的输入key。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>value</td>
       <td>输入</td>
       <td>公式中的输入value。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -172,9 +172,6 @@
     </tr>
   </tbody>
 </table>
-
-- <term>Atlas A2 训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
-- <term>Atlas A3 训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
 
 ## 约束说明
 

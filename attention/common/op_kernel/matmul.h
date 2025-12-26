@@ -48,6 +48,7 @@ struct MMParam {
                             // 2：enable: 行为在切K接口中（MatmulK），会将mmadParams.unitFlag设置为 0b10
                             // 3：enable: 行为在切K接口中（MatmulK），在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
                             // 外部使用时，在外层k循环的最后一轮将该参数配置为3
+    uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
 };
 
 enum class ABLayout {
@@ -107,6 +108,9 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T>& aL0Tensor, const LocalTenso
         loadData2DParamsA.srcStride = loadData2DParamsA.ifTranspose ? ((kSplitSize + 63) >> 6 << 6) / 16 : ((mSplitSize + 31) >> 5 << 5) / 16; // 以M*K矩阵为例，源矩阵K方向前一个分形起始地址与后一个分形起始地址的间隔，单位：512B    
     } else {
         loadData2DParamsA.srcStride = loadData2DParamsA.ifTranspose ? ((mmParam.singleK + 15) >> 4 << 4) / 16 : loadData2DParamsA.mStep;
+    }
+    if (mmParam.realM != 0) {
+        loadData2DParamsA.mStep = ((mmParam.realM + 15) >> 4 << 4) / 16;
     }
     loadData2DParamsA.dstStride = loadData2DParamsA.ifTranspose ? (mSplitSize + 15) / 16 : loadData2DParamsA.mStep;
     LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
@@ -277,6 +281,9 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
 
     MmadParams mmadParams;
     mmadParams.m = param.singleM;
+    if (param.realM != 0) {
+        mmadParams.m = param.realM;
+    }
     mmadParams.n = param.singleN;
     mmadParams.k = param.singleK;
     mmadParams.cmatrixInitVal = param.isOutKFisrt;
@@ -337,6 +344,9 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
  
         MmadParams mmadParams;
         mmadParams.m = param.singleM;
+        if (param.realM != 0) {
+            mmadParams.m = param.realM;
+        }
         mmadParams.n = param.singleN;
         mmadParams.k = tileK;
         if (mmadParams.m == 1) {  // m等于1或默认开GEMV模式，文档上没有写怎么关闭GEMV，所以规避当做矩阵运算
@@ -374,6 +384,9 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
     }
 #endif
     uint64_t L0Coffset = ((param.singleM + 15) >> 4 << 4) * baseN;
+    if (param.realM != 0) {
+        L0Coffset = ((param.realM + 15) >> 4 << 4) * baseN;
+    }
  
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
@@ -396,6 +409,9 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
  
         MmadParams mmadParams;
         mmadParams.m = param.singleM;
+        if (param.realM != 0) {
+            mmadParams.m = param.realM;
+        }
         mmadParams.n = tileN;
         mmadParams.k = param.singleK;
         if (mmadParams.m == 1) {

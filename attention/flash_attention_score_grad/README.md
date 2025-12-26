@@ -85,28 +85,28 @@
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入Q。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
       <td>公式中的输入K。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>value</td>
       <td>输入</td>
       <td>公式中的输入V。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>dy</td>
       <td>输入</td>
       <td>公式中的输入dY。</td>
-      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -177,10 +177,6 @@
     </tr>
   </tbody>
 </table>
-<ul>
-  <li><term>Atlas A2 训练产品</term>:不支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
-  <li><term>Atlas A3 训练产品</term>:不支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
-</ul>
 
 ## 约束说明
 
