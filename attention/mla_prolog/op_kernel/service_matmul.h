@@ -333,25 +333,24 @@ __aicore__ inline void LoadDataL1ToL0(const LocalTensor<T> &l0Tensor, const Loca
                                       const uint32_t mSize, const uint32_t kSize, const uint32_t l1StepSize = 0)
 {
     constexpr uint32_t FMATRIX_HEIGHT_UNIT = 16;
-    constexpr int EXTCONFIG_SHIFT_0 = 48;
-    constexpr int EXTCONFIG_SHIFT_1 = 32;
-    constexpr int EXTCONFIG_SHIFT_MSIZE = 16;
-
-    uint8_t padList[4] = {0, 0, 0, 0};
     LocalTensor<T> srcTensor = l1Tensor;
-    LoadData3DParamsV2Pro loadData3DV2;
+    LoadData3DParamsV2<T> loadData3DV2;
 
     if constexpr (enTranspose) {
         // LoadDataBL0K3DPro behavior: mSize=kSize, mSize=nSize, l1StepSize=kL1Size
-        AscendC::SetFmatrix(l1StepSize / FMATRIX_HEIGHT_UNIT, FMATRIX_HEIGHT_UNIT, padList, FmatrixMode::FMATRIX_LEFT);
-        loadData3DV2.enTranspose = 1;
+        loadData3DV2.l1H = l1StepSize / FMATRIX_HEIGHT_UNIT;
+        loadData3DV2.l1W = FMATRIX_HEIGHT_UNIT;
+        loadData3DV2.enTranspose = true;
     } else {
         // LoadDataAL0K3DPro behavior: mSize=mSize, mSize=kSize
-        AscendC::SetFmatrix(mSize / FMATRIX_HEIGHT_UNIT, FMATRIX_HEIGHT_UNIT, padList, FmatrixMode::FMATRIX_LEFT);
+        loadData3DV2.l1H = mSize / FMATRIX_HEIGHT_UNIT;
+        loadData3DV2.l1W = FMATRIX_HEIGHT_UNIT;
     }
     loadData3DV2.channelSize = kSize;
-    loadData3DV2.extConfig = ((uint64_t)0 << EXTCONFIG_SHIFT_0) | ((uint64_t)0 << EXTCONFIG_SHIFT_1) |
-                             ((uint64_t)mSize << EXTCONFIG_SHIFT_MSIZE) | (uint64_t)kSize;
+    loadData3DV2.mStartPt = 0;
+    loadData3DV2.kStartPt = 0;
+    loadData3DV2.mExtension = mSize;
+    loadData3DV2.kExtension = kSize;
 
     LoadData<T>(l0Tensor, srcTensor, loadData3DV2);
 }

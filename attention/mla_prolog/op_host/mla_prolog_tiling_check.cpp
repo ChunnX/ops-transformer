@@ -876,9 +876,10 @@ bool MlaPrologTilingCheck::CheckKrCache() const
     if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
         return IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
     } else {
-        return scenarioInfo_.quantMode_ == QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE ||
-            scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE ||
-            IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
+        return (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
+                   *(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) ||
+               IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
+                   {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
     }
 }
 
