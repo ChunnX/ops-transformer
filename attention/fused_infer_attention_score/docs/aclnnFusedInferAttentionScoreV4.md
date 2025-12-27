@@ -856,10 +856,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
   - aclnnFusedInferAttentionScoreV4默认确定性实现。
 - 公共约束
     - 入参为空的场景处理：
-        - query为空Tensor：直接返回
-        - 参数query不为空Tensor，参数key、value为空tensor（即S2为0）：attentionOut填充为全零
-        - attentionOut为空Tensor：AscendCLNN框架会处理
-        - 上述参数说明中标注了“可传入nullptr”的入参为空指针时：不进行处理
+        - 空Tensor指必选输入和输出的shapeSize为0。在空Tensor场景下，若attentionOut为空，返回空，否则返回全0；若有lse且lse为空时返回空，lse不为空则返回全inf。非空Tensor时输入正常拦截。
+        - query，attentionOut所有tensor的shapeSize为0，属于空Tensor。
+        - query，attentionOut所有tensor的shapeSize不为0，若有lse且lse不为空，并且key，value中所有tensor的shapeSize为0，属于空Tensor。
+        - attentionOut和lse都为空时，属于空Tensor。
+        - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
 
 - <a id="Mask"></a>Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
