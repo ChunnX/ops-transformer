@@ -53,7 +53,7 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const aclTensor *x1,
-    aclTensor *x2, const aclTensor *scale, const aclTensor *bias, const aclTensor *offsetOptional,
+    const aclTensor *x2, const aclTensor *scale, const aclTensor *bias, const aclTensor *offsetOptional,
     const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
     const aclTensor *pertokenScaleOptional, const aclTensor *groupList, const aclTensor *sharedInput,
     const aclTensor *logit, const aclTensor *rowIndex, int64_t dtype, float sharedInputWeight,

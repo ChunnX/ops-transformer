@@ -1009,7 +1009,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(void *workspace, uint64_t 
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
-aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const aclTensor *x1, aclTensor *x2,
+aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
     const aclTensor *scale, const aclTensor *bias, const aclTensor *offsetOptional,
     const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
     const aclTensor *pertokenScaleOptional, const aclTensor *groupList, const aclTensor *sharedInput,
@@ -1024,39 +1024,21 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
         DFX_OUT(out));
     (void) antiquantScaleOptional;
     (void) antiquantOffsetOptional;
+    auto viewShape = x2->GetViewShape();
+    auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
-    auto tmpWeight = x2;
+    auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
+    if (tmpWeight == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to create view for x2");
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+
     if (tmpWeight->GetDataType() == DataType::DT_INT32) {
-        auto viewShape = tmpWeight->GetViewShape();
         auto viewShapeDim = viewShape.GetDimNum();
-        viewShape[viewShapeDim - 1] *= PER_INT4_IN_U32;
-        auto storageShape = tmpWeight->GetStorageShape();
+        auto storageShape = x2->GetStorageShape();
         auto storageShapeDim = storageShape.GetDimNum();
-        // The following line adjusts the storage shape because we have a few
-        // checks that put some requirements on the storage shape and the view shape,
-        // e.g., the function 'CheckWeightNzStorageShape'.
-        //
-        // HACK: Right now we hard code the value of the last dim as
-        // 'NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8' (which is 64), instead of
-        // 'storageShape[storageShapeDim - 1] *= PER_INT4_IN_U32' because as of
-        // torch_npu 7.1.0, the function 'npu_convert_weight_to_int4pack' does
-        // not support 3D tensor. So in the ascend-vllm project, the following
-        // procedures are used to generate the int4 weight tensor in NZ format:
-        //
-        //   - Pack two int4 of (E, K, N/2) as an int8 (E, K, N/2)
-        //   - 'npu_format_cast' the int8 tensor to NZ format ('npu_format_cast'
-        //     gives wrong results for int32 here because C0 is 8)
-        //   - '.view(torch.int32)' to change the view shape to (E, K, N/8)
-        //     and the data type to int32.
-        //
-        // Therefore, the storage shape of the final tensor does not necessarily
-        // matches the data type, int32. That is why we hard code the value here.
-        // Fortunately, this is not so bad because the existing checks will verify
-        // the new storage shape here to some extent. For example, 'CheckWeightNzStorageShape'
-        // ensures that the two shapes still match.
-        //
-        // In the future, when we settle on a canonical way to handle NZ int4 tensors
-        // in torch_npu, we should update the following line accordingly.
+        tmpWeight->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+        viewShape[viewShapeDim - 1] *= PER_INT4_IN_U32;
         storageShape[storageShapeDim - 1] = NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8;
         tmpWeight->SetViewShape(viewShape);
         tmpWeight->SetStorageShape(storageShape);
@@ -1069,19 +1051,15 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
-    CheckSupportSceneParams sceneParams{x1, x2, scale, pertokenScaleOptional, groupList, sharedInput,
+    CheckSupportSceneParams sceneParams{x1, tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
                                    logit, rowIndex, dtype};
     auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
     CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
-        .SetScale(scale)
-        .SetBias(bias)
-        .SetPertokenScale(pertokenScaleOptional)
-        .SetGroupList(groupList)
-        .SetShareInput(sharedInput)
-        .SetLogit(logit)
-        .SetRowIndex(rowIndex).SetOffset(offsetOptional)
+
+    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, tmpWeight, out)
+        .SetScale(scale).SetBias(bias).SetPertokenScale(pertokenScaleOptional)
+        .SetGroupList(groupList).SetShareInput(sharedInput)
+        .SetLogit(logit).SetRowIndex(rowIndex).SetOffset(offsetOptional)
         .SetTuningConfig(tuningConfigOptional)
         .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
         .SetTranspose(transposeX1, transposeX2)
