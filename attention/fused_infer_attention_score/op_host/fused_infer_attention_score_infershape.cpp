@@ -144,6 +144,7 @@ static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape,
         OP_LOGE("FusedInferAttentionScore", "Layout %s is not supported in GetQueryBSND function!", queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
@@ -162,6 +163,7 @@ static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
         OP_LOGE("FusedInferAttentionScore", "Layout %s is not supported in GetQueryTND function!", queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
