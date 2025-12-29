@@ -1,8 +1,5 @@
 # aclnnFlashAttentionUnpaddingScoreGradV3
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/flash_attention_score_grad)
-
-
 ## 产品支持情况
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
