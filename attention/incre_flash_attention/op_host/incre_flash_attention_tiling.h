@@ -16,7 +16,6 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_NEW_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_NEW_H_
 
-#include <cstdint>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
@@ -90,8 +89,8 @@ REGISTER_TILING_DATA_CLASS(IncreFlashAttentionBaseParamsOp, IncreFlashAttentionB
 
 BEGIN_TILING_DATA_DEF(IncreFlashAttentionCoreParams)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, 50, coreSidxEnd); // 50:MAX_CORE_NUM of 910b coreSidxEnd数组首地址要保证8字节对齐
-TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSidxEndRegbase);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSposStartRegbase);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSidxEndRegbase); // 66:MAX_CORE_NUM of 910_95
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSposStartRegbase); // 66:MAX_CORE_NUM of 910_95
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(IncreFlashAttentionCoreParamsOp, IncreFlashAttentionCoreParams);
 

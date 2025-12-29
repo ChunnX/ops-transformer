@@ -225,7 +225,9 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
             if constexpr (isInfer) {
-                if (inputParamsRegbase.isGqa) {
+                if (inputParamsRegbase.isGqa && inputParamsRegbase.s1Size > 1) {
+                    constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
+                } else if (inputParamsRegbase.isGqa) {
                     constInfo.attentionOutStride = 0;
                 }
             }
@@ -251,7 +253,9 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
                 constInfo.attentionOutStride =
                     (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
                 if constexpr (isInfer) {
-                    if (inputParamsRegbase.isGqa) {
+                    if (inputParamsRegbase.isGqa && inputParamsRegbase.s1Size > 1) {
+                        constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
+                    } else if (inputParamsRegbase.isGqa) {
                         constInfo.attentionOutStride = 0;
                     }
                 }
@@ -317,12 +321,19 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         this->constInfo.splitKVNum = inputParamsRegbase.kvSplitPart;
         this->constInfo.sInnerLoopSize = CeilDivision(this->constInfo.s2Size, this->constInfo.splitKVNum);
         if constexpr (PAGE_ATTENTION_ANTIQUANT) {
-            this->constInfo.sInnerLoopSize = AlignUp32((uint64_t)this->constInfo.sInnerLoopSize);
+            this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
+        }
+        if constexpr (isPa) {
+            bool isNz = inputParamsRegbase.paLayoutType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ);
+            if (isNz) {
+                this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
+            }
         }
     }
     this->constInfo.isRowInvalid = inputParamsRegbase.isRowInvalid;
     this->constInfo.headNumRatio = inputParamsRegbase.headNumRatio;
     this->constInfo.isGqa = inputParamsRegbase.isGqa;
+    this->constInfo.isPfaGS1Merge = this->constInfo.isGqa && this->constInfo.s1Size > 1;
     this->constInfo.isKvContinuous = inputParamsRegbase.isKvContinuous;
     this->constInfo.actualSeqLenSize = inputParamsRegbase.actualSeqLengthsSize;
     this->constInfo.actualSeqLenKVSize = inputParamsRegbase.actualSeqLengthsKVSize;

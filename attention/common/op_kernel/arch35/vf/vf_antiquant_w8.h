@@ -17,7 +17,7 @@
 
 #include "kernel_tensor.h"
 
-namespace AscendC {
+namespace FaVectorApi {
 // w8转Q_T
 static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                   MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
@@ -154,6 +154,101 @@ __simd_vf__ void AntiquantVFImplFp8Nz(__ubuf__ uint8_t* ubSrcAddr, __ubuf__ Q_T*
       MicroAPI::StoreAlign<Q_T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(ubDstAddrTmp, vRes, dealBaseNum, qTypeMaskAll);
     }
   }
+}
+
+template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
+__simd_vf__ void AntiquantVFImplW8PerTokenNz(__ubuf__ uint8_t* ubSrcAddr, __ubuf__ Q_T* ubDstAddr,
+                                             __ubuf__ Q_T* ubOffsetAddr, __ubuf__ Q_T* ubScaleAddr,
+                                             uint32_t dealRowCount)
+{
+  MicroAPI::RegTensor<KV_T> vKvData;
+  MicroAPI::RegTensor<Q_T> vOffsetFirst;
+  MicroAPI::RegTensor<Q_T> vOffsetBack;
+  MicroAPI::RegTensor<Q_T> vScaleFirst;
+  MicroAPI::RegTensor<Q_T> vScaleBack;
+  MicroAPI::RegTensor<Q_T> vRes;
+  MicroAPI::RegTensor<half> vCastFp16Res;
+
+  MicroAPI::MaskReg kvTypeMaskAll = MicroAPI::CreateMask<KV_T, MicroAPI::MaskPattern::ALL>();
+  MicroAPI::MaskReg qTypeMaskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>(); // Q_T 所有元素（共128个）
+
+  // UB总共dealRowCount行 * baseSize列，每次处理8行 * 16列 = 128个元素
+  const uint32_t rowBaseSize = 8; // 8行
+  const uint32_t colBaseSize = 16; // 16列
+  const uint32_t dealBaseNum = 128; // 128个元素
+  const uint32_t doubleRowBaseSize = 16; // 每16行交替，防止bank冲突
+
+  const uint32_t rowStride = doubleRowBaseSize * colBaseSize; 
+  const uint32_t colDstStride = dealRowCount * colBaseSize;
+  const uint32_t colSrcStride = (dealRowCount * colBaseSize + 31) >> 5U << 5U; // 32B对齐
+  const uint16_t colLoopCnt = static_cast<uint16_t>(baseSize / colBaseSize);
+  const uint16_t rowLoopCnt = static_cast<uint16_t>((dealRowCount + doubleRowBaseSize - 1) / doubleRowBaseSize); // 16行对齐
+
+  for (uint16_t rowLoop = 0; rowLoop < rowLoopCnt; rowLoop++) {
+    uint16_t rowLoopIdx = rowLoopCnt - 1 - rowLoop;
+    __ubuf__ Q_T* ubOffsetAddrTmp = ubOffsetAddr + doubleRowBaseSize * rowLoopIdx;
+    __ubuf__ Q_T* ubScaleAddrTmp = ubScaleAddr + doubleRowBaseSize * rowLoopIdx;
+
+    if constexpr (hasOffset) {
+      MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_E2B_B16>(vOffsetFirst, ubOffsetAddrTmp);
+      MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_E2B_B16>(vOffsetBack, ubOffsetAddrTmp + rowBaseSize);
+    }
+    MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_E2B_B16>(vScaleFirst, ubScaleAddrTmp);
+    MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_E2B_B16>(vScaleBack, ubScaleAddrTmp + rowBaseSize);
+    for (uint16_t colLoopIdx = 0; colLoopIdx < colLoopCnt; colLoopIdx++) {
+      __ubuf__ uint8_t* ubSrcTemp = ubSrcAddr + rowStride * rowLoopIdx + colSrcStride * colLoopIdx;
+      __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + rowStride * rowLoopIdx + colDstStride * colLoopIdx;
+
+      // 前半组
+      MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(
+          (MicroAPI::RegTensor<uint8_t>&)vKvData, ubSrcTemp);
+      if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
+        MicroAPI::Cast<half, KV_T, castTrait>(vCastFp16Res, vKvData, kvTypeMaskAll);
+        MicroAPI::Cast<Q_T, half, castTrait1>(vRes, vCastFp16Res, kvTypeMaskAll);
+      } else {
+        MicroAPI::Cast<Q_T, KV_T, castTrait>(vRes, vKvData, kvTypeMaskAll);
+      }
+
+      if constexpr (hasOffset) {
+        MicroAPI::Add<Q_T, MicroAPI::MaskMergeMode::ZEROING>(vRes, vRes, vOffsetFirst, qTypeMaskAll);
+      }
+      MicroAPI::Mul<Q_T, MicroAPI::MaskMergeMode::ZEROING>(vRes, vRes, vScaleFirst, qTypeMaskAll);
+
+      MicroAPI::StoreAlign<Q_T, MicroAPI::StoreDist::DIST_NORM_B16>(ubDstAddrTmp, vRes, qTypeMaskAll);
+
+      // 后半组
+      MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(
+          (MicroAPI::RegTensor<uint8_t>&)vKvData, ubSrcTemp + dealBaseNum);
+      if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
+        MicroAPI::Cast<half, KV_T, castTrait>(vCastFp16Res, vKvData, kvTypeMaskAll);
+        MicroAPI::Cast<Q_T, half, castTrait1>(vRes, vCastFp16Res, kvTypeMaskAll);
+      } else {
+        MicroAPI::Cast<Q_T, KV_T, castTrait>(vRes, vKvData, kvTypeMaskAll);
+      }
+
+      if constexpr (hasOffset) {
+        MicroAPI::Add<Q_T, MicroAPI::MaskMergeMode::ZEROING>(vRes, vRes, vOffsetBack, qTypeMaskAll);
+      }
+      MicroAPI::Mul<Q_T, MicroAPI::MaskMergeMode::ZEROING>(vRes, vRes, vScaleBack, qTypeMaskAll);
+
+      MicroAPI::StoreAlign<Q_T, MicroAPI::StoreDist::DIST_NORM_B16>(ubDstAddrTmp + dealBaseNum, vRes, qTypeMaskAll);
+    }
+  }
+}
+
+template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
+__aicore__ inline void AntiquantVFW8PerTokenNz(LocalTensor<KV_T>& antiqInUb, LocalTensor<Q_T>& antiqResUb,
+                                               LocalTensor<ANTIQ_PARAMS_T>& antiqOffsetUb,
+                                               LocalTensor<ANTIQ_PARAMS_T>& antiqScaleUb,
+                                               uint32_t dealRowCount) {
+  static_assert(baseSize % 16 == 0);
+  static_assert(IsSameType<KV_T, int8_t>::value, "antiquant w4 PerToken, KV_T must be int4_t");
+  __ubuf__ uint8_t* ubSrcAddr = (__ubuf__ uint8_t*)(antiqInUb.GetPhyAddr());
+  __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(antiqResUb.GetPhyAddr());
+  __ubuf__ Q_T* ubOffsetAddr = (__ubuf__ Q_T*)antiqOffsetUb.GetPhyAddr();
+  __ubuf__ Q_T* ubScaleAddr = (__ubuf__ Q_T*)antiqScaleUb.GetPhyAddr();
+  AntiquantVFImplW8PerTokenNz<Q_T, KV_T, ANTIQ_PARAMS_T, baseSize, hasOffset>(
+    ubSrcAddr, ubDstAddr, ubOffsetAddr, ubScaleAddr, dealRowCount);
 }
 
 template <typename Q_T, typename KV_T, uint32_t baseSize>
@@ -688,13 +783,16 @@ __aicore__ inline void AntiquantVFW8PerTokenD512(LocalTensor<KV_T>& antiqInUb, L
     ubSrcAddr, ubSrcAddr1, ubSrcAddr2, ubSrcAddr3, ubDstAddr, ubOffsetAddr, ubScaleAddr, dealRowCount);
 }
 
-template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isNz = false>
+template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isKvCacheNz = false>
 __aicore__ inline void AntiquantVFImpl(LocalTensor<int8_t>& antiqInUb, LocalTensor<Q_T>& antiqResUb,
                                        LocalTensor<ANTIQ_PARAMS_T>& antiqOffsetUb, LocalTensor<ANTIQ_PARAMS_T>& antiqScaleUb,
                                        uint32_t dealRowCount, uint32_t headDim) {
-  if constexpr (isNz) {
+  if constexpr (isKvCacheNz) {
     if constexpr (!isPerToken) {
       AntiquantVFW8Nz<Q_T, int8_t, ANTIQ_PARAMS_T, baseSize, hasOffset>
+        (antiqInUb, antiqResUb, antiqOffsetUb, antiqScaleUb, dealRowCount);
+    } else {
+      AntiquantVFW8PerTokenNz<Q_T, int8_t, ANTIQ_PARAMS_T, baseSize, hasOffset>
         (antiqInUb, antiqResUb, antiqOffsetUb, antiqScaleUb, dealRowCount);
     }
   } else {
@@ -724,11 +822,11 @@ __aicore__ inline void AntiquantVFImpl(LocalTensor<int8_t>& antiqInUb, LocalTens
   }
 }
 
-template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isNz = false>
+template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isKvCacheNz = false>
 __aicore__ inline void AntiquantVFImpl(LocalTensor<hifloat8_t>& antiqInUb, LocalTensor<Q_T>& antiqResUb,
                                        LocalTensor<Q_T>& antiqOffsetUb, LocalTensor<Q_T>& antiqScaleUb,
                                        uint32_t dealRowCount, uint32_t headDim) {
-  if constexpr (isNz) {
+  if constexpr (isKvCacheNz) {
     AntiquantVFW8Nz<Q_T, hifloat8_t, ANTIQ_PARAMS_T, baseSize, hasOffset>
       (antiqInUb, antiqResUb, antiqOffsetUb, antiqScaleUb, dealRowCount);
   } else {
@@ -878,11 +976,11 @@ __aicore__ inline void AntiquantVFFp8Norm(LocalTensor<KV_T>& antiqInUb, LocalTen
   AntiquantVFImplFp8Norm<Q_T, KV_T, baseSize>(ubSrcAddr, ubDstAddr, ubScalerSrcAddr, dealRowCount);
 }
 
-template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isNz = false>
+template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isKvCacheNz = false>
 __aicore__ inline void AntiquantVFImpl(LocalTensor<fp8_e5m2_t>& antiqInUb, LocalTensor<Q_T>& antiqResUb,
                                        LocalTensor<ANTIQ_PARAMS_T>& antiqOffsetUb, LocalTensor<ANTIQ_PARAMS_T>& antiqScaleUb,
                                        uint32_t dealRowCount, uint32_t headDim) {
-  if constexpr (isNz) {
+  if constexpr (isKvCacheNz) {
     AntiquantVFFp8Nz<Q_T, fp8_e5m2_t, baseSize>(antiqInUb, antiqResUb, antiqScaleUb, dealRowCount);
   } else {
     if constexpr (baseSize == 64) {
@@ -893,11 +991,11 @@ __aicore__ inline void AntiquantVFImpl(LocalTensor<fp8_e5m2_t>& antiqInUb, Local
   }
 }
 
-template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isNz = false>
+template <typename Q_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isKvCacheNz = false>
 __aicore__ inline void AntiquantVFImpl(LocalTensor<fp8_e4m3fn_t>& antiqInUb, LocalTensor<Q_T>& antiqResUb,
                                        LocalTensor<ANTIQ_PARAMS_T>& antiqOffsetUb, LocalTensor<ANTIQ_PARAMS_T>& antiqScaleUb,
                                        uint32_t dealRowCount, uint32_t headDim) {
-  if constexpr (isNz) {
+  if constexpr (isKvCacheNz) {
     AntiquantVFFp8Nz<Q_T, fp8_e4m3fn_t, baseSize>(antiqInUb, antiqResUb, antiqScaleUb, dealRowCount);
   } else {
     if constexpr (baseSize == 64) {
@@ -909,14 +1007,14 @@ __aicore__ inline void AntiquantVFImpl(LocalTensor<fp8_e4m3fn_t>& antiqInUb, Loc
 }
 
 template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T,
-  uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isNz = false>
+  uint32_t baseSize, bool hasOffset = false, bool isPerToken = false, bool isKvCacheNz = false>
 __aicore__ inline void AntiquantVF(LocalTensor<KV_T>& antiqInUb, LocalTensor<Q_T>& antiqResUb,
                                    LocalTensor<ANTIQ_PARAMS_T>& antiqOffsetUb, LocalTensor<ANTIQ_PARAMS_T>& antiqScaleUb,
                                    uint32_t dealRowCount, uint32_t headDim) {
-  AntiquantVFImpl<Q_T, ANTIQ_PARAMS_T, baseSize, hasOffset, isPerToken, isNz>
+  AntiquantVFImpl<Q_T, ANTIQ_PARAMS_T, baseSize, hasOffset, isPerToken, isKvCacheNz>
     (antiqInUb, antiqResUb, antiqOffsetUb, antiqScaleUb, dealRowCount, headDim);
 }
 
-};  // namespace AscendC
+};  // namespace FaVectorApi
 
 #endif

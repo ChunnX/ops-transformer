@@ -8,72 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-
-########################################################################################################################
-# 调用编译方法, 生成对应编译目标
-########################################################################################################################
-
-set(_FIA_TilingSourcesExt
-        ${OPS_TRANSFORMER_DIR}/attention/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_register.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_register.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_register.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_info_parser.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/common/op_host/fia_tiling_info.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/common/op_host/fia_tiling_shape.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/common/op_host/split_core.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/common/op_host/arch32/fia_tiling_nonquant_mla.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/common/op_host/arch32/fia_tiling_nonquant.cpp
-        ${OPS_TRANSFORMER_DIR}/attention/common/op_host/arch32/fia_tiling_empty_tensor.cpp
-)
-
-set(_FIA_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
-        ${OPS_TRANSFORMER_DIR}/attention/fused_infer_attention_score/op_host/flash_attention_infer_tiling.h
-        ${CMAKE_SOURCE_DIR}/attention/incre_flash_attention/op_host/incre_flash_attention_tiling.h
-        ${CMAKE_SOURCE_DIR}/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.h
-)
-set(_FIA_KernelTilingExtInclude
-        ${CMAKE_SOURCE_DIR}/attention/incre_flash_attention/op_host/
-        ${CMAKE_SOURCE_DIR}/attention/incre_flash_attention/op_host/op_api/
-        ${CMAKE_SOURCE_DIR}/attention/prompt_flash_attention/op_host/
-        ${CMAKE_SOURCE_DIR}/attention/prompt_flash_attention/op_host/op_api/
-)
-
-set(_FIA_UTestCommonPrivateIncludeExt
-        ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
-)
-
-set(_FIA_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
-)
-
-set(_FIA_TargetPrivateLinkLibrariesExt)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/attention/fused_infer_attention_score/op_kernel _FIA_KernelSourcesExt)
-set(_FIA_CompileDefintions
-        KernelCtrlParam incre_flash_attention,incre_flash_attention_FIAS,prompt_flash_attention,prompt_flash_attention_FIAS fia PFA_UT
-)
-OpsTest_Level2_AddOp(
-        SUB_SYSTEM                              transformer
-        BRIEF                                   Fia
-        SNAKE                                   fused_infer_attention_score
-        KERNEL_TILING_DATA_DEF_H                ${_FIA_KernelTilingDataDefH}
-        KERNEL_SOURCES_EXT                      ${_FIA_KernelSourcesExt}
-        TILING_SOURCES_EXT                      ${_FIA_TilingSourcesExt}
-        TILING_PRIVATE_INCLUDES_EXT             ${_FIA_KernelTilingExtInclude}
-        KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT  ${_FIA_CompileDefintions}
-        UTEST_COMMON_PRIVATE_LINK_LIBRARIES_EXT ${_FIA_TargetPrivateLinkLibrariesExt}
-        KERNEL_PRIVATE_INCLUDES_EXT             ${_FIA_OpKernelPrivateIncludesExt}
-        UTEST_COMMON_PRIVATE_INCLUDES_EXT       ${_FIA_UTestCommonPrivateIncludeExt}
-)
+message(STATUS "=== Debug: start ops.ops-transformer.attention.fused_infer_attention_score.tests.CMakeLists.txt ")
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()

@@ -10,8 +10,6 @@
 
 #ifndef FLASH_ATTN_INFER_TILING_H
 #define FLASH_ATTN_INFER_TILING_H
-#include <cstdio>
-#include <algorithm>
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/tilingdata_base.h"
 #include "fused_infer_attention_score_tiling.h"
@@ -82,6 +80,7 @@ namespace optiling{
         DataType dataType = DataType::FP16;
         bool pagedCacheFlag = false;
         bool lseFlag = false;
+        bool learnableSinkFlag = false;
         bool isTilingSink = false;
         string layout;
     };
@@ -158,6 +157,7 @@ namespace optiling{
         constexpr uint64_t DTYPE_BF16_KEY = 200;
         constexpr uint64_t LSE_OUT_ONLY_KEY = 1000;
         constexpr uint64_t INNER_LOW_PREC_KEY = 10000;
+        constexpr uint64_t LEARNABLE_SINK_KEY = 100000000;
         uint64_t tilingKey = SPLIT_FUSE_BASE_KEY;
         if (faInfo_.pagedCacheFlag) {
             tilingKey += static_cast<uint64_t>(PAGED_CACHE_KEY);
@@ -175,6 +175,9 @@ namespace optiling{
         }
         if (faInfo_.lseFlag) {
             tilingKey += static_cast<uint64_t>(LSE_OUT_ONLY_KEY);
+        }
+        if (faInfo_.learnableSinkFlag) {
+            tilingKey += static_cast<uint64_t>(LEARNABLE_SINK_KEY);
         }
         if (faInfo_.innerPrecise == 1) {
             tilingKey += static_cast<uint64_t>(INNER_LOW_PREC_KEY);

@@ -13,19 +13,7 @@
  * \brief
  */
 #include <queue>
-#include <vector>
-#include <string>
-#include <unordered_map>
-#include <cstdint>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <cstdlib>
-#include <dlfcn.h>
-#include <unistd.h>
-#include <cstdio>
 #include <numeric>
-#include <algorithm>
 #include <graph/utils/type_utils.h>
 
 #include "register/op_def_registry.h"
@@ -275,7 +263,6 @@ static const std::unordered_map<ge::DataType, string> g_strDataTypePfa = {
     {ge::DT_VARIANT, "DT_VARIANT"},
     {ge::DT_BF16, "DT_BF16"},
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
-    {ge::DT_FLOAT8_E5M2, "DT_FLOAT8_E5M2"},
     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},
 };
@@ -335,6 +322,20 @@ static ge::DataType ValidPfaDataType(ge::DataType type)
 {
     return (g_strDataTypePfa.find(type) == g_strDataTypePfa.end()) ? ge::DT_UNDEFINED : type;
 }
+
+namespace v2 {
+std::string GetPfaDataTypeStr(ge::DataType type) {
+    ge::DataType findDype = (g_strDataTypePfa.find(type) == g_strDataTypePfa.end()) ? ge::DT_UNDEFINED : type;
+    return g_strDataTypePfa.at(findDype);
+}
+} // namespace v2
+
+namespace arch38 {
+std::string GetPfaDataTypeStr(ge::DataType type) {
+    ge::DataType findDype = (g_strDataTypePfa.find(type) == g_strDataTypePfa.end()) ? ge::DT_UNDEFINED : type;
+    return g_strDataTypePfa.at(findDype);
+}
+} // namespace arch38
 
 ge::graphStatus PromptFlashAttentionTiling::ConvertContextToPFAParams(gert::TilingContext* context, ContextParamsForPFATiling& contextKeyParams) const
 {
@@ -6490,7 +6491,6 @@ ge::graphStatus PromptFlashAttentionTiling::AdjustCVTilingCVDiff(int64_t ubSize,
 }
 
 ge::graphStatus TilingPromptFlashAttention(gert::TilingContext* context) {
-    OP_LOGI("---PromptFlashAttentionEntryInfo", "TilingPromptFlashAttentionFunctionEntry!---");
     if (context == nullptr) {
             OP_LOGE("PromptFlashAttention", "tiling context is nullptr!");
             return ge::GRAPH_FAILED;

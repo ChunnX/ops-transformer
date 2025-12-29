@@ -26,28 +26,45 @@
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling_impl.h"
+#include "arch35/fused_infer_attention_score_tiling_v2.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000200100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100200100, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000210100, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000200103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100200103, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010200100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110200100, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010200103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110200103, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000200200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100200200, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000200203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100200203, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010200200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110200200, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010200203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110200203, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000201100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100201100, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000211100, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000201103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100201103, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010201100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110201100, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010201103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110201103, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000201200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100201200, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000000201203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000100201203, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010201200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110201200, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010201203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110201203, FAInferTilingData)
 
 // Test purposes - using old key
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore, IncreFlashAttentionTilingDataV2)
@@ -1011,6 +1028,11 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     int64_t tempQD = tempQ->GetStorageShape().GetDim(DIM_2);
     int64_t tempKD = 0;
     int64_t tempVD = 0;
+    constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
+    constexpr int64_t MAX_BLOCK_SIZE = 512;
+    bool tempLearnableSinkFlag = context->GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr ? true : false;
+    int32_t tempInnerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
+    
     if (!isPageAttention) {
         tempKD = tempK->GetStorageShape().GetDim(DIM_2);
         tempVD = tempV->GetStorageShape().GetDim(DIM_2);
@@ -1024,9 +1046,13 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                 "When paged cache is used, the first dim of K and V must be consistent with input blockSize attr"),
                 return ge::GRAPH_FAILED);
-        OP_CHECK_IF(inputBlockSize != 128U,
+        OP_CHECK_IF((inputBlockSize % BLOCK_SIZE_ALIGN_16 != 0),
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "When input layout is TND and paged cache is used, the input blockSize must be 128"),
+                "When input layout is TND and paged cache is used, the input blockSize must be a multiple of 16"),
+                return ge::GRAPH_FAILED);
+        OP_CHECK_IF((inputBlockSize > MAX_BLOCK_SIZE),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                "When input layout is TND and paged cache is used, the input blockSize must be less than 512"),
                 return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((tempQD != tempKD) || (tempQD != tempVD),
@@ -1035,6 +1061,10 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     OP_CHECK_IF(tempQD > 256U,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
             "When input layout is TND, headDim shall not exceed 256"),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tempLearnableSinkFlag && (tempInnerPrecise == 1 || tempInnerPrecise == 2 || tempInnerPrecise == 3), 
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "When learnable sink is enabled, innerPrecise shall not be 1, 2 or 3"),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1146,6 +1176,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     float scaleValue = *(attrs->GetAttrPointer<float>(ATTR_SCALE_INDEX));
     string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     bool lseFlag = *(attrs->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX));
+    bool learnableSinkFlag = context->GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr ? true : false;
     int32_t innerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
     faInfo.numBlocks = tempK->GetStorageShape().GetDim(DIM_0);
     faInfo.blockSize = tmpBlkSize;
@@ -1153,6 +1184,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     faInfo.scaleValue = scaleValue;
     faInfo.layout = inputLayoutStr;
     faInfo.lseFlag = lseFlag;
+    faInfo.learnableSinkFlag = learnableSinkFlag;
     faInfo.innerPrecise = innerPrecise;
     if (faInfo.pagedCacheFlag) {
         faInfo.maxNumBlocksPerBatch = blockTable->GetStorageShape().GetDim(DIM_1);
@@ -1202,8 +1234,10 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
 
     bool usingFAI = false;
+    constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
+    constexpr int64_t MAX_BLOCK_SIZE = 512;
     if (inputLayoutStr == "TND" && !isLearnableSink && !isRopeSplitMla &&
-        sparseModeSupported && (nonMhaConditions || mhaConditions)) {        
+        sparseModeSupported && (nonMhaConditions || mhaConditions)) {
         if (!isPageAttention) {
             int64_t tempKD = tempK->GetStorageShape().GetDim(DIM_2);
             int64_t tempVD = tempV->GetStorageShape().GetDim(DIM_2);
@@ -1218,7 +1252,9 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
             int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_1);
             bool isFAIDSize = (tempD <= 256U && tempKD <= 256 && tempVD <= 256) &&
                     (tempD == tempKD && tempD == tempVD);
-            if (isFAIDSize && blockSize == 128U) {
+            bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) && 
+                    (blockSize <= MAX_BLOCK_SIZE);
+            if (isFAIDSize && blockSizeSupported) {
                 usingFAI = true;
             }
         }
@@ -1815,7 +1851,12 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     auto socShortName = ascendcPlatform.GetSocVersion();
-    return TilingFusedInferAttentionScore(context);
+    if ((socShortName == platform_ascendc::SocVersion::ASCEND910_95) || (socShortName == platform_ascendc::SocVersion::ASCEND910_55)) {
+        return TilingFusedInferAttentionScoreV2(context);
+    } else {
+        return TilingFusedInferAttentionScore(context);
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 extern "C" {

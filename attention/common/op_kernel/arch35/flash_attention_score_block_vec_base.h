@@ -32,6 +32,7 @@
 #include "flash_attention_score_tiling_regbase.h"
 
 using namespace AscendC;
+using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
@@ -281,10 +282,10 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
     AscendC::LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
 
     if (unlikely(runInfo.s2LoopCount == 0)) {
-        fa::ProcessVec1VfDnRegbaseV2<T, INPUT_T, false, s2BaseSize>(stage1CastTensor, sumUb,
+        FaVectorApi::ProcessVec1VfDnRegbaseV2<T, INPUT_T, false, s2BaseSize>(stage1CastTensor, sumUb,
             maxUb, mmRes, expUb, runInfo.s1RealSizeAlign32, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, 1);
     } else {
-        fa::ProcessVec1VfDnRegbaseV2<T, INPUT_T, true, s2BaseSize>(stage1CastTensor, sumUb,
+        FaVectorApi::ProcessVec1VfDnRegbaseV2<T, INPUT_T, true, s2BaseSize>(stage1CastTensor, sumUb,
             maxUb, mmRes, expUb, runInfo.s1RealSizeAlign32, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
     }
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
@@ -489,13 +490,13 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
     if (unlikely(runInfo.s2LoopCount == 0)) {
         if constexpr (isFp8) {
-            fa::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
                 static_cast<T>(constInfo.scaleValue), descaleQK,
                 negativeFloatScalar, constInfo.keepProb, runInfo.s2EndIdx - s1BaseSize < s2BaseSize);
         } else {
-            fa::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                 runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                 static_cast<T>(constInfo.scaleValue), descaleQK,
@@ -503,13 +504,13 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
         }
     } else {
         if constexpr (isFp8) {
-            fa::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
                 static_cast<T>(constInfo.scaleValue), descaleQK,
                 negativeFloatScalar, constInfo.keepProb, runInfo.s2LoopCount == runInfo.s2LoopLimit);
         } else {
-            fa::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                 runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                 static_cast<T>(constInfo.scaleValue), descaleQK,
@@ -606,7 +607,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCopyOut(
     // Copy sum to gm
     LocalTensor<float> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> sumOutTensor = sumBrdcst.template AllocTensor<float>();
-    fa::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
+    FaVectorApi::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
     sumBrdcst.template EnQue(sumOutTensor);
     sumBrdcst.template DeQue<float>();
     DataCopy(sumGm[gmOffset], sumOutTensor, calculateSize);
@@ -615,7 +616,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCopyOut(
     // Copy max to gm
     LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> maxOutTensor = maxBrdcst.template AllocTensor<float>();
-    fa::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
+    FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
     maxBrdcst.template EnQue(maxOutTensor);
     maxBrdcst.template DeQue<float>();
     DataCopy(maxGm[gmOffset], maxOutTensor, calculateSize);

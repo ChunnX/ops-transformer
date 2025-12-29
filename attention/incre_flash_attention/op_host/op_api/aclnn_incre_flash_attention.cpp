@@ -8,8 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <cstring>
-#include "graph/types.h"
 #include "aclnn_incre_flash_attention.h"
 
 #ifdef __cplusplus

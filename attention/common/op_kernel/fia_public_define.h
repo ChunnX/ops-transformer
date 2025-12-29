@@ -181,10 +181,11 @@ struct ConstInfo {
     uint32_t pseShiftS2 = 0U;
     // mask
     bool attenMaskFlag = false;
-    uint64_t attenMaskSize = 0ULL;
+    uint64_t attenMaskBatchStride = 0ULL;
     uint32_t attenMaskStride = 0ULL;
     bool needInit = false;
     bool isRowInvalid = false;  // 是否使能行无效
+    bool isExistRowInvalid = false;  // 实际是否存在行无效
     int64_t preToken = 0;
     int64_t nextToken = 0;
     uint32_t sparseMode = 0;

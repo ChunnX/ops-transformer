@@ -749,8 +749,7 @@ protected:
     ge::graphStatus CheckLearnableSinkWhenLayoutIsTND(ContextParamsForPFATiling& contextKeyParams) const;
 
 protected:
-    ContextParamsForPFATiling* contextKeyParamsPtr = nullptr;
-    platform_ascendc::PlatformAscendC ascendcPlatform;
+    ContextParamsForPFATiling* contextKeyParamsPtr = nullptr;    
     int64_t ubSizeRemain = 1;
     bool isSOuterNoTail = true;
     bool isSInnerNoTail = true;
@@ -794,7 +793,8 @@ protected:
     platform_ascendc::SocVersion curShortSocName;
     uint32_t dataTypeSize_ = 4;
     uint32_t layoutType = 0;
-    uint32_t PAlayoutType = 0;    
+    uint32_t PAlayoutType = 0;
+    platform_ascendc::PlatformAscendC ascendcPlatform;
     TilingMod tilingMod = TilingMod::CVSAME;
     SplitCoreMode splitCoreMode = SplitCoreMode::SPLIT_NBS_VECTOR;
     uint32_t splitD = 0;

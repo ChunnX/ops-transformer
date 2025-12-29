@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <vector>
 #include "fallback/fallback_comm_2stages.h"
 #include "fallback/fallback_2stages.h"
 #include "log/log.h"

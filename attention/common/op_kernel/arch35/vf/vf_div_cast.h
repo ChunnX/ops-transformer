@@ -16,8 +16,7 @@
 
 #include "kernel_tensor.h"
 
-namespace AscendC {
-#ifndef __CCE_KT_TEST__
+namespace FaVectorApi {
 template <typename T, typename OUTPUT_T, uint16_t srcD>
 __simd_vf__ inline void DivCastImpl64VF(__ubuf__ OUTPUT_T * dstUb, __ubuf__ float * srcUb, __ubuf__ float * expSumUb,
     const uint16_t m)
@@ -214,14 +213,6 @@ __aicore__ inline void DivCast(const LocalTensor<OUTPUT_T>& dstTensor,
         DivCastImplGeneral<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
     }
 }
-#else
-template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCast(const LocalTensor<OUTPUT_T>& dstTensor,
-                               const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
-                               const uint16_t m)
-{
-}
-#endif
 } // namespace
 
 #endif // VF_DIV_CAST_INTERFACE_H

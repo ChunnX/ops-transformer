@@ -24,6 +24,7 @@
 #include "flash_attention_score_antiquant_processor.h"
 #include "flash_attention_score_tiling_regbase.h"
 using namespace optiling;
+using namespace FaVectorApi;
 namespace BaseApi {
 __aicore__ inline constexpr uint16_t Align64FuncAntiquantup(uint16_t data) {
     return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
@@ -535,6 +536,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAnt
     taskParam.singleSInnerSize = constInfo.s2BaseSize;
     taskParam.sInnerLoopSize = constInfo.sInnerLoopSize;
     taskParam.antiqSeqSize = antiqSeqSize;
+    taskParam.isKvCacheNz = false;
+    if constexpr (isPa) {
+        taskParam.isKvCacheNz = taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ);
+    }
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -792,7 +797,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeLogS
     // Copy sum to gm
     LocalTensor<float> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> sumOutTensor =sumBrdcst.AllocTensor<float>();
-    fa::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
+    FaVectorApi::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
     sumBrdcst.EnQue(sumOutTensor);
     sumBrdcst.DeQue<float>();
     DataCopy(this->softmaxFDSumGm[gmOffset], sumOutTensor, calculateSize);
@@ -802,14 +807,14 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeLogS
     LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     if constexpr (!IsSameType<Q_T, float>::value || !containAllOptionalInput) {
         LocalTensor<float> maxOutTensor = maxBrdcst.AllocTensor<float>();
-        fa::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
+        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
         maxBrdcst.EnQue(maxOutTensor);
         maxBrdcst.DeQue<float>();
         DataCopy(this->softmaxFDMaxGm[gmOffset], maxOutTensor, calculateSize);
         this->maxBrdcst.template FreeTensor(maxOutTensor);
     } else {
         LocalTensor<float> maxOutTensor = sumBrdcst.AllocTensor<float>();
-        fa::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
+        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
         sumBrdcst.EnQue(maxOutTensor);
         sumBrdcst.DeQue<float>();
         DataCopy(this->softmaxFDMaxGm[gmOffset], maxOutTensor, calculateSize);
@@ -1029,11 +1034,17 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
         dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) >> 4;
     }
     dataCopyParams.dstStride = constInfo.attentionOutStride;
+    dataCopyParams.blockCount = runInfo.vec2S1RealSize;
+
     int64_t attenOutOffset = constInfo.dSizeV;
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         attenOutOffset = constInfo.n2GDv;
         if constexpr (isInfer) {
-            if (constInfo.isGqa == 1) {
+            if (constInfo.isPfaGS1Merge) {
+                attenOutOffset = 0;
+                dataCopyParams.blockLen *= constInfo.gSize;
+                dataCopyParams.blockCount /= constInfo.gSize;
+            } else if (constInfo.isGqa) {
                 attenOutOffset = constInfo.dSizeV;
             }
         }
@@ -1041,7 +1052,11 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
         if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BSH) {
             attenOutOffset = constInfo.n2GDv;
             if constexpr (isInfer) {
-                if (constInfo.isGqa == 1) {
+                if (constInfo.isPfaGS1Merge) {
+                    attenOutOffset = 0;
+                    dataCopyParams.blockLen *= constInfo.gSize;
+                    dataCopyParams.blockCount /= constInfo.gSize;
+                } else if (constInfo.isGqa) {
                     attenOutOffset = constInfo.dSizeV;
                 }
             }
@@ -1054,9 +1069,25 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
             }
         }
     }
-    dataCopyParams.blockCount = runInfo.vec2S1RealSize;
-    DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset], 
+    
+    if constexpr (isInfer) {
+        if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 && (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND))) {
+            for (int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++) {
+                attenOutOffset = i * constInfo.dSizeV * constInfo.gSize * constInfo.n2Size;
+                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+                dataCopyParams.blockCount = constInfo.gSize;
+                dataCopyParams.dstStride = 0;
+                DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + attenOutOffset],
+                    attenOut[i * constInfo.gSize * dSizeAligned64], dataCopyParams);
+            }
+        } else {
+            DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
+                attenOut, dataCopyParams);
+        }
+    } else {
+        DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
             attenOut, dataCopyParams);
+    }
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -1589,7 +1620,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxData
     // Copy sum to gm
     LocalTensor<float> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> sumOutTensor = sumBrdcst.AllocTensor<float>();
-    fa::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
+    FaVectorApi::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
     sumBrdcst.EnQue(sumOutTensor);
     sumBrdcst.DeQue<float>();
     DataCopy(this->softmaxSumGm[gmOffset], sumOutTensor, calculateSize);
@@ -1599,14 +1630,14 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxData
     LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     if constexpr (!IsSameType<Q_T, float>::value || !containAllOptionalInput) {
         LocalTensor<float> maxOutTensor = maxBrdcst.AllocTensor<float>();
-        fa::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
+        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
         maxBrdcst.EnQue(maxOutTensor);
         maxBrdcst.DeQue<float>();
         DataCopy(this->softmaxMaxGm[gmOffset], maxOutTensor, calculateSize);
         this->maxBrdcst.template FreeTensor(maxOutTensor);
     } else {
         LocalTensor<float> maxOutTensor = sumBrdcst.AllocTensor<float>();
-        fa::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
+        FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
         sumBrdcst.EnQue(maxOutTensor);
         sumBrdcst.DeQue<float>();
         DataCopy(this->softmaxMaxGm[gmOffset], maxOutTensor, calculateSize);

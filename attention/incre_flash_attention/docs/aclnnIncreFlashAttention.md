@@ -1,11 +1,18 @@
 # aclnnIncreFlashAttention
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/incre_flash_attention)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | -------- |
+| <term>昇腾910_95 AI处理器</term>                             | √        |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     | ×        |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √        |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> | √        |
+| <term>Atlas 200I/500 A2 推理产品</term>                      | ×        |
+| <term>Atlas 推理系列加速卡产品</term>                        | √        |
+| <term>Atlas 训练系列产品</term>                              | ×        |
+| <term>Atlas 200I/300/500 推理产品</term>                     | ×        |
 
 ##  功能说明
 
@@ -196,7 +203,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>numKeyValueHeads</td>
         <td>输入</td>
         <td>key、value中head个数。</td>
-        <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，默认为0，表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+        <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，传入0表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -319,12 +326,18 @@ aclnnStatus aclnnIncreFlashAttention(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ##   约束说明
+
 - 确定性计算：
   - aclnnIncreFlashAttention默认确定性实现。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：
   - 支持B轴小于等于65536，N轴小于等于256，D轴小于等于512。
   - query数据类型支持FLOAT16、BFLOAT16，attentionOut、key和value数据类型支持FLOAT16和BFLOAT16。
   - numKeyValueHeads数据类型支持INT64。
+- <term>Atlas 推理系列加速卡产品</term>：
+  - 支持B轴小于等于256，N轴小于等于256，D轴小于等于512。
+  - 支持key、value的S轴小于等于65536。
+  - query、key、value和attentionOut数据类型仅支持FLOAT16。
+  - numKeyValueHeads仅支持取值0。
 - 非连续场景下，参数key、value的tensorlist中tensor的个数等于query的B（由于tensorlist限制，非连续场景下B需要小于等于256）。shape除S外需要完全一致，且batch只能为1。
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系，并且numHeads与numKeyValueHeads的比值不能大于64。
 - 仅支持query的S轴等于1。
@@ -340,6 +353,7 @@ aclnnStatus aclnnIncreFlashAttention(
 #include <math.h>
 #include <cstring>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_incre_flash_attention.h"
 
 using namespace std;
@@ -487,12 +501,12 @@ int main() {
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   auto size = GetShapeSize(outShape);
-  std::vector<double> resultData(size, 0);
+  std::vector<op::fp16_t> resultData(size, 0);
   ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                     size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
   for (int64_t i = 0; i < size; i++) {
-      LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+      std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
   }
 
   // 6. 释放资源

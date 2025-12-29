@@ -20,7 +20,7 @@
 
 using namespace regbaseutil;
 
-namespace AscendC {
+namespace FaVectorApi {
 template <typename T, typename T2, typename OUTPUT_T, uint32_t s1BaseSize = 16, uint32_t s2BaseSize = 512,
     bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0>
 __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(

@@ -121,7 +121,7 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
 }
 
 void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor *softmaxLse,
-                                               const aclTensor *tempTensor, const aclTensor *&placeHolder)
+                                               const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
     if (softmaxLseFlag == false) {
         std::vector<int64_t> shape = {0};

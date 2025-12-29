@@ -14,7 +14,6 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_TILING_CONST_H
 #define PROMPT_FLASH_ATTENTION_TILING_CONST_H
-#include <cstdint>
 
 namespace optiling {
 constexpr uint32_t INT8SIZE = 1;

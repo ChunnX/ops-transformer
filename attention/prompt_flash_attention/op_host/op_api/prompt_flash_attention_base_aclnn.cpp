@@ -10,10 +10,8 @@
 #include "prompt_flash_attention.h"
 
 #include "opdev/make_op_executor.h"
-#include "opdev/op_dfx.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
-#include "opdev/shape_utils.h"
 
 using namespace op;
 

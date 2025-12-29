@@ -201,7 +201,7 @@ int ExecutePromptFlashAttention(TensorResources& resources, aclrtStream stream,
 
 int ProcessResults(TensorResources& resources, const std::vector<int64_t>& outShape) {
     auto size = GetShapeSize(outShape);
-    std::vector<double> resultData(size, 0);
+    std::vector<float> resultData(size, 0);
     
     int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), 
                          resources.outDeviceAddr, size * sizeof(resultData[0]), 

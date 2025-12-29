@@ -60,7 +60,7 @@ void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tenso
 aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outArray);
 
 void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor *softmaxLse,
-                                               const aclTensor *tempTensor, const aclTensor *&placeHolder);
+                                               const aclTensor *&tempTensor, const aclTensor *&placeHolder);
 
 
 #ifdef __cplusplus

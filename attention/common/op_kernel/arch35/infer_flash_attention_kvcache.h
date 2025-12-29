@@ -379,7 +379,15 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
             runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gDR * actualSeqLen +
                 runParam.cubeSOuterOffset * constInfo.dSizeRope;
         } else {
-            if (constInfo.isGqa) {
+            if (constInfo.isGqa && constInfo.s1Size > 1) { // 合轴：antiquant PFA
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+                    runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
+                        runParam.n2oIdx * constInfo.gD;
+                } else {
+                    runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
+                        runParam.cubeSOuterOffset * constInfo.dSize;
+                }
+            } else if (constInfo.isGqa) {
                 runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
                     runParam.cubeSOuterOffset * constInfo.dSize;
                 if constexpr (hasRope) {

@@ -15,9 +15,6 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_CONTEXT_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_CONTEXT_H_
 
-#include <cstdint>
-#include <string>
-#include <vector>
 
 #ifdef ASCENDC_OP_TEST
 #define IFA_EXTERN_C extern "C"

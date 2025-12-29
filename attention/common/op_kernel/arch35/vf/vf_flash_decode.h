@@ -20,7 +20,7 @@
 constexpr float FLT_ZERO = 0;
 constexpr float FLT_MAX_NEW = 3.402823466e+38F;
 
-namespace AscendC {
+namespace FaVectorApi {
 
 // 处理循环splitKVIndex=0的场景，vregDst需要置0
 template <typename T>

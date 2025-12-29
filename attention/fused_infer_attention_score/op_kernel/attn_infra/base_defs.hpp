@@ -16,7 +16,6 @@
 #ifndef HPP_HPP
 #define HPP_HPP
 
-#include <cstdint>
 
 #include <kernel_operator.h>
 

@@ -9,7 +9,6 @@
  */
 
 #include "aclnn_incre_flash_attention_v3.h"
-#include "graph/types.h"
 
 #ifdef __cplusplus
 extern "C" {

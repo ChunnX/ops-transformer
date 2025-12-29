@@ -18,12 +18,15 @@ namespace NpuArch::Epilogue
 {
 
 enum class LseMode {NONE = 0, OUT_ONLY = 1};
+enum class SinkMode {DISABLE = 0, ENABLE = 1};
+
 // For AtlasA2, FA Infer online Softmax
-template <LseMode LSE_MODE_, typename SM_DTYPE_>
+template <LseMode LSE_MODE_, SinkMode SINK_MODE_, typename SM_DTYPE_>
 struct EpilogueAtlasA2OnlineSoftmax {
     using ArchTag = Arch::AtlasA2;
     using IntermPrec = SM_DTYPE_;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
+    static constexpr SinkMode SINK_MODE = SINK_MODE_;
 };
 
 // For AtlasA2, FA Infer RescaleO

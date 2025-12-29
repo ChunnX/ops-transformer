@@ -15,7 +15,6 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_STRUCT_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_STRUCT_H_
 
-#include <cstdint>
 
 #ifdef ASCENDC_OP_TEST
 #define IFA_EXTERN_C extern "C"
@@ -102,10 +101,8 @@ enum class TilingInOutMode : uint32_t {
     BF16_INT8 = 8,
     INT8_BF16 = 9,
     FP16_FP8_E4M3FN = 10,
-    FP16_FP8_E5M2 = 11,
     FP16_HIFLOAT8 = 12,
     BF16_FP8_E4M3FN = 13,
-    BF16_FP8_E5M2 = 14,
     BF16_HIFLOAT8 = 15,
 };
 
@@ -122,6 +119,8 @@ enum class IfaPerfMode : uint32_t {
 enum class IfaSocVersion : uint32_t {
     SOC_ASCEND_910B = 0,
     SOC_ASCEND_310P = 1,
+    SOC_ASCEND_910_95 = 2,
+    SOC_ASCEND_910_55 = 3,
 };
 
 

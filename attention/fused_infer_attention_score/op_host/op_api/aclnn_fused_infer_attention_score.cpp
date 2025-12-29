@@ -9,8 +9,6 @@
  */
 
 #include "aclnn_fused_infer_attention_score.h"
-#include <cstring>
-#include "graph/types.h"
 #include "aclnn_fused_infer_attention_score_inner.h"
 
 #ifdef __cplusplus

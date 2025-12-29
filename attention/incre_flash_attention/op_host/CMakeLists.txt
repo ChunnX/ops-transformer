@@ -10,10 +10,20 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-set(incre_flash_attention_depends attention/prompt_flash_attention attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for incre_flash_attention")
+    set(incre_flash_attention_apt_depends attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for incre_flash_attention_apt")
+    set(incre_flash_attention_depends attention/prompt_flash_attention CACHE INTERNAL "Dependencies for incre_flash_attention")
     target_sources(op_host_aclnnInner PRIVATE
         incre_flash_attention_def.cpp
     )
+endif()
+
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
+        add_ops_compile_options(
+            OP_NAME IncreFlashAttention
+            COMPUTE_UNIT ascend910_9599
+            OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+        )
 endif()
 
 add_ops_compile_options(

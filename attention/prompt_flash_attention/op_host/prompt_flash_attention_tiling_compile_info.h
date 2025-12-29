@@ -14,8 +14,6 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_TILING_STRUCT_COMPILE_INFO_H
 #define PROMPT_FLASH_ATTENTION_TILING_STRUCT_COMPILE_INFO_H
-#include <cstdint>
-#include <vector>
 #include <queue>
 #include "exe_graph/runtime/tiling_context.h"
 #include "tiling_base/data_copy_transpose_tiling_def.h"

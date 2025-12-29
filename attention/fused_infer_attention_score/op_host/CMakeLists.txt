@@ -9,22 +9,37 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
+    set(fused_infer_attention_score_apt_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for fused_infer_attention_score")
     set(fused_infer_attention_score_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for fused_infer_attention_score")
     target_sources(op_host_aclnnInner PRIVATE
         fused_infer_attention_score_def.cpp
     )
 endif()
 
-add_ops_compile_options(
-    OP_NAME FusedInferAttentionScore
-    OPTIONS --cce-auto-sync=off
-            -Wno-deprecated-declarations
-            -Werror
-            -mllvm -cce-vf-remove-membar=false
-            -mllvm -cce-aicore-hoist-movemask=false
-            --op_relocatable_kernel_binary=true
-)
+if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
+    add_ops_compile_options(
+        OP_NAME FusedInferAttentionScore
+        COMPUTE_UNIT ascend910_9599
+        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+                --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
+                -mllvm -cce-vf-remove-membar=false
+                -mllvm -cce-aicore-hoist-movemask=false
+    )
+else()
+    add_ops_compile_options(
+        OP_NAME FusedInferAttentionScore
+        OPTIONS --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
+                -mllvm -cce-vf-remove-membar=false
+                -mllvm -cce-aicore-hoist-movemask=false
+                --op_relocatable_kernel_binary=true
+    )
+endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources_with_soc(OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)
@@ -39,6 +54,7 @@ if(NOT BUILD_OPS_RTY_KERNEL) #
     ../../common/op_host/arch32/fia_tiling_nonquant_mla.cpp
     ../../common/op_host/arch32/fia_tiling_nonquant.cpp
     ../../common/op_host/arch32/fia_tiling_empty_tensor.cpp
+    ../op_host/arch35/fused_infer_attention_score_tiling_v2.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_info_parser.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_check.cpp

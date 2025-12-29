@@ -8,20 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <cstring>
-#include "graph/types.h"
 #include "aclnn_fused_infer_attention_score_v3.h"
 
 #include "opdev/common_types.h"
-#include "opdev/data_type_utils.h"
-#include "opdev/format_utils.h"
 #include "opdev/make_op_executor.h"
-#include "opdev/op_executor.h"
 #include "opdev/op_def.h"
-#include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
-#include "opdev/shape_utils.h"
-#include "opdev/tensor_view_utils.h"
 #include "aclnn_fused_infer_attention_score_inner.h"
 
 using namespace op;

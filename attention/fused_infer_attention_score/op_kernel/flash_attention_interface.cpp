@@ -24,7 +24,8 @@ namespace SplitFuse {
         bool PagedCacheFlag = false,
         FaiKenel::MaskType maskCategory = FaiKenel::MaskType::NO_MASK,
         FaiKenel::inputLayout inLayout = FaiKenel::inputLayout::TND,
-        Epilogue::LseMode lseMode = Epilogue::LseMode::NONE>
+        Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
+        Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE>
     __global__ __aicore__ void FAInfer(
         GM_ADDR q,
         GM_ADDR k,
@@ -36,7 +37,8 @@ namespace SplitFuse {
         GM_ADDR actualQseqlen,
         GM_ADDR actualKvseqlen,
         GM_ADDR workspace,
-        GM_ADDR tiling)
+        GM_ADDR tiling,
+        GM_ADDR sink)
     {
         using ArchTag = Arch::AtlasA2;
         using ElementQ = InputDtypeQ;
@@ -69,7 +71,7 @@ namespace SplitFuse {
         using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
                                                    QType, KType, SType>;
 
-        using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, IntermCalcPrec>;
+        using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, IntermCalcPrec>;
         using PType = Gemm::GemmType<ElementP, LayoutP>;
         using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
         using EpilogueOnlineSoftmax =
@@ -99,7 +101,7 @@ namespace SplitFuse {
         using FAInferKernel = FAInferKernel<BlockMmadQK, BlockMmadPV,
                                             EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
                                             PagedCacheFlag, maskCategory, inLayout>;
-        FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling};
+        FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
         FAInferKernel flashAttnInfer;
         flashAttnInfer(params);
     }

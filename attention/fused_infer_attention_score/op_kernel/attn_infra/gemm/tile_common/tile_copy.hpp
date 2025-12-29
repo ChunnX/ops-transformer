@@ -11,7 +11,6 @@
 #ifndef GEMM_TILE_TILE_COPY_HPP
 #define GEMM_TILE_TILE_COPY_HPP
 
-#include <type_traits>
 #include "../../../attn_infra/base_defs.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_gm_to_l1.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm.hpp"

@@ -17,8 +17,6 @@
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 
-using namespace Ops::Transformer::OpTiling;
-
 namespace optiling {
 static ge::graphStatus TilingPrepareForFusedInferAttentionScore(gert::TilingParseContext * /* context */)
 {

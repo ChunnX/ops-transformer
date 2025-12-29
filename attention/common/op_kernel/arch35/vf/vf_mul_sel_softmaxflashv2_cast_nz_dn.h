@@ -15,15 +15,13 @@
 #ifndef MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
 #define MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
 #include "kernel_tensor.h"
-namespace fa {
+namespace FaVectorApi {
 using AscendC::LocalTensor;
-#ifndef __CCE_KT_TEST__
 using namespace AscendC;
 using namespace MicroAPI;
 
 #define VMULSCVT false
 #define DROPOUT false
-
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
@@ -817,21 +815,5 @@ __aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const Lo
     uint16_t loopM = (vecS1RealSize + 7) >> 3;
     BroadCastMaxSumVF<T>(out_ub, ori_ub, loopM);
 }
-#else
-template <typename T, typename T2, bool isUpdate = false, uint16_t ubN = 256>
-__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
-                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
-                                       const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf,
-                                       const uint32_t m, const uint32_t n, const uint32_t originN,
-                                       const T scale, float deScaleQK, const T minValue, float keepProb)
-{
-}
-
-template <typename T>
-__aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const LocalTensor<T> &oriTensor,
-                                       uint32_t vecS1RealSize)
-{
-}
-#endif
 }
 #endif // MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
