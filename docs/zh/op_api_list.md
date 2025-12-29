@@ -32,6 +32,8 @@
 |[aclnnApplyRotaryPosEmbV2](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmbV2.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现|
 |[aclnnAttentionUpdate](../../attention/attention_update/docs/aclnnAttentionUpdate.md)|将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。|默认确定性实现|
 |[aclnnBatchMatMulReduceScatterAlltoAll](../../mc2/batch_mat_mul_reduce_scatter_allto_all/docs/aclnnBatchMatMulReduceScatterAlltoAll.md)|BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。|默认确定性实现|
+|[aclnnAttentionToFFN](../../mc2/attention_to_ffn/docs/aclnnAttentionToFFN.md)|将Attention节点上数据发往FFN节点。|默认确定性实现||
+|[aclnnFFNToAttention](../../mc2/ffn_to_attention/docs/aclnnFFNToAttention.md)|将FFN节点上的token数据发往Attention节点。|默认非确定性实现||
 |[aclnnDequantRopeQuantKvcache](../../posembedding/dequant_rope_quant_kvcache/docs/aclnnDequantRopeQuantKvcache.md)|对输入张量进行dequant后，对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，并进行量化。|默认确定性实现|
 |[aclnnDistributeBarrier](../../mc2/distribute_barrier/docs/aclnnDistributeBarrier.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现|
 |[aclnnDistributeBarrierV2](../../mc2/distribute_barrier/docs/aclnnDistributeBarrierV2.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现|

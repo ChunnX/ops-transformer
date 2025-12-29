@@ -991,6 +991,35 @@ mc2:
         - moe_distribute_dispatch_v2
         - moe_distribute_combine_v2
 
+    ffn_to_attention:
+      module: True
+      src:
+        - mc2/ffn_to_attention
+        - mc2/common
+      exclude:
+        - mc2/ffn_to_attention/docs
+        - mc2/ffn_to_attention/README.md
+      ut_cov_exclude:
+        - mc2/ffn_to_attention
+      test:
+        examples: False
+      options:
+        - ffn_to_attention
+
+    attention_to_ffn:
+      module: True
+      src:
+        - mc2/attention_to_ffn
+        - mc2/common
+      exclude:
+        - mc2/attention_to_ffn/docs
+        - mc2/attention_to_ffn/README.md
+      ut_cov_exclude:
+        - mc2/attention_to_ffn
+      test:
+        examples: False
+      options:
+        - attention_to_ffn
     moe_distribute_combine:
       module: True
       src:

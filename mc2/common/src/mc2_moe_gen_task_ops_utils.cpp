@@ -49,10 +49,13 @@ const std::string MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE =
     "MoeDistributeDispatchTeardown";
 const std::string ALLTO_ALLV_GROUPED_MAT_MUL_OP_TYPE = "AlltoAllvGroupedMatMul";
 const std::string GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE = "GroupedMatMulAlltoAllv";
+const std::string ATTENTION_TO_FFN_OP_TYPE = "AttentionToFFN";
+const std::string FFN_TO_ATTENTION_OP_TYPE = "FFNToAttention";
 const int32_t GROUP_CNT_OF_DS_TRAINING = 1;
 const int32_t GROUP_CNT_OF_MOE_DISTRIBUTE = 2;
 const int32_t ONE_GROUP_CNT_OF_MOE_DISTRIBUTE = 1;
 const int32_t GROUP_CNT_OF_DISTRIBUTE_BARRIER = 1;
+const int32_t GROUP_CNT_OF_ATTENTION_FFN = 1;
 const int32_t GROUP_CNT = 2;
 const int32_t MAX_GROUP_CNT = 16;
 
@@ -72,7 +75,9 @@ static const std::map<const std::string, int32_t> GROUP_CNT_MAP{
     {MOE_DISTRIBUTE_DISPATCH_SETUP_OP_TYPE, ONE_GROUP_CNT_OF_MOE_DISTRIBUTE},
     {MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE, ONE_GROUP_CNT_OF_MOE_DISTRIBUTE},
     {ALLTO_ALLV_GROUPED_MAT_MUL_OP_TYPE, GROUP_CNT_OF_DS_TRAINING},
-    {GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE, GROUP_CNT_OF_DS_TRAINING}};
+    {GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE, GROUP_CNT_OF_DS_TRAINING},
+    {ATTENTION_TO_FFN_OP_TYPE, GROUP_CNT_OF_ATTENTION_FFN},
+    {FFN_TO_ATTENTION_OP_TYPE, GROUP_CNT_OF_ATTENTION_FFN}};
 
 static const std::unordered_set<std::string> NO_AI_CPU_SET{
     MOE_DISTRIBUTE_DISPATCH_OP_TYPE,
@@ -82,7 +87,9 @@ static const std::unordered_set<std::string> NO_AI_CPU_SET{
     MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE,
     MOE_DISTRIBUTE_COMBINE_TEARDOWN_OP_TYPE,
     MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_OP_TYPE,
-    DISTRIBUTE_BARRIER_OP_TYPE};
+    DISTRIBUTE_BARRIER_OP_TYPE,
+    ATTENTION_TO_FFN_OP_TYPE,
+    FFN_TO_ATTENTION_OP_TYPE};
 
 // 对已有结构的重复定义，只在本文件插入 aicpu desc 的时候使用
 struct HcclCommParamDescTmp {
@@ -220,7 +227,9 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(
   const std::string opTypeStr = opType;
   const char* groupName =
       opTypeStr == DISTRIBUTE_BARRIER_OP_TYPE || opTypeStr == ALLTO_ALLV_GROUPED_MAT_MUL_OP_TYPE || 
-      opTypeStr == GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE ? "group" : "group_ep";
+      opTypeStr == GROUPED_MAT_MUL_ALLTO_ALLV_OP_TYPE ||
+      opTypeStr == ATTENTION_TO_FFN_OP_TYPE ||
+      opTypeStr == FFN_TO_ATTENTION_OP_TYPE ? "group" : "group_ep";
   ge::KernelLaunchInfo waitTask =
       ge::KernelLaunchInfo::CreateHcomWaitTask(context, groupName);
   waitTask.SetStreamId(attachStreamId);
@@ -333,7 +342,9 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(
                    (opTypeStr != MOE_DISTRIBUTE_COMBINE_V2_OP_TYPE) &&
                    (opTypeStr != DISTRIBUTE_BARRIER_OP_TYPE) &&
                    (opTypeStr != MOE_DISTRIBUTE_DISPATCH_OP_TYPE) &&
-                   (opTypeStr != MOE_DISTRIBUTE_COMBINE_OP_TYPE));
+                   (opTypeStr != MOE_DISTRIBUTE_COMBINE_OP_TYPE) &&
+                   (opTypeStr != ATTENTION_TO_FFN_OP_TYPE) &&
+                   (opTypeStr != FFN_TO_ATTENTION_OP_TYPE));
   return useAiCpu ? Mc2MoeInsertTask(context, tasks, groupCnt)
                   : ge::GRAPH_SUCCESS;
 }
