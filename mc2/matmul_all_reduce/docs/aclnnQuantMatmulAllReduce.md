@@ -20,7 +20,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantMatmulAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAllReduce”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnQuantMatmulAllReduceGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnQuantMatmulAllReduce`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceGetWorkspaceSize(
@@ -47,7 +47,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
 
 ## aclnnQuantMatmulAllReduceGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
@@ -194,13 +194,12 @@ aclnnStatus aclnnQuantMatmulAllReduce(
       </tbody>
     </table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：x2输入的数据格式支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。当x2的数据格式为FRACTAL_NZ时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight完成数据格式ND到数据格式NZ的转换，非连续的tensor仅支持transpose场景。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：x2输入的数据格式支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。当x2的数据格式为FRACTAL_NZ时，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`完成数据格式ND到数据格式NZ的转换，非连续的tensor仅支持transpose场景。
 
-- **返回值：**
+- **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。第一阶段接口完成入参校验，出现以下场景报错：
 
-    第一段接口完成入参校验，出现以下场景时报错：
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
@@ -233,7 +232,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
     </table>
 ## aclnnQuantMatmulAllReduce
 
-- **参数说明：**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1312px"><colgroup>
     <col style="width: 158px">
     <col style="width: 120px">
@@ -253,7 +252,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantMatmulAllReduceGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnQuantMatmulAllReduceGetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -266,14 +265,14 @@ aclnnStatus aclnnQuantMatmulAllReduce(
         <td>指定执行任务的stream。</td>
     </tr>
     </tbody></table>
--   **返回值：**
+-   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  - aclnnQuantMatmulAllReduce默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - `aclnnQuantMatmulAllReduce`默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
 
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。不支持x1、x2为空矩阵。

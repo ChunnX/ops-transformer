@@ -8,7 +8,7 @@
 
 ## 功能说明
 
-- **算子功能**：兼容aclnnQuantMatmulAllReduce、aclnnQuantMatmulAllReduceV2、aclnnQuantMatmulAllReduceV3支持的功能，在此基础上新增perblock量化方式的支持。新增x1，x2输入支持dtype为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2。
+- **算子功能**：兼容`aclnnQuantMatmulAllReduce`、`aclnnQuantMatmulAllReduceV2`、`aclnnQuantMatmulAllReduceV3`支持的功能，在此基础上新增perblock量化方式的支持。新增x1，x2输入支持dtype为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2。
 - **计算公式**：
 
   - commQuantScale1Optional, commQuantScale2Optional不为空时:
@@ -18,7 +18,7 @@
     $$
 
     $$
-    alltoallOutput_{int8} = alltoall(matmulAddOutput / commQuantScale1Optional);
+    alltoallOutput_{int8} = AllToAll(matmulAddOutput / commQuantScale1Optional);
     $$
 
     $$
@@ -26,37 +26,37 @@
     $$
 
     $$
-    output = (allgather(reduceSumOutput_{int8}) * commQuantScale2Optional);
+    output = (AllGather(reduceSumOutput_{int8}) * commQuantScale2Optional);
     $$
   - x1，x2为INT8，无x1ScaleOptional，x2Scale为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
     $$
-    output = allReduce((x1@x2 + biasOptional) * x2Scale + x3Optional)
+    output = AllReduce((x1@x2 + biasOptional) * x2Scale + x3Optional)
     $$
   - x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FOAT16/BFLOAT16：
 
     $$
-    output = allReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
+    output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
     $$
   - x1，x2为FLOAT4_E2M1/FLOAT4_E1M2/FLOAT8_E4M3FN/FLOAT8_E5M2，x1ScaleOptional为FLOAT8_E8M0，x2Scale为FLOAT8_E8M0，可选biasOptional为FLOAT32, out为FOAT16/BFLOAT16/FLOAT32：
 
     $$
-    output = allReduce((x1* x1ScaleOptional)@(x2* x2Scale) + biasOptional + x3Optional)
+    output = AllReduce((x1* x1ScaleOptional)@(x2* x2Scale) + biasOptional + x3Optional)
     $$
   - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选bias为FLOAT32, out为FOAT16/BFLOAT16/FLOAT32：
 
     $$
-    output = allReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
+    output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
     $$
   - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FOAT16/BFLOAT16/FLOAT32:
 
     $$
-    output_{pq} = allReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
+    output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
     $$
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnQuantMatmulAllReduceV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAllReduceV4”接口执行计算。
+每个算子分为两段式接口，必须先调用`aclnnQuantMatmulAllReduceV4GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnQuantMatmulAllReduceV4`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
@@ -88,7 +88,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 
 ## aclnnQuantMatmulAllReduceV4GetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
@@ -284,8 +284,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     </table>
 
 
-- **返回值：**
-  第一段接口完成入参校验，出现以下场景时报错：
+- **返回值**
+  
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。第一阶段接口完成入参校验，出现以下场景报错：
+
   <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
@@ -318,7 +320,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
   </table>
 ## aclnnQuantMatmulAllReduceV4
 
-- **参数说明：**
+- **参数说明**
   <table style="undefined;table-layout: fixed; width: 1312px"><colgroup>
   <col style="width: 158px">
   <col style="width: 120px">
@@ -338,7 +340,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
   <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantMatmulAllReduceV4GetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnQuantMatmulAllReduceV4GetWorkspaceSize</code>获取。</td>
   </tr>
   <tr>
       <td>executor</td>
@@ -351,7 +353,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       <td>指定执行任务的Stream。</td>
   </tr>
   </tbody></table>
-- **返回值：**
+- **返回值**
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明

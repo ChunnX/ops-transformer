@@ -28,7 +28,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnGroupedMatMulAlltoAllvGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAlltoAllv”接口执行计算。
+每个算子分为两段式接口，必须先调用`aclnnGroupedMatMulAlltoAllvGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllv`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
@@ -47,7 +47,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     aclTensor*         y,
     aclTensor*         mmYOptional,
     uint64_t*          workspaceSize,
-    aclOpExecutor**       executor)
+    aclOpExecutor**    executor)
 ```
 
 ```cpp
@@ -60,212 +60,213 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 ## aclnnGroupedMatMulAlltoAllvGetWorkspaceSize
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
- <col style="width: 120px">
- <col style="width: 120px">
- <col style="width: 160px">
- <col style="width: 150px">
- <col style="width: 80px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>gmmX</td>
-   <td>输入</td>
-   <td>该输入进行AlltoAllv通信，通信后结果作为GroupedMatMul计算的左矩阵，支持2维，shape为(A, H1)。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>gmmWeight</td>
-   <td>输入</td>
-   <td>GroupedMatMul计算的右矩阵，数据类型与gmmX保持一致，支持3维，shape为(e, H1, N1)。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>sendCountsTensorOptional</td>
-   <td>输入</td>
-   <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
-   <td>INT32、INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>recvCountsTensorOptional</td>
-   <td>输入</td>
-   <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
-   <td>INT32、INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>mmXOptional</td>
-   <td>输入</td>
-   <td>可选输入，共享专家MatMul计算中的左矩阵，需与mmWeightOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(BS, H2)。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>mmWeightOptional</td>
-   <td>输入</td>
-   <td>可选输入，共享专家MatMul计算中的右矩阵，需与mmXOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(H2, N2)。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>group</td>
-   <td>输入</td>
-   <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
-   <td>STRING</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>epWorldSize</td>
-   <td>输入</td>
-   <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；</td>
-   <td>INT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>sendCounts</td>
-   <td>输入</td>
-   <td>表示发送给其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
-   <td>aclIntArray*（元素类型INT64）</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>recvCounts</td>
-   <td>输入</td>
-   <td>表示接收其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
-   <td>aclIntArray*（元素类型INT64）</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>transGmmWeight</td>
-   <td>输入</td>
-   <td>gmmWeight是否需要转置，true表示需要转置，false表示不转置。</td>
-   <td>BOOL</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>transMmWeight</td>
-   <td>输入</td>
-   <td>共享专家mmWeightOptional是否需要转置，true表示需要转置，false表示不转置。</td>
-   <td>BOOL</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>y</td>
-   <td>输出</td>
-   <td>最终计算结果，数据类型与输入gmmX保持一致，支持2维，shape为(BSK, N1)。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>mmYOptional</td>
-   <td>输出</td>
-   <td>共享专家MatMul的输出，数据类型与mmXOptional保持一致，支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输出</td>
-   <td>返回需要在Device侧申请的workspace大小。</td>
-   <td>UINT64</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输出</td>
-   <td>返回op执行器，包含了算子的计算流程。</td>
-   <td>aclOpExecutor*</td>
-   <td>ND</td>
-  </tr>
- </tbody></table>
+    <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
+    <col style="width: 120px">
+    <col style="width: 120px">
+    <col style="width: 160px">
+    <col style="width: 150px">
+    <col style="width: 80px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>gmmX</td>
+    <td>输入</td>
+    <td>该输入进行AlltoAllv通信，通信后结果作为GroupedMatMul计算的左矩阵，支持2维，shape为(A, H1)。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>gmmWeight</td>
+    <td>输入</td>
+    <td>GroupedMatMul计算的右矩阵，数据类型与gmmX保持一致，支持3维，shape为(e, H1, N1)。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>sendCountsTensorOptional</td>
+    <td>输入</td>
+    <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
+    <td>INT32、INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>recvCountsTensorOptional</td>
+    <td>输入</td>
+    <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
+    <td>INT32、INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>mmXOptional</td>
+    <td>输入</td>
+    <td>可选输入，共享专家MatMul计算中的左矩阵，需与mmWeightOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(BS, H2)。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>mmWeightOptional</td>
+    <td>输入</td>
+    <td>可选输入，共享专家MatMul计算中的右矩阵，需与mmXOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(H2, N2)。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>group</td>
+    <td>输入</td>
+    <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
+    <td>STRING</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>epWorldSize</td>
+    <td>输入</td>
+    <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>sendCounts</td>
+    <td>输入</td>
+    <td>表示发送给其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
+    <td>aclIntArray*（元素类型INT64）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>recvCounts</td>
+    <td>输入</td>
+    <td>表示接收其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
+    <td>aclIntArray*（元素类型INT64）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>transGmmWeight</td>
+    <td>输入</td>
+    <td>gmmWeight是否需要转置，true表示需要转置，false表示不转置。</td>
+    <td>BOOL</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>transMmWeight</td>
+    <td>输入</td>
+    <td>共享专家mmWeightOptional是否需要转置，true表示需要转置，false表示不转置。</td>
+    <td>BOOL</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>y</td>
+    <td>输出</td>
+    <td>最终计算结果，数据类型与输入gmmX保持一致，支持2维，shape为(BSK, N1)。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>mmYOptional</td>
+    <td>输出</td>
+    <td>共享专家MatMul的输出，数据类型与mmXOptional保持一致，支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输出</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>UINT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输出</td>
+    <td>返回op执行器，包含了算子的计算流程。</td>
+    <td>aclOpExecutor*</td>
+    <td>ND</td>
+    </tr>
+    </tbody></table>
 
-**返回值**
-第一段接口完成入参校验，出现以下场景时报错：
+- **返回值**
+    
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。第一阶段接口完成入参校验，出现以下场景报错：
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
- <col style="width: 800px">
- </colgroup>
- <thead>
-  <tr>
-   <th>返回值</th>
-   <th>错误码</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>ACLNN_ERR_PARAM_NULLPTR</td>
-   <td>161001</td>
-   <td>1. 传入参数要求是必选输入、输出或者必选属性，但实际传入了空指针。</td>
-  </tr>
-  <tr>
-   <td>ACLNN_ERR_PARAM_INVALID</td>
-   <td>161002</td>
-   <td>1. gmmX、gmmWeight、sendCountsTensorOptional、recvCountsTensorOptional、mmXOptional、mmWeightOptional、group、epWorldSize、sendCounts、recvCounts的数据类型、数据格式或者维度不在支持的范围内。</td>
-  </tr>
- </tbody></table>
+    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
+    <col style="width: 250px">
+    <col style="width: 130px">
+    <col style="width: 800px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
+    <td>1. 传入参数要求是必选输入、输出或者必选属性，但实际传入了空指针。</td>
+    </tr>
+    <tr>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
+    <td>1. gmmX、gmmWeight、sendCountsTensorOptional、recvCountsTensorOptional、mmXOptional、mmWeightOptional、group、epWorldSize、sendCounts、recvCounts的数据类型、数据格式或者维度不在支持的范围内。</td>
+    </tr>
+    </tbody></table>
 
 
 ## aclnnGroupedMatMulAlltoAllv
 
-**参数说明**
+- **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
- <col style="width: 250px">
- <col style="width: 130px">
- <col style="width: 800px">
- </colgroup>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出</th>
-   <th>描述</th>
-  </tr></thead>
- <tbody>
-  <tr>
-   <td>workspace</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace内存地址。</td>
-  </tr>
-  <tr>
-   <td>workspaceSize</td>
-   <td>输入</td>
-   <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnGroupedMatMulAlltoAllvGetWorkspaceSize</code>获取。</td>
-  </tr>
-  <tr>
-   <td>executor</td>
-   <td>输入</td>
-   <td>op执行器，包含了算子计算流程。</td>
-  </tr>
-  <tr>
-   <td>stream</td>
-   <td>输入</td>
-   <td>指定执行任务的Stream。</td>
-  </tr>
- </tbody></table>
+    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
+    <col style="width: 250px">
+    <col style="width: 130px">
+    <col style="width: 800px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnGroupedMatMulAlltoAllvGetWorkspaceSize</code>获取。</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的Stream。</td>
+    </tr>
+    </tbody></table>
 
-**返回值**
+- **返回值**
 
-返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  - aclnnGroupedMatMulAlltoAllv默认确定性实现。
+  - `aclnnGroupedMatMulAlltoAllv`默认确定性实现。
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。

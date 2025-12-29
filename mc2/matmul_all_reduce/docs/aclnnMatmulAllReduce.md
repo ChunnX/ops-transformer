@@ -19,7 +19,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMatmulAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAllReduce”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMatmulAllReduceGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulAllReduce`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
@@ -45,7 +45,7 @@ aclnnStatus aclnnMatmulAllReduce(
 
 ## aclnnMatmulAllReduceGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
@@ -171,11 +171,10 @@ aclnnStatus aclnnMatmulAllReduce(
       </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。第一阶段接口完成入参校验，出现以下场景报错：
 
-    第一段接口完成入参校验，出现以下场景时报错：
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
@@ -208,7 +207,7 @@ aclnnStatus aclnnMatmulAllReduce(
     </table>
 ## aclnnMatmulAllReduce
 
-- **参数说明：**
+- **参数说明**
     <table style="undefined;table-layout: fixed; width: 1312px"><colgroup>
     <col style="width: 158px">
     <col style="width: 120px">
@@ -228,7 +227,7 @@ aclnnStatus aclnnMatmulAllReduce(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在device侧申请的workspace大小，由第一段接口aclnnMatmulAllReduceGetWorkspaceSize获取。</td>
+        <td>在device侧申请的workspace大小，由第一段接口<code>aclnnMatmulAllReduceGetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -248,7 +247,7 @@ aclnnStatus aclnnMatmulAllReduce(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMatmulAllReduce默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - `aclnnMatmulAllReduce`默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
 
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，其shape为(n)。

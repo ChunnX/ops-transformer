@@ -23,7 +23,7 @@
   - 情形2：
 
     $$
-    output = Allreduce(x1 @ x2 + bias + x3)
+    output = AllReduce(x1 @ x2 + bias + x3)
     $$
 
   - 情形3：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。
@@ -45,7 +45,7 @@
     $$
 
     $$
-    alltoallOutPut_{int8} = alltoall(matmulAddOutput / commQuantScale1Optional);
+    alltoallOutPut_{int8} = AllToAll(matmulAddOutput / commQuantScale1Optional);
     $$
 
     $$
@@ -53,7 +53,7 @@
     $$
 
     $$
-    outPut = (allgather(reduceSumOutPut_{int8}) * commQuantScale2Optional);
+    outPut = (AllGather(reduceSumOutPut_{int8}) * commQuantScale2Optional);
     $$
 
   - 情形6：
@@ -64,7 +64,7 @@
       $$
 
       $$
-      alltoallOutput_{int8} = alltoall(matmulAddOutput / commQuantScale1Optional);
+      alltoallOutput_{int8} = AllToAll(matmulAddOutput / commQuantScale1Optional);
       $$
 
       $$
@@ -72,43 +72,43 @@
       $$
 
       $$
-      output = (allgather(reduceSumOutput_{int8}) * commQuantScale2Optional);
+      output = (AllGather(reduceSumOutput_{int8}) * commQuantScale2Optional);
       $$
 
     - x1，x2为INT8，无x1ScaleOptional，x2Scale为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
       $$
-      output = allReduce((x1@x2 + biasOptional) * x2Scale + x3Optional)
+      output = AllReduce((x1@x2 + biasOptional) * x2Scale + x3Optional)
       $$
 
     - x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
 
       $$
-      output = allReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
+      output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
       $$
 
     - x1，x2为FLOAT4_E2M1/FLOAT4_E1M2/FLOAT8_E4M3FN/FLOAT8_E5M2，x1ScaleOptional为FLOAT8_E8M0，x2Scale为FLOAT8_E8M0，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
       $$
-      output = allReduce((x1* x1ScaleOptional)@(x2* x2Scale) + biasOptional + x3Optional)
+      output = AllReduce((x1* x1ScaleOptional)@(x2* x2Scale) + biasOptional + x3Optional)
       $$
 
     - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
       $$
-      output = allReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
+      output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
       $$
 
-    - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
+    - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时，x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))，x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
 
       $$
-      output_{pq} = allReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
+      output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
       $$
 
   - 情形7：
 
     $$
-    output = allreduce(x1 @ ((x2 + antiquantOffset) *antiquantScale) + bias+ x3) 
+    output = AllReduce(x1 @ ((x2 + antiquantOffset) *antiquantScale) + bias+ x3) 
     $$
 
 ## 参数说明
@@ -271,7 +271,7 @@
 * 输入x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。
 * 输入x2的数据格式：
     * <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。
-    * 当x2的数据格式为FRACTAL_NZ时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight到数据格式NZ的转换，非连续Tensor仅支持transpose场景。当x2的数据格式为ND时，当前版本仅支持二维输入。
+    * 当x2的数据格式为FRACTAL_NZ时，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`到数据格式NZ的转换，非连续Tensor仅支持transpose场景。当x2的数据格式为ND时，当前版本仅支持二维输入。
 * 传入的x1、x2、antiquantScale或者output不为空指针。
 * 当输入x1的shape为(b, s, k)时，x3（非空场景）与输出output的shape为(b, s, n)，pertoken_scale的shape为(b*s)；当输入x1的shape为(m, k)时，x3（非空场景）与输出output的shape为(m, n)，pertoken_scale的shape为(m)。
 * 输入comm_quant_scale_1和comm_quant_scale_2可选，可为空，当x2为(k, n)时, shape可为(n)或者(1,n)。
