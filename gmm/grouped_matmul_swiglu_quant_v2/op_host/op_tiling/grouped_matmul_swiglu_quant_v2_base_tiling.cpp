@@ -140,10 +140,16 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
 
     auto attr = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attr); // check attr is not null
-    const uint32_t *dequantModePtr = attr->GetAttrPointer<uint32_t>(ATTR_INDEX_DEQUANT_MODE);
+    const int64_t *dequantModePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
     auto dequantMode = dequantModePtr != nullptr ? *dequantModePtr : 0;
-    const uint32_t *groupListTypePtr = attr->GetAttrPointer<uint32_t>(ATTR_INDEX_GROUPLIST_TYPE);
+    OP_CHECK_IF(!(dequantMode == 0 || dequantMode == 1),
+        OP_LOGE(context_->GetNodeName(), "dequantMode must be 0 or 1, but actual value is %ld.", dequantMode),
+        return ge::GRAPH_FAILED);
+    const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
+    OP_CHECK_IF(!(groupListType_ == 0 || groupListType_ == 1),
+        OP_LOGE(context_->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.", groupListType_),
+        return ge::GRAPH_FAILED);
 
     ge::DataType xDType = xDesc->GetDataType();
     ge::DataType weightDType = weightDesc->GetDataType();

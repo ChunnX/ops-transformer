@@ -66,6 +66,7 @@ TILING_DATA_FIELD_DEF(int64_t, M);
 TILING_DATA_FIELD_DEF(int64_t, ubFactorDimx);
 TILING_DATA_FIELD_DEF(int64_t, ubFactorDimy);
 TILING_DATA_FIELD_DEF(int64_t, actRight);
+TILING_DATA_FIELD_DEF(int64_t, groupListType);
 TILING_DATA_FIELD_DEF(int8_t, isSingleTensor);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
 END_TILING_DATA_DEF;

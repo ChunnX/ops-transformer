@@ -50,6 +50,7 @@ private:
     int32_t aicCoreNum_;
     int32_t aivCoreNum_;
     int64_t ubFactorDimx_;
+    int64_t groupListType_ = 0;
     int8_t isSingleTensor_;
 };
 

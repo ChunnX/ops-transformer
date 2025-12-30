@@ -65,6 +65,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
     } else {
         isSingleTensor_ = 0;
     }
+    auto attr = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attr); // check attr is not null
+    const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
+    groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
+    OP_CHECK_IF(!(groupListType_ == 0 || groupListType_ == 1),
+        OP_LOGE(context_->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.", groupListType_),
+        return ge::GRAPH_FAILED);
 
     m_ = xTensor->GetStorageShape().GetDim(0);
     k_ = xTensor->GetStorageShape().GetDim(1);
@@ -135,6 +142,7 @@ void GroupedMatmulSwigluQuantV2FusionTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "N: %d", tilingData_.get_N());
     OP_LOGD(context_->GetNodeName(), "ubFactorDimx: %d", tilingData_.get_ubFactorDimx());
     OP_LOGD(context_->GetNodeName(), "ubFactorDimy: %d", tilingData_.get_ubFactorDimy());
+    OP_LOGD(context_->GetNodeName(), "groupListType: %ld", tilingData_.get_groupListType());
     OP_LOGD(context_->GetNodeName(), "isSingleTensor: %d", tilingData_.get_isSingleTensor());
 }
 
@@ -148,6 +156,7 @@ void GroupedMatmulSwigluQuantV2FusionTiling::FillTilingData()
     tilingData_.set_M(m_);
     tilingData_.set_ubFactorDimx(ubFactorDimx_);
     tilingData_.set_ubFactorDimy(n_ / UB_Y_FACTOR);
+    tilingData_.set_groupListType(groupListType_);
     tilingData_.set_isSingleTensor(isSingleTensor_);
 
     blockDim_ = aicCoreNum_;
