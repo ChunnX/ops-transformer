@@ -49,7 +49,6 @@ set(OP_DEBUG_CONFIG               "false"                         CACHE   STRING
 get_filename_component(OPS_ADV_DIR                  "${CMAKE_CURRENT_SOURCE_DIR}"           REALPATH)
 get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"                  REALPATH)
 get_filename_component(OPS_ADV_UTILS_KERNEL_INC     "${OPS_ADV_DIR}/common/include/kernel"   REALPATH)
-get_filename_component(OPS_ADV_TLA                  "${OPS_ADV_DIR}/common/tla"          REALPATH)
 
 
 #   构建树相关路径
