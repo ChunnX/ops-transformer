@@ -500,12 +500,12 @@ protected:
     TQue<QuePosition::VECIN, 1> msdInQueue;
     TQue<QuePosition::VECOUT, 1> msdOutQueue;
 
-    TBuf<> PABmm1UB;
-    TBuf<> PABmm2UB;
-    TBuf<> selectSpaceUb;
-    TBuf<> pseShiftCastUb;
-    TBuf<> softmaxExpUb_;
-    TBuf<> tempBmm2Ub;
+    TBuf<> paBmm1Buff_;
+    TBuf<> paBmm2Buff_;
+    TBuf<> selectSpaceBuff_;
+    TBuf<> pseShiftCastBuff_;
+    TBuf<> softmaxExpBuff_;
+    TBuf<> tempBmm2Buff_;
 
     // ub for msd
     TBuf<> msdAMaxTmpBuff;
@@ -537,9 +537,9 @@ protected:
     LocalTensor<uint32_t> bmm1LocalInfo;
     LocalTensor<uint32_t> bmm2LocalInfo;
     LocalTensor<computeType> mmResUb[2];
-    LocalTensor<float> softmaxMaxUb;
-    LocalTensor<float> softmaxSumUb;
-    LocalTensor<computeType> softmaxExpUb;
+    LocalTensor<float> softmaxMaxUb_;
+    LocalTensor<float> softmaxSumUb_;
+    LocalTensor<computeType> softmaxExpUb_;
     LocalTensor<U> attenMaskUb;
     LocalTensor<pseShiftType> pseShiftUb;
 
@@ -768,7 +768,7 @@ protected:
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float>& softmaxSumUb, LocalTensor<float>& softmaxMaxUb) {
         uint32_t souterSize = this->headParams->singleProcessSOuterSize;
 
-        LocalTensor<float> lseUb = this->softmaxExpUb_.template Get<float>(this->softmaxMaxSize);
+        LocalTensor<float> lseUb = this->softmaxExpBuff_.template Get<float>(this->softmaxMaxSize);
         Log(lseUb, softmaxSumUb, souterSize * 8); // 8 : second dimension of softmax
         PipeBarrier<PIPE_V>();
         Add(lseUb, lseUb, softmaxMaxUb, souterSize * 8); // 8 : second dimension of softmax
@@ -1250,7 +1250,7 @@ protected:
         if (useMask) {
             this->attenMaskUb = this->tempBmm2Queue.template DeQue<U>(); // Dequeue the attentio mask tensor from the queue.
             this->attenMaskUb.SetSize(sOuterSize * maskCopyInCol);
-            LocalTensor<uint8_t> selectSpace = selectSpaceUb.Get<uint8_t>(this->selectSpaceUbSize);
+            LocalTensor<uint8_t> selectSpace = selectSpaceBuff_.Get<uint8_t>(this->selectSpaceUbSize);
             computeType scalar;
             if constexpr (PFAT::calcMode == OptimizationMode::HighPrecision ||
                 IsSameType<T, bfloat16_t>::value) { // Set the size of the attention mask tensor.
@@ -1283,7 +1283,7 @@ protected:
         if (useMask) {
             this->attenMaskUb = this->tempBmm2Queue.template DeQue<U>();
             this->attenMaskUb.SetSize(sOuterSize * maskCopyInCol);
-            LocalTensor<uint8_t> selectSpace = selectSpaceUb.Get<uint8_t>(this->selectSpaceUbSize);
+            LocalTensor<uint8_t> selectSpace = selectSpaceBuff_.Get<uint8_t>(this->selectSpaceUbSize);
             computeType scalar;
             if constexpr (PFAT::calcMode == OptimizationMode::HighPrecision ||
                 IsSameType<T, bfloat16_t>::value) {
@@ -1791,9 +1791,9 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Init(__gm__ u
     }
 
     PFA_InitQueue(softmaxOutQueue, 1, 2 * tilingData->promptAttentionTensorSizeRect.softmaxMaxSize * sizeof(float));
-    PFA_InitBuffer(tempBmm2Ub, tilingData->promptAttentionTensorSizeRect.bmm2ResUbSize * sizeof(mmOutputType));
+    PFA_InitBuffer(tempBmm2Buff_, tilingData->promptAttentionTensorSizeRect.bmm2ResUbSize * sizeof(mmOutputType));
 
-    PFA_InitBuffer(softmaxExpUb_, tilingData->promptAttentionTensorSizeRect.softmaxExpSize * sizeof(computeType));
+    PFA_InitBuffer(softmaxExpBuff_, tilingData->promptAttentionTensorSizeRect.softmaxExpSize * sizeof(computeType));
     PFA_InitQueue(tempBmm2Queue, 1, maskBmm2ShareSize);
     PFA_InitQueue(Bmm1Queue, 2, tilingData->promptAttentionTensorSizeRect.mmResUbSize * sizeof(mmOutputType));
 
@@ -1823,11 +1823,11 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Init(__gm__ u
     }
 
     if (tilingData->promptAttentionTensorSizeRect.selectSpaceUbSize != 0) {
-        PFA_InitBuffer(selectSpaceUb, tilingData->promptAttentionTensorSizeRect.selectSpaceUbSize);
+        PFA_InitBuffer(selectSpaceBuff_, tilingData->promptAttentionTensorSizeRect.selectSpaceUbSize);
     }
     if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
-        PFA_InitBuffer(PABmm1UB, 64);  // dcci refresh 64B
-        PFA_InitBuffer(PABmm2UB, 64);  // dcci refresh 64B
+        PFA_InitBuffer(paBmm1Buff_, 64);  // dcci refresh 64B
+        PFA_InitBuffer(paBmm2Buff_, 64);  // dcci refresh 64B
     }
     // Use queue prefetching parameters. Enqueue a new calculation parameter each time when calculating the outer tail. The head parameter of the queue is used for calculation. After the calculation, the queue head is dequeued.
     tailId = 0;
@@ -1858,12 +1858,12 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Init(__gm__ u
         pseShiftStride = tilingData->promptAttentionBaseParams.pseShiftS2Size;
 
         if constexpr (AscendC::IsSameType<pseShiftCastType, float>::value) {
-            PFA_InitBuffer(pseShiftCastUb,
+            PFA_InitBuffer(pseShiftCastBuff_,
                              (tilingData->promptAttentionTensorSizeRect.pseShiftUbSize) * sizeof(float));
         }
     }
 
-    softmaxExpUb = softmaxExpUb_.Get<computeType>(tilingData->promptAttentionTensorSizeRect.softmaxExpSize);
+    softmaxExpUb_ = softmaxExpBuff_.Get<computeType>(tilingData->promptAttentionTensorSizeRect.softmaxExpSize);
 
     if (tilingData->promptAttentionInitOutputParams.needInit == 1) {
         InitOutputSingleCore();
@@ -2114,7 +2114,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Bmm2UpdateDiv
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::UpdateVmul(LocalTensor<computeType>& softmaxExpUb) {
-    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Ub.Get<computeType>(bmm2ResUbSize);
+    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Buff_.Get<computeType>(bmm2ResUbSize);
 
     BinaryRepeatParams repeatParams;
     repeatParams.src0RepStride = 1;
@@ -2141,7 +2141,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::UpdateVmul(Lo
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Bmm2UpdateAdd(LocalTensor<computeType>& bmm2ResUb) {
-    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Ub.Get<computeType>(bmm2ResUbSize);
+    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Buff_.Get<computeType>(bmm2ResUbSize);
     Add(bmm2ResPreUb, bmm2ResUb, bmm2ResPreUb, bmm2ResUbSize);
 }
 
