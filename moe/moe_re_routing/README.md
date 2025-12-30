@@ -3,6 +3,7 @@
 ## 产品支持情况
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
+| <term>Ascend 950PR/Ascend 950DT</term> |    √    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
 |  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 
@@ -51,7 +52,10 @@
       <td>tokens</td>
       <td>输入</td>
       <td>表示待重新排布的token。</td>
-      <td>FLOAT16、BF16、INT8</td>
+      <td>
+      通用：FLOAT16、BF16、INT8<br>
+      <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN
+      </td>
       <td>ND</td>
     </tr>
     <tr>
@@ -65,21 +69,30 @@
       <td>per_token_scales</td>
       <td>可选输入</td>
       <td>表示每个token对应的scale，需要随token同样进行重新排布。</td>
-      <td>FLOAT</td>
+      <td>
+      通用：FLOAT<br>
+      <term>Ascend 950PR/Ascend 950DT</term>：FLOAT、FLOAT8_E8M0
+      </td>
       <td>ND</td>
     </tr>
     <tr>
       <td>permute_tokens</td>
       <td>输出</td>
       <td>表示重新排布后的token。</td>
-      <td>FLOAT16、BF16、INT8</td>
+      <td>
+      通用：FLOAT16、BF16、INT8<br>
+      <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN
+      </td>
       <td>ND</td>
     </tr>
     <tr>
       <td>permute_per_token_scales</td>
       <td>输出</td>
       <td>表示重新排布后的per_token_scales。</td>
-      <td>FLOAT</td>
+      <td>
+      通用：FLOAT<br>
+      <term>Ascend 950PR/Ascend 950DT</term>：FLOAT、FLOAT8_E8M0
+      </td>
       <td>ND</td>
     </tr>
     <tr>

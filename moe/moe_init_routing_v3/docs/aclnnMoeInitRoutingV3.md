@@ -4,8 +4,9 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
+| <term>Ascend 950PR/Ascend 950DT</term> |    √    |
+|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |     √    |
 
 ## 功能说明
 
@@ -430,9 +431,12 @@ aclnnStatus aclnnMoeInitRoutingV3(
   - dropPadMode 当前只支持0，代表 Dropless 场景。
   - expertTokensNumType 当前只支持 1 和 2，分别代表 count 模式和 key\_value 模式。
   - expertTokensNumFlag 只支持 true，代表输出 expertTokensCountOrCumsumOut。
-  - quantMode 只支持 1 和 -1，分别代表动态 quant 场景和不量化场景。
+  - quantMode：
+    -  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：只支持 1 和 -1，分别代表动态 quant 场景和不量化场景。
 
 - 其他限制：该算子支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板：
+
+  - 性能模板支持型号：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
 
   - 进入低时延性能模板需要同时满足以下条件：
     - x、expertIdx、scaleOptional 输入 Shape 要求分别为：(1, 7168)、(1, 8)、(256, 7168)
