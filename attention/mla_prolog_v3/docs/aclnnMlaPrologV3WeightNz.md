@@ -6,10 +6,9 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾910_95 AI处理器</term>|      √     |
+|<term>Ascend 950PR/Ascend 950DT AI处理器</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
-
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
 -  **功能更新**：（相对于aclnnMlaPrologV2weightNz的差异）
@@ -138,7 +137,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 ## aclnnMlaPrologV3WeightNzGetWorkspaceSize
 - 参数说明
 
-  | 参数名                     | 输入/输出 | 描述             | 使用说明       | 数据类型       | 昇腾910_95 AI处理器支持数据类型| 数据格式   | 维度(shape)    |非连续Tensor |
+  | 参数名                     | 输入/输出 | 描述             | 使用说明       | 数据类型       | Ascend 950PR/Ascend 950DT AI处理器支持数据类型| 数据格式   | 维度(shape)    |非连续Tensor |
   |----------------------------|-----------|----------------------------------------------|----------------|----------------|-|------------|-----------------|-------|
   | tokenX          | 输入      | 公式中用于计算Query和Key的输入tensor，Device侧的aclTensor。    | - 支持B=0,S=0,T=0的空Tensor   | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN | ND    | - BS合轴：(T,He) <br>- BS非合轴：(B,S,He)         |×   |
   | weightDq        | 输入      | 公式中用于计算Query的下采样权重矩阵$W^{DQ}$，Device侧的aclTensor。<br>在不转置的情况下各个维度的表示：（k，n）| - 不支持空Tensor      | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN | FRACTAL_NZ | (He,Hcq)                      |×   |
@@ -224,7 +223,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | Dr           | qk 位置编码维度                | 取值固定为：64                                                              |
   | Nkv          | kv 的 head 数                  | 取值固定为：1                                                               |
   | BlockNum     | PagedAttention 场景下的块数    | 1. 当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 `(B*S)/BlockSize` 向上取整的结果。<br> 2. 当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于`B` * `(S / BlockSize)`向上取整的结果（即`B * Ceil(S/BlockSize)`）。注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。 |
-  | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br> 昇腾910_95 AI处理器取值范围：16、128                                              |
+  | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br> Ascend 950PR/Ascend 950DT AI处理器取值范围：16、128                                              |
   | T            | BS 合轴后的大小                | 取值范围：不限制；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 |
   | Dtile        | krCache的D维度的大小           | - Per-tile量化场景下，取值固定为656 <br> - 其他场景下，取值固定为Hckv（512）                                                       |
 

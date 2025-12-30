@@ -15,7 +15,7 @@
   </tr></thead>
 <tbody>
   <tr>
-    <td>昇腾910_95 AI处理器</td>
+    <td>Ascend 950PR/Ascend 950DT AI处理器</td>
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
@@ -23,24 +23,8 @@
     <td style="text-align: center;">×</td>
   </tr>
   <tr>
-    <td>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</td>
+    <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
     <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/500 A2 推理产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 推理系列加速卡产品</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas 训练系列产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/300/500 推理产品</td>
-    <td style="text-align: center;">×</td>
   </tr>
 </tbody>
 </table>
@@ -378,7 +362,7 @@ aclnnStatus aclnnPromptFlashAttention(
 - query，key，value输入，功能使用限制如下：
 
   - 输入shape限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：
 
       - 支持B轴小于等于65536(64k)，输入类型包含INT8时D轴非32对齐或输入类型为FLOAT16或BFLOAT16时D轴非16对齐时，B轴仅支持到128。
 
@@ -437,7 +421,7 @@ aclnnStatus aclnnPromptFlashAttention(
         </tbody>
         </table>
       - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件： TND场景下query，key，value输入的综合限制：
+    - Atlas A2 训练系列产品/Atlas A2 推理产品： TND场景下query，key，value输入的综合限制：
         - T小于等于65536;
         - N等于8/16/32/64/128，且Q_N、K_N、V_N相等;
         - Q_D、K_D等于192，V_D等于128/192;
@@ -450,30 +434,30 @@ aclnnStatus aclnnPromptFlashAttention(
         - 支持S轴小于等于65535(64k), Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；
         - 支持D轴小于等于512。
   - 输入数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持FLOAT16、BFLOAT16。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持FLOAT16、BFLOAT16。
     - Atlas 推理系列加速卡产品：数据类型仅支持FLOAT16。
 - pseShift功能使用限制如下：
   - 输入数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持FLOAT16、BFLOAT16。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持FLOAT16、BFLOAT16。
     - Atlas 推理系列加速卡产品：仅支持nullptr。
 - attenMask功能使用限制如下：
   - 输入shape限制：通常建议shape输入Q_S, KV_S; B, Q_S, KV_S; 1, Q_S, KV_S; B, 1, Q_S, KV_S; 1, 1, Q_S, KV_S，其中Q_S为query的shape中的S，KV_S为key和value的shape中的S。
   - 输入数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持BOOL、INT8、UINT8。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持BOOL、INT8、UINT8。
     - Atlas 推理系列加速卡产品：仅支持BOOL。
   - 其他限制：对于attenMask的KV_S为非32对齐的场景，建议padding到32对齐来提高性能，多余部分填充成1。
 - actualSeqLengths输入，功能使用限制如下：
   - 输入值域限制：该入参中每个batch中的有效Sequence Length应该不大于query中对应batch的Sequence Length。
   - 输入数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持INT64。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持INT64。
     - Atlas 推理系列加速卡产品：数据类型支持INT64。
 - preTokens输入，功能使用限制如下：
   - 输入数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持INT64。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持INT64。
     - Atlas 推理系列加速卡产品：仅支持取值2147483647。
 - nextTokens输入，功能使用限制如下：
   - 输入数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持INT64。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持INT64。
     - Atlas 推理系列加速卡产品：仅支持取值0和2147483647。
 - inputLayout输入，功能使用限制如下：
   - 输入数据类型限制：
@@ -481,12 +465,12 @@ aclnnStatus aclnnPromptFlashAttention(
 - numKeyValueHeads输入，功能使用限制如下：
   - 输入属性限制：需要满足numHeads整除numKeyValueHeads，numHeads与numKeyValueHeads的比值不能大于64，且在BSND、BNSD、BNSD_BSND场景下，需要与shape中的key/value的N轴shape值相同，否则报错。
   - 输入数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持INT64。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持INT64。
     - Atlas 推理系列加速卡产品：仅支持取值0。
 - attentionOut输出，功能使用限制如下：
   - shape限制：当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出shape为BSND；其余情况该入参的shape需要与入参query的shape保持一致。
   - 数据类型限制：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持FLOAT16、BFLOAT16。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持FLOAT16、BFLOAT16。
     - Atlas 推理系列加速卡产品：仅支持FLOAT16。
 
 ## 调用示例

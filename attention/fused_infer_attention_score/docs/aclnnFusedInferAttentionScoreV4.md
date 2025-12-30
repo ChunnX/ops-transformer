@@ -7,13 +7,9 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
 
@@ -933,7 +929,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
     - PagedAttention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：</term>
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品：</term>
 
         <table style="undefined;table-layout: fixed; width: 1354px"><colgroup>
             <col style="width: 155px">
@@ -1118,7 +1114,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - <a id="INT8"></a>int8量化场景：
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：</term>
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品：</term>
         <table style="undefined;table-layout: fixed;  width: 1190px">
             <colgroup>
                 <col style="width: 320px">
@@ -1255,7 +1251,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 - <a id="AntiQuant"></a>伪量化参数约束：
     - 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>：
         <table style="undefined;table-layout: fixed;  width: 1840px">
             <colgroup>
                 <col style="width: 90px">
@@ -1398,7 +1394,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 - <a id="TND"></a>TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制：
     - actualSeqLengths和actualSeqLengthsKv必须传入
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>：
         <div style="overflow-x: auto;">
         <table style="undefined;table-layout: fixed; width: 1390px"><colgroup>
             <col style="width: 210px">
@@ -1758,7 +1754,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - **当Q_S大于1时**：
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>：
 
         <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
         <col style="width: 180px">
@@ -1931,7 +1927,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - **当Q_S等于1时（IFA非MTP场景）**：
 
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>：
         <div style="overflow-x: auto;">
         <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
         <col style="width: 180px">

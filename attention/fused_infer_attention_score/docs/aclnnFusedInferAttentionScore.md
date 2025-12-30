@@ -15,7 +15,7 @@
   </tr></thead>
 <tbody>
   <tr>
-      <td><term>昇腾910_95 AI处理器</term></td>
+      <td><term>Ascend 950PR/Ascend 950DT AI处理器</term></td>
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
@@ -23,24 +23,8 @@
     <td style="text-align: center;">×</td>
   </tr>
   <tr>
-      <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+      <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term></td>
     <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 200I/500 A2 推理产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 推理系列加速卡产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 训练系列产品</term></td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-      <td><term>Atlas 200I/300/500 推理产品</term></td>
-    <td style="text-align: center;">×</td>
   </tr>
 </tbody>
 </table>

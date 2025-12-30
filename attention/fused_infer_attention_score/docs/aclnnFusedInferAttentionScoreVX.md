@@ -4,13 +4,9 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾910_95 AI处理器</term>|      √     |
+|<term>Ascend 950PR/Ascend 950DT AI处理器</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200/300/500 推理产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理产品</term>|      ×     |
 
 产品形态详细说明请参见[昇腾产品形态说明](https://www.hiascend.com/document/redirect/CannCommunityProductForm)。
 
@@ -935,7 +931,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
 -   参数key、value中对应tensor的shape需要完全一致；非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制, 非连续场景下B不能大于256。
 -   当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。
 - pseType为2或3时约束如下：
-    -  <term>昇腾910_95 AI处理器</term>：
+    -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
         - 若qStartIdxOptional或kvStartIdxOptional非空，则取列表中第一个数据作为qStartIdx或kvStartIdx，同时qStartIdx、kvStartIdx和kvStartIdx-qStartIdx的取值范围需要满足[-2147483648, 2147483647]。
         - 当前只支持每个batch中qs和kvs等长。
         - 不支持MLA、左padding场景。
@@ -943,7 +939,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
 - <a id="INT8"></a>int8量化相关入参数量与输入、输出[数据格式](../../../docs/zh/context/数据格式.md)的综合限制：
     - 输出为INT8/FP8(FLOAT8_E4M3FN/HIFLOAT8)的场景：入参deqScale1、quantScale1、deqScale2、quantScale2需要同时存在，quantOffset2可选，不传时按照0处理。
     - 输出为FLOAT16的场景：入参deqScale1、quantScale1、deqScale2需要同时存在，若存在入参quantOffset2 或 quantScale2（即不为nullptr），则报错并返回。
-        -  <term>昇腾910_95 AI处理器</term>：输入为INT8、HIFLOAT8、FLOAT8_E4M3FN。
+        -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：输入为INT8、HIFLOAT8、FLOAT8_E4M3FN。
     - 输入全为FLOAT16或BFLOAT16，输出为INT8/FP8(FLOAT8_E4M3FN/HIFLOAT8)的场景：入参quantScale2需存在，quantOffset2可选，不传时按照0处理，若存在入参deqScale1 或 quantScale1 或 deqScale2（即不为nullptr），则报错并返回。
     - 入参 quantScale2 和 quantOffset2 支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型。若传入 quantOffset2 ，需保证其类型和shape信息与 quantScale2 一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel 格式，当输出layout为BSH时，要求 quantScale2 所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D];输出为TND时，建议传入[1,N,1,D]或[N,D]）
 -   <a id="AntiQuant"></a>伪量化参数 antiquantScale和antiquantOffset约束：
@@ -956,7 +952,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
       - 非对称量化模式下， antiquantScale和antiquantOffset参数需同时存在。
       - 对称量化模式下，antiquantOffset可以为空（即nullptr）；当antiquantOffset参数为空时，执行对称量化，否则执行非对称量化。
 -   TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制：
-    -  <term>昇腾910_95 AI处理器</term>：
+    -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
         - 支持TND;
         - 不支持左padding、tensorlist、pseType=0、prefix。
 -   queryRope和keyRope输入时即为MLA场景，参数约束如下：
@@ -965,7 +961,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
     - queryRope和keyRope要求同时配置或同时不配置，不支持只配置其中一个。
     - 输入queryRope和keyRope时，仅支持如下特性：
       - dtype：FP16、BF16；
-      -  <term>昇腾910_95 AI处理器</term>：
+      -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
             - 当query的d等于512时：
                 - queryRope配置时要求query的s为1-16、n为32、64、128，d为512，queryRope的shape中b、n、s与query一致，d为64；
                 - keyRope配置时要求key的n为1，d为512，keyRope的shape中b、n、s与key一致，d为64；
@@ -986,7 +982,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
                 - 不支持prefix、伪量化、全量化；
                 - 当kv为tensorlist时，keyRope的shape中b需要与tensorlist长度保持一致，n、s需要与tensorlist中每个tensor的n、s相等，d为64。
 - qkv FP8 per-block全量化
-    - <term>昇腾910_95 AI处理器</term>：
+    - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
         - 在使用FP8 per-block全量化策略时，输入的query、key和value在量化前以float16或bfloat16格式存储。量化过程对张量按指定块大小\(128, 256\)进行分块，并分别将每个块内的数据量化成FLOAT8_E4M3FN或HIFLOAT8类型，同时得到反量化系数dequantScaleQuery、keyAntiquantScale和valueAntiquantScale。
         - query、key和value的数据类型支持FLOAT8_E4M3FN、HIFLOAT8。
         - queryQuantMode、keyAntiquantMode和valueAntiquantMode均为7。
@@ -1007,14 +1003,14 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
               - （3）B=20, Q_N=1, Q_S=2097152, D = 256, KV_N=1, KV_S=2097152;
               - （4）B=1, Q_N=10, Q_S=2097152, D = 512, KV_N=1, KV_S=2097152。
         -   D轴限制：
-            - <term>昇腾910_95 AI处理器</term>：
+            - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
                 - 非量化场景：query，key，value的类型全部为FLOAT16、BFLOAT16，D轴1-512全部支持。
                 - 全量化场景：per-tensor全量化场景时，query，key，value的类型支持INT8，D轴1-512全部支持。FP8 per-block全量化场景时，query，key，value的类型支持FLOAT8_E4M3FN、HIFLOAT8，D轴1-128全部支持。
                 - 伪量化场景：query类型为FLOAT16、BFLOAT16，key、value类型为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32），其中当key、value类型为FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32），query的D轴以及key、value的D轴仅支持64对齐（INT32仅支持key、value的D 8对齐）。
    -   actualSeqLengths入参，传入时应为非负数。
-      - <term>昇腾910_95 AI处理器</term>：在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于query的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于Q_S。当inputLayout为TND时，该入参必须传入，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数。
+      - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于query的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于Q_S。当inputLayout为TND时，该入参必须传入，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数。
    -   actualSeqLengthsKv入参，传入时应为非负数。
-      - <term>昇腾910_95 AI处理器</term>：在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于key/value的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于KV_S。当inputLayout为TND时，该入参必须传入，在非PA场景下，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数，在PA场景下，其长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S。
+      - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于key/value的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于KV_S。当inputLayout为TND时，该入参必须传入，在非PA场景下，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数，在PA场景下，其长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S。
    -   参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
         -   sparseMode = 0时，attenMask如果为空指针，或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
         -   sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，不传入attenMask或者传入的shape不正确报错。
@@ -1022,13 +1018,13 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
    -   kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
    -   page attention场景:
         -   page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-            -  <term>昇腾910_95 AI处理器</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）。
+            -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）。
         -   blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
         -   page attention场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/16，blocksize，16）三种格式；当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH和NZ两种格式。当输入kv cache排布格式为BnBsH，且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD解决。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
         -   page attention 伪量化场景
-            - <term>昇腾910_95 AI处理器</term>：支持query为FLOAT16/BFLOAT16，支持key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）。当kv cache为五维时，kv cache排布为（blocknum，KV_N，D/16，blocksize，16）；同时，当key、value dtype为INT32时，kv cache排布为（blocknum，KV_N，D/2，blocksize，2）。
+            - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：支持query为FLOAT16/BFLOAT16，支持key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）。当kv cache为五维时，kv cache排布为（blocknum，KV_N，D/16，blocksize，16）；同时，当key、value dtype为INT32时，kv cache排布为（blocknum，KV_N，D/2，blocksize，2）。
         -   page attention 全量化场景
-            - <term>昇腾910_95 AI处理器</term>：支持query和kv cache全部为INT8/HIFLOAT8/FLOAT8_E4M3FN。
+            - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：支持query和kv cache全部为INT8/HIFLOAT8/FLOAT8_E4M3FN。
         -   page attention 不支持tensorlist场景，不支持左padding场景。
         -   page attention场景下，必须传入actualSeqLengthsKv。
         -   page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
@@ -1050,7 +1046,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
    -   pseShift功能使用限制如下：
         - 支持query数据类型为FLOAT16或BFLOAT16或INT8场景下使用该功能。
         - query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。
-        - <term>昇腾910_95 AI处理器</term>：
+        - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
             - 非量化，全量化场景：无对齐限制。
         - Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。prefix场景KV_S需大于等于actualSharedPrefixLen与key的S长度之和。
         - Q_S不为1，当query为BFLOAT16类型时，要求pseShift为BFLOAT16类型；query为其他类型时要求pseShift为FLOAT16类型。输入shape类型需为 (B,N,Q_S,KV_S) 或 (1,N,Q_S,KV_S)，其中Q_S为query的shape中的S，KV_S为key和value的shape中的S。对于pseShift的KV_S为非32对齐的场景，建议padding到32字节来提高性能，多余部分的填充值不做要求。
@@ -1066,7 +1062,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
         -   prefix场景，sparse为0或1时，如果传入attenmask，则S2需大于等于actualSharedPrefixLen与key的S长度之和
         -   prefix场景，不支持输入qkv全部为int8的情况
    -   kv伪量化参数分离
-        - <term>昇腾910_95 AI处理器</term>：
+        - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
             - 除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，keyAntiquantMode 和 valueAntiquantMode需要保持一致
             - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
             - KeyAntiquantScale 和valueAntiquantScale都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致
@@ -1097,21 +1093,21 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
       -   在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
       -   在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
       -   key、value在特定数据数据类型下存在对于D轴的限制
-          - <term>昇腾910_95 AI处理器</term>：key、value输入类型为FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）时，query的D轴以及key、value的D轴需要64对齐（INT32仅支持key、value的D 8对齐）。
+          - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：key、value输入类型为FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）时，query的D轴以及key、value的D轴需要64对齐（INT32仅支持key、value的D 8对齐）。
   -   actualSeqLengths入参，传入时应为非负数。
-      - <term>昇腾910_95 AI处理器</term>：在未输入rope参数时不生效。输入rope参数时生效，在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于query的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于Q_S。当inputLayout为TND时，该入参必须传入，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数。
+      - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：在未输入rope参数时不生效。输入rope参数时生效，在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于query的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于Q_S。当inputLayout为TND时，该入参必须传入，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数。
   -   actualSeqLengthsKv入参，传入时应为非负数。
-      - <term>昇腾910_95 AI处理器</term>：在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于key/value的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于KV_S。当inputLayout为TND时，该入参必须传入，在非PA场景下，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数，在PA场景下，其长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S。
+      - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：在inputLayout不同时，其含义与拦截条件不同：当inputLayout不为TND时，该入参为可选入参，其长度为1或大于等于key/value的batch值，该入参中的值代表每个batch的实际长度，其值应该不大于KV_S。当inputLayout为TND时，该入参必须传入，在非PA场景下，第b个值表示前b个batch的S轴累加长度，其值应递增（大于等于前一个值）排列，且该入参长度代表总batch数，在PA场景下，其长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S。
   -   page attention场景:
       -   page attention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
-          -  <term>昇腾910_95 AI处理器</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）。
+          -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）。
       -   blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
-          -  <term>昇腾910_95 AI处理器</term>：key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value 输入类型为INT8/HIFLOAT8/FLOAT8_E4M3FN时需要32对齐；key、value输入类型为FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）时需要64对齐。
+          -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value 输入类型为INT8/HIFLOAT8/FLOAT8_E4M3FN时需要32对齐；key、value输入类型为FLOAT4_E1M2/FLOAT4_E2M1/INT4（INT32）时需要64对齐。
       -   page attention场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/16，blocksize，16）三种格式；当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH和NZ两种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
       -   page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
       -   page attention使能场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kv cache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
       -   page attention不支持tensorlist场景，不支持左padding场景。
-            -  <term>昇腾910_95 AI处理器</term>：支持Q为BF16/FP16、KV为INT4（INT32）的场景。伪量化场景下，当kv cache为五维时，kv cache排布为（blocknum，KV_N，D/16，blocksize，16）；同时，当key、value dtype为INT32时，kv cache排布为（blocknum，KV_N，D/2，blocksize，2）。
+            -  <term>Ascend 950PR/Ascend 950DT AI处理器</term>：支持Q为BF16/FP16、KV为INT4（INT32）的场景。伪量化场景下，当kv cache为五维时，kv cache排布为（blocknum，KV_N，D/16，blocksize，16）；同时，当key、value dtype为INT32时，kv cache排布为（blocknum，KV_N，D/2，blocksize，2）。
       -   page attention场景下，必须传入actualSeqLengthsKv。
       -   page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
       -   page attention的使能场景下，以下场景输入S需要大于等于blockTable的第二维 * blockSize。
@@ -1121,7 +1117,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
           - 使能per-token叠加per-head模式：两个参数的shape均为\(B, N, S\)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4\(INT32\)时支持。
           - 使能per-token-group模式：antiquantScale的shape为\(1, B, N, S, D/32\), 数据类型固定为FLOAT8_E8M0，不支持带antiquantOffset。当key、value数据类型为FLOAT4_E1M2、FLOAT4_E2M1时支持。
   -   kv左padding场景:
-      -   <term>昇腾910_95 AI处理器</term>：支持了Q为BF16/FP16、KV为INT4（INT32）的场景，不存在对QKV数据类型的限制。
+      -   <term>Ascend 950PR/Ascend 950DT AI处理器</term>：支持了Q为BF16/FP16、KV为INT4（INT32）的场景，不存在对QKV数据类型的限制。
       -   kv左padding场景中kvCache的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengths。kvCache的搬运终点计算公式为：KV_S - kvPaddingSize。其中kvCache的搬运起点或终点小于0时，返回数据结果为全0。
       -   kv左padding场景中kvPaddingSize小于0时将被置为0。
       -   kv左padding场景需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。
@@ -1134,7 +1130,7 @@ aclnnStatus aclnnFusedInferAttentionScoreVX(
       - 除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，keyAntiquantMode 和 valueAntiquantMode需要保持一致
       - keyAntiquantScale 和 valueAntiquantScale要么都为空，要么都不为空；keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空
       - KeyAntiquantScale 和valueAntiquantScale都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致；keyAntiquantOffset 和 valueAntiquantOffset都不为空时，除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致
-      - <term>昇腾910_95 AI处理器</term>：支持per-channel、per-tensor、per-token、per-tensor叠加per-head、per-token叠加per-head、per-token使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset、key支持per-channel叠加value支持per-token和per-token-group九种模式，以下N均为numKeyValueHeads。
+      - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：支持per-channel、per-tensor、per-token、per-tensor叠加per-head、per-token叠加per-head、per-token使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset、key支持per-channel叠加value支持per-token和per-token-group九种模式，以下N均为numKeyValueHeads。
           - per-channel模式：两个参数的shape可支持\(1, N, 1, D\)，\(1, N, D\)，\(1, H\)。参数数据类型和query数据类型相同，当key、value数据类型为INT8、INT4(INT32)时支持。
           - per-tensor模式：两个参数的shape均为\(1\)，数据类型和query数据类型相同，当key、value数据类型为INT8、INT4(INT32)时支持。
           - per-token模式：两个参数的shape均为\(1, B, S\)，数据类型固定为FLOAT32，当key、value数据类型为INT8、INT4(INT32)时支持。
