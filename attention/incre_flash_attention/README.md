@@ -13,7 +13,7 @@
   </tr></thead>
 <tbody>
   <tr>
-    <td>昇腾910_95 AI处理器</td>
+    <td>Ascend 950PR/Ascend 950DT AI处理器</td>
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
@@ -21,24 +21,8 @@
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
-    <td>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</td>
+    <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
     <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/500 A2 推理产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 推理系列加速卡产品</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas 训练系列产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/300/500 推理产品</td>
-    <td style="text-align: center;">×</td>
   </tr>
 </tbody>
 </table>
@@ -145,7 +129,7 @@
 - 参数query和attentionOut的shape需要完全一致，参数key、value 中对应tensor的shape需要完全一致。
 - 非连续场景下，参数key、value的tensorlist中tensor的个数等于query的B(由于tensorlist限制, 非连续场景下B需要小于等于256)。shape除S外需要完全一致，且batch只能为1。
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：
   - 支持B轴小于等于65536，N轴小于等于256，D轴小于等于512。
   - numHeads与numKeyValueHeads的比值不能大于64。
 - Atlas 推理系列加速卡产品：

@@ -13,7 +13,7 @@
   </tr></thead>
 <tbody>
   <tr>
-    <td>昇腾910_95 AI处理器</td>
+    <td>Ascend 950PR/Ascend 950DT AI处理器</td>
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
@@ -21,24 +21,8 @@
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
-    <td>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</td>
+    <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
     <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/500 A2 推理产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 推理系列加速卡产品</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas 训练系列产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas 200I/300/500 推理产品</td>
-    <td style="text-align: center;">×</td>
   </tr>
 </tbody>
 </table>
@@ -114,7 +98,7 @@
 </tbody>
 </table>
 
-- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
 - Atlas 推理系列加速卡产品：仅支持FLOAT16。
 
 ## 约束说明
@@ -125,7 +109,7 @@
 
 - query，key，value输入，功能使用限制如下：
 
-  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>昇腾910_95 AI处理器</term>：
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Ascend 950PR/Ascend 950DT AI处理器</term>：
 
     - 支持B轴小于等于65536（64k），输入类型包含INT8时D轴非32对齐或输入类型为FLOAT16或BFLOAT16时D轴非16对齐时，B轴仅支持到128。
 
