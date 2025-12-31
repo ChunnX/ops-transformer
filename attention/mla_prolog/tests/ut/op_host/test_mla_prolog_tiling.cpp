@@ -69,7 +69,7 @@ TEST_F(MlaProlog, MlaProlog_tiling_test0) {
     &compileInfo);
     int64_t expectTilingKey = 1574177;
     string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 TEST_F(MlaProlog, MlaProlog_tiling_0001) {

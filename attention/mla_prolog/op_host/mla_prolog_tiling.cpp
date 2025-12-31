@@ -559,6 +559,14 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
     if (aivNum_ == aicNum_) {
         cvMode = ASCENDC_TPL_MIX_AIC_1_1; // cv 1:1模式
     }
+    if (cvMode == ASCENDC_TPL_MIX_AIC_1_1 &&
+        (scenarioInfo_.quantMode_ != QUANT_MODE::NO_QUANT ||
+        (scenarioInfo_.cacheMode_ != CACHE_MODE::PA_BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::PA_NZ))) {
+        OP_LOGE(context_->opName,
+            "CV1:1 mode only support quantMode is in {NO_QUANT} and cacheMode is in {PA_BSND,PA_NZ}, quantMode is %u, cacheMode is %u.",
+            static_cast<uint8_t>(scenarioInfo_.quantMode_), static_cast<uint8_t>(scenarioInfo_.cacheMode_));
+        return ge::GRAPH_FAILED;
+    }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
         context_->tilingKey = GET_TPL_TILING_KEY(
@@ -573,15 +581,6 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
             cvMode
         );
     } else {
-        if (cvMode == ASCENDC_TPL_MIX_AIC_1_1 &&
-            (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::TND ||
-                scenarioInfo_.cacheMode_ == CACHE_MODE::BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ ||
-                scenarioInfo_.quantMode_ == QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE ||
-                scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE)) {
-            OP_LOGE(context_->opName,
-                "CV1:1 mode does not support cacheMode is in {TND、BSND、PA_BLK_BSND、PA_BLK_NZ} or kvQuantMode is 3.");
-            return ge::GRAPH_FAILED;
-        }
         uint8_t cacheMode = scenarioInfo_.cacheMode_ == CACHE_MODE::TND ? 0 : static_cast<uint8_t>(scenarioInfo_.cacheMode_);
         context_->tilingKey = GET_TPL_TILING_KEY(
             static_cast<uint8_t>(cacheMode),

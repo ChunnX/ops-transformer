@@ -177,7 +177,7 @@ __aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTe
  * @param colRope
  * @param qrOutputStrideRope 描述rope处理后的输出位置
  */
-template <typename T, typename C, typename O, uint32_t cvRatio = 2>
+template <typename T, typename C, typename O>
 __aicore__ inline void DynamicQuantQnWithMulQr(
     // Dynamic Quant With MulQr 输出
     const GlobalTensor<C>& scaleOutputGm, const GlobalTensor<O>& outputGm, const GlobalTensor<T>& outputGmRope,
@@ -185,7 +185,8 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     const GlobalTensor<T>& inputGm, LocalTensor<uint8_t>& shareTmpUb, uint64_t row, uint64_t col,  
      uint64_t scaleOutStride, uint64_t queryOutStride,
     // Mul Qr 入参
-    const GlobalTensor<T>& inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope) {
+    const GlobalTensor<T>& inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
+    uint32_t cvRatio) {
     // 常量
     constexpr uint32_t MUL_QR = EVENT_ID1; // 用于控制Mul_Qr的同步
     constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0; //dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
@@ -199,7 +200,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Dynamic Quant 局部变量
     uint64_t rowStepSize = 16; // 单次处理最大行数
 
-    if (cvRatio == 1 && scaleOutStride > 64) { // cv1:1场景且N > 64时，改为8行进行计算，降低UB使用
+    if (cvRatio == 1) { // cv1:1场景改为8行进行计算，降低UB使用
         rowStepSize = 8;
     }
 
