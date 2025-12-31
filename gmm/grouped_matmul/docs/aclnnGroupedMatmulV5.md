@@ -331,7 +331,6 @@ aclnnStatus aclnnGroupedMatmulV5(
     - 输入参数biasOptional不支持BFLOAT16；
     - 输入参数scaleOptional不支持INT64类型。
 
-  - <term>Atlas 推理系列产品</term>：仅支持x、weight、out均为FLOAT16的场景，其中weight仅支持NZ数据格式。
 
 - **返回值：**
 
@@ -406,12 +405,6 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 - GroupedMatmul算子根据计算过程中对输入数据（x, weight）和输出矩阵（out）的精度处理方式，其支持场景主要分为：非量化，伪量化，全量化。
 
-  - <term>Atlas 推理系列产品</term>：
-
-    |场景名|    x    |    weight       |   out | 约束说明|计算公式|
-    |---------|---------|----------------|--------|--------|--|
-    |非量化|FLOAT16|FLOAT16|FLOAT16|[非量化场景约束](#atlas推理系列产品)|[计算公式](#非量化场景)|
-
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
     |场景名|    x    |    weight      |   out | 约束说明|计算公式|
@@ -427,7 +420,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
 
-    详见[Ascend 950PR/Ascend 950DT AI处理器](#昇腾910_95AI处理器)
+    详见[Ascend 950PR/Ascend 950DT AI处理器](#ascend_950pr_ascend950dt_ai处理器)
 <a id="计算公式"></a>
 - 计算公式
   <a id="非量化场景"></a>
@@ -751,29 +744,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 </details>
 
-<a id="atlas推理系列产品"></a>
-
-<details>
-<summary><term>Atlas 推理系列产品</term></summary>
-
-
-- 产品规格
-
-  - groupType：整数型参数，代表需要分组的轴，当前只支持m轴分组。
-  - groupListType：支持取值0、1。取值0: groupListOptional中数值为非负单调非递减数列，表示分组轴大小的cumsum结果（累积和），1: groupListOptional中数值为非负数列，表示分组轴上每组大小。
-  - actType：当前只支持传入0，表示GMMActType::GMM_ACT_TYPE_NONE。
-  - tuningConfigOptional：不支持此参数。
-  - 输入输出只支持float16的数据类型，输出y的n轴大小需要是16的倍数。
-
-- 支持场景
-
-  | groupType | x tensor数 | weight tensor数 | y tensor数 | 场景限制 |
-  |:---------:|:-------:|:-------:|:-------:| :------ |
-  | 0 | 单个|单个|单个 |1）仅支持splitItem为2/3；<br>2）weight中tensor需为3维，x，y中tensor需为2维；<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等；<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group；<br>5）支持weight转置，不支持x转置 |
-
-</details>
-
-<a id="昇腾910_95AI处理器"></a>
+<a id="ascend_950pr_ascend950dt_ai处理器"></a>
 
 <details>
 <summary><term>Ascend 950PR/Ascend 950DT AI处理器</term></summary>
