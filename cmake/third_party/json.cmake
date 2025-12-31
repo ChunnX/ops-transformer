@@ -41,7 +41,7 @@ find_package_handle_standard_args(json
 if(json_FOUND AND NOT FORCE_REBUILD_CANN_3RD)
     message("json found in ${JSON_INSTALL_PATH}, and not force rebuild cann third_party")
     set(JSON_INCLUDE_DIR ${JSON_INSTALL_PATH}/include)
-    add_library(json INTERFACE)
+    add_library(json INTERFACE IMPORTED)
 else()
     set(REQ_URL "https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip")
 

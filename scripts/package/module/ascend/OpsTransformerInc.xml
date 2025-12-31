@@ -42,4 +42,8 @@
         install_path="opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/$(ARCH)/">
         <file value="libophost_transformer.so" install_mod="550"/>
     </file_info>
+    <file_info value="op_transformer_onnx_plugin_lib" copy_type="delivery" src_path=""
+        dst_path="built-in/framework/onnx/" install_path="opp/built-in/framework/onnx">
+        <file value="libop_transformer_onnx_plugin.so" install_mod="550"/>
+    </file_info>
 </block>

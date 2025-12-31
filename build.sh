@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 set -e
-RELEASE_TARGETS=("ophost" "opapi" "opgraph")
+RELEASE_TARGETS=("ophost" "opapi" "opgraph" "onnxplugin")
 UT_TARGETS=()
 ########################################################################################################################
 # 预定义变量
@@ -53,6 +53,7 @@ OP_KERNEL_UT=FALSE
 OP_API=FALSE
 OP_HOST=FALSE
 OP_GRAPH=FALSE
+ONNX_PLUGIN=FALSE
 OP_KERNEL=FALSE
 SOC_ARRAY=()
 ENABLE_UT_EXEC=TRUE
@@ -174,6 +175,19 @@ function help_info() {
                 echo "    bash build.sh --opgraph -j16 -O3"
                 return
                 ;;
+            onnxplugin)
+                echo "ONNXPlugin Build Options:"
+                echo $dotted_line
+                echo "    --onnxplugin           Build onnxplugin library"
+                echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
+                echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
+                echo "    --debug                Build with debug mode"
+                echo $dotted_line
+                echo "Examples:"
+                echo "    bash build.sh --onnxplugin -j16 -O3"
+                echo "    bash build.sh --onnxplugin --debug"
+                return
+                ;;
             opkernel)
                 echo "Opkernel Build Options:"
                 echo $dotted_line
@@ -287,6 +301,7 @@ function help_info() {
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend310p,ascend910b, use ',' to separate different SoC"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
+    echo "    --onnxplugin build op_transformer_onnx_plugin.so"
     echo "    --opapi build opapi_transformer.so"
     echo "    --ophost build ophost_transformer.so"
     echo "    --opkernel build binary kernel"
@@ -347,6 +362,15 @@ function clean_build_out()
     fi
 
     mkdir -p ${BUILD_OUT_DIR}
+}
+
+function clean_third_party()
+{
+    THIRD_PARTY_PATH=${BASE_PATH}/third_party
+    if [ -d "${THIRD_PARTY_PATH}" ]; then
+        rm -rf ${THIRD_PARTY_PATH}/abseil-cpp
+        rm -rf ${THIRD_PARTY_PATH}/ascend_protobuf
+    fi
 }
 
 function cmake_config()
@@ -827,6 +851,7 @@ for arg in "$@"; do
             --ophost) SHOW_HELP="ophost" ;;
             --opapi) SHOW_HELP="opapi" ;;
             --opgraph) SHOW_HELP="opgraph" ;;
+            --onnxplugin) SHOW_HELP="onnxplugin" ;;
             --ophost_test) SHOW_HELP="ophost_test" ;;
             --opapi_test) SHOW_HELP="opapi_test" ;;
             --opgraph_test) SHOW_HELP="opgraph_test" ;;
@@ -1044,6 +1069,12 @@ while [[ $# -gt 0 ]]; do
         OP_GRAPH=TRUE
         shift
         ;;
+    --onnxplugin)
+        BUILD_LIBS+=("op_transformer_onnx_plugin")
+        ENABLE_CREATE_LIB=TRUE
+        ONNX_PLUGIN=TRUE
+        shift
+        ;;
     --opapi)
         BUILD_LIBS+=("opapi_transformer")
         ENABLE_CREATE_LIB=TRUE
@@ -1103,6 +1134,7 @@ while [[ $# -gt 0 ]]; do
     --make_clean)
         clean
         clean_build_out
+        clean_third_party
         shift
         ;;
     --cann_3rd_lib_path=*)
