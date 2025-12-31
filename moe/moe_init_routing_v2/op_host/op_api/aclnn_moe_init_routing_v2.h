@@ -15,7 +15,8 @@
 #ifndef ACLNN_MOE_INIT_ROUTING_V2_H_
 #define ACLNN_MOE_INIT_ROUTING_V2_H_
 
-#include "aclnn/acl_meta.h"
+#include "aclnn/aclnn_base.h"
+#include "aclnn_util.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,7 +39,7 @@ extern "C" {
  * workspaceSize : size of workspace(output).
  * executor : executor context(output).
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
+ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *expertIdx, int64_t activeNumOptional, int64_t expertCapacityOptional,
     int64_t expertNumOptional, int64_t dropPadModeOptional, int64_t expertTokensCountOrCumsumFlagOptional,
     bool expertTokensBeforeCapacityFlagOptional, const aclTensor *expandedXOut, const aclTensor *expandedRowIdxOut,
@@ -52,7 +53,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMoeInitRoutingV2GetWorks
  * executor : executor context(input).
  * stream : acl stream.
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnMoeInitRoutingV2(void *workspace, uint64_t workspaceSize,
+ACLNN_API aclnnStatus aclnnMoeInitRoutingV2(void *workspace, uint64_t workspaceSize,
                                                                          aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
