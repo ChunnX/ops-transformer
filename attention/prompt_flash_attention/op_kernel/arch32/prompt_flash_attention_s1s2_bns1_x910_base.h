@@ -14,7 +14,6 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_S1S2_BNS1_X910_BASE_H
 #define PROMPT_FLASH_ATTENTION_S1S2_BNS1_X910_BASE_H
-#include <type_traits>
 #include "prompt_flash_attention_base.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator.h"

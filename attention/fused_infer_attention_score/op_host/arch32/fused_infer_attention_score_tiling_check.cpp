@@ -14,12 +14,7 @@
  */
 
 #include <map>
-#include <vector>
-#include <string>
-#include <utility>
-#include <sstream>
 #include <numeric>
-#include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "log/error_code.h"
