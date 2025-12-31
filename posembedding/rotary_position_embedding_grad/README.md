@@ -6,11 +6,7 @@
 | :----------------------------------------------------------- |:-------:|
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 
 ## 功能说明
 -  **算子功能**：执行单路旋转位置编码[RotaryPositionEmbedding](../rotary_position_embedding/README.md)的反向计算。
@@ -18,7 +14,7 @@
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     （1）half模式（mode等于0）：
     $$
@@ -226,7 +222,7 @@
     - 输入张量x和输出张量y的shape必须完全相同。
     - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
 
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     - 输入张量dy支持BNSD、BSND、SBND排布。
     - 输入张量dy、cos、sin、xOptional及输出张量dxOut、dcosOut、dsinOut的D维度大小必须相同，满足D<896，且必须为2的倍数。
