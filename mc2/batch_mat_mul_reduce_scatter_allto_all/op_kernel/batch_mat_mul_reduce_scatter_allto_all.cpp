@@ -16,6 +16,7 @@
 #include "kernel_operator.h"
 #include "batch_mat_mul_reduce_scatter_allto_all.h"
 #include "batch_mat_mul_reduce_scatter_allto_all_shard_zero.h"
+#include "batch_mat_mul_reduce_scatter_allto_all_tiling_key.h"
 
 using namespace AscendC;
 
@@ -43,79 +44,44 @@ struct BMMRSATAType { // Batch_Mat_Mul_Reduce_Scatter_All_to_All_Type
         op.Process();                                                           \
     } while (0)
 
-extern "C" __global__ __aicore__ void batch_mat_mul_reduce_scatter_allto_all(GM_ADDR xGM, GM_ADDR weightGM,
+template<int YShard, bool WeightTranspose, bool IsBias, bool LiteMode>
+__global__ __aicore__ void batch_mat_mul_reduce_scatter_allto_all(GM_ADDR xGM, GM_ADDR weightGM,
                                                                              GM_ADDR biasGM, GM_ADDR yGM,
-                                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+                                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM) 
+{
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // 强制kernelCV核配比1:2
     if (workspaceGM == nullptr) {return;}
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {return;}
     GET_TILING_DATA(tilingData, tilingGM);
     TPipe pipe;
-
 #if (ORIG_DTYPE_X == DT_FLOAT16)
     using X_TYPE = half;
     using BIAS_TYPE = half;
-    // x fp16
     // yShardType = 1
-    if (TILING_KEY_IS(1000000000000000001)) { // no bias, no transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, false, false);
-    } else if (TILING_KEY_IS(1000000000000000101)) { // bias fp16, no transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, false, false);
-    } else if (TILING_KEY_IS(1000000000000000011)) { // no bias, transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, true, false);
-    } else if (TILING_KEY_IS(1000000000000000111)) { // bias fp16, transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, true, false);
-    } else if (TILING_KEY_IS(1000000000000001001)) { // no bias, no transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, false, true);
-    } else if (TILING_KEY_IS(1000000000000001101)) { // bias fp16, no transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, false, true);
-    } else if (TILING_KEY_IS(1000000000000001011)) { // no bias, transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, true, true);
-    } else if (TILING_KEY_IS(1000000000000001111)) { // bias fp16, transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, true, true);
+    if constexpr (YShard == 1){
+        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, 
+                                IsBias, YShard, WeightTranspose, LiteMode);
+    }
     // yShardType = 0
-    } else if (TILING_KEY_IS(1000000000000000000)) { // no bias, no transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, false, 0, false, false);
-    } else if (TILING_KEY_IS(1000000000000000100)) { // bias fp16, no transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, true, 0, false, false);
-    } else if (TILING_KEY_IS(1000000000000000010)) { // no bias, transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, false, 0, true, false);
-    } else if (TILING_KEY_IS(1000000000000000110)) { // bias, transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, true, 0, true, false);
+    else if constexpr (YShard == 0) {
+        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, 
+                                IsBias, YShard, WeightTranspose, LiteMode);
     }
 #endif
 
 #if (ORIG_DTYPE_X == DT_BF16)
     using X_TYPE = bfloat16_t;
     using BIAS_TYPE = float;
-    // x bf16
     // yShardType = 1
-    if (TILING_KEY_IS(1000000000000000001)) { // no bias, no transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, false, false);
-    } else if (TILING_KEY_IS(1000000000000000101)) { // bias fp32, no transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, false, false);
-    } else if (TILING_KEY_IS(1000000000000000011)) { // no bias, transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, true, false);
-    } else if (TILING_KEY_IS(1000000000000000111)) { // bias fp32, transpose_weight
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, true, false);
-    } else if (TILING_KEY_IS(1000000000000001001)) { // no bias, no transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, false, true);
-    } else if (TILING_KEY_IS(1000000000000001101)) { // bias fp32, no transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, false, true);
-    } else if (TILING_KEY_IS(1000000000000001011)) { // no bias, transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, false, 1, true, true);
-    } else if (TILING_KEY_IS(1000000000000001111)) { // bias fp32, transpose_weight, lite mode
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, true, 1, true, true);
+    if constexpr (YShard == 1){
+        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAll, X_TYPE, BIAS_TYPE, 
+                                IsBias, YShard, WeightTranspose, LiteMode);
+    }
     // yShardType = 0
-    } else if (TILING_KEY_IS(1000000000000000000)) { // no bias, no transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, false, 0, false, false);
-    } else if (TILING_KEY_IS(1000000000000000100)) { // bias fp16, no transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, true, 0, false, false);
-    } else if (TILING_KEY_IS(1000000000000000010)) { // no bias, transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, false, 0, true, false);
-    } else if (TILING_KEY_IS(1000000000000000110)) { // bias, transpose_weight, shard0
-        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, true, 0, true, false);
+    else if constexpr (YShard == 0) {
+        INVOKE_BMMRSATA_OP_IMPL(BatchMatMulReduceScatterAlltoAllShard0, X_TYPE, BIAS_TYPE, 
+                                IsBias, YShard, WeightTranspose, LiteMode);
     }
 #endif
 }

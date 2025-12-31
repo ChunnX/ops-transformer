@@ -14,6 +14,7 @@
  */
 
 #include "allto_all_all_gather_batch_mat_mul_tiling.h"
+#include "../../op_kernel/allto_all_all_gather_batch_mat_mul_tiling_key.h"
 
 #include <queue>
 #include <vector>
@@ -62,19 +63,11 @@ constexpr uint32_t ATTR_OUTPUT_Y3_FLAG_INDEX = 8;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8; // numeric representation of AlltoAll
 constexpr uint32_t OP_TYPE_ALL_GATHER = 6; // numeric representation of AllGather
 
-constexpr uint64_t INIT_TILINGKEY = 1000000000000000000;
 constexpr uint32_t FASTGELU_MINSIZE = 3 * 256;
 constexpr uint32_t GELU = 1;
 constexpr uint32_t SILU = 2;
 constexpr uint32_t RELU = 3;
 constexpr uint32_t FASTGELU = 4;
-
-constexpr uint64_t TILINGKEY_X_SHARD = 1;           // When X_shard = 1
-constexpr uint64_t TILINGKEY_WEIGHT_TRANSPOSE = 10; // When weight trans is true
-constexpr uint64_t TILINGKEY_IS_BIAS = 100;         // When bias is given as input
-constexpr uint64_t TILINGKEY_Y2_ONLY = 1000;        // When only need to output Y2
-constexpr uint64_t TILINGKEY_Y3_ONLY = 2000;        // When only need to output Y3
-constexpr uint64_t TILINGKEY_Y2_Y3 = 3000;          // When have to output both Y2 and Y3
 
 } // namespace
 
@@ -364,22 +357,22 @@ static void CheckAddActivateUBAndUpdateTileShard(ActivationParams &actParams, Ti
     UpdateTileShard(params, tilingData);
 }
 
-static void UpdateTilingKey(uint64_t &tilingKey, AlltoAllAllGatherBatchMatMulTilingData &tilingData, bool y2Flag,
-                            bool y3Flag)
+static uint64_t UpdateTilingKey(AlltoAllAllGatherBatchMatMulTilingData &tilingData, bool y2Flag, bool y3Flag)
 {
-    tilingKey += (tilingData.commonTiling.get_xShardFlag() == 1) ? TILINGKEY_X_SHARD : 0;
-    tilingKey += (tilingData.commonTiling.get_isWeightTrans() == true) ? TILINGKEY_WEIGHT_TRANSPOSE : 0;
-    tilingKey += (tilingData.commonTiling.get_isBias() == true) ? TILINGKEY_IS_BIAS : 0;
-    if (y2Flag && y3Flag) {
-        tilingKey += TILINGKEY_Y2_Y3;
-    } else if (y2Flag) {
-        tilingKey += TILINGKEY_Y2_ONLY;
-    } else if (y3Flag) {
-        tilingKey += TILINGKEY_Y3_ONLY;
-    }
+    uint8_t xShardFlag = tilingData.commonTiling.get_xShardFlag();
+    bool isWeightTrans = tilingData.commonTiling.get_isWeightTrans();
+    bool isBias = tilingData.commonTiling.get_isBias();
+
+    uint64_t tilingKey = GET_TPL_TILING_KEY(xShardFlag, isWeightTrans, isBias, y2Flag, y3Flag);
+
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : xShardFlag is %u.", xShardFlag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Weight Transpose is %d.", isWeightTrans);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Bias is %d.", isBias);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y2 output need is %d.", y2Flag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y3 output need is %d.", y3Flag);
 
     OP_LOGD("AlltoAllAllGatherBatchMatMul", "The final tiling key is %lu.", tilingKey);
-    return;
+    return tilingKey;
 }
 
 static void CompleteBmmStructs(AlltoAllAllGatherBatchInfo &BMMV3BatchInfo, AlltoAllAllGatherMatmulInfo &MMV3ArgsInfo,
@@ -1299,8 +1292,7 @@ static void SetUbTilingDataInCommonTiling(const gert::TilingContext *context, ui
 static ge::graphStatus SetContextData(gert::TilingContext *context, uint32_t blockDim,
                                       AlltoAllAllGatherBatchMatMulTilingData &tilingData)
 {
-    uint64_t tilingKey = INIT_TILINGKEY;
-    UpdateTilingKey(tilingKey, tilingData, tilingData.commonTiling.get_y2Flag(), tilingData.commonTiling.get_y3Flag());
+    uint64_t tilingKey = UpdateTilingKey(tilingData, tilingData.commonTiling.get_y2Flag(), tilingData.commonTiling.get_y3Flag());
     context->SetTilingKey(tilingKey);
     context->SetBlockDim(blockDim);
     OP_TILING_CHECK(SetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,

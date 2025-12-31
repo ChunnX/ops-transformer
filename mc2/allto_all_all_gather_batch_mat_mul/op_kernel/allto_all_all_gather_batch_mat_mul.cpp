@@ -15,6 +15,7 @@
 #include "kernel_operator.h"
 #include "allto_all_all_gather_batch_mat_mul.h"
 #include "allto_all_all_gather_batch_mat_mul_shard_h.h"
+#include "allto_all_all_gather_batch_mat_mul_tiling_key.h"
 
 using namespace AscendC;
 
@@ -52,176 +53,19 @@ using DT_BIAS = float;
         op.Process();                                                                    \
     } while (0)
 
-extern "C" __global__ __aicore__ void allto_all_all_gather_batch_mat_mul(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM,
+template<int XShard, bool WeightTransPose, bool IsBias, bool Y2Need, bool Y3Need>
+__global__ __aicore__ void allto_all_all_gather_batch_mat_mul(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM,
                                                                          GM_ADDR y2GM, GM_ADDR y3GM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA(tilingData, tilingGM);
-/*
-Tiling key
-1. 个位shardType 0/1
-2. 十位transposeweight 0/1
-3. 百位bias 0/1
-4. 千位y2/y3 0/1/2/3
-*/
 
-    if (TILING_KEY_IS(1000000000000000001)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, false, false, false);
+    if constexpr (XShard == 1){
+        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(XShard, WeightTransPose, IsBias, Y2Need, Y3Need);
         return;
     }
-
-    if (TILING_KEY_IS(1000000000000000011)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, false, false, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000000101)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, true, false, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000000111)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, true, false, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001001)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, false, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001011)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, false, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001101)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, true, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001111)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, true, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002001)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, false, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002011)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, false, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002101)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, true, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002111)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, true, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003001)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, false, true, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003011)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, false, true, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003101)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, false, true, true, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003111)) {
-        AlltoAllAllGatherBatchMatMul_IMPL_CLASS(1, true, true, true, true);
-        return;
-    }
-    // shard 0 tilingKey
-        if (TILING_KEY_IS(1000000000000000000)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, false, false, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000000010)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, false, false, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000000100)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, true, false, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000000110)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, true, false, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001000)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, false, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001010)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, false, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001100)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, true, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000001110)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, true, true, false);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002000)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, false, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002010)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, false, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002100)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, true, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000002110)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, true, false, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003000)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, false, true, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003010)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, false, true, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003100)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, false, true, true, true);
-        return;
-    }
-
-    if (TILING_KEY_IS(1000000000000003110)) {
-        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(0, true, true, true, true);
+    else if constexpr (XShard == 0) {
+        AlltoAllAllGatherBatchMatMul_SHARD_H_IMPL_CLASS(XShard, WeightTransPose, IsBias, Y2Need, Y3Need);
         return;
     }
 }

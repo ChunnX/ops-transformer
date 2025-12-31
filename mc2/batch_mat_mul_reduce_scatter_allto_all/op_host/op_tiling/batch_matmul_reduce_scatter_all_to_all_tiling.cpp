@@ -14,6 +14,7 @@
  */
 
 #include "batch_matmul_reduce_scatter_all_to_all_tiling.h"
+#include "../..//op_kernel/batch_mat_mul_reduce_scatter_allto_all_tiling_key.h"
 
 #include <string>
 #include <queue>
@@ -57,15 +58,7 @@ constexpr uint32_t ATTR_IS_WEIGHT_TRANS_INDEX = 5;
 constexpr uint32_t OP_TYPE_REDUCE_SCATTER = 7;    // numeric representation of ReduceScatter
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;        // numeric representation of AlltoAll
 
-constexpr uint64_t INIT_TILINGKEY = 1000000000000000000;
-
 constexpr int64_t LITE_THRESHOLD = 640;
-
-constexpr uint64_t TILINGKEY_Y_SHARD = 1U;          // When y_shard = 1
-constexpr uint64_t TILINGKEY_WEIGHT_TRANSPOSE = 10U;        // When weight trans is true
-constexpr uint64_t TILINGKEY_USE_BIAS = 100U;         // When bias is given
-constexpr uint64_t TILINGKEY_LITE = 1000U;           // When C/tp <= LITE_THRESHOLD
-
 }
 
 namespace optiling {
@@ -202,16 +195,21 @@ static ge::graphStatus CalculateMaxSplitUB(int64_t ubSize, bool bias_flag, bool 
     return ge::GRAPH_SUCCESS;
 }
 
-static void UpdateTilingKey(uint64_t& tilingKey, BatchMatMulReduceScatterAlltoAllTilingData &tilingData,
-    bool isLite)
+static uint64_t UpdateTilingKey(BatchMatMulReduceScatterAlltoAllTilingData &tilingData, bool isLite)
 {
-    tilingKey += (tilingData.commonTiling.get_yShardFlag() == 1) ? TILINGKEY_Y_SHARD : 0;
-    tilingKey += (tilingData.commonTiling.get_isWeightTrans() == true) ? TILINGKEY_WEIGHT_TRANSPOSE : 0;
-    tilingKey += (tilingData.commonTiling.get_isBias() == true) ? TILINGKEY_USE_BIAS : 0;
-    tilingKey += isLite ? TILINGKEY_LITE : 0; 
+    uint8_t yShardFlag = tilingData.commonTiling.get_yShardFlag();
+    bool isWeightTrans = tilingData.commonTiling.get_isWeightTrans();
+    bool isBias = tilingData.commonTiling.get_isBias();
+
+    uint64_t tilingKey = GET_TPL_TILING_KEY(yShardFlag, isWeightTrans, isBias, isLite);
+
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "TPL Tiling Key Print : Tiling key parameter : xShardFlag is %u.", yShardFlag);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "TPL Tiling Key Print : Tiling key parameter : Weight Transpose is %d.", isWeightTrans);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "TPL Tiling Key Print : Tiling key parameter : Bias is %d.", isBias);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "TPL Tiling Key Print : Tiling key parameter : Lite Mode is %d.", isLite);
 
     OP_LOGD("BatchMatMulReduceScatterAlltoAll", "The final tiling Key is: %lu!", tilingKey);
-    return;
+    return tilingKey;
 }
 
 static void CompleteBmmStructs(ReduceScatterAlltoAllBatchInfo &BMMV3BatchInfo,
@@ -905,7 +903,6 @@ static ge::graphStatus BatchMatMulReduceScatterAlltoAllTilingFunc(gert::TilingCo
     TensorInfo tensorInfo{};
     //子函数2 获取aiv,UB
     GetPlatformInfo(context,    tensorInfo);
-    uint64_t tilingKey = INIT_TILINGKEY;
     context->SetBlockDim(tensorInfo.blockDim);
     //子函数3 获取参数，计算，填充tilingData
     //存放inputDatatype，biasDatatype
@@ -930,7 +927,7 @@ static ge::graphStatus BatchMatMulReduceScatterAlltoAllTilingFunc(gert::TilingCo
                             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set workspace Failed!"),
                             return ge::GRAPH_FAILED);
     }
-    UpdateTilingKey(tilingKey, tilingData, tensorInfo.isLite);
+    uint64_t tilingKey = UpdateTilingKey(tilingData, tensorInfo.isLite);
     context->SetTilingKey(tilingKey);
     context->SetBlockDim(tensorInfo.blockDim);
     OP_TILING_CHECK(SetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,

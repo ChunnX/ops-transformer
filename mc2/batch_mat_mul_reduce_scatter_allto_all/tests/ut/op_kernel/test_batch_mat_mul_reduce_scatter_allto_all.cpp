@@ -17,11 +17,7 @@
 #include "tikicpulib.h"
 #include "../../../../common/inc/hccl_stub.h"
 #include "batch_mat_mul_reduce_scatter_allto_all_tiling_def.h"
-
-extern "C" __global__ __aicore__ void batch_mat_mul_reduce_scatter_allto_all(GM_ADDR xGM, GM_ADDR weightGM,
-                                                                             GM_ADDR biasGM, GM_ADDR yGM, 
-                                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM);
-
+#include "../../../op_kernel/batch_mat_mul_reduce_scatter_allto_all.cpp"
 
 class batch_matmul_reduce_scatter_all_to_all_test : public testing::Test {
 protected:
@@ -69,11 +65,17 @@ TEST_F(batch_matmul_reduce_scatter_all_to_all_test, batch_matmul_reduce_scatter_
     uint8_t *biasGM = nullptr;
     uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(E * C / tp * H * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(100000010);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
+    auto batch_mat_mul_reduce_scatter_allto_all_warpper = [](GM_ADDR xGM, GM_ADDR weightGM,
+                                                             GM_ADDR biasGM, GM_ADDR yGM,
+                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        batch_mat_mul_reduce_scatter_allto_all<1, false, false, false>(xGM, weightGM,
+                                                                           biasGM, yGM,
+                                                                           workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
 
-    ICPU_SET_TILING_KEY(100000110);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -118,11 +120,17 @@ TEST_F(batch_matmul_reduce_scatter_all_to_all_test, batch_matmul_reduce_scatter_
     uint8_t *biasGM = (uint8_t *)AscendC::GmAlloc(E / ep * H * sizeof(uint16_t));
     uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(E * C / tp * H * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(100000011);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
+    auto batch_mat_mul_reduce_scatter_allto_all_warpper = [](GM_ADDR xGM, GM_ADDR weightGM,
+                                                             GM_ADDR biasGM, GM_ADDR yGM,
+                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        batch_mat_mul_reduce_scatter_allto_all<1, false, false, false>(xGM, weightGM,
+                                                                           biasGM, yGM,
+                                                                           workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
 
-    ICPU_SET_TILING_KEY(100000111);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -168,11 +176,17 @@ TEST_F(batch_matmul_reduce_scatter_all_to_all_test, batch_matmul_reduce_scatter_
     uint8_t *biasGM = nullptr;
     uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(E * C / tp * H * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(100000010);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
+    auto batch_mat_mul_reduce_scatter_allto_all_warpper = [](GM_ADDR xGM, GM_ADDR weightGM,
+                                                             GM_ADDR biasGM, GM_ADDR yGM,
+                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        batch_mat_mul_reduce_scatter_allto_all<1, false, false, false>(xGM, weightGM,
+                                                                           biasGM, yGM,
+                                                                           workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
 
-    ICPU_SET_TILING_KEY(100000110);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, nullptr, yGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -217,11 +231,17 @@ TEST_F(batch_matmul_reduce_scatter_all_to_all_test, batch_matmul_reduce_scatter_
     uint8_t *biasGM = (uint8_t *)AscendC::GmAlloc(E / ep * H * sizeof(float));
     uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(E * C / tp * H * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(100000013);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
+    auto batch_mat_mul_reduce_scatter_allto_all_warpper = [](GM_ADDR xGM, GM_ADDR weightGM,
+                                                             GM_ADDR biasGM, GM_ADDR yGM,
+                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM
+    ) {
+        batch_mat_mul_reduce_scatter_allto_all<1, false, false, false>(xGM, weightGM,
+                                                                           biasGM, yGM,
+                                                                           workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
 
-    ICPU_SET_TILING_KEY(100000113);
-    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
+    ICPU_RUN_KF(batch_mat_mul_reduce_scatter_allto_all_warpper, blockDim, xGM, weightGM, biasGM, yGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
