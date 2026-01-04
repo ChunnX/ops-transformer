@@ -66,7 +66,7 @@
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../attention/gather_pa_kv_cache/README.md">gather_pa_kv_cache</a></td>
+    <td><a href="../../attention/gather_pa_kv_cache/README.md">gather_pa_kv_cache</a></td>
     <td>√</td>
     <td>√</td>
     <td>√</td>
