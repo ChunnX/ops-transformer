@@ -143,8 +143,24 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVTilingMai
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE("SwinTransformerLnQkv",
                         "failed to get workspace size"),
                         return ge::GRAPH_FAILED);
-    workspaces[0] = 1200 * 1024 * 1024; // To use the workspace, set the workspace size to 1200 x 1024 x 1024 MB by default. Memory on GM
+
+    auto platformInfoPtr = context->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"), return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRINX90) {
+        OP_LOGD(context->GetNodeName(), "Current soc version is KIRINX90.");
+        const gert::StorageShape *qShape = context->GetOutputShape(0);
+        OP_CHECK_IF(qShape == nullptr, OP_LOGE(context->GetNodeName(), "qShape is null"), return ge::GRAPH_FAILED);
+        int32_t outSize = 1;
+        for (uint32_t i = 0; i < qShape->GetStorageShape().GetDimNum(); i++) {
+            outSize *= qShape->GetStorageShape().GetDim(i);
+        }
+        workspaces[0] = dataSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) + outSize * sizeof(uint16_t);
+    } else {
+        workspaces[0] = 1200 * 1024 * 1024; // To use the workspace, set the workspace size to 1200 x 1024 x 1024 MB by default. Memory on GM
+    }
     tilingData.set_workspaceSize(workspaces[0]);
+
     SwinTransformerLnQKVSaveTilingData(context);
     return ge::GRAPH_SUCCESS;
 }

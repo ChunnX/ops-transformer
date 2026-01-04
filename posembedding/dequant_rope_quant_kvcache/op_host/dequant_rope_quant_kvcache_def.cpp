@@ -47,6 +47,27 @@ static const std::vector<ge::Format> formatList = {
      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
      ge::FORMAT_ND, ge::FORMAT_ND}};
 
+static const std::vector<ge::DataType> XDtypeListKirin = {
+    {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32}};
+
+static const std::vector<ge::DataType> cosDtypeListKirin = {
+    {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16}};
+
+static const std::vector<ge::DataType> biasDtypeListKirin = {
+    {ge::DT_FLOAT16, ge::DT_INT32, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_FLOAT}};
+
+static const std::vector<ge::DataType> scaleDtypeListKirin = {
+    {ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT}};
+
+static const std::vector<ge::DataType> cacheDtypeListKirin = {
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8}};
+
+static const std::vector<ge::DataType> indicesDtypeListKirin = {
+    {ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32}};
+
+static const std::vector<ge::Format> formatListKirin = {
+    {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND}};
+
 class DequantRopeQuantKvcache : public OpDef {
 public:
     explicit DequantRopeQuantKvcache(const char* name) : OpDef(name)
@@ -149,6 +170,125 @@ public:
         this->Attr("cache_mode").AttrType(OPTIONAL).String("contiguous");
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+
+        OpAICoreConfig config_kirin = GetKirinCoreConfig();
+        this->AICore().AddConfig("kirinx90", config_kirin);
+    }
+
+private:
+    OpAICoreConfig GetKirinCoreConfig() const
+    {
+        OpAICoreConfig config_kirin;
+        config_kirin.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true);
+        config_kirin.Input("x")
+            .ParamType(REQUIRED)
+            .DataType(XDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("cos")
+            .ParamType(REQUIRED)
+            .DataType(cosDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("sin")
+            .ParamType(REQUIRED)
+            .DataType(cosDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("k_cache")
+            .ParamType(REQUIRED)
+            .DataType(cacheDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("v_cache")
+            .ParamType(REQUIRED)
+            .DataType(cacheDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("indices")
+            .ParamType(REQUIRED)
+            .DataType(indicesDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("scale_k")
+            .ParamType(REQUIRED)
+            .DataType(scaleDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("scale_v")
+            .ParamType(REQUIRED)
+            .DataType(scaleDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("offset_k")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("offset_v")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("weight_scale")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("activation_scale")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Input("bias")
+            .ParamType(OPTIONAL)
+            .DataType(biasDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin)
+            .AutoContiguous();
+        config_kirin.Output("q")
+            .ParamType(REQUIRED)
+            .DataType(cosDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin);
+        config_kirin.Output("k")
+            .ParamType(REQUIRED)
+            .DataType(cosDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin);
+        config_kirin.Output("v")
+            .ParamType(REQUIRED)
+            .DataType(cosDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin);
+        config_kirin.Output("k_cache")
+            .ParamType(REQUIRED)
+            .DataType(cacheDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin);
+        config_kirin.Output("v_cache")
+            .ParamType(REQUIRED)
+            .DataType(cacheDtypeListKirin)
+            .Format(formatListKirin)
+            .UnknownShapeFormat(formatListKirin);
+        return config_kirin;
     }
 };
 

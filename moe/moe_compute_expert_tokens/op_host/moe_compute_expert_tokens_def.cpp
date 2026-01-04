@@ -12,7 +12,6 @@
  * \file moe_compute_expert_tokens_def.cpp
  * \brief
  */
-#include <cstdint>
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -44,6 +43,8 @@ public:
 
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
+
+        this->AICore().AddConfig("kirinx90", aicore_config);
     }
 };
 

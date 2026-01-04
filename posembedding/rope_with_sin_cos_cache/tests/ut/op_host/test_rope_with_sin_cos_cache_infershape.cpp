@@ -55,7 +55,7 @@ TEST_F(RopeWithSinCosCache, rope_with_sin_cos_cache_bf16_true)
             {"kstride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
             {"isNeoxStyle", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{}, {}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{48, 256}, {48, 512}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -86,7 +86,7 @@ TEST_F(RopeWithSinCosCache, rope_with_sin_cos_cache_fp16_true)
             {"kstride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
             {"isNeoxStyle", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{}, {}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{48, 256}, {48, 512}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -117,6 +117,6 @@ TEST_F(RopeWithSinCosCache, rope_with_sin_cos_cache_fp32_true)
             {"kstride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
             {"isNeoxStyle", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{}, {}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{48, 256}, {48, 512}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }

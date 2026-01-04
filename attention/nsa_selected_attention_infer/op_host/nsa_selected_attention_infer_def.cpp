@@ -93,6 +93,77 @@ namespace ops {
                 .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
             this->AICore().AddConfig("ascend910b", aicore_config);
             this->AICore().AddConfig("ascend910_93", aicore_config);
+
+            OpAICoreConfig config_kirin = GetKirinCoreConfig();
+            this->AICore().AddConfig("kirinx90", config_kirin);
+        }
+
+    private:
+    OpAICoreConfig GetKirinCoreConfig() const
+        {
+            OpAICoreConfig config_kirin;
+            config_kirin.DynamicCompileStaticFlag(true)
+                .DynamicFormatFlag(true)
+                .DynamicRankSupportFlag(true)
+                .DynamicShapeSupportFlag(true)
+                .NeedCheckSupportFlag(false)
+                .PrecisionReduceFlag(true);
+            config_kirin.Input("query")
+                .ParamType(REQUIRED)
+                .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Input("key")
+                .ParamType(REQUIRED)
+                .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Input("value")
+                .ParamType(REQUIRED)
+                .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Input("topk_indices")
+                .ParamType(REQUIRED)
+                .DataType({ge::DT_INT32, ge::DT_INT32})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Input("atten_mask")
+                .ParamType(OPTIONAL)
+                .DataType({ge::DT_BOOL, ge::DT_UINT8})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Input("block_table")
+                .ParamType(OPTIONAL)
+                .DataType({ge::DT_INT32, ge::DT_INT32})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Input("actual_q_seq_lengths")
+                .ParamType(OPTIONAL)
+                .ValueDepend(OPTIONAL)
+                .DataType({ge::DT_INT64, ge::DT_INT64})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Input("actual_kv_seq_lengths")
+                .ParamType(OPTIONAL)
+                .ValueDepend(OPTIONAL)
+                .DataType({ge::DT_INT64, ge::DT_INT64})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+            config_kirin.Output("attention_out")
+                .ParamType(REQUIRED)
+                .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            return config_kirin;
         }
     };
     OP_ADD(NsaSelectedAttentionInfer);

@@ -736,6 +736,62 @@ public:
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend910_95", config91095);
+
+        OpAICoreConfig config_kirin = GetKirinCoreConfig();
+        this->AICore().AddConfig("kirinx90", config_kirin);
+    }
+
+private:
+    OpAICoreConfig GetKirinCoreConfig() const
+    {
+        OpAICoreConfig config_kirin;
+        config_kirin.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true);
+        config_kirin.Input("x")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("weight")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_FRACTAL_NZ});
+        config_kirin.Input("bias")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("scale")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_UINT64})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("offset")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("antiquant_scale")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("antiquant_offset")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("group_list")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("per_token_scale")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Output("y")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        return config_kirin;
     }
 };
 

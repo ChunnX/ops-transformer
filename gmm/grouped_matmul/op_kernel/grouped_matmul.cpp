@@ -72,7 +72,7 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_5 = {3, 384};
 #include "grouped_matmul.h"
 #endif
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
 
 #include "grouped_matmul_antiquant_a16w8_msd.h"
 #include "grouped_matmul_antiquant_a8w4_msd_pre.h"
@@ -693,7 +693,7 @@ REGISTER_TILING_DEFAULT(GMMQuantTilingData);
 #endif
 #endif
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
 #if defined(GMM_ANTI_QUANT_A8W4_MSD)
     // ANTIQUANT_A8W4
     if constexpr (D_T_A == GMM_TPL_INT8 && D_T_B == GMM_TPL_INT4) {

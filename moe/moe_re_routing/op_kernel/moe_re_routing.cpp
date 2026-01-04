@@ -71,6 +71,7 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
             expertTokenNum);
         op.Process();
     } else if (TILING_KEY_IS(MOE_RE_ROUTING_TOKENS_BF16_EXPERTS_INT32_SCALES_FLOAT32)) {
+#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
         KernelMoeReRouting<bfloat16_t, int32_t, float> op(&pipe, &tiling_data);
         op.Init(tokens,
             expertTokensNumPerRank,
@@ -80,7 +81,9 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
             permuteTokenIdx,
             expertTokenNum);
         op.Process();
+#endif
     } else if (TILING_KEY_IS(MOE_RE_ROUTING_TOKENS_BF16_EXPERTS_INT64_SCALES_FLOAT32)) {
+#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
         KernelMoeReRouting<bfloat16_t, int64_t, float> op(&pipe, &tiling_data);
         op.Init(tokens,
             expertTokensNumPerRank,
@@ -90,5 +93,6 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
             permuteTokenIdx,
             expertTokenNum);
         op.Process();
+#endif
     }
 }

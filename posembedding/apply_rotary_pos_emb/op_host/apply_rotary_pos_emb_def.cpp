@@ -105,6 +105,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         aicore_config.ExtendCfgInfo("opFile.value", "apply_rotary_pos_emb");
         this->AICore().AddConfig("ascend310p", aicore_config);
+        this->AICore().AddConfig("kirinx90", aicore_config);
     }
 };
 

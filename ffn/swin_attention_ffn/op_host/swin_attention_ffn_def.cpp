@@ -50,6 +50,7 @@ namespace ops
                     .AttrType(OPTIONAL)
                     .ListInt({});
                 this->AICore().AddConfig("ascend910b");
+                this->AICore().AddConfig("kirinx90");
             }
     };
 
