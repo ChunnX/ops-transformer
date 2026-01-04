@@ -103,29 +103,7 @@ using namespace regbaseutil;
     INVOKE_PFA_TILING_DATA_V2(tiling)
 #endif
 
-#if (__NPU_ARCH__ == 5102)
-#define PFA_REGBASE_COPY_TILING_DATA(tiling)                                                                                                \
-    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                                           \
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;                                                 \
- 
-#define INVOKE_PFA_GENERAL_OP_IMPL_REGBASE_V2_FA_BASEAPI(templateClass, ...)                                 \
-    do {                                                                                                                                \
-        if (query == nullptr) {return;}                                                                                                 \
-        PFA_REGBASE_COPY_TILING_DATA(tiling);                                                                                           \
-        TPipe tPipe;                                                                                                                    \
-        using CubeBlockType = BaseApi::FABlockCube<__VA_ARGS__>; \
-        using VecBlockType = BaseApi::FABlockVecInfer<__VA_ARGS__>; \
-        templateClass<CubeBlockType, VecBlockType> op;                                                                                  \
-        op.InitBaseAPI(query, key, value, pseShift, nullptr, nullptr, attenMask, nullptr, actualSeqLengths,                             \
-            actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, nullptr, nullptr, deq_scale2,                                 \
-            deq_scale1, quant_scale1, postQuantScale, postQuantOffset, queryRope, keyRope,                                                           \
-            nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, tilingData, &tPipe);                                             \
-        op.Process();                                                                                                                   \
-    } while (0)
-#else
-
 #ifdef __DAV_C310_CUBE__ // CUBE 实现
-
 #define PFA_REGBASE_COPY_TILING_DATA(tiling)                                                                     \
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = nullptr
 
@@ -193,7 +171,6 @@ using namespace regbaseutil;
             postQuantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, tilingData, &tPipe);        \
         op.Process();                                                                                                                   \
     } while (0)
-#endif
 #endif
 
 #define INVOKE_PFA_GENERAL_OP_IMPL_V2(templateClass, ...)                                                                  \
