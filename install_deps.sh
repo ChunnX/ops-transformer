@@ -50,7 +50,7 @@ detect_os() {
         if [[ -f /etc/debian_version ]]; then
             OS="debian"
             PKG_MANAGER="apt"
-        elif [[ -f /etc/redhat-release ]]; then
+        elif [[ -f /etc/redhat-release ]] || [[ -f /etc/euleros-release ]]; then
             OS="rhel"
             if command -v dnf &> /dev/null; then
                 PKG_MANAGER="dnf"
