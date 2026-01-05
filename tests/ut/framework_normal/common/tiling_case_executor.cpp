@@ -189,7 +189,6 @@ static void GetPlatFormInfos(const char* compileInfoStr, map<string, string>& so
                                        {"cube_core_cnt", "cube_core_cnt"},
                                        {"vector_core_cnt", "vector_core_cnt"},
                                        {"core_type_list", "core_type_list"}};
-    socInfos["core_type_list"] = "AICore";
 
     for (auto &t : socInfoKeys) {
         if (compileInfoJson.contains("hardware_info") && compileInfoJson["hardware_info"].contains(t.second)) {
@@ -201,6 +200,14 @@ static void GetPlatFormInfos(const char* compileInfoStr, map<string, string>& so
             }
         }
     }
+
+    if (socInfos.find("cube_core_cnt") != socInfos.end() &&
+        socInfos.find("vector_core_cnt") != socInfos.end()) {
+        socInfos["core_type_list"] = "CubeCore,VectorCore";
+    } else {
+        socInfos["core_type_list"] = "AICore";
+    }
+
     map<string, string> aicoreSpecKeys = {{"ub_size", "UB_SIZE"},
                                           {"l0_a_size", "L0A_SIZE"},
                                           {"l0_b_size", "L0B_SIZE"},
