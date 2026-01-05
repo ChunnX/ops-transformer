@@ -18,6 +18,7 @@
 using namespace ge;
 
 namespace ops {
+static constexpr int64_t IDX_0 = 0;
 
 static ge::graphStatus InferShapeAddExample(gert::InferShapeContext* context)
 {

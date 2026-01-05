@@ -269,8 +269,12 @@ foreach (OP_DIR ${OP_DIR_LIST})
 endforeach ()
 
 if(ENABLE_EXPERIMENTAL)
+    # genop新增experimental算子分类
+    # add_subdirectory(${op_class})
     add_subdirectory(experimental/attention)
 else()
+    # genop新增非experimental算子分类
+    # add_subdirectory(${op_class})
     add_subdirectory(attention)
 endif()
 
