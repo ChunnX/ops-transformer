@@ -570,6 +570,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
    - 一个模型中的`aclnnMoeDistributeCombineV2`和`aclnnMoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
+11. 组网约束：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
+
 ## 调用示例
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：

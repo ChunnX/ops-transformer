@@ -322,6 +322,7 @@ $$
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
         - `commAlg` = "fullmesh"：要求 >= (`Bs` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
         - `commAlg` = "hierarchy"：要求 >= `moeExpertNum` * `Bs` * (`H` * 2 + 16 * Align8(`K`))B + 104MB，不要求`moeExpertNum` / `epWorldSize` <= 24，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
+    - 组网约束：多机场景仅支持交换机组网，不支持双机直连组网。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。

@@ -487,6 +487,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
             - 输入`scales`可传入空指针。
             - 若输入`scales`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
+    - 组网约束：多机场景仅支持交换机组网，不支持双机直连组网。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
