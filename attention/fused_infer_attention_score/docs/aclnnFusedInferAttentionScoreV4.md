@@ -552,6 +552,22 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>×</td>
         </tr>
         <tr>
+            <td>learnableSinkOptional</td>
+            <td>可选输入</td>
+            <td>表示通过可学习的"Sink Token"起到吸收Attention Score的作用。</td>
+            <td>
+            <ul>
+                <li>仅支持非量化场景。</li>
+                <li>仅支持TND、NTD_TND。</li>
+                <li>仅支持V_D=128/64。</li>
+            </ul>
+            </td>
+            <td>BFLOAT16</td>
+            <td>ND</td>
+            <td>(Q_N,)</a></td>
+            <td>×</td>
+        </tr>
+        <tr>
             <td>numHeads</td>
             <td>输入</td>
             <td>表示query的head个数</td>
