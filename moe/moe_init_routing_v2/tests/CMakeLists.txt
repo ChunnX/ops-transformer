@@ -8,44 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-
-########################################################################################################################
-# 调用编译方法, 生成对应编译目标
-########################################################################################################################
-
-set(_MOE_INIT_ROUTING_V2_TilingSourcesExt
-        ${OPS_TRANSFORMER_DIR}/moe/moe_init_routing_v2/op_host/moe_init_routing_v2_tiling.cpp
-)
-
-set(_MOE_INIT_ROUTING_V2_KernelTilingDataDefH
-        # 公共
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
-        # moe
-        ${OPS_TRANSFORMER_DIR}/moe/moe_init_routing_v2/op_host/moe_init_routing_v2_tiling.h
-)
-
-set(_MOE_INIT_ROUTING_V2_KernelTilingExtInclude
-        ${OPS_TRANSFORMER_DIR}/moe/moe_init_routing_v2/op_host/
-)
-
-set(_MOE_INIT_ROUTING_V2_TargetPrivateIncludeExt
-        ${OPS_TRANSFORMER_DIR}/moe/moe_init_routing_v2/op_host/
-        ${CMAKE_SOURCE_DIR}/common/include
-        ${OPBASE_INC_DIRS}
-)
-
-set(_MOE_INIT_ROUTING_V2_CompileDefintions
-        DTYPE_X=float
-)
-aux_source_directory(${OPS_TRANSFORMER_DIR}/moe/moe_init_routing_v2/op_kernel _MOE_INIT_ROUTING_V2_KernelSourcesExt)
-OpsTest_Level2_AddOp(
-        SUB_SYSTEM                              transformer
-        BRIEF                                   MoeInitRoutingV2
-        SNAKE                                   meo_init_routing_v2
-        KERNEL_TILING_DATA_DEF_H                ${_MOE_INIT_ROUTING_V2_KernelTilingDataDefH}
-        KERNEL_SOURCES_EXT                      ${_MOE_INIT_ROUTING_V2_KernelSourcesExt}
-        TILING_SOURCES_EXT                      ${_MOE_INIT_ROUTING_V2_TilingSourcesExt}
-        TILING_PRIVATE_INCLUDES_EXT             ${_MOE_INIT_ROUTING_V2_KernelTilingExtInclude}
-        KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT  ${_MOE_INIT_ROUTING_V2_CompileDefintions}
-        UTEST_COMMON_PRIVATE_INCLUDES_EXT       ${_MOE_INIT_ROUTING_V2_TargetPrivateIncludeExt}
-)
+message(STATUS "=== Debug: start ops.transformer.moe_init_routing_v2.tests.CMakeLists.txt ")
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()
