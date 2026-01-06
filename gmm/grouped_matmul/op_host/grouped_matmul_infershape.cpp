@@ -636,6 +636,57 @@ static int64_t GetPergroupSize(const GMMAttrs& gmmAttrs, bool isSingleWeight,
   return pergroupSize;
 }
 
+static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
+                                                            const GMMParamsInfo &paramsInfo, bool hasAntiquantOffset)
+{
+    auto antiquantScale0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
+    auto dimNum = antiquantScale0Shape->GetDimNum();
+    bool isSingleWeight = ((paramsInfo.numWeight == 1UL) && (gmmAttrs.groupType != GMM_NO_SPLIT));
+    int64_t pergroupSize = GetPergroupSize(gmmAttrs, isSingleWeight,
+                                           context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0), antiquantScale0Shape);
+    OP_CHECK_IF(gmmAttrs.transposeWeight && pergroupSize % 2 != 0,  // 2: a factor
+                OP_LOGE(context->GetNodeName(),
+                        "pergroupSize should be even when weight is transposed"
+                        "in A16W4-pergroup case, but now is %ld",
+                        pergroupSize),
+                return GRAPH_FAILED);
+    for (size_t i = 0;; ++i) {
+        auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, i);
+        if (antiquantScaleShape == nullptr) {
+            break;
+        }
+        size_t antiquantScaleDimNum = antiquantScaleShape->GetDimNum();
+        OP_CHECK_IF(antiquantScaleDimNum != dimNum,
+                    OP_LOGE(context->GetNodeName(), "antiquantScale[%zu] dim num[%zu] is not equal with %zu", i,
+                            antiquantScaleDimNum, dimNum),
+                    return GRAPH_FAILED);
+        auto wShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, i);
+        int64_t pergroupSizeOfScale = GetPergroupSize(gmmAttrs, isSingleWeight, wShape, antiquantScaleShape);
+        OP_CHECK_IF(pergroupSizeOfScale != pergroupSize,
+                    OP_LOGE(context->GetNodeName(),
+                            "antiquantScale[%zu]'s pergroup size[%ld] "
+                            "is not the required value[%ld]",
+                            i, pergroupSizeOfScale, pergroupSize),
+                    return GRAPH_FAILED);
+        if (hasAntiquantOffset) {
+            auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, i);
+            size_t antiquantOffsetDimNum = antiquantOffsetShape->GetDimNum();
+            OP_CHECK_IF(antiquantOffsetDimNum != dimNum,
+                        OP_LOGE(context->GetNodeName(), "antiquantOffset[%zu] dim num[%zu] is not equal with %zu", i,
+                                antiquantOffsetDimNum, dimNum),
+                        return GRAPH_FAILED);
+            int64_t pergroupSizeOfOffset = GetPergroupSize(gmmAttrs, isSingleWeight, wShape, antiquantOffsetShape);
+            OP_CHECK_IF(pergroupSizeOfOffset != pergroupSize,
+                        OP_LOGE(context->GetNodeName(),
+                                "antiquantOffset[%zu]'s pergroup size[%ld]"
+                                "is not the required value[%ld]",
+                                i, pergroupSizeOfOffset, pergroupSize),
+                        return GRAPH_FAILED);
+        }
+    }
+    return GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckGroupedMatmulAntiQuantForShape(gert::InferShapeContext* context, const GMMAttrs& gmmAttrs, const GMMParamsInfo& paramsInfo) {
     OP_CHECK_IF(paramsInfo.platform == PlatformID::ASCEND310P, OP_LOGE(context->GetNodeName(),
               "antiquant cases do not support on Ascend310P."), return GRAPH_FAILED);
@@ -644,45 +695,25 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantForShape(gert::InferShapeConte
     OP_CHECK_IF(IsTensorListNullOrEmpty(context, GMM_INDEX_IN_ANTIQUANT_SCALE),
               OP_LOGE(context->GetNodeName(), "antiquantScale must not be nullptr in antiquant, but now is nullptr or empty."),
               return GRAPH_FAILED);
-    OP_CHECK_IF(IsTensorListNullOrEmpty(context, GMM_INDEX_IN_ANTIQUANT_OFFSET),
-              OP_LOGE(context->GetNodeName(), "antiquantOffset must not be nullptr in antiquant, but now is nullptr or empty."),
-              return GRAPH_FAILED);
     // check antiquantScale and antiquantOffset's tensor shape
     OP_CHECK_IF(CheckOptionalTensorList(context, "antiquantScale", paramsInfo, gmmAttrs, GMM_INDEX_IN_ANTIQUANT_SCALE) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "Invalid antiquantScale"),
               return GRAPH_FAILED);
-    OP_CHECK_IF(CheckOptionalTensorList(context, "antiquantOffset", paramsInfo, gmmAttrs, GMM_INDEX_IN_ANTIQUANT_OFFSET) != GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "Invalid antiquantOffset"),
-              return GRAPH_FAILED);
-    // check perGroupSize
     auto w0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_WEIGHT, 0);
+    bool hasAntiquantOffset = !IsTensorListNullOrEmpty(context, GMM_INDEX_IN_ANTIQUANT_OFFSET);
+    OP_CHECK_IF(w0Desc->GetDataType() != DT_INT4 && !hasAntiquantOffset,
+              OP_LOGE(context->GetNodeName(), "antiquantOffset must not be nullptr in antiquant, but now is nullptr or empty."),
+              return GRAPH_FAILED);
+    if (hasAntiquantOffset) {
+        OP_CHECK_IF(CheckOptionalTensorList(context, "antiquantOffset", paramsInfo, gmmAttrs, GMM_INDEX_IN_ANTIQUANT_OFFSET) != GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "Invalid antiquantOffset"),
+                return GRAPH_FAILED);
+    }
+    // check perGroupSize
     if (w0Desc->GetDataType() == DT_INT4) {
-        auto antiquantScale0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
-        auto dimNum = antiquantScale0Shape->GetDimNum();
-        bool isSingleWeight = ((paramsInfo.numWeight == 1UL) && (gmmAttrs.groupType != GMM_NO_SPLIT));
-        int64_t pergroupSize = GetPergroupSize(gmmAttrs, isSingleWeight, context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0), antiquantScale0Shape);
-        OP_CHECK_IF(gmmAttrs.transposeWeight && pergroupSize % 2 != 0,  // 2: a factor
-                  OP_LOGE(context->GetNodeName(), "pergroupSize should be even when weight is transposed"
-                  "in A16W4-pergroup case, but now is %ld", pergroupSize), return GRAPH_FAILED);
-        for (size_t i = 0; ; ++i) {
-            auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, i);
-            auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, i);
-            if (antiquantScaleShape == nullptr || antiquantOffsetShape == nullptr) {
-                break;
-            }
-            size_t antiquantScaleDimNum = antiquantScaleShape->GetDimNum();
-            size_t antiquantOffsetDimNum = antiquantOffsetShape->GetDimNum();
-            OP_CHECK_IF(antiquantScaleDimNum != dimNum || antiquantOffsetDimNum != dimNum,
-                      OP_LOGE(context->GetNodeName(), "antiquantScale[%zu] dim num[%zu] or antiquantOffset[%zu] dim num[%zu] is not equal with %zu",
-                      i, antiquantScaleDimNum, i, antiquantOffsetDimNum, dimNum), return GRAPH_FAILED);
-            auto wShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, i);
-            int64_t pergroupSizeOfScale = GetPergroupSize(gmmAttrs, isSingleWeight, wShape, antiquantScaleShape);
-            int64_t pergroupSizeOfOffset = GetPergroupSize(gmmAttrs, isSingleWeight, wShape, antiquantOffsetShape);
-            OP_CHECK_IF(pergroupSizeOfScale != pergroupSize || pergroupSizeOfOffset != pergroupSize,
-                      OP_LOGE(context->GetNodeName(), "antiquantScale[%zu]'s pergroup size[%ld] or antiquantOffset[%zu]'s pergroup size[%ld]"
-                      "is not the required value[%ld]", i, pergroupSizeOfScale, i, pergroupSizeOfOffset, pergroupSize),
-                      return GRAPH_FAILED);
-        }
+         OP_CHECK_IF(
+            CheckGroupedMatmulAntiQuantGroupSize(context, gmmAttrs, paramsInfo, hasAntiquantOffset) != GRAPH_SUCCESS,
+            OP_LOGE(context->GetNodeName(), "Invalid antiquant group size."), return GRAPH_FAILED);
     }
     OP_CHECK_IF(IsGmmQuantEmpty(context) != GRAPH_SUCCESS, OP_LOGE(context->GetNodeName(),
               "Detected antiquant, but quant inputs is not empty!"), return GRAPH_FAILED);

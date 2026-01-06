@@ -113,7 +113,7 @@ public:
     ge::graphStatus Init(const gert::TilingContext *context);
     ge::graphStatus RunFusionKernelTiling(gert::TilingContext *context);
     ge::graphStatus A8W4Tiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
-
+    ge::graphStatus A16W4MsdTiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
 protected:
     bool IsAivAicRatioTwoRequired();
     bool IsFixedAxisMoveCondition();
@@ -162,6 +162,9 @@ protected:
     void PrintTilingInfo(gert::TilingContext *context);
     void GMMSetTplTilingKey(gert::TilingContext *context);
     uint32_t GetTplDataType(const ge::DataType &dtype);
+    ge::graphStatus CheckA16W4MsdEnable(uint64_t mSize, uint64_t antiquantGroupNum, const gert::TilingContext *context,
+                                        const GMMCompileInfo *compileInfoPtr);
+    uint64_t GetWithOffset(const gert::TilingContext *context);
 private:
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
     int32_t kList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};

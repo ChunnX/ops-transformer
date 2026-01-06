@@ -84,6 +84,7 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_5 = {3, 384};
 #include "grouped_matmul_pre_tiling.h"
 #include "grouped_matmul_a4w4.h"
 #include "grouped_matmul_autotiling_a8w4.h"
+#include "a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_controller.h"
 #ifndef __CCE_KT_TEST__
 #include "grouped_matmul_fixaxismove_interface.cpp"
 #endif
@@ -493,6 +494,14 @@ namespace {
                                              &gmmQuantParams_, &mmTilingData_, &tPipe);                                \
     } while (0)
 
+#define GMM_CV_SPLIT_IMP_A16W4_MSD(computeClass, ...)                                 \
+    do {                                                                              \
+        GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling); \
+        computeClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, GROUP_LIST_TYPE> op;          \
+        op.Init(x, weight, antiquantScale, bias, groupList, y, &gmmBaseParams_);        \
+        op.Process(workspace, &tPipe);                                                                 \
+    } while (0)
+
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #if defined(V310_GMM_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
@@ -725,8 +734,11 @@ REGISTER_TILING_DEFAULT(GMMQuantTilingData);
     }
 #elif defined(GMM_ANTI_QUANT)
     // ANTIQUANT
-    if constexpr ((D_T_A == GMM_TPL_FLOAT16 || D_T_A == GMM_TPL_BF16) &&
-                  A16W8_KERNEL_TEMPLATE != GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_MSD) {
+    if constexpr ((D_T_A == GMM_TPL_BF16) &&
+                  A16W8_KERNEL_TEMPLATE == GROUPED_MATMUL_A16W4_KERNEL_TEMPLATE_MSD_ANTIQUANT_GS32) {
+        GMM_CV_SPLIT_IMP_A16W4_MSD(A16W4Msd::GMMWeightQuantA16W4MsdController, false);
+    } else if constexpr ((D_T_A == GMM_TPL_FLOAT16 || D_T_A == GMM_TPL_BF16) &&
+                         A16W8_KERNEL_TEMPLATE != GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_MSD) {
         // ANTIQUANT_A16W4 & ANTIQUANT_A16W8_NOT_MSD
         if constexpr (TRANS_B == 0 && AIV_AIC_RATIO == GROUPED_MATMUL_AIV_AIC_RATIO_1) {
             GMM_IMP(GMMAntiquantComputeNorm, GMMAntiquantProcess, false, false, false, matmulCFG);
