@@ -95,3 +95,42 @@ TEST_F(l2_mla_prolog_v2_test, Ascend910B2_mla_prolog_v2_0)
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
+
+// 全量化 kvcache pertensor量化，dequantScaleQNopeOutOptional为nullptr
+TEST_F(l2_mla_prolog_v2_test, Ascend910B2_mla_prolog_v2_1)
+{
+    // auto tokenX = TensorDesc({8, 1, 7168}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto tokenX = TensorDesc({8, 1, 7168}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1,1);            // B,S,He
+    auto weightDq = TensorDesc({7168, 1536}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1,1);          // He,Hcq
+    auto weightUqQr = TensorDesc({1536, 6144}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1,1);        // Hcq,N*(D+Dr)
+    auto weightUk = TensorDesc({32, 128, 512}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1,1);        // N,D,Hckv
+    auto weightDkvKr = TensorDesc({7168, 576}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1,1);        // He,Hckv+Dr
+    auto rmsnormGammaCq = TensorDesc({1536}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1,1);          // Hcq
+    auto rmsnormGammaCkv = TensorDesc({512}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1,1);          // Hckv
+    auto ropeSin = TensorDesc({8, 1, 64}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1,1);             // B,S,Dr
+    auto ropeCos = TensorDesc({8, 1, 64}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1,1);             // B,S,Dr
+    auto kvCache = TensorDesc({16, 128, 1, 512}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1,1);      // BolckNum,BlockSize,Nkv,Hckv
+    auto krCache = TensorDesc({16, 128, 1, 64}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1,1);       // BolckNum,BlockSize,Nkv,Dr
+    auto cacheIndex = TensorDesc({8, 1}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1,1);              // B,S
+    auto dequantScaleX = TensorDesc({8, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1,1);           // B*S, 1
+    auto dequantScaleWDq = TensorDesc({1, 1536}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1,1);      // 1, Hcq
+    auto dequantScaleWUqQr = TensorDesc({1, 6144}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1,1);    // 1, N*(D+Dr)
+    auto dequantScaleWDkvKr = TensorDesc({1, 576}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1,1);    // 1, Hckv+Dr
+    auto quantScaleCkv = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1,1);              // 1
+    auto quantScaleCkr = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1,1);              // 1
+    auto smoothScalesCq = TensorDesc({1, 1536}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1,1);       // 1, Hcq
+    double rmsnormEpsilonCq = 1e-05f;
+    double rmsnormEpsilonCkv = 1e-05f;
+    char *cacheMode = "PA_BSND";
+    auto queryOut = TensorDesc({8, 1, 32, 512}, ACL_INT8, ACL_FORMAT_ND);          // B,S,N,Hckv
+    auto queryRopeOut = TensorDesc({8, 1, 32, 64}, ACL_BF16, ACL_FORMAT_ND);       // B,S,N,Dr
+
+    auto ut = OP_API_UT(
+        aclnnMlaPrologV2WeightNz,
+        INPUT(PARAM_LIST),
+        OUTPUT(queryOut, queryRopeOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
+}

@@ -194,7 +194,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_infershape_2)
 }
 
 // infer dataType
-TEST_F(MlaPrologV3Proto, dtype_infer_1)
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_1)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);

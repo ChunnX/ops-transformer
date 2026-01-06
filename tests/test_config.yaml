@@ -241,7 +241,25 @@ attention:
       src:
         - attention/mla_prolog
       ut_cov_exclude:
-        - attention/mla_prolog
+        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp 
+        - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
+        - attention/mla_prolog/op_kernel/arch32/rms_norm.h
+        - attention/mla_prolog/op_kernel/arch32/rope.h
+        - attention/mla_prolog/op_kernel/mla_prolog_vector_comm.h
+        - attention/mla_prolog/op_kernel/service_dequant.h
+        - attention/mla_prolog/op_kernel/service_gather_sin_cos.h
+        - attention/mla_prolog/op_kernel/service_rms_norm.h
+        - attention/mla_prolog/op_kernel/service_scatter_cache.h
+        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_tiling.cpp
+        - attention/mla_prolog/tests/ut/op_host/test_mla_prolog_tiling.cpp
+        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_infershape.cpp
+        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_infershape.cpp
+        - attention/mla_prolog_v2/tests/ut/op_api/test_aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_tiling.cpp
       exclude:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
@@ -259,7 +277,25 @@ attention:
         - attention/mla_prolog_v2/docs
         - attention/mla_prolog_v2/README.md
       ut_cov_exclude:
-        - attention/mla_prolog_v2
+        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp 
+        - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
+        - attention/mla_prolog/op_kernel/arch32/rms_norm.h
+        - attention/mla_prolog/op_kernel/arch32/rope.h
+        - attention/mla_prolog/op_kernel/mla_prolog_vector_comm.h
+        - attention/mla_prolog/op_kernel/service_dequant.h
+        - attention/mla_prolog/op_kernel/service_gather_sin_cos.h
+        - attention/mla_prolog/op_kernel/service_rms_norm.h
+        - attention/mla_prolog/op_kernel/service_scatter_cache.h
+        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_tiling.cpp
+        - attention/mla_prolog/tests/ut/op_host/test_mla_prolog_tiling.cpp
+        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_infershape.cpp
+        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_infershape.cpp
+        - attention/mla_prolog_v2/tests/ut/op_api/test_aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_tiling.cpp
       test:
         examples: False
         ut: True
@@ -274,10 +310,28 @@ attention:
         - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/README.md
       ut_cov_exclude:
-        - attention/mla_prolog_v3
+        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp 
+        - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
+        - attention/mla_prolog/op_kernel/arch32/rms_norm.h
+        - attention/mla_prolog/op_kernel/arch32/rope.h
+        - attention/mla_prolog/op_kernel/mla_prolog_vector_comm.h
+        - attention/mla_prolog/op_kernel/service_dequant.h
+        - attention/mla_prolog/op_kernel/service_gather_sin_cos.h
+        - attention/mla_prolog/op_kernel/service_rms_norm.h
+        - attention/mla_prolog/op_kernel/service_scatter_cache.h
+        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_tiling.cpp
+        - attention/mla_prolog/tests/ut/op_host/test_mla_prolog_tiling.cpp
+        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_infershape.cpp
+        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_infershape.cpp
+        - attention/mla_prolog_v2/tests/ut/op_api/test_aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_tiling.cpp
       test:
         examples: False
-        ut: False
+        ut: True
       options:
         - mla_prolog_v3
 gmm:

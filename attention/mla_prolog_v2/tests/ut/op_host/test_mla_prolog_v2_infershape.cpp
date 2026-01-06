@@ -68,3 +68,48 @@ TEST_F(MlaPrologV2Proto, mla_prolog_v2_infershape_1)
     std::vector<std::vector<int64_t>> expectOutputShape = {{48, 10, 4, 512}, {48, 10, 4, 64}, {49488, 16, 1, 64}, {48, 10}, {480, 4, 1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
+
+// infer dataType
+TEST_F(MlaPrologV2Proto, mla_prolog_v2_inferdtype_1)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV2")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_bf16 = ge::DT_BF16;
+        ge::DataType input_int8 = ge::DT_INT8;
+        ge::DataType input_int64 = ge::DT_INT64;
+        ge::DataType input_float = ge::DT_FLOAT;
+        ge::DataType input_int32 = ge::DT_INT32;
+        ge::DataType output_int8 = ge::DT_INT8;
+        ge::DataType output_bf16 = ge::DT_BF16;
+        ge::DataType output_float = ge::DT_FLOAT;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(19, 5)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_int8, &input_int8, &input_int8, &input_bf16, &input_int8, &input_bf16, &input_bf16, 
+                                    &input_bf16, &input_bf16, &input_int64, &input_int8, &input_bf16, &input_float, 
+                                    &input_float, &input_float, &input_float, &input_float, &input_float, &input_float})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")}
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_int8);
+        EXPECT_EQ(context->GetOutputDataType(1), output_bf16);
+        EXPECT_EQ(context->GetOutputDataType(2), output_int8);
+        EXPECT_EQ(context->GetOutputDataType(3), output_bf16);
+        EXPECT_EQ(context->GetOutputDataType(4), output_float);
+
+    }
+}
