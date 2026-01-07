@@ -61,6 +61,7 @@ attention:
     module: True
     src:
       - attention/flash_attention_score
+      - attention/common
     exclude:
       - attention/flash_attention_score/docs
       - attention/flash_attention_score/README.md
@@ -75,6 +76,7 @@ attention:
     module: True
     src:
       - attention/flash_attention_score_grad
+      - attention/common
     exclude:
       - attention/flash_attention_score_grad/docs
       - attention/flash_attention_score_grad/README.md
@@ -90,28 +92,27 @@ attention:
     module: True
     src:
       - attention/fused_infer_attention_score
+      - attention/common
     exclude:
       - attention/fused_infer_attention_score/docs
       - attention/fused_infer_attention_score/README.md
     ut_cov_exclude:
       - attention/fused_infer_attention_score
-    # options:
-    #   - incre_flash_attention
-    #   # - fused_infer_attention_score
-    #   - prompt_flash_attention
+    options:
+      - fused_infer_attention_score
 
   incre_flash_attention:
     module: True
     src:
       - attention/incre_flash_attention
+      - attention/common
     exclude:
       - attention/incre_flash_attention/docs
       - attention/incre_flash_attention/README.md
     ut_cov_exclude:
       - attention/incre_flash_attention
-    # options:
-      # - incre_flash_attention
-      # - fused_infer_attention_score
+    options:
+      - incre_flash_attention
 
   nsa_compress:
     module: True
@@ -228,14 +229,15 @@ attention:
     module: True
     src:
       - attention/prompt_flash_attention
+      - attention/common
     exclude:
       - attention/prompt_flash_attention/docs
       - attention/prompt_flash_attention/README.md
     ut_cov_exclude:
       - attention/prompt_flash_attention
-    # options:
-      # - prompt_flash_attention
-      # - fused_infer_attention_score
+    options:
+      - prompt_flash_attention
+
   mla_prolog:
       module: True
       src:
