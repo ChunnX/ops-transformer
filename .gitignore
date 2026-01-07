@@ -34,3 +34,6 @@ output/
 *.pyc
 __pycache__
 MANIFEST.in
+
+# third_party
+third_party/
