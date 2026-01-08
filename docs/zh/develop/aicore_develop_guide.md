@@ -362,10 +362,14 @@ __aicore__ inline void AddExample<T>::Process()
     > 说明：编译过程依赖第三方开源软件，联网场景会自动下载，离线编译场景需要自行安装，具体参考[离线编译](../context/build_offline.md)。
 
     ```bash
-    # 编译指定算子(若为贡献算子，需配置--experimental)，如--ops=add_example
+    # 编译指定算子，如bash build.sh --pkg --ops=add_example
     bash build.sh --pkg --soc=${soc_version} --vendor_name=${vendor_name} --ops=${op_list} [--experimental]
     ```
-   
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
+    - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
+    - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"--ops=add_example"。
+    - --experimental（可选）：若编译的算子为贡献算子，需配置--experimental。
+
     若提示如下信息，说明编译成功：
 
     ```bash
