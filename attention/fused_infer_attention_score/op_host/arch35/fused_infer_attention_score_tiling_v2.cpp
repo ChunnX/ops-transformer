@@ -380,8 +380,6 @@ ge::graphStatus ConvertQuantOptionalInputs(const gert::TilingContext* context, C
 }
 
 static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext* context, ContextParamsForPFATiling& contextKeyParams, bool isMaxWorkspace) {
-    constexpr uint32_t FROM_FUSED_FLAG = 71;
-
     contextKeyParams.opName = context->GetNodeName();
 
     contextKeyParams.isKvContinuous = 1;

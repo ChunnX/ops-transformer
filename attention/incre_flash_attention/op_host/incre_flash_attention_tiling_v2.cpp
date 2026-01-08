@@ -3894,7 +3894,7 @@ void IFATilingV2::IFATilingDataconvert() {
   inputParams.set_isPostQuantBF16(isPostQuantBF16_);  //伪量化暂不支持后量化，默认值
 }
 
-ge::graphStatus IFATilingV2::IncreFlashAttentionSetTilingData(gert::TilingContext& ifaContext_,
+ge::graphStatus IFATilingV2::IncreFlashAttentionSetTilingData(gert::TilingContext& ifaContextLocal,
                                                             IncreFlashAttentionTilingDataV2& tilingData) {
   return ge::GRAPH_SUCCESS;
 }

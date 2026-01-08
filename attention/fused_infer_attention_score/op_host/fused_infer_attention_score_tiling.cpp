@@ -1029,7 +1029,6 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     int64_t tempKD = 0;
     int64_t tempVD = 0;
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
-    constexpr int64_t MAX_BLOCK_SIZE = 512;
     bool tempLearnableSinkFlag = context->GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr ? true : false;
     int32_t tempInnerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
     
@@ -1235,7 +1234,6 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
 
     bool usingFAI = false;
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
-    constexpr int64_t MAX_BLOCK_SIZE = 512;
     if (inputLayoutStr == "TND" && !isLearnableSink && !isRopeSplitMla &&
         sparseModeSupported && (nonMhaConditions || mhaConditions)) {
         if (!isPageAttention) {
