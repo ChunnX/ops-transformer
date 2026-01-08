@@ -659,6 +659,9 @@ __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const Glob
     MmadParams mmadParams = MmadParams(mSize, nL1Size, para.baseK, UNIT_FLAG_DISABLE, false, true);
 
     int64_t aOffset = 0;
+    if constexpr (std::is_same<T, FP8E4M3>::value) {
+        WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
+    }
 
     for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) {
         // Load data from global memory to L1 cache
@@ -687,11 +690,9 @@ __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const Glob
             SetFlag<HardEvent::MTE1_MTE2>(A_EVENT0 + (bufParam.aL1BufIter & 1u));
             bufParam.aL1BufIter++;
         }
-        if constexpr (std::is_same<T, FP8E4M3>::value) {
-#if __CCE_AICORE__ == 310
-            AscendC::PipeBarrier<PIPE_ALL>();
-#endif
-        }
+    }
+    if constexpr (std::is_same<T, FP8E4M3>::value) {
+        SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
     }
     GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[nL1Offset], cL0, para.m, nL1Size, mSize, para.orgKc, bufParam);
     SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));

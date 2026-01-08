@@ -140,6 +140,7 @@ class NoneType {};
 #endif
 
 // mte2 <> mte1
+#define SCALE_EVENT EVENT_ID3
 #define A_EVENT0 EVENT_ID4
 #define A_EVENT1 EVENT_ID5
 #define B_EVENT0 EVENT_ID6
