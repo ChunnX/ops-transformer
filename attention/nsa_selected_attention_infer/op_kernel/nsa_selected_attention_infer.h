@@ -473,8 +473,10 @@ template <typename NSAT> __aicore__ inline void NsaSelectAttentionInfer<NSAT>::G
     bool lastIndexFlag2 = false;
     curBatchQseqlen = actualQSeqLengthsGm.GetValue(bIdx);
     uint32_t curTotalQSeqLenOffset = 0;
-    for (uint64_t i = 0; i < bIdx; ++i) {
-        curTotalQSeqLenOffset += actualQSeqLengthsGm.GetValue(i);
+    if constexpr (LAYOUT_T == LAYOUT::TND) {
+        for (uint64_t i = 0; i < bIdx; ++i) {
+            curTotalQSeqLenOffset += actualQSeqLengthsGm.GetValue(i);
+        }
     }
     for (uint64_t topkIdx = 0; topkIdx < selectedBlockCount; topkIdx++) {
         uint64_t baseOffset = 0;
