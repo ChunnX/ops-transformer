@@ -111,7 +111,7 @@
         - \$\{mode\}：表示执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
         - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。         
         - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。
-        - \$\{soc_version\}（可选）：表示NPU型号。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。        
+        - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。        
         
         说明：\$\{mode\}为graph时，不指定\$\{pkg_mode\}和\$\{vendor\_name\}
 
@@ -124,7 +124,7 @@
         
         - \$\{op\}：表示待执行算子，算子名小写下划线形式，如flash_attention_score。       
         - \$\{mode\}：表示算子执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
-        - \$\{soc_version\}（可选）：表示NPU型号。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。
+        - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。
 
         执行算子样例后会打印结果，以FlashAttentionScore算子执行为例：
     
@@ -158,7 +158,7 @@
   # bash build.sh -u --[opapi|ophost|opkernel]
   # 方式5: 编译对应功能的UT测试用例但不执行（选其一）
   # bash build.sh -u --noexec --[opapi|ophost|opkernel]
-  # 方式6: 编译并执行除公共用例外指定soc的UT测试用例
+  # 方式6: 编译并执行除公共用例外指定soc的UT测试用例，默认"ascend910b"
   # bash build.sh -u --[opapi|ophost|opkernel] --soc=${soc_version}
     ```
   
