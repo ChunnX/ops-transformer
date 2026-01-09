@@ -50,10 +50,10 @@ TEST_F(RingAttentionUpdateTiling, test_ring_attention_update_success) {
                                               {{{{1024, 2, 1536}, {1024, 2, 1536}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                {{{2, 12, 1024, 8}, {2, 12, 1024, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                {{{2, 12, 1024, 8}, {2, 12, 1024, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},},
-                                               {gert::TilingContextPara::OpAttr("input_layout", Ops::Math::AnyValue::CreateFrom<string>(input_layout))},
+                                               {gert::TilingContextPara::OpAttr("input_layout", Ops::Transformer::AnyValue::CreateFrom<string>(input_layout))},
                                                 &compileInfo);
     uint64_t expectTilingKey = 2;
-    string expectTilingData = "2 12 1024 128 8 64 8 3 128 128 56 0 128 0 0 0 0 ";
+    string expectTilingData = "2 12 1024 128 8 64 8 3 128 128 56 0 128 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
