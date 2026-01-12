@@ -28,8 +28,8 @@ namespace SplitFuse {
         class EpilogueRescaleO,
         class EpilogueInitOut,
         bool PAGED_CACHE_FLAG,
-        FaiKenel::MaskType MASK_TYPE = FaiKenel::MaskType::NO_MASK,
-        FaiKenel::inputLayout INPUT_LAYOUT = FaiKenel::inputLayout::BSND>
+        FaiKernel::MaskType MASK_TYPE = FaiKernel::MaskType::NO_MASK,
+        FaiKernel::inputLayout INPUT_LAYOUT = FaiKernel::inputLayout::BSND>
     class FAInferKernel {
     public:
         using ArchTag = typename BlockMmadQK::ArchTag;
@@ -189,8 +189,8 @@ namespace SplitFuse {
             uint64_t strideO = static_cast<uint64_t>(qHeads * embedV);
             uint64_t strideK = static_cast<uint64_t>(kvHeads * embed);
             uint64_t strideV = static_cast<uint64_t>(kvHeads * embedV);
-            uint32_t embedRound = NpuArch::Detail::Alignment::RoundUp(embed, FaiKenel::BLOCK_SIZE);
-            uint32_t embedRoundV = NpuArch::Detail::Alignment::RoundUp(embedV, FaiKenel::BLOCK_SIZE);
+            uint32_t embedRound = NpuArch::Detail::Alignment::RoundUp(embed, FaiKernel::BLOCK_SIZE);
+            uint32_t embedRoundV = NpuArch::Detail::Alignment::RoundUp(embedV, FaiKernel::BLOCK_SIZE);
             uint32_t groupSize = qHeads / kvHeads;
 
             uint64_t qBOffset = 0;
@@ -205,7 +205,7 @@ namespace SplitFuse {
             uint32_t totalQTokens = static_cast<uint32_t>(gActualQseqlen.GetValue(batch - 1));
             uint32_t qSeqlen = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatch));
             uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatch));
-            if constexpr(INPUT_LAYOUT == FaiKenel::inputLayout::TND) {
+            if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
                 uint32_t prevQSeqlenSum = (curBatch == 0) ?
                     0 : static_cast<uint32_t>(gActualQseqlen.GetValue(curBatch - 1));
                 qSeqlen = qSeqlen - prevQSeqlenSum;
@@ -243,7 +243,7 @@ namespace SplitFuse {
 
                     qSeqlen = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatch));
                     kvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatch));
-                    if constexpr(INPUT_LAYOUT == FaiKenel::inputLayout::TND) {
+                    if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
                         uint32_t prevQSeqlenSum = (curBatch == 0) ?
                             0 : static_cast<uint32_t>(gActualQseqlen.GetValue(curBatch - 1));
                         qSeqlen = qSeqlen - prevQSeqlenSum;
@@ -286,7 +286,7 @@ namespace SplitFuse {
                 uint32_t qNBlockSize = (qNBlockIdxCurGroup == (qNBlockNumPerGroup - 1U)) ?
                     (groupSize - qNBlockIdxCurGroup * curQNBlockTile) : curQNBlockTile;
                 uint32_t rowNum = qSBlockSize * qNBlockSize;
-                uint32_t rowNumRound = NpuArch::Detail::Alignment::RoundUp(rowNum, FaiKenel::BLOCK_SIZE);
+                uint32_t rowNumRound = NpuArch::Detail::Alignment::RoundUp(rowNum, FaiKernel::BLOCK_SIZE);
 
                 int64_t noSkipKvS = static_cast<int64_t>(kvSeqlen);
                 if (maskType != 0U) {
@@ -376,7 +376,7 @@ namespace SplitFuse {
                         // 在causal mask场景下，由mask的左上起点判断当前基块是否需要加mask
                         // 如果实际加mask长度只有1，那么相当于不加mask（主对角线需要被计算）
                         bool doTriUMask = triUp < kvSEndIdx - 1;
-                        if constexpr (MASK_TYPE == FaiKenel::MaskType::MASK_CAUSAL) {
+                        if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_CAUSAL) {
                             if (doTriUMask) {
                                 epilogueOnlineSoftmax(
                                     gP[gmOffsetP],

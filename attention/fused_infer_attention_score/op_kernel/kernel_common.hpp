@@ -64,7 +64,7 @@ namespace KernelCommon {
         return (a > b) ? a : b;
     }
 
-    namespace FaiKenel {
+    namespace FaiKernel {
         constexpr uint32_t BLOCK_SIZE = 16;
 
         enum class cvPipeLineType : uint32_t {

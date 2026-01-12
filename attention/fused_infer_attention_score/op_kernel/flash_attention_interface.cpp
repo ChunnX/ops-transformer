@@ -22,8 +22,8 @@ namespace SplitFuse {
         typename InputDtypeKv = half,
         typename IntermCalcPrec = float,
         bool PagedCacheFlag = false,
-        FaiKenel::MaskType maskCategory = FaiKenel::MaskType::NO_MASK,
-        FaiKenel::inputLayout inLayout = FaiKenel::inputLayout::TND,
+        FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
+        FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
         Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
         Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE>
     __global__ __aicore__ void FAInfer(
