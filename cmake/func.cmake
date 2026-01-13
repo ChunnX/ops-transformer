@@ -119,6 +119,10 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         endif ()
 
         if (ENABLE_TEST)
+            if (NOT EXISTS "${OP_DIR}/tests/CMakeLists.txt")
+                continue()
+            endif()
+            
             file(READ "${OP_DIR}/tests/CMakeLists.txt" CML_CONTENT)
             if (CML_CONTENT MATCHES "OpsTest_Level2_AddOp")
                 set(UTEST_FRAMEWORK_OLD TRUE CACHE BOOL "UTEST_FRAMEWORK_OLD" FORCE)
