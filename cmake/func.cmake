@@ -158,7 +158,12 @@ function(op_add_depend_directory)
     foreach(op_name ${DEP_OP_LIST})
         if (DEFINED ${op_name}_depends)
             foreach(depend_info ${${op_name}_depends})
-                if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${depend_info}/op_host/CMakeLists.txt AND NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/${depend_info}/CMakeLists.txt)
+                if (ENABLE_EXPERIMENTAL)
+ 	                set(depend_info_update "experimental/${depend_info}")
+ 	            else()
+ 	                set(depend_info_update ${depend_info})
+ 	            endif()
+ 	            if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${depend_info_update}/op_host/CMakeLists.txt AND NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/${depend_info_update}/CMakeLists.txt)
                     continue()
                 endif ()
 
@@ -170,11 +175,7 @@ function(op_add_depend_directory)
                 endif ()
 
                 if (NOT ${_depend_op_name} IN_LIST DEP_OP_LIST)
-                    if (ENABLE_EXPERIMENTAL)
- 	                    list(APPEND _OP_DEPEND_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/experimental/${depend_info})
- 	                else()
- 	                    list(APPEND _OP_DEPEND_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/${depend_info})
- 	                endif()
+                    list(APPEND _OP_DEPEND_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/${depend_info_update})
                 endif ()
             endforeach()
         endif()
@@ -520,13 +521,18 @@ function(add_bin_compile_target)
 
             if (DEFINED ${op_file}_depends)
                 foreach(depend_info ${${op_file}_depends})
+                    if (ENABLE_EXPERIMENTAL)
+ 	                    set(depend_info_update "experimental/${depend_info}")
+ 	                else()
+ 	                    set(depend_info_update ${depend_info})
+ 	                endif()
                     get_filename_component(_depend_op_name "${depend_info}" NAME)
                     set(_depend_op_target ${_depend_op_name}_${BINARY_COMPUTE_UNIT}_src_copy)
                     add_ops_src_copy(
                             TARGET_NAME
                             ${_depend_op_target}
                             SRC
-                            ${CMAKE_SOURCE_DIR}/${depend_info}
+                            ${CMAKE_SOURCE_DIR}/${depend_info_update}
                             DST
                             ${SRC_OUT_DIR}/${_depend_op_name}
                             COMPUTE_UNIT
