@@ -232,29 +232,9 @@ aclnnStatus aclnnDistributeBarrierV2(
   - 使能`elasticInfoOptional`时，需确保`aclnnMoeDistributeDispatchV3`与`aclnnMoeDistributeCombineV3`或`aclnnMoeDistributeCombineAddRmsNormV2`也使能此参数，并且其取值与对应的`elasticInfoOptional`参数保持一致。
 ## 调用示例
 
-- 文件准备：    
-  1.新建barrierDemo目录，按照下方指导在barrierDemo下新建aclnnBarrierDemo.cpp，buildBarrier.sh文件并按照如下代码修改。
-
-  2.安装cann包，并根据下方指导编译运行barrierDemo。
-
--  编译脚本
-    ```bash
-    #!/bin/bash
-    cann_path="/path/to/cann_env" # 更改cann包环境的路径
-    g++ "aclnnBarrierDemo.cpp" -o barrierDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
-                        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
-    ```
-- 编译与运行：
-
-    ```bash
-    # source cann环境
-    source /path/to/cann_env/latest/bin/setenv.bash
-
-    # 编译aclnnBarrierDemo.cpp
-    bash buildBarrier.sh
-
-    ./barrierDemo
-    ```
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+       
+    具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考
     ```Cpp

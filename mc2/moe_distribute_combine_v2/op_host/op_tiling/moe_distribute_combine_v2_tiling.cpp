@@ -344,7 +344,7 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
 }
 
 static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, const char *nodeName,
-    const bool isActiveMask, const bool hasElasticInfo)
+    const bool isActiveMask, const bool hasElasticInfo, uint32_t tpWorldSize)
 {
     const gert::StorageShape* oriXStorageShape = context->GetOptionalInputShape(ORI_X_INDEX);
     if (oriXStorageShape != nullptr) {
@@ -388,12 +388,14 @@ static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, cons
             return false);
     }
 
-    const gert::StorageShape *tpSendCountsStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsStorageShape == nullptr, OP_LOGE(nodeName, "tpSendCounts is null."), return false);
-    OP_TILING_CHECK(tpSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "tpSendCounts must be 1-dimension, but got %lu dim",
-        tpSendCountsStorageShape->GetStorageShape().GetDimNum()), return false);
-    OP_LOGD(nodeName, "tpSendCounts dim0 = %ld", tpSendCountsStorageShape->GetStorageShape().GetDim(0));
+    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
+        const gert::StorageShape *tpSendCountsStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
+        OP_TILING_CHECK(tpSendCountsStorageShape == nullptr, OP_LOGE(nodeName, "tpSendCounts is null."), return false);
+        OP_TILING_CHECK(tpSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+            OP_LOGE(nodeName, "tpSendCounts must be 1-dimension, but got %lu dim",
+            tpSendCountsStorageShape->GetStorageShape().GetDimNum()), return false);
+        OP_LOGD(nodeName, "tpSendCounts dim0 = %ld", tpSendCountsStorageShape->GetStorageShape().GetDim(0));
+    }
 
     if (isActiveMask) {
         const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
@@ -449,12 +451,13 @@ static bool CheckOutputTensorDim(const gert::TilingContext *context, const char 
     return true;
 }
 
-static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, const bool isActiveMask, const bool hasElasticInfo)
+static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
+                           const bool hasElasticInfo, uint32_t tpWorldSize)
 {
     OP_TILING_CHECK(!CheckInputTensorDim(context, nodeName),
         OP_LOGE(nodeName, "param shape of input tensor is invalid"), return false);
 
-    OP_TILING_CHECK(!CheckOptionalInputTensorDim(context, nodeName, isActiveMask, hasElasticInfo),
+    OP_TILING_CHECK(!CheckOptionalInputTensorDim(context, nodeName, isActiveMask, hasElasticInfo, tpWorldSize),
         OP_LOGE(nodeName, "param shape of optional input tensor is invalid"), return false);
 
     OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName),
@@ -464,7 +467,8 @@ static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, c
 }
 
 // 校验数据类型
-static bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask, const bool hasElasticInfo)
+static bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
+                                const bool hasElasticInfo, uint32_t tpWorldSize)
 {
     auto expandXDesc = context->GetInputDesc(EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE(nodeName, "expandxDesc is null."), return false);
@@ -529,11 +533,13 @@ static bool CheckTensorDataType(const gert::TilingContext *context, const char *
     OP_TILING_CHECK((epSendCountsDesc->GetDataType() != ge::DT_INT32),
         OP_LOGE(nodeName, "epSendCounts dataType is invalid, dataType should be int32, but is %s",
         Ops::Base::ToString(epSendCountsDesc->GetDataType()).c_str()), return false);
-    auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
-    OP_TILING_CHECK((tpSendCountsDesc->GetDataType() != ge::DT_INT32),
-        OP_LOGE(nodeName, "tpSendCounts dataType is invalid, dataType should be int32, but is %s",
-        Ops::Base::ToString(tpSendCountsDesc->GetDataType()).c_str()), return false);
+    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
+        auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
+        OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
+        OP_TILING_CHECK((tpSendCountsDesc->GetDataType() != ge::DT_INT32),
+            OP_LOGE(nodeName, "tpSendCounts dataType is invalid, dataType should be int32, but is %s",
+            Ops::Base::ToString(tpSendCountsDesc->GetDataType()).c_str()), return false);
+    }
     if (isActiveMask) {
         auto xActiveMaskDesc = context->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
         OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE(nodeName, "xActiveMaskDesc is null."), return false);
@@ -568,7 +574,8 @@ static bool CheckTensorDataType(const gert::TilingContext *context, const char *
     return true;
 }
 
-static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask, const bool hasElasticInfo)
+static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
+                              const bool hasElasticInfo, uint32_t tpWorldSize)
 {
     auto oriXDesc = context->GetOptionalInputDesc(ORI_X_INDEX);
     if (oriXDesc != nullptr) {
@@ -621,10 +628,12 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(epSendCountsDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "epSendCountsFormat is invalid"), return false);
 
-    auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
-        ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "tpSendCountsFormat is invalid"), return false);
+    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
+        auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
+        OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
+        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "tpSendCountsFormat is invalid"), return false);
+    }
 
     auto expertScalesDesc = context->GetInputDesc(EXPERT_SCALES_INDEX);
     OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."), return false);
@@ -729,9 +738,7 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
     // 校验epSendCount和tpSendCount的维度
     int64_t moeExpertPerRankNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.moeExpertPerRankNum);
     const gert::StorageShape *epSendCountStorageShape = context->GetInputShape(EP_SEND_COUNTS_INDEX);
-    const gert::StorageShape *tpSendCountStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
     const int64_t epSendCountDim0 = epSendCountStorageShape->GetStorageShape().GetDim(0);
-    const int64_t tpSendCountDim0 = tpSendCountStorageShape->GetStorageShape().GetDim(0);
     int64_t localEpSendCountSize = (isShared) ? epWorldSize : epWorldSize * moeExpertPerRankNum;
 
     if (hasElasticInfo) {
@@ -741,10 +748,13 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
         "epSendCount's dim0 not greater than or equal to localEpSendCountSize * tpWorldSize, "
         "epSendCount's dim0 is %ld, localEpSendCountSize is %ld, tpWorldSize is %ld.",
         epSendCountDim0, localEpSendCountSize, tpWorldSize), return false);
-    OP_TILING_CHECK(tpSendCountDim0 != tpWorldSize, OP_LOGE(nodeName,
-        "tpSendCount's dim0 not equal to tpWorldSize, tpSendCount's dim0 is %ld, tpWorldSize is %ld.",
-        tpSendCountDim0, tpWorldSize), return false);
-
+    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
+        const gert::StorageShape *tpSendCountStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
+        const int64_t tpSendCountDim0 = tpSendCountStorageShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(tpSendCountDim0 != tpWorldSize, OP_LOGE(nodeName,
+            "tpSendCount's dim0 not equal to tpWorldSize, tpSendCount's dim0 is %ld, tpWorldSize is %ld.",
+            tpSendCountDim0, tpWorldSize), return false);
+    }
     // 校验expertScales的维度
     const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(EXPERT_SCALES_INDEX);
     int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
@@ -971,16 +981,16 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
 }
 
 static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *context, const char *nodeName,
-    const bool isActiveMask, const bool hasElasticInfo)
+    const bool isActiveMask, const bool hasElasticInfo, uint32_t tpWorldSize)
 {
     // 检查参数shape信息
-    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isActiveMask, hasElasticInfo),
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isActiveMask, hasElasticInfo, tpWorldSize),
                     OP_LOGE(nodeName, "param shape is invalid"), return ge::GRAPH_FAILED);
     // 检查参数dataType信息
-    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName, isActiveMask, hasElasticInfo),
+    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName, isActiveMask, hasElasticInfo, tpWorldSize),
                     OP_LOGE(nodeName, "param dataType is invalid"), return ge::GRAPH_FAILED);
     // 检查参数format信息
-    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, isActiveMask, hasElasticInfo),
+    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, isActiveMask, hasElasticInfo, tpWorldSize),
                     OP_LOGE(nodeName, "param Format is invalid"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -997,7 +1007,7 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t CalTilingKey(const uint64_t tpWorldSize, uint32_t commQuantMode)
+static uint64_t CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode)
 {
     bool tp = false;
     uint32_t quantMode = TILINGKEY_NO_QUANT;
@@ -1196,8 +1206,9 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext*
     tilingData->moeDistributeCombineV2Info.hasElasticInfo = hasElasticInfo;
 
     // 检查输入输出的dim、format、dataType
-    OP_TILING_CHECK(TilingCheckMoeDistributeCombine(context, nodeName, isActiveMask, hasElasticInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
+    uint32_t tpWorldSize = tilingData->moeDistributeCombineV2Info.tpWorldSize;
+    OP_TILING_CHECK(TilingCheckMoeDistributeCombine(context, nodeName, isActiveMask, hasElasticInfo, tpWorldSize) !=
+                    ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
 
     // 检查属性的取值是否合法
     OP_TILING_CHECK(!CheckAttrs(context, *tilingData, nodeName, localMoeExpertNum, isActiveMask),
@@ -1221,7 +1232,6 @@ static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext*
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
                     return ge::GRAPH_FAILED);
 
-    uint64_t tpWorldSize = static_cast<uint64_t>(tilingData->moeDistributeCombineV2Info.tpWorldSize);
     OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     uint64_t tilingKey = CalTilingKey(tpWorldSize, commQuantMode);

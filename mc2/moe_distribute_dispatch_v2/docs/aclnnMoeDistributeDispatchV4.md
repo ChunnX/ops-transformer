@@ -18,8 +18,8 @@
 - 计算公式：
 
 $$
-agOut = AllGatherV(X)\\
 expandXOut = AllToAllV(agOut)\\
+agOut = AllGatherV(X)\\
 $$
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该接口必须与`aclnnMoeDistributeCombineV4`配套使用。
@@ -621,7 +621,6 @@ aclnnStatus：返回状态码，具体参见[aclnn](../../../docs/zh/context/acl
 
 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：类似下文<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>调用示例，其中V4接口相较于V3接口新增的场景参数按上述参数说明传值即可。
 
-<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：示例代码如下，仅供参考，调起aclnnMoeDistributeCombineV4和aclnnMoeDistributeDispatchV4接口。
 
 - 文件准备：
   1.新建dispatchDemo目录，按照下方指导在dispatchDemo下新建aclnnDispatchDemo.cpp，buildCombine.sh文件并参考如下代码修改。
@@ -635,6 +634,11 @@ aclnnStatus：返回状态码，具体参见[aclnn](../../../docs/zh/context/acl
     g++ "aclnnDispatchDemo.cpp" -o dispatchDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
                         -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi_math -lop_common -lpthread -lhccl
     ```
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+       
+    具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
 - 编译与运行：
 
     ```bash

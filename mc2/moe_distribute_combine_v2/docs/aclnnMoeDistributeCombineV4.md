@@ -701,8 +701,6 @@ aclnnStatus：返回状态码，具体参见[aclnn](../../../docs/zh/context/acl
 
 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：类似下文<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>调用示例，其中V4接口相较于V3接口新增的场景参数按上述参数说明传值即可。
 
-<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：示例代码如下，仅供参考，调起aclnnMoeDistributeCombineV4和aclnnMoeDistributeDispatchV4接口。本示例代码仅支持Atlas A3。
-
 - 文件准备：
   1.新建combineDemo目录，按照下方指导在combineDemo下新建aclnnCombineDemo.cpp，buildCombine.sh，文件并参考如下代码修改。
 
@@ -726,6 +724,10 @@ aclnnStatus：返回状态码，具体参见[aclnn](../../../docs/zh/context/acl
 
     ./combineDemo
     ```
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+       
+    具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考
     ```Cpp
