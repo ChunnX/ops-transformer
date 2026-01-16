@@ -369,14 +369,11 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaBlockTable() const
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaQueryPaddingSize() const
 {
-    const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeShapeNumList, QUERY_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-
-    const std::vector<size_t> querypaddingsizeDimNumList = {DIM_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeDimNumList, QUERY_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
+    if (fiaInfo_.qPaddingSizeFlag) {
+        const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+        if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeShapeNumList, QUERY_PADDING_SIZE_NAME)) {
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -384,18 +381,15 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaQueryPaddingSize() const
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaKvPaddingSize() const
 {
-    const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeShapeNumList, KV_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(opParamInfo_.kvPaddingSize.desc, KV_PADDING_SIZE_NAME)) {
         return ge::GRAPH_FAILED;
     }
 
-    const std::vector<size_t> kvpaddingsizeDimNumList = {DIM_NUM_ONE};
-    if (ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeDimNumList, KV_PADDING_SIZE_NAME)) {
-        return ge::GRAPH_FAILED;
+    if (!fiaInfo_.isLegacyIfa) {
+        const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+        if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeShapeNumList, KV_PADDING_SIZE_NAME)) {
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;

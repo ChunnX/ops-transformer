@@ -217,6 +217,9 @@ struct ConstInfo {
     uint32_t systemPrefixLen = 0;
     uint64_t systemPrefixMaxLen = 0;
     uint32_t subBlockNum = 2; // AI Core上 AIC与AIV的数量默认为1:2
+
+    bool isPostQuantPerChn = false;
+    bool isPostQuantTypeBf16 = false;
 };
 
 struct FusedTransposeInfo {

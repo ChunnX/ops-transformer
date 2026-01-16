@@ -682,6 +682,49 @@ ge::graphStatus FiaTilingCheck::CheckSoftmaxLseShape()
     return softmaxLseShapeCmp_->CompareShape(shapeParams, __func__);
 }
 
+ge::graphStatus FiaTilingCheck::CheckPostQuant()
+{
+    if (fiaInfo_.isOutQuantEnable) {
+        OP_CHECK_IF(opParamInfo_.attenOut.desc->GetDataType() != ge::DT_INT8, 
+            OP_LOGE(opName_, "the quantScale2 exist, output data type should be INT8!"), 
+            return ge::GRAPH_FAILED);
+        const ge::DataType queryDataType_ = opParamInfo_.query.desc->GetDataType();
+        const ge::DataType quantScale2Datatype_ = opParamInfo_.quantScale2.desc->GetDataType();
+        auto quantScale2Shape_ = opParamInfo_.quantScale2.tensor->GetStorageShape();
+
+        //scale2 and offset2 should have same dtype and shape
+        if (opParamInfo_.quantOffset2.tensor != nullptr && opParamInfo_.quantOffset2.desc != nullptr) {
+            const ge::DataType quantOffset2Datatype_ = opParamInfo_.quantOffset2.desc->GetDataType();
+            OP_CHECK_IF(quantOffset2Datatype_ != quantScale2Datatype_,
+                OP_LOGE(opName_, "quantScale2 and quantOffset2 should have same dtype!"),
+                return ge::GRAPH_FAILED);
+            auto quantOffset2Shape_ = opParamInfo_.quantOffset2.tensor->GetStorageShape();
+            OP_CHECK_IF(quantOffset2Shape_ != quantScale2Shape_,
+                OP_LOGE(opName_, "quantScale2 and quantOffset2 should have same shape!"),
+                return ge::GRAPH_FAILED);
+        }
+
+        //scale2 shape verfication
+        std::string layout(opParamInfo_.layOut);
+        if (quantScale2Shape_.GetShapeSize() != 1) {
+            if (layout == "BSH" || layout == "BSND" || layout == "BNSD" || layout == "BNSD_BSND") {
+                int64_t currentShapeSize = quantScale2Shape_.GetShapeSize();
+                int64_t expectShapeSize = gert::Shape({n1Size_, vHeadDim_}).GetShapeSize();
+                OP_CHECK_IF(currentShapeSize != expectShapeSize,
+                    OP_LOGE(opName_, "when input_layout is %s, the shape size of quantScale2 should be %lld(Q_N * V_D), but current is %u, shape is %s",
+                        layout.c_str(), expectShapeSize, currentShapeSize, GetShapeStr(quantScale2Shape_).c_str()),
+                    return ge::GRAPH_FAILED);
+            } else {
+                OP_CHECK_IF(quantScale2Shape_ != gert::Shape({n1Size_, vHeadDim_}),
+                    OP_LOGE(opName_, "when input_layout is %s, quantScale2 expectshape is [Q_N, V_D], it is [%u, %u], but current shape is %s",
+                        layout.c_str(), n1Size_, vHeadDim_, GetShapeStr(quantScale2Shape_).c_str()),
+                    return ge::GRAPH_FAILED);
+            }
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaTilingCheck::CheckMultiParaConsistency()
 {
     SetFiaShapeCompare();
@@ -694,7 +737,8 @@ ge::graphStatus FiaTilingCheck::CheckMultiParaConsistency()
         ge::GRAPH_SUCCESS != CheckPseShift() ||
         ge::GRAPH_SUCCESS != CheckMask() ||
         ge::GRAPH_SUCCESS != CheckSoftmaxLse()||
-        ge::GRAPH_SUCCESS != CheckSystemPrefix()) {
+        ge::GRAPH_SUCCESS != CheckSystemPrefix() ||
+        ge::GRAPH_SUCCESS != CheckPostQuant()) {
         return ge::GRAPH_FAILED;
     }
 

@@ -27,7 +27,6 @@ using namespace AscendC;
 namespace optiling {
 
 constexpr uint64_t PRE_LOAD_NUM_MLA = 2;
-constexpr uint32_t QK_HEAD_DIM_512 = 512U;
 
 constexpr uint64_t FIA_TILINGKEYOFFSET = uint64_t(100000000000000000UL); // 10^17
 constexpr uint64_t FIA_PERF_MODE_TILINGKEYOFFSET = uint64_t(1000000000000000UL); // 10^15
@@ -85,16 +84,75 @@ bool FiaTilingNonQuantMla::IsCapable()
         return false;
     }
 
+    // 不支持空Tensor
+    if (fiaInfo_->emptyTensorFlag) {
+        return false;
+    }
+
     ge::DataType qDataType = fiaInfo_->inputQType;
     ge::DataType kDataType = fiaInfo_->inputKvType;
 
-    if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT && fiaInfo_->qkHeadDim == QK_HEAD_DIM_512) {
-        // MLA非量化
-        if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
-            return true;
-        }
+    // 仅支持非量化
+    if ((qDataType != ge::DT_FLOAT16 && qDataType != ge::DT_BF16) || (qDataType != kDataType)) {
+        return false;
     }
-    return false;
+
+    // 不支持的特性
+    if (fiaInfo_->learnableSinkFlag || fiaInfo_->sysPrefixFlag || fiaInfo_->pseShiftFlag ||
+        fiaInfo_->qPaddingSizeFlag || fiaInfo_->kvPaddingSizeFlag) {
+        return false;
+    }
+
+    // 不支持后量化
+    if (fiaInfo_->outputType == ge::DT_INT8) {
+        return false;
+    }
+
+    // 不支持TensorList
+    if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
+
+    // 仅支持ROPE分开传输
+    if (fiaInfo_->ropeMode != RopeMode::ROPE_SPLIT) {
+        return false;
+    }
+
+    // 仅支持Q&K&V的HeadDim为512, ROPE的HeadDim为64
+    constexpr uint32_t QK_HEAD_DIM_512 = 512U;
+    constexpr uint32_t ROPE_HEAD_DIM_64 = 64U;
+    if ((fiaInfo_->qkHeadDim != fiaInfo_->vHeadDim) ||
+        (fiaInfo_->qkHeadDim != QK_HEAD_DIM_512) ||
+        (fiaInfo_->ropeHeadDim != ROPE_HEAD_DIM_64)) {
+        return false;
+    }
+
+    // 仅支持KV_N为1
+    if (fiaInfo_->n2Size != 1U) {
+        return false;
+    }
+
+    // 支持的input_layout范围
+    std::string layout = fiaInfo_->opParamInfo.layOut;
+    const std::vector<std::string> layoutSupportList = {
+        "BSH", "BSND", "BNSD", "TND", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD"
+    };
+    if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
+        return false;
+    }
+
+    // 支持的sparse_mode值
+    if ((fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK) && (fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) && (fiaInfo_->sparseMode != SPARSE_MODE_BAND)) {
+        return false;
+    }
+
+    // 支持的G的取值范围
+    std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
+    if (std::find(gSizeSupportList.begin(), gSizeSupportList.end(), fiaInfo_->gSize) == gSizeSupportList.end()) {
+        return false;
+    }
+
+    return true;
 }
 
 void FiaTilingNonQuantMla::GenTilingKey()

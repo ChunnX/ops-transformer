@@ -2025,15 +2025,6 @@ __aicore__ inline constexpr UbFormat GetOutUbFormat() {
     }
 }
 
-// post_quant
-// ----------------------------------------------CopyPostQuantGmToUB--------------------------------
-struct PostQuantCoord {
-    uint32_t n2Idx;
-    uint32_t gIdx;
-    uint32_t dIdx;
-    uint32_t gDealSize;
-};
-
 // GM->UB
 template <typename T>
 __aicore__ inline void CopySingleMatrixNDToND(LocalTensor<T> ubTensor, const GlobalTensor<T> gmTensor, 
@@ -2052,33 +2043,6 @@ __aicore__ inline void CopySingleMatrixNDToND(LocalTensor<T> ubTensor, const Glo
     dataCopyPadParams.paddingValue = 0;
     DataCopyPad(ubTensor, gmTensor, dataCopyParams, dataCopyPadParams);
 }
-
-template <typename POST_QUANT_T, GmFormat GM_FORMAT>
-class CopyPostQuantGmToUB {
-public:
-    __aicore__ inline void operator()(FaUbTensor<POST_QUANT_T> &dstTensor, 
-                                      FaGmTensor<POST_QUANT_T, GM_FORMAT> &srcTensor, PostQuantCoord &gmCoord)
-    {
-        ProcessPerCh(dstTensor, srcTensor, gmCoord);
-    }
-
-private:
-    __aicore__ inline void ProcessPerCh(FaUbTensor<POST_QUANT_T> &dstTensor,
-                                        FaGmTensor<POST_QUANT_T, GM_FORMAT> &srcTensor, PostQuantCoord &gmCoord)
-    {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t offset = offsetCalculator.GetOffset(gmCoord.n2Idx, gmCoord.gIdx, gmCoord.dIdx);
-        uint64_t actualColumnCount = offsetCalculator.GetDimD();
-        uint32_t elementNum = fa_base_vector::BYTE_BLOCK / sizeof(POST_QUANT_T);
-
-        uint32_t blockCount = gmCoord.gDealSize;
-        uint32_t blockLen = actualColumnCount * sizeof(POST_QUANT_T);
-        uint32_t srcStride = 0;
-        uint32_t dstStride = (dstTensor.colCount - actualColumnCount) / elementNum;
-        uint32_t rightPadding = (dstTensor.colCount - actualColumnCount) % elementNum;
-        CopySingleMatrixNDToND(dstTensor.tensor, srcTensor.gmTensor[offset], blockCount, blockLen, srcStride, dstStride, rightPadding);
-    }
-};
 
 //antiquant
 // ----------------------------------------------CopyAntiquantGmToUb--------------------------------

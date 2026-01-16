@@ -81,7 +81,8 @@ public:
     ge::graphStatus GetActualSeqInfo();
     ge::graphStatus GetPreNextToken();
     ge::graphStatus GetSystemPrefix();
-     ge::graphStatus GetPseShiftFlag();
+    ge::graphStatus GetPseShiftFlag();
+    ge::graphStatus GetPostQuantInfo();
     ge::graphStatus GetOldIfaGqaFlag();
     TilingKeyLayout MapStringToLayout(FiaLayout &layoutString) const;
     void GenerateAxisInfo(FiaTilingInfo &fiaInfo);
@@ -159,6 +160,10 @@ public:
     int64_t systemPrefixLen_ = 0;
     int64_t systemPrefixMaxLen_ = 0;
 
+    bool isOutQuantPerChnOut_ = false;
+    bool isOutQuantTypeBf16_ = false;
+    bool isPostQuantEnable_ = false; 
+    
     bool isAccumQSeq_ = false;
     bool isAccumKVSeq_ = false;
     uint32_t actualLenQDims_ = 0;

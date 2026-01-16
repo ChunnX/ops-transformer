@@ -102,20 +102,6 @@ const std::map<FiaCompareType, CompareFunc<int64_t>> FiaTilingShapeCompare::comp
     
 };
 
-static std::string GetShapeStr(gert::Shape shape)
-{
-    std::ostringstream oss;
-    oss << "[";
-    if (shape.GetDimNum() > 0) {
-        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
-            oss << shape.GetDim(i) << ", ";
-        }
-        oss << shape.GetDim(shape.GetDimNum() - 1);
-    }
-    oss << "]";
-    return oss.str();
-}
-
 bool FiaTilingShape::HasAxis(const FiaAxis &axis) const
 {   
     const auto& layoutIt = FIA_LAYOUT_AXIS_MAP.find(layout_);

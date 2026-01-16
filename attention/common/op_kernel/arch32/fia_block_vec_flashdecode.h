@@ -23,6 +23,7 @@
 #include "../fia_public_define.h"
 #include "../vector_common.h"
 #include "../memory_copy.h"
+#include "../post_quant.h"
 
 using namespace AttentionCommon;
 struct TaskInfo {
@@ -41,9 +42,11 @@ public:
     using OUT_T = typename FIAT::outputType;  
     static constexpr FIA_LAYOUT LAYOUT_T = FIAT::layout; 
     using SINK_T = bfloat16_t;
+    static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm, GlobalTensor<T> accumOutGm, 
-         GlobalTensor<OUT_T> attentionOutGm, GlobalTensor<uint64_t> actualSeqLengthsGmQ, GlobalTensor<uint64_t> actualSeqLengthsGm);
+        GlobalTensor<OUT_T> attentionOutGm, GlobalTensor<uint64_t> actualSeqLengthsGmQ, GlobalTensor<uint64_t> actualSeqLengthsGm,
+        __gm__ uint8_t *key, __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm);
     __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink);
     __aicore__ inline void InitParams(const AttentionCommon::ConstInfo &constInfo);
@@ -74,13 +77,16 @@ protected:
                                            uint32_t columnCount);
     __aicore__ inline void DealInvalidMaskRows(LocalTensor<T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
                                                uint32_t columnCount, uint32_t cntM);
+    __aicore__ inline void InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
+    __aicore__ inline void DealPostQuantOutPerChn(LocalTensor<T> &bmm2ResUb, uint32_t startRow, 
+                                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t cntM);
+    __aicore__ inline void DealPostQuantOutPerTensor(LocalTensor<T> &bmm2ResUb, uint32_t startRow, 
+                                                    uint32_t dealRowCount, uint32_t columnCount);
 
 private:
 // =================================常量区=================================
-    static constexpr uint64_t SYNC_LSE_SUM_BUF1_FLAG = 6;
-    static constexpr uint64_t SYNC_LSE_SUM_BUF2_FLAG = 7;
-    static constexpr uint64_t SYNC_LSE_MAX_BUF1_FLAG = 8;
-    static constexpr uint64_t SYNC_LSE_MAX_BUF2_FLAG = 9;
+    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF1_FLAG = 8;
+    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF2_FLAG = 9;
     static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 10;
     static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 11;
     static constexpr uint64_t SYNC_FDOUTPUT_BUF_FLAG = 6;
@@ -99,10 +105,20 @@ protected:
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     GlobalTensor<uint64_t> actualSeqLengthsGm;
     GlobalTensor<SINK_T> sinkGm;
+
+    //postquant
+    FaGmTensor<T, PostQuant_FORMAT> quantScale2GmTensor;
+    FaGmTensor<T, PostQuant_FORMAT> quantOffset2GmTensor;
+    FaGmTensor<bfloat16_t, PostQuant_FORMAT> quantScale2Bf16GmTensor;
+    FaGmTensor<bfloat16_t, PostQuant_FORMAT> quantOffset2Bf16GmTensor;
+    PostQuant<GetOutUbFormat<LAYOUT_T>()> postQuantProcesser;
+
     // =======================获取实际Act_S，用于行无效处理===========================
     static constexpr bool PAGE_ATTENTION = FIAT::pageAttention;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_T>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_T, PAGE_ATTENTION>();
+    // tensorlist
+    __gm__ uint8_t *keyPtr = nullptr;
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
     uint64_t actSeqLensKv = 0;
@@ -114,6 +130,13 @@ protected:
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     bool learnableSinkFlag = false;
+
+    static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
+    T scale2Value = 0;
+    T offset2Value = 0;
+    bool isQuantOffset2Exit = false;
+    bool isQuant2PerChn = false;
+    bool isQuant2Bf16 = false;
     // ================================类成员变量====================================
     // aic、aiv核信息
     uint32_t blockIdx = 0U;
@@ -139,6 +162,10 @@ private:
     TBuf<> fdLseMaxUbBuf2; // 64B: 16*4
     TBuf<> fdLseSumUbBuf1; // 64B: 16*4
     TBuf<> fdLseSumUbBuf2; // 64B: 16*4
+    TBuf<> quant2TmpBuf1;
+    TBuf<> quant2TmpBuf2;
+    TBuf<> fdLseMaxUbBuf; // 64B: 16*4
+    TBuf<> fdLseSumUbBuf; // 64B: 16*4
     TBuf<> fdLseUbBuf; // 64B: 16*4
 };
 
@@ -148,7 +175,10 @@ void FiaBlockVecFlashDecode<FIAT>::InitGlobalTensor(GlobalTensor<T> lseMaxFdGm,
                                                         GlobalTensor<T> accumOutGm,
                                                         GlobalTensor<OUT_T> attentionOutGm,
                                                         GlobalTensor<uint64_t> actualSeqLengthsGmQ,
-                                                        GlobalTensor<uint64_t> actualSeqLengthsGm)
+                                                        GlobalTensor<uint64_t> actualSeqLengthsGm,
+                                                        __gm__ uint8_t *key,
+                                                        __gm__ uint8_t *quantScale2,
+                                                        __gm__ uint8_t *quantOffset2)
 {
    this->lseMaxFdGm = lseMaxFdGm;
    this->lseSumFdGm = lseSumFdGm;
@@ -156,9 +186,14 @@ void FiaBlockVecFlashDecode<FIAT>::InitGlobalTensor(GlobalTensor<T> lseMaxFdGm,
    this->attentionOutGm = attentionOutGm;
    this->actualSeqLengthsGmQ = actualSeqLengthsGmQ;
    this->actualSeqLengthsGm = actualSeqLengthsGm;
+    this->keyPtr = key;
 
    qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.qSeqSize);
    kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualLenDims, constInfo.kvSeqSize);
+
+    if constexpr (POST_QUANT) {
+        InitPostQuant(quantScale2, quantOffset2);
+    }
 }
 
 template <typename FIAT> __aicore__ inline 
@@ -192,22 +227,34 @@ void FiaBlockVecFlashDecode<FIAT>::InitBuffers(TPipe *pipe)
 {
     if ASCEND_IS_AIV {
         pipe->Reset();
+        // InQue, DB, SYNC_LSE_MAX_SUM_BUF1_FLAG SYNC_LSE_MAX_SUM_BUF2_FLAG
         pipe->InitBuffer(fdSumBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
         pipe->InitBuffer(fdSumBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
         pipe->InitBuffer(fdMaxBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
         pipe->InitBuffer(fdMaxBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+        // TmpBuf       
         pipe->InitBuffer(fdLseExpBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+        // InQue, DB, SYNC_MM2RES_BUF1_FLAG SYNC_MM2RES_BUF2_FLAG
         pipe->InitBuffer(fdMm2ResBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_16K);
         pipe->InitBuffer(fdMm2ResBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_16K);
+        // TmpBuf    
         pipe->InitBuffer(fdReduceBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_16K);
+        // OutQue, SYNC_FDOUTPUT_BUF_FLAG
         pipe->InitBuffer(fdOutputBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_16K);
+        // TmpBuf, UB开DB
         pipe->InitBuffer(fdLseMaxUbBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_256B);
         pipe->InitBuffer(fdLseSumUbBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_256B);
         pipe->InitBuffer(fdLseMaxUbBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_256B);
         pipe->InitBuffer(fdLseSumUbBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_256B);
+        // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
         pipe->InitBuffer(fdLseUbBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_256B);
+        // TmpBuf
+        pipe->InitBuffer(quant2TmpBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_16K);
+        pipe->InitBuffer(quant2TmpBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_8K);
         if (unlikely(learnableSinkFlag)) {
+            // InQue, DB, SYNC_SINK_BUF1_FLAG SYNC_SINK_BUF2_FLAG
             pipe->InitBuffer(fdSinkCopyInBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+            // TmpBuf
             pipe->InitBuffer(fdSinkValueBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
             pipe->InitBuffer(fdSinkExpBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_256B);
             pipe->InitBuffer(fdSinkTmpBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
@@ -218,10 +265,8 @@ void FiaBlockVecFlashDecode<FIAT>::InitBuffers(TPipe *pipe)
 template <typename FIAT> __aicore__ inline 
 void FiaBlockVecFlashDecode<FIAT>::AllocEventID()
 {
-    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_SUM_BUF1_FLAG);
-    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_SUM_BUF2_FLAG);
-    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_BUF1_FLAG);
-    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_BUF2_FLAG);
+    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG);
+    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF2_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF2_FLAG);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
@@ -233,10 +278,8 @@ void FiaBlockVecFlashDecode<FIAT>::AllocEventID()
 template <typename FIAT> __aicore__ inline 
 void FiaBlockVecFlashDecode<FIAT>::FreeEventID()
 {
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_SUM_BUF1_FLAG);
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_SUM_BUF2_FLAG);
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_BUF1_FLAG);
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_BUF2_FLAG);
+    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG);
+    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
@@ -273,9 +316,6 @@ void FiaBlockVecFlashDecode<FIAT>::CopyLseIn(uint32_t startRow,
     LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1.Get<T>() : fdSumBuf2.Get<T>();
     LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1.Get<T>() : fdMaxBuf2.Get<T>();
 
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_SUM_BUF1_FLAG + cntM % 2);
-    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_BUF1_FLAG + cntM % 2);
-
     uint64_t combineLseOffset = (baseOffset + startRow) * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
     uint64_t combineLoopOffset = constInfo.mBaseSize * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
     uint64_t dealRowCountAlign = dealRowCount * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
@@ -285,11 +325,6 @@ void FiaBlockVecFlashDecode<FIAT>::CopyLseIn(uint32_t startRow,
         DataCopy(lseMax[i * dealRowCountAlign], lseMaxFdGm[combineLseOffset + i * combineLoopOffset],
                  dealRowCountAlign);
     }
-
-    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_SUM_BUF1_FLAG + cntM % 2);
-    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_BUF1_FLAG + cntM % 2);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_SUM_BUF1_FLAG + cntM % 2);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_BUF1_FLAG + cntM % 2);
 }
 
 template <typename FIAT> __aicore__ inline 
@@ -496,16 +531,36 @@ void FiaBlockVecFlashDecode<FIAT>::CopyFinalResOut(LocalTensor<T> &accumOutLocal
                                                        uint32_t dealRowCount,
                                                        uint32_t cntM)
 {
+    if constexpr (POST_QUANT) {
+        if (isQuant2PerChn) {
+            DealPostQuantOutPerChn(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign, cntM);
+            AscendC::PipeBarrier<PIPE_V>();
+        } else {
+            DealPostQuantOutPerTensor(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+    }
+
     DealInvalidRows(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign);
     DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign, cntM);
+    AscendC::PipeBarrier<PIPE_V>();
+
     LocalTensor<OUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUT_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-    uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.headDim};
-    tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
-    if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * constInfo.headDimAlign);
+    if constexpr (POST_QUANT) {
+        LocalTensor<half> quant2ResHalf = quant2TmpBuf1.Get<half>();
+        Cast(quant2ResHalf, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * constInfo.headDimAlign);
+        AscendC::PipeBarrier<PIPE_V>();
+        Cast(tmpBmm2ResCastTensor, quant2ResHalf, AscendC::RoundMode::CAST_ROUND, dealRowCount * constInfo.headDimAlign);
+        AscendC::PipeBarrier<PIPE_V>();
     } else {
-        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * constInfo.headDimAlign);
+        uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.headDim};
+        tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
+        if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * constInfo.headDimAlign);
+        } else {
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * constInfo.headDimAlign);
+        }
     }
 
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
@@ -518,8 +573,12 @@ template <typename FIAT> __aicore__ inline void
 FiaBlockVecFlashDecode<FIAT>::CalcPreNextTokens()
 {
     actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-    actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-
+    if (constInfo.actualLenDims == 0 && !constInfo.batchContinuous) {
+        actSeqLensKv = fa_base_kernel::SeqLenFromTensorList<LAYOUT_T>(keyPtr, taskInfo.bIdx);
+    } else {
+        actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+    }
+    actSeqLensKv += constInfo.systemPrefixLen;
     int64_t safePreToken = constInfo.preToken;
     int64_t safeNextToken = constInfo.nextToken;
 
@@ -534,6 +593,120 @@ FiaBlockVecFlashDecode<FIAT>::CalcPreNextTokens()
     } else {
         nextTokensPerBatch = actSeqLensKv - actSeqLensQ;
         preTokensPerBatch = 0;
+    }
+}
+
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2)
+{
+    isQuant2PerChn = constInfo.isPostQuantPerChn;
+    isQuant2Bf16 = constInfo.isPostQuantTypeBf16;
+    if (quantScale2 != nullptr) {
+        if (isQuant2PerChn) {
+            if (isQuant2Bf16) {
+                postQuantProcesser.InitPerChannel(quantScale2Bf16GmTensor,
+                    quantScale2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
+            } else {
+                postQuantProcesser.InitPerChannel(quantScale2GmTensor,
+                    quantScale2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
+            }
+        } else {
+            postQuantProcesser.InitPerTensor(scale2Value, quantScale2, isQuant2Bf16);
+        }
+    }
+
+    if (quantOffset2 != nullptr) {
+        isQuantOffset2Exit = true;
+        if (isQuant2PerChn) {
+            if (isQuant2Bf16) {
+                postQuantProcesser.InitPerChannel(quantOffset2Bf16GmTensor,
+                    quantOffset2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
+            } else {
+                postQuantProcesser.InitPerChannel(quantOffset2GmTensor,
+                    quantOffset2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
+            }
+        } else {
+            postQuantProcesser.InitPerTensor(offset2Value, quantOffset2, isQuant2Bf16);
+        }
+    }
+}
+
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::DealPostQuantOutPerChn(LocalTensor<T> &bmm2ResUb, uint32_t startRow, 
+                                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t cntM)
+{
+    PostQuantInfo_V2 postQuantInfo;
+    postQuantInfo.gSize = constInfo.gSize;
+    postQuantInfo.dSize = constInfo.headDim;
+    postQuantInfo.s1Size = actSeqLensQ;
+    postQuantInfo.n2Idx = taskInfo.n2Idx;
+    postQuantInfo.gS1Idx = taskInfo.gS1Idx + startRow;
+    postQuantInfo.gS1DealSize = dealRowCount;
+    postQuantInfo.colCount = columnCount;
+
+    if (isQuant2Bf16) {
+        uint32_t computeSize = dealRowCount * columnCount;
+        LocalTensor<T> tempFp32Ub = quant2TmpBuf2.Get<T>(computeSize);
+
+        LocalTensor<bfloat16_t> quantScale2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
+        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        postQuantProcesser.CopyParamsGmToUb(quantScale2Ub, quantScale2Bf16GmTensor, postQuantInfo);
+        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        AscendC::PipeBarrier<PIPE_V>();
+        Cast(tempFp32Ub, quantScale2Ub, RoundMode::CAST_NONE, computeSize);
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+
+        AscendC::PipeBarrier<PIPE_V>();
+        postQuantProcesser.MulScale(bmm2ResUb, bmm2ResUb, tempFp32Ub, postQuantInfo);
+
+        if(isQuantOffset2Exit){
+            LocalTensor<bfloat16_t> quantOffset2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+            postQuantProcesser.CopyParamsGmToUb(quantOffset2Ub, quantOffset2Bf16GmTensor, postQuantInfo);
+            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+            AscendC::PipeBarrier<PIPE_V>();
+            Cast(tempFp32Ub, quantOffset2Ub, RoundMode::CAST_NONE, computeSize);
+            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+
+            AscendC::PipeBarrier<PIPE_V>();
+            postQuantProcesser.AddOffset(bmm2ResUb, bmm2ResUb, tempFp32Ub, postQuantInfo);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+    } else {
+        LocalTensor<T> quantScale2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
+        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        postQuantProcesser.CopyParamsGmToUb(quantScale2Ub, quantScale2GmTensor, postQuantInfo);
+        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        AscendC::PipeBarrier<PIPE_V>();
+        postQuantProcesser.MulScale(bmm2ResUb, bmm2ResUb, quantScale2Ub, postQuantInfo);
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+
+        if(isQuantOffset2Exit){
+            LocalTensor<T> quantOffset2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+            postQuantProcesser.CopyParamsGmToUb(quantOffset2Ub, quantOffset2GmTensor, postQuantInfo);
+            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+            AscendC::PipeBarrier<PIPE_V>();
+            postQuantProcesser.AddOffset(bmm2ResUb, bmm2ResUb, quantOffset2Ub, postQuantInfo);
+            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+}
+
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::DealPostQuantOutPerTensor(LocalTensor<T> &bmm2ResUb, uint32_t startRow, 
+                                                    uint32_t dealRowCount, uint32_t columnCount)
+{
+    Muls(bmm2ResUb, bmm2ResUb, scale2Value, dealRowCount * columnCount);
+    AscendC::PipeBarrier<PIPE_V>();
+    if (isQuantOffset2Exit) {
+        Adds(bmm2ResUb, bmm2ResUb, offset2Value, dealRowCount * columnCount);
+        AscendC::PipeBarrier<PIPE_V>();
     }
 }
 
@@ -626,7 +799,11 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
 
             LocalTensor<T> lseExp = fdLseExpBuf.Get<T>();
             LocalTensor<T> reduceOut = fdReduceBuf.Get<T>();
+ 
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
             CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
+            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
             if (unlikely(learnableSinkFlag)) {
                 CopySinkIn(reduceMLoop);
             }
@@ -683,8 +860,7 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 SetFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
 
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_SUM_BUF1_FLAG + reduceMLoop % 2);
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_BUF1_FLAG + reduceMLoop % 2);
+            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
             //****************************************************************************************************** */
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; i++) {
