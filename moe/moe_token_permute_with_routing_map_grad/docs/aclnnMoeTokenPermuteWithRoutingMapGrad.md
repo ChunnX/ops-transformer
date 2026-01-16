@@ -303,7 +303,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
 
-    // 调用aclnnMoeTokenPermuteGrad第一段接口
+    // 调用aclnnMoeTokenPermuteWithRoutingMapGrad第一段接口
     ret = aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(permuted_output_grad, ppermutedProbsOutputGrad, sortedIndices, proutingMapOptional, num_expert, num_token, true,
                                                                  out, out2, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
