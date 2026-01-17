@@ -274,7 +274,7 @@ int main() {
     aclDestroyTensor(query);
     aclDestroyTensor(queryRope);
 
-    // 7. 释放device 资源
+    // 7. 释放device侧资源
     aclrtFree(tokenXDeviceAddr);
     aclrtFree(weightDqDeviceAddr);
     aclrtFree(weightUqQrDeviceAddr);
@@ -290,7 +290,7 @@ int main() {
     aclrtFree(queryDeviceAddr);
     aclrtFree(queryRopeDeviceAddr);
 
-    // 8. 释放host 资源
+    // 8. 释放host侧资源
     aclrtFree(tokenXHostAddr);
     aclrtFree(weightDqHostAddr);
     aclrtFree(weightUqQrHostAddr);

@@ -450,8 +450,10 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         )
       target_include_directories(
         ${opName}_${socVersion}_cases_obj
-        PRIVATE ${ASCEND_DIR}/include/base/context_builder ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
+        PRIVATE ${ASCEND_DIR}/include/base/context_builder 
+                ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
+                ${PROJECT_SOURCE_DIR}/common/include/kernel
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/basic_api
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include

@@ -45,7 +45,7 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources_with_soc(OPTYPE fused_infer_attention_score ACLNNTYPE aclnn_inner)
 endif()
 
-if(NOT BUILD_OPS_RTY_KERNEL) #
+if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     ../../common/op_host/fia_tiling_shape.cpp

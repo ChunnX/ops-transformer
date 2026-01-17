@@ -29,7 +29,7 @@
         <block name="OpsTransformerInc"/>
     </block_info>
     <dir_info value="ops_transformer" install_path="ops_transformer" install_type="all">
-        <path value="share" install_mod="550"/>
+        <path value="share" install_mod="750"/>
         <path value="share/info" install_mod="750"/>
         <path value="share/info/ops_transformer" install_mod="550"/>
         <path value="share/info/ops_transformer/script" install_mod="550"/>
