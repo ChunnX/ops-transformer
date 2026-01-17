@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <vector>
+#include <memory>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_add.h"
 
@@ -139,15 +140,23 @@ int main() {
 
   // 创建x aclTensorList
   ret = CreateAclTensor<uint16_t>(xShape, &xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
+  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorPtr(x, aclDestroyTensor);
+  std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建weight aclTensorList
   ret = CreateAclTensor<uint16_t>(weightShape, &weightDeviceAddr, aclDataType::ACL_FLOAT16, &weight);
+  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightTensorPtr(weight, aclDestroyTensor);
+  std::unique_ptr<void, aclError (*)(void *)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建y aclTensorList
   ret = CreateAclTensor<float>(yShape, &yDeviceAddr, aclDataType::ACL_FLOAT, &y);
+  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> yTensorPtr(y, aclDestroyTensor);
+  std::unique_ptr<void, aclError (*)(void *)> yDeviceAddrPtr(yDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建group_list aclTensor
   ret = CreateAclTensor_New<int64_t>(groupListData, groupListShape, &groupListDeviceAddr, aclDataType::ACL_INT64, &groupedList);
+  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> groupedListTensorPtr(groupedList, aclDestroyTensor);
+  std::unique_ptr<void, aclError (*)(void *)> groupListDeviceAddrPtr(groupListDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   yRef = y;
@@ -182,17 +191,6 @@ int main() {
   for (int64_t j = 0; j < 10; j++) {
       LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
   }
-
-
-  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
-  aclDestroyTensor(x);
-  aclDestroyTensor(weight);
-  aclDestroyTensor(y);
-
-  // 7. 释放device资源，需要根据具体API的接口定义修改
-  aclrtFree(xDeviceAddr);
-  aclrtFree(weightDeviceAddr);
-  aclrtFree(yDeviceAddr);
 
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
