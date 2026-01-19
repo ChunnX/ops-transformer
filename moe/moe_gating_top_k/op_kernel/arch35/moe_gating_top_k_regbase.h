@@ -147,8 +147,8 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::CopyInX(int64_t row)
         if constexpr (IsSameType<T, float>::value) {
             DataCopyPad(xInLocalTensor, xGm_[row * expertCount_], dataCopyParams, dataCopyPadParams);
         } else {
-            DataCopyPad(xInLocalTensor[expertCountAlign_].ReinterpretCast<T>(), xGm_[row * expertCount_], dataCopyParams,
-                        dataCopyPadParams);
+            DataCopyPad(xInLocalTensor[expertCountAlign_].ReinterpretCast<T>(), xGm_[row * expertCount_],
+                        dataCopyParams, dataCopyPadParams);
         }
         xInQueue_.EnQue(xInLocalTensor);
     } else {
@@ -218,17 +218,17 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
                     MicroAPI::Add(vregBiasResult, vregSoftmaxResult, vregBiasFp32, preg0);
                     // 使用Arange生成排序索引, 起始值为i乘每个循环的veclen
                     MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
-                    MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
                     MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
+                    MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
                 }
                 MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
- 
+
                 // pad min fp32
-                RegTensor<float> vregPad;
                 MicroAPI::UnalignReg u0;
+                RegTensor<float> vregPad;
                 MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
                 for (uint16_t i = 0; i < groupCount0; i++) {
-                    auto padUbAddr = addBiasOutAddr + i * perGroupExpertCountAlign0 + perGroupExpertCount0;
+                    auto padUbAddr = i * perGroupExpertCountAlign0 + addBiasOutAddr + perGroupExpertCount0;
                     MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
                     MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
                 }
@@ -250,13 +250,13 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
                     MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
                 }
                 MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
- 
+
                 // pad min fp32
                 RegTensor<float> vregPad;
-                MicroAPI::UnalignReg u0;
                 MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
+                MicroAPI::UnalignReg u0;
                 for (uint16_t i = 0; i < groupCount0; i++) {
-                    auto padUbAddr = addBiasOutAddr + i * perGroupExpertCountAlign0 + perGroupExpertCount0;
+                    auto padUbAddr = perGroupExpertCount0 + addBiasOutAddr + i * perGroupExpertCountAlign0;
                     MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
                     MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
                 }
@@ -304,8 +304,8 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
                 // 使用Arange生成排序索引, 起始值为i乘每个循环的veclen
                 MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
                 MicroAPI::DataCopy(sigmoidOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
-                MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
                 MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
+                MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
 
@@ -314,7 +314,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
             MicroAPI::UnalignReg u0;
             MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
             for (uint16_t i = 0; i < groupCount0; i++) {
-                auto padUbAddr = addBiasOutAddr + i * perGroupExpertCountAlign0 + perGroupExpertCount0;
+                auto padUbAddr = addBiasOutAddr + perGroupExpertCount0 + i * perGroupExpertCountAlign0;
                 MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
                 MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
             }
@@ -349,9 +349,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
                 MicroAPI::Div<float, &mode>(vregSigmoidResult, vregOne, vreg3, preg0);
                 // 使用Arange生成排序索引, 起始值为i乘每个循环的veclen
                 MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
-                MicroAPI::DataCopy(sigmoidOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
-                MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
-                MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
+                MicroAPI::DataCopy(i * VL_FLOAT_SIZE + sigmoidOutAddr, vregSigmoidResult, preg0);
+                MicroAPI::DataCopy(i * VL_FLOAT_SIZE + addBiasOutAddr, vregSigmoidResult, preg0);
+                MicroAPI::DataCopy(i * VL_FLOAT_SIZE + indexOutAddr, vregIndex, preg0);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
 
@@ -360,7 +360,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
             MicroAPI::UnalignReg u0;
             MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
             for (uint16_t i = 0; i < groupCount0; i++) {
-                auto padUbAddr = addBiasOutAddr + i * perGroupExpertCountAlign0 + perGroupExpertCount0;
+                auto padUbAddr = addBiasOutAddr + perGroupExpertCount0 + i * perGroupExpertCountAlign0;
                 MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
                 MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
             }
@@ -371,9 +371,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKRegbase<T>::CopyOutXNorm(int64_t progress)
-{   
+{
     if (tilingData_->outFlag == 0) {
-    return;
+        return;
     }
     LocalTensor<float> outOutTensor = outOutQueue_.AllocTensor<float>();
     LocalTensor<float> xSigmoidTensor = xSigmoidBuf_.Get<float>();
@@ -457,8 +457,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::SelectTopKGroupIndex()
     uint32_t perGroupExpertCountAlign0 = perGroupExpertCountAlign_;
     int32_t groupCountNumAlign = (groupCount_ + 31) / 32 * 32;
     uint32_t padNegInfNum = groupCountNumAlign - groupCount_;
-    if (groupSelectMode_ == 1)
-    {
+    if (groupSelectMode_ == 1) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg0;
@@ -481,7 +480,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::SelectTopKGroupIndex()
                 MicroAPI::DataCopyUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputAddr, vreg2, u0, 1);
             }
             MicroAPI::DataCopyUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0,
-                                                                                    padNegInfNum);
+                                                                                      padNegInfNum);
             MicroAPI::DataCopyUnAlignPost(outputAddr, u0, 0);
         }
     } else {
@@ -504,7 +503,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::SelectTopKGroupIndex()
                 MicroAPI::DataCopyUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputAddr, vreg0, u0, 1);
             }
             MicroAPI::DataCopyUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0,
-                                                                                    padNegInfNum);
+                                                                                      padNegInfNum);
             MicroAPI::DataCopyUnAlignPost(outputAddr, u0, 0);
         }
     }
@@ -535,6 +534,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::SelectTopKGroupIndex()
                                                                              inputAddr + i * 2 * VL_FLOAT_SIZE);
             MicroAPI::DataCopy(outputAddr + i * VL_FLOAT_SIZE, vreg1, preg0);
         }
+        AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_STORE>();
         MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
         outputAddr = outputAddr + kGroup0;
         MicroAPI::DataCopyUnAlign(outputAddr, (RegTensor<int32_t> &)vregPad, u0, padkGroupNum);
@@ -687,16 +687,16 @@ MoeGatingTopKRegbase<T>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
                                         float eps, float routedScalingFactor)
 {
     __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
+    __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
-    __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
 
     if (tilingData_->normType == 0) {
         __VEC_SCOPE__
         {
-            RegTensor<uint32_t> vreg0;
-            RegTensor<uint32_t> vreg1;
             RegTensor<float> vreg2;
+            RegTensor<uint32_t> vreg1;
+            RegTensor<uint32_t> vreg0;
 
             MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<uint32_t>(k);
             MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr);
@@ -708,11 +708,12 @@ MoeGatingTopKRegbase<T>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
     } else {
         __VEC_SCOPE__
         {
-            RegTensor<uint32_t> vreg0;
-            RegTensor<uint32_t> vreg1;
             RegTensor<float> vreg2;
             RegTensor<float> vreg3;
             RegTensor<float> vreg4;
+
+            RegTensor<uint32_t> vreg0;
+            RegTensor<uint32_t> vreg1;
 
             MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<uint32_t>(k);
             MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr);
@@ -737,16 +738,16 @@ MoeGatingTopKRegbase<T>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
     uint32_t k1 = k_;
     __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
-    __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
     __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
+    __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
 
     if (tilingData_->normType == 0) {
         __VEC_SCOPE__
         {
+            RegTensor<float> vregSum;
             RegTensor<uint32_t> vreg0;
             RegTensor<uint32_t> vreg1;
             RegTensor<float> vreg2;
-            RegTensor<float> vregSum;
 
             MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
             MicroAPI::MaskReg preg1 = MicroAPI::CreateMask<float>();
@@ -775,13 +776,13 @@ MoeGatingTopKRegbase<T>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
     } else {
         __VEC_SCOPE__
         {
-            RegTensor<uint32_t> vreg0;
-            RegTensor<uint32_t> vreg1;
             RegTensor<float> vreg2;
             RegTensor<float> vreg3;
             RegTensor<float> vreg4;
             RegTensor<float> vreg5;
             RegTensor<float> vregSum;
+            RegTensor<uint32_t> vreg0;
+            RegTensor<uint32_t> vreg1;
 
             MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
             MicroAPI::MaskReg preg1 = MicroAPI::CreateMask<float>();
@@ -792,7 +793,7 @@ MoeGatingTopKRegbase<T>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<uint32_t>(k);
                 MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                                  mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                                  i * 2 * VL_FLOAT_SIZE + mrgSortAddr);
                 MicroAPI::Duplicate(vreg2, static_cast<float>(0), preg1);
                 MicroAPI::DataCopyGather(vreg2, inputAddr, vreg1, preg0);
                 MicroAPI::Add(vregSum, vregSum, vreg2, preg1);
@@ -821,17 +822,17 @@ MoeGatingTopKRegbase<T>::smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
                                            float eps, float routedScalingFactor, int32_t expertIdxPad,
                                            int32_t perGroupExpertCountAlign)
 {
-    __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
+    __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
     __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
 
     if (tilingData_->normType == 0) {
         __VEC_SCOPE__
         {
+            RegTensor<float> vreg2;
             RegTensor<uint32_t> vreg0;
             RegTensor<uint32_t> vreg1;
-            RegTensor<float> vreg2;
             RegTensor<uint32_t> vregAlign;
 
             MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(k);
@@ -853,11 +854,11 @@ MoeGatingTopKRegbase<T>::smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
     } else {
         __VEC_SCOPE__
         {
-            RegTensor<uint32_t> vreg0;
-            RegTensor<uint32_t> vreg1;
             RegTensor<float> vreg2;
             RegTensor<float> vreg3;
             RegTensor<float> vreg4;
+            RegTensor<uint32_t> vreg0;
+            RegTensor<uint32_t> vreg1;
             RegTensor<uint32_t> vregAlign;
 
             MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(k);
@@ -891,16 +892,16 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
                                            int32_t perGroupExpertCountAlign)
 {
     uint32_t k1 = k_;
+    __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
     __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
-    __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
 
     if (tilingData_->normType == 0) {
         __VEC_SCOPE__
         {
-            RegTensor<uint32_t> vreg0;
             RegTensor<uint32_t> vreg1;
+            RegTensor<uint32_t> vreg0;
             RegTensor<float> vreg2;
             RegTensor<uint32_t> vreg3;
             RegTensor<float> vregSum;
@@ -917,7 +918,7 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<uint32_t>(k);
                 MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                                  mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                                  mrgSortAddr + 2 * i * VL_FLOAT_SIZE);
                 MicroAPI::Duplicate(vreg2, static_cast<float>(0), preg1);
                 MicroAPI::DataCopyGather(vreg2, inputAddr, vreg1, preg0);
                 MicroAPI::Add(vregSum, vregSum, vreg2, preg1);
@@ -926,7 +927,7 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg1 = MicroAPI::UpdateMask<uint32_t>(k1);
                 MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                                  mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                                  mrgSortAddr + VL_FLOAT_SIZE * i * 2);
                 MicroAPI::DataCopyGather(vreg2, inputAddr, vreg1, preg1);
                 MicroAPI::Muls(vreg2, vreg2, routedScalingFactor, preg1);
 
@@ -941,14 +942,14 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
     } else {
         __VEC_SCOPE__
         {
-            RegTensor<uint32_t> vreg0;
-            RegTensor<uint32_t> vreg1;
             RegTensor<float> vreg2;
             RegTensor<float> vreg3;
             RegTensor<float> vreg4;
-            RegTensor<uint32_t> vreg5;
             RegTensor<float> vreg6;
             RegTensor<float> vregSum;
+            RegTensor<uint32_t> vreg0;
+            RegTensor<uint32_t> vreg1;
+            RegTensor<uint32_t> vreg5;
             RegTensor<uint32_t> vregAlign;
 
             MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
@@ -962,7 +963,7 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<uint32_t>(k);
                 MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                                  mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                                  2 * i * VL_FLOAT_SIZE + mrgSortAddr);
                 MicroAPI::Duplicate(vreg2, static_cast<float>(0), preg1);
                 MicroAPI::DataCopyGather(vreg2, inputAddr, vreg1, preg0);
                 MicroAPI::Add(vregSum, vregSum, vreg2, preg1);

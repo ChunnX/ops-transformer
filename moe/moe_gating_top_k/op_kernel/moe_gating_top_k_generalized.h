@@ -174,11 +174,11 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::ComputeX()
                   (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
         PipeBarrier<PIPE_V>();
     }
-    if (tilingData_->normType == 1) { // sigmoid
+    if (normType_ == 1) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCountAlign_);
         PipeBarrier<PIPE_V>();
-    } else { // softmax
+    } else if (normType_ == 0) { // softmax
         LocalTensor<float> reduceValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> calcTmp = calcTmpBuf_.Get<float>()[BLOCK_BYTES];
         ReduceMax(reduceValueTensor, xInLocalTensor, calcTmp, expertCountAlign_);
@@ -281,7 +281,7 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::SelectTopKGroupIndex()
 
     uint64_t rsvdCnt = 0; // 用于保存筛选后保留下来的元素个数
     PipeBarrier<PIPE_V>();
-    if (tilingData_->groupSelectMode == 1) {              // top2 sum
+    if (groupSelectMode_ == 1) {                          // top2 sum
                                                           // 提取每组组前两个元素
         maskTensor.SetValue(0, static_cast<uint32_t>(5)); // b0101
         maskTensor.SetValue(1, static_cast<uint32_t>(0));
@@ -525,8 +525,9 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::SelectTopKExpertScore()
     PipeBarrier<PIPE_V>();
     Gather(yOutTensor, xNormTensor, topKExpertIdWithByte.template ReinterpretCast<uint32_t>(), static_cast<uint32_t>(0),
            k_);
-
-    if (tilingData_->normType == 1) {
+    bool needRenorm = (normType_ == 1) ||               // 情况1：sigmoid + renorm
+                      (normType_ == 0 && renorm_ == 1); // 情况3：softmax + renorm
+    if (needRenorm) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[32];
         PipeBarrier<PIPE_V>();
@@ -608,6 +609,9 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::Init(GM_ADDR x, GM_ADDR bias,
     groupCountAlign_ = Ceil(groupCount_, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
     perGroupExpertCount_ = tilingData_->perGroupExpertCount;
     perGroupExpertCountAlign_ = tilingData_->perGroupExpertCountAlign;
+    renorm_ = tilingData_->renorm;
+    normType_ = tilingData_->normType;
+    groupSelectMode_ = tilingData_->groupSelectMode;
 
     expertCountAlign_ = Align(perGroupExpertCountAlign_ * groupCount_, sizeof(float));
     kAlign_ = Align(k_, sizeof(float));
