@@ -101,6 +101,21 @@ attention:
     options:
       - fused_infer_attention_score
 
+  gather_pa_kv_cache:
+    module: True
+    src:
+      - attention/gather_pa_kv_cache
+      - attention/common
+    exclude:
+      - attention/gather_pa_kv_cache/docs
+      - attention/gather_pa_kv_cache/README.md
+    ut_cov_exclude:
+      - attention/gather_pa_kv_cache
+    test:
+        ut: True
+    options:
+      - gather_pa_kv_cache
+
   incre_flash_attention:
     module: True
     src:
