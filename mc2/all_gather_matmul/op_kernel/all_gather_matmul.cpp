@@ -36,7 +36,7 @@ template <> struct BiasType<half> {
     using type = half;
 };
 
-template<bool ALL_GATHER_MM_FULL_MESH, bool ALL_GATHER_MM_ND2NZ_OPT, bool ALL_GATHER_MM_BIAS_CAST>
+template<bool IsFullMesh, bool IsNd2Nz, bool IsBias>
 __global__ __aicore__ void all_gather_matmul(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingData);
@@ -49,13 +49,25 @@ __global__ __aicore__ void all_gather_matmul(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR b
     TPipe pipe;
     GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
 
-    if(ALL_GATHER_MM_BIAS_CAST == false){
+    if constexpr (IsFullMesh && IsNd2Nz && !IsBias) {
+        // full mesh + nd2nz + no bias cast
         using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::NZ, B_DTYPE, true>;
         using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;
-        INVOKE_ALL_GATHER_MATMUL_OP_IMPL(AllGatherMatmulFullMesh, ALL_GATHER_MM_ND2NZ_OPT, ALL_GATHER_MM_BIAS_CAST);
-    } else if (ALL_GATHER_MM_BIAS_CAST == true) {
+        INVOKE_ALL_GATHER_MATMUL_OP_IMPL(AllGatherMatmulFullMesh, IsNd2Nz, IsBias);
+    } else if constexpr (IsFullMesh && !IsNd2Nz && !IsBias) {
+        // full mesh + no nd2nz + no bias cast
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, B_DTYPE, true>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;
+        INVOKE_ALL_GATHER_MATMUL_OP_IMPL(AllGatherMatmulFullMesh, IsNd2Nz, IsBias);
+    } else if constexpr (IsFullMesh && IsNd2Nz && IsBias) {
+        // full mesh + nd2nz + bias cast
+        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::NZ, B_DTYPE, true>;
+        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, float>;
+        INVOKE_ALL_GATHER_MATMUL_OP_IMPL(AllGatherMatmulFullMesh, IsNd2Nz, IsBias);
+    } else if constexpr (IsFullMesh && !IsNd2Nz && IsBias) {
+        // full mesh + no nd2nz + bias cast
         using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, B_DTYPE, true>;
         using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, float>;
-        INVOKE_ALL_GATHER_MATMUL_OP_IMPL(AllGatherMatmulFullMesh, ALL_GATHER_MM_ND2NZ_OPT, ALL_GATHER_MM_BIAS_CAST);
+        INVOKE_ALL_GATHER_MATMUL_OP_IMPL(AllGatherMatmulFullMesh, IsNd2Nz, IsBias);
     }
 }
