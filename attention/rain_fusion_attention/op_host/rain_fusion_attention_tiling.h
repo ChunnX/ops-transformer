@@ -49,8 +49,12 @@ TILING_DATA_FIELD_DEF(uint32_t, queryLayout);
 TILING_DATA_FIELD_DEF(uint32_t, kvCacheLayout);
 
 // BNSD格式的最大序列长度（用于计算stride）
-TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen);  // BNSD格式Q的第三维（S维度）
-TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen);  // BNSD格式KV的第三维（S维度）
+// 当actualSeqLengths为nullptr时，maxQSeqlen也用作统一的qseqlen值
+TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen);  // BNSD格式Q的第三维（S维度），或统一的qseqlen值
+// 当actualSeqLengthsKv为nullptr时，maxKvSeqlen也用作统一的kvseqlen值
+TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen);  // BNSD格式KV的第三维（S维度），或统一的kvseqlen值
+TILING_DATA_FIELD_DEF(uint32_t, useUniformQSeqlen);  // 是否使用统一的qseqlen值（1=是，0=否）
+TILING_DATA_FIELD_DEF(uint32_t, useUniformKvSeqlen);  // 是否使用统一的kvseqlen值（1=是，0=否）
 
 // TilingKey for kernel dispatch (生成在tiling层)
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
@@ -133,6 +137,27 @@ private:
     ge::graphStatus ProcessActualSeqLengths(gert::TilingContext *rfaContext);
     ge::graphStatus ProcessBlockShape(gert::TilingContext *rfaContext);
     ge::graphStatus ValidateConfiguration(gert::TilingContext *rfaContext);
+    ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *rfaContext);
+    
+    ge::graphStatus ProcessQSeqLengths(gert::TilingContext *rfaContext, 
+                                       const gert::Tensor *actualSeqLengths);
+    ge::graphStatus ProcessKvSeqLengths(gert::TilingContext *rfaContext, 
+                                       const gert::Tensor *actualSeqLengthsKv);
+    ge::graphStatus ValidateBNSDQSeqlen(gert::TilingContext *rfaContext);
+    ge::graphStatus ValidateBNSDKvSeqlen(gert::TilingContext *rfaContext);
+    ge::graphStatus GetKvSeqlenFromShape(gert::TilingContext *rfaContext, uint32_t &kvSeqlen);
+    
+    bool CheckShouldUseUniformKvSeqlen(const gert::Tensor *actualSeqLengthsKv);
+    ge::graphStatus SetupUniformKvSeqlen(gert::TilingContext *rfaContext);
+    ge::graphStatus ProcessKvSeqLengthsBNSD(gert::TilingContext *rfaContext, 
+                                            const gert::Tensor *actualSeqLengthsKv);
+    ge::graphStatus ProcessKvSeqLengthsTND(gert::TilingContext *rfaContext, 
+                                           const gert::Tensor *actualSeqLengthsKv);
+    ge::graphStatus ProcessKvSeqLengthsWithArray(gert::TilingContext *rfaContext, 
+                                                  const gert::Tensor *actualSeqLengthsKv);
+    
+    void CalculateBatchTaskSplit(uint32_t batchIdx, int64_t qSeqlen, uint32_t groupSize,
+                                 uint32_t &curTaskNum, uint32_t &curQBlockNum);
     
 private:
     uint32_t batch_ = 0;
@@ -157,6 +182,8 @@ private:
     const int64_t *qSeqLenList = nullptr;
     const int64_t *kvSeqLenList = nullptr;
     const int64_t *blockShapeList = nullptr;
+    bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_）
+    bool useUniformKvSeqlen_ = false;  // 是否使用统一的kvseqlen值（使用maxKvSeqlen_）
 
     uint64_t mm1OutSize_ = 0;
     uint64_t smOnlineOutSize_ = 0;
@@ -175,6 +202,8 @@ private:
     
     uint32_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度）
     uint32_t maxKvSeqlen_ = 0;  // BNSD格式KV的第三维（S维度）
+    int64_t totalTokensT_ = 0;  // TND格式Q的第一维（T维度，总token数）
+    int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数）
     
     ge::DataType dataType_ = ge::DT_FLOAT16;
 
