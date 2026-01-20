@@ -252,6 +252,8 @@ public:
 
     // empty Tensor
     bool emptyTensorFlag = false;
+    uint64_t totalOutputSize = 0;
+    uint64_t totalLseSize = 0;
 
     // PageAttention
     bool pageAttentionFlag = false;

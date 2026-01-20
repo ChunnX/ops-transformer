@@ -38,6 +38,9 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint64_t, padding1)
     TILING_DATA_FIELD_DEF(uint64_t, padding2)
     TILING_DATA_FIELD_DEF(uint32_t, padding3)
+    TILING_DATA_FIELD_DEF(int64_t, preToken)
+    TILING_DATA_FIELD_DEF(int64_t, nextToken)
+    TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
     END_TILING_DATA_DEF
     
     const uint32_t SIZE_OF_16BIT = 2;
@@ -48,10 +51,12 @@ namespace optiling{
     const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     const uint32_t BASE_KV_SIZE = 128;
     const uint32_t PRELANCH_NUM = 3;
+    const int64_t SPARSE_MODE_INT_MAX = 2147483647;
 
     enum class MaskType : uint32_t {
         NO_MASK = 0,
-        MASK_SPEC = 1
+        MASK_SPEC = 1,
+        SWA_MASK = 3
     };
 
     enum class DataType : uint32_t {
@@ -71,6 +76,9 @@ namespace optiling{
         int32_t innerPrecise = 0;
         int64_t maxQSeqlen = 0;
         int64_t maxKvSeqlen = 0;
+        int64_t preToken = 0;
+        int64_t nextToken = 0;
+        int32_t sparseMode = 0;
         uint32_t maxNumBlocksPerBatch = 0;
         const int64_t *qSeqlenList{nullptr};
         const int64_t *kvSeqlenList{nullptr};
@@ -145,6 +153,9 @@ namespace optiling{
         faTilingData.set_maxNumBlocksPerBatch(faInfo_.maxNumBlocksPerBatch);
         faTilingData.set_maskType(static_cast<uint32_t>(faInfo_.maskType));
         faTilingData.set_scaleValue(faInfo_.scaleValue);
+        faTilingData.set_sparseMode(faInfo_.sparseMode);
+        faTilingData.set_preToken(static_cast<int64_t>(faInfo_.preToken));
+        faTilingData.set_nextToken(static_cast<int64_t>(faInfo_.nextToken));
     }
 
     uint64_t FAInferTiling::GetTilingKey() 
@@ -152,6 +163,7 @@ namespace optiling{
         constexpr uint64_t SPLIT_FUSE_BASE_KEY = 5000000000000000000;
         constexpr uint64_t PAGED_CACHE_KEY = 10000000;
         constexpr uint64_t COMP_CAUSAL_MASK_KEY = 3;
+        constexpr uint64_t COMP_SWA_MASK_KEY = 5;
         constexpr uint64_t LAYOUTQ_TND_KEY = 200000;
         constexpr uint64_t DTYPE_FP16_KEY = 100;
         constexpr uint64_t DTYPE_BF16_KEY = 200;
@@ -164,6 +176,8 @@ namespace optiling{
         }
         if (faInfo_.maskType == MaskType::MASK_SPEC) {
             tilingKey += static_cast<uint64_t>(COMP_CAUSAL_MASK_KEY);
+        } else if (faInfo_.maskType == MaskType::SWA_MASK) {
+            tilingKey += static_cast<uint64_t>(COMP_SWA_MASK_KEY);
         }
         if (faInfo_.layout == "TND") {
             tilingKey += static_cast<uint64_t>(LAYOUTQ_TND_KEY);

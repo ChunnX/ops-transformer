@@ -16,12 +16,10 @@
 #ifndef FLASH_ATTENTION_SCORE_KERNEL_BASE_H_
 #define FLASH_ATTENTION_SCORE_KERNEL_BASE_H_
 #include "flash_attention_score_block_cube.h"
-#if  (__NPU_ARCH__ != 5102)
 #include "flash_attention_score_block_vec_train.h"
-#endif
 #include "flash_attention_score_block_vec_infer.h"
 #include "flash_attention_score_common_regbase.h"
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "attenmask.h"
 
 // 线上编包
@@ -32,6 +30,7 @@
 #include "pse.h"
 #include "infer_flash_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "adv_api/utils/init_global_memory.h"
 
 using matmul::MatmulType;
 using namespace AscendC;
@@ -151,11 +150,6 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 {
     fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
-#if (__NPU_ARCH__ == 5102)
-    constInfo.aivIdx = GetBlockIdx();
-    this->aicIdx = constInfo.aivIdx;
-    this->tilingData = tiling;
-#else
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
     } else {
@@ -163,7 +157,6 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         this->aicIdx = constInfo.aivIdx >> 1;
         this->tilingData = tiling;
     }
-#endif
     this->pipe = tPipe;
     vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
         attenMaskInfo, pseInfo);
@@ -237,7 +230,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
     } else {
@@ -277,39 +270,31 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         this->aicIdx, constInfo);
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
         if ASCEND_IS_AIV {
-            if (constInfo.aivIdx == 0) {
-                int64_t actualS1Len;
-                int64_t actualS2Len;
-                for (int64_t i = 0; i < this->sharedParams.bSize; ++i) {
-                    this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
-                    if (actualS2Len <= 0 && actualS1Len != 0) {
-                        int64_t accumSize = (i == 0) ? 0 : ((__gm__ int64_t *)this->actualSeqQlenAddr)[i - 1];
-                        if (actualS1Len < 0 && accumSize > 0) {
-                            actualS1Len = constInfo.s1Size - accumSize;
-                            int64_t frontCoreNum = actualS1Len % (this->sharedParams.coreNum * 2);
-                            int64_t splitFactor = frontCoreNum > 0 ? 1 : 0;
-                            int64_t s1SizeInner = actualS1Len / this->sharedParams.coreNum / 2;
-                            int64_t innerOffset1 = (s1SizeInner + splitFactor) * (constInfo.aivIdx >= frontCoreNum ?
-                                                frontCoreNum : constInfo.aivIdx);
-                            int64_t innerOffset2 = s1SizeInner * (constInfo.aivIdx >= frontCoreNum ?
-                                                constInfo.aivIdx - frontCoreNum : 0);
-                            accumSize = accumSize + innerOffset1 + innerOffset2;
-                            actualS1Len = s1SizeInner + (constInfo.aivIdx >= frontCoreNum ? 0 : splitFactor);
-                        }
-                        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-                        AscendC::InitOutput<OUTPUT_T>(this->vecBlock.attentionOutGm[accumSize * this->constInfo.n2GDv],
-                                                    actualS1Len * this->constInfo.n2GDv, static_cast<OUTPUT_T>(0.0));
-                        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                        AscendC::InitOutput<float>(this->vecBlock.softmaxMaxGm[accumSize * this->constInfo.n2G * 8],
-                                                actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
-                        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                        AscendC::InitOutput<float>(this->vecBlock.softmaxSumGm[accumSize * this->constInfo.n2G * 8],
-                                                actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
-                        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+            int64_t actualS1Len;
+            int64_t actualS2Len;
+            for (int64_t i = 0; i < this->sharedParams.bSize; ++i) {
+                this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
+                if (actualS2Len <= 0 && actualS1Len != 0) {
+                    int64_t accumSize = (i == 0) ? 0 : ((__gm__ int64_t *)this->actualSeqQlenAddr)[i - 1];
+                    if (actualS1Len < 0 && accumSize > 0) {
+                        actualS1Len = constInfo.s1Size - accumSize;
+                        int64_t frontCoreNum = actualS1Len % (this->sharedParams.coreNum * 2);
+                        int64_t splitFactor = frontCoreNum > 0 ? 1 : 0;
+                        int64_t s1SizeInner = actualS1Len / this->sharedParams.coreNum / 2;
+                        int64_t innerOffset1 = (s1SizeInner + splitFactor) * (constInfo.aivIdx >= frontCoreNum ?
+                                            frontCoreNum : constInfo.aivIdx);
+                        int64_t innerOffset2 = s1SizeInner * (constInfo.aivIdx >= frontCoreNum ?
+                                            constInfo.aivIdx - frontCoreNum : 0);
+                        accumSize = accumSize + innerOffset1 + innerOffset2;
+                        actualS1Len = s1SizeInner + (constInfo.aivIdx >= frontCoreNum ? 0 : splitFactor);
                     }
+                    GlobalTensor<OUTPUT_T> attentionOutEodGm = this->vecBlock.attentionOutGm[accumSize * this->constInfo.n2GDv];
+                    GlobalTensor<float> softmaxMaxEodGm = this->vecBlock.softmaxMaxGm[accumSize * this->constInfo.n2G * 8];
+                    GlobalTensor<float> softmaxSumEodGm = this->vecBlock.softmaxSumGm[accumSize * this->constInfo.n2G * 8];
+                    AscendC::Fill<OUTPUT_T>(attentionOutEodGm, actualS1Len * this->constInfo.n2GDv, static_cast<OUTPUT_T>(0.0));
+                    AscendC::Fill<float>(softmaxMaxEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
+                    AscendC::Fill<float>(softmaxSumEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
+                    SyncAll();
                 }
             }
         }
@@ -364,6 +349,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     constInfo.s2BaseSize = s2BaseSize;
     // 计算轴的乘积
 
+    constInfo.bSize = sharedParams.bSize;
+    constInfo.tSize = sharedParams.tSize;
     constInfo.n2Size = sharedParams.n2Size;
     constInfo.s1Size = sharedParams.s1Size;
     constInfo.s2Size = sharedParams.s2Size;
@@ -474,6 +461,20 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = 0;
         }
+    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+        // NG(BS)D
+        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
+        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
+        if constexpr (hasRope) {
+            constInfo.mm1RopeKa = constInfo.dSizeRope;
+            constInfo.mm1RopeKb = constInfo.dSizeRope;
+        }
+        constInfo.mm1Ka = constInfo.dSize;
+        constInfo.mm1Kb = constInfo.dSize;
+        constInfo.mm2Kb = constInfo.dSizeV;
+        if ASCEND_IS_AIV {
+            constInfo.attentionOutStride = 0;
+        }
     }
 
     if ASCEND_IS_AIV {
@@ -541,7 +542,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
             this->s1SizeAcc += runParam.actualS1Size;
             this->s2SizeAcc += runParam.actualS2Size;
             runParam.b1SSOffset += runParam.actualS1Size * runParam.actualS2Size;
-            if (hasDrop) {
+            if constexpr (hasDrop) {
                 runParam.b1SSOffsetAlign16 += runParam.actualS1Size * Align(runParam.actualS2Size);
             }
             runParam.boIdx++;
@@ -565,7 +566,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         runParam.b1SSOffset = runParam.boIdx * constInfo.s1S2;
         runParam.actualS1Size = constInfo.s1Size;
         runParam.actualS2Size = constInfo.s2Size;
-        if (hasDrop) {
+        if constexpr (hasDrop) {
             runParam.b1SSOffsetAlign16 = runParam.boIdx * constInfo.s1Size * Align(constInfo.s2Size);
         }
     }
@@ -642,8 +643,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     runInfo.s2AlignedSize = runInfo.s2RealSize;
     if constexpr (enableKVPrefix) {
         if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
-            if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-                runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
+            if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > constInfo.actualKVPrefixSize) {
+                runInfo.s2RealSize = constInfo.actualKVPrefixSize - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
                 runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
             }
         } else {

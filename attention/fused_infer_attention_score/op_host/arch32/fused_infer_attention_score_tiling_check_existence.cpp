@@ -312,7 +312,6 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaNoquant() const
         {QUANT_SCALE1_NAME, opParamInfo_.quantScale1.tensor},
         {DEQUANT_SCALE2_NAME, opParamInfo_.deqScale2.tensor},
         {DEQUANT_SCALE_QUERY_NAME, opParamInfo_.dequantScaleQuery.tensor},
-        
         // unsupportedFeaturesParam
         {PSE_SHIFT_NAME, opParamInfo_.pseShift.tensor},
         {QUERY_PADDING_SIZE_NAME, opParamInfo_.queryPaddingSize.tensor},

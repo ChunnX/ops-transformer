@@ -84,7 +84,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_0)
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1206124801;
     // int64_t expectTilingKey = 4294967295;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, "");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "");
 }
 // #endif
 
@@ -141,7 +141,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_1)
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 2362625;
     // int64_t expectTilingKey = 4294967295;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, "");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "");
 }
 
 // #endif
@@ -198,7 +198,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_2)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 266600448;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -254,7 +254,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_3)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1612975360;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -310,7 +310,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_4)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1210322176;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -366,7 +366,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_5)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1210322177;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -479,7 +479,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_7)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1747193088;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -649,7 +649,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_10)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1612975360;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -931,7 +931,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_15)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 2362625;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -1099,7 +1099,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_18)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 2362625;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -1155,7 +1155,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_19)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 2364417;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1212,7 +1212,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_20)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1269,7 +1269,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_21)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1326,7 +1326,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_22)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1383,7 +1383,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_23)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1440,7 +1440,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_24)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1497,7 +1497,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_25)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1554,7 +1554,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_26)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1611,7 +1611,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_27)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -1668,7 +1668,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_28)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1612975360;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -2180,7 +2180,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_37)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 2362625;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -2237,7 +2237,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_38)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580353;
-        // ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+        // ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 // #endif
@@ -2406,7 +2406,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_41)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 1210322176;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 
@@ -2462,7 +2462,7 @@ TEST_F(IncreFlashAttentionTiling, IncreFlashAttention_tiling_42)
          },
                 &compileInfo,"Ascend910_95",64,262144,16384);
     int64_t expectTilingKey = 136580352;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // #endif
 

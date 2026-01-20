@@ -18,7 +18,7 @@
 
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
-#include "arch32/rope.h"
+#include "service_rope.h"
 
 namespace MlaProlog {
 /**

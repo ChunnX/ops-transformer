@@ -31,7 +31,7 @@ inline auto Align(T num, T rnd) -> T
     return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
 }
 
-uint32_t CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t alignNum) 
+uint32_t CalcSingleCoreNV2(uint32_t n, uint32_t coreNum, uint32_t alignNum) 
 {
     return CeilDiv(n, alignNum * coreNum) * alignNum;
 }

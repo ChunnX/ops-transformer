@@ -61,6 +61,7 @@ public:
 class InputParamsRegbase {
 public:
     int64_t bSize;
+    uint32_t tSize;
     int64_t n2Size;
     int64_t gSize;
     int64_t s1Size;
@@ -136,6 +137,8 @@ public:
 
     int64_t get_bSize() const {return bSize;}
     void set_bSize(int64_t bSizeParam) {this->bSize = bSizeParam;}
+    int64_t get_tSize() const {return tSize;}
+    void set_tSize(int64_t tSizeParam) {this->tSize = tSizeParam;}
     int64_t get_n2Size() const {return n2Size;}
     void set_n2Size(int64_t n2SizeParam) {this->n2Size = n2SizeParam;}
     int64_t get_gSize() const {return gSize;}

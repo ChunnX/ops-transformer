@@ -15,7 +15,7 @@
 #ifndef OFFSET_CALCULATOR_H
 #define OFFSET_CALCULATOR_H
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 
 using namespace AscendC;
 using AscendC::GlobalTensor;

@@ -930,7 +930,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::ComputeMm1(const RunInfo &inf
     uint32_t mSize = info.actMBaseSize;
     uint32_t kSize = constInfo.headDim + constInfo.headDimRope;
     uint32_t nSize = info.actualSingleProcessSInnerSize;
- 
+
     if (constInfo.ropeSplitMode) {
         kSize = Align(constInfo.headDim, 16UL) + constInfo.headDimRope;
     }

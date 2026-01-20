@@ -26,15 +26,16 @@ template <
     class InputType_,
     class MaskType_,
     LseMode LSE_MODE_,
-    SinkMode SINK_MODE_>
+    SinkMode SINK_MODE_,
+    MaskMode MASK_MODE_>
 class BlockEpilogue<
-    EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, half>,
+    EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, MASK_MODE_, half>,
     OutputType_,
     InputType_,
     MaskType_>
 {
 public:
-    using DispatchPolicy = EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, half>;
+    using DispatchPolicy = EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, MASK_MODE_, half>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementOutput = typename OutputType_::Element;
     using ElementInput = typename InputType_::Element;

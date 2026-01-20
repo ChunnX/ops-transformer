@@ -70,17 +70,20 @@ public:
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, 
         __gm__ uint8_t *pse, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
         __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
-        __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+        __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe,
         __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
         __gm__ uint8_t* keyAntiquantScale, __gm__ uint8_t* keyAntiquantOffset,
         __gm__ uint8_t* valueAntiquantScale, __gm__ uint8_t* valueAntiquantOffset,
         __gm__ uint8_t* postQuantScale, __gm__ uint8_t* postQuantOffset);
+    __aicore__ inline void InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void InitInput(__gm__ uint8_t *query, __gm__ uint8_t *key,
         __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
         __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
-        __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+        __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitBuffer();
     __aicore__ inline void Process();
@@ -108,6 +111,8 @@ public:
     AntiquantVecBlockType vecBlock;
     /*GM*/
     GlobalTensor<KV_T> keyGm;
+    using prefixGmType = typename std::conditional<enableKVPrefix, GlobalTensor<KV_T>, int8_t>::type;
+    prefixGmType keySharedPrefixGm;
     __gm__ int64_t *actualSeqQlenAddr;
     __gm__ int64_t *actualSeqKvlenAddr;
     uint64_t s1SizeAcc;
@@ -120,6 +125,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+    __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, 
     const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe,
     __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
@@ -129,13 +135,32 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
 {
     this->tilingData = tiling;
     this->pipe = tPipe;
+    this->InitActualKVPrefixLen(actualSharedPrefixLen);
     this->ComputeConstexpr();
     this->InitInput(query, key, value, pse, attenMask, actualSeqLengths, actualSeqLengthsKv, 
-        blockTable, queryPaddingSize, kvPaddingSize, softmaxLse, attentionOut, workspace, tiling, tPipe);
+        blockTable, queryPaddingSize, kvPaddingSize, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen,
+        softmaxLse, attentionOut, workspace, tiling, tPipe);
     this->InitBuffer();
     this->vecBlock.ClearOutput(this->constInfo);
     this->vecBlock.InitQuant(antiquantScale, antiquantOffset, keyAntiquantScale,
         keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, postQuantScale, postQuantOffset, this->constInfo);
+}
+
+template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
+__aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen)
+{
+    if constexpr (isInfer) {
+        auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
+        if constexpr (enableKVPrefix) {
+            constInfo.kvPrefixSize = inputParamsRegbase.prefixSeqInnerSize;
+            if (!inputParamsRegbase.isActualSharedPrefixLenNull) {
+                this->constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
+            } else {
+                this->constInfo.actualKVPrefixSize = inputParamsRegbase.prefixSeqInnerSize;
+            }
+            this->constInfo.prefixLoopCount = (this->constInfo.actualKVPrefixSize + s2BaseSize - 1) / s2BaseSize;
+        }
+    }
 }
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
@@ -319,7 +344,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     }
     if constexpr (isFd) {
         this->constInfo.splitKVNum = inputParamsRegbase.kvSplitPart;
-        this->constInfo.sInnerLoopSize = CeilDivision(this->constInfo.s2Size, this->constInfo.splitKVNum);
+        this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
         if constexpr (PAGE_ATTENTION_ANTIQUANT) {
             this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
@@ -361,6 +386,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
         __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
 {
@@ -377,6 +403,9 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         this->keyGm.SetGlobalBuffer((__gm__ KV_T *)currentKey);
     } else {
         this->keyGm.SetGlobalBuffer((__gm__ KV_T *)key);
+    }
+    if constexpr (enableKVPrefix) {
+        this->keySharedPrefixGm.SetGlobalBuffer((__gm__ KV_T *)keySharedPrefix);
     }
     if (constInfo.isQHasLeftPadding) {
         constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
@@ -405,7 +434,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     }
     this->cubeBlock.InitCubeBlock(query, tiling, tPipe, &l1BufferManager);
     this->vecBlock.InitVecBlock(value, attentionOut, softmaxLse, pse, attenMask, blockTable,
-         workspace, tiling, tPipe, attenMaskInfo, pseInfo);
+         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, workspace, tiling, tPipe, attenMaskInfo, pseInfo);
 }
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
@@ -552,8 +581,18 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
                     RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];  // 3 is mod 4
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, runParam.s2LoopEndIdx - 1, multiCoreInnerIdx);
                     if ASCEND_IS_AIV {
-                        GlobalTensor<KV_T> keyGmAnti = this->keyGm;
-                        this->vecBlock.GetKvByTensorList(runInfo1, this->keyGm, keyGmAnti, this->constInfo);
+                        GlobalTensor<KV_T> keyGmAnti;
+                        if constexpr (enableKVPrefix) {
+                            if (runInfo1.s2LoopCount < constInfo.prefixLoopCount) {
+                                keyGmAnti = this->keySharedPrefixGm;
+                            } else {
+                                keyGmAnti = this->keyGm;
+                                this->vecBlock.GetKvByTensorList(runInfo1, this->keyGm, keyGmAnti, this->constInfo);
+                            }
+                        } else {
+                            keyGmAnti = this->keyGm;
+                            this->vecBlock.GetKvByTensorList(runInfo1, this->keyGm, keyGmAnti, this->constInfo);
+                        }
                         Buffer<BufferType::L1> outBufAntiKey = this->kvAntiquantRes.Get();
                         this->vecBlock.AntiquantKey(runInfo1, subTaskId, isFirstAntiquantKey,
                             runParam, outBufAntiKey, keyGmAnti, this->constInfo);
@@ -721,9 +760,23 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = s2BaseSize;
     runInfo.s2AlignedSize = runInfo.s2RealSize;
-    if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-        runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+    if constexpr (enableKVPrefix) {
+        if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
+            if ((runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize) > constInfo.actualKVPrefixSize) {
+                runInfo.s2RealSize = constInfo.actualKVPrefixSize - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
+                runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+            }
+        } else {
+            if (runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx - constInfo.actualKVPrefixSize) {
+                runInfo.s2RealSize = (runInfo.s2EndIdx - constInfo.actualKVPrefixSize) - (runInfo.s2LoopCount - constInfo.prefixLoopCount) * runInfo.s2RealSize - runInfo.s2StartIdx;
+                runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+            }
+        }
+    } else {
+        if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
+            runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
+            runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+        }
     }
 }
 

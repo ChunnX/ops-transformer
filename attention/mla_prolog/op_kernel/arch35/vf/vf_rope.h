@@ -23,7 +23,7 @@ namespace MlaProlog {
 constexpr uint64_t FLOAT_VF_SIZE = 64;
 
 template <typename T>
-__smid_vf__ void RopeVFImpl(__ubuf__ T * ropeUb, __ubuf__ T * sinUb, __ubuf__ T * cosUb, __ubuf__ uint32_t * gatherUb1, 
+__simd_vf__ void RopeVFImpl(__ubuf__ T * ropeUb, __ubuf__ T * sinUb, __ubuf__ T * cosUb, __ubuf__ uint32_t * gatherUb1, 
     __ubuf__ uint32_t * gatherUb2, __ubuf__ T * resUb, const uint16_t row)
 {
     MicroAPI::RegTensor<float> vregRopeFp32_1;

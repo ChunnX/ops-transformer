@@ -22,7 +22,7 @@
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
-#define MAKE_ID ((++idCounterNum) % 16)
+#define MAKE_ID ((++idCounterNum) % 11)
 
 // 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
 #define AIV0_AIV1_OFFSET 16
@@ -164,6 +164,24 @@ public:
                 } else {
                     SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_); // 消费者通知生产者已完成消费
                 }
+            }
+        }
+    }
+
+    __aicore__ inline void SetEventID() {
+        if ASCEND_IS_AIC {
+            p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
+            c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
+        }
+    }
+
+    template<HardEvent EventType>
+    __aicore__ inline TEventID GetEventID() {
+        if ASCEND_IS_AIC {
+            if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
+                return p2cEventId_; // 生产者通知消费者已完成生产
+            } else {
+                return c2pEventId_; // 消费者通知生产者已完成消费
             }
         }
     }

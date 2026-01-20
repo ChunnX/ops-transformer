@@ -268,7 +268,7 @@ private:
     __aicore__ inline void CopyKToL1(uint32_t dstBufId, const RunInfo &info, uint32_t subNStart, uint32_t subNSize);
     template <CubeFormat Format>
     __aicore__ inline void CopyPToL1(uint32_t dstBufId, const RunInfo &info, uint32_t gmStride,
-                                     uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
+                                         uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
     __aicore__ inline void CopyVToL1(uint32_t dstBufId, const RunInfo &info, uint32_t subKStart, uint32_t subKSize);
 
     template <uint32_t M_L1_SIZE, bool FOECE=false>
@@ -276,11 +276,11 @@ private:
 
     template <uint32_t M_L1_SPLIT_Size, typename T1>
     __aicore__ inline void LoadAToL0(uint32_t dstBufId, const LocalTensor<T1> &l1Tensor, uint32_t mL1Size,
-                                     uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
+                                         uint32_t subMStart, uint32_t subMSize, uint32_t subKStart, uint32_t subKSize);
     __aicore__ inline void LoadBTransposeToL0(uint32_t dstBufId, const LocalTensor<KV_T> &l1Tensor, uint32_t nL1Size,
-                                              uint32_t subNStart, uint32_t subNSize, uint32_t subKStart, uint32_t subKSize);
+                                         uint32_t subNStart, uint32_t subNSize, uint32_t subKStart, uint32_t subKSize);
     __aicore__ inline void LoadBToL0(uint32_t dstBufId, const LocalTensor<KV_T> &l1Tensor, uint32_t kL1Size,
-                                     uint32_t subKStart, uint32_t subKSize, uint32_t subNStart, uint32_t subNSize);
+                                         uint32_t subKStart, uint32_t subKSize, uint32_t subNStart, uint32_t subNSize);
     template <CubeFormat GMFormat>
     __aicore__ inline void FixpipeCToGM(GlobalTensor<MM_OUT_T> &mmResGm, uint32_t cL0BufId,
                                         uint32_t dstStride, uint32_t subMStart, uint32_t subMSize,
@@ -974,9 +974,9 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm1(const R
             uint32_t qBufId;
             if (unlikely(!reuseQBuf)) {
                 qBufId = this->qL1BufId;
-                // 在需要搬入Q前才去Set MTE1->MTE2事件，而不是在L0算完后就去Set，是考虑到buf的生命周期可能跨越多轮MM1计算,
-                // 如果前一次MM1计算还未完成，还在复用Q_L1 buf，后一个MM1计算就开始搬入，就会覆盖前一次计算的数据
-                SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId);
+                // 在需要搬入Q前才去Set MTE1->MTE2事件，而不是在L0算完后就去Set，是考虑到Q_L1 buf的生命周期可能跨越多轮MM1计算，
+                // 如果前一次MM1计算还未完成，还在复用Q_L1 buf，后一次MM1计算就开始搬运，就会覆盖了前一次计算的数据
+                SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + this->qL1BufId);
                 WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId);
                 CopyQToL1(qBufId, info, mL1.start, mL1.sizeAct);
 
@@ -997,7 +997,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm1(const R
 
                         LoadAToL0<M_SPLIT_SIZE>(this->abL0BufId, qL1Tensor[qBufId], mL1.AlignedSize(), mL0.start, mL0.AlignedSize(), kL0.start, kL0.AlignedSize());
                         LoadBTransposeToL0(this->abL0BufId, kpL1Tensor[this->kpL1BufId], nL1.AlignedSize(), nL0.start, nL0.AlignedSize(), kL0.start, kL0.AlignedSize());
-                           
+                        
                         SetFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
                         WaitFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
 
@@ -1136,7 +1136,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
             if (this->kpL1BufId >= L1_KP_BUFCNT) {
                 this->kpL1BufId = 0;
             }
-            
+
             if (unlikely(!canFullLoadV || mL1.IsTailOf(m))) {
                 // 当可以复用V_L1 buf时，它的生命周期跨越整个mL1的迭代，在mL1迭代完成释放
                 SetFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId);

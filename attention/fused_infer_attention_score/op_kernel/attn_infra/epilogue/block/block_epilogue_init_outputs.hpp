@@ -41,7 +41,7 @@ public:
 
     static constexpr LseMode LSE_MODE = DispatchPolicy::LSE_MODE;
     static constexpr float ATTN_OUT_INI = 0;
-    static constexpr float LSE_OUT_INI = 3e+99;
+    static constexpr float LSE_OUT_INI = std::numeric_limits<float>::infinity();
     static constexpr uint32_t HALF_ELEM_NUM_PER_BLK = 16;
     static constexpr uint32_t FLOAT_ELEM_NUM_PER_BLK = 8;
     static constexpr uint32_t HALF_ELEM_NUM_PER_RPT = 128;

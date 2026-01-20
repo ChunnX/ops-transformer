@@ -21,7 +21,6 @@
 #include "../fia_tiling_info.h"
 #include "../split_core.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"
-#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_struct.h"
 
 namespace optiling {
 
@@ -74,8 +73,8 @@ private:
     void CalcWorkspaceSize();
     void CalcMaxWorkspaceSize();
     void CalcBlockDim(uint32_t coreNum);
-
-    void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken) const;
+    void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
+                         int64_t &safePreToken, int64_t &safeNextToken) const;
     bool IsExistRowInvalid(const BaseInfo &baseInfo);
 
     bool splitKVFlag_ = false;

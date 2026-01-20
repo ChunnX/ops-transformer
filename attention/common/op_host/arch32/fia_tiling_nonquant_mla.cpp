@@ -91,7 +91,6 @@ bool FiaTilingNonQuantMla::IsCapable()
 
     ge::DataType qDataType = fiaInfo_->inputQType;
     ge::DataType kDataType = fiaInfo_->inputKvType;
-
     // 仅支持非量化
     if ((qDataType != ge::DT_FLOAT16 && qDataType != ge::DT_BF16) || (qDataType != kDataType)) {
         return false;

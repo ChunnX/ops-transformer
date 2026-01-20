@@ -200,7 +200,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Dynamic Quant 局部变量
     uint64_t rowStepSize = 16; // 单次处理最大行数
 
-    if (cvRatio == 1) { // cv1:1场景改为8行进行计算，降低UB使用
+    if (cvRatio == 1) { // cv1:1场景，改为8行进行计算，降低UB使用
         rowStepSize = 8;
     }
 

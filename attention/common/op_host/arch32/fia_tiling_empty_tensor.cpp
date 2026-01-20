@@ -51,7 +51,7 @@ bool FiaTilingEmptyTensor::IsCapable()
     if (fiaInfo_ == nullptr) {
         return false;
     }
-    if (fiaInfo_->emptyTensorFlag == 1) {
+    if (fiaInfo_->emptyTensorFlag) {
         return true;
     }
     return false;
@@ -77,16 +77,22 @@ void FiaTilingEmptyTensor::FillTiling()
     uint64_t totalLseSize = 0;
     uint64_t singleCoreLseSize = 0;
     uint64_t tSize = static_cast<uint64_t>(fiaInfo_->bSize) * static_cast<uint64_t>(fiaInfo_->s1Size);
-    if (fiaInfo_->isAccumQSeq == true) {
+    if (fiaInfo_->outLayout == FiaLayout::TND || fiaInfo_->outLayout == FiaLayout::NTD) {
         tSize = fiaInfo_->qTSize;
     }
     totalOutputSize = tSize * fiaInfo_->n1Size * fiaInfo_->vHeadDim;
+    if (totalOutputSize > fiaInfo_->totalOutputSize) {
+        totalOutputSize = fiaInfo_->totalOutputSize;
+    }
     singleCoreSize = (totalOutputSize + (2UL * usedCoreNum_) - 1UL) / (2UL * usedCoreNum_);
     if (fiaInfo_->isOutQuantEnable) {
         singleCoreSize = (singleCoreSize + 1UL) / 2UL;
     }
     if (fiaInfo_->softmaxLseFlag) {
         totalLseSize = tSize * fiaInfo_->n1Size;
+        if (totalLseSize > fiaInfo_->totalLseSize) {
+            totalLseSize = fiaInfo_->totalLseSize;
+        }
         singleCoreLseSize = (totalLseSize + (2UL * usedCoreNum_) - 1UL) / (2UL * usedCoreNum_);
     }
     

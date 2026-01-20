@@ -60,7 +60,7 @@ struct AxesInfo {
     int64_t t2;
 };
 
-enum class InputLayout { SH, BSH, NSD, BNSD, BSND, BNSD_BSND, TND, NONE, };
+enum class InputLayout { SH, BSH, NSD, BNSD, BSND, BNSD_BSND, TND, NTD, NONE, };
 
 static const std::unordered_map<DataType, string> StrDataTypePfa = {
     {DataType::DT_FLOAT, "DT_FLOAT"},
@@ -146,6 +146,11 @@ static aclnnStatus CheckDimsAndLayout(const aclTensor *query, const aclTensor *k
                 inputLayout[LAYOUT_STR_LENGTH_2] == 'D')) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "layout is TND, input shape dim should be 3, but got %lu", qDimNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    } else if ((qDimNum != DIM_NUM_3) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_3 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'N' && inputLayout[LAYOUT_STR_LENGTH_1] == 'T' &&
+                inputLayout[LAYOUT_STR_LENGTH_2] == 'D')) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "layout is NTD, input shape dim should be 3, but got %lu", qDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if ((qDimNum != DIM_NUM_2) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_2 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'S' && inputLayout[LAYOUT_STR_LENGTH_1] == 'H')) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -251,6 +256,20 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         shapeInfo.l0InputLayoutStr = "TND";
     }
 
+    // NTD
+    if (shapeInfo.dimNum == DIM_NUM_3 && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_3 && inputLayout[0] == 'N' && inputLayout[1] == 'T' && inputLayout[2] == 'D') {
+        shapeInfo.axes.b = 1;
+        shapeInfo.axes.n2 = kShape[0];
+        shapeInfo.axes.s1 = 1;
+        shapeInfo.axes.s2 = 1;
+        shapeInfo.axes.t1 = qShape[1];
+        shapeInfo.axes.t2 = kShape[1];
+        shapeInfo.axes.d = qShape[INDEX_2];
+        shapeInfo.axes.dV = vShape[INDEX_2];
+        shapeInfo.inputLayout = InputLayout::NTD;
+        shapeInfo.l0InputLayoutStr = "NTD";
+    }
+
     // query: (B,S1,N1,D)
     // key/value: (B,S2,N2,D)
     if (shapeInfo.dimNum == DIM_NUM_4 && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_4 && inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'N' &&
@@ -299,7 +318,7 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
     }
 
     if (shapeInfo.inputLayout == InputLayout::NONE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "PFA inputLayout only supports BSH, BNSD, BSND, BNSD_BSND, TND, current layout: %s", inputLayout);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "PFA inputLayout only supports BSH, BNSD, BSND, BNSD_BSND, TND, NTD, current layout: %s", inputLayout);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -366,7 +385,7 @@ static aclnnStatus AnalysisInputShapeInfo(const aclTensor *query, const aclTenso
                     "the output type can't be int8.", shapeInfo.axes.d, shapeInfo.axes.dV);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (shapeInfo.inputLayout != InputLayout::TND && shapeInfo.axes.d > 128) {  // 128 : When D of query and value are different, D > 128, it should be aligned with 256, and D <= 128, it should be aligned with 32B.
+        if ((shapeInfo.inputLayout != InputLayout::TND && shapeInfo.inputLayout != InputLayout::NTD) && shapeInfo.axes.d > 128) {  // 128 : When D of query and value are different, D > 128, it should be aligned with 256, and D <= 128, it should be aligned with 32B.
             shapeInfo.basicBlock = PAD_BASIC_BLOCK_256;
         }
     } else if ((queryDataType == DataType::DT_INT8) || (keyDataType == DataType::DT_INT8) ||

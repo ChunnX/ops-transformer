@@ -66,7 +66,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_0)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 4423156480;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // BSH
@@ -108,7 +108,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_1)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 266601217;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // BSND
@@ -150,7 +150,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_2)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 266601217;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // TND
@@ -195,7 +195,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_3)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 266601986;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // BNSD_BSND
@@ -237,7 +237,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 266600960;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // k = 0/v = 0/out = 0
@@ -279,7 +279,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_5)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 2277507072;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_6)
@@ -320,7 +320,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_6)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 132383488;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // DT_HIFLOAT8
@@ -488,7 +488,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 1206124800;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 //  enableIFA = true
@@ -530,6 +530,6 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9_1)
         &compileInfo, "Ascend910_95", 64, 262144, 16384);
     int64_t expectTilingKey = 1206124800;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 

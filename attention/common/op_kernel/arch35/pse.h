@@ -16,7 +16,7 @@
 #ifndef FLASH_ATTENTION_SCORE_PSE_H
 #define FLASH_ATTENTION_SCORE_PSE_H
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "util_regbase.h"
 
 namespace regbaseutil {

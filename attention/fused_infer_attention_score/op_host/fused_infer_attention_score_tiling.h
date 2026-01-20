@@ -137,7 +137,6 @@ TILING_DATA_FIELD_DEF(uint32_t, qPaddingFlag)
 TILING_DATA_FIELD_DEF(uint32_t, kvPaddingFlag)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionLeftPaddingParamsOp, FusedInferAttentionLeftPaddingParams)
-
 // 后量化 参数
 BEGIN_TILING_DATA_DEF(FusedInferAttentionPostQuantParams)
 TILING_DATA_FIELD_DEF(uint32_t, isPerChnOut)

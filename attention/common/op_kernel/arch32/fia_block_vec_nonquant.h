@@ -126,9 +126,9 @@ protected:
                                             int64_t s1Idx, int64_t row);
     __aicore__ inline void InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
     __aicore__ inline void DealPostQuantOutPerChn(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb,
-                                                uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount);
+                                                  uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount);
     __aicore__ inline void DealPostQuantOutPerTensor(LocalTensor<MM2_OUT_T> &bmm2ResUb, uint32_t startRow,
-                                                    uint32_t dealRowCount, uint32_t columnCount);
+                                                     uint32_t dealRowCount, uint32_t columnCount);
 
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
@@ -260,8 +260,9 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Init(
         if (constInfo.pseShiftFlag) {
             pseShiftGm.SetGlobalBuffer((__gm__ PSE_T *)pseShift);
             pseShiftGmTensor.gmTensor = pseShiftGm;
-            pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.batchSize : 1,
-                constInfo.kvHeadNum, constInfo.gSize, constInfo.pseShiftS1, constInfo.pseShiftS2);
+            pseShiftGmTensor.offsetCalculator.Init(
+                constInfo.pseShiftByBatch ? constInfo.batchSize : 1, constInfo.kvHeadNum, constInfo.gSize,
+                constInfo.pseShiftS1, constInfo.pseShiftS2, this->actualSeqLengthsGmQ, constInfo.actualLenQDims);
         }
     }
     if constexpr (POST_QUANT) {
@@ -305,7 +306,6 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::InitB
 
     // tmpBuff
     pipe->InitBuffer(tmpBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K);
-
     // 1. [M,8]场景: 2K/32B = 64, 即单个VEC上可以缓存64行, 整个AICORE上有2个VEC，所以此时分核的MBaseSize<=128
     // 2. [M,1]场景: 2K/sizeof(float) = 512, 即单个VEC上可以缓存512行, 所以此时分核的MBaseSize<=512*2=1024
     pipe->InitBuffer(softmaxMaxBuff, SOFTMAX_TMP_BUFFER_SIZE * constInfo.preLoadNum);
@@ -528,7 +528,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
         maskInfo.nextToken = constInfo.nextToken;
         maskInfo.sparseMode = static_cast<fa_base_vector::SparseMode>(constInfo.sparseMode);
         maskInfo.batchIdx = info.bIdx;
-        maskInfo.batchOffset = constInfo.attenMaskBatchStride;
+        maskInfo.attenMaskBatchStride = constInfo.attenMaskBatchStride;
         maskInfo.attenMaskStride = constInfo.attenMaskStride;
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = info.qPaddingBeginOffset;
@@ -774,12 +774,12 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2CastAndCopyOut(const RunIn
             DealPostQuantOutPerTensor(bmm2ResUb, startRow, dealRowCount, columnCount);
         }
     }
-    
+
     DealInvalidRows(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
     DealInvalidMaskRows(info, bmm2ResUb, wsMStart, startRow, dealRowCount, columnCount, actualColumnCount);
     AscendC::PipeBarrier<PIPE_V>();
 
-    LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputQue1.AllocTensor<OUT_T>();  
+    LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputQue1.AllocTensor<OUT_T>();
     if constexpr (POST_QUANT) {
         LocalTensor<half> quant2ResHalf = tmpBuff1.Get<half>();
         Cast(quant2ResHalf, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
@@ -851,8 +851,8 @@ FiaBlockVecNonQuant<FIAT>::CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoord
 template <typename FIAT>
 __aicore__ inline void
 FiaBlockVecNonQuant<FIAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb,
-                                                        uint32_t wsMStart, uint32_t dealRowCount,
-                                                        uint32_t columnCount, uint32_t actualColumnCount)
+                                                           uint32_t wsMStart, uint32_t dealRowCount,
+                                                           uint32_t columnCount, uint32_t actualColumnCount)
 {
     FaUbTensor<OUT_T> ubTensor {
         .tensor = attenOutUb,

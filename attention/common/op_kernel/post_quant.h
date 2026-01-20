@@ -1,17 +1,17 @@
 /**
-* Copyright (c) 2025 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
-* \file post_quant.h
-* \brief
-*/
+ * \file post_quant.h
+ * \brief
+ */
 #ifndef POST_QUANT_H
 #define POST_QUANT_H
 #include "memory_copy.h"
@@ -58,11 +58,6 @@ public:
                                             PostQuantInfo_V2 &postQuantInfo)
     {
         OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
-        uint32_t elementNum = fa_base_vector::BYTE_BLOCK / sizeof(PARAM_T);
-        uint32_t blockLen = offsetCalculator.GetDimD() * sizeof(PARAM_T);
-        uint64_t srcStride = (offsetCalculator.GetStrideG() - offsetCalculator.GetDimD()) * sizeof(PARAM_T);
-        uint32_t dstStride = (postQuantInfo.colCount - offsetCalculator.GetDimD()) / elementNum;
-        uint32_t rightPadding = (postQuantInfo.colCount - offsetCalculator.GetDimD()) % elementNum;
 
         if constexpr (UB_FORMAT == UbFormat::S1G) {
             uint32_t s1IdxStart = postQuantInfo.gS1Idx / offsetCalculator.GetDimG();
@@ -74,8 +69,8 @@ public:
                 // 存在完整中间段, 拷贝完整G
                 uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
                 uint32_t blockCount = offsetCalculator.GetDimG();
-                CopySingleMatrixNDToND(dstUb, srcTensor.gmTensor[offset], blockCount,
-                    blockLen, srcStride, dstStride, rightPadding);
+                CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], offsetCalculator.GetDimG(),
+                    offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
             } else {
                 // 处理第一段S1
                 uint32_t headSize = 0;
@@ -85,18 +80,16 @@ public:
                     headSize = offsetCalculator.GetDimG() - gIdxStart;
                 }
                 uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
-                uint32_t blockCount = headSize;
-                CopySingleMatrixNDToND(dstUb, srcTensor.gmTensor[offset],
-                    blockCount, blockLen, srcStride, dstStride, rightPadding);
+                CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset],
+                    headSize, offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
 
                 // 处理第二段S1
                 if ((s1IdxEnd - s1IdxStart == 1) && (gIdxEnd > 0)) {
                     offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
                     uint32_t ubOffset = headSize * postQuantInfo.colCount;
 
-                    uint32_t blockCount = gIdxEnd;
-                    CopySingleMatrixNDToND(dstUb[ubOffset], srcTensor.gmTensor[offset],
-                        blockCount, blockLen, srcStride, dstStride, rightPadding);
+                    CopySingleMatrixNDToND<PARAM_T>(dstUb[ubOffset], srcTensor.gmTensor[offset],
+                        gIdxEnd, offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
                 }
             }
         } else {
@@ -105,9 +98,9 @@ public:
 
             uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
             // postQuantInfo.gS1DealSize + s1IdxStart是将第一个G的S1部分补齐后的总GS1行数
-            uint32_t blockCount = ((postQuantInfo.gS1DealSize + s1IdxStart) + (postQuantInfo.s1Size - 1)) / postQuantInfo.s1Size;
-            CopySingleMatrixNDToND(dstUb, srcTensor.gmTensor[offset],
-                    blockCount, blockLen, srcStride, dstStride, rightPadding);
+            CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset],
+                ((postQuantInfo.gS1DealSize + s1IdxStart) + (postQuantInfo.s1Size - 1)) / postQuantInfo.s1Size,
+                offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
         }
     }
 

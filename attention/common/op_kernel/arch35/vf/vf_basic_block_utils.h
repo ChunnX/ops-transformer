@@ -15,7 +15,7 @@
 #ifndef VF_BASIC_BLOCK_UTILS_H
 #define VF_BASIC_BLOCK_UTILS_H
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 
 namespace FaVectorApi {
 constexpr uint32_t floatRepSize = 64;

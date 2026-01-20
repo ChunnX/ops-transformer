@@ -60,6 +60,8 @@ struct ContextParamsForPFATiling {
     ge::DataType maskDataType = ge::DataType::DT_FLOAT16;
     ge::DataType blockTableType = ge::DataType::DT_FLOAT16;
     ge::DataType outputDataType = ge::DataType::DT_FLOAT16;
+    ge::DataType keySharedPrefixDataType = ge::DataType::DT_FLOAT16;
+    ge::DataType valueSharedPrefixDataType = ge::DataType::DT_FLOAT16;
     const char *opName = nullptr;
     const gert::StorageShape *queryInputShape = nullptr;
     const gert::StorageShape *keyInputShape = nullptr;

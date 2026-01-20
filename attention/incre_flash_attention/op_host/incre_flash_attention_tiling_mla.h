@@ -78,6 +78,12 @@ TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreBArr);  // Bi
 TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreS1Arr); // s1Idx
 TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreKVSplitArr); // 规约任务对应的切分份数
 TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreStartKVSplitNum); // 当前核的第一个块对应的S2外切索引
+TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHead);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHeadSplit);
+TILING_DATA_FIELD_DEF(uint32_t, usedVecNumOfFd);
+TILING_DATA_FIELD_DEF(uint32_t, FdBalanceFlag);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1SplitNumOfFdHeadMla);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1LastPartSizeOfFdHead);
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(IncreFlashAttentionTNDSplitCoreParamsMlaOp, IncreFlashAttentionTNDSplitCoreParamsMla)
 

@@ -23,11 +23,13 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "../ifa_public_define.h"
 #include "ifa_service_matmul_full_quant.h"
+#include "service_vector_flashdecode_mla.h"
 
 using namespace matmul;
 using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
+using namespace AttentionCommonFlashDecode;
 
 #define USE_SERVICE
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
@@ -140,7 +142,12 @@ public:
     static constexpr float deqScaleV = 256.0;
     static constexpr float quantScaleC = 1.0 / 256;
     static constexpr float scaleP1 = 127.0;
-    static constexpr float scaleP2 = 1 / 127.0;
+    // static constexpr float scaleP2 = 1 / 127.0;
+    static constexpr float scaleP2 = 0.0078740157f;
+    static constexpr uint32_t PRELOAD_NUM = 2;
+    ServiceFlashDecode<IFAT> fdService;
+    static constexpr uint32_t mFdBaseSizeMla = 8;
+    static constexpr int64_t fdPrefetchLen = 2;
 
 protected:
     const IncreFlashAttentionTilingDataMla *__restrict tilingData = nullptr;
@@ -233,6 +240,7 @@ protected:
     LocalTensor<T> qAmaxUb;
     LocalTensor<T> antiqScaleUb;
     LocalTensor<T> antiqOffsetUb;
+    AttentionCommonFlashDecode::ConstInfoFD constInfo{};
 
     uint64_t msdRowMaxSize = 0;
     uint64_t msdRowSumSize = 0;
@@ -267,7 +275,8 @@ protected:
     static constexpr uint64_t headDimAll  = 576ULL;
     static constexpr bool batchContinuous = true;
     static constexpr uint32_t n2Idx = 0U;
-    static constexpr float scaleC1  = 1024.0 / 127;
+    // static constexpr float scaleC1  = 1024.0 / 127;
+    static constexpr float scaleC1  = 8.06299213f;
     static constexpr float scaleC2  = 1024.0;
     static constexpr uint32_t msdIterNum = 2U;
 
@@ -465,6 +474,7 @@ protected:
 
     __aicore__ inline void FlashDecodeCompute();
     __aicore__ inline void FlashDecodeComputeND();
+    __aicore__ inline void FlashDecode();
 
     __aicore__ inline void DealBmm1ResBaseBlock(const ExtraInfoMla &info, uint32_t startRow, uint32_t dealRowCount,
                                                 uint32_t columnCount, uint32_t actualColumnCount);
@@ -574,6 +584,17 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadM
     kvCacheBlockSize = tilingData->baseParams.blockSize;
     outputLayout = static_cast<LAYOUT> (tilingData->baseParams.outputLayout);
     tndSgBasicSize = s1SizeSub * gSize;
+    // flashdecode新增结构体
+    constInfo.preLoadNum = PRELOAD_NUM;
+    constInfo.batchSize = tilingData->baseParams.batchSize;
+    constInfo.gSize = tilingData->baseParams.nNumOfQInOneGroup;
+    constInfo.qHeadNum = tilingData->baseParams.nNumOfQInOneGroup;
+    constInfo.kvHeadNum = kvHeadNum;
+    constInfo.headDim = headDim;
+    constInfo.headDimAlign = headDimAlign;
+    constInfo.qSeqSize = tilingData->baseParams.qSeqSize;
+    constInfo.outputLayout = static_cast<LAYOUT> (tilingData->baseParams.outputLayout);
+    constInfo.mBaseSize = tilingData->baseParams.nNumOfQInOneGroup * tilingData->increFlashAttentionSingleCoreParams.s1SplitSize;
 }
 
 #define QMAX_UB_SIZE (BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_256B)
@@ -822,7 +843,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::Init(
 
     attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
     // batch连续时,只需要初始化一次;不连续时,需要在使用时根据batchIdx初始化
-    if (batchContinuous) {
+    if constexpr (batchContinuous) {
         InitKeyGm(0);
         InitValueGm(0);
     }
@@ -922,6 +943,13 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::Init(
         lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
         lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset) + tilingData->splitKVParams.logSumExpSize / 2);
         offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
+    }
+
+    if ASCEND_IS_AIV {
+        if constexpr (FLASH_DECODE) {
+            fdService.InitParams(constInfo);
+            fdService.InitGlobalTensor(lseMaxFdGm, lseSumFdGm, accumOutGm, attentionOutGm, actualSeqLengthsGmQ);
+        }
     }
 
     if ASCEND_IS_AIC {
@@ -3140,7 +3168,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::CalcParams(uint
         }
     }
 
-    if (batchContinuous) {
+    if constexpr (batchContinuous) {
        info.isChangeBatch = false;
     } else {
        if (loop == 0) {
@@ -3352,6 +3380,62 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadM
 }
 
 template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::FlashDecode()
+{
+    if (tmpBlockIdx < tilingData->tndSplitCoreParams.usedVecNumOfFd) {
+        FDparams fdParams;
+        fdService.InitBuffers(pipe);
+        AscendC::ICachePreLoad(fdPrefetchLen);
+#ifdef ASCENDC_CPU_DEBUG
+        const uint32_t *bN2IdxOfFdHead = tilingData->tndSplitCoreParams.balanceFDCoreBArr;
+        const uint32_t *gS1IdxOfFdHead = tilingData->tndSplitCoreParams.balanceFDCoreS1Arr;
+        const uint32_t *s2SplitNumOfFdHead = tilingData->tndSplitCoreParams.balanceFDCoreKVSplitArr;
+        const uint32_t *gS1IdxEndOfFdHead = tilingData->tndSplitCoreParams.gS1IdxEndOfFdHead;
+        const uint32_t *gS1IdxEndOfFdHeadSplit = tilingData->tndSplitCoreParams.gS1IdxEndOfFdHeadSplit;
+        const uint32_t *gS1SplitNumOfFdHead = tilingData->tndSplitCoreParams.gS1SplitNumOfFdHeadMla;
+        const uint32_t *gS1LastPartSizeOfFdHead = tilingData->tndSplitCoreParams.gS1LastPartSizeOfFdHead;
+#else
+        uint32_t bN2IdxOfFdHead[ARRAY_SIZE(tilingData->tndSplitCoreParams.balanceFDCoreBArr)];
+        uint32_t gS1IdxOfFdHead[ARRAY_SIZE(tilingData->tndSplitCoreParams.balanceFDCoreS1Arr)];
+        uint32_t s2SplitNumOfFdHead[ARRAY_SIZE(tilingData->tndSplitCoreParams.balanceFDCoreKVSplitArr)];
+        uint32_t gS1IdxEndOfFdHead[ARRAY_SIZE(tilingData->tndSplitCoreParams.gS1IdxEndOfFdHead)];
+        uint32_t gS1IdxEndOfFdHeadSplit[ARRAY_SIZE(tilingData->tndSplitCoreParams.gS1IdxEndOfFdHeadSplit)];
+        uint32_t gS1SplitNumOfFdHead[ARRAY_SIZE(tilingData->tndSplitCoreParams.gS1SplitNumOfFdHeadMla)];
+        uint32_t gS1LastPartSizeOfFdHead[ARRAY_SIZE(tilingData->tndSplitCoreParams.gS1LastPartSizeOfFdHead)];
+        copy_data_align64((uint8_t *)bN2IdxOfFdHead, (uint8_t *)(tilingData->tndSplitCoreParams.balanceFDCoreBArr),
+                    sizeof(bN2IdxOfFdHead));
+        copy_data_align64((uint8_t *)gS1IdxOfFdHead, (uint8_t *)(tilingData->tndSplitCoreParams.balanceFDCoreS1Arr),
+                    sizeof(gS1IdxOfFdHead));
+        copy_data_align64((uint8_t *)s2SplitNumOfFdHead, (uint8_t *)(tilingData->tndSplitCoreParams.balanceFDCoreKVSplitArr),
+                    sizeof(s2SplitNumOfFdHead));
+        copy_data_align64((uint8_t *)gS1IdxEndOfFdHead, (uint8_t *)(tilingData->tndSplitCoreParams.gS1IdxEndOfFdHead),
+                    sizeof(gS1IdxEndOfFdHead));
+        copy_data_align64((uint8_t *)gS1IdxEndOfFdHeadSplit,
+                    (uint8_t *)(tilingData->tndSplitCoreParams.gS1IdxEndOfFdHeadSplit),
+                    sizeof(gS1IdxEndOfFdHeadSplit));
+        copy_data_align64((uint8_t *)gS1SplitNumOfFdHead, (uint8_t *)(tilingData->tndSplitCoreParams.gS1SplitNumOfFdHeadMla),
+                    sizeof(gS1SplitNumOfFdHead));
+        copy_data_align64((uint8_t *)gS1LastPartSizeOfFdHead,
+                    (uint8_t *)(tilingData->tndSplitCoreParams.gS1LastPartSizeOfFdHead),
+                    sizeof(gS1LastPartSizeOfFdHead));
+#endif
+        fdParams = {bN2IdxOfFdHead, gS1IdxOfFdHead, s2SplitNumOfFdHead, gS1SplitNumOfFdHead, gS1LastPartSizeOfFdHead,
+                gS1IdxEndOfFdHead, gS1IdxEndOfFdHeadSplit, tilingData->tndSplitCoreParams.usedVecNumOfFd,
+                mFdBaseSizeMla};
+ 
+        SyncAll();
+ 
+        fdService.AllocEventID();
+        fdService.InitDecodeParams();
+        fdService.FlashDecode(fdParams);
+        fdService.FreeEventID();
+    } else {
+        // superkernel 场景，启动核数大于实际运行核数时，未启动的核仅需要保留 SyncAll
+        SyncAll();
+    }
+}
+
+template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::Process()
 {
     //usedCoreNum: 使用的总核数
@@ -3383,7 +3467,11 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::Process()
         // 多核同步
         SyncAll();
         if ASCEND_IS_AIV {
-            FlashDecodeCompute();
+            if (tilingData->tndSplitCoreParams.FdBalanceFlag == 1) {
+                FlashDecode();
+            } else {
+                FlashDecodeCompute();
+            }
         }
     }
 }
@@ -3698,7 +3786,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::GetTNDAxisStart
                 s2Start = 0;
                 if (s1OuterIdxEndPrev >= s1PrevSplitNum - 1) {       // 上个核把S1处理完了
                     s1OuterStart = 0;
-                    if (n2EndPrev >= kvHeadNum - 1) {      // 上个核把N2处理完了
+                    if constexpr (n2EndPrev >= kvHeadNum - 1) {      // 上个核把N2处理完了
                         n2Start = 0;
                         bStart++;
                     } else {

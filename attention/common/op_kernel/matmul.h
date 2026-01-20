@@ -64,7 +64,7 @@ __aicore__ inline T AlignUp(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
 }
 
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
+#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
 template <typename T>
 __aicore__ inline uint32_t GetBlockNum(uint32_t size) {
     if constexpr (IsSameType<T, float>::value) {
@@ -113,7 +113,24 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T>& aL0Tensor, const LocalTenso
         loadData2DParamsA.mStep = ((mmParam.realM + 15) >> 4 << 4) / 16;
     }
     loadData2DParamsA.dstStride = loadData2DParamsA.ifTranspose ? (mSplitSize + 15) / 16 : loadData2DParamsA.mStep;
-    LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
+    if constexpr (IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value || IsSameType<T, hifloat8_t>::value) {
+        if (loadData2DParamsA.ifTranspose) {
+            uint32_t l0bLoop = (loadData2DParamsA.mStep + 1) >> 1;
+            loadData2DParamsA.mStep = M_STEP_ALIGN_BASE;
+            uint64_t dstOffset = 0;
+            uint64_t dstAddrStride = (mSplitSize + 15) / 16 * 16 * 32;
+            uint16_t oriMStep = loadData2DParamsA.mStartPosition;
+            for (uint32_t idx = 0; idx < l0bLoop; ++idx) {
+                loadData2DParamsA.mStartPosition = oriMStep + M_STEP_ALIGN_BASE * idx;
+                LoadData(aL0Tensor[dstOffset], aL1Tensor[L1Aoffset], loadData2DParamsA);
+                dstOffset += dstAddrStride;
+            }
+        } else {
+            LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
+        }
+    } else {
+        LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
+    }
 }
 
 // L1->L0B + 切k/切M/全载
@@ -318,7 +335,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK;
         L1Boffset = ((param.singleN + 31) >> 5 << 5) * baseK;
     }
-    if constexpr (IsSameType<A, float32_t>::value) {
+    if constexpr (IsSameType<A, float>::value) {
         L1Aoffset = param.isLeftTranspose ? baseK << 3 : ((param.singleM + 15) >> 4 << 4) * baseK;
         L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 3; 
     }

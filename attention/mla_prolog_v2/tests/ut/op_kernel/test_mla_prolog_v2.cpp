@@ -221,9 +221,9 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVNoQuant)
     baseParams_->seq2Size = baseParams_->numHeadKvSize;
     baseParams_->headSizeQc = baseParams_->dimHeadSizeQc * baseParams_->numHeadSize;
     baseParams_->headSizeQr =  baseParams_->headSizeKr * baseParams_->numHeadSize;
-    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreN(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
+    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreN(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum =(baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;
@@ -344,9 +344,9 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVQuant)
     baseParams_->seq2Size = baseParams_->numHeadKvSize;
     baseParams_->headSizeQc = baseParams_->dimHeadSizeQc * baseParams_->numHeadSize;
     baseParams_->headSizeQr =  baseParams_->headSizeKr * baseParams_->numHeadSize;
-    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreN(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
+    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreN(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum =(baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;
@@ -468,9 +468,9 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVNoQuant)
     baseParams_->seq2Size = baseParams_->numHeadKvSize;
     baseParams_->headSizeQc = baseParams_->dimHeadSizeQc * baseParams_->numHeadSize;
     baseParams_->headSizeQr =  baseParams_->headSizeKr * baseParams_->numHeadSize;
-    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreN(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
+    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreN(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum =(baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;
@@ -591,9 +591,9 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVQuant)
     baseParams_->seq2Size = baseParams_->numHeadKvSize;
     baseParams_->headSizeQc = baseParams_->dimHeadSizeQc * baseParams_->numHeadSize;
     baseParams_->headSizeQr =  baseParams_->headSizeKr * baseParams_->numHeadSize;
-    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreN(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
+    baseParams_->mm1SingleCoreN =optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreN(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum =(baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;

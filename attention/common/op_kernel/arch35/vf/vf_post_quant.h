@@ -334,6 +334,6 @@ __aicore__ inline void PostQuantPerTensorImpl(const LocalTensor<OUTPUT_T> &dstTe
                                                     postQuantOffsetValue, dealRowCount, srcD);
 }
 
-} // namespace AscendC
+} // namespace FaVectorApi
 
 #endif // VF_POST_QUANT_H

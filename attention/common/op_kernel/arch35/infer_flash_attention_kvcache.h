@@ -15,7 +15,7 @@
 #ifndef INFER_FLASH_ATTENTION_KVCACHE_H
 #define INFER_FLASH_ATTENTION_KVCACHE_H
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "infer_flash_attention_sparse.h"
@@ -96,7 +96,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
             actualS1Size = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[sIdx];
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
             actualS1Size = (sIdx == 0) ? actualSeqQlenAddr[0] :
                 actualSeqQlenAddr[sIdx] - actualSeqQlenAddr[sIdx - 1];
             if (constInfo.isGqa) {
@@ -114,7 +114,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
         actualS2Size = (constInfo.isKvContinuous == 1) ? constInfo.s2Size :
             runParam.s2InCurrentBatch;
     } else {
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
             actualS2Size = actualSeqKvlenAddr[sIdx];
             if ((sIdx > 0) && (!isPa)) {
                 actualS2Size -= actualSeqKvlenAddr[sIdx - 1];
@@ -229,6 +229,16 @@ __aicore__ inline void GetValueCoreOffsetParam(RunParamStr<isInfer>& runParam, c
             valueInnerOffsetSize = sIdx * constInfo.n2S2Dv;
         }
         runParam.valueCoreOffset = valueInnerOffsetSize + runParam.n2oIdx * constInfo.dSizeV;
+    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+        uint64_t actualSeqKVLen = 0;
+        if constexpr (isPa) {
+            actualSeqKVLen = constInfo.s2Size;
+            valueInnerOffsetSize = sIdx * constInfo.s2Dv;
+        } else {
+            actualSeqKVLen = (sIdx == 0) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx] - actualSeqKvlenAddr[sIdx - 1];
+            valueInnerOffsetSize = (sIdx == 0) ? 0 : actualSeqKvlenAddr[sIdx - 1] * constInfo.dSizeV;
+        }
+        runParam.valueCoreOffset = valueInnerOffsetSize + runParam.n2oIdx * constInfo.bSize * actualSeqKVLen * constInfo.dSizeV;
     } else {
         uint64_t headStrideV = 0;
         if (constInfo.isKvContinuous == 1) {
@@ -256,7 +266,7 @@ __aicore__ inline void GetValueCoreOffsetParam(RunParamStr<isInfer>& runParam, c
         } else {
             // 除TND外的其他布局，例如BSH，BNSD，BSND等
             uint64_t headStrideV = 0;
-            headStrideV = constInfo.s2Dv;
+            headStrideV = constInfo.kvPrefixSize * constInfo.dSizeV;
             prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.dSizeV;
             runParam.prefixCoreOffset = prefixInnerOffsetSize + runParam.n2oIdx * headStrideV;
         }
@@ -327,7 +337,6 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<isInfer>& runParam, const 
     }
 
     cubeSOuterOffset += (runParam.nextTokensPerBatch < 0) ? -runParam.nextTokensPerBatch : 0;
-
     if constexpr (useDn) { 
         runParam.s1RealSizeAlign32 = ((runParam.s1RealSize + 31) >> 5 << 5); // 5 and 31 for 32align factor
         runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 / 2;
@@ -337,7 +346,6 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<isInfer>& runParam, const 
             runParam.halfS1RealSize = (runParam.halfS1RealSize + constInfo.gSize - 1) / constInfo.gSize * constInfo.gSize;
         }
     }
-
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
@@ -358,7 +366,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
 
     int64_t actualSeqLen = 0;
     int64_t seqOffset = 0;
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
         actualSeqLen = (sIdx == 0) ? actualSeqQlenAddr[0] : actualSeqQlenAddr[sIdx] - actualSeqQlenAddr[sIdx - 1];
         seqOffset = (sIdx == 0) ? 0 : actualSeqQlenAddr[sIdx - 1];
     } else {
@@ -429,6 +437,12 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                     runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
                         runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
                         runParam.goIdx * constInfo.dSizeV;
+                } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+                    attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
+                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.dSizeV + // b
+                        runParam.n2oIdx * constInfo.tSize * constInfo.gDv + // n
+                        runParam.goIdx * constInfo.tSize * constInfo.dSizeV + // g
+                        runParam.sOuterOffset * constInfo.dSizeV; // s1
                 } else {
                     runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gS1Dv +
                         runParam.goIdx * constInfo.s1Dv + (runParam.sOuterOffset + runParam.queryLeftPaddingSize) *
@@ -452,7 +466,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
                     runParam.sOuterOffset;
             } else {
-                if (layout == LayOutTypeEnum::LAYOUT_TND) {
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
                     runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.sOuterOffset * constInfo.n2G +
                         runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
                 } else {
@@ -514,6 +528,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr<isInfer>& runParam, const C
         0, runParam.actualS2Size);
     runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
         runParam.s1RealSize, 0, runParam.actualS2Size);
+    runParam.s2LoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize - sInnerFirstToken / s2BaseSize;
     if constexpr (enableKVPrefix) {
         sInnerFirstToken =
             ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0,
@@ -521,9 +536,10 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr<isInfer>& runParam, const C
         runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset + runParam.nextTokensPerBatch + runParam.s1RealSize, 0,
             runParam.actualS2Size + constInfo.actualKVPrefixSize);
+        runParam.s2LoopEndIdx = (constInfo.actualKVPrefixSize + s2BaseSize - 1) / s2BaseSize +
+                                (runParam.s2LineEndIdx - constInfo.actualKVPrefixSize + s2BaseSize - 1) / s2BaseSize -
+                                sInnerFirstToken / s2BaseSize;
     }
-    runParam.s2LoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize - sInnerFirstToken /s2BaseSize;
-
     if (runParam.s2LoopEndIdx <= 0) {
         return true;
     }
@@ -541,7 +557,15 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
 {
     if ASCEND_IS_AIV {
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
-            runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
+            if constexpr (enableKVPrefix) {
+                if (sInnerLoopIdx < constInfo.prefixLoopCount) {
+                    runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
+                } else {
+                    runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, (sInnerLoopIdx - constInfo.prefixLoopCount) * static_cast<int32_t>(s2TemplateType) + constInfo.actualKVPrefixSize);
+                }
+            } else {
+                runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
+            }
             if constexpr (isFd) {
                 runInfo.pseShiftOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
             }
@@ -596,6 +620,19 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
                 if constexpr (hasRope) {
                     runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseN2DR;
                 }
+            } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+                runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+                if constexpr (isFd) {
+                    runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.dSizeV;
+                }
+                if (unlikely(constInfo.dSize != constInfo.dSizeV)) {
+                    runInfo.keyOffset = runParam.keyCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+                } else {
+                    runInfo.keyOffset = runInfo.valueOffset;
+                }
+                if constexpr (hasRope) {
+                    runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseDR;
+                }
             } else {
                 runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
                 if constexpr (isFd) {
@@ -618,23 +655,48 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeOffsetForAntiquant(const RunParamStr<isInfer>& runParam,
     const ConstInfo<isInfer, hasRope> &constInfo, uint32_t sInnerLoopIdx, RunInfo<isInfer> &runInfo)
 {
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-        runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
-        if constexpr (isFd) {
-            runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.n2D;
-        }
-        runInfo.keyOffset = runInfo.valueOffset;
-        if constexpr (hasRope) {
-            runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseN2DR;
+    if constexpr (enableKVPrefix) {
+        const bool inPrefixLoop = sInnerLoopIdx < constInfo.prefixLoopCount;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+            if (inPrefixLoop) {
+                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
+                runInfo.valueOffset = 0;
+                runInfo.keyOffset = 0;
+            } else {
+                runInfo.prefixOffset = 0;
+                runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseN2Dv;
+                runInfo.keyOffset = runInfo.valueOffset;
+            }
+        } else {
+            if (inPrefixLoop) {
+                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+                runInfo.valueOffset = 0;
+                runInfo.keyOffset = 0;
+            } else {
+                runInfo.prefixOffset = 0;
+                runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseDv;
+                runInfo.keyOffset = runInfo.valueOffset;
+            }
         }
     } else {
-        runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
-        if constexpr (isFd) {
-            runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.dSize;
-        }
-        runInfo.keyOffset = runInfo.valueOffset;
-        if constexpr (hasRope) {
-            runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseDR;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+            runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
+            if constexpr (isFd) {
+                runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.n2D;
+            }
+            runInfo.keyOffset = runInfo.valueOffset;
+            if constexpr (hasRope) {
+                runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseN2DR;
+            }
+        } else {
+            runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+            if constexpr (isFd) {
+                runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.dSize;
+            }
+            runInfo.keyOffset = runInfo.valueOffset;
+            if constexpr (hasRope) {
+                runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseDR;
+            }
         }
     }
 }

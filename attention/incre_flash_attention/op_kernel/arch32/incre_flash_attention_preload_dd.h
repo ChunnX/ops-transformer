@@ -79,6 +79,7 @@ struct ExtraInfo {
     uint32_t mSize = 0;
     uint32_t mSizeV = 0;
     uint32_t mSizeVStart = 0;
+    uint64_t actSeqLenQ = 0;
 };
 
 struct TaskContext {
@@ -93,16 +94,17 @@ struct TaskContext {
     uint32_t isFirstLoop;
     uint32_t nidx;
     uint64_t actS1Size = 1;
+    uint64_t actSeqLenQ = 0;
 };
 
 public:
     __aicore__ inline IncreFlashAttentionAttenPreloadDD(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *pseShift, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                const IncreFlashAttentionTilingData *__restrict tiling, __gm__ uint8_t *gmTiling,
-                                TPipe *tPipe, bool isPrefix = false);
+                                __gm__ uint8_t *pseShift, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,
+                                __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+                                __gm__ uint8_t *workspace, const IncreFlashAttentionTilingData *__restrict tiling,
+                                __gm__ uint8_t *gmTiling, TPipe *tPipe, bool isPrefix = false);
     __aicore__ inline void InitQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2,
                                      __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2,
                                      __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
@@ -172,6 +174,7 @@ protected:
     GlobalTensor<ANTIQ_PARAMS_T> valueAntiqOffsetGm;
     GlobalTensor<ANTIQ_PARAMS_T> valueAntiqScaleGm;
     GlobalTensor<uint64_t> actualSeqLengthsGm;
+    GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     // out quant
     GlobalTensor<float> quantScale2Gm;
     GlobalTensor<float> quantOffset2Gm;
@@ -414,10 +417,12 @@ protected:
     uint64_t combineAccumOutOffset = 0ULL;
 
     uint64_t curActualSeqLen = 0ULL;
+    uint64_t curActualSeqLenQ = 0ULL;
     uint32_t beforeBlockSplitBn2Nums = 0U;
     uint32_t bn2LoopTimes = 0U;
 
     uint32_t actualLenDims = 0U;
+    uint32_t actualLenQDims = 0U;
     // out quant
     bool isPerChnU8Out = false;
     bool isOutQuantTypeBf16 = false;
@@ -463,7 +468,9 @@ protected:
     __aicore__ inline void InitCalcParams();
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengths);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
+    __aicore__ inline uint64_t GetQueryOffSetBySIdx(uint32_t bIdx, uint32_t sIdx, uint32_t n2Idx, uint32_t gIdx);
+    __aicore__ inline void GetTndActualSeqLenQ(uint32_t bIdx, uint32_t s1Idx);
     __aicore__ inline void GetActualSeqLen(uint32_t bIdx, uint32_t s1Idx = 0);
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx);
@@ -702,9 +709,14 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengths)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
+    __gm__ uint8_t *actualSeqLengths)
 {
+    actualLenQDims = tilingData->baseParams.actualLenQDims;
     actualLenDims = tilingData->baseParams.actualLenDims;
+    if (actualLenQDims != 0) {
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsQ, actualLenQDims);
+    }
     if (actualLenDims != 0) {
         actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, actualLenDims);
     }
@@ -712,6 +724,17 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitActualSeqLen
 
 template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitAllZeroInt8Output(uint32_t bIdx, uint32_t n2Idx)
 {
+}
+
+template <typename IFAT>
+__aicore__ inline uint64_t IncreFlashAttentionAttenPreloadDD<IFAT>::GetQueryOffSetBySIdx(uint32_t bIdx, uint32_t sIdx,
+    uint32_t n2Idx, uint32_t gIdx)
+{
+    uint64_t sBase = bIdx * qSeqSize;
+    if constexpr (LAYOUT_T == LAYOUT::TND) {
+        sBase = bIdx == 0 ? 0 : actualSeqLengthsGmQ.GetValue(bIdx - 1);
+    }
+    return (sBase + sIdx) * qHeadNum * headDim + n2Idx * gSize * headDim + gIdx * headDim;
 }
 
 template <typename IFAT>
@@ -725,13 +748,30 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitAllZeroOutpu
             uint64_t attenOutOffset = bIdx *kvHeadNum * gSize * qSeqSize * headDim +           //B轴偏移
                                       n2Idx * gSize * qSeqSize * headDim;     //N2轴偏移
             matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], gSize * qSeqSize * headDim, 0);
-        } else if constexpr (LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::BSH) {
-            for (int s1Idx = 0; s1Idx < qSeqSize; s1Idx++) {
-                uint64_t attenOutOffset = bIdx * qSeqSize * kvHeadNum * gSize * headDim + s1Idx * kvHeadNum * gSize * headDim +     //B轴、S1轴偏移
-                                          n2Idx * gSize * headDim;    //N2轴偏移
+        } else if constexpr (LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::TND) {
+            for (int s1Idx = 0; s1Idx < curActualSeqLenQ; s1Idx++) {
+                uint64_t attenOutOffset = GetQueryOffSetBySIdx(bIdx, s1Idx, n2Idx, 0);
                 matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], gSize * headDim, 0);
             }
         }
+    }
+}
+
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::GetTndActualSeqLenQ(uint32_t bIdx, uint32_t s1Idx)
+{
+    if (bIdx > 0) {
+        curActualSeqLenQ = actualSeqLengthsGmQ.GetValue(bIdx) - actualSeqLengthsGmQ.GetValue(bIdx - 1);
+    } else if (bIdx == 0) {
+        curActualSeqLenQ = actualSeqLengthsGmQ.GetValue(0);
+    }
+
+    if (s1Idx * s1SizeSub >= curActualSeqLenQ) {
+        actS1Size = 0;
+    } else if ((s1Idx + 1) * s1SizeSub > curActualSeqLenQ) {
+        actS1Size = curActualSeqLenQ - s1Idx * s1SizeSub;
+    } else {
+        actS1Size = s1SizeSub;
     }
 }
 
@@ -750,8 +790,12 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
 
     if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND) {
         actS1Size = (s1Idx == s1Outer - 1) ? s1SizeTail : s1SizeSub;
+        curActualSeqLenQ = qSeqSize;
+    } else if constexpr (LAYOUT_T == LAYOUT::TND) {
+        GetTndActualSeqLenQ(bIdx, s1Idx);
     } else {
         actS1Size = qSeqSize;
+        curActualSeqLenQ = qSeqSize;
     }
 }
 
@@ -762,7 +806,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::GetBN2Gid(const 
         bIdx = aiCoreIdx / (kvHeadNum * splitKVNum);
         n2Idx = (aiCoreIdx / splitKVNum) % kvHeadNum;
         s2IdxFD = aiCoreIdx % splitKVNum;
-    } else if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND) {
+    } else if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::TND) {
         uint32_t bs1n2 = beforeBlockSplitBn2Nums + bn2gIdx;
         uint32_t s1n2 = bs1n2 % (kvHeadNum * s1Outer);
         bIdx = bs1n2 / (kvHeadNum * s1Outer);
@@ -854,9 +898,10 @@ __aicore__ inline bool IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeKVPadding
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-    const IncreFlashAttentionTilingData *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe, bool isPrefix)
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, const IncreFlashAttentionTilingData *__restrict tiling,
+    __gm__ uint8_t *gmTiling, TPipe *tPipe, bool isPrefix)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -898,7 +943,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
         attenMaskBoolGm.SetGlobalBuffer((__gm__ bool *)attenMask);
     }
 
-    InitActualSeqLen(actualSeqLengths);
+    InitActualSeqLen(actualSeqLengthsQ, actualSeqLengths);
 
     if (kvPaddingFlag == 1) {
         kvPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t *)kvPaddingSize);
@@ -1177,7 +1222,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(
     uint32_t offset;
     {
         int32_t delta =
-            info.s1Idx * s1SizeSub - info.s2Idx * singleProcessSInnerSize + info.s2Size - qSeqSize; // s1idx = 0
+            info.s1Idx * s1SizeSub - info.s2Idx * singleProcessSInnerSize + info.s2Size - info.actSeqLenQ; // s1idx = 0
         if (delta < 0) {
             offset = (-delta) < (int32_t)info.s1Size ? (-delta) : info.s1Size; //min (-delta, s1Size)
         } else {
@@ -1430,7 +1475,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
     LocalTensor<T> aFloorUb = tmpBuff2.Get<T>();
     uint64_t qOffset = info.tensorAOffset + (mSizeVStart + startRow) * actualColumnCount;
 
-    if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND) {
+    if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::TND) {
         if (kvHeadNum != 1 && gOuter == 1) {
             uint32_t startS1Idx = (mSizeVStart + startRow) / info.gSize;
             uint32_t startGOfffset = (mSizeVStart + startRow) % info.gSize;
@@ -1439,7 +1484,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
             uint32_t curDealRowCount = 0;
             uint32_t ubOffset = 0;
             for (uint32_t curS1idx = startS1Idx; curS1idx <= endS1Idx; curS1idx++) {
-                qOffset = info.bIdx * qSeqSize * qHeadNum * headDim + (curS1idx + info.s1Idx * s1SizeSub) * qHeadNum * headDim + info.n2Idx * gSize * headDim + startGOfffset * headDim;
+                qOffset = GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
                 if (curS1idx != endS1Idx) {
                     curDealRowCount = (curS1idx + 1) * gSize - curStartRow;
                 }
@@ -1484,7 +1529,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
     LocalTensor<T> aFloorUb = tmpBuff2.Get<T>();
     uint64_t queryOffset = info.tensorAOffset + (mSizeVStart + startRow) * actualColumnCount;
 
-    if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND) {
+    if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::TND) {
         if (kvHeadNum != 1 && gOuter == 1) {
             uint32_t curDealRowCount = 0;
             uint32_t ubOffset = 0;
@@ -1493,7 +1538,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
             uint32_t endS1Idx = (mSizeVStart + startRow + dealRowCount - 1) / info.gSize;
             uint32_t curStartRow = (mSizeVStart + startRow);
             for (uint32_t curS1idx = startS1Idx; curS1idx <= endS1Idx; curS1idx++) {
-                queryOffset = info.bIdx * qSeqSize * qHeadNum * headDim + (curS1idx + info.s1Idx * s1SizeSub) * qHeadNum * headDim + info.n2Idx * gSize * headDim + startGOfffset * headDim;
+                queryOffset = GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
                 if (curS1idx != endS1Idx) {
                     curDealRowCount = (curS1idx + 1) * gSize - curStartRow;
                 }
@@ -1809,7 +1854,7 @@ template <typename IFAT>
 __aicore__ inline bool
 IncreFlashAttentionAttenPreloadDD<IFAT>::IsSkipAttenMask(const ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount)
 {
-    uint32_t actualSeqQ = qSeqSize;
+    uint32_t actualSeqQ = info.actSeqLenQ;
 
     // s2<s1时，必然走mask
     if (info.s2Size < actualSeqQ) {
@@ -1864,7 +1909,7 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
     // attenMask
     if (attenMaskFlag == 1) {
         LocalTensor<bool> attenMaskUb;
-        if (qSeqSize == 1) {
+        if (qSeqSize == 1 && LAYOUT_T != LAYOUT::TND) {
             AttenMaskCopyIn(info.attenMaskOffset, dealRowCount, actualColumnCount);
             attenMaskUb = inputBuf1.Get<bool>();
             WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
@@ -1912,7 +1957,7 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
                 #define ATTENMASK_STRIDE 2048U
 
                 uint32_t offset;
-                uint32_t actualSeqQ = qSeqSize;
+                uint32_t actualSeqQ = info.actSeqLenQ;
 
                 int32_t delta = (info.s1Idx * s1SizeSub + s1StartIdx) - info.s2Idx * singleProcessSInnerSize +
                                 (info.s2Size - actualSeqQ);
@@ -2080,7 +2125,7 @@ __aicore__ inline void
 IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOutNcon(const ExtraInfo& info, LocalTensor<OUT_T> &attenOutUb,
     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    if constexpr (LAYOUT_T ==LAYOUT::BSH || LAYOUT_T ==LAYOUT::BSND) {
+    if constexpr (LAYOUT_T ==LAYOUT::BSH || LAYOUT_T ==LAYOUT::BSND || LAYOUT_T ==LAYOUT::TND) {
         uint64_t outOffset = 0;
         if (kvHeadNum != 1 && gOuter == 1) {
             uint32_t startS1Idx = (mSizeVStart + startRow) / info.gSize;
@@ -2090,7 +2135,7 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOutNcon(const ExtraInfo& in
             uint32_t curDealRowCount = 0;
             uint32_t ubOffset = 0;
             for (uint32_t curS1idx = startS1Idx; curS1idx <= endS1Idx; curS1idx++) {
-                outOffset = info.bIdx * qSeqSize * qHeadNum * headDim + (curS1idx + info.s1Idx * s1SizeSub) * qHeadNum * headDim + info.n2Idx * gSize * headDim + startGOfffset * headDim;
+                outOffset = GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
                 if (curS1idx != endS1Idx) {
                     curDealRowCount = (curS1idx + 1) * gSize - curStartRow;
                 }
@@ -2125,11 +2170,11 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealInvalidRows(const ExtraInfo &info, 
                                                           uint32_t startRow, uint32_t dealRowCount,
                                                           uint32_t columnCount, uint32_t actualColumnCount)
 {
-    if (!attenMaskFlag || (qSeqSize <= info.s2Size)) {
+    if (!attenMaskFlag || (info.actSeqLenQ <= info.s2Size)) {
         return;
     }
     PipeBarrier<PIPE_V>();
-    uint32_t s1Tok = qSeqSize - info.s2Size;
+    uint32_t s1Tok = info.actSeqLenQ - info.s2Size;
 
     if constexpr (LAYOUT_T == LAYOUT::BNSD) {
         uint32_t s1 = (mSizeVStart + startRow) % info.s1Size;
@@ -2674,6 +2719,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CalcParams(uint3
     info.gSize = (task.gidx == gOuter - 1) ? gSizeTail : gSizeSub;
     info.actS1Size = task.actS1Size;
     info.mSize = info.gSize * info.s1Size;
+    info.actSeqLenQ = task.actSeqLenQ;
 
     if ASCEND_IS_AIV {
         info.mSizeV = (info.mSize + 1) / 2;
@@ -2706,8 +2752,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CalcParams(uint3
             }
         } else {
             // B,1,N2,G,D
-            tensorACoreOffset = info.bIdx * qSeqSize * qHeadNum * headDim +
-                                info.s1Idx * s1SizeSub * qHeadNum * headDim + info.n2Idx * gSize * headDim;
+            tensorACoreOffset = GetQueryOffSetBySIdx(info.bIdx, info.s1Idx * s1SizeSub, info.n2Idx, 0);
             // B,S2,N2,D
             tensorBCoreOffset = info.bIdx * kvSeqSize * kvHeadNum * headDim + info.n2Idx * headDim;
             if (!batchContinuous) {
@@ -3844,7 +3889,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
                 if (curActualSeqLen == 0) {
                     DealActSeqLenIsZero(bIdx, n2Idx);
                 }
-                if (curActualSeqLen != 0) {
+                if (curActualSeqLen != 0 && actS1Size != 0) {
                     break;
                 }
                 bn2LoopTimes--;
@@ -3852,14 +3897,15 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
         } 
 
         for (uint32_t bn2gIdx = 0; bn2gIdx < bn2LoopTimes; bn2gIdx++) {
-            if (bn2gIdx < bn2LoopTimes) {
-                GetBN2Gid(bn2gIdx);
-                GetActualSeqLen(bIdx, s1Idx);
-                UpdateInnerLoopCond();
-                if (curActSeqLenIsZero) {
-                    DealActSeqLenIsZero(bIdx, n2Idx);
-                    continue;
-                }
+            GetBN2Gid(bn2gIdx);
+            GetActualSeqLen(bIdx, s1Idx);
+            UpdateInnerLoopCond();
+            if (curActSeqLenIsZero) {
+                DealActSeqLenIsZero(bIdx, n2Idx);
+                continue;
+            }
+            if (actS1Size == 0) {
+                continue;
             }
             uint32_t curS2LoopTimes = (bn2gIdx == bn2LoopTimes - 1) ? sInnerLoopTimes + 2 : sInnerLoopTimes;
             for (uint32_t sInnerLoopIdx = 0; sInnerLoopIdx < curS2LoopTimes; sInnerLoopIdx++) {
@@ -3874,6 +3920,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
                     ctx.s1Size = actS1Size;
                     ctx.s2Size = curActualSeqLen;
                     ctx.s1idx = s1Idx;
+                    ctx.actSeqLenQ = curActualSeqLenQ;
                     bool isLast = (bn2gIdx == bn2LoopTimes - 1) && (sInnerLoopIdx >= sInnerLoopTimes - 1);
                     if (tasks < TASK_NUM && !isLast) {
                         continue;

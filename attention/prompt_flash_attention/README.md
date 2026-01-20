@@ -2,11 +2,30 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
+<col style="width: 600px">
+<col style="width: 100px">
+</colgroup>
+<thead>
+  <tr>
+    <th style="text-align: center;">产品</th>
+    <th style="text-align: center;">是否支持</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td>Ascend 950PR/Ascend 950DT</td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
+    <td style="text-align: center;">√</td>
+  </tr>
+</tbody>
+</table>
 
 ## 功能说明
 
@@ -151,7 +170,7 @@
       
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
     
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：在TND场景下query，key，value输入的综合限制：
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：在TND场景下query，key，value输入的综合限制：
     - T小于等于65536。
     - N等于8/16/32/64/128，且Q_N、K_N、V_N相等。
     - Q_D、K_D等于192，V_D等于128/192。

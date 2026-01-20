@@ -87,7 +87,9 @@ namespace SplitFuse {
             uint32_t blockSize = fATilingData->blockSize;
             uint32_t maskType = fATilingData->maskType;
             float scaleValue = fATilingData->scaleValue;
-
+            uint32_t sparseMode = fATilingData->sparseMode;
+            int64_t preToken = fATilingData->preToken;
+            int64_t nextToken = fATilingData->nextToken;
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);
@@ -289,13 +291,55 @@ namespace SplitFuse {
                 uint32_t rowNumRound = NpuArch::Detail::Alignment::RoundUp(rowNum, FaiKernel::BLOCK_SIZE);
 
                 int64_t noSkipKvS = static_cast<int64_t>(kvSeqlen);
-                if (maskType != 0U) {
+                uint32_t startIdx = 0;
+                int32_t nextTokenStartLen = 0;
+                int32_t nextTokenEndLen = 0;
+                int32_t preTokenStartLen = 0;
+                int32_t preTokenEndLen = 0;
+                int32_t delStartRow = 0;
+                int32_t delEndRow = qSeqlen;
+                bool notPreMask = true;
+                bool notNextMask = true;
+                bool moveZero = false;
+                uint32_t kvSLoopNumTotal = 0;
+                if (maskType != 0U && sparseMode != 4U) {
                     int64_t diffS = kvSeqlen - qSeqlen;
                     diffS = (diffS < 0) ? 0 : diffS;
                     noSkipKvS = (qSBlockIdx + 1U) * curQSBlockTile + diffS;
                     noSkipKvS = AscendC::Std::min(static_cast<int64_t>(kvSeqlen), noSkipKvS);
+                    kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, MAX_KV_STACK_LEN);
+                } else if (maskType != 0U && sparseMode == 4U) {
+                    int32_t leftPointPreToken = kvSeqlen;
+                    int32_t leftPointNextToken = 0;
+                    if (preToken != SPARSE_MODE_INT_MAX) {
+                        leftPointPreToken = kvSeqlen - qSeqlen - preToken;
+                        preTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointPreToken;
+                        preTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointPreToken;
+                        startIdx = AscendC::Std::max(static_cast<int32_t>(0), preTokenStartLen) / static_cast<int32_t>(MAX_KV_STACK_LEN);
+                        notPreMask = false;
+                    } else {
+                        startIdx = 0;
+                    }
+                    if (nextToken != SPARSE_MODE_INT_MAX) {
+                        leftPointNextToken = kvSeqlen - qSeqlen + nextToken;
+                        nextTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointNextToken;
+                        nextTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken;
+                        noSkipKvS = AscendC::Std::min((int32_t)kvSeqlen, NpuArch::Detail::Alignment::RoundUp(nextTokenEndLen, (int32_t)MAX_KV_STACK_LEN));
+                        noSkipKvS = noSkipKvS <= 0 ? kvSeqlen : noSkipKvS;
+                        kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv((uint32_t)noSkipKvS, MAX_KV_STACK_LEN);
+                        notNextMask = false;
+                    } else {
+                        noSkipKvS = kvSeqlen;
+                        kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv((uint32_t)noSkipKvS, MAX_KV_STACK_LEN);
+                    }
+                    if (preTokenEndLen > (int32_t)kvSeqlen && preToken != SPARSE_MODE_INT_MAX) {
+                        delStartRow = kvSeqlen - leftPointPreToken;
+                    } else if (nextTokenStartLen < 0 && nextToken != SPARSE_MODE_INT_MAX) {
+                        delEndRow = -leftPointNextToken;
+                    }
+                } else {
+                    kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, MAX_KV_STACK_LEN);
                 }
-                uint32_t kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, MAX_KV_STACK_LEN);
 
                 uint32_t blockStackNum = (MAX_KV_STACK_LEN - 1 + pagedBlockSize) / pagedBlockSize;
                 uint32_t stackSeqTile = MAX_KV_STACK_LEN;
@@ -303,7 +347,7 @@ namespace SplitFuse {
                 uint32_t preKVNum = PRE_LAUNCH;
                 int32_t stackSeqCount = 0;
 #ifdef __DAV_C220_VEC__
-                if (kvSLoopNumTotal <= 0) {
+                if (kvSLoopNumTotal <= 0 || startIdx >= kvSLoopNumTotal) {
                     LayoutO layoutO(qSeqlen, embed * qHeads);
                     LayoutLse layoutLse(totalQTokens, qHeads);
                     epilogueInitOut(gO[gmOffsetO], gLse[gmOffsetLse], layoutO, layoutLse, qSBlockSize, qNBlockSize);
@@ -317,7 +361,7 @@ namespace SplitFuse {
                 blockMmadPV.resetBlockStart();
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
 #endif
-                for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx ++) {
+                for (uint32_t kvSIdx = startIdx; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx ++) {
                     if (kvSIdx < kvSLoopNumTotal) {
                         if (kvSIdx + 1 > kvSLoopNumTotal - 1U) {
                             stackSeqTile = noSkipKvS - kvSIdx * MAX_KV_STACK_LEN;
@@ -367,16 +411,16 @@ namespace SplitFuse {
                         LayoutP layOutP(rowNum, stackSeqTile, stackSeqTilePad);
                         LayoutMask layOutMask(COMP_TRIU_MASK_DIM_LEN, COMP_TRIU_MASK_DIM_LEN);
                         uint64_t gmOffsetP = gmOffsetS;
-                        // causal mask的左上起点
-                        uint32_t triUp = noSkipKvS - qSBlockSize;
-                        // causal mask的右下止点
-                        uint32_t triDown = noSkipKvS;
                         uint32_t kvSStartIdx = kvSIdx * MAX_KV_STACK_LEN;
                         uint32_t kvSEndIdx = kvSStartIdx + stackSeqTile;
-                        // 在causal mask场景下，由mask的左上起点判断当前基块是否需要加mask
-                        // 如果实际加mask长度只有1，那么相当于不加mask（主对角线需要被计算）
-                        bool doTriUMask = triUp < kvSEndIdx - 1;
                         if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_CAUSAL) {
+                            // causal mask leftUP start point
+                            uint32_t triUp = noSkipKvS - qSBlockSize;
+                            // causal mask rightDown end point
+                            uint32_t triDown = noSkipKvS;
+                            // 在causal mask场景下，由mask的左上起点判断当前基块是否需要加mask
+                            // 如果实际加mask长度只有1，那么相当于不加mask（主对角线需要被计算）
+                            bool doTriUMask = triUp < kvSEndIdx - 1;
                             if (doTriUMask) {
                                 epilogueOnlineSoftmax(
                                     gP[gmOffsetP],
@@ -414,6 +458,57 @@ namespace SplitFuse {
                                     curStackTileMod,
                                     isLastStackTile);
                             }
+                        } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
+                            uint32_t triUp = (nextTokenStartLen > kvSeqlen || nextTokenStartLen < 0 ) ? kvSeqlen : nextTokenStartLen ;
+                            bool doTriUPreMask = (sparseMode != 4 || notPreMask) ? false : 
+                            (preTokenStartLen >= kvSStartIdx && preTokenStartLen < kvSEndIdx) ||
+                            (preTokenEndLen > kvSStartIdx && preTokenEndLen <= kvSEndIdx) ||
+                            (preTokenStartLen <= kvSStartIdx && preTokenEndLen >= kvSEndIdx);
+                            bool doTriUNextMask = (sparseMode != 4 || notNextMask) ? false : 
+                                (nextTokenStartLen >= kvSStartIdx && nextTokenStartLen < kvSEndIdx) ||
+                                (nextTokenEndLen > kvSStartIdx && nextTokenEndLen <= kvSEndIdx) ||
+                                (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
+                            bool doTriUMask = (doTriUPreMask || doTriUNextMask);
+                            if (doTriUMask) {
+                                epilogueOnlineSoftmax(
+                                    gP[gmOffsetP],
+                                    gS[gmOffsetS],
+                                    gSink[gmOffsetSink],
+                                    gMask,
+                                    layOutP,
+                                    layOutS,
+                                    layOutMask,
+                                    actualBlockShapeQK,
+                                    (stackSeqCount == 0),
+                                    qSBlockSize,
+                                    qNBlockSize,
+                                    curStackTileMod,
+                                    qkReady,
+                                    kvSStartIdx,
+                                    doTriUPreMask,
+                                    doTriUNextMask,
+                                    preTokenStartLen,
+                                    preTokenEndLen,
+                                    nextTokenStartLen,
+                                    nextTokenEndLen,
+                                    isLastStackTile);
+                            } else {
+                                uint32_t noMaskStackSeqNum = (triUp - startIdx * MAX_KV_STACK_LEN + 1) / MAX_KV_STACK_LEN;
+                                Arch::CrossCoreWaitFlag(qkReady);
+                                epilogueOnlineSoftmax(
+                                    gP[gmOffsetP],
+                                    gS[gmOffsetS],
+                                    gSink[gmOffsetSink],
+                                    layOutP,
+                                    layOutS,
+                                    actualBlockShapeQK,
+                                    (stackSeqCount == 0),
+                                    (stackSeqCount == noMaskStackSeqNum - 1),
+                                    qSBlockSize,
+                                    qNBlockSize,
+                                    curStackTileMod,
+                                    isLastStackTile);
+                            }
                         } else {
                             Arch::CrossCoreWaitFlag(qkReady);
                             epilogueOnlineSoftmax(
@@ -433,7 +528,7 @@ namespace SplitFuse {
                         Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady);
 #endif
                     }
-                    if (kvSIdx >= preKVNum) {
+                    if (kvSIdx >= startIdx + preKVNum) {
                         uint32_t nowkvSIdx = kvSIdx - preKVNum;
                         if (nowkvSIdx + 1 > kvSLoopNumTotal - 1U) {
                             stackSeqTile = noSkipKvS - nowkvSIdx * MAX_KV_STACK_LEN;
@@ -510,7 +605,11 @@ namespace SplitFuse {
                             qNBlockSize,
                             (stackSeqCount - PRE_LAUNCH == 0),
                             nowkvSIdx + 1 >= kvSLoopNumTotal,
-                            curStackTileMod);
+                            curStackTileMod,
+                            delStartRow,
+                            delEndRow,
+                            qSeqlen,
+                            qSBlockIdx);
 #endif
                     }
                     stackSeqCount++;

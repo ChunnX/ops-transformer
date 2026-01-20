@@ -114,7 +114,7 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
 }
 
 __aicore__ inline void VecMulMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
@@ -244,7 +244,7 @@ __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> sr
 }
 
 __aicore__ inline void VecAddMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
@@ -828,7 +828,7 @@ struct MaskInfo {
 
     // for bss & bs
     uint32_t batchIdx;
-    uint32_t batchOffset;
+    uint32_t attenMaskBatchStride;
     uint32_t attenMaskStride;
 
     LAYOUT_Q layout;
@@ -842,7 +842,7 @@ struct MaskInfo {
 
 __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
-    uint64_t bOffset = static_cast<uint64_t>(info.batchIdx) * static_cast<uint64_t>(info.batchOffset);
+    uint64_t bOffset = static_cast<uint64_t>(info.batchIdx) * static_cast<uint64_t>(info.attenMaskBatchStride);
     uint64_t s1Offset = (info.s1LeftPaddingSize + s1StartIdx % info.s1Size) * info.attenMaskStride;
     uint64_t s2Offset = info.s2LeftPaddingSize + info.s2StartIdx;
     return bOffset + s1Offset + s2Offset;

@@ -31,6 +31,8 @@ namespace optiling {
 
 const int64_t tokenDefault = 2147483647; // 2147483647 for token default value
 const int32_t sparseDefault = 0;
+constexpr int64_t mFdBaseSizeMla = 8;
+constexpr uint32_t MAX_SPLIT_RATIO = 2;
 
 uint64_t PFA_BENCHMARK_TILING_KEY = 1000000000000000000;
 
@@ -154,6 +156,7 @@ ge::graphStatus IFATiling::PreProcess()
     }
 
     SetupPerfMode();
+    IsFdBalanceCase();
     balanceModeFlag_ = IsBalanceSplitCore();
     SetCoreNum();
     UpdateL2CacheOffFlag();
@@ -161,7 +164,176 @@ ge::graphStatus IFATiling::PreProcess()
     return ge::GRAPH_SUCCESS;
 }
 
-bool IFATiling::IsBalanceSplitCore() const {
+bool IFATiling::IsValidFlag3B() {
+    // 3B的限制条件：
+    // 判断B必须是1、2、4
+    if (batchSize_ != 1 && batchSize_ != 2 && batchSize_ != 4) {
+        return false;
+    }
+    // s1必须等于4
+    if (qSeqSize_ != 4) {
+        return false;
+    }
+    // n1必须等于8
+    if (numHeads_ != 8) {
+        return false;
+    }
+    // n2必须等于1
+    if (numKvHeads_ != 1) {
+        return false;
+    }
+    // D维度必须为512
+    if (headDim_ != 512 || headDimV_ != 512) {
+        return false;
+    }
+    // 使能全量化标志位
+    if (quantFlag_ != true) {
+        return false;
+    }
+    // 使能了sparse=3
+    if (sparseMode_ != 3) {
+        return false;
+    }
+    // 使能PA NZ
+    if (inputKvLayout_ != IfaLayout::NZ || pageAttentionFlag_ != true) {
+        return false;
+    }
+    // s2范围在4k~5k之间
+    const int64_t *actualSeqKv = ifaContext_->actualSeqLengths.tensor->GetData<int64_t>();
+    if (actualSeqKv != nullptr) {
+        for (uint32_t bIdx = 0U; bIdx < batchSize_; bIdx++) {
+            int64_t s2 = actualLenDims_== 1U? actualSeqKv[0] : actualSeqKv[bIdx];  // 线段长度
+            if (s2 < 4096 || s2 > 5120) {
+                return false;
+            }
+        }
+    } else {
+        return false;
+    }
+    // 新增三点：query_quant_mode/k_antiquantMode/v_antiquantMode
+    int64_t queryQuantMode = ifaContext_->queryQuantMode != nullptr ? *ifaContext_->queryQuantMode : 0;
+    int64_t keyAntiQuantMode = ifaContext_->keyAntiquantMode != nullptr ? *ifaContext_->keyAntiquantMode : 0;
+    int64_t valueAntiQuantMode = ifaContext_->valueAntiquantMode != nullptr ? *ifaContext_->valueAntiquantMode : 0;
+    if (queryQuantMode != DEQUANT_PER_TOKEN_HEAD_MODE || keyAntiQuantMode != DEQUANT_PER_CHANNEL_MODE || valueAntiQuantMode != DEQUANT_PER_CHANNEL_MODE) {
+        return false;
+    }
+    return true;
+}
+
+bool IFATiling::IsValidFlag560B() {
+    // 560B的限制条件：
+    // 判断B必须是4
+    if (batchSize_ != 4) {
+        return false;
+    }
+    // s1必须等于2/3/4中的一种
+    if (!(qSeqSize_ == 2 || qSeqSize_ == 3 || qSeqSize_ == 4)) {
+        return false;
+    }
+    // n1必须等于64
+    if (numHeads_ != 64) {
+        return false;
+    }
+    // n2必须等于1
+    if (numKvHeads_ != 1) {
+        return false;
+    }
+    // D维度必须为512
+    if (headDim_ != 512 || headDimV_ != 512) {
+        return false;
+    }
+    // 使能全量化标志位
+    if (quantFlag_ != true) {
+        return false;
+    }
+    // 使能了sparse=3
+    if (sparseMode_ != 3) {
+        return false;
+    }
+    // 使能PA NZ
+    if (inputKvLayout_ != IfaLayout::NZ || pageAttentionFlag_ != true) {
+        return false;
+    }
+    // s2范围在4k~5k之间
+    const int64_t *actualSeqKv = ifaContext_->actualSeqLengths.tensor->GetData<int64_t>();
+    if (actualSeqKv != nullptr) {
+        for (uint32_t bIdx = 0U; bIdx < batchSize_; bIdx++) {
+            int64_t s2 = actualLenDims_== 1U? actualSeqKv[0] : actualSeqKv[bIdx];  // 线段长度
+            if (s2 < 4096 || s2 > 5120) {
+                return false;
+            }
+        }
+    } else {
+        return false;
+    }
+    // 新增三点：query_quant_mode/k_antiquantMode/v_antiquantMode
+    int64_t queryQuantMode = ifaContext_->queryQuantMode != nullptr ? *ifaContext_->queryQuantMode : 0;
+    int64_t keyAntiQuantMode = ifaContext_->keyAntiquantMode != nullptr ? *ifaContext_->keyAntiquantMode : 0;
+    int64_t valueAntiQuantMode = ifaContext_->valueAntiquantMode != nullptr ? *ifaContext_->valueAntiquantMode : 0;
+    if (queryQuantMode != DEQUANT_PER_TOKEN_HEAD_MODE || keyAntiQuantMode != DEQUANT_PER_CHANNEL_MODE || valueAntiQuantMode != DEQUANT_PER_CHANNEL_MODE) {
+        return false;
+    }
+    return true;
+}
+
+bool IFATiling::IsValidFlag() {
+    if (batchSize_ != 1) {
+        return false;
+    }
+    if (qSeqSize_ != 2) {
+        return false;
+    }
+    if (numHeads_ != 128) {
+        return false;
+    }
+    if (numKvHeads_ != 1) {
+        return false;
+    }
+    if (headDim_ != 512 || headDimV_ != 512) {
+        return false;
+    }
+    if (quantFlag_ != true) {
+        return false;
+    }
+    if (sparseMode_ != 3) {
+        return false;
+    }
+    if (inputKvLayout_ != IfaLayout::NZ || pageAttentionFlag_ != true) {
+        return false;
+    }
+    const int64_t *actualSeqKv = ifaContext_->actualSeqLengths.tensor->GetData<int64_t>();
+    if (actualSeqKv != nullptr) {
+        for (uint32_t bIdx = 0U; bIdx < batchSize_; bIdx++) {
+            int64_t s2 = actualLenDims_== 1U? actualSeqKv[0] : actualSeqKv[bIdx];  // 线段长度
+            if (s2 != 55002) {
+                return false;
+            }
+        }
+    } else {
+        return false;
+    }
+    int64_t queryQuantMode = ifaContext_->queryQuantMode != nullptr ? *ifaContext_->queryQuantMode : 0;
+    int64_t keyAntiQuantMode = ifaContext_->keyAntiquantMode != nullptr ? *ifaContext_->keyAntiquantMode : 0;
+    int64_t valueAntiQuantMode = ifaContext_->valueAntiquantMode != nullptr ? *ifaContext_->valueAntiquantMode : 0;
+    if (queryQuantMode != DEQUANT_PER_TOKEN_HEAD_MODE || keyAntiQuantMode != DEQUANT_PER_CHANNEL_MODE || valueAntiQuantMode != DEQUANT_PER_CHANNEL_MODE) {
+        return false;
+    }
+    return true;
+}
+
+void IFATiling::IsFdBalanceCase() {
+    if(IsValidFlag() || IsValidFlag3B() || IsValidFlag560B()) {
+        tilingDataMla_.tndSplitCoreParams.set_FdBalanceFlag(1);
+    } else {
+        tilingDataMla_.tndSplitCoreParams.set_FdBalanceFlag(0);
+    }
+}
+
+bool IFATiling::IsBalanceSplitCore() {
+    if (tilingDataMla_.tndSplitCoreParams.get_FdBalanceFlag() == 1) {
+        return true;
+    }
+
     if (perfMode_ != IfaPerfMode::CUBE_VIEW_MM_MLA) {
         return false;
     }
@@ -282,21 +454,24 @@ ge::graphStatus IFATiling::QKVPreProcess()
     if (GetInOutLayoutAndProcessQInfo(layout, sOfQuery, sOfHeadnum, kDimNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    
-    if (GetRopeAndGqaFlag(sOfQuery, kDimNum, sOfHeadnum, layout) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
     qSeqSize_ = sOfQuery;
-
     if (layout == "TND" || layout == "TND_NTD") {
         if (QKVPreProcess4TND(layout) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-    } else {
-        qSeqSize_ = sOfQuery;
+        sOfQuery = qSeqSize_;
+        if (isWorkspace_ && ifaContext_->blockTable.tensor != nullptr) {
+            uint32_t tndBatchSize = ifaContext_->blockTable.tensor->GetStorageShape().GetDim(0);
+            if (tndBatchSize != 0) {
+                sOfQuery = (tSeqSize_ + tndBatchSize - 1) / tndBatchSize;
+            }
+        }
     }
     s1SplitSize_ = qSeqSize_;
+
+    if (GetRopeAndGqaFlag(sOfQuery, kDimNum, sOfHeadnum, layout) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -405,14 +580,13 @@ ge::graphStatus IFATiling::GetRopeAndGqaFlag(const uint32_t sOfQuery, const uint
         OP_CHECK_IF(sOfQuery > 16, OP_LOGE(ifaContext_->opName, "QueryS(%u) should not be bigger than 16 in MLA.", sOfQuery),
                    return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF(layout == "TND" && headDim_ == 512 && !ropeFlag_, OP_LOGE(ifaContext_->opName,
+        "When D is 512, inputlayout %s q_rope and k_rope should not be null!", layout.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus IFATiling::QKVPreProcess4TND(const std::string layout)
 {
-    OP_CHECK_IF(!ropeFlag_, OP_LOGE(ifaContext_->opName, "When D is 512, inputlayout %s q_rope and k_rope should not be null!", layout.c_str()),
-                return ge::GRAPH_FAILED);
-
     auto qType = ifaContext_->query.desc->GetDataType();
     uint32_t qTypeSize = GetTypeSize(qType);
     if (qTypeSize == NUM_BYTES_UNDEF) {
@@ -1245,6 +1419,9 @@ ge::graphStatus IFATiling::CheckKVAntiQuantMode()
         OP_LOGE(ifaContext_->opName, "antiquantMode value[%u] should be 0 or 1 in GQA KV NZ", antiquantMode_);
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND && antiquantMode_ == DEQUANT_PER_TOKEN_MODE,
+        OP_LOGE(ifaContext_->opName, "Per token antiquant mode is not supported when layout is TND in GQA KV NZ."),
+        return ge::GRAPH_FAILED);
     if ((antiquantMode_ != DEQUANT_PER_CHANNEL_MODE) &&
             (antiquantMode_ != DEQUANT_PER_TOKEN_MODE) &&
             (antiquantMode_ != DEQUANT_PER_TENSOR_HEAD_MODE) &&
@@ -1808,6 +1985,8 @@ ge::graphStatus IFATiling::Split()
             kvSplit_++;
             kvSplitPart_ = aicNum_;
             return ge::GRAPH_SUCCESS;
+        } else if (tilingDataMla_.tndSplitCoreParams.get_FdBalanceFlag() == 1) {
+            return SplitBalancedFd();
         } else {
             return SplitBalanced();
         }
@@ -1917,6 +2096,49 @@ void IFATiling::EndSplitForCurrentCore(const TilingIndexes &tilingIdx,
     tilingInfo.needUpdate = false;
 }
 
+void IFATiling::SplitBalancedForEachHeadFd(
+    uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t s1)
+{
+    uint32_t *balanceFDCoreBArr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreBArr();
+    uint32_t *balanceFDCoreS1Arr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreS1Arr();
+    uint32_t *balanceFDCoreKVSplitArr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreKVSplitArr();
+    uint32_t *balanceFDCoreStartKVSplitNum = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreStartKVSplitNum();
+    balanceFDCoreStartKVSplitNum[0] = 0U;
+    uint32_t *gS1LastPartSizeOfFdHead = tilingDataMla_.tndSplitCoreParams.get_gS1LastPartSizeOfFdHead();
+
+    for (uint32_t s1OuterIdx = 0U; s1OuterIdx < seqTilingInfo.s1OuterNum[bIdx]; s1OuterIdx++) {
+        uint32_t currKvSplitPart = 1U; // [B,N2,S1]确定后，S2被切了几份
+        for (uint32_t s2Idx = 0U; s2Idx < seqTilingInfo.s2OuterNum[bIdx]; s2Idx++) {
+            // 计算当前的目标权重
+            uint64_t targetS2Length = static_cast<uint64_t>(tilingInfo.currCoreIdx + 1U) * seqTilingInfo.avgS2Length;
+            if (tilingInfo.accumS2Length + 1U >= targetS2Length) {
+                EndSplitForCurrentCore(TilingIndexes(bIdx, s1OuterIdx, s2Idx), seqTilingInfo, currKvSplitPart, tilingInfo);
+            } else {
+                tilingInfo.accumS2Length += 1U;
+                tilingInfo.needUpdate = true;
+            }
+        }
+        tilingInfo.maxKvSplitPart = std::max(tilingInfo.maxKvSplitPart, currKvSplitPart);
+        if (currKvSplitPart > 1U) {
+            // S2被切过了，需要规约，记录[B,N,S1]三根轴的idx和切分份数，用于规约
+            balanceFDCoreBArr[tilingInfo.tndFDCoreArrLen] = bIdx;
+            balanceFDCoreS1Arr[tilingInfo.tndFDCoreArrLen] = s1OuterIdx;
+            balanceFDCoreKVSplitArr[tilingInfo.tndFDCoreArrLen] = currKvSplitPart;
+            int64_t gSize = nNumOfQInOneGroup_;
+            int64_t currFdS1gSize = (s1OuterIdx == seqTilingInfo.s1OuterNum[bIdx] - 1) ? 
+                                     s1 * gSize  - (seqTilingInfo.s1OuterNum[bIdx] - 1) * s1SplitSize_ * gSize : s1SplitSize_ * gSize; // 处理尾块
+            int64_t currFdS1gSplitSize = (currFdS1gSize + mFdBaseSizeMla - 1) / mFdBaseSizeMla;
+            int64_t currFdS1gLastPartSize = currFdS1gSize % mFdBaseSizeMla;
+            if (currFdS1gLastPartSize == 0U) {
+                currFdS1gLastPartSize = mFdBaseSizeMla;
+            }
+            gS1SplitNumOfFdHead[tilingInfo.tndFDCoreArrLen] = currFdS1gSplitSize;
+            gS1LastPartSizeOfFdHead[tilingInfo.tndFDCoreArrLen] = currFdS1gLastPartSize;
+            tilingInfo.tndFDCoreArrLen += 1U;
+        }
+    }
+}
+
 void IFATiling::SplitBalancedForEachHead(
     uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo)
 {
@@ -1925,7 +2147,7 @@ void IFATiling::SplitBalancedForEachHead(
     uint32_t *balanceFDCoreKVSplitArr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreKVSplitArr();
     uint32_t *balanceFDCoreStartKVSplitNum = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreStartKVSplitNum();
     balanceFDCoreStartKVSplitNum[0] = 0U;
-
+  
     for (uint32_t s1OuterIdx = 0U; s1OuterIdx < seqTilingInfo.s1OuterNum[bIdx]; s1OuterIdx++) {
         uint32_t currKvSplitPart = 1U; // [B,N2,S1]确定后，S2被切了几份
         for (uint32_t s2Idx = 0U; s2Idx < seqTilingInfo.s2OuterNum[bIdx]; s2Idx++) {
@@ -1947,6 +2169,124 @@ void IFATiling::SplitBalancedForEachHead(
             tilingInfo.tndFDCoreArrLen += 1U;
         }
     }
+}
+
+void IFATiling::SplitFDMLa(uint32_t tndFDCoreArrLen, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t *s2SplitNumOfFdHead, uint32_t aivCoreNum, SeqTilingInfo &seqTilingInfo)
+{ 
+    uint32_t *gS1IdxEndOfFdHead = tilingDataMla_.tndSplitCoreParams.get_gS1IdxEndOfFdHead();
+    uint32_t *gS1IdxEndOfFdHeadSplit = tilingDataMla_.tndSplitCoreParams.get_gS1IdxEndOfFdHeadSplit();
+    
+    uint32_t totalFDLoad = 0U;
+    uint32_t totalFDHeadSplit = 0U;
+    
+    for (uint32_t i = 0U; i <  tndFDCoreArrLen; i++) { 
+        totalFDLoad += s2SplitNumOfFdHead[i] * gS1SplitNumOfFdHead[i];
+        totalFDHeadSplit += gS1SplitNumOfFdHead[i];
+    }
+    // 基于FA开核数量，计算每个Vector需要计算的FD数据量
+    uint32_t maxVectorNum = std::min(totalFDHeadSplit, aivCoreNum);  // FD均衡的最小单位为一个归约任务的一个split，所以最多占用totalFDHeadSplit个vector
+    double loadThrOfVector = static_cast<double>(totalFDLoad) / static_cast<double>(maxVectorNum);  // 初始化vector的负载上限
+    int64_t loadOfCurVector = 0;
+    uint32_t curCoreIndex = 0U;
+    uint32_t preTmpFDIndexEndOfFdHead = 0U;
+    uint32_t preTmpFDIndexEndOfFdHeadSplit = 0U;
+
+    for (uint32_t i = 0U; i <  tndFDCoreArrLen; i++) {
+        uint32_t fDKVSplitNum = s2SplitNumOfFdHead[i];
+        for (uint32_t gS1SplitIdx = 0U; gS1SplitIdx < gS1SplitNumOfFdHead[i]; gS1SplitIdx++) {
+            double remainSpace = loadThrOfVector - loadOfCurVector;  // 计算当前vector剩余负载空间
+            // 判断是否放在当前vector的标准是剩余空间是否能容纳一半当前归约块
+            if (fDKVSplitNum > remainSpace * MAX_SPLIT_RATIO) {
+                gS1IdxEndOfFdHead[curCoreIndex] = preTmpFDIndexEndOfFdHead;
+                gS1IdxEndOfFdHeadSplit[curCoreIndex] = preTmpFDIndexEndOfFdHeadSplit;
+                curCoreIndex += 1U;
+                totalFDLoad -= static_cast<uint32_t>(loadOfCurVector);  // 当前未分配的总负载
+                loadThrOfVector = static_cast<double>(totalFDLoad) / static_cast<double>(maxVectorNum - curCoreIndex);  // 根据剩余负载和剩余可用vector更新负载上限，保证最后一个vector能分配所有负载
+                loadOfCurVector = 0;
+            }
+            loadOfCurVector += fDKVSplitNum;
+            preTmpFDIndexEndOfFdHead = i;
+            preTmpFDIndexEndOfFdHeadSplit = gS1SplitIdx;
+        }
+    }
+    gS1IdxEndOfFdHead[curCoreIndex] = preTmpFDIndexEndOfFdHead;
+    gS1IdxEndOfFdHeadSplit[curCoreIndex] = preTmpFDIndexEndOfFdHeadSplit;
+    tilingDataMla_.tndSplitCoreParams.set_usedVecNumOfFd(curCoreIndex + 1U);
+}
+
+ge::graphStatus IFATiling::SplitBalancedFd()
+{
+    CalcInnerSize(seqSize_);
+
+    uint32_t s1gBasicSize = FIA_BALANCE_SG_BASIC_SIZE;
+    uint32_t bSize = batchSize_;
+    uint32_t gSize = nNumOfQInOneGroup_;
+    uint32_t n2Size = numKvHeads_;
+    s1SplitSize_ = s1gBasicSize / gSize; // QS的切分
+    uint32_t souter = s1SplitSize_;
+
+    // 负载均衡场景G轴不切
+    groupSplitSize_ = nNumOfQInOneGroup_;
+    gOuter_ = (nNumOfQInOneGroup_ + groupSplitSize_ - 1U) / groupSplitSize_;
+
+    const int64_t *actualSeqKv = ifaContext_->actualSeqLengths.tensor->GetData<int64_t>();
+    ActualSeqInfo actualSeqInfo(bSize, actualSeqKv[0]);
+    GetActualSeqInfo(actualSeqKv, actualSeqInfo);
+
+    OP_LOGI(ifaContext_->opName, "bSize:%u, gSize:%u, n2Size:%u, souter:%u\n", bSize, gSize, n2Size, souter);
+    // 分核主流程
+    // 计算线段总长度和平均长度
+    SeqTilingInfo seqTilingInfo(bSize);
+    GetSeqTilingInfo(actualSeqKv, actualSeqInfo, seqTilingInfo);
+    std::vector<int64_t> gS1SplitNumOfFdHead(MAX_AIC_CORE_NUM * 2);
+
+    // 启动分核
+    BalancedSplitTilingInfo tilingInfo(coreNum_);
+    for (uint32_t bIdx = 0U; bIdx < bSize; bIdx++) {
+        uint32_t s1 = actualSeqInfo.actualSeqQ[bIdx];
+        int64_t s2 = actualLenDims_== 1U? actualSeqKv[0] : actualSeqKv[bIdx]; // 线段长度
+        OP_LOGI(ifaContext_->opName, "bIdx:%u, s1:%u, s2:%ld\n", bIdx, s1, s2);
+        for (uint32_t nIdx = 0U; nIdx < n2Size; nIdx++) {
+            SplitBalancedForEachHeadFd(bIdx, seqTilingInfo, tilingInfo, gS1SplitNumOfFdHead, s1);
+        }
+    }
+    uint32_t *gS1SplitNumOfFdHeadMla = tilingDataMla_.tndSplitCoreParams.get_gS1SplitNumOfFdHeadMla();
+    for(uint32_t i = 0U; i < tilingInfo.tndFDCoreArrLen; ++i)
+    {
+        gS1SplitNumOfFdHeadMla[i] = gS1SplitNumOfFdHead[i];
+    }
+    if (tilingInfo.needUpdate) {
+        // 更新最后一个核的End分核信息
+        FillBalancedSplitCoreInfo(TilingIndexes(seqTilingInfo.lastValidBIdx,
+                                                seqTilingInfo.s1OuterNum[seqTilingInfo.lastValidBIdx] - 1U,
+                                                seqTilingInfo.s2OuterNum[seqTilingInfo.lastValidBIdx] - 1U),
+                                  tilingInfo);
+    }
+    uint32_t lastValidBMoreIdx = seqTilingInfo.lastValidBIdx + 1U;
+    if (IsKvZeroBatchSplit(tilingInfo.needUpdate, lastValidBMoreIdx, bSize, seqTilingInfo.s1OuterNum, seqTilingInfo.s2OuterNum)) {
+        FillBalancedSplitCoreInfo(TilingIndexes(lastValidBMoreIdx, 0U, 0U), tilingInfo);
+    }
+
+    usedCoreNum_ = tilingInfo.currCoreIdx;
+    tilingDataMla_.tndSplitCoreParams.set_tndFDCoreArrLen(tilingInfo.tndFDCoreArrLen);
+    OP_LOGI(ifaContext_->opName, "usedCoreNum_:%u", usedCoreNum_);
+    OP_LOGI(ifaContext_->opName, "tnd FD Core Array Length:%u", tilingInfo.tndFDCoreArrLen);
+    OP_LOGI(ifaContext_->opName, "max Kv Split Part:%u", tilingInfo.maxKvSplitPart);
+    OP_LOGI(ifaContext_->opName, "avgerage S2 Length:%lu", seqTilingInfo.avgS2Length);
+    OP_LOGI(ifaContext_->opName, "sInnerSize_:%u", sInnerSize_);
+
+    if (IsFlashDecode(coreNum_, perfMode_)) {
+        splitKVFlag_ = true;
+        kvSplit_++;
+        kvSplitPart_ = tilingInfo.maxKvSplitPart;
+        // 使能fd负载均衡
+        uint32_t *balanceFDCoreS1Arr = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreS1Arr();
+        uint32_t *s2SplitNumOfFdHead = tilingDataMla_.tndSplitCoreParams.get_balanceFDCoreKVSplitArr();
+        uint32_t aivCoreNumOfFd = (aivNum_ / aicNum_) * usedCoreNum_;        
+        SplitFDMLa(tilingInfo.tndFDCoreArrLen, gS1SplitNumOfFdHead, s2SplitNumOfFdHead, aivCoreNumOfFd, seqTilingInfo); //待补充
+    }
+
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus IFATiling::SplitBalanced()
@@ -2022,7 +2362,7 @@ ge::graphStatus IFATiling::SplitUnbalanced() {
     }
 
     if (ropeFlag_ || gqaMtpFlag_) {
-        if (inputLayout_ == IfaLayout::BSH_BSND) {
+        if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
             s1SplitSize_ = gMax_ / nNumOfQInOneGroup_;
             if (s1SplitSize_ > qSeqSize_) {
                 s1SplitSize_ = qSeqSize_;
@@ -2053,7 +2393,7 @@ ge::graphStatus IFATiling::SplitUnbalanced() {
 ge::graphStatus IFATiling::SplitBN()
 {
     uint32_t bn;
-    if (inputLayout_ == IfaLayout::BSH_BSND) {
+    if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
         bn = batchSize_ * numKvHeads_ * s1Outer_;
     } else {
         bn = batchSize_ * numKvHeads_ * gOuter_;
@@ -2099,7 +2439,7 @@ void IFATiling::GetEstimatedLoad(int64_t &estimatedLoad) const
 std::vector<int64_t> IFATiling::InitSparseValidArray(const int64_t *actualLens) const
 {
     uint32_t outer;
-    if (inputLayout_ == IfaLayout::BSH_BSND) {
+    if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
         outer = s1Outer_;
     } else {
         outer = gOuter_;
@@ -2237,7 +2577,7 @@ void IFATiling::SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, 
 ge::graphStatus IFATiling::SplitBN_V0()
 {
     uint32_t bn;
-    if (inputLayout_ == IfaLayout::BSH_BSND) {
+    if (inputLayout_ == IfaLayout::BSH_BSND || (gqaKvNZFlag_ && inputLayout_ == IfaLayout::TND)) {
         bn = batchSize_ * numKvHeads_ * s1Outer_;
     } else {
         bn = batchSize_ * numKvHeads_ * gOuter_;

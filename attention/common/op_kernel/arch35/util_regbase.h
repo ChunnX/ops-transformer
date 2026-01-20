@@ -214,6 +214,8 @@ struct RunInfo<false> {
     /* 全局的基本块信息 */ \
     uint32_t s1BaseSize; \
     uint32_t s2BaseSize; \
+    int64_t bSize; \
+    uint32_t tSize; \
     int64_t dSize; \
     int64_t dSizeV; \
     int64_t dBasicBlock; \
@@ -355,6 +357,7 @@ struct RunInfo<false> {
 #define CV_SHARED_PARAMS \
     /* base params */ \
     uint32_t bSize;  \
+    uint32_t tSize; \
     uint32_t n2Size;  \
     uint32_t gSize;  \
     uint32_t s1Size;  \

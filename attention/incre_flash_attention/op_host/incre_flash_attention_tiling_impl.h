@@ -57,7 +57,11 @@ public:
         return !atbRunFlag_;
     }
     uint32_t GetAntiquantSeqLength() const;
-    bool IsBalanceSplitCore() const;
+    bool IsBalanceSplitCore();
+    void IsFdBalanceCase();
+    bool IsValidFlag3B();
+    bool IsValidFlag560B();
+    bool IsValidFlag();
 
 private:
     ge::graphStatus GetNpuInfo();
@@ -221,9 +225,12 @@ private:
     void FillBalancedSplitCoreInfo(const TilingIndexes &tilingIdx, BalancedSplitTilingInfo &tilingInfo);
     void EndSplitForCurrentCore(const TilingIndexes &tilingIdx, const SeqTilingInfo &seqTilingInfo,
         uint32_t &currKvSplitPart, BalancedSplitTilingInfo &tilingInfo);
+    void SplitBalancedForEachHeadFd(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t s1);
     void SplitBalancedForEachHead(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo);
+    void SplitFDMLa(uint32_t tndFDCoreArrLen, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t *s2SplitNumOfFdHead, uint32_t aivCoreNum, SeqTilingInfo &seqTilingInfo);
     ge::graphStatus SplitBalanced();
     ge::graphStatus SplitUnbalanced();
+    ge::graphStatus SplitBalancedFd();
     ge::graphStatus CalcInnerSize(uint32_t seqSize);
     ge::graphStatus SplitBN();
     ge::graphStatus ProcessGqaKvNz() const;

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file rope.h
+ * \file service_rope.h
  * \brief
  */
 
-#ifndef ROPE_H
-#define ROPE_H
+#ifndef SERVICE_ROPE_H
+#define SERVICE_ROPE_H
 
 namespace MlaProlog {
 /**

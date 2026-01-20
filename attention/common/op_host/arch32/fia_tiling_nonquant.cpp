@@ -22,7 +22,6 @@
 #include "log/log.h"
 #include "../fia_tiling_templates_registry.h"
 #include "../split_core.h"
-#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_base.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -124,15 +123,14 @@ bool FiaTilingNonQuant::IsCapable()
     if (fiaInfo_ == nullptr) {
         return false;
     }
- 
+
     // 不支持空Tensor
     if (fiaInfo_->emptyTensorFlag) {
         return false;
     }
- 	 
+
     ge::DataType qDataType = fiaInfo_->inputQType;
     ge::DataType kDataType = fiaInfo_->inputKvType;
-
     // 仅支持非量化
     if ((qDataType != ge::DT_FLOAT16 && qDataType != ge::DT_BF16) || (qDataType != kDataType)) {
         return false;
@@ -633,6 +631,22 @@ void FiaTilingNonQuant::CalcScheduleMode()
     OP_LOGI(fiaInfo_->opName, "FIA schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
 }
 
+void FiaTilingNonQuant::GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
+                                        int64_t &safePreToken, int64_t &safeNextToken) const
+{
+    if (mode == SparseMode::DEFAULT_MASK) {
+        safePreToken = std::max(-actSeqLensKv, safePreToken);
+        safePreToken = std::min(safePreToken, actSeqLensQ);
+        safeNextToken = std::max(-actSeqLensQ, safeNextToken);
+        safeNextToken = std::min(safeNextToken, actSeqLensKv);
+    } else if (mode == SparseMode::BAND) {
+        safePreToken = std::max(-actSeqLensQ, safePreToken);
+        safePreToken = std::min(safePreToken, actSeqLensKv);
+        safeNextToken = std::max(-actSeqLensKv, safeNextToken);
+        safeNextToken = std::min(safeNextToken, actSeqLensQ);
+    }
+}
+
 bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo)
 {
     if (!baseInfo.attenMaskFlag) {
@@ -678,21 +692,6 @@ bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo)
         }
     }
     return false;
-}
-
-void FiaTilingNonQuant::GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken) const
-{
-    if (mode == SparseMode::DEFAULT_MASK) {
-        safePreToken = std::max(-actSeqLensKv, safePreToken);
-        safePreToken = std::min(safePreToken, actSeqLensQ);
-        safeNextToken = std::max(-actSeqLensQ, safeNextToken);
-        safeNextToken = std::min(safeNextToken, actSeqLensKv);
-    } else if (mode == SparseMode::BAND) {
-        safePreToken = std::max(-actSeqLensQ, safePreToken);
-        safePreToken = std::min(safePreToken, actSeqLensKv);
-        safeNextToken = std::max(-actSeqLensKv, safeNextToken);
-        safeNextToken = std::min(safeNextToken, actSeqLensQ);
-    }
 }
 
 ge::graphStatus FiaTilingNonQuant::DoOpTiling()

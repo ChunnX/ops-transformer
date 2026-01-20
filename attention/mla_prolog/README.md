@@ -8,6 +8,7 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
+
 -  **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
 -  **计算公式**：
 
@@ -56,7 +57,9 @@
     $$
     k^R = Cache(ROPE(x \cdot W^{KR}))
     $$
+
 ## 参数说明
+
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
 |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|
 | token_x                     | 输入      | 公式中计算Query和Key的输入tensor | INT8, BF16 | ND         |
@@ -86,6 +89,7 @@
 
 
 ## 约束说明
+
 -   B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
     - 如果B、S、T取值为0，则query、query_rope输出空Tensor，kv_cache、kr_cache不做更新。
     - 如果Skv取值为0，则query、query_rope正常计算，kv_cache、kr_cache不做更新，即输出空Tensor。

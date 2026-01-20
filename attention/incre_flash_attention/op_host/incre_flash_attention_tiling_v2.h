@@ -54,6 +54,7 @@ constexpr uint32_t MASKDIM_BSS = 3;
 constexpr uint32_t MASKDIM_B1SS = 4;
 constexpr uint32_t SPARSE_OPTIMIZE_ATTENTION_SIZE = 2048;
 constexpr int64_t SLOPE_N_DIM_NUM = 1L;
+constexpr int64_t SLIMIT = 20971520;
 
 const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> inOutDtypeSupported = {
   {ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT16},
@@ -61,13 +62,11 @@ const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> inOutDty
   {ge::DT_FLOAT16, ge::DT_HIFLOAT8, ge::DT_FLOAT16},
   {ge::DT_FLOAT16, ge::DT_INT4, ge::DT_FLOAT16},
   {ge::DT_FLOAT16, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT16},
-  {ge::DT_FLOAT16, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT16},
   {ge::DT_BF16, ge::DT_INT8, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_HIFLOAT8, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_INT4, ge::DT_BF16},
   {ge::DT_BF16, ge::DT_FLOAT4_E2M1, ge::DT_BF16},
-  {ge::DT_BF16, ge::DT_FLOAT4_E1M2, ge::DT_BF16},
   {ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT8},
   {ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN},
   {ge::DT_FLOAT16, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8},
@@ -137,6 +136,7 @@ private:
   ge::graphStatus ProcessBlockTable();
   ge::graphStatus ProcessQPaddingSize();
   ge::graphStatus ProcessKVPaddingSize();
+  ge::graphStatus ProcessPrefix();
   ge::graphStatus VerifyQuantScale2() const;
   bool EnableC1V1() const;
   void UpdatePerfMode();
@@ -145,12 +145,17 @@ private:
   void SetPFASparseType(uint32_t qS);
   void SetfaRunBaseSize();
   void GetMaxWorkspaceFlag();
+  void SetEmptyTensor();
+  void IncreFlashAttentionInitOutputSplit();
+  void IncreFlashAttentionInitSoftmaxLseOutputSplit();
+  bool CheckEmptyTensor();
   ge::graphStatus InitInOutMode();
   ge::graphStatus KvShapePostProcess();
   ge::graphStatus CheckKvCache();
   ge::graphStatus CheckKvCacheValue(uint32_t kDimNum) const;
   ge::graphStatus CheckInputAntiquantFormat() const;
-  ge::graphStatus CheckKVShape() const;
+  ge::graphStatus CheckKVShapePre();
+  ge::graphStatus CheckKVShape(int64_t batchOfQuery);
   ge::graphStatus CheckFormat(ge::Format format, const std::string &sName) const;
   ge::graphStatus CheckQKOutShape() const;
   ge::graphStatus CheckLse() const;
@@ -190,6 +195,7 @@ private:
 
   bool CheckMaskTypeAndShape(const gert::Tensor* maskShape, ge::DataType attenMaskType) const;
   bool CheckSparseMode(bool isDefaultSparseMode, bool enableMask);
+  bool CheckBandMode(bool isBandMode);
   void SetSparseModeData(bool& isBandMode, bool enableMask, bool isDefaultSparseMode);
   bool CheckMaskCrossover(const gert::Tensor* maskShape, ge::DataType attenMaskType, bool enableMask, bool isDefaultSparseMode);
   bool CheckMaskShapeCrossSparse(const gert::Tensor* maskShape, bool isDefaultSparseMode);
@@ -204,6 +210,9 @@ private:
   bool SetQKVStartIdx();
   bool AlibiCheckSeqLength();
   bool CheckPseShiftShape(const gert::Tensor* pseShiftInput);
+  bool GetAndCheckPrefixShape(std::string layoutStr, const gert::Shape keyPrefixShape, const gert::Shape valuePrefixShape, const gert::Shape keyShape);
+  bool CheckKeyValuePrefixConsistency(const gert::Shape keyPrefixShape, const gert::Shape valuePrefixShape, const gert::Shape keyShape);
+  bool CheckActualSharedPrefixLen(const gert::Tensor* actualSharedPrefixLenInput, const gert::Shape keyPrefixShape, uint32_t prefixSSize_);
   bool CheckPFAMerge();
 
   std::string GetShapeStr(const gert::Shape &aShape) const;
@@ -295,6 +304,7 @@ private:
   uint32_t sMax_ = 0;
   uint32_t blockTypeSize_ = 0;  // 计算中间量大小
   uint32_t kvSplitPart_ = 1;
+  bool emptyTensor_ = false;
 
   ge::DataType inputQType_ = ge::DT_FLOAT16;
   ge::DataType inputKvType_ = ge::DT_FLOAT16;
@@ -399,6 +409,13 @@ private:
   uint32_t l2CacheOffFlag_ = 0;
   // softmaxLse
   bool softmaxLseFlag_ = false;
+
+  // prefix
+  bool enableKVPrefix_ = false;
+  bool actualSharedPrefixLenNullFlag_ = true; // 默认为空
+  uint32_t prefixSeqInnerSize_ = 0;
+  uint32_t prefixSSize_ = 0;
+  uint32_t actualSharedPrefixLen_ = 0;
 
   //伪量化新模板新增
   bool faRunGS_ = false;    //指示是否合轴

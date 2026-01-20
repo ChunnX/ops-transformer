@@ -18,34 +18,57 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "prompt_flash_attention_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 
 template<typename T>
 class PromptFlashAttentionZeroOutPut {
 public:
     __aicore__ inline PromptFlashAttentionZeroOutPut() {};
     __aicore__ inline void Init(__gm__ uint8_t*  attentionOut,
-                                const optiling::PromptFlashAttentionTilingData* __restrict tiling);
+                                __gm__ uint8_t*  softmaxLse,
+                                const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tiling);
     __aicore__ inline void Process();
+    static constexpr bool POST_QUANT = !IsSameType<T, half>::value;
 
 protected:
-    const optiling::PromptFlashAttentionTilingData* __restrict tilingData;
-    GlobalTensor<T> attentionOutGm;
+    const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tilingData;
+    GlobalTensor<half> attentionOutGm;
+    GlobalTensor<float> softmaxLseGm;
 };
 
 template<typename T>
 __aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Init(__gm__ uint8_t*  attentionOut,
-                                                               const optiling::PromptFlashAttentionTilingData* __restrict tiling) {
-    attentionOutGm.SetGlobalBuffer((__gm__ T*)attentionOut);
+                                                               __gm__ uint8_t*  softmaxLse,
+                                                               const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tiling) {
+    attentionOutGm.SetGlobalBuffer((__gm__ half*)attentionOut);
+    softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
     tilingData = tiling;
 }
 
 template<typename T>
 __aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Process() {
-        uint32_t tmp_block_idx = GetBlockIdx();
-    auto &initParams = tilingData->promptAttentionInitOutputParams;
+    uint32_t tmp_block_idx = GetBlockIdx();
+    auto &initParams = tilingData->initOutputParams;
     uint32_t tailSize = initParams.totalOutputSize - tmp_block_idx * initParams.singleCoreSize;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
-    InitOutput<T>(attentionOutGm[tmp_block_idx * initParams.singleCoreSize], singleInitOutputSize, 0);
+    if (singleInitOutputSize > 0) {
+        if constexpr (POST_QUANT){
+            InitOutput<half>(attentionOutGm[tmp_block_idx * initParams.singleCoreSize / 2], singleInitOutputSize / 2, 0);
+        } else {
+            InitOutput<half>(attentionOutGm[tmp_block_idx * initParams.singleCoreSize], singleInitOutputSize, 0);
+        }
+    }
+
+    int64_t coreNum = GetBlockNum() * GetTaskRation();
+    if (coreNum != 0 && tmp_block_idx < coreNum) {
+        int64_t singleCoreLseSize = initParams.totalSoftMaxLseOutputSize / coreNum;
+        if (tmp_block_idx == coreNum - 1) {
+            singleCoreLseSize += initParams.totalSoftMaxLseOutputSize % coreNum;
+        }
+        if (singleCoreLseSize > 0) {
+            InitOutput<float>(softmaxLseGm[tmp_block_idx * (initParams.totalSoftMaxLseOutputSize / coreNum)], 
+                singleCoreLseSize, 3e+99); // 3e+99:set the value of invalid batch to inf
+        }
+    }
 }
 #endif  // PROMPT_FLASH_ATTENTION_ZERO_OUTPUT_H

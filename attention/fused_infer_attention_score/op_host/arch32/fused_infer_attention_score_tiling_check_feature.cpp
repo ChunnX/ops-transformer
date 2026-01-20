@@ -54,7 +54,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureNoQuantDtype() const
                 KEY_ROPE_NAME.c_str(), FusedDataTypeToSerialString(opParamInfo_.keyRope.desc->GetDataType()).c_str(),
                 KEY_NAME.c_str(), FusedDataTypeToSerialString(opParamInfo_.key.desc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
-    }       
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -86,17 +86,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLse() const
 {
     if (!fiaInfo_.softmaxLseFlag) {
         return ge::GRAPH_SUCCESS;
-    }
-
-    if (ropeMode_ == RopeMode::ROPE_SPLIT && vHeadDim_ == 512U) {
-        std::string layout = opParamInfo_.layOut;
-        const std::vector<std::string> unsupportedLayoutList = {"BSH_NBSD", "BSND_NBSD", "BNSD_NBSD, TND_NTD"};
-        OP_CHECK_IF(std::find(unsupportedLayoutList.begin(), unsupportedLayoutList.end(), layout) != unsupportedLayoutList.end(),
-            OP_LOGE(opName_,
-                    "In %s situation with softmax_lse, when the head dim of value is %u, layout only "
-                    "supports BSH, BSND, BNSD, TND, but got %s",
-                    QuantModeToSerialString(quantMode_).c_str(), vHeadDim_, layout.c_str()),
-            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -287,10 +276,6 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePSE() const
         OP_CHECK_IF(ropeMode_ != RopeMode::NO_ROPE,
             OP_LOGE(opName_, "when pse_shift exists, query_rope and key_rope should be not exist and the head_dim(D) "
                              "dimension of query and key should be equal to the head_dim(D) dimension of value."),
-            return ge::GRAPH_FAILED);
-            
-        OP_CHECK_IF(kvLayout_ == FiaLayout::NZ,
-            OP_LOGE(opName_, "when pse_shift exists and Page Attention enabled, the dim of key/value's layout can't be 5."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -722,7 +707,6 @@ ge::graphStatus FiaTilingCheck::CheckFeature()
     } else {
         return CheckFeatureGqa();
     }
-
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling

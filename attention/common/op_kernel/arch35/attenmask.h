@@ -160,7 +160,7 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
     }
 }
 
-template <bool hasAtten, bool isInfer = false, bool hasRope = false>
+template <bool hasAtten, bool enableKVPrefix, bool isInfer = false, bool hasRope = false>
 __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo)
 {
@@ -177,7 +177,16 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &run
             bOffset = runInfo.b1SSAttenMaskOffset;
         }
         int64_t s1Offset = runInfo.s1oIdx * constInfo.s1BaseSize + runInfo.vecCoreOffset;
-        int64_t s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+        int64_t s2Offset = 0;
+        if constexpr (enableKVPrefix) {
+            if ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount) {
+                s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+            } else {
+                s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount) * constInfo.s2BaseSize + constInfo.actualKVPrefixSize;
+            }
+        } else {
+            s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+        }
         if constexpr (isInfer) {
             s1Offset += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
             s1Offset += runInfo.queryLeftPaddingSize;
@@ -315,7 +324,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
 {
     if constexpr (hasAtten == true) {
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
-            return ComputeOffsetForNoCompress<hasAtten>(runInfo, constInfo, attenMaskInfo);
+            return ComputeOffsetForNoCompress<hasAtten, enableKVPrefix>(runInfo, constInfo, attenMaskInfo);
         }
         if (constInfo.layoutType == (uint32_t)LayOutTypeEnum::LAYOUT_TND && !isInfer) {
             // compress mode
@@ -390,15 +399,24 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
         int64_t deltaCausalOrNext = 0;
         int64_t deltaPre = 0;
         int64_t deltaN = runInfo.actualS1Size - runInfo.actualS2Size;
+        if constexpr (enableKVPrefix) {
+            deltaN -= constInfo.actualKVPrefixSize;
+        }
         int64_t s1Offset = runInfo.s1oIdx * constInfo.s1BaseSize;
-        int64_t s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+        int64_t s2Offset = 0;
+        if constexpr (enableKVPrefix) {
+            if ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount) {
+                s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+            } else {
+                s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount) * constInfo.s2BaseSize + constInfo.actualKVPrefixSize;
+            }
+        } else {
+            s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+        }
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset;
         } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset - deltaN;
-            if constexpr (enableKVPrefix) {
-                deltaCausalOrNext += constInfo.actualKVPrefixSize;
-            }
             if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
                 if (constInfo.layoutType == (uint32_t)LayOutTypeEnum::LAYOUT_BNSD) {
                     deltaCausalOrNext = runInfo.nextTokensOfMlaPerBatch - s2Offset;
