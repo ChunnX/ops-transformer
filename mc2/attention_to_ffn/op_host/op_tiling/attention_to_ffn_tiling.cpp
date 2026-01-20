@@ -59,6 +59,7 @@ constexpr uint32_t ATTR_FFN_START_RANK_INDEX = 8;
  
 constexpr uint32_t INDEX_TWO = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
+constexpr uint64_t WORKSPACE_ELEMENT_OFFSET = 128;  // 每个FFN预留128B
 constexpr uint64_t MB_SIZE = 1024 * 1024;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
 const char* ATTN_FFN_INNER_DEBUG = "AttentionToFFN Tiling Debug";
@@ -527,13 +528,14 @@ static uint64_t CalTilingKey(const uint32_t syncFlag, const uint32_t quantMode, 
     return tilingKey;
 }
  
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context, AttentionToFFNTilingData *tilingData)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(ATTN_FFN_INNER_DEBUG, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
+    uint64_t ffnNum = static_cast<uint64_t>(tilingData->attentionToFFNInfo.worldSize - tilingData->attentionToFFNInfo.attentionWorkerNum);
+    workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize() + static_cast<size_t>(ffnNum * WORKSPACE_ELEMENT_OFFSET);
     return ge::GRAPH_SUCCESS;
 }
  
@@ -550,9 +552,9 @@ static void CalWinSize(AttentionToFFNTilingData &tilingData, const uint32_t quan
     uint64_t tokenInfoNeedWinSize = attentionWorkerNum * microBatchNum * infoTableLastDimNum * sizeof(int32_t);
     uint64_t tokenDataNeedWinSize = 0;
     if (quantMode != 0) {
-        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K+sharedExpertNum) * HS; // 量化模式
+        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS; // 量化模式
     } else {
-        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K+sharedExpertNum) * HS * NO_QUANT_MODE_WIN_SIZE; // 非量化模式
+        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS * NO_QUANT_MODE_WIN_SIZE; // 非量化模式
     }
     uint64_t actualNeedWinSize = tokenInfoNeedWinSize + tokenDataNeedWinSize;
     uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
@@ -604,7 +606,7 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext* context)
                     return ge::GRAPH_FAILED);
  
     // Set WorkSpace
-    OP_TILING_CHECK(SetWorkSpace(context) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(ATTN_FFN_INNER_DEBUG, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
  
     // Set HcommCfg
