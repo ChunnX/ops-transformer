@@ -113,16 +113,9 @@ static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, c
 }
 
 // 维度判断
-static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, int64_t epWorldSize,
-                           int64_t tpWorldSize, int64_t xShardType, aclTensor* y1Out, aclTensor* y2OutOptional,
-                           aclTensor* y3OutOptional)
+static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weight, int64_t epWorldSize, 
+                                      const aclTensor* y1Out)
 {
-    // 是否为三维判断
-    if (!CheckIfTensorThreeDim(x, weight, bias, y1Out, y2OutOptional, y3OutOptional)) {
-        return false;
-    }
-
-    // 公共shape特性
     // E = E/ep * ep, x_0 == w_0 * ep
     if ((weight->GetViewShape().GetDim(DIM_0) * epWorldSize) != x->GetViewShape().GetDim(DIM_0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The first dim of weight multi epSize must equal the first dim of x, "
@@ -144,8 +137,12 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
                 weight->GetViewShape().GetDim(DIM_2));
         return false;
     }
+    return true;
+}
 
-    // 非公共shape特性
+static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weight, int64_t epWorldSize, 
+                                      int64_t tpWorldSize, int64_t xShardType, const aclTensor* y1Out)
+{
     if (xShardType == 0) {
         // H = H/tp * tp, w_1 = x_2 * tp
         if ((x->GetViewShape().GetDim(DIM_2) * tpWorldSize) != weight->GetViewShape().GetDim(DIM_1)) {
@@ -178,7 +175,11 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "xShardType [%ld] is invalid.", xShardType);
         return false;
     }
+    return true;
+}
 
+static bool CheckBiasDim(const aclTensor* weight, const aclTensor* bias, const aclTensor* y1Out)
+{
     // bias 维度判断
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) ||
@@ -194,6 +195,12 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
             return false;
         }
     }
+    return true;
+}
+
+static bool CheckOutOptionalDim(const aclTensor* weight, const aclTensor* y1Out, const aclTensor* y2OutOptional, 
+                                const aclTensor* y3OutOptional)
+{
     // y2OutOptional 维度判断
     if (y2OutOptional != nullptr) {
         if ((y2OutOptional->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) ||
@@ -215,6 +222,37 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
                     y1Out->GetViewShape().GetDim(DIM_2), ToString(y3OutOptional->GetViewShape()).GetString());
             return false;
         }
+    }
+    return true;
+}
+
+static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, int64_t epWorldSize,
+                           int64_t tpWorldSize, int64_t xShardType, aclTensor* y1Out, aclTensor* y2OutOptional,
+                           aclTensor* y3OutOptional)
+{
+    // 是否为三维判断
+    if (!CheckIfTensorThreeDim(x, weight, bias, y1Out, y2OutOptional, y3OutOptional)) {
+        return false;
+    }
+
+    // 公共shape特性
+    if (!CheckTensorDimCommonShape(x, weight, epWorldSize, y1Out)) {
+        return false;
+    }
+
+    // 非公共shape特性
+    if (!CheckTensorDimUniqueShape(x, weight, epWorldSize, tpWorldSize, xShardType, y1Out)) {
+        return false;
+    }
+
+    // bias维度判断
+    if (!CheckBiasDim(weight, bias, y1Out)) {
+        return false;
+    }
+
+    // OutOptional维度判断
+    if (!CheckOutOptionalDim(weight, y1Out, y2OutOptional, y3OutOptional)) {
+        return false;
     }
     return true;
 }

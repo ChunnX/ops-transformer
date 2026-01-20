@@ -125,11 +125,9 @@ bool CommonCheckTensorShape(
 }
 
 // 盘古 2.6T (shard 0) && GPT 2.2T (shard 1)
-bool XShardCheckTensorShape(
-    const char* nodeName, const gert::Shape* xShape, const gert::Shape* weightShape, const int64_t epSize,
-    const int64_t tpSize, const int64_t xShard, const size_t wDimH, const size_t wDimM)
+static bool CheckTensorShapeDimWithoutxShard(const char* nodeName, const gert::Shape* xShape, 
+                                             const gert::Shape* weightShape, const int64_t epSize, const size_t wDimM)
 {
-    // 检查 shape 维度的范围
     // x[DIM_E] = E, value E should = [2, 2048]
     if (((xShape->GetDim(DIM_E) < VALUE_E_MIN) || (xShape->GetDim(DIM_E) > VALUE_E_MAX)) &&
         xShape->GetDim(DIM_E) != -1) {
@@ -158,47 +156,70 @@ bool XShardCheckTensorShape(
             return false;
         }
     }
+    return true;
+}
 
-    if (xShard == 0) {
-        // x[X_DIM_H] = H / tp, value H should = [1, 65535]
-        if (((xShape->GetDim(X_DIM_H) * tpSize < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) * tpSize > VALUE_H_MAX)) &&
-            (xShape->GetDim(X_DIM_H) != -1)) {
-            OPS_LOG_E(
-                nodeName, "Value H should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
-                xShape->GetDim(X_DIM_H) * tpSize);
-            return false;
-        }
-
-        // x[X_DIM_H] = H / tp, w[wDimH] = H, 所以需要满足 x[X_DIM_H] * Tp = w[wDimH]
-        if ((xShape->GetDim(X_DIM_H) * tpSize != weightShape->GetDim(wDimH)) && (xShape->GetDim(X_DIM_H) != -1)) {
-            OPS_LOG_E(
-                nodeName,
-                "The last dim of x multi tp should equal the second dim of w, "
-                "but got x[2] = %ld, w[1] %ld.",
-                xShape->GetDim(X_DIM_H), weightShape->GetDim(wDimH));
-            return false;
-        }
-    } else if (xShard == 1) {
-        // x[X_DIM_H] = H, value H should = [1, 65535]
-        if (((xShape->GetDim(X_DIM_H) < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) > VALUE_H_MAX)) &&
-            xShape->GetDim(X_DIM_H) != -1) {
-            OPS_LOG_E(
-                nodeName, "Value H should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
-                xShape->GetDim(X_DIM_H));
-            return false;
-        }
-
-        // x[X_DIM_H] = H, w[wDimH] = H, 所以 x[X_DIM_H] 需要等于 w[wDimH]
-        if (xShape->GetDim(X_DIM_H) != weightShape->GetDim(wDimH)) {
-            OPS_LOG_E(
-                nodeName,
-                "The last dim of x should equal the second dim of w(without transpose), "
-                "but got x[2] = %ld, w[1] %ld.",
-                xShape->GetDim(X_DIM_H), weightShape->GetDim(wDimH));
-            return false;
-        }
+static bool CheckTensorShapeDimWithZeroxShard(const char* nodeName, const gert::Shape* xShape, 
+                                              const gert::Shape* weightShape, const int64_t tpSize, const size_t wDimH)
+{
+    // x[X_DIM_H] = H / tp, value H should = [1, 65535]
+    if (((xShape->GetDim(X_DIM_H) * tpSize < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) * tpSize > VALUE_H_MAX)) &&
+        (xShape->GetDim(X_DIM_H) != -1)) {
+        OPS_LOG_E(
+            nodeName, "Value H should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
+            xShape->GetDim(X_DIM_H) * tpSize);
+        return false;
     }
 
+    // x[X_DIM_H] = H / tp, w[wDimH] = H, 所以需要满足 x[X_DIM_H] * Tp = w[wDimH]
+    if ((xShape->GetDim(X_DIM_H) * tpSize != weightShape->GetDim(wDimH)) && (xShape->GetDim(X_DIM_H) != -1)) {
+        OPS_LOG_E(
+            nodeName,
+            "The last dim of x multi tp should equal the second dim of w, "
+            "but got x[2] = %ld, w[1] %ld.",
+            xShape->GetDim(X_DIM_H), weightShape->GetDim(wDimH));
+        return false;
+    }
+    return true;
+}
+
+static bool CheckTensorShapeDimWithOnexShard(const char* nodeName, const gert::Shape* xShape, 
+                                             const gert::Shape* weightShape, const size_t wDimH)
+{
+    // x[X_DIM_H] = H, value H should = [1, 65535]
+    if (((xShape->GetDim(X_DIM_H) < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) > VALUE_H_MAX)) &&
+        xShape->GetDim(X_DIM_H) != -1) {
+        OPS_LOG_E(
+            nodeName, "Value H should in [%ld, %ld], but got %ld", VALUE_H_MIN, VALUE_H_MAX,
+            xShape->GetDim(X_DIM_H));
+        return false;
+    }
+
+    // x[X_DIM_H] = H, w[wDimH] = H, 所以 x[X_DIM_H] 需要等于 w[wDimH]
+    if (xShape->GetDim(X_DIM_H) != weightShape->GetDim(wDimH)) {
+        OPS_LOG_E(
+            nodeName,
+            "The last dim of x should equal the second dim of w(without transpose), "
+            "but got x[2] = %ld, w[1] %ld.",
+            xShape->GetDim(X_DIM_H), weightShape->GetDim(wDimH));
+        return false;
+    }
+    return true;
+}
+
+bool XShardCheckTensorShape(
+    const char* nodeName, const gert::Shape* xShape, const gert::Shape* weightShape, const int64_t epSize,
+    const int64_t tpSize, const int64_t xShard, const size_t wDimH, const size_t wDimM)
+{
+    // 检查 shape 维度的范围
+    if (!CheckTensorShapeDimWithoutxShard(nodeName, xShape, weightShape, epSize, wDimM)) {
+        return false;
+    }
+    if (xShard == 0) {
+        return CheckTensorShapeDimWithZeroxShard(nodeName, xShape, weightShape, tpSize, wDimH);
+    } else if (xShard == 1) {
+        return CheckTensorShapeDimWithOnexShard(nodeName, xShape, weightShape, wDimH);
+    }
     return true;
 }
 
@@ -383,6 +404,28 @@ void GetY2ShapeInfo(
 } // namespace
 
 namespace ops {
+static void SetTensorShape(const char* nodeName, const gert::Shape* xShape, const gert::Shape* weightShape, 
+    const int64_t epSize, const int64_t tpSize, const size_t wDimH, const size_t wDimM, const int64_t xShard,
+    gert::Shape* y1Shape, gert::Shape* y2Shape, gert::Shape* y3Shape, bool y2Flag, bool y3Flag)
+{
+    // y1、y3
+    OutShapeInfo outShapeInfo;
+    GetY1Y3ShapeInfo(xShape, weightShape, epSize, tpSize, xShard, wDimM, outShapeInfo);
+    // 动态 shape 检查
+    Mc2Moe::DynamicShapeCheck(xShape, weightShape, wDimM, outShapeInfo);
+    Mc2Moe::EmptyShapeCheck(xShape, weightShape, wDimM, outShapeInfo);
+    Mc2Moe::SetShape(y1Shape, outShapeInfo);
+    // 检查是否输出可选输出 y3，不输出时将各个 dim 的 value 置为 0; 并且 y3 与 y1 shape 一样，不再重复上述检查
+    OutputFlagCheck(nodeName, y3Flag, "y3", outShapeInfo);
+    Mc2Moe::SetShape(y3Shape, outShapeInfo);
+
+    // y2
+    GetY2ShapeInfo(xShape, weightShape, epSize, tpSize, xShard, wDimH, outShapeInfo);
+    DynamicEmptyCheck(xShape, weightShape, wDimH, outShapeInfo);
+    OutputFlagCheck(nodeName, y2Flag, "y2", outShapeInfo);
+    Mc2Moe::SetShape(y2Shape, outShapeInfo);
+}
+
 static ge::graphStatus InferShapeAlltoAllAllGatherBmm(gert::InferShapeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E(K_INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
@@ -410,6 +453,7 @@ static ge::graphStatus InferShapeAlltoAllAllGatherBmm(gert::InferShapeContext* c
     int64_t xShard = -1;
     bool y2Flag = false;
     bool y3Flag = false;
+
     if (!CheckAttrs(context, epSize, tpSize, isTransW, xShard, y2Flag, y3Flag)) {
         OPS_LOG_E(nodeName, "attrs check failed.");
         return ge::GRAPH_FAILED;
@@ -427,23 +471,8 @@ static ge::graphStatus InferShapeAlltoAllAllGatherBmm(gert::InferShapeContext* c
         return ge::GRAPH_FAILED;
     }
 
-    // y1、y3
-    OutShapeInfo outShapeInfo;
-    GetY1Y3ShapeInfo(xShape, weightShape, epSize, tpSize, xShard, wDimM, outShapeInfo);
-    // 动态 shape 检查
-    Mc2Moe::DynamicShapeCheck(xShape, weightShape, wDimM, outShapeInfo);
-    Mc2Moe::EmptyShapeCheck(xShape, weightShape, wDimM, outShapeInfo);
-    Mc2Moe::SetShape(y1Shape, outShapeInfo);
-    // 检查是否输出可选输出 y3，不输出时将各个 dim 的 value 置为 0; 并且 y3 与 y1 shape 一样，不再重复上述检查
-    OutputFlagCheck(nodeName, y3Flag, "y3", outShapeInfo);
-    Mc2Moe::SetShape(y3Shape, outShapeInfo);
-
-    // y2
-    GetY2ShapeInfo(xShape, weightShape, epSize, tpSize, xShard, wDimH, outShapeInfo);
-    DynamicEmptyCheck(xShape, weightShape, wDimH, outShapeInfo);
-    OutputFlagCheck(nodeName, y2Flag, "y2", outShapeInfo);
-    Mc2Moe::SetShape(y2Shape, outShapeInfo);
-
+    SetTensorShape(nodeName, xShape, weightShape, epSize, tpSize, wDimH, wDimM, xShard, y1Shape, y2Shape, y3Shape, 
+        y2Flag, y3Flag);
     OPS_LOG_D(nodeName, "Begin to print y1 y2 y3 shape");
     PrintTensorShape(nodeName, y1Shape, "y1Shape");
     PrintTensorShape(nodeName, y2Shape, "y2Shape");

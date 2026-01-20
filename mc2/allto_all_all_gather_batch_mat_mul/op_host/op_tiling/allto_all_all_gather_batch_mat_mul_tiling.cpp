@@ -782,24 +782,10 @@ static bool CheckTensorShape(const char *nodeName, const gert::Shape *xShape, co
     return true;
 }
 
-static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int64_t &tpSize, int64_t &xShard,
-                       bool &y2Flag, bool &y3Flag)
+static bool CheckIsAttrNull(const char *nodeName, const int64_t *tpWorldSize, const int64_t *epWorldSize, 
+                            const int64_t *xShardType, const int64_t *actTypePtr, const bool *outputY2Flag, 
+                            const bool *outputY3Flag)
 {
-    const char *nodeName = context->GetNodeName();
-
-    auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is null"), return false);
-
-    // get 只有在 index 超出 attr num 的时候才会返回 nullptr
-    const char *groupEp = attrs->GetStr(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_GROUP_EP));
-    const char *groupTp = attrs->GetStr(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_GROUP_TP));
-    const int64_t *tpWorldSize = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_TP_WORLD_SIZE));
-    const int64_t *epWorldSize = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_EP_WORLD_SIZE));
-    const int64_t *xShardType = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_X_SHARD_TYPE));
-    const int64_t *actTypePtr = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_ACT_TYPE));
-    const bool *outputY2Flag = attrs->GetBool(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_OUTPUT_Y2_FLAG));
-    const bool *outputY3Flag = attrs->GetBool(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_OUTPUT_Y3_FLAG));
-
     if ((tpWorldSize == nullptr) || (epWorldSize == nullptr)) {
         OP_LOGE(nodeName, "tpWorldSize or epWorldSize in context is invalid or out of range, attrs got nullptr.");
         return false;
@@ -814,6 +800,28 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
         OP_LOGE(nodeName, "outputY2Flag or outputY3Flag in context is invalid or out of range, attrs got nullptr.");
         return false;
     }
+    return true;
+}
+
+static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int64_t &tpSize, int64_t &xShard,
+                       bool &y2Flag, bool &y3Flag)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is null"), return false);
+    // get 只有在 index 超出 attr num 的时候才会返回 nullptr
+    const char *groupEp = attrs->GetStr(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_GROUP_EP));
+    const char *groupTp = attrs->GetStr(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_GROUP_TP));
+    const int64_t *tpWorldSize = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_TP_WORLD_SIZE));
+    const int64_t *epWorldSize = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_EP_WORLD_SIZE));
+    const int64_t *xShardType = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_X_SHARD_TYPE));
+    const int64_t *actTypePtr = attrs->GetInt(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_ACT_TYPE));
+    const bool *outputY2Flag = attrs->GetBool(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_OUTPUT_Y2_FLAG));
+    const bool *outputY3Flag = attrs->GetBool(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_OUTPUT_Y3_FLAG));
+
+    if (!CheckIsAttrNull(nodeName, tpWorldSize, epWorldSize, xShardType, actTypePtr, outputY2Flag, outputY3Flag)) {
+        return false;
+    }
 
     tpSize = *tpWorldSize;
     epSize = *epWorldSize;
@@ -826,26 +834,20 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
         OP_LOGE(nodeName, "group size check failed.");
         return false;
     }
-
     if (!EpTpSizeCheck(epSize, tpSize)) {
         OP_LOGE(nodeName, "rank size error, tpSize=[%ld], valid=[2/4/8/16/32], epSize=[%ld], valid=[2/4/8/16/32].",
                 tpSize, epSize);
         return false;
     }
-
     if (xShard != 0 && xShard != 1) { // 当前支持 0, 1
         OP_LOGE(nodeName, "x shard type [%ld] is invalid.", xShard);
         return false;
     }
-
     if (!ActTypeCheck(nodeName, actType, y3Flag)) {
         OP_LOGE(nodeName, "actType check failed.");
         return false;
     }
-
-    OP_LOGI(nodeName,
-            "attrs info: groupEp %s, groupTp %s, tpSize %ld, epSize %ld, xShard %ld, "
-            "y2Flag %d, y3Flag %d.",
+    OP_LOGI(nodeName, "attrs info: groupEp %s, groupTp %s, tpSize %ld, epSize %ld, xShard %ld, y2Flag %d, y3Flag %d.",
             groupEp, groupTp, tpSize, epSize, xShard, y2Flag, y3Flag);
     return true;
 }
@@ -853,6 +855,8 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
 // 入参校验
 static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingContext *context)
 {
+    OP_TILING_CHECK(context == nullptr, OP_LOGE(K_INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter AlltoAllAllGatherBmm tiling check impl.");
 
@@ -890,18 +894,12 @@ static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingConte
         OP_TILING_CHECK(y3StorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "y3Shape is null."), return ge::GRAPH_FAILED);
     }
 
-    //  设 w = [E, H, M], dimH 指 H 轴, dimM 指 M 轴
-    size_t wDimH = 1UL;
-    size_t wDimM = 2UL; // 1 2 分别代表 weight 没有转置时候的维度值, 2: M 轴, 1: H 轴
+    //  设 w = [E, H, M], dimH 指 H 轴, dimM 指 M 轴; w_trans = [E, M, H]
     auto attrs = context->GetAttrs();
     bool isWeightTrans = *(attrs->GetAttrPointer<bool>(ATTR_IS_WEIGHT_TRANS_INDEX));
-    // w_trans = [E, M, H]
-    if (isWeightTrans) {
-        size_t wDimHTrans = 2UL;
-        size_t wDimMTrans = 1UL; // 2 1 分别代表 weight 转置时候的维度值, 2: H 轴, 1: M 轴
-        wDimH = wDimHTrans;
-        wDimM = wDimMTrans;
-    }
+    // weight 转置: 1 代表 M 轴，2 代表 H 轴; weight 没有转置: 1 代表 H 轴，2 代表 M 轴
+    size_t wDimH = isWeightTrans ? 2UL : 1UL;
+    size_t wDimM = isWeightTrans ? 1UL : 2UL;
 
     const gert::StorageShape *biasStorageShape =
         context->GetOptionalInputShape(static_cast<size_t>(ops::MC2MoeInputIdx::K_BIAS));
