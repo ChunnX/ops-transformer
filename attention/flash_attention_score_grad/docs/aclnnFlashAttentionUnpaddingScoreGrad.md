@@ -99,7 +99,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGrad(
 
 ## aclnnFlashAttentionUnpaddingScoreGradGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
   <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
     <col style="width: 198px">
     <col style="width: 120px">
@@ -415,7 +415,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGrad(
     </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -452,7 +452,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGrad(
 
 ## aclnnFlashAttentionUnpaddingScoreGrad
 
--   **参数说明：**
+-   **参数说明**
     <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
     <col style="width: 153px">
     <col style="width: 121px">
@@ -488,7 +488,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGrad(
     </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

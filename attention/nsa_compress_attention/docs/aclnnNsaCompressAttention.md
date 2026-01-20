@@ -87,7 +87,7 @@ aclnnStatus aclnnNsaCompressAttention(
 
 ## aclnnNsaCompressAttentionGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1565px">
     <colgroup>
@@ -348,7 +348,7 @@ aclnnStatus aclnnNsaCompressAttention(
   </table>
 
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -389,7 +389,7 @@ aclnnStatus aclnnNsaCompressAttention(
 
 ## aclnnNsaCompressAttention
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -426,7 +426,7 @@ aclnnStatus aclnnNsaCompressAttention(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

@@ -67,7 +67,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
 
 ## aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
   
   <table style="undefined;table-layout: fixed; width: 1452px"><colgroup>
     <col style="width: 174px">
@@ -324,7 +324,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
     </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -362,7 +362,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
 
 ## aclnnFlashAttentionVarLenScoreV4
 
-- **参数说明：**
+- **参数说明**
   
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
@@ -400,7 +400,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   </table>
 
 
--   **返回值：**
+-   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

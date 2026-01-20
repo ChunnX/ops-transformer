@@ -153,9 +153,10 @@ aclnnStatus aclnnAttentionUpdate(
       </tr>
     </tbody>
   </table>
-  <ul>
-    <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT32的localOut和out。</li>
-  </ul>
+
+  -  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT32的localOut和out。
+
+
 - **返回值**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -208,7 +209,12 @@ aclnnStatus aclnnAttentionUpdate(
 
 - **参数说明**
   
-  <table><thead>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
     <tr>
       <th>参数名</th>
       <th>输入/输出</th>
@@ -233,10 +239,11 @@ aclnnStatus aclnnAttentionUpdate(
     <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的Stream流。</td>
+      <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>
+  
 - **返回值**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。

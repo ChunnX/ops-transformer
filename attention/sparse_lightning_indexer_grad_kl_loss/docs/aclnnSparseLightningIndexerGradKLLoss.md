@@ -356,7 +356,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
@@ -393,7 +393,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 
 ## aclnnSparseLightningIndexerGradKLLoss
 
-- **参数说明：**
+- **参数说明**
 
     <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
     <col style="width: 144px">
@@ -430,7 +430,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 

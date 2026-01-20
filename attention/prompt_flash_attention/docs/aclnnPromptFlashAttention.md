@@ -4,30 +4,11 @@
 
 ## 产品支持情况
 
-<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
-<col style="width: 600px">
-<col style="width: 100px">
-</colgroup>
-<thead>
-  <tr>
-    <th style="text-align: center;">产品</th>
-    <th style="text-align: center;">是否支持</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td>Ascend 950PR/Ascend 950DT</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-  <tr>
-    <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
-    <td style="text-align: center;">×</td>
-  </tr>
-  <tr>
-    <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
-    <td style="text-align: center;">√</td>
-  </tr>
-</tbody>
-</table>
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √    |
 
 ## 功能说明
 
@@ -272,81 +253,80 @@ aclnnStatus aclnnPromptFlashAttention(
 
 
 - **返回值**
+
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
-    </colgroup>
-    <table><thead>
+  <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
+  <col style="width: 302px">
+  <col style="width: 119px">
+  <col style="width: 731px">
+  </colgroup>
+  <thead>
     <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
     </tr></thead>
-    <tbody>
+  <tbody>
     <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
     </tr>
     <tr>
-        <td>ACLNN_ERR_PARAM_INVALID</td>
-        <td>161002</td>
-        <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-        <td>ACLNN_ERR_RUNTIME_ERROR</td>
-        <td>361001</td>
-        <td>API内存调用npu runtime的接口异常。</td>
+      <td>ACLNN_ERR_RUNTIME_ERROR</td>
+      <td>361001</td>
+      <td>API内存调用npu runtime的接口异常。</td>
     </tr>
-    </tbody>
-    </table>
-    </div>
+  </tbody>
+  </table>
 
 ## aclnnPromptFlashAttention
 
 - **参数说明**
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
-    </colgroup>
-    <table><thead>
+
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
     <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
     </tr></thead>
-    <tbody>
+  <tbody>
     <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
     </tr>
     <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV3GetWorkspaceSize获取。</td>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionGetWorkspaceSize获取。</td>
     </tr>
     <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
     </tr>
     <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
     </tr>
-    </tbody>
-    </table>
-    </div>
+  </tbody>
+  </table>
+
 -   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。

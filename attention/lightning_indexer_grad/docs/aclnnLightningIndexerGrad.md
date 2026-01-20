@@ -73,7 +73,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 ## aclnnLightningIndexerGradGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
@@ -283,7 +283,7 @@ aclnnStatus aclnnLightningIndexerGrad(
   </table>
 
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -321,12 +321,12 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 ## aclnnLightningIndexerGrad
 
-- **参数说明：**
+- **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
   </colgroup>
   <thead>
     <tr>
@@ -358,7 +358,7 @@ aclnnStatus aclnnLightningIndexerGrad(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

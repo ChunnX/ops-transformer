@@ -3,6 +3,7 @@
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/prompt_flash_attention)
 
 ## 产品支持情况
+
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
@@ -11,7 +12,7 @@
 
 ## 功能说明
 
-- 算子功能：全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。
+- 接口功能：全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。
 
 -   计算公式：
 
@@ -350,78 +351,74 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
   
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px">			<colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
-    </colgroup>
-    <table><thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_PARAM_INVALID</td>
-        <td>161002</td>
-        <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_RUNTIME_ERROR</td>
-        <td>361001</td>
-        <td>API内存调用npu runtime的接口异常。</td>
-      </tr>
-    </tbody>
-    </table>
-    </div>
+  <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
+  <col style="width: 302px">
+  <col style="width: 119px">
+  <col style="width: 731px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_RUNTIME_ERROR</td>
+      <td>361001</td>
+      <td>API内存调用npu runtime的接口异常。</td>
+    </tr>
+  </tbody>
+  </table>
 
 ## aclnnPromptFlashAttentionV3
 
 - **参数说明**
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
-    </colgroup>
-    <table><thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV3GetWorkspaceSize获取。</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-      </tr>
-      <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
-      </tr>
-    </tbody>
-    </table>
-    </div>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV3GetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
 
 -   **返回值**

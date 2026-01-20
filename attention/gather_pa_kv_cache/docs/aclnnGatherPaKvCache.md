@@ -9,7 +9,7 @@
 
 ## 功能说明
 
-- 算子功能：根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。
+- 接口功能：根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。
 - 计算逻辑：
   - keyRef/valueRef的第一个维度取决于seq_lens大小。
   - 如果isSeqLensCumsum为true，则seqLens中最后一个值即为keyRef/valueRef的第一个维度大小： keyRef[dim0] = seqLens[-1]
@@ -19,6 +19,7 @@
   - 每个token大小控制在148k以内，例如，对于fp16/bf16类型， num_heads * head_size(keyRef/valueRef)取128*576。
 
 - 示例：
+
   ```
     keyCache_shape: [128, 128, 16, 144]
     valueCache_shape: [128, 128, 16, 128]
@@ -60,7 +61,7 @@ aclnnStatus aclnnGatherPaKvCache(
 
 ## aclnnGatherPaKvCacheGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   - keyCache(aclTensor*，计算输入)：Device侧的aclTensor，表示在当前层存储的key向量缓存。当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]。当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT8、FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
@@ -84,7 +85,7 @@ aclnnStatus aclnnGatherPaKvCache(
 
   - executor(aclOpExecutor**, 出参)：返回op执行器，包含了算子计算流程。
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -122,7 +123,7 @@ aclnnStatus aclnnGatherPaKvCache(
 
 ## aclnnGatherPaKvCache
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -160,7 +161,7 @@ aclnnStatus aclnnGatherPaKvCache(
   </table>
 
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

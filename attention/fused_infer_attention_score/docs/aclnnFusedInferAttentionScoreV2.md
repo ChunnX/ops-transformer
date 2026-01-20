@@ -601,78 +601,75 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
   
   第一段接口完成入参校验，出现以下场景时报错：
   
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1000px">			<colgroup>
-    <col style="width: 250px">
-    <col style="width: 100px">
-    <col style="width: 650px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>传入的query、key、value、attentionOut是空指针。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_PARAM_INVALID</td>
-        <td>161002</td>
-        <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_RUNTIME_ERROR</td>
-        <td>361001</td>
-        <td>API内存调用npu runtime的接口异常。</td>
-      </tr>
-    </tbody>
-    </table>
-    </div>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 280px">
+  <col style="width: 119px">
+  <col style="width: 751px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入的query、key、value、attentionOut是空指针。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_RUNTIME_ERROR</td>
+      <td>361001</td>
+      <td>API内存调用npu runtime的接口异常。</td>
+    </tr>
+  </tbody>
+  </table>
+
 
 ## aclnnFusedInferAttentionScoreV2
 
 - **参数说明**
   
-  <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 900px"><colgroup>
-    <col style="width: 150px">
-    <col style="width: 100px">
-    <col style="width: 650px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV2GetWorkspaceSize获取。</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-      </tr>
-      <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
-      </tr>
-    </tbody>
-    </table>
-    </div>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV2GetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
 
 - **返回值**

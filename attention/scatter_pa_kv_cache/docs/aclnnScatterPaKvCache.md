@@ -13,6 +13,7 @@
 
 - 输入输出支持以下场景：
   - 场景一：
+
     ```
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch, num_head, v_head_size]
@@ -24,6 +25,7 @@
     ```  
     
   - 场景二：
+
     ```
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
@@ -33,9 +35,11 @@
     cacheMode:"Norm"
     scatter_mode:"None"/"Nct"
     ```
+
     其中k_head_size与v_head_size可以不同，也可以相同。
 
   - 场景三：
+
     ```
     key:[batch, seq_len, num_head, k_head_size]
     value:[batch, seq_len, num_head, v_head_size]
@@ -49,6 +53,7 @@
     ```
 
   - 场景四：
+
     ```
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
@@ -62,6 +67,7 @@
     ```
 
   - 场景五：
+
     ```
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
@@ -76,6 +82,7 @@
     ```
 
     - 场景六：
+
     ```
     key:[batch * seq_len, num_head, k_head_size]
     value:[]
@@ -119,7 +126,7 @@ aclnnStatus aclnnScatterPaKvCache(
 
 ## aclnnScatterPaKvCacheGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   * key(aclTensor*，计算输入)：Device侧的aclTensor，支持3维或4维，待更新的key值，当前step多个token的key，数据类型支持FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
       * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型仅支持FLOAT16、BFLOAT16、INT8。
@@ -141,16 +148,16 @@ aclnnStatus aclnnScatterPaKvCache(
   * workspaceSize(uint64_t*，出参)：返回用户需要在Device侧申请的workspace大小。
   * executor(aclOpExecutor**，出参)：返回op执行器，包含了算子计算流程。
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed; width: 1203px"><colgroup>
-  <col style="width: 297px">
-  <col style="width: 126px">
-  <col style="width: 780px">
+  <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
+  <col style="width: 302px">
+  <col style="width: 119px">
+  <col style="width: 731px">
   </colgroup>
   <thead>
     <tr>
@@ -185,7 +192,7 @@ aclnnStatus aclnnScatterPaKvCache(
 
 ## aclnnScatterPaKvCache
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -222,7 +229,7 @@ aclnnStatus aclnnScatterPaKvCache(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

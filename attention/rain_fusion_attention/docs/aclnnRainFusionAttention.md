@@ -11,7 +11,7 @@
 
 ## 功能说明
 
--   **算子功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
+-   **接口功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
 
 -   **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
@@ -71,7 +71,7 @@ aclnnStatus aclnnRainFusionAttention(
 
 ## aclnnRainFusionAttentionGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
@@ -338,7 +338,7 @@ aclnnStatus aclnnRainFusionAttention(
   </table>
 
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
@@ -382,12 +382,12 @@ aclnnStatus aclnnRainFusionAttention(
 
 ## aclnnRainFusionAttention
 
-- **参数说明：**
+- **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
   </colgroup>
   <thead>
     <tr>
@@ -414,12 +414,12 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的AscendCL stream流。</td>
+      <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 

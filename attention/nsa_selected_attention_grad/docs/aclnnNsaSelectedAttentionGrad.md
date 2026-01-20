@@ -11,7 +11,7 @@
 
 ## 功能说明
 
-- 算子功能：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
+- 接口功能：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
 
 - 计算公式：
 
@@ -77,7 +77,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
 
 ## aclnnNsaSelectedAttentionGradGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   `<table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
@@ -287,7 +287,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   </table>
 
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -325,7 +325,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
 
 ## aclnnNsaSelectedAttentionGrad
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -362,7 +362,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
