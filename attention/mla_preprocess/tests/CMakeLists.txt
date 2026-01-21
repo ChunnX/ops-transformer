@@ -8,39 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-
-########################################################################################################################
-# 调用编译方法, 生成对应编译目标
-########################################################################################################################
-
-set(_MlaPreprocess_TilingSourcesExt
-        ${OPS_TRANSFORMER_DIR}/attention/mla_preprocess/op_host/mla_preprocess_tiling.cpp
-)
-
-set(_MlaPreprocess_KernelTilingDataDefH
-       ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
-        ${CMAKE_SOURCE_DIR}/attention/mla_preprocess/op_host/mla_preprocess_tilingdata.h
-)
-
-set(_MlaPreprocess_TargetPrivateLinkLibrariesExt
-        ${UTest_NamePrefix}_OpTiling
-        error_manager
-)
-
-set(_MlaPreprocess_KernelPrivateCompileDefinitionsExt
-        KernelCtrlParam mla_preprocess,mla_preprocess_FIAS fp16 ORIG_DTYPE_INPUT=DT_FLOAT16
-        KernelCtrlParam mla_preprocess,mla_preprocess_FIAS bf16 ORIG_DTYPE_INPUT=DT_BF16
-)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/attention/mla_preprocess/op_kernel _MlaPreprocess_KernelSourcesExt)
-
-OpsTest_Level2_AddOp(
-        SUB_SYSTEM                              transformer
-        BRIEF                                   MlaPreprocess
-        SNAKE                                   mla_preprocess
-        KERNEL_TILING_DATA_DEF_H                ${_MlaPreprocess_KernelTilingDataDefH}
-        KERNEL_SOURCES_EXT                      ${_MlaPreprocess_KernelSourcesExt}
-        KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT  ${_MlaPreprocess_KernelPrivateCompileDefinitionsExt}
-        TILING_SOURCES_EXT                      ${_MlaPreprocess_TilingSourcesExt}
-        UTEST_COMMON_PRIVATE_LINK_LIBRARIES_EXT ${_MlaPreprocess_TargetPrivateLinkLibrariesExt}
-)
+message(STATUS "=== Debug: start ops.transformer.mla_preprocess.tests.CMakeLists.txt ")
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()
