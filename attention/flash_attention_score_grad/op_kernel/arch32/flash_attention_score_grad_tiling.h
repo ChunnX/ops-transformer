@@ -49,7 +49,7 @@ public:
     uint32_t pad = 0;
     uint8_t tndSoftmaxIn = 0;
     uint32_t sink = 0;
-    uint8_t FlashAttentionScoreGradS1S2BNGS1S2SABBaseParamsPH[7] = {};
+    uint8_t FlashAttentionScoreGradS1S2BNGS1S2SABBaseParamsPH[3] = {};
 
     int64_t get_b() const
     {

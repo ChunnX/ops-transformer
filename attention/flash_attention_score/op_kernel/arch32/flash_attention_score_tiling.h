@@ -629,7 +629,6 @@ public:
     uint8_t implMode = 0;
     uint8_t sparseType = 0;
     uint8_t needDropMaskOp = 0;
-    uint8_t needSinkOp = 0;
     uint8_t pseEncodeType = 0;
     uint8_t rsv = 0;
     uint8_t needL1Carry = 0;
@@ -643,7 +642,8 @@ public:
     int64_t qStartIdx = 0;
     int64_t kvStartIdx = 0;
     uint8_t tndSoftmaxOut = 0;
-    uint8_t InputParamsPH[7] = {0};
+    uint8_t needSinkOp = 0;
+    uint8_t InputParamsPH[6] = {0};
 
     // ========================
     // Getter & Setter 方法
