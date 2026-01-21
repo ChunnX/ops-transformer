@@ -3571,42 +3571,6 @@ FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SubGrapB(int64_t curIdx, int64_
         AscendC::PipeBarrier<PIPE_V>();
         Cast(vecCopyOutBuffer, vecClc1Buffer, RoundMode::CAST_ROUND, s1ExtendSubGraph * s2ExtendAlign);
     }
-    int64_t copyOutOffset = 0;
-    DataCopyParams copyOutParam;
-    if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
-        auto tmpTensor1 = unifiedBuffer.GetWithOffset<T1>(TMP_UB_SIZE / sizeof(T1), TMP_UB_OFFSET);
-        AscendC::PipeBarrier<PIPE_V>();
-        DataCopy(tmpTensor1, vecCopyOutBuffer, s1ExtendSubGraph * s2ExtendAlign);
-        AscendC::PipeBarrier<PIPE_V>();
-        ND2NZ(vecCopyOutBuffer, tmpTensor1, s1ExtendSubGraph, s2ExtendAlign);
-
-        copyOutOffset = pingpongIdx * cubeBaseMN * DTYPE_FACTOR + curS1Idx * s1VecSize * C0_SIZE +
-                        curS2Idx * dbParam.s1CvExtendAlign * DTYPE_FACTOR * s2VecSize;
-        copyOutParam = {
-            static_cast<uint16_t>(s2ExtendAlign / C0_SIZE),
-            static_cast<uint16_t>(s1ExtendSubGraph * C0_SIZE * sizeof(T1)),
-            1,
-            static_cast<uint16_t>((dbParam.s1CvExtendAlign * DTYPE_FACTOR - s1ExtendSubGraph) * C0_SIZE * sizeof(T1))
-        };
-    } else {
-        copyOutOffset = pingpongIdx * cubeBaseMN * DTYPE_FACTOR +
-                        curS1Idx * s1VecSize * dbParam.s2CvExtendAlign * DTYPE_FACTOR + curS2Idx * s2VecSize;
-        copyOutParam = {
-            static_cast<uint16_t>(s1ExtendSubGraph),
-            static_cast<uint16_t>(s2ExtendAlign * sizeof(T1)),
-            0,
-            static_cast<uint16_t>((dbParam.s2CvExtendAlign * DTYPE_FACTOR - s2ExtendAlign) * sizeof(T1))
-        };
-    }
-    event_t mte3WaitV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-    AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<int32_t>(mte3WaitV));
-    AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<int32_t>(mte3WaitV));
-
-    DataCopyPad(mulWorkSpaceGm[copyOutOffset], vecCopyOutBuffer, copyOutParam);
-
-    if (curIdx < vecLoopEnd - vecLoopStart - 1) {
-        AscendC::SetFlag<HardEvent::MTE3_MTE2>(static_cast<int32_t>(mte2WaitMte3B));
-    }
     
     if (unlikely(has_sink)) {
         // SubGrapSink
@@ -3679,6 +3643,43 @@ FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SubGrapB(int64_t curIdx, int64_
         AscendC::PipeBarrier<PIPE_ALL>();
         *dsinkSumLocal += localDsink.GetValue(0);
         AscendC::PipeBarrier<PIPE_ALL>();
+    }
+
+    int64_t copyOutOffset = 0;
+    DataCopyParams copyOutParam;
+    if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
+        auto tmpTensor1 = unifiedBuffer.GetWithOffset<T1>(TMP_UB_SIZE / sizeof(T1), TMP_UB_OFFSET);
+        AscendC::PipeBarrier<PIPE_V>();
+        DataCopy(tmpTensor1, vecCopyOutBuffer, s1ExtendSubGraph * s2ExtendAlign);
+        AscendC::PipeBarrier<PIPE_V>();
+        ND2NZ(vecCopyOutBuffer, tmpTensor1, s1ExtendSubGraph, s2ExtendAlign);
+
+        copyOutOffset = pingpongIdx * cubeBaseMN * DTYPE_FACTOR + curS1Idx * s1VecSize * C0_SIZE +
+                        curS2Idx * dbParam.s1CvExtendAlign * DTYPE_FACTOR * s2VecSize;
+        copyOutParam = {
+            static_cast<uint16_t>(s2ExtendAlign / C0_SIZE),
+            static_cast<uint16_t>(s1ExtendSubGraph * C0_SIZE * sizeof(T1)),
+            1,
+            static_cast<uint16_t>((dbParam.s1CvExtendAlign * DTYPE_FACTOR - s1ExtendSubGraph) * C0_SIZE * sizeof(T1))
+        };
+    } else {
+        copyOutOffset = pingpongIdx * cubeBaseMN * DTYPE_FACTOR +
+                        curS1Idx * s1VecSize * dbParam.s2CvExtendAlign * DTYPE_FACTOR + curS2Idx * s2VecSize;
+        copyOutParam = {
+            static_cast<uint16_t>(s1ExtendSubGraph),
+            static_cast<uint16_t>(s2ExtendAlign * sizeof(T1)),
+            0,
+            static_cast<uint16_t>((dbParam.s2CvExtendAlign * DTYPE_FACTOR - s2ExtendAlign) * sizeof(T1))
+        };
+    }
+    event_t mte3WaitV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<int32_t>(mte3WaitV));
+    AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<int32_t>(mte3WaitV));
+
+    DataCopyPad(mulWorkSpaceGm[copyOutOffset], vecCopyOutBuffer, copyOutParam);
+
+    if (curIdx < vecLoopEnd - vecLoopStart - 1) {
+        AscendC::SetFlag<HardEvent::MTE3_MTE2>(static_cast<int32_t>(mte2WaitMte3B));
     }
 }
 
