@@ -60,6 +60,7 @@ static constexpr int64_t L1_SIZE_WITH_QUANTSCALE_BYTE = L1_SIZE_WITH_QUANTSCALE 
 static constexpr int64_t BIAS_L1_SIZE = 4;
 static constexpr int64_t MX_SCALE_L1_SIZE = 20;
 static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
+static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
 
 // 控制参数定义
 static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;
@@ -71,6 +72,7 @@ static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
 static constexpr uint64_t MX_GROUPSIZE = 32;
 static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
 static constexpr uint32_t FP32_BLOCK_SIZE = 8;
+static constexpr uint32_t FP16_BLOCK_SIZE = 16;
 static constexpr int32_t C0_SIZE_B8 = 32;
 static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
 

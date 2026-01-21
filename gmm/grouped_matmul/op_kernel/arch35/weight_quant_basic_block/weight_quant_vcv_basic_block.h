@@ -97,7 +97,8 @@ protected:
 #endif
     };
 
-    BasicBlockLibVectorAntiQuantCompute<xType, wType, antiQuantScaleType, yType, wqmmConfig, vecConfig> vecCompute_;
+    BasicBlockLibVectorAntiQuantCompute<xType, wType, antiQuantScaleType, biasType, yType, wqmmConfig, vecConfig>
+        vecCompute_;
     using MMImpl = MatmulImpl<MatmulL1GmType<TPosition::TSCM, CubeFormat::NZ, xType, wqmmConfig.aTrans>,
                               MatmulL1GmType<TPosition::TSCM, CubeFormat::NZ, xType, wqmmConfig.bTrans>,
                               MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, int32_t>,
@@ -131,7 +132,7 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t
     ubOutputS32Buffer_ = ubBuffer.Get<int32_t>();
 
     if ASCEND_IS_AIC {
-        cubeCompute_.Init(l1Tbuf, weightL1Space, aPrefetchSize, matmulTiling, tPipe);
+        cubeCompute_.Init(l1Tbuf, weightL1Space, aPrefetchSize, matmulTiling, tPipe, 0);
     } else {
         LocalTensor<xType> ubWeightS8Buffer = ubOutputS32Buffer_.template ReinterpretCast<xType>();
         vecCompute_.InitKCG(antiQuantGroupSize, hasBias, ubBuffer, ubWeightS8Buffer, 128 * 1024);
@@ -236,7 +237,7 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzKnWithKAiv(uint64_
             ubConsumeConfig.l1RequireVfComputeRealK = antiquantRealK;
             ubConsumeConfig.kWeightLowBitUbOffset = antiquantKOffset;
             vecCompute_.WeightAntiQuantCompute(ubConsumeConfig, weightS8L1_[(cvLoopIdx_ & 1) * weightS8L1DbOffset_],
-                                               l1ConsumeConfig);
+                                               l1ConsumeConfig, nullptr);
 
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
         }

@@ -80,23 +80,31 @@ struct UbConsumeConfig {
     uint64_t l1RequireVfComputeRealN;
     uint64_t kWeightLowBitUbOffset;
     uint64_t nWeightLowBitUbOffset;
+    uint64_t ubMxBiasNsize;
+    bool calcMxBias = false;
+    bool isBiasSingleVector = false;
 };
 
 struct L1ConsumeConfig {
     uint64_t l1SplitTwoVecExternalOffset;
     uint64_t l1RealExternalLen;
+    uint64_t l1MxBiasSplitNOffset;
 };
 
 struct UbBufferInfo {
     uint64_t ubWeightOutputHighBitBufferNum;
     uint64_t weightInputLowbitUbTotalSize;
     uint64_t highBitDataUbTotalSize;
+    uint64_t biasUbTotalSize;
+    uint64_t biasReducedUbTotalSize;
     uint64_t antiQuantScaleUbTotalSize;
     uint64_t antiQuantScaleAfterCastUbTotalSize;
     uint64_t antiQuantOffsetUbTotalSize;
     uint64_t weightInputLowBitUbSingleBufferSize;
     uint64_t antiQuantScaleUbSingleBufferSize;
     uint64_t antiQuantScaleAfterCastUbSingleBufferSize;
+    uint64_t biasUbSingleBufferSize;
+    uint64_t biasReducedSingleBufferSize;
     uint64_t antiQuantOffsetUbSingleBufferSize;
     uint64_t highBitDataUbSingleBufferSize;
     uint32_t antiQuantScaleMaskBufferSize;
@@ -191,14 +199,18 @@ template <const VecAntiQuantConfig &vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxA8W4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
-            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(),  // 64KB
-            .highBitDataUbTotalSize = 64 * GetKBUnit<int8_t>(),        // 64KB
+            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(), // 64KB
+            .highBitDataUbTotalSize = 64 * GetKBUnit<int8_t>(),       // 64KB
+            .biasUbTotalSize = 2 * GetKBUnit<half>(),                 // 2KB
+            .biasReducedUbTotalSize = 2 * GetKBUnit<half>(),          // 2KB
             .antiQuantScaleUbTotalSize = 0,
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 0,
             .weightInputLowBitUbSingleBufferSize = 64 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleUbSingleBufferSize = 0,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
+            .biasUbSingleBufferSize = 2 * GetKBUnit<half>() / QUADRUPLE_BUFFER_NUM,
+            .biasReducedSingleBufferSize = 2 * GetKBUnit<half>() / QUADRUPLE_BUFFER_NUM,
             .antiQuantOffsetUbSingleBufferSize = 0,
             .highBitDataUbSingleBufferSize = 64 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};

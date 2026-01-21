@@ -60,14 +60,17 @@ struct Fp4NzParams {
     __local_mem__ xType *weightHighBitPhyAddr;
 };
 
-template <typename xType, typename wType>
+template <typename xType, typename wType, typename biasType>
 struct MxA8W4NzParams {
     uint64_t loopKNum;
     uint64_t innerLoopNum;
     uint64_t loopKDstStride;
     uint64_t innerDstStride;
-    __local_mem__ wType *weightLowBitPhyAddr;
-    __local_mem__ xType *weightHighBitPhyAddr;
+    uint64_t biasLoopNum;
+    __ubuf__ wType *weightLowBitPhyAddr;
+    __ubuf__ xType *weightHighBitPhyAddr;
+    __ubuf__ biasType *biasInUbAddr;
+    __ubuf__ biasType *biasOutUbAddr;
 };
 
 static constexpr MicroAPI::CastTrait CAST_BF16_TO_FP16_TRAIT = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
@@ -325,9 +328,40 @@ __aicore__ inline void AntiQuantFp4NzKnVf(Fp4NzParams<xType, wType> &fp4NzParams
     }
 }
 
-template <typename xType, typename wType, uint64_t ubMte2InnerSize>
-__aicore__ inline void AntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType> &mxA8W4NzParams)
+template <typename xType, typename wType, typename biasType, bool calcMxBias, bool isBiasSingleVector>
+__simd_callee__ inline void MxA8W4BiasCompute(MxA8W4NzParams<xType, wType, biasType> &mxA8W4NzParams)
 {
+    if constexpr (calcMxBias) {
+        static constexpr biasType MX_BIAS_FACTOR = static_cast<biasType>(0.015625f);
+        MicroAPI::RegTensor<biasType> biasVreg, biasFactorVreg;
+        MicroAPI::MaskReg maskBiasAll = MicroAPI::CreateMask<biasType, AscendC::MicroAPI::MaskPattern::ALL>();
+        MicroAPI::Duplicate<biasType, AscendC::MicroAPI::MaskMergeMode::ZEROING>(biasFactorVreg, MX_BIAS_FACTOR,
+                                                                                 maskBiasAll);
+        if constexpr (isBiasSingleVector) {
+            for (uint16_t loopBiasIdx = 0; loopBiasIdx < mxA8W4NzParams.biasLoopNum; ++loopBiasIdx) {
+                MicroAPI::AddrReg biasAreg = MicroAPI::CreateAddrReg<biasType>(loopBiasIdx, VEC_MAX_ELEM_B16);
+                MicroAPI::LoadAlign<biasType, MicroAPI::LoadDist::DIST_NORM>(biasVreg, mxA8W4NzParams.biasInUbAddr,
+                                                                             biasAreg);
+                MicroAPI::Mul<biasType, AscendC::MicroAPI::MaskMergeMode::ZEROING>(biasVreg, biasVreg, biasFactorVreg,
+                                                                                   maskBiasAll);
+                MicroAPI::StoreAlign<biasType, MicroAPI::StoreDist::DIST_NORM_B16>(mxA8W4NzParams.biasOutUbAddr,
+                                                                                   biasVreg, biasAreg, maskBiasAll);
+            }
+        } else {
+            MicroAPI::LoadAlign<biasType, MicroAPI::LoadDist::DIST_NORM>(biasVreg, mxA8W4NzParams.biasInUbAddr);
+            MicroAPI::Mul<biasType, AscendC::MicroAPI::MaskMergeMode::ZEROING>(biasVreg, biasVreg, biasFactorVreg,
+                                                                               maskBiasAll);
+            MicroAPI::StoreAlign<biasType, MicroAPI::StoreDist::DIST_NORM_B16>(mxA8W4NzParams.biasOutUbAddr, biasVreg,
+                                                                               maskBiasAll);
+        }
+    }
+}
+
+template <typename xType, typename wType, typename biasType, uint64_t ubMte2InnerSize, bool calcMxBias,
+          bool isBiasSingleVector>
+__simd_vf__ inline void AntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams)
+{
+    MxA8W4BiasCompute<xType, wType, biasType, calcMxBias, isBiasSingleVector>(mxA8W4NzParams);
     MicroAPI::RegTensor<int8_t> wShrReg, wShlReg, wAndReg, wLoad, wShl, wShr0, wShr1, wSel, wAnd;
     MicroAPI::MaskReg preg = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregVsel = MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
@@ -344,8 +378,8 @@ __aicore__ inline void AntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType> &mxA8W
             // 4bit物理地址位移 = 逻辑索引 >> 1
             MicroAPI::AddrReg aregWeightB8In = MicroAPI::CreateAddrReg<uint8_t>(
                 loopKIdx, (C0_SIZE_B8 * ubMte2InnerSize) >> 1, innerLoopIdx, VECTOR_REG_WIDTH >> 1);
-            MicroAPI::DataCopy<uint8_t, MicroAPI::LoadDist::DIST_US_B8>(
-                (MicroAPI::RegTensor<uint8_t> &)wLoad, (__local_mem__ uint8_t *&)mxA8W4NzParams.weightLowBitPhyAddr,
+            MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_US_B8>(
+                (MicroAPI::RegTensor<uint8_t> &)wLoad, (__ubuf__ uint8_t *&)mxA8W4NzParams.weightLowBitPhyAddr,
                 aregWeightB8In);
 
             MicroAPI::ShiftRight(wShr0, wLoad, wShrReg, preg);
@@ -356,8 +390,8 @@ __aicore__ inline void AntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType> &mxA8W
 
             MicroAPI::AddrReg aregWeightB8Out = MicroAPI::CreateAddrReg<uint8_t>(
                 loopKIdx, mxA8W4NzParams.loopKDstStride, innerLoopIdx, mxA8W4NzParams.innerDstStride);
-            MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_NORM_B8>(
-                (__local_mem__ uint8_t *&)mxA8W4NzParams.weightHighBitPhyAddr, (MicroAPI::RegTensor<uint8_t> &)wAnd,
+            MicroAPI::StoreAlign<uint8_t, MicroAPI::StoreDist::DIST_NORM_B8>(
+                (__ubuf__ uint8_t *&)mxA8W4NzParams.weightHighBitPhyAddr, (MicroAPI::RegTensor<uint8_t> &)wAnd,
                 aregWeightB8Out, preg);
         }
     }

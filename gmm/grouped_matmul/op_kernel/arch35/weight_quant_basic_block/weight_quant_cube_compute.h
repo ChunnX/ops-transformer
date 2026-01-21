@@ -22,7 +22,8 @@
 #include "lib/matmul_intf.h"
 #include "tool.h"
 
-using AscendC::BLOCK_CUBE;
+#include "basic_api/weight_quant_basic_api_v1.h"
+
 using AscendC::Dn2NzParams;
 using AscendC::GetBlockIdx;
 using AscendC::GlobalTensor;
@@ -53,7 +54,8 @@ public:
                                             __gm__ antiQuantScaleType *antiquantScale, __gm__ uint64_t *quantScale,
                                             __gm__ perTokenScaleType *perTokenScale, const bool isBias);
     __aicore__ inline void Init(TBuf<TPosition::TSCM> &l1Tbuf, uint64_t weightL1Space, uint64_t aPrefetchSize,
-                                const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe);
+                                const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe,
+                                uint64_t mxBiasL1DbOffset);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         const BasicBlockOffsetParam &param, uint64_t cvLoopIdx);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t cvLoopIdx);
@@ -73,6 +75,8 @@ private:
                                      const TCubeTiling *__restrict matmulTiling);
     __aicore__ inline void InitSync();
     __aicore__ inline uint64_t CheckMaxSpace(const BasicBlockOffsetParam &param);
+    __aicore__ inline uint64_t MxA8W4Init(TBuf<TPosition::TSCM> &l1Tbuf, uint64_t weightL1Space,
+                                          uint64_t mxBiasL1DbOffset);
     __aicore__ inline void CopyAGmToL1SingleBuffer(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
                                                    int64_t kbL1RealSize, int64_t biasRealN, uint64_t cvLoopIdx,
                                                    int64_t aGmOffset);
@@ -126,10 +130,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<
                                                               uint64_t kbL1RealSize, const BasicBlockOffsetParam &param,
                                                               uint64_t cvLoopIdx)
 {
-    mmObj_.SetOrgShape(CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
-                       CeilAlign(param.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
-                       CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)),
-                       CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)), param.nSize);
+    uint64_t aL1Offset = 0;
     if (aL1DbNum_ == SINGLE_BUFFER_NUM) {
         uint64_t maxSpace = CheckMaxSpace(param);
         if (maxSpace > 0) {
@@ -143,40 +144,49 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<
             // L1A: |0|2|4|      |1|3|
             //      |A0:0~128KB  |A1:128KB~256KB|
             // 第5块（block = 5），在A1中偏移为3（blockOffset = 3），块内偏移量为m * (3 * k)
-            mmObj_.SetTensorA(aL1_[(cvLoopIdx & 1) * aL1DbOffset_ +
-                                   CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)) *
-                                       (static_cast<uint64_t>(kbOffset) / (param.kbL1Size * 2) * param.kbL1Size)],
-                              wqmmConfig.aTrans);
+            aL1Offset = (cvLoopIdx & 1) * aL1DbOffset_ +
+                        CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)) *
+                            (static_cast<uint64_t>(kbOffset) / (param.kbL1Size * 2) * param.kbL1Size);
         } else {
-            mmObj_.SetTensorA(aL1_[CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * kbOffset],
-                              wqmmConfig.aTrans);
+            aL1Offset = CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * kbOffset;
         }
     } else {
-        mmObj_.SetTensorA(aL1_[(cvLoopIdx & 1) * aL1DbOffset_], wqmmConfig.aTrans);
+        aL1Offset = (cvLoopIdx & 1) * aL1DbOffset_;
     }
+    if constexpr (!IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        mmObj_.SetOrgShape(CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
+                        CeilAlign(param.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
+                        CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)),
+                        CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)), param.nSize);
+        mmObj_.SetTensorA(aL1_[aL1Offset], wqmmConfig.aTrans);
+        mmObj_.SetTensorB(weightL1, wqmmConfig.bTrans);
 
-    mmObj_.SetTensorB(weightL1, wqmmConfig.bTrans);
-
-    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        mmObj_.SetTensorScaleA(mxScaleAL1_[(cvLoopIdx & 1) * mxScaleAL1DbOffset_], wqmmConfig.aTrans);
-        mmObj_.SetTensorScaleB(mxScaleBL1_[(cvLoopIdx & 1) * mxScaleBL1DbOffset_], wqmmConfig.bTrans);
-    }
-
-    if (isBias_) {
-        mmObj_.SetBias(biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_]);
-    }
-
-    mmObj_.SetTail(param.mL1Size, param.nL1Size, kbL1RealSize);
-
-    if constexpr (IsSameType<yType, int8_t>::value) {
-        if constexpr (wqmmConfig.quantType == QuantType::PER_TENSOR) {
-            mmObj_.SetQuantScalar(quantScaleValue_);
-        } else {
-            mmObj_.SetQuantVector(quantScaleGlobal_[param.nOffset]);
+        if (isBias_) {
+            mmObj_.SetBias(biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_]);
         }
-    }
 
-    mmObj_.Iterate(kbOffset != 0);
+
+        mmObj_.SetTail(param.mL1Size, param.nL1Size, kbL1RealSize);
+
+        if constexpr (IsSameType<yType, int8_t>::value) {
+            if constexpr (wqmmConfig.quantType == QuantType::PER_TENSOR) {
+                mmObj_.SetQuantScalar(quantScaleValue_);
+            } else {
+                mmObj_.SetQuantVector(quantScaleGlobal_[param.nOffset]);
+            }
+        }
+
+        mmObj_.Iterate(kbOffset != 0);
+    } else {
+        BasicApiParamsV1 basicApiParams;
+        basicApiParams.l1KSize = kbL1RealSize;
+        basicApiParams.l0NSize = param.nL1Size;
+        basicApiParams.l0MSize = param.mL1Size;
+        mmObj_.Iterate(kbOffset + kbL1RealSize >= param.kSize, kbOffset == 0, aL1_[aL1Offset],
+                       mxScaleAL1_[(cvLoopIdx & 1) * mxScaleAL1DbOffset_], weightL1,
+                       mxScaleBL1_[(cvLoopIdx & 1) * mxScaleBL1DbOffset_], biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_],
+                       basicApiParams);
+    }
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -279,10 +289,13 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const BasicB
     }
 
     // bias仅与n有关，与k无关，所以只需要拷贝一次
-    if (isBias_ && kaGmOffset == 0) {
-        DataCopyPad2D(biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_], biasGlobal_[param.nOffset], 1, biasRealN, biasRealN,
-                      biasRealN);
+    if constexpr (!IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        if (isBias_ && kaGmOffset == 0) {
+            DataCopyPad2D(biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_], biasGlobal_[param.nOffset], 1, biasRealN,
+                          biasRealN, biasRealN);
+        }
     }
+
 
     SetFlag<HardEvent::MTE2_MTE1>(cubeEventIdMte2ToMte1_);
     WaitFlag<HardEvent::MTE2_MTE1>(cubeEventIdMte2ToMte1_);
@@ -346,6 +359,9 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::EndSync(uint64_t cvLoopIdx)
 {
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        mmObj_.End();
+    }
     AscendC::TEventID tempEventIdsMte1ToMte2[DOUBLE_BUFFER_NUM] = {cubeEventIdsMte1ToMte2_[0],
                                                                    cubeEventIdsMte1ToMte2_[1]};
 
@@ -450,12 +466,34 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PrefetchA(uint64_t aPrefetchSiz
     PipeBarrier<PIPE_MTE2>();
 }
 
+WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline uint64_t WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(TBuf<TPosition::TSCM> &l1Tbuf, uint64_t weightL1Space,
+                                                                uint64_t mxBiasL1DbOffset)
+{
+    constexpr uint64_t biasL1Space = BIAS_L1_SIZE * KB_UNIT;
+    constexpr uint64_t mxScaleL1Space = MX_SCALE_L1_SIZE * KB_UNIT; // scaleA/B单块分配空间
+    uint64_t aL1Offset = weightL1Space + biasL1Space + (mxScaleL1Space << 1);
+    uint64_t aL1Space = L1_SIZE * KB_UNIT - DOUBLE_BUFFER_NUM * aL1Offset; // L1上A可占据剩余空间
+    aL1DbOffset_ = aL1Space >> 1;
+    // MxA8W4场景bias类型为B16，各项l1Space均以B8元素个数计，计算B16偏移需除以2
+    biasL1_ = l1Tbuf.Get<biasType>()[weightL1Space >> 1];
+    biasL1DbOffset_ = mxBiasL1DbOffset;
+
+    mxScaleAL1_ = l1Tbuf.Get<fp8_e8m0_t>()[weightL1Space + biasL1Space];
+    mxScaleAL1DbOffset_ = (mxScaleL1Space << 1) + aL1Space;
+
+    mxScaleBL1_ = l1Tbuf.Get<fp8_e8m0_t>()[weightL1Space + biasL1Space + mxScaleL1Space];
+    mxScaleBL1DbOffset_ = (mxScaleL1Space << 1) + aL1Space;
+    return aL1Offset;
+}
+
 // 场景1： 使能a prefetch。必须先更新地址再init
 // 场景2： gm地址变化需要实时获取场景，必须先init再更新地址
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(TBuf<TPosition::TSCM> &l1Tbuf, uint64_t weightL1Space,
                                                       uint64_t aPrefetchSize,
-                                                      const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe)
+                                                      const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe,
+                                                      uint64_t mxBiasL1DbOffset)
 {
     // (1) y 数据类型为 int8 时，quantScale需要预留一份空间
     //  ① 有bias
@@ -476,22 +514,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(TBuf<TPosition::TSCM> &l1T
         uint64_t aL1Space = L1_SIZE_WITH_QUANTSCALE * KB_UNIT - DOUBLE_BUFFER_NUM * aL1Offset;  // L1上A可占据剩余空间
         aL1DbOffset_ = aL1Space >> 1;
     } else if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        biasL1Space = BIAS_L1_SIZE * KB_UNIT;
-        uint64_t mxScaleL1Space = MX_SCALE_L1_SIZE * KB_UNIT; // scaleA/B单块分配空间
-
-        aL1Offset = weightL1Space + biasL1Space + (mxScaleL1Space << 1);
-        uint64_t aL1Space = L1_SIZE * KB_UNIT - DOUBLE_BUFFER_NUM * aL1Offset;  // L1上A可占据剩余空间
-        aL1DbOffset_ = aL1Space >> 1;
-
-        // MxA8W4场景bias类型为B16，各项l1Space均以B8元素个数计，计算B16偏移需除以2
-        biasL1_ = l1Tbuf.Get<biasType>()[weightL1Space >> 1];
-        biasL1DbOffset_ = ((aL1Space + biasL1Space) >> 1) + (mxScaleL1Space << 1);
-
-        mxScaleAL1_ = l1Tbuf.Get<fp8_e8m0_t>()[weightL1Space + biasL1Space];
-        mxScaleAL1DbOffset_ = (mxScaleL1Space << 1) + aL1Space;
-
-        mxScaleBL1_ = l1Tbuf.Get<fp8_e8m0_t>()[weightL1Space + biasL1Space + mxScaleL1Space];
-        mxScaleBL1DbOffset_ = (mxScaleL1Space << 1) + aL1Space;
+        aL1Offset = MxA8W4Init(l1Tbuf, weightL1Space, mxBiasL1DbOffset);
     } else if (matmulTiling->isBias) {
         uint64_t aL1Space = L1_SIZE * KB_UNIT - DOUBLE_BUFFER_NUM * aL1Offset;  // L1上A可占据剩余空间
         aL1DbOffset_ = aL1Space >> 1;
@@ -519,7 +542,9 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(TBuf<TPosition::TSCM> &l1T
     } else {
         aL1DbNum_ = DOUBLE_BUFFER_NUM;
     }
-    mmObj_.SetSubBlockIdx(0);
+    if constexpr (!IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        mmObj_.SetSubBlockIdx(0);
+    }
     mmObj_.Init(matmulTiling, tPipe);
     InitSync();
 
@@ -533,7 +558,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::GetTensorC(const BasicBlockOffs
 {
     uint64_t outOffset = param.mOffset * param.nSize + param.nOffset;
 #ifndef __CCE_KT_TEST__
-    mmObj_.GetTensorC(yGlobal_[outOffset]);
+    if constexpr (!IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        mmObj_.GetTensorC(yGlobal_[outOffset]);
+    } else {
+        mmObj_.GetTensorC(param.mL1Size, param.nL1Size, param.nSize, yGlobal_[outOffset]);
+    }
 #endif
 }
 
