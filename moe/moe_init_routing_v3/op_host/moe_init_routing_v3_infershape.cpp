@@ -326,37 +326,6 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
     return ge::GRAPH_SUCCESS;
 }
 
-static void ShowInputShapeAndAttrInfo(gert::InferShapeContext *context, const gert::Shape *xShape,
-                                      const gert::Shape *expertIdxShape, const gert::Shape *scaleShape,
-                                      const gert::Shape *offsetShape, const int64_t expertStart,
-                                      const int64_t expertEnd, const int64_t quantMode, const int64_t rowIdxType)
-{
-    // input_x and expert_idx are all required.
-    OP_LOGD(context, "x shape is: %s.", Ops::Base::ToString(*xShape).c_str());
-    OP_LOGD(context, "expert_idx shape is: %s.", Ops::Base::ToString(*expertIdxShape).c_str());
-
-    // scale is optional and can be none.
-    if (nullptr == scaleShape) {
-        OP_LOGD(context, "scale_shape is: none.");
-    } else {
-        OP_LOGD(context, "scale_shape is: %s.", Ops::Base::ToString(*scaleShape).c_str());
-    }
-
-    // offset is optional and can be none.
-    OP_LOGD(context, "Begin print offset_shape.");
-    if (nullptr == offsetShape) {
-        OP_LOGD(context, "offset_shape is: none.");
-    } else {
-        OP_LOGD(context, "offset_shape is: %s.", Ops::Base::ToString(*offsetShape).c_str());
-    }
-    OP_LOGD(context, "End print offset_shape.");
-
-    // Attrs are all required.
-    OP_LOGD(context, "active_expert_range is: [%ld, %ld).", expertStart, expertEnd);
-    OP_LOGD(context, "quant_mode is: %ld.", quantMode);
-    OP_LOGD(context, "row_Idx_type is: %ld.", rowIdxType);
-}
-
 static void ShowOutputShapeInfo(gert::InferShapeContext *context, const gert::Shape *expandedXShape,
                                 const gert::Shape *expandedRowIdxShape,
                                 const gert::Shape *expertTokenCumsumOrCountShape, const gert::Shape *expandedScaleShape)
@@ -425,14 +394,10 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     OP_CHECK_NULL_WITH_CONTEXT(context, expertIdxShape);
 
     // 2.3 Get scale shape without checking null, because scale is optional and can be none.
-    const gert::Shape *scaleShape = context->GetInputShape(MOE_INIT_ROUTING_V3_INPUT_SCALE);
+    const gert::Shape *scaleShape = context->GetOptionalInputShape(MOE_INIT_ROUTING_V3_INPUT_SCALE);
 
     // 2.4 Get offset shape without checking null, because offset is optional and can be none.
-    const gert::Shape *offsetShape = context->GetInputShape(MOE_INIT_ROUTING_V3_INPUT_OFFSET);
-
-    // Print input shape and attr info
-    ShowInputShapeAndAttrInfo(context, xShape, expertIdxShape, scaleShape, offsetShape, expertStart, expertEnd,
-                              quantMode, rowIdxType);
+    const gert::Shape *offsetShape = context->GetOptionalInputShape(MOE_INIT_ROUTING_V3_INPUT_OFFSET);
 
     // Check input shape
     if (CheckInputShape(context, xShape, expertIdxShape, scaleShape, offsetShape, expertStart, expertEnd, quantMode) !=
