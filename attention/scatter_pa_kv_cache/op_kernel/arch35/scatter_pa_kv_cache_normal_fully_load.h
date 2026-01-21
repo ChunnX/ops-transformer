@@ -106,16 +106,28 @@ template <typename T, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode>::CopyIn(int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
+
+    DataCopyExtParams kParams = {
+        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHandleNumPerCore * sizeof(T)), static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams vParams = {
+        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHandleNumPerCore * sizeof(T)), static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyPadExtParams<T> padParams;
+    padParams.isPad = 0;
+    padParams.leftPadding = 0;
+    padParams.rightPadding = 0;
+    padParams.paddingValue = 0;
     for (int64_t i = 0; i < curBlockFactor; i++) {
-        DataCopy(inputKeyLocal[i * RoundUp(tilingData_->kHandleNumPerCore)],
-                 inputKeyGm_[i * tilingData_->kHandleNumPerCore], RoundUp(tilingData_->kHandleNumPerCore));
+        DataCopyPad(inputKeyLocal[i * RoundUp(tilingData_->kHandleNumPerCore)],
+                 inputKeyGm_[i * tilingData_->kHandleNumPerCore], kParams, padParams);
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
     if constexpr (InOutMode == DUAL_IN_OUT) {
         LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
         for (int64_t i = 0; i < curBlockFactor; i++) {
-            DataCopy(inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
-                     inputValueGm_[i * tilingData_->vHandleNumPerCore], RoundUp(tilingData_->vHandleNumPerCore));
+            DataCopyPad(inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
+                     inputValueGm_[i * tilingData_->vHandleNumPerCore], vParams, padParams);
         }
         inputValueQueue_.EnQue(inputValueLocal);
     }

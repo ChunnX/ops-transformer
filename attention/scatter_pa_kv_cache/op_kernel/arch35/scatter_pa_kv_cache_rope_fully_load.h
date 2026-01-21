@@ -357,6 +357,14 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
                                                                    int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
+    DataCopyExtParams inKeyParams = {
+        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyPadExtParams<T> padParams;
+    padParams.isPad = 0;
+    padParams.leftPadding = 0;
+    padParams.rightPadding = 0;
+    padParams.paddingValue = 0;
 
     int64_t offset = (kvBlockOffset_ + iter) / numHead_ * tilingData_->keyStride0 +
                      (kvBlockOffset_ + iter) % numHead_ * tilingData_->keyStride2;
@@ -364,8 +372,8 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
         if (k >= seqLen_) {
             break;
         }
-        DataCopy(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
-                 inputKeyGm_[offset + k * tilingData_->keyStride1], RoundUp(tilingData_->kHeadSize));
+        DataCopyPad(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
+                 inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -377,14 +385,22 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
 {
     LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
 
+    DataCopyExtParams inValueParams = {
+        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyPadExtParams<T> padParams;
+    padParams.isPad = 0;
+    padParams.leftPadding = 0;
+    padParams.rightPadding = 0;
+    padParams.paddingValue = 0;
     int64_t offset = (kvBlockOffset_ + iter) / numHead_ * tilingData_->valueStride0 +
                      (kvBlockOffset_ + iter) % numHead_ * tilingData_->valueStride2;
     for (int64_t k = startIdx; k < offsetIndex; ++k) {
         if (k >= seqLen_) {
             break;
         }
-        DataCopy(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
-                 inputValueGm_[offset + k * tilingData_->valueStride1], RoundUp(tilingData_->vHeadSize));
+        DataCopyPad(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
+                 inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }
