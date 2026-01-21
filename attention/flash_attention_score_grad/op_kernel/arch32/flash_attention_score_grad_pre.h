@@ -418,10 +418,12 @@ public:
         }
 
         if (unlikely(TilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
-        int s1Pad = (TilingData->postTilingData.s1 + 255)/256*256;
-        int s2Pad = (TilingData->postTilingData.s2 + 255)/256*256; 
-        size_t dsinksumSize = TilingData->postTilingData.b * TilingData->postTilingData.n2 * TilingData->postTilingData.g * s1Pad * s2Pad / TilingData->postTilingData.baseMN;
-        InitOutput<float>(dsinksumWorkSpaceGm[dkRopeOffset], dsinksumSize, 0);
+            if (g_coreType == AIV && cBlockIdx == 0) {
+                int s1Pad = (TilingData->postTilingData.s1 + 255) / 256 * 256;
+                int s2Pad = (TilingData->postTilingData.s2 + 255) / 256 * 256;
+                size_t dsinksumSize = TilingData->postTilingData.b * TilingData->postTilingData.n2 * TilingData->postTilingData.g * s1Pad * s2Pad / TilingData->postTilingData.baseMN;
+                InitOutput<float>(dsinksumWorkSpaceGm, dsinksumSize, 0);
+            }
         }
 
         if (g_coreType == AIV && cBlockIdx < TilingData->preTilingData.maskCoreNum) {

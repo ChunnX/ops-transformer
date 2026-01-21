@@ -1029,9 +1029,9 @@ public:
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
             AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
             AscendC::LocalTensor<float> vecOut = outQueue.template AllocTensor<float>();
-            int s1Pad = (tilingData->postTilingData.s1 + 255)/256*256;
-            int s2Pad = (tilingData->postTilingData.s2 + 255)/256*256;
-            int dataSizePerN1 = tilingData->postTilingData.b *s1Pad * s2Pad / tilingData->postTilingData.baseMN;
+            int s1Pad = (tilingData->postTilingData.s1 + 255) / 256 * 256;
+            int s2Pad = (tilingData->postTilingData.s2 + 255) / 256 * 256;
+            int dataSizePerN1 = tilingData->postTilingData.b * s1Pad * s2Pad / tilingData->postTilingData.baseMN;
             int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
 
             int dsinkSumMaxCopyTimePerN1 = (dataSizePerN1 * sizeof(float) + 2 * ubBaseSize -1) / ( 2 * ubBaseSize);
@@ -1041,7 +1041,8 @@ public:
                 float dsinkCalc = 0.0;
                 for (int dsinkSumDataCopyLoop = 0; dsinkSumDataCopyLoop < dsinkSumMaxCopyTimePerN1; dsinkSumDataCopyLoop++) {
                     int currentCopyDataSize = (dsinkSumDataCopyLoop ==  dsinkSumMaxCopyTimePerN1-1) ? tailDsinkSumSize : 2 * ubBaseSize;
-                    int itemNum = currentCopyDataSize/ sizeof(float);
+                    int itemNum = currentCopyDataSize / sizeof(float);
+
                     DataCopyExtParams copyParams;
                     copyParams.blockCount = 1;
                     copyParams.blockLen = currentCopyDataSize;
@@ -1049,12 +1050,12 @@ public:
                     copyParams.dstStride = 0;
                     copyParams.rsv = 0;
                     DataCopyPadExtParams<float> copyPadParams;
-                    copyPadParams.isPad = true;
+                    copyPadParams.isPad = ((itemNum % 8) == 0) ? false : true;
                     copyPadParams.leftPadding = 0;
-                    copyPadParams.rightPadding = 8;
-                    copyPadParams.paddingValue = 0;
+                    copyPadParams.rightPadding = 8 - (itemNum % 8);
+                    copyPadParams.paddingValue = 0.0;
                     AscendC::PipeBarrier<PIPE_ALL>();
-                    DataCopyPad(vecIn, dsinksumWorkSpaceGm[copyOffset], copyParams,copyPadParams);
+                    DataCopyPad(vecIn, dsinksumWorkSpaceGm[copyOffset], copyParams, copyPadParams);
                     AscendC::PipeBarrier<PIPE_ALL>();
 
                     inQueue.EnQue(vecIn);

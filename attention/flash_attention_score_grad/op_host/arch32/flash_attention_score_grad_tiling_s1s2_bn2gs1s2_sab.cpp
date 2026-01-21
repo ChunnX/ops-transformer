@@ -1454,6 +1454,18 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetWorkspaceSiz
     // matmal3 v
     workspaceSize =
         (workspaceSize + static_cast<size_t>(fBaseParams.vSizeAlign) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+
+    if (fBaseParams.sink == 1) {
+        size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
+        size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
+        // dsink sum workspace size
+        workspaceSize =
+            (workspaceSize + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+
+        // dsink sum data size
+        workspaceSize = (workspaceSize + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+    }
+
     // mask bool workspace size
     if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
         workspaceSize =
@@ -1470,23 +1482,6 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetWorkspaceSiz
          GM_ALIGN) /
         GM_ALIGN * GM_ALIGN;
 
-    workspaceSize += WORKSPACE_BUFFER;
-    workspaces[0] = workspaceSize;
-
-    // dsink sum workspace size
-    size_t s1Pad = (fBaseParams.s1 + 255)/256 * 256;
-    size_t s2Pad = (fBaseParams.s2 + 255)/256 * 256;
-    
-    workspaceSize =
-        (workspaceSize + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES +
-         GM_ALIGN) /
-        GM_ALIGN * GM_ALIGN;
-
-    workspaceSize += WORKSPACE_BUFFER;
-    workspaces[0] = workspaceSize;
-
-        // dsink sum data size
-    workspaceSize = (workspaceSize + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     workspaceSize += WORKSPACE_BUFFER;
     workspaces[0] = workspaceSize;
 
@@ -1862,6 +1857,14 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPreTiling()
         dropBeginAddr = (dropBeginAddr + (kRopeSizeReal) * sizeof(float) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
     dropBeginAddr = (dropBeginAddr + (vSizeReal) * sizeof(float) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+
+    // sink offset
+    if (fBaseParams.sink == 1) {
+        size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
+        size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
+        dropBeginAddr = (dropBeginAddr + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+        dropBeginAddr = (dropBeginAddr + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+    }
     tilingData->preTilingData.set_dropBeginAddr(dropBeginAddr);
     return ge::GRAPH_SUCCESS;
 }
@@ -2005,6 +2008,21 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPostTiling()
     // matmal3 v
     workspaceOffsets =
         (workspaceOffsets + static_cast<size_t>(fBaseParams.vSizeAlign) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+
+   // dsink workspace
+   if (fBaseParams.sink == 1) {
+       tilingData->postTilingData.set_dsinksumWorkSpaceOffset(workspaceOffsets);
+
+       size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
+       size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
+       workspaceOffsets =
+           (workspaceOffsets + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES +
+            GM_ALIGN) /
+           GM_ALIGN * GM_ALIGN;
+       tilingData->postTilingData.set_dsinksumDataSizeOffset(workspaceOffsets);
+       workspaceOffsets = (workspaceOffsets + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+   }
+
     // mask bool workspace size
     if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
         workspaceOffsets =
@@ -2020,17 +2038,6 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPostTiling()
         (workspaceOffsets + vectorCoreNum * fBaseParams.s1CvInner * fBaseParams.s2CvInner * FP32_BYTES * MATMUL_INPUT_NUM +
          GM_ALIGN) /
         GM_ALIGN * GM_ALIGN;
-    tilingData->postTilingData.set_dsinksumWorkSpaceOffset(workspaceOffsets);
-
-
-    size_t s1Pad = (fBaseParams.s1 + 255)/256 * 256;
-    size_t s2Pad = (fBaseParams.s2 + 255)/256 * 256;
-    workspaceOffsets =
-        (workspaceOffsets + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES +
-         GM_ALIGN) /
-        GM_ALIGN * GM_ALIGN;
-
-    tilingData->postTilingData.set_dsinksumDataSizeOffset(workspaceOffsets);
 
     tilingData->postTilingData.set_b(fBaseParams.b);
     tilingData->postTilingData.set_n2(fBaseParams.n2);
