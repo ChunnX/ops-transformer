@@ -88,6 +88,7 @@ static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclT
   }
   return true;
 }
+
 static bool CheckAttr(int64_t streamMode) {
   if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
