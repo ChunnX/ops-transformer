@@ -4,9 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT AI处理器</term>|      √     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 - 算子功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
@@ -142,7 +145,7 @@
           $Q_{i} = \left\lfloor \frac{S_{i}}{Q\_scale_{i}} \right\rceil$
     </details>
 
-  - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
     <details>
     <summary>MX量化场景：</summary>
 
@@ -335,7 +338,7 @@
     - A8W4场景，不支持x的尾轴长度大于等于20000。
     - output仅支持数据类型INT8，shape支持2维，形如(M, N / 2)。
     - outputScale仅支持数据类型FLOAT，shape支持1维，形如(M,)。
-- <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
+- <term>Ascend 950PR/Ascend 950DT</term>：
     - 仅支持FLOAT8、FLOAT4量化数据类型，不支持其他数据类型，支持weight转置。
     - x支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
     - weight支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1数据类型，非转置shape形如{(E, K, N)}，weight转置shape形如{(E, N, K)}。
@@ -392,7 +395,7 @@
       - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
       
 
-  - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
         <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
