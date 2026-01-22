@@ -233,11 +233,31 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       <tr>
         <td>paddingMaskOptional</td>
         <td>输入</td>
-        <td>预留参数。</td>
+        <td>预留参数，暂未使用。</td>
         <td>调用时需传空。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>qStartIdxOptional</td>
+        <td>输入</td>
+        <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>0、1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>kvStartIdxOptional</td>
+        <td>输入</td>
+        <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>0、1</td>
         <td>-</td>
       </tr>
       <tr>
@@ -274,7 +294,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
         <td>softmaxInOptional</td>
         <td>输入</td>
         <td>正向softmax的中间输出。</td>
-        <td>暂未使用。</td>
+        <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -394,7 +414,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
         <td>innerPrecise</td>
         <td>输入</td>
         <td>内部计算精度控制。</td>
-        <td>暂未使用。</td>
+        <td>保留参数，暂未使用。</td>
         <td>INT32</td>
         <td>-</td>
         <td>-</td>
@@ -464,7 +484,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
         <td>dpseOut</td>
         <td>输出</td>
         <td>d(pse)梯度。</td>
-        <td>暂未使用。</td>
+        <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>

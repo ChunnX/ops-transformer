@@ -181,6 +181,16 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>√</td>
       </tr>
       <tr>
+        <td>paddingMaskOptional</td>
+        <td>输入</td>
+        <td>预留参数，暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>attenMaskOptional</td>
         <td>可选输入</td>
         <td>公式中的atten_mask。</td>
@@ -243,7 +253,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       <tr>
         <td>kvStartIdxOptional</td>
         <td>可选输入</td>
-        <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
+        <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
@@ -314,7 +324,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>innerPrecise</td>
         <td>可选输入</td>
         <td>用于提升精度。</td>
-        <td>暂未使用。</td>
+        <td>默认配置为0即可。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -369,6 +379,16 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>ND</td>
         <td>[N,T,8]或[T,N,8]</td>
         <td>√</td>
+      </tr>
+      <tr>
+        <td>softmaxOutOut</td>
+        <td>输入</td>
+        <td>预留参数，暂未使用。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>attentionOutOut</td>
@@ -510,6 +530,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
+- innerPrecise：当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、5、6时，用户配置的preTokens、nextTokens不会生效。
