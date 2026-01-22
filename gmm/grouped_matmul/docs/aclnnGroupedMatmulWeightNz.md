@@ -16,7 +16,7 @@
 
     **与[GroupedMatmulV5](aclnnGroupedMatmulV5.md)接口对比新增功能**：
 
-      - 输入的weight的[数据格式]支持AI处理器亲和数据排布格式（FRACTAL_NZ）。
+      - 输入的weight的数据格式支持AI处理器亲和数据排布格式（FRACTAL_NZ）。
       - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
       - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：暂不支持quantGroupSize参数。
 
@@ -59,7 +59,7 @@
           $$
           y_i=(x_i \times weight_i) * scale_i * per\_token\_scale_i  + bias_i
           $$
-       
+
 
       - **量化场景 (mx量化，当前无bias无激活层)：**
 
@@ -111,36 +111,36 @@
 
 ```c++
 aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
-    const aclTensorList *x, 
-    const aclTensorList *weight, 
-    const aclTensorList *biasOptional, 
-    const aclTensorList *scaleOptional, 
-    const aclTensorList *offsetOptional, 
-    const aclTensorList *antiquantScaleOptional, 
-    const aclTensorList *antiquantOffsetOptional, 
-    const aclTensorList *perTokenScaleOptional, 
-    const aclTensor     *groupListOptional, 
-    const aclTensorList *activationInputOptional, 
-    const aclTensorList *activationQuantScaleOptional, 
-    const aclTensorList *activationQuantOffsetOptional, 
-    int64_t              splitItem, 
-    int64_t              groupType, 
-    int64_t              groupListType, 
-    int64_t              actType, 
-    aclIntArray         *tuningConfigOptional, 
-    int64_t              quantGroupSize, 
-    aclTensorList       *out, 
-    aclTensorList       *activationFeatureOutOptional, 
-    aclTensorList       *dynQuantScaleOutOptional, 
-    uint64_t            *workspaceSize, 
+    const aclTensorList *x,
+    const aclTensorList *weight,
+    const aclTensorList *biasOptional,
+    const aclTensorList *scaleOptional,
+    const aclTensorList *offsetOptional,
+    const aclTensorList *antiquantScaleOptional,
+    const aclTensorList *antiquantOffsetOptional,
+    const aclTensorList *perTokenScaleOptional,
+    const aclTensor     *groupListOptional,
+    const aclTensorList *activationInputOptional,
+    const aclTensorList *activationQuantScaleOptional,
+    const aclTensorList *activationQuantOffsetOptional,
+    int64_t              splitItem,
+    int64_t              groupType,
+    int64_t              groupListType,
+    int64_t              actType,
+    aclIntArray         *tuningConfigOptional,
+    int64_t              quantGroupSize,
+    aclTensorList       *out,
+    aclTensorList       *activationFeatureOutOptional,
+    aclTensorList       *dynQuantScaleOutOptional,
+    uint64_t            *workspaceSize,
     aclOpExecutor      **executor)
 ```
 
 ```c++
 aclnnStatus aclnnGroupedMatmulWeightNz(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -188,7 +188,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>公式中的<code>weight</code>。</td>
     <td>最大支持128个。支持昇腾亲和数据排布格式(nz)。</td>
     <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1<sup>2</sup></td>
-    <td>ND、FRACTAL_NZ</td>
+    <td>FRACTAL_NZ</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -306,7 +306,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>groupType</td>
     <td>输入</td>
     <td>代表需要分组的轴。</td>
-    <td>-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+    <td>枚举值-1、0、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</a>。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -410,14 +410,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     </tr>
     </tbody>
     </table>
-    
+
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - 上表数据类型列中的角标“1”代表该系列支持的数据类型，角标“2”代表该系列不支持的数据类型。
         - `weight`可使用`aclnnCalculateMatmulWeightSizeV2`及`aclnnTransMatmulWeight`完成ND到NZ转换。当传入INT32时，接口内部将每个INT32识别成8个INT4。
     - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
         - 上表数据类型列中的角标“2”代表该系列支持的数据类型。
         - `x`支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、INT8。
-        - `weight`支持FLOAT16、BFLOAT16、FLOAT4_E2M1、INT8、INT4。支持ND和FRACTAL_NZ格式。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
+        - `weight`支持FLOAT16、BFLOAT16、FLOAT4_E2M1、INT8、INT4。支持FRACTAL_NZ格式。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
         - `scaleOptional`支持UINT64/INT64/BFLOAT16/FLOAT32。`offsetOptional`、`antiquantOffsetOptional`暂不支持。
         - `groupType`支持m轴分组，仅非量化支持不分组。
         - `quantGroupSize`暂不支持。
@@ -497,6 +497,13 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 - **公共约束**
   - 如果传入groupListOptional，当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列，且长度不能为1；groupListType为2时，groupListOptional的第二列数据必须为非负数列，且长度不能为1。
   - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
+  - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型。取值范围为0-5，当前只支持传入0，枚举值如下：
+ 	  * 0：GMMActType::GMM_ACT_TYPE_NONE；
+ 	  * 1：GMMActType::GMM_ACT_TYPE_RELU；
+ 	  * 2：GMMActType::GMM_ACT_TYPE_GELU_TANH；
+ 	  * 3：GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC（不支持）；
+ 	  * 4：GMMActType::GMM_ACT_TYPE_FAST_GELU；
+ 	  * 5：GMMActType::GMM_ACT_TYPE_SILU；
 
 <details>
 <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
@@ -513,7 +520,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - x为INT4、weight为INT4、biasOptional为空、scaleOptional为UINT64、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16或BFLOAT16。
 
   - 伪量化场景支持的输入类型为：
-  
+
     - 伪量化参数antiquantScaleOptional和antiquantOffsetOptional的shape要满足下表（其中g为matmul组数，G为pergroup数，$G_i$为第i个tensor的pergroup数）：
         | 使用场景 | 子场景 | shape限制 |
         |:---------:|:-------:| :-------|
@@ -564,7 +571,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - 当前支持非量化场景、伪量化场景与全量化场景
   - 非量化场景支持的数据类型为：
     - 输入weight矩阵的n轴与k轴需要满足32B对齐
-    - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、actType、activationFeatureOutOptional
+    - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
       |groupType| x       | weight  | biasOptional | out     |
       |:-------:|:-------:|:-------:| :------      |:------ |
@@ -594,7 +601,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 当x的shape固定为（M, K）, out的shape固定为（M, N）。
       - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置, 为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT32时仅支持x不转置且weight转置。
       - antiquantScale的转置与否和weight保持一致。
-  
+
   - 静态量化场景支持的输入类型为：
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
@@ -757,23 +764,23 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
   for (int64_t i = shape.size() - 2; i >= 0; i--) {
       strides[i] = shape[i + 1] * strides[i + 1];
   }
-  
+
   // 检查shape维度
   if (shape.size() != 3) {
     LOG_PRINT("Shape must be 3D for NZ format\n");
     return -1;
   }
-  
+
   int64_t E = shape[0];
   int64_t K = shape[1];
   int64_t N = shape[2];
-  
+
   // 检查维度是否能被整除
   if (N % 64 != 0 || K % 16 != 0) {
     LOG_PRINT("N must be divisible by 64 and K by 16 for NZ format\n");
     return -1;
   }
-  
+
   std::vector<int64_t> shapeNz = {E, N/64, K/16, 16, 64};
 
   // 调用aclCreateTensor接口创建aclTensor
@@ -783,17 +790,17 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
 }
 
 template <typename T>
-int CreateAclTensorListNz(const std::vector<std::vector<T>> &hostData, 
-                          const std::vector<std::vector<int64_t>> &shapes, 
+int CreateAclTensorListNz(const std::vector<std::vector<T>> &hostData,
+                          const std::vector<std::vector<int64_t>> &shapes,
                           void **deviceAddr,
-                          aclDataType dataType, 
+                          aclDataType dataType,
                           aclTensorList **tensor)
 {
   if (hostData.size() != shapes.size()) {
     LOG_PRINT("hostData size %ld does not match shapes size %ld\n", hostData.size(), shapes.size());
     return -1;
   }
-  
+
   int size = shapes.size();
   std::vector<aclTensor*> tensors(size);
   for (int i = 0; i < size; i++) {
@@ -819,13 +826,13 @@ int main() {
   std::vector<std::vector<int64_t>> yShape = {{512, 256}};
   std::vector<int64_t> groupListShape = {2};
   std::vector<int64_t> groupListData = {256, 512};
-  
+
   void* xDeviceAddr[1];
   void* weightDeviceAddr[1];
   void* yDeviceAddr[1];
   void* biasDeviceAddr[1] = {nullptr};  // 声明biasDeviceAddr
   void* groupListDeviceAddr;
-  
+
   aclTensorList* x = nullptr;
   aclTensorList* weight = nullptr;
   aclTensorList* bias = nullptr;
@@ -841,12 +848,12 @@ int main() {
   aclTensorList* out = nullptr;
   aclTensorList* activationFeatureOut = nullptr;
   aclTensorList* dynQuantScaleOut = nullptr;
-  
+
   int64_t splitItem = 3;
   int64_t groupType = 0;
   int64_t groupListType = 0;
   int64_t actType = 0;
-  
+
   // 创建weight数据
   int64_t weightTotalSize = 1;
   for (const auto& dim : weightShape[0]) {
@@ -854,7 +861,7 @@ int main() {
   }
   std::vector<std::vector<int8_t>> wHostDataList(1);
   wHostDataList[0].resize(weightTotalSize * sizeof(uint16_t)); // BF16需要2字节
-  
+
   // 创建tuningconfig aclIntArray
   std::vector<int64_t> tuningConfigData = {512};
   aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigData.data(), 1);
@@ -862,15 +869,15 @@ int main() {
   // 创建x aclTensorList
   ret = CreateAclTensorList(xShape, xDeviceAddr, aclDataType::ACL_BF16, &x);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建weight aclTensorList - NZ格式
   ret = CreateAclTensorListNz<int8_t>(wHostDataList, weightShape, weightDeviceAddr, aclDataType::ACL_BF16, &weight);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建y aclTensorList
   ret = CreateAclTensorList(yShape, yDeviceAddr, aclDataType::ACL_BF16, &out);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建group_list aclTensor
   ret = CreateAclTensor_New<int64_t>(groupListData, groupListShape, &groupListDeviceAddr, aclDataType::ACL_INT64, &groupedList);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -882,14 +889,14 @@ int main() {
   // 调用aclnnGroupedMatmulWeightNz第一段接口
   ret = aclnnGroupedMatmulWeightNzGetWorkspaceSize(x, weight, bias, scale, offset, antiquantScale, antiquantOffset, perTokenScale, groupedList, activationInput, activationQuantScale, activationQuantOffset, splitItem, groupType, groupListType, actType, tuningConfig, 0, out, activationFeatureOut, dynQuantScaleOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnGroupedMatmulWeightNz第二段接口
   ret = aclnnGroupedMatmulWeightNz(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNz failed. ERROR: %d\n", ret); return ret);

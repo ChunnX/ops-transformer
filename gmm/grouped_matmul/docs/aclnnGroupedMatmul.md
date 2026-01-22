@@ -108,7 +108,7 @@ aclnnStatus aclnnGroupedMatmul(
             <li>支持的最大长度为128个。</li>
           </ul>
         </td>
-        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
         <td>ND</td>
         <td>-</td>
         <td>-</td>
@@ -122,7 +122,7 @@ aclnnStatus aclnnGroupedMatmul(
             <li>支持的最大长度为128个。</li>
           </ul>
         </td>
-        <td>FLOAT16、BFLOAT16、INT8</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
         <td>ND</td>
         <td>-</td>
         <td>-</td>
@@ -266,15 +266,15 @@ aclnnStatus aclnnGroupedMatmul(
     - x、weight支持FLOAT16、BFLOAT16、INT8
     - y支持FLOAT16、BFLOAT16、INT8、FLOAT32
   - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
-    - x支持FLOAT16、BFLOAT16
-    - weight支持FLOAT16、BFLOAT16、INT8
-    - y支持FLOAT16、BFLOAT16
+    - x支持FLOAT16、BFLOAT16、FLOAT32
+    - weight支持FLOAT16、BFLOAT16、FLOAT32、INT8
+    - y支持FLOAT16、BFLOAT16、FLOAT32
     - 不支持scaleOptional、offsetOptional
 
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一阶段接口完成入参校验，出现以下场景时报错:
 
   <table style="undefined;table-layout: fixed;width: 1030px"><colgroup>
@@ -373,6 +373,7 @@ aclnnStatus aclnnGroupedMatmul(
       |:-------:|:-------:| :------      |:------ |
       |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
       |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
+      |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
 
     </details>
 
@@ -399,10 +400,10 @@ aclnnStatus aclnnGroupedMatmul(
 
         | 支持场景 | 场景限制 |
         |:-------:| :-------|
-        | 多多多 |1）仅支持splitItem为0/1<br>2）伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；非量化场景x，y中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3）若x中存在tensor大于2维，groupListOptional必须传空<br>4）若x中tensor为2维且传入  groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应<br>5）仅支持ND进ND出 |
-        | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且最后一个值不大于x中tensor的第一维<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4） weight中每个tensor的N轴必须相等<br>5）仅支持ND进ND出<br>6）仅支持非量化|
-        | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional， groupListOptional的差值需与y中tensor的第一维一一对应<br>3）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）仅支持ND进ND出<br>5）仅支持非量化|
-        | 多多单 |1）仅支持splitItem为2/3<br>2）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N） <br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional， groupListOptional的差值需与x中tensor的第一维一一对应<br>5）仅支持ND进ND出<br>6）仅支持非量化|
+        | 多多多 |1）仅支持splitItem为0/1<br>2）伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；非量化场景x，y中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3）若x中存在tensor大于2维，groupListOptional必须传空<br>4）若x中tensor为2维且传入  groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）不支持x转置，不支持weight转置 |
+        | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为128<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4） weight中每个tensor的N轴必须相等<br>5）仅支持ND进ND出<br>6）仅支持非量化<br>7）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
+        | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为128<br>3）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）仅支持ND进ND出<br>5）仅支持非量化<br>6）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
+        | 多多单 |1）仅支持splitItem为2/3<br>2）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N） <br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional， groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）仅支持非量化<br>7）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
 
     </details>
 

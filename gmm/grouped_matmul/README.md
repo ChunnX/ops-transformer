@@ -211,12 +211,12 @@
 
 
 - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
-  
+
   - 上表数据类型列中的角标“1”代表该系列不支持的数据类型。
-  - 输入参数x、weight均不支持FLOAT、INT16类型，且x不支持int4类型。
+  - 输入参数x、weight均不支持INT16类型，且x不支持int4类型。
   - 输出参数out不支持INT32、INT8类型。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-  
+
   - 上表数据类型列中的角标“2”代表该系列不支持的数据类型。
   - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型。
   - 输入参数biasOptional不支持BFLOAT16。
@@ -304,6 +304,7 @@
         |:-------:|:-------:|:-------:| :------      |:------ |
         |-1/0/2   |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
         |-1/0/2   |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
+        |-1/0/2   |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
     - 伪量化场景支持的数据类型为：
       - 以下入参为空：scaleOptional、offsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional
       - 不为空的参数支持的数据类型组合要满足下表

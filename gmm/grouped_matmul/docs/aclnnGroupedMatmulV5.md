@@ -110,7 +110,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>公式中的<code>weight</code>。</td>
           <td>最多支持128个tensor。</td>
           <td>FLOAT<sup>1</sup>、FLOAT16、INT16<sup>1</sup>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup></td>
-          <td>ND/NZ</td>
+          <td>ND</td>
           <td>2-3</td>
           <td>√</td>
       </tr>
@@ -228,7 +228,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>groupType</td>
           <td>输入</td>
           <td>代表需要分组的轴。</td>
-          <td>取值范围-1、0、2。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+          <td>枚举值-1、0、1、2。如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组。</a>。</td>
           <td>-</td>
           <td>-</td>
           <td>-</td>
@@ -328,7 +328,7 @@ aclnnStatus aclnnGroupedMatmulV5(
   - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
 
     - 上表数据类型列中的角标“1”代表该系列不支持的数据类型。
-    - 输入参数x、weight均不支持FLOAT、INT16类型，且x不支持int4类型；
+    - 输入参数x、weight均不支持INT16类型，且x不支持int4类型；
     - 输出参数out不支持INT32、INT8类型。
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
@@ -479,7 +479,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     <a id="a8w4伪量化场景"></a>
 
     - x为INT8，weight为INT4（仅支持x、weight、y均为单tensor的场景）。其中$bias$为必选参数，是离线计算的辅助结果，且 $bias_i=8\times weight_i  * scale_i$ ，并沿k轴规约。
-    
+
       $$
       y_i=((x_i - 8) \times weight_i * scale_i+bias_i ) * per\_token\_scale_i
       $$
@@ -509,7 +509,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       * 5：GMMActType::GMM_ACT_TYPE_SILU；
 
     <a id="a8w8场景约束"></a>
-    
+
     <details>
     <summary>A8W8场景约束</summary>
 
@@ -544,7 +544,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           tuningConfigOptional 的第二个元素：设为 0。
 
           tuningConfigOptional 的第三个元素：设为 -1，或设为大于等于 M × N × 4 的数值。
-          
+
     </details>
 
     <a id="a8w4场景约束"></a>
@@ -732,19 +732,19 @@ aclnnStatus aclnnGroupedMatmulV5(
       * 第一个元素：
 
         语义：各个专家处理的token数的预期值，算子tiling时会按照数组中第一个元素进行最优tiling，性能更优。
-        
+
         适用场景：[a8w4场景](#a8w4场景约束)与[a8w8场景](#a8w8场景约束)，且为x、weight、out均为单tensor场景。
-      
+
       * 第二个元素：
-        
+
         语义：是否使能weight为亲核格式，该格式需要先将weight内存排布转置，然后转为NZ格式。
-        
+
         适用场景：[a8w4场景](#a8w4场景约束)。
-      
+
       * 第三个元素：
-        
+
         语义：允许额外使用的最大workspace空间，本算子部分场景使用了定轴算法，可以提升性能但会额外使用一部分内存空间，如果允许额外使用的内存空间允许使用定轴算法，会有性能提升，如果不在意使用的workspace空间上限可设置为-1。
-        
+
         适用场景：[a8w8场景](#a8w8场景约束)。
 
     </details>
@@ -759,18 +759,25 @@ aclnnStatus aclnnGroupedMatmulV5(
   - 公共约束：
 
     - groupType：支持m轴分组和不分组，仅非量化支持k轴分组。
-    - groupListType：支持取值0、1。
-    - actType：当前只支持传入0，表示GMMActType::GMM_ACT_TYPE_NONE。
+    - groupListType：支持取值0、1。当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列。
     - tuningConfigOptional：不支持此参数。
+    - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型。取值范围为0-5，当前只支持传入0，枚举值如下：
+      * 0：GMMActType::GMM_ACT_TYPE_NONE；
+      * 1：GMMActType::GMM_ACT_TYPE_RELU；
+      * 2：GMMActType::GMM_ACT_TYPE_GELU_TANH；
+      * 3：GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC（不支持）；
+      * 4：GMMActType::GMM_ACT_TYPE_FAST_GELU；
+      * 5：GMMActType::GMM_ACT_TYPE_SILU；
   - 非量化场景支持的数据类型为：
 
-    - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、actType、activationFeatureOutOptional
+    - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
 
       |groupType| x       | weight  | biasOptional | out     |
       |:-------:|:-------:|:-------:| :------      |:------ |
       |-1/0/2   |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
       |-1/0/2   |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
+      |-1/0/2   |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
 
   - 伪量化场景支持的数据类型为：
 
@@ -802,7 +809,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       | -1 | 多个 | 多个|多个 |1）仅支持splitItem为0/1<br>2）非量化x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3） groupListOptional必须传空<br>4）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>5）x不支持转置<br>6）仅支持ND进ND出|
       | 0 | 单个|单个|单个 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（E, N, K）或（E, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（E, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持<br>6）仅支持ND进ND出|
       | 0 | 单个|多个|单个 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总与x中tensor的第一维相等，长度最大为 128<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出 |
-      | 0 | 多个|多个|单个 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为128<br>5）支weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出 |
+      | 0 | 多个|多个|单个 |1）仅支持splitItem为2<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为128<br>5）支weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出 |
       | 2 | 单个|单个|单个 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；out中tensor需为3维, shape为（E, M, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）仅支持x转置且weight不转置<br>6）仅支持非量化<br>7）仅支持ND进ND出|
 
 </details>
