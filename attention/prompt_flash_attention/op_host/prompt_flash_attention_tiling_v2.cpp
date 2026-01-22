@@ -86,6 +86,8 @@ constexpr uint32_t SPARSE_OPTIMIZE_ATTENTION_SIZE = 2048;
 // The current requirement is a multiple of 128, and to prevent cross block handling, the mm base is also set to 128.
 constexpr int32_t BLOCK_SIZE_BASE = 128;
 constexpr int32_t BLOCK_SIZE_MAX = 512;
+constexpr int32_t BLOCK_SIZE_BASE_FOR_NO_QUANT = 16;
+constexpr int32_t BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
 
 constexpr uint32_t SOUTER_FACTOR_SUB = 32;
 constexpr uint32_t SOUTER_FACTOR_DEFAULT = 64;
@@ -1218,23 +1220,24 @@ bool PromptFlashAttentionTilingV2::CheckPAKeyValueShape(ContextParamsForPFATilin
         uint32_t inputTypeIndex = std::distance(allowedDtypes.begin(), inputTypeCheck);
         dataTypeSizeValue = dataTypeSizeArray[inputTypeIndex];
     }
-
-    if (inputLayout == InputLayout::BNSD || inputLayout == InputLayout::TND || inputLayout == InputLayout::NTD) {
-        OP_CHECK_IF(((keyDim != KV_CACHE_DIM_NUMS_3) && (keyDim != KV_CACHE_DIM_NUMS_4) && (keyDim != KV_CACHE_DIM_NUMS_5)), 
-            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, // dim num: 3/4
-            "the layout of query is %s, key and value layout should be [>=%ld, %d, %u] or [>=%ld, %u, %d, %u] or [>=%ld, %u, %u, %d, %d] when PA enable.",
-                layoutStr.c_str(), blockNumValid, *blockSize, queryShapeInfo.h / headNumRatio, 
-                blockNumValid, queryShapeInfo.n / headNumRatio, *blockSize, (queryShapeInfo.h / queryShapeInfo.n), 
-                blockNumValid, queryShapeInfo.n / headNumRatio, (queryShapeInfo.h / queryShapeInfo.n) * dataTypeSizeValue / BYTE_BLOCK, *blockSize, BYTE_BLOCK / dataTypeSizeValue),
-            return false);
-    } else if (inputLayout == InputLayout::BSH || inputLayout == InputLayout::BSND) {
-        OP_CHECK_IF(((keyDim != KV_CACHE_DIM_NUMS_3) && (keyDim != KV_CACHE_DIM_NUMS_5)), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "the layout of query is %s, key and value layout should be [>=%ld, %d, %u] or [>=%ld, %u, %u, %d, %d] when PA enable."
-            " now key and value shape [%ld, %ld, %ld, %ld].",
-                layoutStr.c_str(), blockNumValid, *blockSize, queryShapeInfo.h / headNumRatio, 
-                blockNumValid, queryShapeInfo.n / headNumRatio, (queryShapeInfo.h / queryShapeInfo.n) * dataTypeSizeValue / BYTE_BLOCK, *blockSize, BYTE_BLOCK / dataTypeSizeValue, 
-                keyDim1, keyDim2, keyDim3, keyDim4),
-            return false);
+    if (enableIFAMLAFullQuant) {
+        if (inputLayout == InputLayout::BNSD || inputLayout == InputLayout::TND || inputLayout == InputLayout::NTD) {
+            OP_CHECK_IF(((keyDim != KV_CACHE_DIM_NUMS_3) && (keyDim != KV_CACHE_DIM_NUMS_4) && (keyDim != KV_CACHE_DIM_NUMS_5)), 
+                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, // dim num: 3/4
+                "the layout of query is %s, key and value layout should be [>=%ld, %d, %u] or [>=%ld, %u, %d, %u] or [>=%ld, %u, %u, %d, %d] when PA enable.",
+                    layoutStr.c_str(), blockNumValid, *blockSize, queryShapeInfo.h / headNumRatio, 
+                    blockNumValid, queryShapeInfo.n / headNumRatio, *blockSize, (queryShapeInfo.h / queryShapeInfo.n), 
+                    blockNumValid, queryShapeInfo.n / headNumRatio, (queryShapeInfo.h / queryShapeInfo.n) * dataTypeSizeValue / BYTE_BLOCK, *blockSize, BYTE_BLOCK / dataTypeSizeValue),
+                return false);
+        } else if (inputLayout == InputLayout::BSH || inputLayout == InputLayout::BSND) {
+            OP_CHECK_IF(((keyDim != KV_CACHE_DIM_NUMS_3) && (keyDim != KV_CACHE_DIM_NUMS_5)), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                "the layout of query is %s, key and value layout should be [>=%ld, %d, %u] or [>=%ld, %u, %u, %d, %d] when PA enable."
+                " now key and value shape [%ld, %ld, %ld, %ld].",
+                    layoutStr.c_str(), blockNumValid, *blockSize, queryShapeInfo.h / headNumRatio, 
+                    blockNumValid, queryShapeInfo.n / headNumRatio, (queryShapeInfo.h / queryShapeInfo.n) * dataTypeSizeValue / BYTE_BLOCK, *blockSize, BYTE_BLOCK / dataTypeSizeValue, 
+                    keyDim1, keyDim2, keyDim3, keyDim4),
+                return false);
+        }
     }
     return true;
 }
@@ -2188,18 +2191,34 @@ bool PromptFlashAttentionTilingV2::CheckPATypeAndShape(ContextParamsForPFATiling
     // Tiling sinking scene, workspace needs to be calculated, at this time, blockTableDim2 * blockSize is used as S2.
     blockTableDim2 = static_cast<int32_t>(blockTableShape->GetStorageShape().GetDim(1));
     // PFA PA blockSize % 128 == 0
-    OP_CHECK_IF((!enableIFAMLA && !enableIFA && !(queryShapeInfo.s == 1 && enableAlibiPse) && (*blockSize % BLOCK_SIZE_BASE != 0 || *blockSize < BLOCK_SIZE_BASE || *blockSize > BLOCK_SIZE_MAX)),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable",
-            *blockSize, BLOCK_SIZE_BASE, BLOCK_SIZE_BASE, BLOCK_SIZE_MAX),
-        return false);
+    if (enableIFAMLAFullQuant) {
+        OP_CHECK_IF((!enableIFAMLA && !enableIFA && !(queryShapeInfo.s == 1 && enableAlibiPse) && (*blockSize % BLOCK_SIZE_BASE != 0 || *blockSize < BLOCK_SIZE_BASE || *blockSize > BLOCK_SIZE_MAX)),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable",
+                *blockSize, BLOCK_SIZE_BASE, BLOCK_SIZE_BASE, BLOCK_SIZE_MAX),
+            return false);
+    } else {
+        OP_CHECK_IF((!enableIFAMLA && !enableIFA && !(queryShapeInfo.s == 1 && enableAlibiPse) && (*blockSize % BLOCK_SIZE_BASE_FOR_NO_QUANT != 0 || *blockSize < BLOCK_SIZE_BASE_FOR_NO_QUANT || *blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT)),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant",
+                *blockSize, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+            return false);
+    }
     // IFA PA blockSize % 16 == 0
     ifaBlockSizeBase /= static_cast<int32_t>(dataTypeSize);
-    OP_CHECK_IF(((enableIFAMLA || enableIFA || (queryShapeInfo.s == 1 && enableAlibiPse)) && (*blockSize % ifaBlockSizeBase != 0 || *blockSize < ifaBlockSizeBase || *blockSize > BLOCK_SIZE_MAX)),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable",
-            *blockSize, ifaBlockSizeBase, ifaBlockSizeBase, BLOCK_SIZE_MAX),
-        return false);
+    if (enableIFAMLAFullQuant) {
+        OP_CHECK_IF(((enableIFAMLA || enableIFA || (queryShapeInfo.s == 1 && enableAlibiPse)) && (*blockSize % ifaBlockSizeBase != 0 || *blockSize < ifaBlockSizeBase || *blockSize > BLOCK_SIZE_MAX)),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable",
+                *blockSize, ifaBlockSizeBase, ifaBlockSizeBase, BLOCK_SIZE_MAX),
+            return false);
+    } else {
+        OP_CHECK_IF(((enableIFAMLA || enableIFA || (queryShapeInfo.s == 1 && enableAlibiPse)) && (*blockSize % BLOCK_SIZE_BASE_FOR_NO_QUANT != 0 || *blockSize < BLOCK_SIZE_BASE_FOR_NO_QUANT || *blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT)),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant",
+                *blockSize, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+            return false);
+    }
 
     if (isMaxWorkspace) {
         S2 = blockTableDim2 * (*blockSize);
