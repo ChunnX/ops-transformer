@@ -41,7 +41,7 @@ endif()
 
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnExc PRIVATE
+    target_sources(op_host_aclnnInner PRIVATE
         dispatch_ffn_combine_def.cpp
     )
 endif()
@@ -58,40 +58,3 @@ add_ops_compile_options(
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE dispatch_ffn_combine ACLNNTYPE aclnn_inner)
 endif()
-
-# target_sources(op_host_aclnnInner PRIVATE
-#         dispatch_ffn_combine_def.cpp
-# )
-
-# target_sources(opapi PRIVATE
-#         aclnn_dispatch_ffn_combine.cpp
-# )
-
-# if (NOT BUILD_OPEN_PROJECT)
-#     target_sources(aclnn_ops_train PRIVATE
-#         aclnn_dispatch_ffn_combine.cpp
-#     )
-
-#     target_sources(aclnn_ops_infer PRIVATE
-#         aclnn_dispatch_ffn_combine.cpp
-#     )
-# endif ()
-
-# target_sources(optiling PRIVATE
-#         dispatch_ffn_combine_tiling.cpp
-# )
-
-# target_include_directories(optiling PRIVATE
-#         ${CMAKE_CURRENT_SOURCE_DIR}
-#         ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel
-# )
-
-# target_sources(opsproto PRIVATE
-#         dispatch_ffn_combine_proto.cpp
-# )
-
-# file(GLOB _GMM_Aclnn_header "${CMAKE_CURRENT_SOURCE_DIR}/aclnn_dispatch_ffn_combine.h")
-
-# install(FILES ${_GMM_Aclnn_header}
-#         DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL
-# )
