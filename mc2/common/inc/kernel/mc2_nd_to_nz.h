@@ -554,10 +554,10 @@ __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TP
     LocalTensor<float> yLocal = fullBf16[Ceil(size, UB_ALIGN_SIZE) * UB_ALIGN_SIZE].template ReinterpretCast<float>();
 
     // 3. GM数据拷贝至UB
-    uint16_t cpInLen = size * sizeof(bfloat16_t);
-    DataCopyParams cpInParams{1, cpInLen, 0, 0};
-    DataCopyPadParams padParams{false, 0, 0, 0}; // 不需要填充数据
-    DataCopyPad(xLocal, gmSrc, cpInParams, padParams);
+    uint32_t cpInLen = size * sizeof(bfloat16_t);
+    DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
+    DataCopyPadExtParams<bfloat16_t> padExtParams{false, 0, 0, 0}; // 不需要填充数据
+    DataCopyPad(xLocal, gmSrc, cpInExtParams, padExtParams);
 
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
@@ -570,9 +570,9 @@ __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TP
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
 
     // 5. UB数据拷贝至GM
-    uint16_t cpOutLen = size * sizeof(float);
-    DataCopyParams cpOutParams{1, cpOutLen, 0, 0};
-    DataCopyPad(gmDst, yLocal, cpOutParams);
+    uint32_t cpOutLen = size * sizeof(float);
+    DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
+    DataCopyPad(gmDst, yLocal, cpOutExtParams);
     CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
 #endif
 }
