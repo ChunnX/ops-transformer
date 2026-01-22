@@ -113,6 +113,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false"); //set jit compile flag
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
+        this->AICore().AddConfig("mc62cm12a", aicore_config);
 
         OpAICoreConfig aicore_config_95;
         aicore_config_95.DynamicCompileStaticFlag(true)

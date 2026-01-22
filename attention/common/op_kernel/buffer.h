@@ -27,6 +27,10 @@ __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
 // 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
 #define AIV0_AIV1_OFFSET 16
 
+#if (__NPU_ARCH__ == 5102)
+#undef ASCEND_IS_AIC
+#define ASCEND_IS_AIC constexpr(true)
+#endif
 enum class BufferType {
     L1 = 0,
     L0A = 1,
