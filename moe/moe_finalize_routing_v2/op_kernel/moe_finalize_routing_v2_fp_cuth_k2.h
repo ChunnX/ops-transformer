@@ -374,8 +374,6 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2<T, ISBIASEXIST>::Compute(
     } else {
         if constexpr (ISBIASEXIST) {
             Add(expandedPermutedTmpUbDb0, expandedPermutedTmpUbDb0, biasTmpUbDb0, dataLen);
-        } else {
-            Adds(expandedPermutedTmpUbDb0, expandedPermutedTmpUbDb0, (T)0, dataLen);
         }
     }
 
@@ -408,8 +406,6 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2<T, ISBIASEXIST>::Compute(
     } else {
         if constexpr (ISBIASEXIST) {
             Add(expandedPermutedTmpUbDb1, expandedPermutedTmpUbDb1, biasTmpUbDb1, dataLen);
-        } else {
-            Adds(expandedPermutedTmpUbDb1, expandedPermutedTmpUbDb1, (T)0, dataLen);
         }
     }
     PipeBarrier<PIPE_V>();
