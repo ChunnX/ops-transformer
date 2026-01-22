@@ -18,6 +18,15 @@ if (BUILD_OPEN_PROJECT)
                 -Wno-deprecated-declarations
                 -Werror
     )
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend910_95")
+        add_ops_compile_options(
+            OP_NAME RingAttentionUpdate
+            COMPUTE_UNIT ascend910_9599
+            OPTIONS --cce-auto-sync=off
+                    -mllvm 
+                    -cce-aicore-dcci-before-kernel-end=false
+        )
+    endif()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
