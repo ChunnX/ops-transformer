@@ -64,8 +64,9 @@ __aicore__ inline void DataCopyInCommon(LocalTensor<INPUT_T> &dstTensor, GlobalT
         dataCopyParams.blockCount = s1Size;
         dataCopyParams.blockLen = CeilDiv(s2Size * dtypeSize, blockBytes); // 单位32B
         dataCopyParams.dstStride = CeilDiv(s2BaseSize * dtypeSize, blockBytes) - dataCopyParams.blockLen;
-        if (actualS2Len * dtypeSize % blockBytes == 0) {
-            dataCopyParams.srcStride = (actualS2Len * dtypeSize - dataCopyParams.blockLen * blockBytes) / blockBytes;
+        int64_t srcStride = (actualS2Len * dtypeSize - dataCopyParams.blockLen * blockBytes) / blockBytes;
+        if (actualS2Len * dtypeSize % blockBytes == 0 && srcStride <= UINT16_MAX) {
+            dataCopyParams.srcStride = srcStride;
             DataCopy(dstTensor, srcTensor[offset], dataCopyParams);
         } else {
             DataCopyExtParams dataCopyExtParams;
