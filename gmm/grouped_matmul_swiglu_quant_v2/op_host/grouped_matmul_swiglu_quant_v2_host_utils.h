@@ -36,5 +36,6 @@ constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 5;
 constexpr size_t MX_WEIGHT_SCALE_DIM =4;
 constexpr size_t MX_X_SCALE_DIM =3;
 constexpr uint64_t B4_DATACOPY_MIN_NUM = 2;
+constexpr int32_t SPLIT_M = 0;
 } // namespace GroupedMatmulSwigluQuantParamsV2
 #endif

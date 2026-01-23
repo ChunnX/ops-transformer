@@ -7,6 +7,11 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
+/*!
+ * \file grouped_quant_matmul_tiling.cpp
+ * \brief
+ */
 #include <alog_pub.h>
 #include "grouped_quant_matmul_tiling.h"
 
@@ -514,13 +519,18 @@ void GroupedQbmmTiling::SetPerGroupQuantMode(const gert::Shape &xScaleShape, con
 bool GroupedQbmmTiling::SetGroupNum(uint32_t groupListIndex)
 {
     auto groupListStorageShape = context_->GetOptionalInputShape(groupListIndex);
-    OP_CHECK_IF(groupListStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "groupListStorageShape is nullptr."), return false);
+    OP_CHECK_IF(groupListStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "groupListStorageShape is nullptr."),
+                return false);
     const gert::Shape &groupListShape = groupListStorageShape->GetStorageShape();
     OP_CHECK_IF(groupListShape.GetDimNum() != 1,
-               OP_LOGE(inputParams_.opName, "The dimension of groupList should be 1, actual is %zu",
-                                         groupListShape.GetDimNum()),
-               return false);
-    inputParams_.groupNum = static_cast<int32_t>(groupListShape.GetDim(0));
+                OP_LOGE(inputParams_.opName, "The dimension of groupList should be 1, actual is %zu.",
+                        groupListShape.GetDimNum()),
+                return false);
+    inputParams_.groupNum = groupListShape.GetDim(0);
+    OP_CHECK_IF(inputParams_.groupNum > GMM_MAX_GROUP_LIST_SIZE,
+                OP_LOGE(inputParams_.opName, "The group number should not be greater than 1024, but actual is %lu.",
+                        inputParams_.groupNum),
+                return false);
     return true;
 }
 

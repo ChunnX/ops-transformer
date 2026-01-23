@@ -46,6 +46,8 @@ bool GroupedMatmulSwigluQuantDavidV2Tiling::AnalyzeAttrs()
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
+    // gmm quant tiling need groupType to calculate L1 tiling
+ 	inputParams_.groupType = SPLIT_M;
     return true;
 }
 

@@ -40,6 +40,7 @@ constexpr uint32_t SCALER_FACTOR_M_BIT = 16;
 constexpr uint32_t SCALER_FACTOR_N_BIT = 24;
 constexpr uint64_t MTE2_MIN_LOAD_SIZE_V120 = 64 * 1024UL;
 constexpr uint64_t MAX_REPEAT_TIMES = 255; // InitOutput接口取值
+constexpr uint64_t GMM_MAX_GROUP_LIST_SIZE = 1024UL;
 constexpr size_t LAST_FIRST_DIM_INDEX = 1;
 constexpr size_t LAST_SECOND_DIM_INDEX = 2;
 constexpr uint64_t PER_BLOCK_GROUP_SIZE = 128;
