@@ -1043,7 +1043,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                 <li>D=512且rope分离场景支持做行无效。</li>
                 <li>query，key的d=128，rope的d=0，value的d=128时支持做行无效。</li>
                 <li>query，key的d=64，rope的d=0，value的d=64时支持做行无效。</li>
-                <li>query，key的d=192，rope的d=64，value的d=128时支持做行无效。</li>
+                <li>query，key的d=192，rope的d=0，value的d=128时支持做行无效。</li>
                 <li>query，key的d=128，rope的d=64，value的d=128时支持做行无效。</li>
                 </ul></td>
             </tr>
@@ -1470,18 +1470,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         </tr>
         <tr>
             <td rowspan="7">当query的d不等于512时</td>
-            <td rowspan="3">通用场景</td>
+            <td rowspan="1">通用场景</td>
             <td>inputLayout</td>
             <td>支持TND、NTD、NTD_TND</td>
-        </tr>
-        <tr>
-            <td>query，key，value</td>
-            <td>数据类型仅支持BFLOAT16</td>
-        </tr>
-        <tr>
-            <td>Mask</td>
-            <td>actualSeqLengths，actualSeqLengthsKv</td>
-            <td>当sparseMode=3时，要求每个batch单独的actualSeqLengths &lt; actualSeqLengthsKv；</td>
         </tr>
         <tr>
             <td>PagedAttention</td>
@@ -1533,7 +1524,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>-</td>
         </tr>
         <tr>
-            <td rowspan="18">query d=512</td>
+            <td rowspan="22">query d=512</td>
             <td rowspan="6">通用场景</td>
             <td>query</td>
             <td>FLOAT16、BFLOAT16；Q_N=[1,2,4,8,16,32,64,128]</td>
@@ -1571,9 +1562,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>-</td>
         </tr>
         <tr>
-            <td rowspan="8">全量化</td>
+            <td rowspan="11">全量化</td>
             <td>query</td>
-            <td>INT8</td>
+            <td>INT8，且qs范围为1~16</td>
             <td>-</td>
         </tr>
         <tr>
@@ -1610,6 +1601,21 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>valueAntiquantScaleOptional</td>
             <td>FLOAT32; 需与dequantScaleQueryOptional, keyAntiquantScaleOptional同时存在，不支持传入keyAntiquantOffsetOptional和valueAntiquantOffsetOptional; 仅支持pertensor模式</td>
             <td>shape为(1)</td>
+        </tr>
+        <tr>
+            <td>sparseMode</td>
+            <td>全量化场景sparseMode仅支持0,3</td>
+            <td>qs=1时，仅支持sparseMode=0，且不传mask;qs>1时，仅支持sparseMode=3，且mask shape为[2048,2048]</td>
+        </tr>
+        <tr>
+            <td>blockSize</td>
+            <td>仅支持128</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>inputLayout</td>
+            <td>BSH、BSH_NBSD、BSND、BSND_NBSD、TND、TND_NTD</td>
+            <td>-</td>
         </tr>
         <tr>
             <td rowspan="2">PagedAttention</td>
@@ -1715,7 +1721,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         </tr>
         <tr>
             <td rowspan="9">伪量化</td>
-            <td colspan="4">仅支持KV分离；仅支持高性能模式；不支持配置queryRope和keyRope；不支持非对称量化(antiquantOffset、keyAntiquantOffset、valueAntiquantOffset)</td>
+            <td colspan="4">仅支持KV分离；仅支持高性能模式；仅支持q为BF16，kv为INT8的伪量化；不支持配置queryRope和keyRope；不支持非对称量化(antiquantOffset、keyAntiquantOffset、valueAntiquantOffset)</td>
         </tr>
         <tr>
             <td rowspan="4">per-channel</td>
@@ -2020,7 +2026,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                         <li>使能pseShift，传入pseShift的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
                         <li>使能伪量化per-token模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
                         <li>使能per-token叠加per-head模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize，数据类型固定为FLOAT32。（当key、value数据类型为INT8、INT4(INT32)时支持。）</li>
-                        <li>使能per-token-group模式：antiquantScale的倒数第二维需要大于等于blockTable的第二维 * blockSize, 数据类型固定为FLOAT8_E8M0，不支持带antiquantOffset。（当key、value数据类型为FLOAT4_E2M1时支持。）</li>
                     </ul>
                     </td>
                 </tr>
