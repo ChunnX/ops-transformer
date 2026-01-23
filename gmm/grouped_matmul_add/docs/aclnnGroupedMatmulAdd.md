@@ -4,7 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT AI处理器</term>           |    ×     |
+| <term>Ascend 950PR/Ascend 950DT AI处理器</term>           |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 
@@ -51,10 +51,10 @@ aclnnStatus aclnnGroupedMatmulAdd(
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 300px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 300px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -168,7 +168,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
     <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
     <col style="width: 280px">
     <col style="width: 100px">
-    <col style="width: 900px"> 
+    <col style="width: 900px">
       </colgroup><thead>
       <tr>
         <th>返回值</th>
@@ -205,7 +205,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
   <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
     <col style="width: 150px">
     <col style="width: 100px">
-    <col style="width: 900px"> 
+    <col style="width: 900px">
     <thead>
     <tr>
         <th>参数名</th>
@@ -363,7 +363,7 @@ int main() {
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> xShape = {512, 256};
   std::vector<int64_t> weightShape= {512, 256};
-  std::vector<int64_t> yShape = {512, 256};
+  std::vector<int64_t> yShape = {2, 256, 256};
   std::vector<int64_t> groupListShape = {2};
   std::vector<int64_t> groupListData = {256, 512};
   void* xDeviceAddr;

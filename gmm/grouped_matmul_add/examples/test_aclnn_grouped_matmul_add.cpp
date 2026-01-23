@@ -120,7 +120,7 @@ int main() {
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> xShape = {512, 256};
   std::vector<int64_t> weightShape= {512, 256};
-  std::vector<int64_t> yShape = {512, 256};
+  std::vector<int64_t> yShape = {2, 256, 256};
   std::vector<int64_t> groupListShape = {2};
   std::vector<int64_t> groupListData = {256, 512};
   void* xDeviceAddr;

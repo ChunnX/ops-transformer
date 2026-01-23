@@ -38,6 +38,7 @@
 #include "aclnn_grouped_matmul_util.h"
 #include "aclnn_grouped_matmul_910_95_checker.h"
 #include "aclnn_grouped_matmul_weight_quant_910_95_checker.h"
+#include "grouped_matmul_no_quant_950_checker.h"
 
 using namespace op;
 
@@ -1092,6 +1093,10 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
       return gmm::AclnnGroupedMatmul91095Checker<aclTensorList>(gmmParams).CheckGroupedMatmul91095();
     } else if (IsWeightQuant(gmmParams.xDtype, weightDtype)) {
       return gmm::AclnnGroupedMatmulWeightQuant91095Checker(gmmParams).CheckGroupedMatmulWeightQuant91095();
+    } else {
+      CHECK_RET(gmm::AclnnGroupedMatmulNoQuant950Checker(gmmParams).CheckGroupedMatmulNoQuant950() ==
+                    ACLNN_SUCCESS,
+                ACLNN_ERR_PARAM_INVALID);
     }
   }
   if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
@@ -1455,7 +1460,8 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
   if (gmmParams.groupType == gmm::NO_SPLIT) {
     CHECK_COND(!gmmParams.transposeX, ACLNN_ERR_PARAM_INVALID,
                "When x, weight and y are all separated, x can not be transposed.");
-    CHECK_COND(!(gmmParams.apiVersion == gmm::GMMApiVersion::V1 && gmmParams.transposeWeight), ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(!(gmmParams.apiVersion == gmm::GMMApiVersion::V1 && gmmParams.transposeWeight) ||
+ 	              GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95, ACLNN_ERR_PARAM_INVALID,
                "in this version, when x, weight and y are all separated, weight can not be transposed.");
     CHECK_COND(CheckCaseNoSplit(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "Invalid inputs!");
