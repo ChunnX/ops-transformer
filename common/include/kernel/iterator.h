@@ -18,7 +18,8 @@
 
 #include "common_func.h"
 #include "hardware.h"
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 #include "layout.h"
 #include "mem.h"
 

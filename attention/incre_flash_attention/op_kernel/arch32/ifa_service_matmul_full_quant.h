@@ -15,7 +15,8 @@
 #ifndef IFA_SERVICE_MATMUL_FULL_QUANT_H
 #define IFA_SERVICE_MATMUL_FULL_QUANT_H
 
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"

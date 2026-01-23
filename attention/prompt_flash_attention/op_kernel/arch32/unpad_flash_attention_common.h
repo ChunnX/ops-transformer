@@ -10,7 +10,8 @@
 
 #ifndef UNPAD_FLASH_ATTENTION_COMMON_H
 #define UNPAD_FLASH_ATTENTION_COMMON_H
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 #include "common.h"
 #include "iterator.h"
 #include "gm_to_l1_iterator.h"

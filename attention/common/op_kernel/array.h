@@ -15,7 +15,8 @@
 #ifndef ARRAY_H
 #define ARRAY_H
 
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 
 template <typename T, uint32_t N, uint64_t Stride=0>
 class Array {

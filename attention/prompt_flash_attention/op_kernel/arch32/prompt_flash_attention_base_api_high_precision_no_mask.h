@@ -14,7 +14,8 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_BASE_API_HIGH_PRECISION_NO_MASK_H
 #define PROMPT_FLASH_ATTENTION_BASE_API_HIGH_PRECISION_NO_MASK_H
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 #include "common_func.h"
 #include "hardware.h"
 #include "mem.h"

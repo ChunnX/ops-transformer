@@ -16,7 +16,8 @@
 #define PROMPT_FLASH_ATTENTION_EMPTY_TENSOR_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 #include "lib/matmul_intf.h"
 #include "kernel_data_copy_transpose.h"
 

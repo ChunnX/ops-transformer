@@ -17,7 +17,7 @@
 #define HPP_HPP
 
 
-#include <kernel_operator.h>
+#include "basic_api/kernel_basic_intf.h"
 
 #include "../attn_infra/detail/alignment.hpp"
 #include "../attn_infra/detail/dependent_false.hpp"

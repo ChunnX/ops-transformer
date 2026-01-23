@@ -12,7 +12,6 @@
  * \file flash_attention_interface.cpp
  * \brief
  */
-#include "kernel_operator.h"
 #include "flash_attention_regular.h"
 using namespace NpuArch;
 

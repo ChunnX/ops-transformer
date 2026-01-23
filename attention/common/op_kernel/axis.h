@@ -16,7 +16,8 @@
 #define AXIS_H
 
 #include <type_traits>
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 
 
 struct AxisSlices;

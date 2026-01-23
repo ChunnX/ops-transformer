@@ -13,7 +13,8 @@
  * \brief
  */
 
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 #include "fused_infer_attention_score_tilingkey.h"
 
 #ifdef NOT_DYNAMIC_COMPILE

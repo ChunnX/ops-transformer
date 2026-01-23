@@ -16,7 +16,8 @@
 #define PROMPT_FLASH_ATTENTION_S1S2_BNS1_X310_H
 
 #include "prompt_flash_attention_s1s2_bns1_x310_base.h"
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 using namespace matmul;
 template<typename PFAT>
 class PromptFlashAttentionS1s2Bns1X310 : public PromptFlashAttentionS1s2Bns1X310Base<PFAT> {

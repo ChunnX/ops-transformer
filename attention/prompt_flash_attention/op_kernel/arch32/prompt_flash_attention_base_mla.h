@@ -14,7 +14,8 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_BASE_MLA_H
 #define PROMPT_FLASH_ATTENTION_BASE_MLA_H
-#include "kernel_operator.h"
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
 
 constexpr int32_t TMP_SIZET = 16384;               // 128 * 256 * 2
 constexpr int32_t BLOCK_QK = 128;
