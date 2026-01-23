@@ -271,21 +271,50 @@ __aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcV
 __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
                                  int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
 {
-    AscendC::MrgSort4Info params;
-    params.elementLengths[0] = mrgSrcNum;
-    params.elementLengths[1] = mrgDstNum;
-    params.ifExhaustedSuspension = false;
-    params.validBit = 0b0011;
-    params.repeatTimes = 1;
+    if (mrgDstNum <= 3072) {
+        AscendC::MrgSort4Info params;
+        params.elementLengths[0] = mrgSrcNum;
+        params.elementLengths[1] = mrgDstNum;
+        params.ifExhaustedSuspension = false;
+        params.validBit = 0b0011;
+        params.repeatTimes = 1;
 
-    AscendC::MrgSortSrcList<float> srcList;
-    srcList.src1 = mrgSrc;
-    srcList.src2 = mrgDst;
+        AscendC::MrgSortSrcList<float> srcList;
+        srcList.src1 = mrgSrc;
+        srcList.src2 = mrgDst;
 
-    AscendC::MrgSort<float>(tmpTensor, srcList, params);
-    AscendC::PipeBarrier<PIPE_V>();
-    AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
-    AscendC::PipeBarrier<PIPE_V>();
+        AscendC::MrgSort<float>(tmpTensor, srcList, params);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
+        AscendC::PipeBarrier<PIPE_V>();
+    } else {
+        int64_t unitElements = 1024;
+        int64_t segNum = mrgDstNum / unitElements;
+        int64_t mrgQuelen_1 = (segNum + 2) / 3;
+        int64_t mrgQuelen_2 = ((segNum - mrgQuelen_1) + 1) / 2;
+        int64_t mrgQuelen_3 = segNum - mrgQuelen_1 - mrgQuelen_2;
+
+        AscendC::MrgSort4Info params;
+        params.elementLengths[0] = mrgQuelen_1 * unitElements;
+        params.elementLengths[1] = mrgQuelen_2 * unitElements;
+        params.elementLengths[2] = mrgQuelen_3 * unitElements;
+        params.elementLengths[3] = mrgSrcNum;
+
+        params.ifExhaustedSuspension = false;
+        params.validBit = 0b1111;
+        params.repeatTimes = 1;
+
+        AscendC::MrgSortSrcList<float> srcList;
+        srcList.src1 = mrgDst[0];
+        srcList.src2 = mrgDst[mrgQuelen_1 * VALUE_AND_INDEX_NUM * unitElements];
+        srcList.src3 = mrgDst[(mrgQuelen_1 + mrgQuelen_2) * VALUE_AND_INDEX_NUM * unitElements];
+        srcList.src4 = mrgSrc;
+
+        AscendC::MrgSort<float>(tmpTensor, srcList, params);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
 }
 
 

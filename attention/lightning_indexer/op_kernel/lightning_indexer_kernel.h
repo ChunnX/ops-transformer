@@ -82,6 +82,7 @@ public:
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
+    static constexpr uint32_t SPARSE_COUNT_8K = 8192;
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
@@ -173,8 +174,9 @@ __aicore__ inline void LIPreload<LIT>::InitTilingData(const LITilingData *__rest
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
     constInfo.s2BaseSize = S2_BASE_SIZE;
-
-    constInfo.s1BaseSize = 8;
+    constInfo.isSparseCountOver2K = (constInfo.sparseCount <= BASE_TOPK) ? false : true;
+ 	 
+ 	constInfo.s1BaseSize = constInfo.isSparseCountOver2K ? SPARSE_COUNT_8K / constInfo.sparseCount * 2 : 8;
     constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
 }
 
@@ -254,12 +256,12 @@ __aicore__ inline uint32_t LIPreload<LIT>::GetTotalBaseBlockNum()
         GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
         s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize);
         if (!constInfo.attenMaskFlag) {
-            s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
+            s2BaseNum = constInfo.isSparseCountOver2K ? (actS2Size > 0 ? 1 : 0) : CeilDiv(actS2Size, constInfo.s2BaseSize);
             totalBlockNum += s1GBaseNum * s2BaseNum * constInfo.kHeadNum;
             continue;
         }
         for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; s1gIdx++) {
-            s2BaseNum = GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2Size);
+            s2BaseNum = constInfo.isSparseCountOver2K ? (actS2Size > 0 ? 1 : 0) : GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2Size);
             totalBlockNum += s2BaseNum * constInfo.kHeadNum;
         }
     }
@@ -281,7 +283,7 @@ __aicore__ void inline LIPreload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &
 
     bool findLastCoreEnd = true;
     uint32_t actS1Size, actS2Size;
-    uint32_t s1GBaseNum, s2BaseNum;
+    uint32_t s1GBaseNum, s2BaseNum, s2Loop;
     for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kHeadNum; bN2Idx++) {
         uint32_t bIdx = bN2Idx / constInfo.kHeadNum;
         if (bN2Idx % constInfo.kHeadNum == 0) {
@@ -307,6 +309,7 @@ __aicore__ void inline LIPreload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &
                 info.s2Start = 0;
                 findLastCoreEnd = false;
             }
+            s2Loop = constInfo.isSparseCountOver2K ? (actS2Size > 0 ? 1 : 0) : s2BaseNum;
             for (uint32_t s2Idx = 0; s2Idx < s2BaseNum;) {
                 if (findLastCoreEnd) {
                     info.bN2Start = bN2Idx;
@@ -314,11 +317,11 @@ __aicore__ void inline LIPreload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &
                     info.s2Start = s2Idx;
                     findLastCoreEnd = false;
                 }
-                uint32_t s2RemainBaseNum = s2BaseNum - s2Idx;
+                uint32_t s2RemainBaseNum = s2Loop - s2Idx;
                 if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) {
                     info.bN2End = bN2Idx;
                     info.gS1End = gS1Idx;
-                    info.s2End = s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1;
+                    info.s2End = constInfo.isSparseCountOver2K ? s2BaseNum - 1 : s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1;
 
                     if (coreIdx == curCoreIdx) {
                         // S2被切N核，那么只有第一个核需要处理LD，其他核不用

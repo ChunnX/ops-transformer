@@ -105,6 +105,7 @@ struct ConstInfo {
     uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;    // 是否累加模式
     bool isAccumSeqS2 = false;    // 是否累加模式
+    bool isSparseCountOver2K = false; //sparseCount小于等于2048为false
 };
 
 struct SplitCoreInfo {
