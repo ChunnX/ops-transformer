@@ -49,10 +49,10 @@ CubeOp<T1>::cube2Process(const int64_t dyGmOffset, const int64_t valueGmOffset, 
             l1_v_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
             
             currentDyOffset = dIdx * dimGAlign * K_SPLIT_SIZE;
-            currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSize * dimDv + dIdx * K_SPLIT_SIZE;
+            currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSize * dimDTotal + dIdx * K_SPLIT_SIZE;
             
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
-            CopyGmToL1(l1_v_tensor, selectedVWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDv);
+            CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
             current_l1_dy_tensor = l1_dy_tensor[currentDyOffset];
 
             MmadInnerWithSync<T1>(l0cTensor, current_l1_dy_tensor, l1_v_tensor,

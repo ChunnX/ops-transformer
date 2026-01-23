@@ -173,7 +173,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN);
     selectedVWorkspaceLen = AlignData(selectedVWorkspaceLen, GM_ALIGN);
 
-    selectedKWorkspaceLen *= 3;
+    selectedKWorkspaceLen *= 4;
     selectedVWorkspaceLen *= PING_PONG_BUFFER;
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
@@ -181,6 +181,11 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     workspaces[0] += (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
     workspaces[0] += mm12WorkspaceLen * 2 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
+
+    int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
+    int64_t d2Align = (tilingData.opInfo.get_D2() + 15) / 16 * 16;
+    // 每个s1做完，做scatter add累加，workspace开DB
+    workspaces[0] += 24 * PING_PONG_BUFFER * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
 
     tilingData.opInfo.set_mm12WorkspaceLen(mm12WorkspaceLen);
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
@@ -267,7 +272,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoSftTiling()
     constexpr int32_t maxProcessDataSize = 8 * 1024;
 
     uint32_t sftBaseN = tmpData.singleN;
-    uint32_t sftBaseM = maxProcessDataSize / sftBaseN;
+    uint32_t sftBaseM = 16;
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
     tilingData.splitCoreParams.set_sftBaseN(sftBaseN);
@@ -406,10 +411,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     // attrs
     const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::INPUT_LAYOUT));
     auto selected_block_count = indicesShape.GetDim(dimSize - 1);
-    if (selected_block_count != 2048) {
-        OP_LOGE(context_, "SparseFlashAttentionGrad only support selected_block_count=2048 now, but got selected_block_count=%ld.", selected_block_count);
-        return ge::GRAPH_FAILED;
-    }
+
     auto selected_block_size =
         *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
     auto sparse_mode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE));

@@ -592,9 +592,6 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
             PIPE_BARRIER(PIPE_ALL);
             DataCopy(dkGm[i], vecOut, (dataSize + 7) / 8 * 8); // dataSize(fp16) align 32B
         } else {
-            Muls(vecIn, vecIn, (float)tilingData->postTilingData.scaleValue, dataSize);
-            PIPE_BARRIER(PIPE_V);
-
             Cast(vecOut, vecIn, AscendC::RoundMode::CAST_ROUND, dataSize);
             outQueue.EnQue(vecOut);
             outQueue.template DeQue<OUT_TYPE>();

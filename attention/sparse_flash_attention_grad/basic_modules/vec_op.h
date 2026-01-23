@@ -41,13 +41,9 @@ public:
                                 GM_ADDR key_rope, 
                                 GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
                                 const TILING_CLASS *__restrict ordTilingData, TPipe *pipe);
-    __aicore__ inline void Process(int64_t dyGmOffset, int64_t sumGmOffset, const uint64_t indicesGmOffset,
-                                   const int64_t s1Index, const int32_t blkCntOffset, int64_t mm12Addr,
-                                   int64_t mm345Addr, const int64_t lastBlockSize, const bool isLastBasicBlock);
-    __aicore__ inline void GatherKV(const int32_t blkCntOffset, const int64_t s1Index, const int64_t n2Index, 
-                                   uint64_t currentS1Offset, uint64_t kSelectedWsAddr, uint64_t vSelectedWsAddr, 
-                                   uint64_t keyGmOffset, uint64_t valueGmOffset, uint64_t keyRopeGmOffset, 
-                                   const int64_t curS1, const int64_t curS2);
+    __aicore__ inline void Process(const RunInfo &runInfo);
+    __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
+    __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
 
 protected:
     __aicore__ inline void InitParams(const TILING_CLASS *__restrict ordTilingData, GM_ADDR actual_seq_qlen,
@@ -58,17 +54,13 @@ protected:
     __aicore__ inline void AtomicClean();
     __aicore__ inline void DumpGmZero(GlobalTensor<float> &gm, int64_t num);
     __aicore__ inline void CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t sumGmOffset, const int32_t processM);
-    __aicore__ inline void CalAttenMsk(const uint64_t indicesGmOffset, const int64_t s1Index, const int32_t processM,
-                                       const int32_t blkCntOffset, const int32_t actualSelS2Align);
+    __aicore__ inline void CalAttenMsk(const int32_t processM, const int32_t actualSelS2Align, const RunInfo &runInfo);
     __aicore__ inline void CalSoftmax(const int32_t loopIdx, const int32_t processM, const int64_t mm12Addr,
-                                      const int64_t mm345Addr, const uint64_t indicesGmOffset, const int64_t s1Index,
-                                      const int32_t blkCntOffset);
+                                      const int64_t mm345Addr, const RunInfo &runInfo);
     __aicore__ inline void CalSoftmaxGrad(const int32_t loopIdx, const int32_t processM, const int64_t mm12Addr,
-                                          const int64_t mm345Addr);
+                                          const int64_t mm345Addr, const RunInfo &runInfo);
     __aicore__ inline void CalSub(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, int32_t baseM,
                                   int32_t baseN);
-    __aicore__ inline void Gather(GlobalTensor<T1> &inGmTensor, GlobalTensor<T1> &outGmTensor, uint64_t workSpaceOffset,
-                                  int64_t headDim, uint64_t inGmOffset, int64_t dstStride = 0);
 
 protected:
     // core info
@@ -76,6 +68,7 @@ protected:
     int64_t formerCoreNum;
     uint32_t cubeBlockIdx;
     uint32_t vecBlockIdx;
+    uint32_t subBlockIdx;
     StaticParams params;
     GlobalTensor<T1> attentionGm;
     GlobalTensor<T1> attentionGradGm;
@@ -96,6 +89,8 @@ protected:
     GlobalTensor<float> dqWorkspaceGm;
     GlobalTensor<float> dkWorkspaceGm;
     GlobalTensor<float> dvWorkspaceGm;
+    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
+    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
 
     TBuf<> vecQue;
     LocalTensor<uint8_t> helpTensor;
@@ -113,7 +108,12 @@ protected:
     LocalTensor<float> dPTensor;
     LocalTensor<T1> sftOutT1Tensor;
     LocalTensor<T1> sftgOutT1Tensor;
-    LocalTensor<T1> gatherTensor;
+    LocalTensor<T1> gatherTensorPing;
+    LocalTensor<T1> gatherTensorPong;
+    LocalTensor<T1> gatherRopePing;
+    LocalTensor<T1> gatherRopePong;
+    LocalTensor<float> scatterAddTensorK;
+    LocalTensor<float> scatterAddTensorV;
 
     // 地址相关
     int64_t selectedKWspOffset{0};
@@ -145,17 +145,13 @@ protected:
     int64_t curS1;
     int64_t curS2;
     int64_t lastBlock;
-    int64_t actualSelS2;
     float scaleValue;
     uint32_t selectedBlockCount;
     uint32_t selectedBlockSize;
     uint32_t selectedCountOffset;
     uint32_t actualSelectedCount;
+    int32_t maxSelCnt;
     int64_t dimRope;
-
-    bool isLastBasicBlock;
-    int64_t lastBlockSize;
-
     // workspace
     uint32_t mm12WorkspaceLen;
     int64_t dqWorkspaceLen;
@@ -165,11 +161,22 @@ protected:
     int64_t selectedVWorkspaceLen;
     int64_t concatQWorkspaceLen;
     event_t vWaitMte2;
+    event_t vWaitMte2Pong;
     event_t vWaitMte3;
     event_t mte3WaitMte2;
     event_t mte3WaitV;
     event_t sWaitMte2;
     event_t mte2WaitMte3;
+    event_t mte2WaitMte3Pong;
+    event_t mte3WaitMte2Pong;
+
+    DataCopyPadExtParams<T1> padParams;
+    DataCopyExtParams intriParamsKey;
+    DataCopyExtParams intriParamsRope;
+    DataCopyExtParams outParamK;
+    DataCopyExtParams outParamRope;
+    uint32_t mergePingPong{0};
+    int32_t pingPongIdx = 0;
 };
 
 template <typename SFAGT>
@@ -192,6 +199,7 @@ __aicore__ inline void VecOp<SFAGT>::InitParams(const TILING_CLASS *__restrict o
 {
     cubeBlockIdx = GetBlockIdx() / 2;
     vecBlockIdx = GetBlockIdx();
+    subBlockIdx = GetSubBlockIdx();
     tilingData = ordTilingData;
     usedCoreNum = tilingData->opInfo.usedCoreNum;
     formerCoreNum = tilingData->opInfo.formerCoreNum;
@@ -248,6 +256,24 @@ __aicore__ inline void VecOp<SFAGT>::InitParams(const TILING_CLASS *__restrict o
         dimTq = dimB * dimS1;
         dimTkv = dimB * dimS2;
     }
+
+    intriParamsKey.blockLen = selectedBlockSize * dimDqk * sizeof(T1);
+    intriParamsKey.dstStride = 0;
+    intriParamsKey.blockCount = 2;
+
+    intriParamsRope.blockLen = selectedBlockSize * dimRope * sizeof(T1);
+    intriParamsRope.dstStride = 0;
+    intriParamsRope.blockCount = 2;
+
+    outParamK.blockCount = 2 * selectedBlockSize;
+    outParamK.blockLen = dimDqk * sizeof(T1);
+    outParamK.srcStride = 0;
+    outParamK.dstStride = dimRope * sizeof(T1);
+
+    outParamRope.blockCount = 2 * selectedBlockSize;
+    outParamRope.blockLen = dimRope * sizeof(T1);
+    outParamRope.srcStride = 0;
+    outParamRope.dstStride = dimDqk * sizeof(T1);
 }
 
 template <typename SFAGT>
@@ -289,6 +315,11 @@ __aicore__ inline void VecOp<SFAGT>::InitGMBuffer(GM_ADDR key, GM_ADDR value, GM
     int64_t dvAddr = dkAddr + dkWorkspaceLen / sizeof(float);
     usedWorkspaceLen += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
+    // scatter add
+    int64_t mm4ResAddr = usedWorkspaceLen / sizeof(float);
+    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDAlign * 2;
+    usedWorkspaceLen += MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * (dimDAlign + dimD2Align) * 2 * sizeof(float);
+
     mm1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm1Addr);
     mm2WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm2Addr);
     pWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + pAddr);
@@ -298,6 +329,9 @@ __aicore__ inline void VecOp<SFAGT>::InitGMBuffer(GM_ADDR key, GM_ADDR value, GM
     dvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dvAddr);
     selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
     selectedVWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedVAddr);
+
+    mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
+    mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
 }
 
 template <typename SFAGT>
@@ -314,6 +348,7 @@ __aicore__ inline void VecOp<SFAGT>::InitUB(TPipe *pipe)
     int32_t topkNumber = AlignTo<int32_t>(selectedCountOffset, BLOCK);
     topkIndicesTensor = vecQue.GetWithOffset<int32_t>(topkNumber, ubOffset);
     ubOffset += topkNumber * sizeof(int32_t);
+    uint32_t topkUbOffset = ubOffset;
 
     // rowsum out
     rowSumOutTensor = vecQue.GetWithOffset<float>(params.sftBaseM * BLOCK_FP32, ubOffset);
@@ -352,7 +387,20 @@ __aicore__ inline void VecOp<SFAGT>::InitUB(TPipe *pipe)
     ubOffset += sftDataSize * sizeof(T1);
 
     helpTensor = vecQue.GetWithOffset<uint8_t>((totalUbSpace - rowsumUbOffset) / sizeof(uint8_t), rowsumUbOffset);
-    gatherTensor = vecQue.GetWithOffset<T1>((totalUbSpace - rowsumUbOffset) / sizeof(T1), rowsumUbOffset);
+    scatterAddTensorK = vecQue.GetWithOffset<float>(16 * dimDAlign * 2, rowsumUbOffset);
+    rowsumUbOffset += 16 * dimDAlign * 2 * sizeof(float);
+    scatterAddTensorV = vecQue.GetWithOffset<float>(16 * dimD2Align * 2, rowsumUbOffset);
+    rowsumUbOffset += 16 * dimD2Align * 2 * sizeof(float);
+
+    maxSelCnt = selectedBlockSize >= 64 ? 1 : 2;
+    gatherTensorPing = vecQue.GetWithOffset<T1>(maxSelCnt * selectedBlockSize * dimDqk, topkUbOffset);
+    topkUbOffset += maxSelCnt * selectedBlockSize * dimDqk * sizeof(T1);
+    gatherTensorPong = vecQue.GetWithOffset<T1>(maxSelCnt * selectedBlockSize * dimDqk, topkUbOffset);
+    topkUbOffset += maxSelCnt * selectedBlockSize * dimDqk * sizeof(T1);
+    gatherRopePing = vecQue.GetWithOffset<T1>(maxSelCnt * selectedBlockSize * dimRope, topkUbOffset);
+    topkUbOffset += maxSelCnt * selectedBlockSize * dimRope * sizeof(T1);
+    gatherRopePong = vecQue.GetWithOffset<T1>(maxSelCnt * selectedBlockSize * dimRope, topkUbOffset);
+    topkUbOffset += maxSelCnt * selectedBlockSize * dimRope * sizeof(T1);
 
     uint32_t attentionShape[2] = {params.sftBaseM, static_cast<uint32_t>(dimDv)};
     uint32_t softmaxGradShape[2] = {params.sftBaseM, BLOCK_FP32};
@@ -377,10 +425,13 @@ __aicore__ inline void VecOp<SFAGT>::InitUB(TPipe *pipe)
     pTensor.SetShapeInfo(ShapeInfo(2, dstSoftShape, DataFormat::ND));
     mte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
     mte3WaitMte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>());
+    mte2WaitMte3Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
+    mte3WaitMte2Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>());
     sWaitMte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_S>());
     vWaitMte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
     vWaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
     mte3WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
+    vWaitMte2Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
 }
 
 template <typename SFAGT>
@@ -397,10 +448,6 @@ __aicore__ inline void VecOp<SFAGT>::AtomicClean()
     DumpGmZero(dqWorkspaceGm, dqSize);
     DumpGmZero(dkWorkspaceGm, dkSize);
     DumpGmZero(dvWorkspaceGm, dvSize); // FP32 FUNC:T1 FP16
-    if (vecBlockIdx % 2 == 0 && vecBlockIdx / 2 < usedCoreNum) {
-        InitOutput<T1>(selectedKWorkspaceGm, selectedKWorkspaceLen / sizeof(T1), 0);
-        InitOutput<T1>(selectedVWorkspaceGm, selectedVWorkspaceLen / sizeof(T1), 0);
-    }
 }
 
 template <typename SFAGT>
@@ -473,8 +520,7 @@ __aicore__ inline void VecOp<SFAGT>::CalRowsumAndSftCopyIn(const int64_t dyGmOff
 }
 
 template <typename SFAGT>
-__aicore__ inline void VecOp<SFAGT>::CalAttenMsk(const uint64_t indicesGmOffset, const int64_t s1Index,
-                                                 const int32_t processM, const int32_t blkCntOffset, const int32_t actualSelS2Align)
+__aicore__ inline void VecOp<SFAGT>::CalAttenMsk(const int32_t processM, const int32_t actualSelS2Align, const RunInfo &runInfo)
 { /*
    * 计算attenmask时对应blockSize需要保留的长度。
    * 例如：对于blockSize=64的块，需要保留0-9块，则attenMskRsvLen=10；
@@ -486,14 +532,14 @@ __aicore__ inline void VecOp<SFAGT>::CalAttenMsk(const uint64_t indicesGmOffset,
     uint64_t mask[1];
     LocalTensor<float> tmpTensor;
 
-    int64_t valid_col_end = s1Index + curS2 - curS1;
-    for (int32_t i = blkCntOffset; i < blkCntOffset + actualSelectedCount; i++) {
-        int32_t topkIdx = topkIndicesGm[indicesGmOffset].GetValue(i);
+    int64_t valid_col_end = runInfo.s1Index + runInfo.curS2 - runInfo.curS1;
+    for (int32_t i = runInfo.blkCntOffset; i < runInfo.blkCntOffset + runInfo.actualSelCntOffset; i++) {
+        int32_t topkIdx = topkIndicesGm[runInfo.indicesGmOffset].GetValue(i);
         // 处于对角线上的block
         if (topkIdx * selectedBlockSize <= valid_col_end && (topkIdx + 1) * selectedBlockSize > valid_col_end) {
             attenMskRsv = valid_col_end - (topkIdx * selectedBlockSize) + 1;
-            attenMskEnd = (i == blkCntOffset + actualSelectedCount - 1 && isLastBasicBlock) ? lastBlockSize : selectedBlockSize;
-            attenMskStartIdx = i * selectedBlockSize + attenMskRsv - blkCntOffset * selectedBlockSize;
+            attenMskEnd = (i == runInfo.blkCntOffset + runInfo.actualSelCntOffset - 1 && runInfo.isLastBasicBlock) ? runInfo.lastBlockSize : selectedBlockSize;
+            attenMskStartIdx = i * selectedBlockSize + attenMskRsv - runInfo.blkCntOffset * selectedBlockSize;
         }
     }
 
@@ -522,9 +568,11 @@ __aicore__ inline void VecOp<SFAGT>::CalAttenMsk(const uint64_t indicesGmOffset,
 
 template <typename SFAGT>
 __aicore__ inline void VecOp<SFAGT>::CalSoftmax(const int32_t loopIdx, const int32_t processM, const int64_t mm12Addr,
-                                                const int64_t mm345Addr, const uint64_t indicesGmOffset,
-                                                const int64_t s1Index, const int32_t blkCntOffset)
+                                                const int64_t mm345Addr, const RunInfo &runInfo)
 {
+    int64_t actualSelS2 = runInfo.isLastBasicBlock ? 
+                          (runInfo.actualSelCntOffset - 1) * selectedBlockSize + runInfo.lastBlockSize : 
+                          runInfo.actualSelCntOffset * selectedBlockSize;
     int64_t actualSelS2Align = AlignUp(actualSelS2, 8);
     int64_t dataSize = processM * actualSelS2Align;
 
@@ -538,7 +586,7 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmax(const int32_t loopIdx, const int
     PIPE_BARRIER(PIPE_V);
 
     if constexpr (ATTEN_ENABLE) {
-        CalAttenMsk(indicesGmOffset, s1Index, processM, blkCntOffset, actualSelS2Align);
+        CalAttenMsk(processM, actualSelS2Align, runInfo);
         PIPE_BARRIER(PIPE_V);
     }
 
@@ -567,8 +615,11 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmax(const int32_t loopIdx, const int
 
 template <typename SFAGT>
 __aicore__ inline void VecOp<SFAGT>::CalSoftmaxGrad(const int32_t loopIdx, const int32_t processM,
-                                                    const int64_t mm12Addr, const int64_t mm345Addr)
+                                                    const int64_t mm12Addr, const int64_t mm345Addr, const RunInfo &runInfo)
 {
+    int64_t actualSelS2 = runInfo.isLastBasicBlock ? 
+                          (runInfo.actualSelCntOffset - 1) * selectedBlockSize + runInfo.lastBlockSize : 
+                          runInfo.actualSelCntOffset * selectedBlockSize;
     int64_t actualSelS2Align = AlignUp(actualSelS2, 8);
     int64_t dataSize = processM * actualSelS2Align;
     DataCopyPad(dPTensor, mm2WorkspaceGm[mm12Addr], 
@@ -598,93 +649,154 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmaxGrad(const int32_t loopIdx, const
 }
 
 template <typename SFAGT>
-__aicore__ inline void VecOp<SFAGT>::GatherKV(const int32_t blkCntOffset, const int64_t s1Index, const int64_t n2Index, 
-                                              uint64_t currentS1Offset, uint64_t kSelectedWsAddr, uint64_t vSelectedWsAddr,
-                                              uint64_t keyGmOffset, uint64_t valueGmOffset, uint64_t keyRopeGmOffset, 
-                                              const int64_t curS1, const int64_t curS2)
+__aicore__ inline void VecOp<SFAGT>::GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo)
 {
-    this->curS1 = curS1;
-    this->curS2 = curS2;
-    this->lastBlock = (this->curS2 + selectedBlockSize - 1) / selectedBlockSize;
-    // copy tokIndices in
-    DataCopyParams intriParams;
-    intriParams.blockCount = 1;
-    intriParams.blockLen = selectedCountOffset * sizeof(int32_t);
-    intriParams.srcStride = 0;
-    intriParams.dstStride = 0;
-    // [T1,N2,topk] or [B,S1,N2,topk]
-    uint64_t s1Offset = IS_BSND ? currentS1Offset : currentS1Offset + s1Index;
-    uint64_t gmOffset = s1Offset * (dimN2 * selectedBlockCount) + n2Index * selectedBlockCount + blkCntOffset;
-    DataCopyPad(topkIndicesTensor, topkIndicesGm[gmOffset], intriParams, {false, 0, 0, 0});
-    SET_FLAG(MTE2, S, sWaitMte2);
-    WAIT_FLAG(MTE2, S, sWaitMte2);
+    uint64_t kSelectedWsAddr = runInfo.selectedKGmOffset;
+    uint64_t vSelectedWsAddr = runInfo.selectedVGmOffset;
+    uint64_t s1Offset = IS_BSND ? currentS1Offset : currentS1Offset + runInfo.s1Index;
+    uint64_t gmOffset = s1Offset * (dimN2 * selectedBlockCount) + n2Index * selectedBlockCount + runInfo.blkCntOffset;
 
-    Gather(keyGm, selectedKWorkspaceGm, kSelectedWsAddr, dimDqk, keyGmOffset, dimRope);
-    Gather(valueGm, selectedVWorkspaceGm, vSelectedWsAddr, dimDv, valueGmOffset);
-    if constexpr (HAS_ROPE) {
-        Gather(keyRopeGm, selectedKWorkspaceGm, kSelectedWsAddr + dimDqk, dimRope, keyRopeGmOffset, dimDqk);
-    }
-}
+    outParamK.blockCount = selectedBlockSize < 64 ? 2 * selectedBlockSize : selectedBlockSize;
+    outParamRope.blockCount = selectedBlockSize < 64 ? 2 * selectedBlockSize : selectedBlockSize;
 
-template <typename SFAGT>
-__aicore__ inline void VecOp<SFAGT>::Gather(GlobalTensor<T1> &inGmTensor, GlobalTensor<T1> &outGmTensor,
-                                                            uint64_t workSpaceOffset, int64_t headDim, uint64_t inGmOffset, int64_t dstStride)
-{
-    DataCopyParams intriParams;
-    int32_t loop = selectedCountOffset;
-    int32_t processLen = selectedBlockSize;
-    int32_t startS2Idx = 0;
-    int32_t dataSize = processLen * headDim;
-    this->actualSelS2 = 0;
-    this->actualSelectedCount = 0;
+    uint64_t totalD = dimDqk + dimRope;
+    event_t mte2WaitMte3EventId;
+    event_t mte3WaitMte2EventId;
 
-    for (uint32_t i = 0; i < loop; i++) {
-        int32_t topkIdx = topkIndicesTensor.GetValue(i);
-        startS2Idx = topkIdx * selectedBlockSize;
-        if (topkIdx == -1) {
-            break;
+    SET_FLAG(MTE3, MTE2, mte2WaitMte3Pong);
+    SET_FLAG(MTE3, MTE2, mte2WaitMte3);
+
+    // ------------- MergeKv --------------
+    uint32_t s2Pair = CeilDiv(runInfo.actualSelCntOffset, 2) * 2;
+    uint32_t firstVecEnd = (s2Pair / 2);
+    uint32_t curBlk = subBlockIdx == 0 ? 0 : firstVecEnd;
+    uint32_t curActualSelCntEnd = subBlockIdx == 0 ? firstVecEnd : runInfo.actualSelCntOffset;
+    uint32_t curActualSelCntOffset = curActualSelCntEnd - curBlk;
+    uint64_t outWsOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * totalD;
+    uint64_t orgOutWsOffset = outWsOffset;
+    uint32_t i;
+
+    bool isLast = runInfo.isLastBasicBlock && subBlockIdx == 1;
+
+    for (i = curBlk; i < curBlk + curActualSelCntOffset / maxSelCnt * maxSelCnt; i += maxSelCnt) {
+        int64_t keyOffset1 = topkIndicesGm.GetValue(gmOffset + i) * selectedBlockSize;
+        int64_t keyOffset2 = topkIndicesGm.GetValue(gmOffset + i + 1) * selectedBlockSize;
+
+        uint32_t s2OrgStride = keyOffset2 - keyOffset1 - selectedBlockSize;
+        intriParamsKey.blockCount = 2;
+        intriParamsKey.blockLen = selectedBlockSize * dimDqk * sizeof(T1);
+
+        mte2WaitMte3EventId = mergePingPong ? mte2WaitMte3Pong : mte2WaitMte3;
+        mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Pong : mte3WaitMte2;
+
+        WAIT_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+
+        // CopyIn
+        intriParamsKey.srcStride = s2OrgStride * dimN2 * dimDqk * sizeof(T1);
+        LocalTensor<T1> &gatherTensor = mergePingPong ? gatherTensorPing : gatherTensorPong;
+        LocalTensor<T1> &gatherRopeTensor = mergePingPong ? gatherRopePing : gatherRopePong;
+
+        bool isActualLast = isLast && i >= runInfo.actualSelCntOffset - 2;
+        if (keyOffset2 <= keyOffset1 || selectedBlockSize >= 64 || isActualLast) {
+            intriParamsKey.blockCount = 1;
+            DataCopyPad(gatherTensor, keyGm[runInfo.keyGmOffset + keyOffset1 * dimN2 * dimDqk], intriParamsKey, padParams);
+            if (selectedBlockSize < 64) {
+                intriParamsKey.blockLen = isActualLast ? 
+                                          runInfo.lastBlockSize * dimDqk * sizeof(T1) : 
+                                          selectedBlockSize * dimDqk * sizeof(T1);
+                DataCopyPad(gatherTensor[selectedBlockSize * dimDqk], keyGm[runInfo.keyGmOffset + keyOffset2 * dimN2 * dimDqk], intriParamsKey, padParams);
+            }
+        } else {
+            DataCopyPad(gatherTensor, keyGm[runInfo.keyGmOffset + keyOffset1 * dimN2 * dimDqk], intriParamsKey, padParams);
         }
-        if (topkIdx == lastBlock - 1) {
-            processLen = curS2 - topkIdx * selectedBlockSize;
-            dataSize = processLen * headDim;
+
+        if constexpr (HAS_ROPE) {
+            intriParamsRope.blockCount = 2;
+            intriParamsRope.srcStride = s2OrgStride * dimN2 * dimRope * sizeof(T1);
+            intriParamsRope.blockLen = selectedBlockSize * dimRope * sizeof(T1);
+
+            if (keyOffset2 <= keyOffset1 || selectedBlockSize >= 64 || isActualLast) {
+                intriParamsRope.blockCount = 1;
+                DataCopyPad(gatherRopeTensor, keyRopeGm[runInfo.keyRopeGmOffset + keyOffset1 * dimN2 * dimRope], intriParamsRope, padParams);
+                if (selectedBlockSize < 64) {
+                    intriParamsRope.blockLen = isActualLast ? 
+                                               runInfo.lastBlockSize * dimRope * sizeof(T1) : 
+                                               selectedBlockSize * dimRope * sizeof(T1);
+                    DataCopyPad(gatherRopeTensor[selectedBlockSize * dimRope], keyRopeGm[runInfo.keyRopeGmOffset + keyOffset2 * dimN2 * dimRope], intriParamsRope, padParams);  
+                }
+            } else {
+                DataCopyPad(gatherRopeTensor, keyRopeGm[runInfo.keyRopeGmOffset + keyOffset1 * dimN2 * dimRope], intriParamsRope, padParams);  
+            }
         }
-        actualSelS2 += processLen;
-        actualSelectedCount++;
-
-        intriParams.blockCount = processLen;
-        intriParams.blockLen = headDim * sizeof(T1);
-        intriParams.srcStride = (dimN2 - 1) * headDim * sizeof(T1);
-        intriParams.dstStride = 0;
-
-        DataCopyPad(gatherTensor, inGmTensor[inGmOffset + startS2Idx * (dimN2 * headDim)], intriParams, {false, 0, 0, 0});
-        SET_FLAG(MTE2, MTE3, mte3WaitMte2);
-        WAIT_FLAG(MTE2, MTE3, mte3WaitMte2);
-
-        intriParams.blockCount = processLen;
-        intriParams.blockLen = headDim * sizeof(T1);
-        intriParams.srcStride = 0;
-        intriParams.dstStride = dstStride * sizeof(T1);
         
-        DataCopyPad(outGmTensor[workSpaceOffset], gatherTensor, intriParams);
-        SET_FLAG(MTE3, MTE2, mte2WaitMte3);
-        WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
+        SET_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
+        WAIT_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
 
-        workSpaceOffset += dataSize + processLen * dstStride;
+        // CopyOut
+        DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
+        if constexpr (HAS_ROPE) {
+            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + outWsOffset], gatherRopeTensor, outParamRope);
+        }
+
+        SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+
+        outWsOffset += maxSelCnt * selectedBlockSize * totalD;
+        mergePingPong = 1 - mergePingPong;
     }
+    if (i < curActualSelCntEnd) {
+        int64_t keyOffset1 = topkIndicesGm.GetValue(gmOffset + i) * selectedBlockSize;
+
+        mte2WaitMte3EventId = mergePingPong ? mte2WaitMte3Pong : mte2WaitMte3;
+        mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Pong : mte3WaitMte2;
+
+        WAIT_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+
+        // CopyIn
+        LocalTensor<T1> &gatherTensor = mergePingPong ? gatherTensorPing : gatherTensorPong;
+        LocalTensor<T1> &gatherRopeTensor = mergePingPong ? gatherRopePing : gatherRopePong;
+
+        intriParamsKey.blockCount = 1;
+        intriParamsRope.blockCount = 1;
+        if (i == runInfo.actualSelCntOffset - 1 && isLast) {
+            intriParamsKey.blockLen = runInfo.lastBlockSize * dimDqk * sizeof(T1);
+            intriParamsRope.blockLen = runInfo.lastBlockSize * dimRope * sizeof(T1);
+        }
+        DataCopyPad(gatherTensor, keyGm[runInfo.keyGmOffset + keyOffset1 * dimN2 * dimDqk], intriParamsKey, padParams);
+
+        if constexpr (HAS_ROPE) {
+            DataCopyPad(gatherRopeTensor, keyRopeGm[runInfo.keyRopeGmOffset + keyOffset1 * dimN2 * dimRope], intriParamsRope, padParams);
+        }
+        
+        SET_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
+        WAIT_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
+
+        outParamK.blockCount = 1 * selectedBlockSize;
+        DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
+
+        if constexpr (HAS_ROPE) {
+            outParamRope.blockCount = 1 * selectedBlockSize;
+            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + outWsOffset], gatherRopeTensor, outParamRope);
+        }
+
+        SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+
+        mergePingPong = 1 - mergePingPong;
+    }
+    WAIT_FLAG(MTE3, MTE2, mte2WaitMte3Pong);
+    WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
 }
 
 template <typename SFAGT>
-__aicore__ inline void VecOp<SFAGT>::Process(int64_t dyGmOffset, int64_t sumGmOffset,
-                                             const uint64_t indicesGmOffset, const int64_t s1Index,
-                                             const int32_t blkCntOffset, int64_t mm12Addr, int64_t mm345Addr,
-                                             const int64_t lastBlockSize, const bool isLastBasicBlock)
+__aicore__ inline void VecOp<SFAGT>::Process(const RunInfo &runInfo)
 {
-    this->lastBlockSize = lastBlockSize;
-    this->isLastBasicBlock = isLastBasicBlock;
     int32_t loop = (params.singleM + params.sftBaseM - 1) / params.sftBaseM;
     int32_t processM = params.sftBaseM;
     int32_t tailM = params.singleM % params.sftBaseM;
     int64_t dataSize = processM * params.sftBaseN;
+    int64_t dyGmOffset = runInfo.dyGmOffset;
+    int64_t sumGmOffset = runInfo.sumGmOffset;
+    int64_t mm12Addr = runInfo.mm12GmOffset;
+    int64_t mm345Addr = runInfo.mm345GmOffset;
 
     for (int32_t i = 0; i < loop; i++) {
         if (i == loop - 1 && tailM != 0) {
@@ -694,12 +806,125 @@ __aicore__ inline void VecOp<SFAGT>::Process(int64_t dyGmOffset, int64_t sumGmOf
         dyGmOffset += (processM * dimDv);
         sumGmOffset += processM;
 
-        CalSoftmax(i, processM, mm12Addr, mm345Addr, indicesGmOffset, s1Index, blkCntOffset);
-        CalSoftmaxGrad(i, processM, mm12Addr, mm345Addr);
+        CalSoftmax(i, processM, mm12Addr, mm345Addr, runInfo);
+        CalSoftmaxGrad(i, processM, mm12Addr, mm345Addr, runInfo);
         mm12Addr += dataSize;
         mm345Addr += dataSize;
     }
 }
 
+template <typename SFAGT>
+__aicore__ inline void VecOp<SFAGT>::ScatterAdd(const RunInfo &runInfo)
+{
+    LocalTensor<float> dkInUb;
+    LocalTensor<float> dvInUb;
+    int64_t UB_ROW_SIZE = 16;
+
+    GlobalTensor<float> dkOutGm = dkWorkspaceGm[runInfo.mm4OutGmOffset];
+    GlobalTensor<float> dvOutGm = dvWorkspaceGm[runInfo.mm5OutGmOffset];
+    int64_t s2RealSize = Min(selectedBlockCount, runInfo.actualSelectedBlockCount);
+    int64_t firstCoreKSize = s2RealSize / 2;
+    int64_t currentCoreKSize = subBlockIdx == 0 ? firstCoreKSize : s2RealSize - firstCoreKSize;
+
+    if (currentCoreKSize == 0) {
+        return;
+    }
+    SetAtomicAdd<float>();
+
+    int64_t actTotalRows = subBlockIdx == 1 ? 
+                           (currentCoreKSize - 1) * selectedBlockSize + runInfo.lastBlockSize : 
+                           currentCoreKSize * selectedBlockSize;
+    int64_t maxLoops = CeilDiv(actTotalRows, UB_ROW_SIZE);
+    int64_t tailRows = actTotalRows - (maxLoops - 1) * UB_ROW_SIZE;
+
+    int64_t currentDkSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDAlign + cubeBlockIdx * selectedBlockCount * selectedBlockSize * dimDAlign + subBlockIdx * firstCoreKSize * selectedBlockSize * dimDAlign;
+    int64_t currentDvSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimD2Align + cubeBlockIdx * selectedBlockCount * selectedBlockSize * dimD2Align + subBlockIdx * firstCoreKSize * selectedBlockSize * dimD2Align;
+    int64_t currentIndicesOffset = runInfo.indicesGmOffset + subBlockIdx * firstCoreKSize;
+    GlobalTensor<float> dkSrcGm = mm4ResWorkspaceGm[currentDkSrcOffset];
+    GlobalTensor<float> dvSrcGm = mm5ResWorkspaceGm[currentDvSrcOffset];
+    GlobalTensor<int32_t> indicesGm = topkIndicesGm[currentIndicesOffset];
+
+    int64_t curSelBlk = 0;
+    int64_t curRow = 0;
+    int32_t s2Idx = indicesGm.GetValue(curSelBlk);
+    int64_t curProcessRow = Min(UB_ROW_SIZE, selectedBlockSize);
+
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
+    for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
+        event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3: mte2WaitMte3Pong;
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+        dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
+        dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
+        DataCopy(dkInUb, dkSrcGm[loop * UB_ROW_SIZE * dimDAlign], UB_ROW_SIZE * dimDAlign);
+        event_t event = pingPongIdx == 0 ? vWaitMte2: vWaitMte2Pong;
+        SetFlag<AscendC::HardEvent::MTE2_V>(event);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        Muls(dkInUb, dkInUb, (float)tilingData->postTilingData.scaleValue, UB_ROW_SIZE * dimDAlign);
+        DataCopy(dvInUb, dvSrcGm[loop * UB_ROW_SIZE * dimD2Align], UB_ROW_SIZE * dimD2Align);
+        SetFlag<AscendC::HardEvent::MTE2_V>(event);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+
+        for (int64_t row = 0; row < UB_ROW_SIZE;) {
+            if (curRow / selectedBlockSize > curSelBlk) {
+                curSelBlk += 1;
+                s2Idx = indicesGm.GetValue(curSelBlk);
+            }
+            if (s2Idx >= 0) {
+                DataCopy(dkOutGm[s2Idx * selectedBlockSize * dimDAlign + (curRow % selectedBlockSize) * dimDAlign], dkInUb[row * dimDAlign], curProcessRow * dimDAlign);
+                DataCopy(dvOutGm[s2Idx * selectedBlockSize * dimD2Align + (curRow % selectedBlockSize) * dimD2Align], dvInUb[row * dimD2Align], curProcessRow * dimD2Align);
+            }
+            row += curProcessRow;
+            curRow += curProcessRow;
+        }
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+        pingPongIdx = 1 - pingPongIdx;
+    }
+    event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3: mte2WaitMte3Pong;
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+    dkInUb = scatterAddTensorK[pingPongIdx * (UB_ROW_SIZE * dimDAlign)];
+    dvInUb = scatterAddTensorV[pingPongIdx * (UB_ROW_SIZE * dimD2Align)];
+    DataCopy(dkInUb, dkSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], tailRows * dimDAlign);
+    event_t event = pingPongIdx == 0 ? vWaitMte2: vWaitMte2Pong;
+    SetFlag<AscendC::HardEvent::MTE2_V>(event);
+    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+    Muls(dkInUb, dkInUb, (float)tilingData->postTilingData.scaleValue, tailRows * dimDAlign);
+    DataCopy(dvInUb, dvSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimD2Align], tailRows * dimD2Align);
+    SetFlag<AscendC::HardEvent::MTE2_V>(event);
+    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+    SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+    WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+
+    int64_t totalRound = CeilDiv(tailRows, curProcessRow);
+    int64_t row = 0;
+    for (int64_t loop = 0; loop < totalRound; loop++) {
+        if (curRow / selectedBlockSize > curSelBlk) {
+            curSelBlk += 1;
+            s2Idx = indicesGm.GetValue(curSelBlk);
+        }
+        if (s2Idx >= 0) {
+            if (subBlockIdx == 1 && loop == totalRound - 1) {
+                curProcessRow = (runInfo.lastBlockSize % curProcessRow) ? 
+                                runInfo.lastBlockSize % curProcessRow : 
+                                curProcessRow;
+            }
+            DataCopy(dkOutGm[s2Idx * selectedBlockSize * dimDAlign + (curRow % selectedBlockSize) * dimDAlign], dkInUb[row * dimDAlign], curProcessRow * dimDAlign);
+            DataCopy(dvOutGm[s2Idx * selectedBlockSize * dimD2Align + (curRow % selectedBlockSize) * dimD2Align], dvInUb[row * dimD2Align], curProcessRow * dimD2Align);
+        }
+        row += curProcessRow;
+        curRow += curProcessRow;
+    }
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+    pingPongIdx = 1 - pingPongIdx;
+    SetAtomicNone();
+
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
+
+    SetFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
+    WaitFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
+}
 
 } // namespace SFAG_BASIC

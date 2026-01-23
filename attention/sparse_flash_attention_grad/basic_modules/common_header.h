@@ -22,6 +22,8 @@
 
 namespace SFAG_BASIC {
 
+constexpr static uint64_t MAX_CORE_NUM = 24;
+
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define PIPE_BARRIER(pipe) AscendC::PipeBarrier<pipe>()
@@ -38,6 +40,35 @@ struct SFAG_TYPE {
     static constexpr uint32_t atten_enable = ATTEN_ENABLE;
     static constexpr bool has_rope = HAS_ROPE;
     static constexpr bool is_bsnd = IS_BSND;
+};
+
+struct RunInfo {
+    int64_t task;
+    int64_t curS1;
+    int64_t curS2;
+    int64_t sumGmOffset;
+    int64_t blkCntOffset;
+    int64_t queryGmOffset;
+    int64_t queryRopeGmOffset;
+    int64_t keyGmOffset;
+    int64_t keyRopeGmOffset;
+    int64_t dyGmOffset;
+    int64_t valueGmOffset;
+    int64_t indicesGmOffset;
+    int64_t mm12GmOffset;
+    int64_t mm345GmOffset;
+    int64_t mm3OutGmOffset;
+    int64_t mm4OutGmOffset;
+    int64_t mm5OutGmOffset;
+    int64_t actualSelCntOffset;
+    int64_t scatterTaskId;
+    int64_t s1Index;
+    int64_t actualSelectedBlockCount;
+    int64_t changeS1 = false;
+    int64_t selectedKGmOffset;
+    int64_t selectedVGmOffset;
+    int64_t lastBlockSize;
+    bool isLastBasicBlock;
 };
 
 /////////////////////////////////////////////////////
@@ -137,6 +168,16 @@ __aicore__ inline T AlignTo(const T n, const T alignSize)
         return 0;
     }
     return (n + alignSize - 1) & (~(alignSize - 1));
+}
+
+template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
+{
+    return (a < b) ? (b) : (a);
+}
+
+template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+{
+    return (a > b) ? (b) : (a);
 }
 
 } // namespace SFAG_BASIC

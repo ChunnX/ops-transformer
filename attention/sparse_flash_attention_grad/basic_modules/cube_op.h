@@ -19,23 +19,6 @@ using namespace AscendC;
 
 namespace SFAG_BASIC {
 
-struct RunInfo {
-    int64_t queryGmOffset;
-    int64_t queryRopeGmOffset;
-    int64_t keyGmOffset;
-    int64_t dyGmOffset;
-    int64_t valueGmOffset;
-    int64_t indicesGmOffset;
-    int64_t mm12GmOffset;
-    int64_t mm345GmOffset;
-    int64_t mm3OutGmOffset;
-    int64_t mm4OutGmOffset;
-    int64_t mm5OutGmOffset;
-    int64_t actualSelCntOffset;
-    int64_t lastBlockSize;
-    bool isLastBasicBlock;
-};
-
 template <typename SFAGT>
 class CubeOp {
     using TILING_CLASS = typename SFAGT::tiling_class;
@@ -91,8 +74,7 @@ private:
                                                                        const int64_t outGmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
-                                                                       const int64_t lastBlockSize,
-                                                                       const bool isLastBasicBlock);
+                                                                       const RunInfo &runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube5Process(const int64_t pGmOffset,
                                                                        const int64_t dyGmOffset,
@@ -100,8 +82,8 @@ private:
                                                                        const int64_t outGmOffset, 
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
-                                                                       const int64_t lastBlockSize,
-                                                                       const bool isLastBasicBlock);
+                                                                       const RunInfo &runInfo);
+
     __aicore__ inline __attribute__((always_inline)) void LoadBData(const int64_t dsGmOffset, 
                                                                     const int64_t keyGmOffset,
                                                                     const int64_t indicesGmOffset,
@@ -178,6 +160,8 @@ private:
     GlobalTensor<float> dqWorkspaceGm;
     GlobalTensor<float> dkWorkspaceGm;
     GlobalTensor<float> dvWorkspaceGm;
+    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
+    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
     // workspace
     uint32_t mm12WorkspaceLen;
     int64_t dqWorkspaceLen;
@@ -240,6 +224,7 @@ private:
     uint32_t usedCoreNum;
     uint32_t eventIdPing = 4;
     uint32_t eventIdPong = 5;
+    uint32_t cBlockIdx;
 };
 
 
@@ -285,9 +270,9 @@ CubeOp<SFAGT>::cube12Process(const RunInfo &runInfo,
                              const int32_t blkCntOffset, const int32_t mmPingPongIdx)
 {
     selectedCntOffset = runInfo.actualSelCntOffset;
-    cube1Process(runInfo.queryGmOffset, runInfo.queryRopeGmOffset, runInfo.keyGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx);
+    cube1Process(runInfo.queryGmOffset, runInfo.queryRopeGmOffset, runInfo.selectedKGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx);
     WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_DY_EVENTS[mmPingPongIdx]);
-    cube2Process(runInfo.dyGmOffset, runInfo.valueGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx);
+    cube2Process(runInfo.dyGmOffset, runInfo.selectedVGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx);
 }
 
 template <typename SFAGT>
@@ -296,12 +281,12 @@ CubeOp<SFAGT>::cube345Process(const RunInfo &runInfo,
                               const int32_t blkCntOffset, const int32_t mmPingPongIdx)
 {
     selectedCntOffset = runInfo.actualSelCntOffset;
-    cube5Process(runInfo.mm345GmOffset, runInfo.dyGmOffset, runInfo.indicesGmOffset, runInfo.mm5OutGmOffset, blkCntOffset, mmPingPongIdx, runInfo.lastBlockSize, runInfo.isLastBasicBlock);
+    cube5Process(runInfo.mm345GmOffset, runInfo.dyGmOffset, runInfo.indicesGmOffset, runInfo.mm5OutGmOffset, blkCntOffset, mmPingPongIdx, runInfo);
     SetFlag<HardEvent::MTE1_MTE2>(MM_L1_DY_EVENTS[mmPingPongIdx]);
 
     WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_DS_EVENT);
-    cube4Process(runInfo.mm345GmOffset, runInfo.queryGmOffset, runInfo.queryRopeGmOffset, runInfo.indicesGmOffset, runInfo.mm4OutGmOffset, blkCntOffset, mmPingPongIdx, runInfo.lastBlockSize, runInfo.isLastBasicBlock);
-    cube3Process(runInfo.mm345GmOffset, runInfo.keyGmOffset, runInfo.indicesGmOffset, runInfo.mm3OutGmOffset, blkCntOffset, mmPingPongIdx, runInfo.lastBlockSize, runInfo.isLastBasicBlock);
+    cube4Process(runInfo.mm345GmOffset, runInfo.queryGmOffset, runInfo.queryRopeGmOffset, runInfo.indicesGmOffset, runInfo.mm4OutGmOffset, blkCntOffset, mmPingPongIdx, runInfo);
+    cube3Process(runInfo.mm345GmOffset, runInfo.selectedKGmOffset, runInfo.indicesGmOffset, runInfo.mm3OutGmOffset, blkCntOffset, mmPingPongIdx, runInfo.lastBlockSize, runInfo.isLastBasicBlock);
     SetFlag<HardEvent::MTE1_MTE2>(MM_L1_DS_EVENT);
 }
 
@@ -322,23 +307,23 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
 
     int64_t usedWorkspaceLen = 0;
-    uint32_t blockIdx = GetBlockIdx();
+    cBlockIdx = GetBlockIdx();
     // select
-    int64_t selectedKAddr = usedWorkspaceLen / sizeof(T1) + blockIdx * selectedKWorkspaceLen / sizeof(T1);
+    int64_t selectedKAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * selectedKWorkspaceLen / sizeof(T1);
     usedWorkspaceLen += selectedKWorkspaceLen * usedCoreNum;
-    int64_t selectedVAddr = usedWorkspaceLen / sizeof(T1) + blockIdx * selectedVWorkspaceLen / sizeof(T1);
+    int64_t selectedVAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * selectedVWorkspaceLen / sizeof(T1);
     usedWorkspaceLen += selectedVWorkspaceLen * usedCoreNum;
     /*
      * mm1 与 p 复用workspace
      */
-    int64_t mm1Addr = usedWorkspaceLen / sizeof(float) + blockIdx * mm12WorkspaceLen / sizeof(float);
-    int64_t pAddr = usedWorkspaceLen / sizeof(T1) + blockIdx * mm12WorkspaceLen / sizeof(T1);
+    int64_t mm1Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
+    int64_t pAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     /*
      * mm2 与 ds 复用workspace
      */
-    int64_t mm2Addr = usedWorkspaceLen / sizeof(float) + blockIdx * mm12WorkspaceLen / sizeof(float);
-    int64_t dsAddr = usedWorkspaceLen / sizeof(T1) + blockIdx * mm12WorkspaceLen / sizeof(T1);
+    int64_t mm2Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
+    int64_t dsAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
 
     // post
@@ -346,6 +331,11 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     int64_t dkAddr = dqAddr + dqWorkspaceLen / sizeof(float);
     int64_t dvAddr = dkAddr + dkWorkspaceLen / sizeof(float);
     usedWorkspaceLen += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
+
+    // scatter add
+    int64_t mm4ResAddr = usedWorkspaceLen / sizeof(float);
+    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDTotal * 2;
+    usedWorkspaceLen += MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * (dimDTotal + dimDv) * 2 * sizeof(float);
 
     mm1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm1Addr);
     mm2WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm2Addr);
@@ -356,6 +346,8 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     dvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dvAddr);
     selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
     selectedVWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedVAddr);
+    mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
+    mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
 }
 
 template <typename SFAGT>

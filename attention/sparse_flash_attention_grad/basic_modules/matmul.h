@@ -238,8 +238,8 @@ __aicore__ inline void MmadInnerWithSync(LocalTensor<float> &l0cTensor,
 }
 
 template <bool needAtomic = false>
-__aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, const GlobalTensor<int32_t> &topkIndicesGm, const LocalTensor<float> &l0cTensor, struct MMParam &mmParam, const int32_t selectedBlockSize, const int32_t blockOffset, const int32_t dimN2, const uint32_t eventId, const int64_t lastBlockSize, const bool isLast)
- {
+__aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, const GlobalTensor<int32_t> &topkIndicesGm, const LocalTensor<float> &l0cTensor, struct MMParam &mmParam, const int32_t selectedBlockSize, const int32_t blockOffset, const int32_t dimN2, const uint32_t eventId)
+{
     SetFlag<HardEvent::M_FIX>(eventId);
     WaitFlag<HardEvent::M_FIX>(eventId);
     FixpipeParamsV220 fixpipeParams;
@@ -259,9 +259,7 @@ __aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, c
         if (topkIdx >= 0) {
             int64_t l0cOffset = mIdx * selectedBlockSize * 16;
             int64_t resOffset = topkIdx * selectedBlockSize * mmParam.dstStride;
-            if (isLast && mIdx == mmParam.singleM / selectedBlockSize - 1) {
-                fixpipeParams.mSize = lastBlockSize;
-            }
+            
             Fixpipe<float, float>(resGm[resOffset], l0cTensor[l0cOffset], fixpipeParams);
         }
     }

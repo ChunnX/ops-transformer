@@ -18,8 +18,7 @@
 template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void
 CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, const int64_t indicesGmOffset,
-                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx, 
-                         const int64_t lastBlockSize, const bool isLastBasicBlock)
+                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
 {
     uint32_t dLoopTimes = (dimDv + 127) / N_SPLIT_SIZE;
     uint32_t perLoopDSize = N_SPLIT_SIZE;
@@ -30,10 +29,12 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, cons
     mmParam.singleM = selectedBlockSize * blockOffset;
     mmParam.singleN = perLoopDSize;
     mmParam.singleK = dimG;
-    mmParam.isFixOut = false;
+    mmParam.isFixOut = true;
     mmParam.isLeftTranspose = true;
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDv * dimN2;
+
+    int64_t mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDv + cBlockIdx * selectedBlockCount * selectedBlockSize * dimDv;
 
     LocalTensor<T1> l1_dy_tensor = l1_dy_tensors[mmPingPongIdx];
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
@@ -42,20 +43,19 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, cons
 
         mmParam.singleM = min(selectedBlockSize * blockOffset, selectedCntOffset * selectedBlockSize - (mIdx - blkCntOffset) * selectedBlockSize);
 
-        bool isLast = isLastBasicBlock && (mIdx + blockOffset >= blkCntOffset + selectedCntOffset);
+        int64_t mm5ResOutOffset = mm5ResOutBaseOffset + mIdx * selectedBlockSize * dimDv;
         WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
         CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, 512);
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
             current_l1_dy_tensor = l1_dy_tensor[dIdx * perLoopDSize * dimGAlign];
             LocalTensor<float> l0cTensor = cL0TensorPingPong[ping_pong_flag_l0c_ & 1];
             
-            int64_t currentOutGmOffset = outGmOffset + dIdx * perLoopDSize;
+            int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            MmadInnerWithSync<T1, false, true>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+            MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, dvWorkspaceGm[currentOutGmOffset]);
-            ScatterFixOutWithSync<true>(dvWorkspaceGm[currentOutGmOffset], topkIndicesGm[indicesGmOffset + mIdx], l0cTensor, mmParam, selectedBlockSize, blockOffset, dimN2, L0C_EVENTS[ping_pong_flag_l0c_], lastBlockSize, isLast);
+                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
             UpdatePingPongFlag(ping_pong_flag_l0c_);
         }
         SetFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
