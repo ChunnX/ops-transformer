@@ -594,7 +594,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     if (args.rankId < FFN_WORKER_NUM) {  // FFN Worker
         // 等待 Attention Worker 任务执行结束
         LOG_PRINT("[INFO] device_%d is FFN worker, skipping aclnnAttentionToFFN execute.\n", args.rankId);
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        std::this_thread::sleep_for(std::chrono::seconds(30));
     } else {    // Attention Worker
         // 调用第二阶段接口
         ret = aclnnAttentionToFFN(attentionToFFNWorkspaceAddr, attentionToFFNWorkspaceSize,
@@ -698,11 +698,9 @@ int main(int argc, char *argv[])
     }
 
     HcclComm comms[WORLD_SIZE];
-    for (int32_t id = 0; id < WORLD_SIZE; id++) {
-        ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
-        CHECK_RET(ret == ACL_SUCCESS,
-                  LOG_PRINT("[ERROR] HcclCommInitAll ep %d failed, ret %d\n", id, ret); return ret);
-    }
+    ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] HcclCommInitAll failed, ret %d\n", ret); return ret);
 
     Args args[WORLD_SIZE];
     std::vector<std::unique_ptr<std::thread>> threads(WORLD_SIZE);
