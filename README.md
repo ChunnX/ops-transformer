@@ -2,7 +2,18 @@
 
 ## 🔥Latest News
 
-- [2025/09] ops-transformer项目首次上线。
+- [2026/01] 新支持算子[grouped matmul<<<>>>调用示例](examples/fast_kernel_launch_example/ascend_ops/csrc/grouped_matmul)，方便用户自定义使用。
+- [2026/01] 新支持算子[fused_floyd_attention](attention/fused_floyd_attention)、[fused_floyd_attention_grad](attention/fused_floyd_attention_grad)、[matmul_allto_all](mc2/matmul_allto_all)。
+- [2025/12] 新增[QuickStart](QUICKSTART.md)，指导新手零基础入门算子项目部署（支持Docker环境）、算子开发和贡献流程。
+- [2025/12] 优化指南类文档，聚焦[算子开发指南](docs/zh/develop/aicore_develop_guide.md)，明确最小交付件和关键示例代码，针对[Ascend/samples](https://gitee.com/ascend/samples/tree/master)仓算子提供迁移本项目的指导。
+- [2025/12] 支持transformer类onnx算子插件，包括[NPUFlashAttention](attention/flash_attention_score/framework)、[NPUMultiHeadAttention](common/src/framework)、[NPUMoeComputeExpertTokens](moe/moe_compute_expert_tokens/framework)等。
+- [2025/12] 新支持算子[kv_rms_norm_rope_cache](posembedding/kv_rms_norm_rope_cache)、[attention_update](attention/attention_update)、[attention_worker_scheduler](attention/attention_worker_scheduler)、[gather_pa_kv_cache](attention/gather_pa_kv_cache)、[kv_quant_sparse_flash_attention](attention/kv_quant_sparse_flash_attention)、[lightning_indexer_grad](attention/lightning_indexer_grad)、[mla_preprocess](attention/mla_preprocess)、[mla_preprocess_v2](attention/mla_preprocess_v2)、[grouped_matmul_swiglu_quant_v2](gmm/grouped_matmul_swiglu_quant_v2)、[attention_to_ffn](mc2/attention_to_ffn)、[ffn_to_attention](mc2/ffn_to_attention)。
+- [2025/12] 开源算子支持Ascend 950PR/Ascend 950DT/KirinX90，可以通过[CANN Simulator](docs/zh/debug/cann_sim.md)仿真工具开发调试。
+- [2025/11] 新支持算子[kv_quant_sparse_flash_attention](attention/kv_quant_sparse_flash_attention)、[lightning_indexer](attention/lightning_indexer)、[quant_lightning_indexer](attention/quant_lightning_indexer)、[sparse_flash_attention](attention/sparse_flash_attention)。
+- [2025/11] 新支持示例算子[rope_matrix](experimental/posembedding/rope_matrix)和[all_gather_add](examples/mc2/all_gather_add)。
+- [2025/11] 新增算子开发工程模板[NpuOpsTransformerExt](experimental/npu_ops_transformer_ext)，无缝集成PyTorch张量操作，支持自动微分和GPU/NPU统一接口。
+- [2025/10] 新增[experimental](experimental)目录，完善[贡献指南](CONTRIBUTING.md)，支持开发者调试并贡献自定义算子。
+- [2025/09] ops-transformer项目首次上线，开源算子支持Atlas A2/A3系列产品。
 
 ## 🚀概述
 
@@ -61,9 +72,16 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 └── requirements.txt               # 本项目需要的第三方依赖包
 ```
 
-
 ## 📝相关信息
 
 - [贡献指南](CONTRIBUTING.md)
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)
+
+## 🤝联系我们
+
+本项目功能和文档正在持续更新和完善中，建议您关注最新版本。
+
+- **问题反馈**：通过GitCode[【Issues】](https://gitcode.com/cann/ops-transformer/issues)提交问题
+- **社区互动**：通过GitCode[【讨论】](https://gitcode.com/cann/ops-transformer/discussions)参与交流
+- **技术专栏**：通过GitCode[【Wiki】](https://gitcode.com/cann/ops-transformer/wiki)获取技术文章，如系列化教程、优秀实践等
