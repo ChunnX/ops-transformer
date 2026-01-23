@@ -44,6 +44,7 @@ else()
     ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/common
     ${TOP_DIR}/ops-base/include/aicpu_common/context/common
     ${TOP_DIR}/open_source/eigen
+    ${TOP_DIR}/runtime/pkg_inc/aicpu_sched/common
   )
 endif()
 

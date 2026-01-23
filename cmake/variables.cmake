@@ -132,9 +132,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/utils/inc/error
     ${TOP_DIR}/ace/comop/inc/external
     ${TOP_DIR}/ace/npuruntime/inc/external
-    ${TOP_DIR}/ace/npuruntime/inc/nnopbase
+    ${TOP_DIR}/ops-base/include/nnopbase
+    ${TOP_DIR}/runtime/pkg_inc/aicpu_sched/common
     ${TOP_DIR}/asl/ops/cann/ops/mc2/communication_and_computation
-    ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
+    ${TOP_DIR}/runtime/include/external/acl/error_codes
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
