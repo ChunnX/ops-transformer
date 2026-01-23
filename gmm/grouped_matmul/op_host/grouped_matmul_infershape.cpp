@@ -711,7 +711,7 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantForShape(gert::InferShapeConte
     }
     // check perGroupSize
     if (w0Desc->GetDataType() == DT_INT4) {
-         OP_CHECK_IF(
+        OP_CHECK_IF(
             CheckGroupedMatmulAntiQuantGroupSize(context, gmmAttrs, paramsInfo, hasAntiquantOffset) != GRAPH_SUCCESS,
             OP_LOGE(context->GetNodeName(), "Invalid antiquant group size."), return GRAPH_FAILED);
     }
@@ -719,6 +719,7 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantForShape(gert::InferShapeConte
               "Detected antiquant, but quant inputs is not empty!"), return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
+
 static ge::graphStatus CheckQuantParams(gert::InferShapeContext* context, const GMMAttrs& gmmAttrs, GMMParamsInfo& paramsInfo) {
     auto x0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_X, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, x0Desc);

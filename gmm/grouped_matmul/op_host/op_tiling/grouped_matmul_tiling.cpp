@@ -95,6 +95,37 @@ constexpr int32_t FIXAXISMOVE_GROUP_TYPE = 0;
 constexpr size_t TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX = 0;
 constexpr size_t TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX = 1;
 constexpr size_t TUNING_CONFIG_ALLOW_WORKSPACE_INDEX = 2;
+constexpr int64_t SPLITK_M_N_RATIO_THRESHOLD_2 = 2L;
+
+
+static inline uint32_t FindBestSingleNA8W4(uint32_t baseM_, uint32_t baseN_, uint32_t avg_m, uint32_t maxN_, uint32_t groupNum_, const uint32_t& aicNum) {
+  int32_t mDim = CeilDiv(avg_m, baseM_);
+  int32_t nDim = CeilDiv(maxN_, baseN_);
+  int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
+  int32_t taskNumPerCore = CeilDiv(taskNum, aicNum);
+  //每个核只需要做1个基本块的时候，任务量太少，无需处理
+  if(taskNumPerCore <= 1){
+    return baseN_;
+  }
+  int32_t curNDim = 0;
+  int32_t curTaskNum = 0;
+  int32_t bestSingleN = baseN_;
+  float ratio = 0;
+  for (uint32_t i = 1; i <= aicNum; ++i){
+    bestSingleN = CeilDiv(static_cast<int32_t>(maxN_), i);
+    if(baseN_ != 0 && static_cast<int64_t>(bestSingleN) != maxN_ && bestSingleN % baseN_ != 0) {
+      continue;
+    }
+    curNDim = CeilDiv(maxN_, bestSingleN);
+    curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
+    ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), aicNum);
+    if(ratio >= EFFECTIVE_TASK_RATIO) {
+      return bestSingleN;
+    }
+  }
+  return baseN_;
+}
+
 
 ge::graphStatus GMMTiling::CheckWeightNZShape(const gert::TilingContext* context, int64_t numInOneBlk) const {
   OP_CHECK_IF(numInOneBlk <= 0, OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "numInOneBlk, the "
@@ -566,6 +597,28 @@ bool GMMTiling::TryFullLoadA(int32_t baseM,const GMMCompileInfo *compileInfoPtr)
   return false;
 }
 
+/*
+1、输出默认会存储在L2Cache中，可以考虑设置输出不走L2Cache从而提高输入的L2Cache命中率
+2、后续算子可能会用到当前算子的输出，若当前输出不在L2Cache中可能会影响后续算子效率
+3、当前算子输出如果超过L2Cache大小时，实测不会对后续算子造成影响，此时可以跳过L2Cache
+*/
+ge::graphStatus GMMTiling::IsOutputDisableL2Cache(gert::TilingContext* context, const GMMCompileInfo *compileInfoPtr) {
+    OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_CUBE_INNER_ERR(
+                context->GetNodeName(), "compileInfoPtr is nullptr."), return ge::GRAPH_FAILED);
+    //仅切K单x单weight场景可以Tiling侧知道输出矩阵大小
+    if(groupType_ != SPLIT_K || !isSingleX_ || !isSingleWeight_) {
+        tilingData.gmmBaseParams.set_isOutputDisableL2Cache(0);
+        return ge::GRAPH_SUCCESS;
+    }
+    auto outputSize = static_cast<uint64_t>(GetSizeByDataType(yDtype_) * maxM_ * maxN_ * groupNum_);
+    if(outputSize > compileInfoPtr->l2Size) {
+        tilingData.gmmBaseParams.set_isOutputDisableL2Cache(1);
+    } else {
+        tilingData.gmmBaseParams.set_isOutputDisableL2Cache(0);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus GMMTiling::DynamicTilingSingleN(gert::TilingContext* context, const uint32_t& aicNum, const GMMCompileInfo *compileInfoPtr) {
   OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_CUBE_INNER_ERR(
                context->GetNodeName(), "compileInfoPtr is nullptr."), return ge::GRAPH_FAILED);
@@ -787,6 +840,9 @@ ge::graphStatus GMMTiling::RunFusionKernelTiling(gert::TilingContext* context) {
   OP_CHECK_IF(DynamicTilingSingleN(context, usedCoreNum_, compileInfoPtr) != ge::GRAPH_SUCCESS,
              OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM DynamicTilingSingleN failed"),
              return ge::GRAPH_FAILED);
+  OP_CHECK_IF(IsOutputDisableL2Cache(context, compileInfoPtr) != ge::GRAPH_SUCCESS,
+             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM IsOutputDisableL2Cache failed"),
+             return ge::GRAPH_FAILED);
   tilingData.gmmBaseParams.set_workspaceSize(workspacesSize_);
   tilingData.mmTilingData.set_usedCoreNum(usedCoreNum_);  // usedCoreNum is ai_core num
   tilingData.gmmBaseParams.set_coreNum(usedCoreNum_);  // ai cube number
@@ -823,6 +879,7 @@ void GMMTiling::PrintTilingInfo(gert::TilingContext *context) {
   OP_LOGD(context->GetNodeName(), "GMM_tiling_new: dbL0C is %d.", tilingData.mmTilingData.get_dbL0C());
   OP_LOGD(context->GetNodeName(), "GMM_tiling_new: usedL1Size is %d.", tilingData.mmTilingData.get_shareL1Size());
   OP_LOGD(context->GetNodeName(), "GMM_tiling_new: usedUBSize is %d.", tilingData.mmTilingData.get_shareUbSize());
+  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: isOutputDisableL2Cache is %d.", tilingData.gmmBaseParams.get_isOutputDisableL2Cache());
   auto buf = (uint32_t *)context->GetRawTilingData()->GetData();
   auto bufLen = context->GetRawTilingData()->GetDataSize();
   std::ostringstream oss;
@@ -929,21 +986,21 @@ bool GMMTiling::IsAivAicRatioTwoRequired() {
     if (groupListType_ == GROUP_LIST_SPARSE_M) {
       return false;
     }
-    
+
     // Condition 1: GELU activation (immediate match)
     if (actType_ == ACT_TYPE_GELU) {
       return true;
     }
-    
+
     // Condition 2: Complex tuning configuration requiring:
     // - K dimension outside normal vectorization range
     // - Minimum tuning configuration threshold
     // - Valid token/group size
-    const bool needs_double_vector = (maxK_ <= DOUBLE_VECTOT_THRESHOLD_K_LOWER) || 
+    const bool needs_double_vector = (maxK_ <= DOUBLE_VECTOT_THRESHOLD_K_LOWER) ||
                                     (maxK_ >= DOUBLE_VECTOT_THRESHOLD_K_UPPER);
     const bool has_sufficient_tuning = (tuningConfig_ >= SMALL_TUNING_CONFIG_THRESHOLD);
     const bool has_valid_workload = (perTokenOrPerGroupSize_ > 0U);
-    
+
     return needs_double_vector && has_sufficient_tuning && has_valid_workload;
 }
 
@@ -951,14 +1008,14 @@ bool GMMTiling::IsFixedAxisMoveCondition() {
     bool isCorrectShape = (maxK_ == FIXAXISMOVE_K1 && maxN_ == FIXAXISMOVE_N1) ||
                           (maxK_ == FIXAXISMOVE_K2 && maxN_ == FIXAXISMOVE_N2);
     bool isGroupCorrect = (groupNum_ == FIXAXISMOVE_GROUP_NUM);
-    bool isTuningInRange = (tuningConfig_ >= FIXAXISMOVE_PERM_LOWER) && 
+    bool isTuningInRange = (tuningConfig_ >= FIXAXISMOVE_PERM_LOWER) &&
                           (tuningConfig_ <= FIXAXISMOVE_PERM_UPPER);
     bool isDataTypeCorrect = yDtype_ == ge::DT_FLOAT16 && scaleDtype_ == ge::DT_FLOAT && perTokenScaleDtype_ == ge::DT_FLOAT;
-    bool isConfigCorrect = !transposeX_ && (splitItem_ == FIXAXISMOVE_SPLIT_ITEM2 || splitItem_ == FIXAXISMOVE_SPLIT_ITEM3) 
-                          && (groupListType_ == FIXAXISMOVE_GROUP_LIST_TYPE) 
+    bool isConfigCorrect = !transposeX_ && (splitItem_ == FIXAXISMOVE_SPLIT_ITEM2 || splitItem_ == FIXAXISMOVE_SPLIT_ITEM3)
+                          && (groupListType_ == FIXAXISMOVE_GROUP_LIST_TYPE)
                           && (groupType_ == FIXAXISMOVE_GROUP_TYPE) && (actType_ == 0)
                           && !transposeWeight_;
-    bool isWorkspaceValid = (FixedAxisMoveWorkspace_ <= tuningConfigWorkspace_) || 
+    bool isWorkspaceValid = (static_cast<int64_t>(FixedAxisMoveWorkspace_) <= tuningConfigWorkspace_) ||
                            (tuningConfigWorkspace_ == -1);
     bool isFormatValid = (wFormat_ == matmul_tiling::CubeFormat::NZ);
 
@@ -1005,7 +1062,7 @@ void GMMTiling::GMMSetTplTilingKey(gert::TilingContext* context) {
 
   if (a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE &&
       a16w8KernelTemplate == GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE &&
-      aivAicRatio != GROUPED_MATMUL_AIV_AIC_RATIO_2 && 
+      aivAicRatio != GROUPED_MATMUL_AIV_AIC_RATIO_2 &&
       !isFixedAxisMove_ &&
       StaticTilingProcess(context)) {
     isStaticTilingApi = 1U;
@@ -1066,7 +1123,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   }
   isA8W8_ = (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT8);
   isA4W4_ = xDType_ == ge::DT_INT4 && weightDtype_ == ge::DT_INT4;
-
+  isA16W16_ = (xDType_ == ge::DT_FLOAT16 && weightDtype_ == ge::DT_FLOAT16) || (xDType_ == ge::DT_BF16 && weightDtype_ == ge::DT_BF16);
   auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);  // check compileInfoPtr is not null
   if (groupListType_ == GROUP_LIST_SPARSE_M) {
@@ -1103,12 +1160,24 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
       OP_CHECK_NULL_WITH_CONTEXT(context, scale0Desc);
       scaleDtype_ = scale0Desc->GetDataType();
   }
+  
   auto wFormat0 = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
   wFormat_ = wFormat0 == ge::FORMAT_FRACTAL_NZ ? matmul_tiling::CubeFormat::NZ : matmul_tiling::CubeFormat::ND;
   tuningConfig_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
                   (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX] : 0;
   tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
                   (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
+
+  if (((compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
+        compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)) &&
+    isA4W4_ ){
+      OP_CHECK_IF( !((wFormat0 == ge::FORMAT_FRACTAL_NZ) || (wFormat0 != FORMAT_FRACTAL_NZ && transposeWeight_ == 0)),
+               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                           "A4W4 GMM currently supports only weight tensor nz transpose/untranspose input \
+                                            or nd format untranspose input."
+                                           ),
+                return ge::GRAPH_FAILED);
+  }
   return ge::GRAPH_SUCCESS;
 }
 
@@ -1383,6 +1452,18 @@ ge::graphStatus GMMTiling::CalMMTiling(const gert::TilingContext* context, const
   } else {
     baseN_ = BEST_BASEN;
   }
+  if (groupType_ == SPLIT_K && isSingleX_ && isSingleWeight_ &&
+             isA16W16_ &&
+             (compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
+             compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93) &&
+             maxM_ > (maxN_ * SPLITK_M_N_RATIO_THRESHOLD_2)) {
+    //切K场景左矩阵转置，尾轴为M轴，右矩阵不转置。
+    //左矩阵搬运也希望尾轴512B对齐，此时如果M较大，可以考虑将baseM:256,baseN:128,baseK:64
+    baseM_ = SPLITK_BASEM_256;
+    baseN_ = SPLITK_BASEN_128;
+    baseK_ = SPLITK_BASEK_64;
+    return ge::GRAPH_SUCCESS;
+  }
   // according to the double buffer enabled L0B, compute baseK
   baseK_ = isA4W4_ ? static_cast<int32_t>((compileInfoPtr->l0BSize / DOUBLE_BUFFER_L0A_L0B) /
                                           static_cast<uint32_t>(baseN_ * INT4_DATA_TYPE_SIZE)) :
@@ -1621,6 +1702,9 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       constexpr uint32_t TWO = 2;
       constexpr uint32_t EIGHT = 8;
       constexpr uint32_t FIVE = 5;
+      constexpr uint32_t FOUR = 4;
+      constexpr uint32_t ONE = 1;
+
       uint32_t singleN = 256;
       uint32_t singleM = 128;
       OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);  // check compileInfoPtr is not null
@@ -1763,9 +1847,13 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
                   groupNum, n, offsetDim0, offsetDim1, offsetDim2);
           }
         }
-        const int is_in_a8w4_white_list = A8W4_PRETILING_WHITE_LIST.count(mKNList)
+        //GEMM Tiling
+        int64_t tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
+                    (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX] : 0;
+
+        const int is_in_a8w4_white_list = ((tuningConfig !=0 &&tuningConfig <= 64) || (A8W4_PRETILING_WHITE_LIST.count(mKNList))) 
               && quantGroupNum != 0 && k / quantGroupNum == 256 && k % quantGroupNum == 0
-              && withOffset == 0; // 256: 新方案只支持256 pergroup
+              && withOffset == 0 && k%64==0 && n%64==0; // 256: 新方案只支持256 pergroup
 
         tilingDataA8W4.gmmBaseParams.set_coreNum(aicNum);
         tilingDataA8W4.gmmBaseParams.set_groupNum(groupNum);
@@ -1800,9 +1888,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         matmul_tiling::PlatformInfo platformInfo;
         InitPlatformInfo(compileInfoPtr, platformInfo);
         matmul_tiling::MultiCoreMatmulTiling mm(platformInfo);
-        //GEMM Tiling
-        int64_t tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
-                    (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX] : 0;
+        
         uint32_t calc_m = 1U;
         if (groupNum != 0U) {
           calc_m = m / groupNum;
@@ -1849,10 +1935,13 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         } else {
           const bool isShortM = avg_m < 32U;
           uint32_t A8W4_MSD_BASE_M = isShortM ? 64U : 128U;
-          constexpr uint32_t A8W4_MSD_BASE_M_NEW = 32;
+          constexpr uint32_t A8W4_MSD_BASE_M_NEW = 64;
           constexpr uint32_t A8W4_MSD_BASE_K = 256;
           uint32_t A8W4_MSD_BASE_N = isShortM ? 512U : 256U;
           constexpr uint32_t A8W4_MSD_BASE_N_NEW = 512;
+          constexpr uint32_t A8W4_MSD_BASE_K_NEW = 256;
+          //增加动态Tiling部分
+          uint32_t A8W4_MSD_SINGLE_N = FindBestSingleNA8W4(A8W4_MSD_BASE_M_NEW, A8W4_MSD_BASE_N_NEW, avg_m, n, groupNum, aicNum);
           mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_INT4, false);
           if (wNZ) {
             mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::NZ, matmul_tiling::DataType::DT_INT4, false);
@@ -1863,9 +1952,9 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           mm.SetBias(false);
           if (is_in_a8w4_white_list) {
             mm.SetOrgShape(A8W4_MSD_BASE_M_NEW, n, k);
-            mm.SetShape(A8W4_MSD_BASE_M_NEW, n, k);
-            mm.SetFixSplit(A8W4_MSD_BASE_M_NEW, A8W4_MSD_BASE_N_NEW, A8W4_MSD_BASE_K);
-            OP_LOGI(context->GetNodeName(), "GMM A8W4 tiling: baseM is %u, baseN is %u, baseK is %u, tuningConfig is %ld.", A8W4_MSD_BASE_M_NEW, A8W4_MSD_BASE_N_NEW, A8W4_MSD_BASE_K, tuningConfig);
+                  mm.SetShape(A8W4_MSD_BASE_M_NEW, A8W4_MSD_SINGLE_N, k);
+            mm.SetFixSplit(A8W4_MSD_BASE_M_NEW, A8W4_MSD_BASE_N_NEW, A8W4_MSD_BASE_K_NEW);
+            OP_LOGI(context->GetNodeName(), "GMM A8W4 tiling: baseM is %u, baseN is %u, baseK is %u, tuningConfig is %ld.", A8W4_MSD_BASE_M_NEW, A8W4_MSD_BASE_N_NEW, A8W4_MSD_BASE_K_NEW, tuningConfig);
           } else {
             mm.SetOrgShape(A8W4_MSD_BASE_M, n, k);
             mm.SetShape(A8W4_MSD_BASE_M, A8W4_MSD_BASE_N, k);
@@ -1875,24 +1964,25 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           if (mm.GetTiling(tilingDataA8W4.mmTilingData) == -1){
             return ge::GRAPH_FAILED;
           }
-          constexpr uint32_t FOUR = 4;
+          
           if (is_in_a8w4_white_list) {
-            tilingDataA8W4.mmTilingData.set_dbL0B(1);  // disable double buffer for LOB
-            tilingDataA8W4.mmTilingData.set_dbL0C(1);  // disable double buffer for LOC
-            tilingDataA8W4.mmTilingData.set_stepKa(FOUR);  // set precomputed mmStepKa
-            tilingDataA8W4.mmTilingData.set_stepKb(TWO);  // set precomputed mmStepKb
-            tilingDataA8W4.mmTilingData.set_depthA1(EIGHT);  // set precomputed mmDepthA1
-            tilingDataA8W4.mmTilingData.set_depthB1(FOUR);  // set precomputed mmDepthB1
+            tilingDataA8W4.mmTilingData.set_dbL0A(ONE);  // disable double buffer for LOA
+            tilingDataA8W4.mmTilingData.set_dbL0B(ONE);  // disable double buffer for LOB
+            tilingDataA8W4.mmTilingData.set_dbL0C(ONE);  // disable double buffer for LOC
+            tilingDataA8W4.mmTilingData.set_stepKa(ONE);  // set precomputed mmStepKa
+            tilingDataA8W4.mmTilingData.set_stepKb(ONE);  // set precomputed mmStepKb
+            tilingDataA8W4.mmTilingData.set_depthA1(TWO);  // set precomputed mmDepthA1
+            tilingDataA8W4.mmTilingData.set_depthB1(TWO);  // set precomputed mmDepthB1
             tilingDataA8W4.mmTilingData.set_baseK(A8W4_MSD_BASE_K);
-            tilingDataA8W4.mmTilingData.set_stepM(1);  // set precomputed stepM
-            tilingDataA8W4.mmTilingData.set_stepN(1);  // set precomputed stepN
+            tilingDataA8W4.mmTilingData.set_stepM(ONE);  // set precomputed stepM
+            tilingDataA8W4.mmTilingData.set_stepN(ONE);  // set precomputed stepN
           } else {
             tilingDataA8W4.mmTilingData.set_dbL0C(1);  // disable double buffer for LOC
             tilingDataA8W4.mmTilingData.set_stepKa(FOUR);  // set precomputed mmStepKa
             tilingDataA8W4.mmTilingData.set_stepKb(FOUR);  // set precomputed mmStepKb
             tilingDataA8W4.mmTilingData.set_depthA1(EIGHT);  // set precomputed mmDepthA1
             tilingDataA8W4.mmTilingData.set_depthB1(EIGHT);  // set precomputed mmDepthB1
-            tilingDataA8W4.mmTilingData.set_stepM(1);  // set precomputed stepM
+            tilingDataA8W4.mmTilingData.set_stepM(1);  // set precomputed step
             tilingDataA8W4.mmTilingData.set_stepN(1);  // set precomputed stepN
           }
           OP_LOGI(context->GetNodeName(), "GMM_tiling: baseM is %u, baseK is %u, baseN is %u.", A8W4_MSD_BASE_M, A8W4_MSD_BASE_K, A8W4_MSD_BASE_N);

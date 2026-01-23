@@ -215,30 +215,33 @@ __aicore__ inline void GMMA4W4Compute<mmType>::MMCompute(uint32_t groupIdx, MNCo
         if (unlikely(mnConfig.mIdx == mnConfig.blockDimM - 1)) {
             curSingleM = mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
         }
-
         uint64_t xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
         uint64_t weightOffset;
-        if constexpr (mmType::BT::format == CubeFormat::NZ) {
-            weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k;
+        if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == true) {
+            weightOffset = groupIdx * tiling->n * tiling->k + tailN * 64; 
+        } else if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == false) {
+            weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k; 
         } else {
-            weightOffset = groupIdx * tiling->n * tiling->k + tailN;
+            weightOffset = groupIdx * tiling->n * tiling->k + tailN; 
         }
         if (cubeCount >= PARALL_NUM) {
-            CrossCoreWaitFlag(SYNC_AIV_TO_AIC);
+            CrossCoreWaitFlag(SYNC_AIV_TO_AIC); 
         }
         mm.SetSingleShape(curSingleM, curSingleN, quantGroupSize_);
         GlobalTensor<DTYPE_WEIGHT_A4W4> weightSlice;
         for (uint32_t loopK = 0; loopK < tiling->quantGroupNum; loopK++) {
             mm.SetTensorA(xGm[xOffset + loopK * quantGroupSize_]);
-            if constexpr (mmType::BT::format == CubeFormat::NZ) { 
-                weightSlice = weightGm[weightOffset + loopK * quantGroupSize_ * 64];
-            } else {
-                weightSlice = weightGm[weightOffset + loopK * quantGroupSize_ * tiling->n];
+            if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == true) {
+                weightSlice = weightGm[weightOffset + ((loopK * quantGroupSize_)) * tiling->n ]; 
+            } else if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == false) {
+                weightSlice = weightGm[weightOffset + loopK * quantGroupSize_ * 64]; 
+            } else { 
+                weightSlice = weightGm[weightOffset + loopK * quantGroupSize_ * tiling->n]; 
             }
             if (mnConfig.blockDimM == 1) {
-                weightSlice.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+                weightSlice.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE); 
             }
-            mm.SetTensorB(weightSlice);
+            mm.SetTensorB(weightSlice, mmType::BT::isTrans);
             mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN]);
             uint64_t worskspaceOffset = mnConfig.workSpaceOffset;
             #ifndef __CCE_KT_TEST__

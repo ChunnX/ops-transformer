@@ -483,7 +483,11 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #elif defined(GMM_A4W4)
     // QUANT_A4W4
     if constexpr (D_T_A == GMM_TPL_INT4 && D_T_B == GMM_TPL_INT4) {
-        GMM_A4W4_IMP(GMMA4W4Compute, false, false, matmulCFG, xType, weightType, yType);
+        if constexpr (TRANS_B == 0){
+            GMM_A4W4_IMP(GMMA4W4Compute, false, false, matmulCFG, xType, weightType, yType);
+        }else{
+            GMM_A4W4_IMP(GMMA4W4Compute, false, true, matmulCFG, xType, weightType, yType);
+        }
     }
 #elif defined(GMM_QUANT_INT8) || defined(GMM_QUANT_INT32)
     // QUANT_A8W8O8 & QUANT_A8W8O32

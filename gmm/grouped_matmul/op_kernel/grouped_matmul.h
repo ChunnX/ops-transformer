@@ -445,6 +445,11 @@ __aicore__ inline void GMMCompute<mmType, sync>::Init(GM_ADDR x, GM_ADDR weight,
     LocalTensor<uint8_t> buf = ubBuf.template Get<uint8_t>();
     mm.SetLocalWorkspace(buf);
 #endif
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+    if (gmmBaseParams->isOutputDisableL2Cache != 0) {
+        yGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    }
+#endif
 }
 
 template <typename mmType, bool sync>
