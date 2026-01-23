@@ -519,7 +519,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     ipcSliceNodeSize = ipcSliceSize * SERVER_RANK_SIZE;
     constexpr uint32_t EXPAND_SCALES_BYTES = 32U;
     uint32_t tokenSize = axisHExpandXTypeSize_ + EXPAND_SCALES_BYTES;
-    maxBsInRankSizeOnIpc = (ipcSliceSize - IPC_DATA_OFFSET) / localMoeExpertNum_ / tokenSize;
+    maxBsInRankSizeOnIpc = ipcSliceSize / localMoeExpertNum_ / tokenSize;
     // 初始化baseBuffOffset
     uint32_t baseBuffOffset = TBUF_TEMP_OFFSET;
     // 申请LocalTensor : sendCount 以及计算偏移
