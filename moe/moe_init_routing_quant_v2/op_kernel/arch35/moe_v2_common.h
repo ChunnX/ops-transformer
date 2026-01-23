@@ -26,12 +26,11 @@ using namespace AscendC;
 constexpr int64_t SPLIT_N = 0;
 constexpr int64_t SPLIT_K = 1;
 constexpr float MIN_FP32 = -3.4e38f;
+constexpr float MAX_INT8 = 127.0f;
+constexpr uint32_t INF = 0xFF7FFFFF;
 constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
 constexpr int64_t BLOCK_BYTES = 32;
 constexpr int64_t INT32_ONE_BLOCK_NUM = 8;
-
-constexpr int64_t ASSIST_NUM = 256;
-constexpr int64_t ASSIST_INDEX_NUM = 32;
 
 constexpr int64_t MERGE_LIST_TWO = 2;
 constexpr int64_t MERGE_LIST_THREE = 3;
@@ -39,6 +38,9 @@ constexpr int64_t MERGE_LIST_FOUR = 4;
 
 constexpr int64_t MERGE_LIST_IDX_TWO = 2;
 constexpr int64_t MERGE_LIST_IDX_THREE = 3;
+
+constexpr int64_t ASSIST_NUM = 256;
+constexpr int64_t ASSIST_INDEX_NUM = 32;
 
 constexpr int64_t MAX_EXPERT_NUM = 5120;
 constexpr int64_t DROPLESS_MODE = 0;
@@ -69,12 +71,9 @@ const __gm__ int32_t assist[256] = {
     24, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 0, 0,
     28, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0, 31, 0, 0, 0, 0, 0, 0, 0};
 
-__aicore__ inline int64_t Ceil(int64_t a, int64_t b)
+__aicore__ inline int64_t AlignBytes(int64_t elementNum, int64_t bytes)
 {
-    if (b == 0) {
-        return 0;
-    }
-    return (a + b - 1) / b;
+    return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES;
 }
 
 __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
@@ -85,21 +84,24 @@ __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
     return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES / bytes;
 }
 
-__aicore__ inline int64_t AlignBytes(int64_t elementNum, int64_t bytes)
+__aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
-    return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES;
-}
-
-template <typename T>
-__aicore__ inline T Min(T a, T b)
-{
-    return a > b ? b : a;
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
 }
 
 template <typename T>
 __aicore__ inline T Max(T a, T b)
 {
     return a < b ? b : a;
+}
+
+template <typename T>
+__aicore__ inline T Min(T a, T b)
+{
+    return a > b ? b : a;
 }
 
 template <HardEvent event>

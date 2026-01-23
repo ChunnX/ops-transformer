@@ -776,7 +776,7 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4MaskedSelect()
     }
 
     if (tailNum > 0) {
-        tailLength = (totalLengthLocal - formerLength * formerNum) / tailNum; // 一定可能整出
+        tailLength = (totalLengthLocal - formerLength * formerNum) / tailNum;
         tailTileNum = (tailLength + ubLength - 1) / ubLength;
         tailTileLength = ubLength;
         tailLastTileLength = tailLength % ubLength;

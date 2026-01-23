@@ -80,7 +80,9 @@ static inline bool CheckDtypeValid(
     if (probsOptional != nullptr) {
         // 检查groupIdxOptional的数据类型是否在支持列表内
         OP_CHECK_DTYPE_NOT_SUPPORT(probsOptional, dtype_list, return false);
-        OP_CHECK_DTYPE_NOT_MATCH(tokens, probsOptional->GetDataType(), return false);
+        if (probsOptional->GetDataType() != op::DataType::DT_FLOAT || tokens->GetDataType() != op::DataType::DT_BF16) {
+            OP_CHECK_DTYPE_NOT_MATCH(tokens, probsOptional->GetDataType(), return false);
+        }
     }
     if (permuteProbsOutOptional != nullptr) {
         // 检查groupIdxOptional的数据类型是否在支持列表内

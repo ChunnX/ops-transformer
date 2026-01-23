@@ -1,95 +1,276 @@
 # aclnnMoeTokenPermute
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_permute)
 
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term> |    √    |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-- **算子功能**：MoE的permute计算，根据索引indices将tokens广播并排序。
-- **计算公式**：
-  - paddedMode为`false`时
-  
-    $$
-    sortedIndicesFirst=argSort(Indices)
-    $$
-  
-    $$
-    sortedIndicesOut=argSort(sortedIndicesFirst)
-    $$
-  
-    $$
-    permuteTokens[sortedIndicesFirst[i]]=tokens[i//topK]
-    $$
-  
-  - paddedMode为`true`时
-  
-    $$
-    permuteTokensOut[i]=tokens[Indices[i]]
-    $$
-  
-    $$
-    sortedIndicesOut=Indices
-    $$
+-   **接口功能**：MoE的permute计算，根据索引indices将tokens广播并排序。
+
+-   **计算公式**：
+    - paddedMode为`false`时，公式如下，其中topK指一个token选择的专家个数，Indices维度为2时等于Indices最后一维大小，Indices维度为1时topK等于1：
+    
+      $$
+      sortedIndicesFirst=argSort(\text{flatten}(Indices))
+      $$
+    
+      $$
+      sortedIndicesOut=argSort(sortedIndicesFirst)
+      $$
+
+      $$
+      permuteTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
+      $$
+
+    - paddedMode为`true`时
+
+      $$
+      permuteTokensOut[i]=tokens[indices[i]]
+      $$
+
+      $$
+      sortedIndicesOut=indices
+      $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeTokenPermuteGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermute”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermute”接口执行计算。
 
-* `aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(const aclTensor *tokens, const aclTensor *indices, int64_t numOutTokens, bool paddedMode, const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnMoeTokenPermute(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
+```cpp
+aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
+    const aclTensor  *tokens, 
+    const aclTensor  *indices, 
+    int64_t           numOutTokens, 
+    bool              paddedMode, 
+    const aclTensor  *permuteTokensOut, 
+    const aclTensor  *sortedIndicesOut, 
+    uint64_t         *workspaceSize, 
+    aclOpExecutor   **executor)
+```
+
+```cpp
+aclnnStatus aclnnMoeTokenPermute(
+    void             *workspace, 
+    uint64_t          workspaceSize, 
+    aclOpExecutor    *executor, 
+    aclrtStream       stream)
+```
 
 ## aclnnMoeTokenPermuteGetWorkspaceSize
 
-- **参数说明：**
-  
-  - tokens（aclTensor\*，计算输入）：输入token，要求为一个维度大于等于2的Tensor，第一维的大小为num\_tokens，数据类型支持FLOAT16、BFLOAT16、FLOAT32，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
-  - indices （aclTensor\*，计算输入）：输入indices，要求shape为2D或1D。paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为（num\_tokens，topK）或（num\_tokens），paddedMode为true时表示每个专家选中的token索引（暂不支持），数据类型支持INT32、INT64，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。要求元素个数小于16777215，值大于等于0小于16777215（单点支持int32或int64的最大或最小值）。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
-  - numOutTokens（int64\_t，计算输入）：有效输出token数，设置为0时，表示不会删除任何token。不为0时，会按照numOutTokens进行切片丢弃按照indices排序好的token中超过numOutTokens的部分，为负数时按照切片索引为负数时处理。
-  - paddedMode（bool，计算输入）：paddedMode为true时表示indices已被填充为代表每个专家选中的token索引，此时不对indices进行排序。目前仅支持paddedMode为false。
-  - permuteTokensOut（aclTensor\*，计算输出）：根据indices进行扩展并排序过的tokens，要求是一个维度大于等于2的Tensor，第一维的大小为min\(num\_tokens \* topK, numOutTokens\)，除第一维外其余维度大小乘积与tokens除第一维外其余维度大小乘积相同。数据类型同tokens，支持FLOAT16、BFLOAT16、FLOAT32，不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
-  - sortedIndicesOut（aclTensor\*，计算输出）：permuteTokensOut和tokens的映射关系， 要求是一个1D的Tensor，Shape为（num\_tokens\*topK，），数据类型支持INT32，不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
-  - workspaceSize（uint64\_t\*，出参）：返回需要在Device侧申请的workspace大小。
-  - executor（aclOpExecutor\*\*，出参）：返回op执行器，包含了算子计算流程。
-- **返回值：**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+-   **参数说明：**
+    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+      <col style="width: 265px">
+      <col style="width: 120px">
+      <col style="width: 223px">  
+      <col style="width: 391px">  
+      <col style="width: 181px">  
+      <col style="width: 111px"> 
+      <col style="width: 126px">
+      <col style="width: 145px">
+      </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>tokens</td>
+        <td>输入</td>
+        <td>输入token特征。</td>
+        <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li></ul></td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>≥2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>indices</td>
+        <td>输入</td>
+        <td>输入indices索引。</td>
+        <td><ul><li>支持空tensor。</li><li>要求shape为2D或1D。</li><li>paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为(num_tokens, topK)或(num_tokens)。</li><li>paddedMode为true时表示每个专家选中的token索引（暂不支持）。</li><li>元素个数小于16777215，值大于等于0小于16777215。</li></ul></td>
+        <td>INT32、INT64</td>
+        <td>ND</td>
+        <td>1或2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>numOutTokens</td>
+        <td>输入</td>
+        <td>有效输出token数。</td>
+        <td>值范围任意整数；0表示不会删除任何token，不为0时会按照numOutTokens进行切片丢弃按照indices排序好的token中超过numOutTokens的部分，为负数时按照切片索引为负数时处理。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>paddedMode</td>
+        <td>输入</td>
+        <td>表示是否为填充模式。</td>
+        <td>取值为false和true。<ul><li>false：表示非填充模式，对indices进行排序。</li><li>true：表示填充模式，indices已被填充为代表每个专家选中的token索引，此时不对indices进行排序（暂不支持）。</li></ul></td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>permuteTokensOut</td>
+        <td>输出</td>
+        <td>根据indices进行扩展并排序过的tokens。</td>
+        <td><ul><li>支持空tensor。</li><li>要求是一个维度大于等于2的Tensor，第一维的大小为min(num_tokens * topK, numOutTokens)。</li><li>除第一维外其余维度大小乘积与tokens除第一维外其余维度大小乘积相同。</li><li>数据类型同tokens。</li></ul></td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>≥2</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>sortedIndicesOut</td>
+        <td>输出</td>
+        <td>permuteTokensOut和tokens的映射关系。</td>
+        <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，Shape为(num_tokens*topK)。</li></ul></td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>1</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+    </tbody></table>
 
-  ```
-  第一段接口完成入参校验，出现以下场景时报错：
-  161001(ACLNN_ERR_PARAM_NULLPTR): 1. 输入和输出的Tensor是空指针。
-  161002(ACLNN_ERR_PARAM_INVALID): 1. 输入和输出的数据类型不在支持的范围内。
-  ```
+- **返回值：**
+
+    `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn 返回码</a>。
+
+    一段接口完成入参校验，出现以下场景时报错：
+    <table style="undefined;table-layout: fixed; width: 1180px"> 
+      <colgroup>
+        <col style="width: 250px">
+        <col style="width: 130px">
+        <col style="width: 800px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ACLNN_ERR_PARAM_NULLPTR</td>
+          <td>161001</td>
+          <td>输入和输出的Tensor是空指针。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_PARAM_INVALID</td>
+          <td>161002</td>
+          <td>输入和输出的数据类型不在支持的范围内。</td>
+        </tr>
+        <tr>
+          <td rowspan="3">ACLNN_ERR_INNER_TILING_ERROR</td>
+          <td rowspan="3">561002</td>
+          <td>tokens的shape维度小于2。</td>
+        </tr>
+        <tr>
+          <td>indices的shape不为1D或2D，或者paddedMode为false时indices的shape第一维与tokens的第一维不相等。</td>
+        </tr>
+        <tr>
+          <td>paddedMode为true。</td>
+        </tr>
+      </tbody>
+    </table>
+
 ## aclnnMoeTokenPermute
 
-- **参数说明：**
-  - workspace（void\*，入参）：在Device侧申请的workspace内存地址。
-  - workspaceSize（uint64\_t，入参）：在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteGetWorkspaceSize获取。
-  - executor（aclOpExecutor\*，入参）：op执行器，包含了算子计算流程。
-  - stream（aclrtStream，入参）：指定执行任务的Stream。
-- **返回值：**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+-   **参数说明：**
 
+    <table style="undefined;table-layout: fixed; width: 1180px"> 
+      <colgroup>
+        <col style="width: 250px">
+        <col style="width: 130px">
+        <col style="width: 800px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>参数名</th>
+          <th>输入/输出</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>workspace</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace内存地址。</td>
+        </tr>
+        <tr>
+          <td>workspaceSize</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeTokenPermuteGetWorkspaceSize</code>获取。</td>
+        </tr>
+        <tr>
+          <td>executor</td>
+          <td>输入</td>
+          <td>op执行器，包含了算子计算流程。</td>
+        </tr>
+        <tr>
+          <td>stream</td>
+          <td>输入</td>
+          <td>指定执行任务的Stream流。</td>
+        </tr>
+      </tbody>
+    </table>
+
+-   **返回值：**
+
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    
 ## 约束说明
 
 - 确定性计算：
   - aclnnMoeTokenPermute默认确定性实现。
 
-- indices 要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余不在范围内的排序结果不正确)。
-- 不支持paddedMode为`True`。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```Cpp
+```c++
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_token_permute.h"
 #include <iostream>
@@ -235,4 +416,3 @@ int main() {
     return 0;
 }
 ```
-

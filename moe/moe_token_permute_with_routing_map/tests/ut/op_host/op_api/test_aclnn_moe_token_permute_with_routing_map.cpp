@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+
 #include <vector>
 #include <array>
 #include <float.h>
@@ -221,6 +222,22 @@ TEST_F(l2_moe_token_permute_with_routing_map_test, ascend910_95_moe_token_permut
     auto tokens = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto indices = TensorDesc({1, 8}, ACL_BOOL, ACL_FORMAT_ND).ValueRange(0, 8);
     auto permuteTokensOut = TensorDesc({8, 64}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto sortedIndicesOut = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
+    auto prob = TensorDesc({1, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto probOut = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto ut = OP_API_UT(
+        aclnnMoeTokenPermuteWithRoutingMap, INPUT(tokens, indices, prob, 8, true),
+        OUTPUT(permuteTokensOut, probOut, sortedIndicesOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
+}
+
+TEST_F(l2_moe_token_permute_with_routing_map_test, ascend910_95_moe_token_permute_with_routing_map_pad_mix)
+{
+    auto tokens = TensorDesc({1, 64}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto indices = TensorDesc({1, 8}, ACL_BOOL, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto permuteTokensOut = TensorDesc({8, 64}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto sortedIndicesOut = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
     auto prob = TensorDesc({1, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
     auto probOut = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);

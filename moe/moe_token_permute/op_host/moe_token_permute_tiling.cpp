@@ -455,6 +455,8 @@ ge::graphStatus MoeTokenPermuteTilingBase::PostTiling()
     currentWorkspace[0] = workspaceSize_;
     auto rawTilingData = context_->GetRawTilingData();
     OP_CHECK_NULL_WITH_CONTEXT(context_, rawTilingData);
+    // 涉及核间同步的算子必须设置schedule_mode为1，独占全核
+    context_->SetScheduleMode(1);
     moeTokenPermuteTilingData.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
     rawTilingData->SetDataSize(moeTokenPermuteTilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;

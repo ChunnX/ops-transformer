@@ -57,8 +57,8 @@ private:
     int64_t remainListNum{0};
     int64_t outOffset{0};
     int64_t offsets[4];
-    int64_t listRemainElements[4];
     int64_t lengths[4];
+    int64_t listRemainElements[4];
     int64_t allRemainElements{0};
     int64_t curLoopSortedNum{0};
 
@@ -110,7 +110,7 @@ __aicore__ inline void MoeV2Mrgsort::CopyIn()
     this->remainListNum = 0;
     SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     for (int64_t i = 0, j = 0; i < listNum; i++) {
-        lengths[i] = Min(param->oneLoopMaxElements, listRemainElements[i]);
+        lengths[i] = Min(listRemainElements[i], param->oneLoopMaxElements);
         if (lengths[i] > 0) {
             DataCopy(
                 this->ubInputs[i], this->gmInputs[i][offsets[i]], Align(GetSortLen<float>(lengths[i]), sizeof(float)));

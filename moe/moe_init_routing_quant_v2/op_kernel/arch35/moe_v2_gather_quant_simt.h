@@ -148,7 +148,7 @@ __aicore__ inline void MoeV2GatherQuant<T>::Compute()
     LocalTensor<half> halfLocal = halfQueue_.AllocTensor<half>();
     uint32_t elements = Align(colsTileLength_, sizeof(T));
     if constexpr (IsSameType<T, bfloat16_t>::value) {
-        Cast(floatLocal, inLocal, RoundMode::CAST_NONE, elements);
+        Cast(floatLocal, inLocal, RoundMode::CAST_NONE, colsTileLength_);
         Cast(halfLocal, floatLocal, RoundMode::CAST_NONE, elements);
         Muls(halfLocal, halfLocal, static_cast<half>(scale_), elements);
         Adds(halfLocal, halfLocal, static_cast<half>(offset_), elements);

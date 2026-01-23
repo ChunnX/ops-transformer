@@ -1,134 +1,337 @@
 # aclnnMoeTokenPermuteWithRoutingMap
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_permute_with_routing_map)
+
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
-- **算子功能**：MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMaps将tokens和可选probsOptional广播后排序
-- **计算公式**：
-  tokens\_num 为routingMap的第0维大小，expert\_num为routingMap的第1维大小
-  dropAndPad为`false`时
+
+-   **接口功能**：MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMaps将tokens和可选probsOptional广播后排序
+-   **计算公式**：
+
+
+    tokens\_num 为routingMap的第0维大小，expert\_num为routingMap的第1维大小
+    dropAndPad为`false`时
   
-  $$
-  expertIndex=arrange(tokens\_num).expand(expert\_num,-1)
-  $$
-  
-  $$
-  sortedIndicesFirst=expertIndex.maskedselect(routingMap.T)
-  $$
-  
-  $$
-  sortedIndicesOut=argSort(sortedIndicesFirst)
-  $$
+    $$
+    expertIndex=arrange(tokens\_num).expand(expert\_num,-1)
+    $$
     
-  $$
-  topK = numOutTokens // tokens\_num
-  $$
-  
-  $$
-  outToken = topK * tokens\_num
-  $$
+    $$
+    sortedIndicesFirst=expertIndex.maskedselect(routingMap.T)
+    $$
+    
+    $$
+    sortedIndicesOut=argSort(sortedIndicesFirst)
+    $$
+      
+    $$
+    topK = numOutTokens // tokens\_num
+    $$
+    
+    $$
+    outToken = topK * tokens\_num
+    $$
 
-  $$
-  permuteTokens[sortedIndicesOut[i]]=tokens[i//topK]
-  $$
+    $$
+    permuteTokens[sortedIndicesOut[i]]=tokens[i//topK]
+    $$
+    
+    $$
+    permuteProbsOutOptional=probsOptional.T.maskedselect(routingMap.T)
+    $$
   
-  $$
-  permuteProbsOutOptional=probsOptional.T.maskedselect(routingMap.T)
-  $$
-  
-  dropAndPad为`true`时
+    dropAndPad为`true`时
 
-  $$
-  capacity = numOutTokens // expert\_num
-  $$
+    $$
+    capacity = numOutTokens // expert\_num
+    $$
 
+    $$
+    outToken = capacity * expert\_num
+    $$
 
-  $$
-  outToken = capacity * expert\_num
-  $$
-
-  $$
-  sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
-  $$
+    $$
+    sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
+    $$
+    
+    $$
+    permutedTokensOut = tokens.index\_select(0, sorted\_indices)
+    $$
   
-  $$
-  permutedTokensOut = tokens.index_select(0, sorted_indices)
-  $$
+    如果probs不是none
   
-  如果probs不是none
-  
-  $$
-  robs\_T\_1D = probsOptional.T.view(-1)
-  $$
-  
-  $$
-  indices\_dim0 = arange(num\_experts)
-  $$
-  
-  $$
-  indices\_dim1 = sorted_indices.view(expert\_num, capacity)
-  $$
-  
-  $$
-  indices\_1D = (indices_dim0 * tokens\_num + indices\_dim1).view(-1)
-  $$
-  
-  $$
-  permuteProbsOutOptional = probs\_T\_1D.index_select(0, indices_1D)
-  $$
-
+    $$
+    probs\_T\_1D = probsOptional.T.view(-1)
+    $$
+    
+    $$
+    indices\_dim0 = arange(num\_experts)
+    $$
+    
+    $$
+    indices\_dim1 = sorted_indices.view(expert\_num, capacity)
+    $$
+    
+    $$
+    indices\_1D = (indices\_dim0 * tokens\_num + indices\_dim1).view(-1)
+    $$
+    
+    $$
+    permuteProbsOutOptional = probs\_T\_1D.index_select(0, indices\_1D)
+    $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMap”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMap”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMap”接口执行计算。
 
-* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(const aclTensor *tokens, const aclTensor *routingMap, const aclTensor *probsOptional,  int64_t numOutTokens,  bool dropAndPad, aclTensor *permuteTokensOut, aclTensor *permuteProbsOutOptional, aclTensor *sortedIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
+```cpp
+aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
+    const aclTensor  *tokens, 
+    const aclTensor  *routingMap, 
+    const aclTensor  *probsOptional, 
+    int64_t           numOutTokens, 
+    bool              dropAndPad, 
+    aclTensor        *permuteTokensOut, 
+    aclTensor        *permuteProbsOutOptional, 
+    aclTensor        *sortedIndicesOut, 
+    uint64_t         *workspaceSize, 
+    aclOpExecutor   **executor)
+```
+
+```cpp
+aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
+    void            *workspace, 
+    uint64_t         workspaceSize, 
+    aclOpExecutor   *executor, 
+    aclrtStream      stream)
+```
+
 ## aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize
 
-- **参数说明：**
-  
-  - tokens（aclTensor \*，计算输入）：Device侧的aclTensor，输入token，公式中的tokens，要求为一个维度为2D的Tensor，shape为 \(tokens\_num, hidden\_size)，数据类型支持BFLOAT16，FLOAT16，FLOAT，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - routingMap（aclTensor \*，计算输入）：Device侧的aclTensor，公式中的routingMap，代表token到expert的映射关系，要求shape为一个2D的（tokens_num，experts_num），数据类型支持INT8、BOOL。当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。非droppad模式要求每行中包含topK个true 或 1。
-  - probsOptional（aclTensor \*，计算输入）：Device侧的aclTensor，可选输入probsOptional，公式中的probsOptional，要求元素个数与routingMap相同，当probsOptional为空时，可选输出permuteProbsOutOptional为空，数据类型同tokens。[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - numOutTokens（int64\_t，计算输入）：公式中的numOutTokens，用于计算公式中topK 和capacity 的有效输出token数。
-  - dropAndPad（bool，计算输入）：公式中的dropAndPad，表示是否开启dropAndPad模式。
-  - permutedTokensOut（aclTensor \*，计算输出）：Device侧的aclTensor，公式中的permutedTokensOut，根据indices进行扩展并排序筛选过的tokens，要求是一个2D的Tensor，shape为\(outToken, hidden\_size)，即公式中的outToken。数据类型同tokens，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - sortedIndicesOut（aclTensor \*，计算输出）：Device侧的aclTensor，公式中的sortedIndicesOut，permute_tokens和tokens的映射关系， 要求是一个1D的Tensor，Shape为\(outToken\)，即公式中的outToken，数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - permuteProbsOutOptional（aclTensor \*，计算输出）：Device侧的aclTensor，公式中的permuteProbsOutOptional，根据indices进行排序并筛选过的probsOptional，Shape为\(outToken\)，即公式中的outToken，数据类型同probsOptional，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - workspaceSize（uint64\_t \*，出参）：返回用户需要在Device侧申请的workspace大小。
-  - executor（aclOpExecutor \*\*，出参）：返回op执行器，包含了算子计算流程。
-- **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+-   **参数说明：**
+    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+      <col style="width: 170px">
+      <col style="width: 120px">
+      <col style="width: 300px">  
+      <col style="width: 550px">  
+      <col style="width: 212px">  
+      <col style="width: 100px"> 
+      <col style="width: 190px">
+      <col style="width: 145px">
+      </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>tokens</td>
+        <td>输入</td>
+        <td>输入token特征。</td>
+        <td><ul><li>支持空tensor。</li><li>要求为一个2D的Tensor，shape为(tokens_num, hidden_size)。</li></ul></td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>routingMap</td>
+        <td>输入</td>
+        <td>token到expert的映射关系。</td>
+        <td><ul><li>支持空tensor。</li><li>要求shape为2D的(tokens_num, experts_num)。</li><li>数据类型为INT8时取值支持0、1，为BOOL时取值支持true、false。</li><li>非droppad模式要求每行中包含topK个true或1。</li></ul></td>
+        <td>INT8、BOOL</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>probsOptional</td>
+        <td>输入</td>
+        <td>可选输入probsOptional。</td>
+        <td><ul><li>支持空tensor。</li><li>元素个数与routingMap相同。</li><li>当probsOptional为空时，可选输出permuteProbsOutOptional为空。</li><li>仅当probsOptional的数据类型为FLOAT且tokens的数据类型为BFLOAT16时probsOptional的数据类型可以不和tokens一致，其他场景probsOptional的数据类型需要和tokens一致。</li></ul></td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>numOutTokens</td>
+        <td>输入</td>
+        <td>有效输出token数。</td>
+        <td>用于计算公式中topK和capacity，值范围大于等于0且小于等于tokens_num * experts_num。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>dropAndPad</td>
+        <td>输入</td>
+        <td>表示是否开启dropAndPad模式。</td>
+        <td>取值为false和true。<ul><li>false：表示非dropAndPad模式。</li><li>true：表示dropAndPad模式。</li></ul></td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>permuteTokensOut</td>
+        <td>输出</td>
+        <td>根据indices进行扩展并排序筛选过的tokens。</td>
+        <td><ul><li>支持空tensor。</li><li>要求是一个2D的Tensor，shape为(outToken, hidden_size)。</li><li>数据类型同tokens。</li></ul></td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>permuteProbsOutOptional</td>
+        <td>输出</td>
+        <td>根据indices进行排序并筛选过的probsOptional。</td>
+        <td><ul><li>支持空tensor。</li><li>Shape为(outToken)。</li><li>数据类型同probsOptional。</li></ul></td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
+        <td>ND</td>
+        <td>1</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>sortedIndicesOut</td>
+        <td>输出</td>
+        <td>permuteTokensOut和tokens的映射关系。</td>
+        <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，Shape为(outToken)。</li></ul></td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>1</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+    </tbody></table>
 
-  
-  ```
-  第一段接口完成入参校验，出现以下场景时报错：
-  161001(ACLNN_ERR_PARAM_NULLPTR): 1. 输入和输出的Tensor是空指针。
-  161002(ACLNN_ERR_PARAM_INVALID): 1. 输入和输出的数据类型不在支持的范围内。
-                                   2. 输入输出的shape不符合要求
-                                   3. numOutTokens < 0 或 numOutTokens > tokens_num * experts_num
-  561002(ACLNN_ERR_INNER_TILING_ERROR): 1. topkNum > 512
-  ```
+- **返回值：**
+
+    `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn 返回码</a>。
+
+    一段接口完成入参校验，出现以下场景时报错：
+    <table style="undefined;table-layout: fixed; width: 1180px"> 
+      <colgroup>
+        <col style="width: 250px">
+        <col style="width: 130px">
+        <col style="width: 800px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ACLNN_ERR_PARAM_NULLPTR</td>
+          <td>161001</td>
+          <td>输入和输出的Tensor是空指针。</td>
+        </tr>
+        <tr>
+          <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+          <td rowspan="3">161002</td>
+          <td>输入和输出的数据类型不在支持的范围内。</td>
+        </tr>
+        <tr>
+          <td>输入输出的shape不符合要求</td>
+        </tr>
+        <tr>
+          <td>numOutTokens < 0 或 numOutTokens > tokens_num * experts_num</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+          <td>561002</td>
+          <td>topkNum > 512</td>
+        </tr>
+      </tbody>
+    </table>
 
 ## aclnnMoeTokenPermuteWithRoutingMap
 
-- **参数说明：**
-  
-  -   workspace（void\*，入参）：在Device侧申请的workspace内存地址。
-  -   workspaceSize（uint64\_t，入参）：在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize获取。
-  -   executor（aclOpExecutor\*，入参）：op执行器，包含了算子计算流程。
-  -   stream（aclrtStream,入参）：指定执行任务的Stream。
-- **返回值：**
-  
-    返回aclnnStatus状态码，具体参见[aclnn返回码](./common/aclnn返回码.md)。
+-   **参数说明：**
 
+    <table style="undefined;table-layout: fixed; width: 1180px"> 
+      <colgroup>
+        <col style="width: 250px">
+        <col style="width: 130px">
+        <col style="width: 800px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>参数名</th>
+          <th>输入/输出</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>workspace</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace内存地址。</td>
+        </tr>
+        <tr>
+          <td>workspaceSize</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize</code>获取。</td>
+        </tr>
+        <tr>
+          <td>executor</td>
+          <td>输入</td>
+          <td>op执行器，包含了算子计算流程。</td>
+        </tr>
+        <tr>
+          <td>stream</td>
+          <td>输入</td>
+          <td>指定执行任务的Stream流。</td>
+        </tr>
+      </tbody>
+    </table>
+
+
+-   **返回值：**
+
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    
 ## 约束说明
 
 - 确定性计算：
@@ -140,7 +343,7 @@
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```Cpp
+```c++
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_token_permute_with_routing_map.h"
 #include <iostream>
@@ -218,16 +421,16 @@ int main() {
     aclTensor* expandedXOut = nullptr;
     aclTensor* sortedIndicesOut = nullptr;
     std::vector<float> xHostData = {0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.3, 0.3, 0.3, 0.3};
-    std::vector<int> indicesHostData = {1, 1, 1, 1, 1, 1};
+    std::vector<uint8_t> indicesHostData = {1, 1, 1, 1, 1, 1};
     std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> sortedIndicesOutHostData = {0, 0, 0, 0, 0, 0};
     // 创建self aclTensor
-    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(indicesHostData, idxShape, &indicesDeviceAddr, aclDataType::ACL_BOOL, &indices);
+    ret = CreateAclTensor(indicesHostData, idxShape, &indicesDeviceAddr, aclDataType::ACL_INT8, &indices);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
-    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_BF16, &expandedXOut);
+    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_FLOAT, &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(sortedIndicesOutHostData, idxOutShape, &sortedIndicesOutDeviceAddr, aclDataType::ACL_INT32, &sortedIndicesOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

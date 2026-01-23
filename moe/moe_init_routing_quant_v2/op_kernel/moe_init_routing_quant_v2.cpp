@@ -66,7 +66,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
         return;
     } else if (TILING_KEY_IS(21000)) { // dynamic quant full load
         TPipe sortPipe;
-        MoeV2FullLoadDynamicQuant<DTYPE_X> op;
+        MoeV2FullLoadDynamicQuant<DTYPE_X, DTYPE_EXPANDED_X> op;
         op.Init(
             x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum, scale, dynamicQuantScale, userWS, t,
             &sortPipe);
@@ -139,7 +139,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
         gatherPipe.Destroy();
     } else if (TILING_KEY_IS(11000) || TILING_KEY_IS(11010)) {
         TPipe gatherPipe;
-        MoeV2GatherDynamicQuant<DTYPE_X> gatherDynamicQuantOp;
+        MoeV2GatherDynamicQuant<DTYPE_X, DTYPE_EXPANDED_X> gatherDynamicQuantOp;
         gatherDynamicQuantOp.Init(x, scale, expandedRowIdx, expandedX, dynamicQuantScale, userWS, t, &gatherPipe);
         gatherDynamicQuantOp.Process();
         gatherPipe.Destroy();

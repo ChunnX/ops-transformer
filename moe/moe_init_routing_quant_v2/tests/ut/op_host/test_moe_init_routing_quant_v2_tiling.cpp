@@ -40,6 +40,8 @@ gert::TilingContextPara RunNormalCase(int64_t N, int64_t H, int64_t K, int64_t a
     ge::DataType dtScale = optionalDtypePosi == 0 ? optionalDt : ge::DT_FLOAT;
     ge::DataType dtOffset = optionalDtypePosi == 1 ? optionalDt : ge::DT_FLOAT;
     ge::DataType dtDynamic = optionalDtypePosi == 2 ? optionalDt : ge::DT_FLOAT;
+    ge::DataType dtOut = optionalDtypePosi == 3 ? optionalDt : ge::DT_INT8;
+
     // 计算输入形状
     std::vector<gert::TilingContextPara::TensorDescription> inputs;
     // x: [N, H]
@@ -85,10 +87,10 @@ gert::TilingContextPara RunNormalCase(int64_t N, int64_t H, int64_t K, int64_t a
             first_dim = activeNum;
         }
         // [first_dim, H]
-        outputs.emplace_back(gert::StorageShape({first_dim, H}, {first_dim, H}), ge::DT_INT8, ge::FORMAT_ND);
+        outputs.emplace_back(gert::StorageShape({first_dim, H}, {first_dim, H}), dtOut, ge::FORMAT_ND);
     } else {
         // [E, C, H]
-        outputs.emplace_back(gert::StorageShape({E, C, H}, {E, C, H}), ge::DT_INT8, ge::FORMAT_ND);
+        outputs.emplace_back(gert::StorageShape({E, C, H}, {E, C, H}), dtOut, ge::FORMAT_ND);
     }
     // expanded_row_idx [N*K]
     outputs.emplace_back(gert::StorageShape({N * K}, {N * K}), ge::DT_INT32, ge::FORMAT_ND);
@@ -262,7 +264,7 @@ TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_09) {
   );
   
   uint64_t expectTilingKey = 11110;
-  string expectTilingData = "64 320 30000 56 200 32 1 0 1 2 0 0 4 4480 1 4480 4480 4480 1 4480 4480 8160 0 2040 64 0 280 280 280 280 280 280 0 0 0 0 0 64 0 280 280 280 280 280 280 1 1 17156 12844 2 64 17920 280 280 280 280 280 280 1 1 12254 5492 3 ";
+  string expectTilingData = "64 320 30000 56 200 32 1 0 1 2 0 0 4 4480 1 4480 4480 4480 1 4480 4480 8160 0 2040 64 0 280 280 280 280 280 280 0 0 0 0 0 64 0 280 280 280 280 280 280 1 1 17156 12844 2 64 17920 280 280 280 280 280 280 1 1 12224 5552 3 ";
   std::vector<size_t> expectWorkspaces = {25031296};
   
   ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
@@ -332,6 +334,75 @@ TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_13) {
   // 对于错误用例，不需要检查 tilingKey 和 tilingData
   ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
 }
+
+// 性能模板+dynamic quant+int4
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_int4_fullload) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/8, /*H=*/30, /*K=*/6, 
+    /*activeNum=*/32, /*C=*/0, /*E=*/8,
+    /*dropPadMode=*/0, /*countFlag=*/1, /*tokenFlag=*/false,
+    /*quantMode=*/1, /*dqFlag=*/1, 
+    /*optionalDt=*/ge::DT_INT4, /*optionalDtypePosi=*/3
+  );
+  
+  uint64_t expectTilingKey = 21000;
+  string expectTilingData = "64 8 30 6 0 8 0 1 0 1 0 0 1 48 1 48 48 48 1 48 48 8160 0 2040 48 0 1 1 1 1 1 1 0 0 0 0 0 48 0 1 1 1 1 1 1 1 1 30 30 1 48 32 1 1 1 1 1 1 1 1 30 30 1 ";
+  std::vector<size_t> expectWorkspaces = {16779296};
+  
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// 性能模板+dynamic quant+int4
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_int4_fullload_scale_error) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/8, /*H=*/30, /*K=*/6, 
+    /*activeNum=*/32, /*C=*/0, /*E=*/8,
+    /*dropPadMode=*/0, /*countFlag=*/1, /*tokenFlag=*/false,
+    /*quantMode=*/1, /*dqFlag=*/0, 
+    /*optionalDt=*/ge::DT_INT4, /*optionalDtypePosi=*/3
+  );
+  
+  uint64_t expectTilingKey = 21000;
+  string expectTilingData = "64 8 30 6 0 8 0 1 0 2 0 0 1 48 1 48 48 48 1 48 48 8160 0 2040 48 0 1 1 1 1 1 1 0 0 0 0 0 48 0 1 1 1 1 1 1 1 1 30 30 1 48 32 1 1 1 1 1 1 1 1 30 30 1 ";
+  std::vector<size_t> expectWorkspaces = {16779296};
+  
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// 性能模板+dynamic quant+int4 pad 
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_int4_fullload_pad_error) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/8, /*H=*/30, /*K=*/6, 
+    /*activeNum=*/32, /*C=*/0, /*E=*/8,
+    /*dropPadMode=*/1, /*countFlag=*/1, /*tokenFlag=*/false,
+    /*quantMode=*/1, /*dqFlag=*/1, 
+    /*optionalDt=*/ge::DT_INT4, /*optionalDtypePosi=*/3
+  );
+  
+  uint64_t expectTilingKey = 21000;
+  string expectTilingData = "64 8 30 6 0 8 0 1 0 2 0 0 1 48 1 48 48 48 1 48 48 8160 0 2040 48 0 1 1 1 1 1 1 0 0 0 0 0 48 0 1 1 1 1 1 1 1 1 30 30 1 48 32 1 1 1 1 1 1 1 1 30 30 1 ";
+  std::vector<size_t> expectWorkspaces = {16779296};
+  
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+// 性能模板+quant+int4 quant
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_int4_fullload_quant_error) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/8, /*H=*/30, /*K=*/6, 
+    /*activeNum=*/32, /*C=*/0, /*E=*/8,
+    /*dropPadMode=*/0, /*countFlag=*/1, /*tokenFlag=*/false,
+    /*quantMode=*/0, /*dqFlag=*/1, 
+    /*optionalDt=*/ge::DT_INT4, /*optionalDtypePosi=*/3
+  );
+  
+  uint64_t expectTilingKey = 21000;
+  string expectTilingData = "64 8 30 6 0 8 0 1 0 2 0 0 1 48 1 48 48 48 1 48 48 8160 0 2040 48 0 1 1 1 1 1 1 0 0 0 0 0 48 0 1 1 1 1 1 1 1 1 30 30 1 48 32 1 1 1 1 1 1 1 1 30 30 1 ";
+  std::vector<size_t> expectWorkspaces = {16779296};
+  
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
 TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_14) {
   // 基础参数
   int64_t N = 320;
