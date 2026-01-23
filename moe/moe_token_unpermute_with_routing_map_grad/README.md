@@ -86,7 +86,7 @@
       <td>unpermutedTokensGrad</td>
       <td>输入</td>
       <td>Device侧的aclTensor。计算公式中的unpermutedTokensGrad，代表正向输出unpermutedTokens的梯度。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -114,14 +114,14 @@
       <td>permutedTokensOptional</td>
       <td>可选输入</td>
       <td>Device侧的aclTensor，可选输入，当输入probsOptional为空指针时不需要此输入，应该传入空指针。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>probsOptional</td>
       <td>可选输入</td>
       <td>Device侧的aclTensor，可选输入，当不需要时为空指针。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -142,22 +142,26 @@
       <td>permutedTokensGradOut</td>
       <td>输出</td>
       <td>输入permutedTokens的梯度，要求是一个2D的Tensor。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>probsGradOutOptional</td>
       <td>可选输出</td>
       <td>当不需要时为空指针。输入probs的梯度。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
   </tbody></table>
 
 ## 约束说明
 
-- 当输入probsOptional非空，且paddedMode为false时，要求topK_num <= 512且topK_num <= experts_num。
-- 当输入probsOptional非空，且paddedMode为true时，要求capacity <= tokens_num。
+- 当输入probsOptional非空，且paddedMode为false时
+    - 要求topK_num <= 512且topK_num <= experts_num。
+    - 要求experts_num满足196608 - (probTypeLen + 1) * numExpertAlign-(tokenTypeLen + 8) * 256 / (6 * tokenTypeLen + 12) >= 1，其中probTypeLen是输入probsOptional的数据类型对应的字节数，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数，numExpertAlign是experts_num对32做向上对齐的结果。
+- 当输入probsOptional非空，且paddedMode为true时
+    - 要求capacity <= tokens_num。
+    - 要求hidden_size在输入unpermutedTokensGrad是BFLOAT16或FLOAT16时，需要小于等于4972544，hidden_size在输入unpermutedTokensGrad是FLOAT时，需要小于等于4149248。
 
 ## 调用说明
 

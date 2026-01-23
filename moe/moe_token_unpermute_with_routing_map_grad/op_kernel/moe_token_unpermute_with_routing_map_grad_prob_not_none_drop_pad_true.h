@@ -19,9 +19,9 @@
 namespace MoeTokenUnpermuteWithRoutingMapGrad {
 using namespace AscendC;
 
-template <typename OriT, typename IdxT>
+template <typename PermutedTokenT, typename IdxT, typename ProbsT>
 class MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
-    : protected MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>
+    : protected MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>
 {
 public:
     __aicore__ inline MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue(){};
@@ -39,19 +39,19 @@ protected:
     TBuf<TPosition::VECCALC> probGradOutTBuf;
 
     LocalTensor<float> probGradReduceSumLocal;
-    LocalTensor<OriT> permutedTokensGradLocal;
-    LocalTensor<OriT> probGradOutLocal;
+    LocalTensor<PermutedTokenT> permutedTokensGradLocal;
+    LocalTensor<ProbsT> probGradOutLocal;
 
     DataCopyExtParams copyParams{1, 0, 0, 0, 0};
 };
 
-template <typename OriT, typename IdxT>
-__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue<OriT, IdxT>::Init(
+template <typename PermutedTokenT, typename IdxT, typename ProbsT>
+__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue<PermutedTokenT, IdxT, ProbsT>::Init(
     GM_ADDR unpermuted_tokens_grad, GM_ADDR outIndex, GM_ADDR permuteTokenId, GM_ADDR routing_map,
     GM_ADDR permuted_tokens, GM_ADDR probs, GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
     const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data)
 {
-    MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>::Init(
+    MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::Init(
         unpermuted_tokens_grad, outIndex, permuteTokenId, routing_map, permuted_tokens, probs, permuted_tokens_grad,
         probs_grad, tiling_data);
     // 申请2块空间手动double buffer
@@ -61,17 +61,17 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
     this->pipe.InitBuffer(permutedTokensGradTQue, DOUBLE_BUFFER, this->hiddenSizeAlign * this->inputTypeSize);
     this->pipe.InitBuffer(probGradOutTBuf, BLOCK_SIZE_32);
 
-    InitOutput<OriT>(
+    InitOutput<ProbsT>(
         this->probGradGm[this->unpermutedOutputDStartOffset * this->numExpert], this->tokensNum * this->numExpert,
-        OriT(0));
+        ProbsT(0));
     SyncAll();
 }
 
-template <typename OriT, typename IdxT>
-__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue<OriT, IdxT>::Process()
+template <typename PermutedTokenT, typename IdxT, typename ProbsT>
+__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue<PermutedTokenT, IdxT, ProbsT>::Process()
 {
     int64_t outNumCurrentCore = this->coreIndex < this->formerCoreNum ? this->rowIdMapEachCore : this->rowIdMapTailCore;
-    probGradOutLocal = probGradOutTBuf.Get<OriT>();
+    probGradOutLocal = probGradOutTBuf.Get<ProbsT>();
     probGradReduceSumLocal = probGradReduceSumTBuf.Get<float>();
     for (int64_t indicesLoopTime = 0; indicesLoopTime < outNumCurrentCore;
          indicesLoopTime++) { // 根据experts_num* capacity分核，每个核分到outNumCurrentCore个
@@ -79,12 +79,14 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
         int64_t tokenId = this->sortedTwiceIndicesGm.GetValue(rowIdMapLoopOffset);
         int64_t permuteTokenId = this->sortedTwiceIndexGm.GetValue(rowIdMapLoopOffset);
         int64_t probOffset = tokenId * this->numExpert + permuteTokenId / this->capacity;
-        OriT probTemp = this->probGm.GetValue(probOffset);
+        ProbsT probTemp = this->probGm.GetValue(probOffset);
         float prob = 0.0;
-        if constexpr (IsSameType<OriT, bfloat16_t>::value) {
+        if constexpr (IsSameType<ProbsT, bfloat16_t>::value) {
             prob = AscendC::ToFloat(probTemp);
-        } else {
+        } else if constexpr (IsSameType<ProbsT, half>::value) {
             prob = static_cast<float>(probTemp);
+        } else {
+            prob = probTemp;
         }
         Duplicate(probGradReduceSumLocal, float(0), this->hiddenSizeLoopTimesAlign);
         SToMTE2Sync();
@@ -101,7 +103,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
             int64_t unpermutedTokensGradOffset = tokenId * this->hiddenSize + hiddenLoopOffset;
             LocalTensor<float> unpermutedGradLocalFp32 = unpermutedGradTQue.template AllocTensor<float>();
             LocalTensor<float> permutedTokensLocalFp32 = permutedTokensTQue.template AllocTensor<float>();
-            if constexpr (IsSameType<OriT, float>::value) {
+            if constexpr (IsSameType<PermutedTokenT, float>::value) {
                 DataCopyPad(
                     unpermutedGradLocalFp32, this->unpermutedTokensGradGm[unpermutedTokensGradOffset], copyParams,
                     this->inputPadParams);
@@ -110,7 +112,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
                     this->inputPadParams);
                 MTE2ToVSync();
             } else {
-                LocalTensor<OriT> unpermutedGradLocal = unpermutedGradLocalFp32.ReinterpretCast<OriT>();
+                LocalTensor<PermutedTokenT> unpermutedGradLocal = unpermutedGradLocalFp32.ReinterpretCast<PermutedTokenT>();
                 DataCopyPad(
                     unpermutedGradLocal[this->hiddenSizeAlign],
                     this->unpermutedTokensGradGm[unpermutedTokensGradOffset], copyParams, this->inputPadParams);
@@ -118,7 +120,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
                 Cast(
                     unpermutedGradLocalFp32, unpermutedGradLocal[this->hiddenSizeAlign], RoundMode::CAST_NONE,
                     hiddenLoopNum);
-                LocalTensor<OriT> permutedTokensLocal = permutedTokensLocalFp32.template ReinterpretCast<OriT>();
+                LocalTensor<PermutedTokenT> permutedTokensLocal = permutedTokensLocalFp32.template ReinterpretCast<PermutedTokenT>();
                 DataCopyPad(
                     permutedTokensLocal[this->hiddenSizeAlign], this->permutedTokensGm[permutedTokensOffset],
                     copyParams, this->inputPadParams);
@@ -138,8 +140,8 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
             permutedTokensTQue.template EnQue(permutedTokensLocalFp32);
             permutedTokensLocalFp32 = permutedTokensTQue.template DeQue<float>();
             // 搬出permutedToken梯度
-            permutedTokensGradLocal = permutedTokensGradTQue.template AllocTensor<OriT>();
-            if constexpr (IsSameType<OriT, float>::value) {
+            permutedTokensGradLocal = permutedTokensGradTQue.template AllocTensor<PermutedTokenT>();
+            if constexpr (IsSameType<PermutedTokenT, float>::value) {
                 DataCopyPad(this->permutedTokensGradGm[permutedTokensOffset], permutedTokensLocalFp32, copyParams);
             } else {
                 Cast(permutedTokensGradLocal, permutedTokensLocalFp32, RoundMode::CAST_RINT, hiddenLoopNum);
@@ -152,18 +154,16 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
         }
         // 对tmpBufferProbGradReduceSum做ReduceSum，计算当前行对应的prob梯度
         this->ReduceSumFunc(probGradReduceSumLocal, probGradReduceSumLocal, this->hiddenSizeLoopTimes);
-        VToSSync();
-        float probGradTemp = probGradReduceSumLocal.GetValue(0);
-        OriT probGrad;
-        if constexpr (IsSameType<OriT, bfloat16_t>::value) {
-            probGrad = AscendC::ToBfloat16(probGradTemp);
+        if constexpr (IsSameType<ProbsT, float>::value) {
+            Copy(probGradOutLocal, probGradReduceSumLocal, 1, 1, {1, 1, 8, 8});
         } else {
-            probGrad = static_cast<OriT>(probGradTemp);
+            Cast(probGradOutLocal, probGradReduceSumLocal, RoundMode::CAST_RINT, 1);
         }
-        probGradOutLocal.SetValue(0, probGrad);
-        SToMTE3Sync();
-        copyParams.blockLen = this->inputTypeSize;
+
+        VToMTE3Sync();
+        copyParams.blockLen = this->probTypeSize;
         DataCopyPad(this->probGradGm[probOffset], probGradOutLocal, copyParams);
+        MTE3ToVSync();
     }
 }
 

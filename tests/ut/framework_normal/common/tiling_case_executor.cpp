@@ -124,10 +124,16 @@
     if (tilingContextPara.socInfoString_ != "") {                                                                      \
         compileInfoString = tilingContextPara.socInfoString_;                                                          \
     }                                                                                                                  \
+    map<string, string> socToArch = {                                                                                  \
+        {"Ascend310P", "2002"},                                                                                        \
+        {"Ascend910B", "2201"},                                                                                        \
+        {"Ascend910_95", "3510"}                                                                                       \
+    };                                                                                                                 \
     map<string, string> socInfos;                                                                                      \
     map<string, string> aicoreSpec;                                                                                    \
     map<string, string> intrinsics;                                                                                    \
     map<string, string> socversions = {{"Short_SoC_version", tilingContextPara.socVersion_}};                          \
+    map<string, string> npuarches = {{"NpuArch", socToArch[tilingContextPara.socVersion_]}};                           \
     GetPlatFormInfos(compileInfoString.c_str(), socInfos, aicoreSpec, intrinsics);                                     \
     auto tilingContext = contextHolder.GetContext();                                                                   \
     tilingContext->GetPlatformInfo()->SetPlatformRes("SoCInfo", socInfos);                                             \
@@ -135,6 +141,7 @@
     tilingContext->GetPlatformInfo()->SetCoreNumByCoreType("AICore");                                                  \
     tilingContext->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);                           \
     tilingContext->GetPlatformInfo()->SetPlatformRes("version", socversions);                                          \
+    tilingContext->GetPlatformInfo()->SetPlatformRes("version", npuarches);                                            \
     /* 3. get tiling func */                                                                                           \
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();                         \
     auto tilingFunc = spaceRegistry->GetOpImpl(tilingContextPara.opName_.c_str())->tiling;                             \

@@ -18,16 +18,15 @@
 namespace MoeTokenUnpermuteWithRoutingMapGrad {
 using namespace AscendC;
 
-template <typename OriT, typename IdxT>
+template <typename PermutedTokenT, typename IdxT, typename ProbsT>
 class MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse
-    : protected MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>
-{
+    : protected MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT> {
 public:
     __aicore__ inline MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse(){};
-    __aicore__ inline void Init(
-        GM_ADDR unpermuted_tokens_grad, GM_ADDR outIndex, GM_ADDR permuteTokenId, GM_ADDR routing_map,
-        GM_ADDR permuted_tokens, GM_ADDR probs, GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
-        const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data);
+    __aicore__ inline void Init(GM_ADDR unpermuted_tokens_grad, GM_ADDR outIndex, GM_ADDR permuteTokenId,
+                                GM_ADDR routing_map, GM_ADDR permuted_tokens, GM_ADDR probs,
+                                GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
+                                const MoeTokenUnpermuteWithRoutingMapGradTilingData &tiling_data);
     __aicore__ inline void Process();
 
 protected:
@@ -45,17 +44,17 @@ protected:
     TBuf<TPosition::VECCALC> routingMapTBuf;
     TBuf<TPosition::VECCALC> probGradTBuf;
 
-    LocalTensor<OriT> inQueueUnpermutedLocal;
-    LocalTensor<OriT> inQueuePermutedTokensLocal;
+    LocalTensor<PermutedTokenT> inQueueUnpermutedLocal;
+    LocalTensor<PermutedTokenT> inQueuePermutedTokensLocal;
     LocalTensor<float> tmpBufferPermutedTokensFp32;
     LocalTensor<float> tmpBufferUnpermutedFp32;
     LocalTensor<float> tmpBufferProbGradFp32;
     LocalTensor<float> tmpBufferPermutedTokensGradFp32;
     LocalTensor<float> tmpBufferProbGradReduceSumFp32;
-    LocalTensor<OriT> permutedTokensGradLocal;
-    LocalTensor<OriT> probGradLocal;
+    LocalTensor<PermutedTokenT> permutedTokensGradLocal;
+    LocalTensor<ProbsT> probGradLocal;
     LocalTensor<int8_t> tmpBufferRoutingMap;
-    LocalTensor<OriT> probGradLineLocal;
+    LocalTensor<ProbsT> probGradLineLocal;
 
     DataCopyExtParams copyParams{1, 0, 0, 0, 0};
     DataCopyPadExtParams<int8_t> routingMapPadParams{false, 0, 0, 0};
@@ -63,25 +62,23 @@ protected:
     int64_t pingPongFlagPermuteToken = 0;
     int64_t pingPongFlagPermuteTokenGrad = 0;
     int64_t pingPongFlagProbsGrad = 0;
+    event_t eventIdVMte3 = EVENT_ID0;             // eventid 0 1用于v和mte3之间同步
     event_t eventIdIndicesVMte2 = EVENT_ID0;      // eventid 0 1用于indices的v和mte2之间同步
     event_t eventIdProbsVMte2 = EVENT_ID2;        // eventid 2 3用于probs的v和mte2之间同步
     event_t eventIdUnpermuteVMte2 = EVENT_ID4;    // eventid 4 5用于unpermuteOutputD的v和mte2之间同步
     event_t eventIdPermuteTokenVMte2 = EVENT_ID6; // eventid 6 7用于permute_token的v和mte2之间同步
-    event_t eventIdVMte3 = EVENT_ID0;             // eventid 0 1用于v和mte3之间同步
-
-    int64_t indicesArray[INDICES_PROBS_MAX_RESERVE_NUM]; // 存储indicesNumPerLoop个indices值, 最大512,
-                                                         // 为避免GetValue操作设置
+    int64_t indicesArray[INDICES_PROBS_MAX_RESERVE_NUM]; // 存储indicesNumPerLoop个indices值, 最大512,为避免GetValue操作设置
     float probsArray[INDICES_PROBS_MAX_RESERVE_NUM]; // 存储indicesNumPerLoop个probs值, 最大512, 为避免GetValue操作设置
     int64_t probsAddrArray[INDICES_PROBS_MAX_RESERVE_NUM];
 };
 
-template <typename OriT, typename IdxT>
-__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<OriT, IdxT>::Init(
+template <typename PermutedTokenT, typename IdxT, typename ProbsT>
+__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT, ProbsT>::Init(
     GM_ADDR unpermuted_tokens_grad, GM_ADDR outIndex, GM_ADDR permuteTokenId, GM_ADDR routing_map,
     GM_ADDR permuted_tokens, GM_ADDR probs, GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
-    const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data)
+    const MoeTokenUnpermuteWithRoutingMapGradTilingData &tiling_data)
 {
-    MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>::Init(
+    MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::Init(
         unpermuted_tokens_grad, outIndex, permuteTokenId, routing_map, permuted_tokens, probs, permuted_tokens_grad,
         probs_grad, tiling_data);
     // 申请2块空间手动double buffer
@@ -97,19 +94,22 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
     this->pipe.InitBuffer(tmpBufferProbGradCast, this->indicesReserveNumAlign * SIZE_FLOAT);
     this->pipe.InitBuffer(tmpBufferPermutedTokensGrad, this->hiddenSizeAlign * SIZE_FLOAT);
     this->pipe.InitBuffer(routingMapTBuf, this->numExpertAlign);
-    this->pipe.InitBuffer(probGradTBuf, this->numExpertAlign * this->inputTypeSize);
+    this->pipe.InitBuffer(probGradTBuf, this->numExpertAlign * this->probTypeSize);
     int64_t probGradSize = 0;
     if (this->coreIndex < this->formerCoreNum) {
         probGradSize = this->tokenNumEachCore * this->numExpert;
     } else {
         probGradSize = this->tokenNumTailCore * this->numExpert;
     }
-    InitOutput<OriT>(this->probGradGm[this->unpermutedOutputDStartOffset * this->numExpert], probGradSize, OriT(0));
+    InitOutput<ProbsT>(this->probGradGm[this->unpermutedOutputDStartOffset * this->numExpert], probGradSize, ProbsT(0));
+#ifndef __CCE_KT_TEST__
     SyncAll();
+#endif
 }
 
-template <typename OriT, typename IdxT>
-__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<OriT, IdxT>::Process()
+template <typename PermutedTokenT, typename IdxT, typename ProbsT>
+__aicore__ inline void
+MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT, ProbsT>::Process()
 {
     int64_t indicesLoopTimes = 0;
     int64_t indicesLastLoop = 0;
@@ -132,7 +132,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
     tmpBufferPermutedTokensFp32 = tmpBufferPermutedTokensCast.Get<float>();
     tmpBufferProbGradFp32 = tmpBufferProbGradCast.Get<float>();
     tmpBufferRoutingMap = routingMapTBuf.Get<int8_t>();
-    probGradLineLocal = probGradTBuf.Get<OriT>();
+    probGradLineLocal = probGradTBuf.Get<ProbsT>();
 
     SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
@@ -165,12 +165,14 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
                 int8_t isChoose = tmpBufferRoutingMap.GetValue(expertIndex);
                 int64_t probOffset = routingMapOffset + expertIndex;
                 if (isChoose) {
-                    OriT probTemp = this->probGm.GetValue(probOffset);
+                    ProbsT probTemp = this->probGm.GetValue(probOffset);
                     float prob = 0.0;
-                    if constexpr (IsSameType<OriT, bfloat16_t>::value) {
+                    if constexpr (IsSameType<ProbsT, bfloat16_t>::value) {
                         prob = AscendC::ToFloat(probTemp);
-                    } else {
+                    } else if constexpr (IsSameType<ProbsT, half>::value) {
                         prob = static_cast<float>(probTemp);
+                    } else {
+                        prob = probTemp;
                     }
                     probsArray[probIndex] = prob;
                     probsAddrArray[probIndex] = probOffset;
@@ -196,7 +198,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
                 // pingPongFlagUnpermute用于控制unpermutedOutputD的2块空间的切换
                 eventIdUnpermuteVMte2 = pingPongFlagUnpermute ? EVENT_ID4 : EVENT_ID5;
                 WaitFlag<HardEvent::V_MTE2>(eventIdUnpermuteVMte2);
-                inQueueUnpermutedLocal = inQueueUnpermuted.GetWithOffset<OriT>(
+                inQueueUnpermutedLocal = inQueueUnpermuted.GetWithOffset<PermutedTokenT>(
                     this->hiddenSizeAlign, this->hiddenSizeAlign * this->inputTypeSize * pingPongFlagUnpermute);
                 copyParams.blockLen = (uint32_t)hiddensizeLoopNum * this->inputTypeSize;
                 DataCopyPad(
@@ -204,7 +206,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
                     this->inputPadParams);
                 SetFlag<HardEvent::MTE2_V>(eventIdUnpermuteVMte2);
                 WaitFlag<HardEvent::MTE2_V>(eventIdUnpermuteVMte2);
-                if constexpr (IsSameType<OriT, float>::value) { // fp32类型输入做Copy
+                if constexpr (IsSameType<PermutedTokenT, float>::value) { // fp32类型输入做Copy
                     Copy(
                         tmpBufferUnpermutedFp32, inQueueUnpermutedLocal, 64, this->hiddensizeAlignFp32RepeatTimes,
                         {1, 1, 8, 8});
@@ -229,10 +231,10 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
                     // pingPongFlagPermuteTokenGrad用于控制permuted_tokens_grad的2块空间的切换
                     eventIdVMte3 = pingPongFlagPermuteTokenGrad ? EVENT_ID0 : EVENT_ID1;
                     WaitFlag<HardEvent::MTE3_V>(eventIdVMte3);
-                    permutedTokensGradLocal = outQueuePermutedTokensGrad.GetWithOffset<OriT>(
+                    permutedTokensGradLocal = outQueuePermutedTokensGrad.GetWithOffset<PermutedTokenT>(
                         this->hiddenSizeAlign,
                         this->hiddenSizeAlign * this->inputTypeSize * pingPongFlagPermuteTokenGrad);
-                    if constexpr (IsSameType<OriT, float>::value) { // fp32类型输入做Copy
+                    if constexpr (IsSameType<PermutedTokenT, float>::value) { // fp32类型输入做Copy
                         Copy(
                             permutedTokensGradLocal, tmpBufferPermutedTokensGradFp32, 64,
                             this->hiddensizeAlignFp32RepeatTimes, {1, 1, 8, 8});
@@ -257,7 +259,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
                     // pingPongFlagPermuteToken用于控制permuted_tokens的2块空间的切换
                     eventIdPermuteTokenVMte2 = pingPongFlagPermuteToken ? EVENT_ID6 : EVENT_ID7;
                     WaitFlag<HardEvent::V_MTE2>(eventIdPermuteTokenVMte2);
-                    inQueuePermutedTokensLocal = inQueuePermutedTokens.GetWithOffset<OriT>(
+                    inQueuePermutedTokensLocal = inQueuePermutedTokens.GetWithOffset<PermutedTokenT>(
                         this->hiddenSizeAlign, this->hiddenSizeAlign * this->inputTypeSize * pingPongFlagPermuteToken);
                     copyParams.blockLen = (uint32_t)hiddensizeLoopNum * this->inputTypeSize;
                     DataCopyPad(
@@ -267,7 +269,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
                     SetFlag<HardEvent::MTE2_V>(eventIdPermuteTokenVMte2);
                     WaitFlag<HardEvent::MTE2_V>(eventIdPermuteTokenVMte2); // 等待permuted_tokens的搬运完成
                     // permuted_tokens的cast操作
-                    if constexpr (IsSameType<OriT, float>::value) {
+                    if constexpr (IsSameType<PermutedTokenT, float>::value) {
                         Copy(
                             tmpBufferPermutedTokensFp32, inQueuePermutedTokensLocal, 64,
                             this->hiddensizeAlignFp32RepeatTimes, {1, 1, 8, 8});
@@ -295,8 +297,8 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
         }
         // copy out prob_grad, 每indicesNumPerLoop个往外搬
         // pingPongFlagProbsGrad用于控制prob_grad的2块空间的切换
-        probGradLocal = outQueueProbGrad.Get<OriT>();
-        if constexpr (IsSameType<OriT, float>::value) {
+        probGradLocal = outQueueProbGrad.Get<ProbsT>();
+        if constexpr (IsSameType<ProbsT, float>::value) {
             Copy(
                 probGradLocal, tmpBufferProbGradReduceSumFp32, 64, this->indicesReserveNumAlignFp32RepeatTimes,
                 {1, 1, 8, 8});
@@ -309,19 +311,19 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFals
         }
         VToSSync();
         for (int64_t topKInIndicesLoop = 0; topKInIndicesLoop < topKInIndicesLoopTimes; topKInIndicesLoop++) {
-            Duplicate(probGradLineLocal, OriT(0), this->numExpert);
+            Duplicate(probGradLineLocal, ProbsT(0), this->numExpert);
             int64_t probGradBaseOffset = topKInIndicesLoop * this->topK;
             for (int64_t probGradIndex = 0; probGradIndex < this->topK; probGradIndex++) {
                 int64_t probGradOffset = probGradBaseOffset + probGradIndex;
-                OriT probGrad = probGradLocal.GetValue(probGradOffset);
+                ProbsT probGrad = probGradLocal.GetValue(probGradOffset);
                 int64_t addr = probsAddrArray[probGradOffset] % this->numExpert;
                 probGradLineLocal.SetValue(addr, probGrad);
             }
-            copyParams.blockLen = (uint32_t)this->numExpert * this->inputTypeSize;
+            copyParams.blockLen = (uint32_t)this->numExpert * this->probTypeSize;
             SToMTE3Sync();
             DataCopyPad(
-                this->probGradGm
-                    [(this->unpermutedOutputDStartOffset + tokenLoopBaseOffset + topKInIndicesLoop) * this->numExpert],
+                this->probGradGm[(this->unpermutedOutputDStartOffset + tokenLoopBaseOffset + topKInIndicesLoop) *
+                                 this->numExpert],
                 probGradLineLocal, copyParams);
             MTE3ToSSync();
         }

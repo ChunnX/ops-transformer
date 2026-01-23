@@ -124,7 +124,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
         <td>输入</td>
         <td>计算公式中的unpermutedTokensGrad，代表正向输出unpermutedTokens的梯度。</td>
         <td>-</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
         <td>ND</td>
         <td>(tokens_num，hidden_size)。</td>
         <td>√</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
         <td>可选输入</td>
         <td>当输入probsOptional为空指针时不需要此输入，应该传入空指针。</td>
         <td>数据类型与unpermutedTokensGrad相同。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
         <td>ND</td>
         <td><ul><li>paddedMode为false时，shape为(tokens_num*topK_num,hidden_size)。</li><li>paddedMode为true时，shape为(experts_num*capacity,hidden_size)。</li></ul></td>
         <td>√</td>
@@ -173,8 +173,8 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
         <td>probsOptional</td>
         <td>可选输入</td>
         <td>当不需要时为空指针。</td>
-        <td>数据类型与unpermutedTokensGrad相同。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>数据类型与unpermutedTokensGrad相同或者当unpermutedTokensGrad是BFLOAT16时probsOptional支持FLOAT。</td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
         <td>ND</td>
         <td>与routingMapOptional相同。</td>
         <td>√</td>
@@ -204,7 +204,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
         <td>输出</td>
         <td>计算公式中的permutedTokensGradOut，代表输入permutedTokens的梯度。</td>
         <td>数据类型与unpermutedTokensGrad相同。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
         <td>ND</td>
         <td><ul><li>paddedMode为false时，shape为(tokens_num*topK_num,hidden_size)。</li><li>paddedMode为true时，shape为(experts_num*capacity,hidden_size)。</li></ul></td>
         <td>×</td>
@@ -213,8 +213,8 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
         <td>probsGradOutOptional</td>
         <td>可选输出</td>
         <td>未输入probsOptional时为空指针。输入probs的梯度。</td>
-        <td>数据类型与unpermutedTokensGrad相同。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>数据类型与probsOptional相同。</td>
+        <td>BFLOAT16、FLOAT16、FLOAT</td>
         <td>ND</td>
         <td>与routingMapOptional相同。</td>
         <td>×</td>
@@ -271,15 +271,27 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
             <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
             </tr>
             <tr>
-            <td rowspan="4"> ACLNN_ERR_INNER_TILING_ERROR </td>
-            <td rowspan="4"> 561002 </td>
+            <td rowspan="8"> ACLNN_ERR_INNER_TILING_ERROR </td>
+            <td rowspan="8"> 561002 </td>
             <td>输入probsOptional非空，且paddedMode为false时，topK_num > 512。</td>
             </tr>
             <tr>
             <td>输入probsOptional非空，且paddedMode为false时，topK_num大于experts_num。</td>
             </tr>
             <tr>
+            <td>输入probsOptional非空，且paddedMode为false时，196608 - (probTypeLen + 1) * numExpertAlign-(tokenTypeLen + 8) * 256 / (6 * tokenTypeLen + 12) < 1。</td>
+            </tr>
+            <tr>
             <td>输入probsOptional非空，且paddedMode为true时，capacity大于tokens_num。</td>
+            </tr>
+            <tr>
+            <td>输入probsOptional非空，且paddedMode为true时，hidden_size在输入unpermutedTokensGrad是BFLOAT16或FLOAT16时，大于4972544，hidden_size在输入unpermutedTokensGrad是FLOAT时，大于4149248。</td>
+            </tr>
+            <tr>
+            <td>输入probsOptional非空时，输入routingMapOptional或permutedTokensOptional为空。</td>
+            </tr>
+            <tr>
+            <td>输入probsOptional非空时，probsOptional数据类型与unpermutedTokensGrad不同且unpermutedTokensGrad不是BFLOAT16。</td>
             </tr>
             <tr>
             <td>输入或输出的shape不符合要求。</td>
@@ -333,8 +345,12 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
 - 确定性计算：
   - aclnnMoeTokenUnpermuteWithRoutingMapGrad默认确定性实现。
 
-- 当输入probsOptional非空，且paddedMode为false时，要求topK_num <= 512且topK_num <= experts_num。
-- 当输入probsOptional非空，且paddedMode为true时，要求capacity <= tokens_num。
+- 当输入probsOptional非空，且paddedMode为false时
+    - 要求topK_num <= 512且topK_num <= experts_num。
+    - 要求experts_num满足196608 - (probTypeLen + 1) * numExpertAlign-(tokenTypeLen + 8) * 256 / (6 * tokenTypeLen + 12) >= 1，其中probTypeLen是输入probsOptional的数据类型对应的字节数，tokenTypeLen是输入unpermutedTokensGrad的数据类型对应的字节数，numExpertAlign是experts_num对32做向上对齐的结果。
+- 当输入probsOptional非空，且paddedMode为true时
+    - 要求capacity <= tokens_num。
+    - 要求hidden_size在输入unpermutedTokensGrad是BFLOAT16或FLOAT16时，需要小于等于4972544，hidden_size在输入unpermutedTokensGrad是FLOAT时，需要小于等于4149248。
 
 ## 调用示例
 

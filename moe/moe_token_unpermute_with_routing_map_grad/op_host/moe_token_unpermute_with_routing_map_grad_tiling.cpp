@@ -28,10 +28,13 @@ constexpr uint32_t FP32_BLOCK_NUM = 8;
 constexpr uint32_t H_BUFFER_NUM = 8;
 constexpr uint32_t BLOCK_SIZE_512 = 512;
 constexpr uint32_t MAX_TOP_K = 512;
-constexpr uint32_t REDUCESUM_ONEREPEAT_CALNUM = 256 / sizeof(float);
+constexpr uint32_t REDUCESUM_ONEREPEAT_CALNUM = 64; // 256 / sizeof(float);
 constexpr uint32_t BUFFER_NUM = 2;
 constexpr int64_t INDICES_RESERVE_MAX_NUM = 256;
 constexpr int64_t H_LOOP_ALIGN_BUFFER_LENGTH = 512;
+constexpr int64_t H_BUFFER_NUM_PAD_FALSE = 3;
+constexpr int64_t H_FP32_BUFFER_NUM_PAD_FALSE = 3;
+constexpr int64_t SIZE_OF_FLOAT = 4;
 constexpr uint32_t MIN_SPILT_H_SIZE = 1;
 constexpr size_t ATTR_DROP_AND_PAD_IDX = 0;
 constexpr size_t INPUT_UNPERMUTEDOUTPUTD_IDX = 0;
@@ -47,8 +50,6 @@ constexpr uint32_t UNPERMUTE_GRAD_DIM_NUM = 2;
 constexpr uint32_t INDEX_DIM_NUM = 1;
 constexpr size_t PROB_NONE_PERLOOP_NUM = 1;
 constexpr size_t INDICES_FP32_BUFFER_NUM = 2;
-constexpr size_t H_BUFFER_NUM_PAD_FALSE = 3;
-constexpr size_t H_FP32_BUFFER_NUM_PAD_FALSE = 3;
 
 template <typename T>
 inline auto AlignUp(T num, T rnd) -> T
@@ -119,27 +120,27 @@ static void MoeTokenUnpermuteWithRoutingMapGradPrintParam(
     auto nodeName = context->GetNodeName();
     OP_LOGD(
         nodeName, ">>>>>>>>>>>>>>> Start to print MoeTokenUnpermuteWithRoutingMapGrad tiling data <<<<<<<<<<<<<<<<");
-    OP_LOGD(nodeName, ">>> tokensNum:                %ld", tiling.get_tokensNum());
-    OP_LOGD(nodeName, ">>> topK:                     %ld", tiling.get_topK());
-    OP_LOGD(nodeName, ">>> capacity:                 %ld", tiling.get_capacity());
-    OP_LOGD(nodeName, ">>> numExpert:                %ld", tiling.get_numExpert());
-    OP_LOGD(nodeName, ">>> hiddenSize:               %ld", tiling.get_hiddenSize());
-    OP_LOGD(nodeName, ">>> numOutTokens:             %ld", tiling.get_numOutTokens());
-    OP_LOGD(nodeName, ">>> formerCoreNum:            %ld", tiling.get_formerCoreNum());
-    OP_LOGD(nodeName, ">>> tailCoreNum:              %ld", tiling.get_tailCoreNum());
-    OP_LOGD(nodeName, ">>> tokenNumEachCore:         %ld", tiling.get_tokenNumEachCore());
-    OP_LOGD(nodeName, ">>> tokenNumTailCore:         %ld", tiling.get_tokenNumTailCore());
-    OP_LOGD(nodeName, ">>> rowIdMapEachCore:         %ld", tiling.get_rowIdMapEachCore());
-    OP_LOGD(nodeName, ">>> rowIdMapTailCore:         %ld", tiling.get_rowIdMapTailCore());
+    OP_LOGD(nodeName, "=== tokensNum:                %ld", tiling.get_tokensNum());
+    OP_LOGD(nodeName, "=== topK:                     %ld", tiling.get_topK());
+    OP_LOGD(nodeName, "=== capacity:                 %ld", tiling.get_capacity());
+    OP_LOGD(nodeName, "=== numExpert:                %ld", tiling.get_numExpert());
+    OP_LOGD(nodeName, "=== hiddenSize:               %ld", tiling.get_hiddenSize());
+    OP_LOGD(nodeName, "=== numOutTokens:             %ld", tiling.get_numOutTokens());
+    OP_LOGD(nodeName, "=== formerCoreNum:            %ld", tiling.get_formerCoreNum());
+    OP_LOGD(nodeName, "=== tailCoreNum:              %ld", tiling.get_tailCoreNum());
+    OP_LOGD(nodeName, "=== tokenNumEachCore:         %ld", tiling.get_tokenNumEachCore());
+    OP_LOGD(nodeName, "=== tokenNumTailCore:         %ld", tiling.get_tokenNumTailCore());
+    OP_LOGD(nodeName, "=== rowIdMapEachCore:         %ld", tiling.get_rowIdMapEachCore());
+    OP_LOGD(nodeName, "=== rowIdMapTailCore:         %ld", tiling.get_rowIdMapTailCore());
     OP_LOGD(nodeName, ">>>>>>>>>>>>>>>       in core information      <<<<<<<<<<<<<<<<");
-    OP_LOGD(nodeName, ">>> hiddenSizeAlign:          %ld", tiling.get_hiddenSizeAlign());
-    OP_LOGD(nodeName, ">>> hiddenSizeLoopTimes:      %ld", tiling.get_hiddenSizeLoopTimes());
-    OP_LOGD(nodeName, ">>> hiddenSizeLoopTimesAlign: %ld", tiling.get_hiddenSizeLoopTimesAlign());
-    OP_LOGD(nodeName, ">>> hiddenSizeTail:           %ld", tiling.get_hiddenSizeTail());
-    OP_LOGD(nodeName, ">>> inputReserveNum:          %ld", tiling.get_inputReserveNum());
-    OP_LOGD(nodeName, ">>> indicesReserveNum:        %ld", tiling.get_indicesReserveNum());
-    OP_LOGD(nodeName, ">>> indicesReserveNumAlign:   %ld", tiling.get_indicesReserveNumAlign());
-    OP_LOGD(nodeName, ">>> totalUbSize:              %ld", tiling.get_totalUbSize());
+    OP_LOGD(nodeName, "=== hiddenSizeAlign:          %ld", tiling.get_hiddenSizeAlign());
+    OP_LOGD(nodeName, "=== hiddenSizeLoopTimes:      %ld", tiling.get_hiddenSizeLoopTimes());
+    OP_LOGD(nodeName, "=== hiddenSizeLoopTimesAlign: %ld", tiling.get_hiddenSizeLoopTimesAlign());
+    OP_LOGD(nodeName, "=== hiddenSizeTail:           %ld", tiling.get_hiddenSizeTail());
+    OP_LOGD(nodeName, "=== inputReserveNum:          %ld", tiling.get_inputReserveNum());
+    OP_LOGD(nodeName, "=== indicesReserveNum:        %ld", tiling.get_indicesReserveNum());
+    OP_LOGD(nodeName, "=== indicesReserveNumAlign:   %ld", tiling.get_indicesReserveNumAlign());
+    OP_LOGD(nodeName, "=== totalUbSize:              %ld", tiling.get_totalUbSize());
     OP_LOGD(nodeName, ">>>>>>>>>>>>>>> Print MoeTokenUnpermuteWithRoutingMapGrad tiling data end <<<<<<<<<<<<<<<<");
 }
 
@@ -219,7 +220,7 @@ static ge::graphStatus TilingForProbNotNonePadTrue(
     int64_t inputBlockAlignEleNum = BLOCK_SIZE_32 / inputTypeLength;
     int64_t totalUbSize = tiling.get_totalUbSize();
     int64_t hiddenSizeAlign = AlignUp<int64_t>(hiddenSize, inputBlockAlignEleNum);
-    int64_t hiddenSizeTmpMax = (totalUbSize - BLOCK_SIZE_32 - H_LOOP_ALIGN_BUFFER_LENGTH * sizeof(float)) /
+    int64_t hiddenSizeTmpMax = (totalUbSize - BLOCK_SIZE_32 - H_LOOP_ALIGN_BUFFER_LENGTH * SIZE_OF_FLOAT) /
                                (BUFFER_NUM * (H_BUFFER_NUM + inputTypeLength));
     if (hiddenSizeTmpMax < hiddenSizeAlign) { // hiddensize需要切分
         hiddenSizeAlign = AlignDown<int64_t>(hiddenSizeTmpMax, inputBlockAlignEleNum);
@@ -237,42 +238,6 @@ static ge::graphStatus TilingForProbNotNonePadTrue(
     tiling.set_hiddenSizeTail(hiddenSizeTail);
     tiling.set_inputReserveNum(PROB_NONE_PERLOOP_NUM);
     tiling.set_indicesReserveNum(PROB_NONE_PERLOOP_NUM); // indicesNumPerLoop
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus SetTilingForProbNotNonePadFalse(int64_t rowIdMapEachCore, int64_t topK,
- int64_t numExpert, MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling, const gert::TilingContext* context) {
-    int64_t hiddenSize = tiling.get_hiddenSize();
-    int64_t inputTypeLength = GetLengthByType(context->GetInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType());
-    if (inputTypeLength == 0){
-        return ge::GRAPH_FAILED;
-    }
-    int64_t inputBlockAlignEleNum = BLOCK_SIZE_32 / inputTypeLength;
-    int64_t hiddenSizeAlign = AlignUp<int64_t>(hiddenSize, inputBlockAlignEleNum);
-    int64_t indicesReserveNumMax = rowIdMapEachCore;
-    int64_t indicesReserveNum = topK <= INDICES_RESERVE_MAX_NUM ?
-                                    std::min(indicesReserveNumMax, AlignDown<int64_t>(INDICES_RESERVE_MAX_NUM, topK)) :
-                                    topK;
-    int64_t indicesReserveNumAlign = AlignUp<int64_t>(indicesReserveNum, inputBlockAlignEleNum);
-    int64_t numExpertAlign = AlignUp<int64_t>(numExpert, BLOCK_SIZE_32);
-    int64_t hiddenSizeTmpMax =
-        (tiling.get_totalUbSize() - numExpertAlign - numExpertAlign * inputTypeLength -
-         inputTypeLength * indicesReserveNumAlign - indicesReserveNumAlign * sizeof(float) * INDICES_FP32_BUFFER_NUM) /
-        (H_BUFFER_NUM_PAD_FALSE * BUFFER_NUM * inputTypeLength + H_FP32_BUFFER_NUM_PAD_FALSE * sizeof(float));
-    OP_CHECK_IF(
-        hiddenSizeTmpMax < MIN_SPILT_H_SIZE,
-        OP_LOGE(context->GetNodeName(), "The input shape of routingMap is too large."),
-        return ge::GRAPH_FAILED);
-    hiddenSizeAlign = hiddenSizeTmpMax < hiddenSizeAlign ? AlignDown<int64_t>(hiddenSizeTmpMax, inputBlockAlignEleNum) :
-                                                           hiddenSizeAlign;
-    int64_t hiddenSizeLoopTimes = CeilDiv(hiddenSize, hiddenSizeAlign);
-    int64_t hiddenSizeTail = hiddenSize - (hiddenSizeLoopTimes - 1) * hiddenSizeAlign;
-    tiling.set_hiddenSizeAlign(hiddenSizeAlign);
-    tiling.set_hiddenSizeLoopTimes(hiddenSizeLoopTimes);
-    tiling.set_hiddenSizeTail(hiddenSizeTail);
-    tiling.set_indicesReserveNum(indicesReserveNum);
-    tiling.set_indicesReserveNumAlign(indicesReserveNumAlign);
-    tiling.set_numExpertAlign(numExpertAlign);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -312,7 +277,39 @@ static ge::graphStatus TilingForProbNotNonePadFalse(
     tiling.set_tokenNumTailCore(tokenNumTailCore);
     tiling.set_rowIdMapEachCore(rowIdMapEachCore);
     tiling.set_rowIdMapTailCore(rowIdMapTailCore);
-    return SetTilingForProbNotNonePadFalse(rowIdMapEachCore, topK, numExpert, tiling, context);
+    int64_t hiddenSize = tiling.get_hiddenSize();
+    int64_t inputTypeLength = GetLengthByType(context->GetInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType());
+    if (inputTypeLength == 0){
+        return ge::GRAPH_FAILED;
+    }
+    int64_t inputBlockAlignEleNum = BLOCK_SIZE_32 / inputTypeLength;
+    int64_t hiddenSizeAlign = AlignUp<int64_t>(hiddenSize, inputBlockAlignEleNum);
+    int64_t indicesReserveNumMax = rowIdMapEachCore;
+    int64_t indicesReserveNum = topK <= INDICES_RESERVE_MAX_NUM ?
+                                    std::min(indicesReserveNumMax, AlignDown<int64_t>(INDICES_RESERVE_MAX_NUM, topK)) :
+                                    topK;
+    int64_t indicesReserveNumAlign = AlignUp<int64_t>(indicesReserveNum, inputBlockAlignEleNum);
+    int64_t numExpertAlign = AlignUp<int64_t>(numExpert, BLOCK_SIZE_32);
+    int64_t probTypeLength = GetLengthByType(context->GetInputDesc(INPUT_PROB_IDX)->GetDataType());
+    int64_t remainSize = tiling.get_totalUbSize() - numExpertAlign - numExpertAlign * probTypeLength -
+        inputTypeLength * INDICES_RESERVE_MAX_NUM - INDICES_RESERVE_MAX_NUM * SIZE_OF_FLOAT * INDICES_FP32_BUFFER_NUM;
+    int64_t hiddenNum = H_BUFFER_NUM_PAD_FALSE * BUFFER_NUM * inputTypeLength + H_FP32_BUFFER_NUM_PAD_FALSE * SIZE_OF_FLOAT;
+    int64_t hiddenSizeTmpMax = remainSize / hiddenNum;
+    OP_CHECK_IF(
+        hiddenSizeTmpMax < MIN_SPILT_H_SIZE,
+        OP_LOGE(context->GetNodeName(), "The experts_num is too large."),
+        return ge::GRAPH_FAILED);
+    hiddenSizeAlign = hiddenSizeTmpMax < hiddenSizeAlign ? AlignDown<int64_t>(hiddenSizeTmpMax, inputBlockAlignEleNum) :
+                                                           hiddenSizeAlign;
+    int64_t hiddenSizeLoopTimes = CeilDiv(hiddenSize, hiddenSizeAlign);
+    int64_t hiddenSizeTail = hiddenSize - (hiddenSizeLoopTimes - 1) * hiddenSizeAlign;
+    tiling.set_hiddenSizeAlign(hiddenSizeAlign);
+    tiling.set_hiddenSizeLoopTimes(hiddenSizeLoopTimes);
+    tiling.set_hiddenSizeTail(hiddenSizeTail);
+    tiling.set_indicesReserveNum(indicesReserveNum);
+    tiling.set_indicesReserveNumAlign(indicesReserveNumAlign);
+    tiling.set_numExpertAlign(numExpertAlign);
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus PreInitForTiling(
@@ -407,35 +404,15 @@ static ge::graphStatus CheckInputForProbIsNotNone(
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetInfoForTiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingContext* context, MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling
-, bool paddedMode, uint32_t sysWorkspaceSize) {
-    OP_LOGD(
-        context->GetNodeName(),
-        "MoeTokenUnpermuteWithRoutingMapGradTiling MoeTokenUnpermuteWithRoutingMapGradCoreSplitInfo finished");
-    MoeTokenUnpermuteWithRoutingMapGradPrintParam(context, tiling);
-
-    auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
-    uint32_t paddedModeKey = paddedMode ? 1 : 0;
-    uint32_t probKey = (probTensor == nullptr) ? 0 : 1;
-    uint32_t tilingKey = paddedModeKey * 10 + probKey;
-    // 00: padded_mode = False, 不存在prob  01: padded_mode = False, 存在prob
-    // 10: padded_mode = True, 不存在prob   11: padded_mode = True, 存在prob
-    context->SetTilingKey(tilingKey);
-    context->SetScheduleMode(1);
-    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithRoutingMapGradTiling] tilingKey: %d", tilingKey);
-
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    currentWorkspace[0] = sysWorkspaceSize;
-    OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithRoutingMapGradTiling tiling end");
-
-    return ge::GRAPH_SUCCESS;
-}
-
 static ge::graphStatus Tiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingContext* context)
 {
     OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithRoutingMapGradTiling tiling start");
+    auto tokenDtype = context->GetInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType();
+    auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
+    auto probDtype = (probTensor == nullptr) ? tokenDtype : context->GetInputDesc(INPUT_PROB_IDX)->GetDataType();
+    OP_CHECK_IF(
+        tokenDtype != probDtype && (tokenDtype != ge::DataType::DT_BF16 || probDtype != ge::DataType::DT_FLOAT),
+        OP_LOGE(context->GetNodeName(), "The input probs data type only supports being consistent with the input unpermuted_tokens_grad, or when unpermuted_tokens_grad is BFLOAT16, probs can be FLOAT."), return ge::GRAPH_FAILED);
     MoeTokenUnpermuteWithRoutingMapGradTilingData tiling;
     OP_CHECK_IF(
         ge::GRAPH_SUCCESS != PreInitForTiling(context, tiling),
@@ -453,7 +430,6 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingCo
     const bool* paddedModePtr = attrPtr->GetAttrPointer<bool>(ATTR_PADDEDMODE_IDX);
     bool paddedMode = *paddedModePtr;
     OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithRoutingMapGradTiling] paddedMode: %d", paddedMode);
-    auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     if (probTensor == nullptr) {
         TilingForProbIsNone(context, tiling, paddedMode);
     } else {
@@ -472,9 +448,31 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingCo
                 return ge::GRAPH_FAILED);
         }
     }
-    
+    OP_LOGD(
+        context->GetNodeName(),
+        "MoeTokenUnpermuteWithRoutingMapGradTiling MoeTokenUnpermuteWithRoutingMapGradCoreSplitInfo finished");
+    MoeTokenUnpermuteWithRoutingMapGradPrintParam(context, tiling);
+
+    uint32_t paddedModeKey = paddedMode ? 1 : 0;
+    uint32_t probKey = (probTensor == nullptr) ? 0 : 1;
+    uint32_t mixKey = 0;
+    if (probDtype != tokenDtype){
+        mixKey = 1;
+    }
+    uint32_t tilingKey = mixKey * 100 + paddedModeKey * 10 + probKey;
+    // 00: padded_mode = False, 不存在prob  01: padded_mode = False, 存在prob
+    // 10: padded_mode = True, 不存在prob   11: padded_mode = True, 存在prob
+    context->SetTilingKey(tilingKey);
+    context->SetScheduleMode(1);
+    OP_LOGD(context->GetNodeName(), ">>> [MoeTokenUnpermuteWithRoutingMapGradTiling] tilingKey: %d", tilingKey);
+
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    return SetInfoForTiling4MoeTokenUnpermuteWithRoutingMapGrad(context, tiling, paddedMode, sysWorkspaceSize);
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    currentWorkspace[0] = sysWorkspaceSize;
+    OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithRoutingMapGradTiling tiling end");
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus TilingPrepare4MoeTokenUnpermuteWithRoutingMapGrad(gert::TilingParseContext* context)
