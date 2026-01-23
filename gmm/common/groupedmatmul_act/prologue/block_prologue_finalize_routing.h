@@ -15,7 +15,7 @@
 
 #ifndef BLOCK_PROLOGUE_FINALIZE_ROUTING_H
 #define BLOCK_PROLOGUE_FINALIZE_ROUTING_H
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "../utils/common_utils.h"
 #include "../utils/device_utils.h"
 #include "../utils/status_utils.h"

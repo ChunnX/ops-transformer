@@ -18,6 +18,7 @@
 #include "grouped_matmul_tiling_key.h"
 #include "grouped_matmul.h"
 
+#include "kernel_operator.h"
 #if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
 
 #include "grouped_matmul_antiquant_a16w8_msd.h"

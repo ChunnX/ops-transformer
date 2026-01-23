@@ -15,10 +15,13 @@
 #ifndef ASCENDC_GROUPED_MATMUL_UTILS_H
 #define ASCENDC_GROUPED_MATMUL_UTILS_H
 
-#include "kernel_tiling/kernel_tiling.h"
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
+#include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
   #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8
       #define DTYPE_L0C_LOCAL int32_t

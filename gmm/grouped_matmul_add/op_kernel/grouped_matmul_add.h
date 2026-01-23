@@ -21,7 +21,7 @@
 #endif
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 namespace AscendC {

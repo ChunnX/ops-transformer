@@ -18,6 +18,7 @@
 #include "../tile_copy_policy.h"
 #include "../../utils/layout_utils.h"
 #include "../../utils/tensor_utils.h"
+#include "std/algorithm.h"
 
 namespace Act {
 namespace Gemm {

@@ -18,6 +18,7 @@
  
  #include "grouped_matmul_utils.h"
  #include "grouped_matmul.h"
+ #include "kernel_operator.h"
  
  #ifdef GMM_A4W4
  namespace GROUPED_MATMUL{

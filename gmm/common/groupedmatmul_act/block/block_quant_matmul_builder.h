@@ -16,7 +16,7 @@
 #ifndef MATMUL_BLOCK_BLOCK_QUANT_MATMUL_BUILDER_H
 #define MATMUL_BLOCK_BLOCK_QUANT_MATMUL_BUILDER_H
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 
 #include "../utils/common_utils.h"
 #include "../utils/layout_utils.h"

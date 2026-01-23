@@ -17,7 +17,7 @@
 #define UTILS_COMMON_UTILS_H
 
 #include "integral_constant.h"
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 namespace Act {
 namespace Gemm {

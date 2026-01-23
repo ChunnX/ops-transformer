@@ -17,7 +17,7 @@
 
 #include "grouped_matmul_utils.h"
 #include "grouped_matmul.h"
-
+#include "kernel_operator.h"
 
 #if defined(GMM_ANTI_QUANT) && defined(ORIG_DTYPE_WEIGHT) && defined(DT_INT8) && \
     ORIG_DTYPE_WEIGHT == DT_INT8

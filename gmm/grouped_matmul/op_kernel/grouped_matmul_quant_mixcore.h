@@ -16,6 +16,7 @@
 #define ASCENDC_GROUPED_MATMUL_QUANT_MIXCORE_H
 
 #include "grouped_matmul_utils.h"
+#include "kernel_operator.h"
 #include "grouped_matmul.h"
 
 #if defined(GMM_QUANT_BF16) || defined(GMM_QUANT_FLOAT16)

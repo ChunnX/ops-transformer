@@ -15,7 +15,7 @@
 
 #ifndef KERNEL_GMM_FINALIZE_ROUTING_H
 #define KERNEL_GMM_FINALIZE_ROUTING_H
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 

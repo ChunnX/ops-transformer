@@ -15,7 +15,7 @@
 
 #include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"

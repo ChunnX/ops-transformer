@@ -15,7 +15,7 @@
 
 #ifndef MATMUL_KERNEL_KERNEL_GMM_SWIGLU_MXQUANT_H
 #define MATMUL_KERNEL_KERNEL_GMM_SWIGLU_MXQUANT_H
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 

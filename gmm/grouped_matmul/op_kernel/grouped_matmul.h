@@ -16,6 +16,7 @@
 #define ASCENDC_GROUPED_MATMUL_H
 
 #include "grouped_matmul_utils.h"
+#include "kernel_operator.h"
 
 namespace GROUPED_MATMUL {
 

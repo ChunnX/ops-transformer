@@ -15,7 +15,7 @@
 #ifndef ASCENDC_QUANT_UTILS_H
 #define ASCENDC_QUANT_UTILS_H
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 #define LOCAL_TEMPLATE_CLASS_PARAMS                                                                              \

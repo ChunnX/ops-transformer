@@ -16,7 +16,7 @@
 #define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 
 #include "kernel_log.h"
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "kernel_utils.h"
 
 using AscendC::CrossCoreSetFlag;

@@ -17,8 +17,7 @@
 
 #include "basic_block_config.h"
 #include "custom_policy/wqbmm_custom_policy.h"
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "tool.h"
 

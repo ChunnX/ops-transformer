@@ -16,7 +16,7 @@
 #define QGMM_INPLACE_ADD_UTILS_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 #if defined(ORIG_DTYPE_SCALE2) && defined(DT_FLOAT8_E8M0) && ORIG_DTYPE_SCALE2 == DT_FLOAT8_E8M0

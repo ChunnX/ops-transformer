@@ -16,7 +16,7 @@
 #ifndef MATMUL_KERNEL_KERNEL_GROUPED_MATMUL_H
 #define MATMUL_KERNEL_KERNEL_GROUPED_MATMUL_H
 #define ASCENDC_CUBE_ONLY
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 
