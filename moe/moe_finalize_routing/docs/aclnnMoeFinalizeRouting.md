@@ -46,7 +46,7 @@ aclnnStatus aclnnMoeFinalizeRouting(
   aclrtStream    stream)
 ```
 
-## aclnnMoeFinalizeRoutingGetWorkspaceSize```
+## aclnnMoeFinalizeRoutingGetWorkspaceSize
 
 -   **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1546px"><colgroup>
