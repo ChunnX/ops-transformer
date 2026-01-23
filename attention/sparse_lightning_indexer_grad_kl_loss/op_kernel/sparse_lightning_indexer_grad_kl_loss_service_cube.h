@@ -66,7 +66,8 @@ public:
 private:
     static constexpr bool HAS_ROPE = SLIT::hasRope;
     static constexpr SLILayout INPUT_LAYOUT = SLIT::inputQLayout;
-    static constexpr bool IS_RELUGRAD_REUSE = SLIT::topKRange == SLITopKRange::RANGE_0_2K;
+    static constexpr uint32_t topKSize = static_cast<uint32_t>(SLIT::topKRange);
+    static constexpr bool IS_RELUGRAD_REUSE = topKSize <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K;
 
     static constexpr uint32_t M_SPLIT_SIZE = 128;     // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;     // n方向切分
@@ -92,6 +93,8 @@ private:
     static constexpr uint32_t L1_EVENT6 = EVENT_ID1;
 
     static constexpr uint32_t RELU_GRAD_EVENT = EVENT_ID1;
+    static constexpr uint32_t SYNC_MM_RELU_GRAD_EVENT = EVENT_ID4;
+    static constexpr uint32_t SYNC_MM5_MM6_EVENT = EVENT_ID5;
     static constexpr uint32_t QUERY_INDEX_EVENT[2] = {EVENT_ID6, EVENT_ID7};
 
     static constexpr uint32_t SYNC_MTE21_FLAG[2] = {L1_EVENT0, L1_EVENT1};
@@ -188,7 +191,7 @@ SLITMatmulService<SLIT>::InitMm1GlobalTensor(GlobalTensor<Q_T> &queryGm, GlobalT
     this->actualSeqLengthsKeyGm = actualSeqLengthsKeyGm;
 
     this->mm1ResGm[0] = bmm1Res;
-    this->mm1ResGm[1] = bmm1Res[constInfo.gSizeQuery * constInfo.kSize];
+    this->mm1ResGm[1] = bmm1Res[constInfo.gSizeQuery * topKSize];
 }
 
 template <typename SLIT>
@@ -198,7 +201,7 @@ SLITMatmulService<SLIT>::InitMm2GlobalTensor(GlobalTensor<Q_T> &queryIndex, Glob
     queryIndexGm = queryIndex;
     keyIndexGatherGm = keyIndexGather;
     mm2ResGm[0] = mm2Res;
-    mm2ResGm[1] = mm2Res[constInfo.kSize * constInfo.gSizeQueryIndex];
+    mm2ResGm[1] = mm2Res[topKSize * constInfo.gSizeQueryIndex];
 }
 
 template <typename SLIT>
@@ -207,7 +210,7 @@ SLITMatmulService<SLIT>::InitMm5GlobalTensor(GlobalTensor<Q_T> &reluGradRes, Glo
                                              GlobalTensor<MM_OUT_T> &bmm5Res, GlobalTensor<int32_t> &topKIndex)
 {
     this->reluGradRes[0] = reluGradRes;
-    this->reluGradRes[1] = reluGradRes[constInfo.kSize * constInfo.gSizeQueryIndex];
+    this->reluGradRes[1] = reluGradRes[topKSize * constInfo.gSizeQueryIndex];
     this->queryIndexGm = queryIndexGm;
     this->topKIndexGm = topKIndex;
     this->mm5ResGm = bmm5Res;
@@ -219,7 +222,7 @@ SLITMatmulService<SLIT>::InitMm6GlobalTensor(GlobalTensor<Q_T> &reluGradRes, Glo
                                              GlobalTensor<OUT_T> &bmm6Res)
 {
     this->reluGradRes[0] = reluGradRes;
-    this->reluGradRes[1] = reluGradRes[constInfo.kSize * constInfo.gSizeQueryIndex];
+    this->reluGradRes[1] = reluGradRes[topKSize * constInfo.gSizeQueryIndex];
     this->keyIndexGatherGm = keyIndexGm;
     this->mm6ResGm = bmm6Res;
 }      
@@ -235,6 +238,7 @@ template <typename SLIT> __aicore__ inline void SLITMatmulService<SLIT>::AllocEv
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(RELU_GRAD_EVENT);
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(QUERY_INDEX_EVENT[0]);
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(QUERY_INDEX_EVENT[1]);
+    SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM_RELU_GRAD_EVENT);
 }
 
 template <typename SLIT> __aicore__ inline void SLITMatmulService<SLIT>::FreeEventID()
@@ -248,6 +252,7 @@ template <typename SLIT> __aicore__ inline void SLITMatmulService<SLIT>::FreeEve
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(RELU_GRAD_EVENT);
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(QUERY_INDEX_EVENT[0]);
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(QUERY_INDEX_EVENT[1]);
+    WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM_RELU_GRAD_EVENT);
 }
 
 
@@ -331,7 +336,7 @@ __aicore__ inline void SLITMatmulService<SLIT>::CopyInMm5AToL1(LocalTensor<KV_T>
                                                                      uint32_t mSizeAct, uint32_t headSize, uint32_t headOffset)
 {
     auto srcGm = reluGradRes[info.taskIdMod2][headOffset];
-    CopyGmToL1(l1Tensor, srcGm, mSizeAct, headSize, constInfo.kSize);
+    CopyGmToL1(l1Tensor, srcGm, mSizeAct, headSize, topKSize);
 }
 
 template <typename SLIT>
@@ -522,7 +527,7 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm1(const SLIGradKLLossRu
                     fixpipeParams.nSize = mmParam.singleN;
                     fixpipeParams.mSize = mmParam.singleM;
                     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-                    fixpipeParams.dstStride = constInfo.kSize;
+                    fixpipeParams.dstStride = topKSize;
                     fixpipeParams.ndNum = 1;
                     fixpipeParams.srcNdStride = 0;
                     fixpipeParams.dstNdStride = 0;
@@ -576,7 +581,7 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm2(const SLIGradKLLossRu
             if (kInnerIdx == kInnerLoopTimes - 1) {
                 mmParam.singleN = tailLoopKSize;
             }
-            int64_t gatherWorkspaceOffset = info.taskIdMod2 * constInfo.kSize * dSize + kOuterIdx * N_WORKSPACE_SIZE * dSize + kInnerIdx * N_SPLIT_SIZE * dSize;
+            int64_t gatherWorkspaceOffset = info.taskIdMod2 * topKSize * dSize + kOuterIdx * N_WORKSPACE_SIZE * dSize + kInnerIdx * N_SPLIT_SIZE * dSize;
             int64_t outWorkspaceOffset = kOuterIdx * N_WORKSPACE_SIZE + kInnerIdx * N_SPLIT_SIZE;
             // 搬运gather到L1 128 * 128 * sizeof(fp16)
             LocalTensor<MM_OUT_T> l0cTensor = cL0TensorPingPong[l0cPingPongFlag & 1];
@@ -596,7 +601,7 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm2(const SLIGradKLLossRu
                 fixpipeParams.nSize = mmParam.singleN;
                 fixpipeParams.mSize = mmParam.singleM;
                 fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-                fixpipeParams.dstStride = constInfo.kSize;
+                fixpipeParams.dstStride = topKSize;
                 fixpipeParams.ndNum = 1;
                 fixpipeParams.srcNdStride = 0;
                 fixpipeParams.dstNdStride = 0;
@@ -631,7 +636,8 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm5(const SLIGradKLLossRu
 
     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V1_TO_C2_DW_FLAG[info.taskIdMod2]);
     int64_t scatterOffset = 0;
-    GlobalTensor<MM_OUT_T> resGm = mm5ResGm[info.taskIdMod2 * constInfo.kSize * constInfo.dSizeQueryIndex];
+    int64_t resOffset = constInfo.aicIdx * topKSize * constInfo.dSizeQueryIndex * 2;
+    GlobalTensor<MM_OUT_T> resGm = mm5ResGm[resOffset + info.taskIdMod2 * topKSize * constInfo.dSizeQueryIndex];
     int64_t kOuterStride = info.kBaseSize * constInfo.dSizeQueryIndex;
     int64_t kInnerStride = K_SPLIT_SIZE * constInfo.dSizeQueryIndex;
     for (uint32_t kOuterIdx = 0; kOuterIdx < info.kLoopTimes; kOuterIdx++) {
@@ -644,6 +650,7 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm5(const SLIGradKLLossRu
             WaitFlag<AscendC::HardEvent::MTE1_MTE2>(RELU_GRAD_EVENT);
         }
         int64_t reLuGradWorkspaceOffset = kOuterIdx * RELU_GRAD_SPLIT_SIZE;
+        WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM_RELU_GRAD_EVENT);
         CopyInMm5AToL1(l1ReLuGradTensor, info, constInfo.gSizeQueryIndex, kLoopSize, reLuGradWorkspaceOffset);
         SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG[indexPingPongFlag & 1]);
         WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG[indexPingPongFlag & 1]);    
@@ -659,11 +666,12 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm5(const SLIGradKLLossRu
             MmadInner(l0cTensor, reLuTensor, l1QIndexTensor[indexPingPongFlag & 1], mmParam);
             ScatterAdd(resTmpGm, l0cTensor, mmParam, info, scatterOffset);
             l0cPingPongFlag = (l0cPingPongFlag + 1) & 1;
-            l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
         }
+        SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM_RELU_GRAD_EVENT);
         mm5ResPingPongFlag = 1 - mm5ResPingPongFlag;
     }
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(QUERY_INDEX_EVENT[indexPingPongFlag & 1]);
+    SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM5_MM6_EVENT);
     indexPingPongFlag = 1 - indexPingPongFlag;
     CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_SA_FLAG[info.taskIdMod2]);
 }
@@ -683,6 +691,7 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm6(const SLIGradKLLossRu
     mmParam.isFixOut = false;
 
     LocalTensor<MM_OUT_T> l0cTensor = cL0TensorPingPong[l0cPingPongFlag & 1];
+    WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM5_MM6_EVENT);    
     for (uint32_t kOuterIdx = 0; kOuterIdx < info.kLoopTimes; kOuterIdx++) {
         bool isLastKLoop = kOuterIdx == info.kLoopTimes - 1;
         if (isLastKLoop) {
@@ -693,12 +702,13 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm6(const SLIGradKLLossRu
         mmParam.isL0CAccum = (kInnerLoopTimes > 1);
         if (!IS_RELUGRAD_REUSE){ // 无法复用reluGrad
             int64_t reLuGradWorkspaceOffset = kOuterIdx * RELU_GRAD_SPLIT_SIZE;
+            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM_RELU_GRAD_EVENT);            
             CopyInMm5AToL1(l1ReLuGradTensor, info, constInfo.gSizeQueryIndex, kLoopSize, reLuGradWorkspaceOffset);
             SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG[indexPingPongFlag & 1]);
             WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG[indexPingPongFlag & 1]);    
         }
         for (uint32_t kInnerIdx = 0; kInnerIdx < kInnerLoopTimes; kInnerIdx++) {
-            int64_t gatherWorkspaceOffset = info.taskIdMod2 * constInfo.kSize * dSize + kOuterIdx * RELU_GRAD_SPLIT_SIZE * dSize + kInnerIdx * K_SPLIT_SIZE * dSize;
+            int64_t gatherWorkspaceOffset = info.taskIdMod2 * topKSize * dSize + kOuterIdx * RELU_GRAD_SPLIT_SIZE * dSize + kInnerIdx * K_SPLIT_SIZE * dSize;
             int64_t reluGradOffset = kInnerIdx * K_SPLIT_SIZE * AlignTo(constInfo.gSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
             mmParam.isOutKFisrt = (kOuterIdx == 0) && (kInnerIdx == 0);            
             // 搬运gather到L1 128 * 128 * sizeof(fp16)
@@ -738,9 +748,12 @@ __aicore__ inline void SLITMatmulService<SLIT>::ComputeMm6(const SLIGradKLLossRu
             SetFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[l0cPingPongFlag & 1]);            
             gatherPingPongFlag = 1 - gatherPingPongFlag;
         }
-        if (IS_RELUGRAD_REUSE) {
-            SetFlag<AscendC::HardEvent::MTE1_MTE2>(RELU_GRAD_EVENT);
+        if (!IS_RELUGRAD_REUSE){
+            SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MM_RELU_GRAD_EVENT);
         }
+    }
+    if (IS_RELUGRAD_REUSE) {
+        SetFlag<AscendC::HardEvent::MTE1_MTE2>(RELU_GRAD_EVENT);
     }
     mm6ResPingPongFlag = 1 - mm6ResPingPongFlag;
     l0cPingPongFlag = 1 - l0cPingPongFlag;

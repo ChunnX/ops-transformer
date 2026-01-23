@@ -4,8 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -135,7 +139,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>key</td>
@@ -145,7 +149,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
             <td>(B,S2,N2,D)、(T2,N2,D)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>queryIndex</td>
@@ -155,7 +159,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S1,Nidx1,D)、(T1,Nidx1,D)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>keyIndex</td>
@@ -165,7 +169,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S2,Nidx2,D)、(T2,Nidx2,D)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>weights</td>
@@ -175,7 +179,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S1,Nidx1)、(T1,Nidx1)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>sparseIndices</td>
@@ -185,27 +189,27 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>INT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx2,K)、(T1,Nidx2,K)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>softmaxMax</td>
             <td>输入</td>
-            <td>注意力正向计算的中间输出。</td>
+            <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
             <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>softmaxSum</td>
             <td>输入</td>
-            <td>注意力正向计算的中间输出。</td>
+            <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
             <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>queryRope</td>
@@ -217,7 +221,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S1,N1,Dr)、(T1,N1,Dr)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>keyRope</td>
@@ -229,7 +233,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S2,N2,Dr)、(T2,N2,Dr)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>    
         <tr>
             <td>actualSeqLengthsQuery</td>
@@ -245,7 +249,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>INT64</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>-</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>actualSeqLengthsKey</td>
@@ -261,7 +265,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>INT64</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>-</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>scaleValue</td>
@@ -273,7 +277,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>-</td>
             <td>-</td>
-            <td>-</td>
+            <td>x</td>
         <tr>
             <td>layout</td>
             <td>输入</td>
@@ -284,7 +288,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>STRING</td>
             <td>-</td>
             <td>-</td>
-            <td>-</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>sparseMode</td>
@@ -299,7 +303,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
-        <td>-</td>
+        <td>x</td>
         </tr>
         <tr>
         <td>deterministic</td>
@@ -311,7 +315,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>BOOL</td>
             <td>-</td>
             <td>-</td>
-            <td>-</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>dQueryIndex</td>
@@ -321,7 +325,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S1,Nidx1,D)、(T1,Nidx1,D)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>dKeyIndex</td>
@@ -331,7 +335,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S2,Nidx2,D)、(T2,Nidx2,D)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>dWeights</td>
@@ -341,7 +345,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S1,Nidx1)、(T1,Nidx1)</td>
-            <td>√</td>
+            <td>x</td>
         </tr>
         <tr>
             <td>loss</td>
@@ -351,14 +355,14 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(1,)</td>
-            <td>-</td>
+            <td>x</td>
         </tr>
         </tbody>
     </table>
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -432,7 +436,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 
 ## 约束说明

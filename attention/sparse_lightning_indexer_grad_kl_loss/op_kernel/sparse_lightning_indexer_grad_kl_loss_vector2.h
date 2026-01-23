@@ -42,6 +42,7 @@ public:
 
     static constexpr SLILayout LAYOUT_T = SLIT::inputQLayout;
     static constexpr SLILayout KV_LAYOUT_T = SLIT::inputKLayout;
+    static constexpr bool deterministic = SLIT::deterministic;
 
     __aicore__ inline SLIKLLossVector2Service(){};
     __aicore__ inline void InitParams(const struct SLIGradKLLossConstInfo &vecConstInfo,
@@ -53,7 +54,7 @@ public:
     // =============== vector 2 functions ==============
     __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T> &bmm3Res, const GlobalTensor<int32_t> &topK,
         const GlobalTensor<OUT_T> &dKeyIndexGm, GlobalTensor<int64_t> &actualSeqLengthsQ,
-        GlobalTensor<int64_t> &actualSeqLengthsKV);
+        GlobalTensor<int64_t> &actualSeqLengthsKV, const GlobalTensor<T> &lossRes, GlobalTensor<T> &lossGm);
     __aicore__ inline void ProcessVector2();
 
 private:
@@ -69,17 +70,27 @@ private:
     GlobalTensor<int64_t> actualSeqLengthsQGm;
     GlobalTensor<int64_t> actualSeqLengthsKVGm;
     GlobalTensor<OUT_T> dKeyIndexGm;
+    GlobalTensor<T> lossResGm;
+    GlobalTensor<T> lossGm;
 
     // local tensor
     TBuf<> mm3TBuf;         // 64K, 64 * 128 * 4 * 2(DB)
     TBuf<> topKTBuf;        // 16KB, 2048 * 4 * 2(DB)
     TBuf<> castOutTBuf;     // 32KB, 64 * 128 * 4 * 2(DB)
+    TBuf<> lossBuf;         // sizeof(float)
+    TBuf<> inputLossBuf;    // aivNum * sizeof(float)
+    TBuf<> tmpBuf;          // 2KB
     LocalTensor<MM3_OUT_T> mm3ResUb;
     LocalTensor<int32_t> topKUb;
     LocalTensor<OUT_T> castOutUb;
+    LocalTensor<T> lossUb;
+    LocalTensor<T> inputLossUb;
+    LocalTensor<uint8_t> tmpUb;
 
     static constexpr uint64_t SYNC_SCATTER_BUF_FLAG = 0;
     static constexpr uint64_t SYNC_SCATTER_BUF_PONG_FLAG = 1;
+    static constexpr uint64_t MTE2ToVFlag = 0;
+    static constexpr uint64_t VToMTE3Flag = 0;
     static constexpr int64_t UB_ROW_SIZE = 64;
 };
 
@@ -94,13 +105,15 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(const struct SL
 template <typename SLIT> 
 __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitVector2GM(const GlobalTensor<MM3_OUT_T> &bmm3Res,
     const GlobalTensor<int32_t> &topK, const GlobalTensor<OUT_T> &dKeyIndexGm,
-    GlobalTensor<int64_t> &actualSeqLengthsQ, GlobalTensor<int64_t> &actualSeqLengthsKV)
+    GlobalTensor<int64_t> &actualSeqLengthsQ, GlobalTensor<int64_t> &actualSeqLengthsKV, const GlobalTensor<T> &lossRes, GlobalTensor<T> &lossGm)
 {
     this->bmm3ResGm = bmm3Res;
     this->topKGm = topK;
     this->actualSeqLengthsQGm = actualSeqLengthsQ;
     this->actualSeqLengthsKVGm = actualSeqLengthsKV;
     this->dKeyIndexGm = dKeyIndexGm;
+    this->lossResGm = lossRes;
+    this->lossGm = lossGm;
 }
 
 template <typename SLIT> 
@@ -109,9 +122,15 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitBuffers(TPipe *pipe)
     pipe->Reset();
     pipe->InitBuffer(mm3TBuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K * 2);  // 2:pingpong
     pipe->InitBuffer(castOutTBuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K * 2);  // 2:pingpong
+    pipe->InitBuffer(lossBuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
+    pipe->InitBuffer(inputLossBuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
+    pipe->InitBuffer(tmpBuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K);
 
     mm3ResUb = mm3TBuf.Get<MM3_OUT_T>();
     castOutUb = castOutTBuf.Get<OUT_T>();
+    lossUb = lossBuf.Get<T>();
+    inputLossUb = inputLossBuf.Get<T>();
+    tmpUb = tmpBuf.Get<uint8_t>();
 }
 
 template <typename SLIT> __aicore__ inline void SLIKLLossVector2Service<SLIT>::AllocEventID()
@@ -150,7 +169,8 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::ProcessVector2()
     int32_t t2End = Min(t2Start + avgCost, totalCost);
 
     int32_t t2ProcessSize = UB_ROW_SIZE;
-    int32_t t2TailSize = ((t2End - t2Start) % UB_ROW_SIZE == 0) ? UB_ROW_SIZE : ((t2End - t2Start) % UB_ROW_SIZE);
+    int32_t tailSize = (t2End - t2Start) % UB_ROW_SIZE;
+    int32_t t2TailSize = (!tailSize) ? UB_ROW_SIZE : (tailSize);
     int32_t pingPongIdx = 0;
 
     LocalTensor<MM3_OUT_T> copyInUb;
@@ -180,6 +200,19 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::ProcessVector2()
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);       // 释放copyOutUb
 
         pingPongIdx = 1 - pingPongIdx;
+    }
+    if (deterministic && constInfo.aivIdx == 0) {
+        DataCopyExtParams inputLossCopyParams = {1, static_cast<uint32_t>(totalCoreNum * sizeof(T)), 0, 0, 0};
+        DataCopyPadExtParams<T> copyPadParams = {false, 0, 0, 0};
+        AscendC::DataCopyPad(inputLossUb, lossResGm, inputLossCopyParams, copyPadParams);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(MTE2ToVFlag);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(MTE2ToVFlag);
+        AscendC::Sum(lossUb, inputLossUb, tmpUb, {1, static_cast<uint32_t>((totalCoreNum * sizeof(T) + 32 - 1) / 32 * 32 / sizeof(T)),
+                                         static_cast<uint32_t>(totalCoreNum)});
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(VToMTE3Flag);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(VToMTE3Flag);
+        DataCopyExtParams lossCopyParams = {1, static_cast<uint32_t>(sizeof(T)), 0, 0, 0};
+        AscendC::DataCopyPad(lossGm, lossUb, lossCopyParams);
     }
 }
 

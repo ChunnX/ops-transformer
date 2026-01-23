@@ -37,6 +37,12 @@ constexpr uint8_t SYNC_V1_TO_C2_DW_FLAG[2] = {8, 9};
 
 constexpr uint8_t SYNC_C2_TO_V2_SA_FLAG[2] = {10, 11};
 
+constexpr uint8_t SYNC_V2_TO_C2_DETER_SA_FLAG = 12;
+
+constexpr uint8_t SYNC_C2_TO_V2_DETER_SA_FLAG_MOD0[2] = {0, 1};
+
+constexpr uint8_t SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0 = 2;
+
 static constexpr uint32_t N_WORKSPACE_SIZE = 1024; // n方向切分
 static constexpr uint32_t K_BASE_SIZE = 2048; // n方向切分
 
@@ -48,8 +54,14 @@ enum class SLILayout
 
 enum class SLITopKRange
 {
-    RANGE_0_2K = 0,
-    RANGE_2K_8K = 1
+    TOPK_1k = 1024,
+    TOPK_2k = 2048,
+    TOPK_3k = 3072,
+    TOPK_4k = 4096,
+    TOPK_5k = 5120,
+    TOPK_6k = 6144,
+    TOPK_7k = 7168,
+    TOPK_8k = 8192
 };
 
 enum class SLISparseMode
@@ -123,15 +135,18 @@ struct SLIGradKLLossConstInfo {
     uint32_t kSize;
     SLISparseMode sparseMode; // 0或者3
     float scaleValue;
+    SoftMaxTiling tilingInfo;
+    SoftMaxTiling simpleSoftMaxTilingInfo;
 
-    // 轴的乘积提取一些公共信息，减少scalar   
-    int32_t s2BaseSize;
-    int32_t dSizeRope;
+    // 轴的乘积提取一些公共信息，减少scalar  
+    uint32_t gSizeQueryIndexAlign16; 
     int32_t gatherKeySize;
     int32_t gatherKeyIndexSize;
     static constexpr int32_t gatherKeyIndexDbNum = 2;
     static constexpr int32_t gatherKeyDbNum = 2;
     static constexpr int32_t sparseBlockSize = 1;
+    static constexpr int32_t s2BaseSize = 1024;
+    static constexpr int32_t dSizeRope = 64;
 };
 
 struct SLIGradKLLossRunInfo {
@@ -144,18 +159,18 @@ struct SLIGradKLLossRunInfo {
     int64_t accumS2Idx; // 当前循环累加的T2
     uint32_t actS1Size; // 当前batch的S1Size
     uint32_t actS2Size; // 当前batch的S2Size
-    uint32_t kBaseSize; // k方向切分的基本块大小，在P和KLLoss阶段
+    static constexpr uint32_t kBaseSize = 2048;
     uint32_t kRealSize; // k切分之后的实际大小，在P和KLLoss阶段
     uint32_t kTailSize; // k切分之后的尾块大小，在P和KLLoss阶段
     uint32_t kRealSizeAlign8;
     uint32_t kLoopTimes; // k方向的循环次数，在P和KLLoss阶段
     
     static constexpr uint32_t nBaseSizeP = 4;
-    uint32_t nRealSizeP;
-    uint32_t nBaseSizeSY;
-    uint32_t nRealSizeSY;
-    uint32_t nIdxP;
-    uint32_t nIdxSY;
+    static constexpr uint32_t nRealSizeP = 128;
+    static constexpr uint32_t nBaseSizeSY = 0;
+    static constexpr uint32_t nRealSizeSY = 0;
+    static constexpr uint32_t nIdxP = 0;
+    static constexpr uint32_t nIdxSY = 0;
     
     // 存放一些offset，减少重复计算
     int32_t s2SparseLen;
@@ -177,7 +192,7 @@ struct SLIGradKLLossRunInfo {
 /** @name UB分配策略定义
  *  @{
  */
-template <SLITopKRange value>
+template <bool isTopkLess2k>
 struct UBAllocPolicy {
     static constexpr int32_t gatherUbSize = 0;         // gather专用
     static constexpr int32_t mm1UbSize = 0;            // MTE2 -> V
@@ -195,7 +210,7 @@ struct UBAllocPolicy {
 };
 
 template <>
-struct UBAllocPolicy<SLITopKRange::RANGE_0_2K> {
+struct UBAllocPolicy<true> {
     static constexpr int32_t gatherUbSize = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_11K * 2;    // gather专用
     static constexpr int32_t mm1UbSize = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K;       // MTE2 -> V
     static constexpr int32_t mm2UbSize = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K;           // MTE2 -> V
@@ -213,7 +228,7 @@ struct UBAllocPolicy<SLITopKRange::RANGE_0_2K> {
 };
 
 template <>
-struct UBAllocPolicy<SLITopKRange::RANGE_2K_8K> {
+struct UBAllocPolicy<false> {
     static constexpr int32_t gatherUbSize = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_11K * 2;    // gather专用
     static constexpr int32_t mm1UbSize = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K;       // MTE2 -> V
     static constexpr int32_t mm2UbSize = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K;           // MTE2 -> V

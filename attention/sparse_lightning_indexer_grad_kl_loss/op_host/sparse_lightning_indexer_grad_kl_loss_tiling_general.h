@@ -316,7 +316,7 @@ protected:
     const char *templateName = "slikbase";
 
     LayoutType tilingKeyLayout;
-    TopKRange topKRange;
+    TopKRange topkSize;
     uint32_t aivNum;
     uint32_t aicNum;
     uint64_t l2CacheSize;
