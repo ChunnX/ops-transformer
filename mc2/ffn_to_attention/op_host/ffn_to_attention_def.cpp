@@ -8,6 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file ffn_to_attention_def.cpp
+ * \brief
+ */
+
 #include "register/op_def_registry.h"
 
 namespace ops {

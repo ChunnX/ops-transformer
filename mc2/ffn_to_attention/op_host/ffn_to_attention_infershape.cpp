@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file ffn_to_attention_infershape.cc
+ * \file ffn_to_attention_infershape.cpp
  * \brief
  */
 #include "runtime_util.h"

@@ -8,10 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
-* \file ffn_to_attention.h
-* \brief
-*/
+/*!
+ * \file ffn_to_attention.h
+ * \brief
+ */
+
 #ifndef FFN_TO_ATTENTION_H
 #define FFN_TO_ATTENTION_H
 
