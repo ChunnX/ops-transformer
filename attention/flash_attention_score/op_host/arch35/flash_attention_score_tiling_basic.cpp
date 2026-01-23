@@ -203,6 +203,6 @@ protected:
     }
 };
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingBasic, (int32_t)NpuArch::DAV_3510, 83);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingBasic, static_cast<int32_t>(NpuArch::DAV_3510), 83);
 } // namespace FA
 } // namespace optiling

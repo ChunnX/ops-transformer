@@ -81,6 +81,6 @@ protected:
     void CalcDBasicBlock() override {}
 };
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingDropMaskRegbase, (int32_t)NpuArch::DAV_3510, 81);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingDropMaskRegbase, static_cast<int32_t>(NpuArch::DAV_3510), 81);
 } // namespace FA
 } // namespace optiling

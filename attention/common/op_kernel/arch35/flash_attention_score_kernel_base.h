@@ -23,9 +23,9 @@
 #include "attenmask.h"
 
 // 线上编包
-#include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"
-#include "../../../common/op_kernel/CopyInL1.h"
+#include "../matmul.h"
+#include "../FixpipeOut.h"
+#include "../CopyInL1.h"
 
 #include "pse.h"
 #include "infer_flash_attention_comm.h"

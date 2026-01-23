@@ -15,10 +15,10 @@
 #ifndef FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_
 #define FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_
 #include "util_regbase.h"
-#include "../../../common/op_kernel/offset_calculator.h"
-#include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"
-#include "../../../common/op_kernel/CopyInL1.h"
+#include "../offset_calculator.h"
+#include "../matmul.h"
+#include "../FixpipeOut.h"
+#include "../CopyInL1.h"
 
 #include "infer_flash_attention_comm.h"
 #include "flash_attention_score_common_regbase.h"

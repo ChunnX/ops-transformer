@@ -519,7 +519,7 @@ protected:
         return false;
     }
 
-    void SetSplitCoreModeParam()
+    void SetSplitCoreModeParam() override
     {
         CalcThresholdForS2Size();
 
@@ -740,6 +740,6 @@ protected:
     }
 };
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingVarLen, (int32_t)NpuArch::DAV_3510, 82);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingVarLen, static_cast<int32_t>(NpuArch::DAV_3510), 82);
 } // namespace FA
 } // namespace optiling
