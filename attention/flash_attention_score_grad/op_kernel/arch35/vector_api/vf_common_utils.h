@@ -15,7 +15,7 @@
 #ifndef VF_COMMON_UTILS_H
 #define VF_COMMON_UTILS_H
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 
 namespace AscendC {
 using namespace MicroAPI;

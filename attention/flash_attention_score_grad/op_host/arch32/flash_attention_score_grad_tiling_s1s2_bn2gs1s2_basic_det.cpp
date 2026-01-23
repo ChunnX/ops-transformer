@@ -471,9 +471,8 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::GetPlatformInfo()
 }
 
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
     FlashAttentionScoreGrad, FlashAttentionScoreGraTilingBasicDet,
-    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
-                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
+    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
     1002);
 } // namespace optiling

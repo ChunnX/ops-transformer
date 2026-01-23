@@ -401,6 +401,10 @@
      constexpr static int64_t DETER_PREFIX_NUM = 132;
 
      bool coreDivide;
+     uint8_t reserved1; // tilingData需要8字节对齐
+     uint8_t reserved2; // tilingData需要8字节对齐
+     uint8_t reserved3; // tilingData需要8字节对齐
+     uint32_t reserved4; // tilingData需要8字节对齐
      int64_t deterPrefixStep;
      int64_t deterPrefix[DETER_PREFIX_NUM];
      int64_t deterPrefixAlign[DETER_PREFIX_NUM];

@@ -16,7 +16,7 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_EMPTY_TENSOR_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_EMPTY_TENSOR_REGBASE_H_
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 
 using AscendC::InitOutput;

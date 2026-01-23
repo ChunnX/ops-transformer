@@ -355,19 +355,19 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionScore(gert::TilingContext *
         return ge::GRAPH_FAILED);
  
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_95) {
-        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGW(context, "Current npu arch is dav-3510.");
         if (IsEmptyInputRegbase(context)) {
             return ge::GRAPH_SUCCESS;
         }
     } else {
-        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        OP_LOGW(context, "Current npu arch is not dav-3510.");
         if (IsEmptyInput(context)) {
             return ge::GRAPH_SUCCESS;
         }
     }
 
-    auto resultCode = TilingRegistryNew::GetInstance().DoTilingImpl(context);
+    auto resultCode = TilingRegistryArch::GetInstance().DoTilingImpl(context);
     return resultCode;
 }
 
@@ -386,6 +386,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScore(gert::Tilin
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
+    compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0cSize);

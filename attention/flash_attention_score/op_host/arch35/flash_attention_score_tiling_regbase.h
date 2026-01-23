@@ -409,6 +409,7 @@ protected:
     uint32_t aivNum;
     uint32_t aicNum;
     platform_ascendc::SocVersion socVersion;
+    NpuArch npuArch = NpuArch::DAV_RESV;
 
     matmul_tiling::DataType bmmDtype = matmul_tiling::DataType::DT_FLOAT;
     matmul_tiling::DataType bmm1OutDtype = matmul_tiling::DataType::DT_FLOAT;

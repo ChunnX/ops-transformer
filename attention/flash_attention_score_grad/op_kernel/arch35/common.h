@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include <cstdint>
 
@@ -32,12 +32,12 @@ namespace commondef {
 #define IS_TSCM_REUSE(HEAD_DIM_ALIGN, T1, IS_DETER_OLD, FP8_OPEN_TSCM)                                                                              \
     ((((!(IS_DETER_OLD) && (HEAD_DIM_ALIGN) <= (uint32_t)DTemplateType::Aligned256) ||                                           \
      ((IS_DETER_OLD) && (HEAD_DIM_ALIGN) <= (uint32_t)DTemplateType::Aligned192)) && (!IsSameType<T1, float>::value) && (!IsSameType<T1, fp8_e5m2_t>::value)) \
-        && (!IsSameType<T1, fp8_e4m3fn_t>::value) || (FP8_OPEN_TSCM && (IsSameType<T1, fp8_e5m2_t>::value || IsSameType<T1, fp8_e4m3fn_t>::value)))
+        && (!IsSameType<T1, fp8_e4m3fn_t>::value) && (!IsSameType<T1, hifloat8_t>::value) || (FP8_OPEN_TSCM && (IsSameType<T1, fp8_e5m2_t>::value || IsSameType<T1, fp8_e4m3fn_t>::value || IsSameType<T1, hifloat8_t>::value)))
 // 是否开启L1 preload，限制条件为D <= 192，非BN2模板，非确定性计算，非TND
 #define IS_TSCM_PRELOAD_ROPE(HEAD_DIM_ALIGN, T1, SPLIT_AXIS, IS_DETER_OLD, IS_TND, FP8_OPEN_TSCM, IS_ROPE)                                              \
     ((((HEAD_DIM_ALIGN) <= (uint32_t)DTemplateType::Aligned192) && (((SPLIT_AXIS) == 0) || ((SPLIT_AXIS) == 5)) && ((IS_DETER_OLD) == 0 || ((IS_DETER_OLD) == 1 && IS_ROPE)) &&    \
-     (!IsSameType<T1, float>::value) && (!IsSameType<T1, fp8_e5m2_t>::value) && (!IsSameType<T1, fp8_e4m3fn_t>::value)) ||       \
-     (FP8_OPEN_TSCM && ((HEAD_DIM_ALIGN) <= (uint32_t)DTemplateType::Aligned256) && (IsSameType<T1, fp8_e5m2_t>::value || IsSameType<T1, fp8_e4m3fn_t>::value)))
+     (!IsSameType<T1, float>::value) && (!IsSameType<T1, fp8_e5m2_t>::value) && (!IsSameType<T1, fp8_e4m3fn_t>::value) && (!IsSameType<T1, hifloat8_t>::value)) ||       \
+     (FP8_OPEN_TSCM && ((HEAD_DIM_ALIGN) <= (uint32_t)DTemplateType::Aligned256) && (IsSameType<T1, fp8_e5m2_t>::value || IsSameType<T1, fp8_e4m3fn_t>::value || IsSameType<T1, hifloat8_t>::value)))
 // 是否开启L1 preload，限制条件为D <= 192，非BN2模板，非确定性计算，非TND
 #define IS_TSCM_PRELOAD(HEAD_DIM_ALIGN, T1, SPLIT_AXIS, IS_DETER_OLD, IS_TND)                                          \
     (IS_TSCM_PRELOAD_ROPE(HEAD_DIM_ALIGN, T1, SPLIT_AXIS, IS_DETER_OLD, IS_TND, false, false))
@@ -67,7 +67,7 @@ constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
 #define IS_L0C_REUSE(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN, IS_DETER_OLD, T1, IS_TND)                                     \
     ((GET_L0C_BUF_NUM(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) >= MIN_L0C_BUF_NUM) && !(IS_DETER_OLD) &&                    \
      (!IsSameType<T1, float>::value) && (!IS_TND) &&                                                                   \
-     (!(IsSameType<T1, fp8_e5m2_t>::value || IsSameType<T1, fp8_e4m3fn_t>::value)))
+     (!(IsSameType<T1, fp8_e5m2_t>::value || IsSameType<T1, fp8_e4m3fn_t>::value || IsSameType<T1, hifloat8_t>::value)))
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;

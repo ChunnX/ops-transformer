@@ -199,58 +199,5 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
     return ge::GRAPH_SUCCESS;
 }
 
-bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape) {
-    OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
-               OP_LOGW("flash_attention_score_grad_tiling_common", "aShape or bShape is nullptr."),
-               return false);
-    uint32_t dimSizeA = aShape->GetStorageShape().GetDimNum();
-    uint32_t dimSizeB = bShape->GetStorageShape().GetDimNum();
-    if (dimSizeA != dimSizeB) {
-        return false;
-    }
-
-    for (uint32_t i = 0; i < dimSizeA; i++) {
-        auto dimA = aShape->GetStorageShape().GetDim(i);
-        auto dimB = bShape->GetStorageShape().GetDim(i);
-        if (dimA != dimB) {
-            return false;
-        }
-    }
-    return true;
-}
-
-
-bool isTndSABHit(gert::TilingContext *context)
-{
-    auto actualSeqQLenTensor = context->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
-    auto actualSeqKVLenTensor = context->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_KV_LEN));
-    bool isTND = actualSeqQLenTensor != nullptr && actualSeqQLenTensor->GetShapeSize() > 0 &&
-                 actualSeqKVLenTensor != nullptr && actualSeqKVLenTensor->GetShapeSize() > 0;
-    if (isTND) {
-        const int64_t *qTensor = actualSeqQLenTensor->GetData<int64_t>();
-        const int64_t *kvTensor = actualSeqKVLenTensor->GetData<int64_t>();
-        const size_t actualSeqQLen = static_cast<size_t>(actualSeqQLenTensor->GetShapeSize());
-
-        int64_t qSum = 0;
-        int64_t kvSum = 0;
-        int64_t len = 1;
-
-        for (int64_t i = static_cast<int64_t>(actualSeqQLen) - 1; i >= 0; --i) {
-            if (qTensor[i]) {
-                qSum = qTensor[i];
-                kvSum = kvTensor[i];
-                len = static_cast<int64_t>(i) + 1;
-                break;
-            }
-        }
-        
-        if ((qSum / len >= SAB_TND_SIZE) && (kvSum / len >= SAB_TND_SIZE)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 }
 } // namespace optiling

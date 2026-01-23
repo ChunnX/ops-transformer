@@ -230,7 +230,6 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetRunInfoDeter
     runInfo.commonRunInfo.boIdx = bIdx;
  
     if (runInfo.lastBatchIdx != bIdx) {
-        // deter场景不使用
         int64_t seqQLenPrefix = bIdx == 0 ? 0 : ((__gm__ int64_t *)this->actualSeqQlenAddr)[bIdx - 1];
         int64_t seqKvLenPrefix = bIdx == 0 ? 0 : ((__gm__ int64_t *)this->actualSeqKvlenAddr)[bIdx - 1];
         runInfo.lastBatchTotalS1BOffset = seqQLenPrefix * this->constInfo.commonConstInfo.n2GD;
@@ -244,6 +243,10 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetRunInfoDeter
             GetPrefixByBidx<false>(this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix, bIdx,
                                    this->tilingData->deterParam.deterPrefixStep);
         runInfo.lastBatchTotalS2Size = seqKvLenPrefix;
+        if constexpr (IS_ROPE) {
+            runInfo.lastBatchTotalS1BRopeOffset = seqQLenPrefix * this->constInfo.commonConstInfo.n2GDr;
+            runInfo.lastBatchTotalS2BRopeOffset = seqKvLenPrefix * this->constInfo.commonConstInfo.n2Dr;
+        }
     }
     
     runInfo.lastBatchIdx = bIdx;
@@ -342,8 +345,8 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
         }
  
         if (this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL && m > n) {
-            mGap = m - n;
-            m = n;
+            mGap = (this->constInfo.commonConstInfo.s1Size - this->constInfo.commonConstInfo.s2Size) / BaseClass::CUBE_BASEM;
+            m -= mGap;
         } else if ((this->constInfo.sparseMode == NO_MASK || this->constInfo.sparseMode == LEFT_UP_CAUSAL) && n > m) {
             n = m;
         }
@@ -564,7 +567,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
  
         if constexpr(BaseClass::IS_N_EQUAL) {
             GenBandInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
-            loopMax = this->bandInfo.rm2;
+            loopMax = Max(this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound, this->bandInfo.rm2);
         } else {
             k = Min(Min(k, b * this->constInfo.commonConstInfo.gSize * m), b * n);
             int64_t b2 = b % k;

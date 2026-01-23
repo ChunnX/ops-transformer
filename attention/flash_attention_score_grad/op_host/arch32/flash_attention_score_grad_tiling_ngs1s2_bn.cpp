@@ -1179,9 +1179,8 @@ public:
     }
 };
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScoreGrad, FlashAttentionScoreGradUngs1s2BbnTiling,
-                                         std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ASCEND910B,
-                                                               (int32_t)platform_ascendc::SocVersion::ASCEND910_93}),
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScoreGrad, FlashAttentionScoreGradUngs1s2BbnTiling,
+                                         std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
                                          11000);
 
 } // namespace optiling

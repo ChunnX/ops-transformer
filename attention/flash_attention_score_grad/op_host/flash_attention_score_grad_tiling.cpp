@@ -348,21 +348,21 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
     auto compilePtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
     OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
                return ge::GRAPH_FAILED);
-    auto socVersion = compilePtr->socVersion;
-    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
-        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+    auto npuArch = compilePtr->npuArch;
+    if (npuArch == NpuArch::DAV_3510) {
+        OP_LOGW(context, "Current npu arch is dav-3510.");
         if (IsEmptyOutput(context)) {
             FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
             return flashAttentionScoreGradTiling.RunEmptyTilingRegbase(context);
         }
     } else {
-        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        OP_LOGW(context, "Current npu arch is not dav-3510.");
         if (IsEmptyOutput(context)) {
             FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
             return flashAttentionScoreGradTiling.RunEmptyTiling(context);
         }
     }
-    return TilingRegistryNew::GetInstance().DoTilingImpl(context);
+    return TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::TilingParseContext *context)
@@ -382,7 +382,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::T
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
-    compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
+    compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfoPtr->l0aSize);

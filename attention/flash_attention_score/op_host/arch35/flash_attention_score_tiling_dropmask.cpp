@@ -13,6 +13,7 @@
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 namespace FA {
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 class FlashAttentionScoreTilingDropMaskRegbase : public FlashAttentionScoreTilingRegbase {
 public:
     explicit FlashAttentionScoreTilingDropMaskRegbase(gert::TilingContext *context) :
@@ -61,6 +62,7 @@ protected:
         dropmaskParamsRegbase_->set_multiCoreFactorSize(static_cast<int32_t>(multiCoreFactorSize));
         dropmaskParamsRegbase_->set_multiCoreTotalSize(CeilDivision(shapeSplitCoreSize * ubCalFactor, baseUbCalSize));
         dropmaskParamsRegbase_->set_baseUbCalSize(static_cast<int32_t>(baseUbCalSize));
+        context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
         return ge::GRAPH_PARAM_INVALID;
     }
 
@@ -79,6 +81,6 @@ protected:
     void CalcDBasicBlock() override {}
 };
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingDropMaskRegbase, (int32_t)platform_ascendc::SocVersion::ASCEND910_95, 81);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingDropMaskRegbase, (int32_t)NpuArch::DAV_3510, 81);
 } // namespace FA
 } // namespace optiling

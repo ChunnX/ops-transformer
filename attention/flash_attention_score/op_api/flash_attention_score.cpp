@@ -136,7 +136,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         return {nullptr, nullptr, nullptr, nullptr};
     }
 
-    ADD_TO_LAUNCHER_LIST_AICORE(
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(
         FlashAttentionScore,
         OP_INPUT(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
                  prefixOptionalTensor, actualSeqQLen, actualSeqKvLen, qStartIdxOptionalTensor, kvStartIdxOptionalTensor,
@@ -145,6 +145,10 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         OP_ATTR(static_cast<float>(scaleValue), static_cast<float>(keepProb), preTockens,
                 nextTockens, headNum, inputLayout, innerPrecise, sparseMode, pseType,
                 seed, offset, outDtype, softmaxOutLayout));
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore launch kernel failed.");
+        return {nullptr, nullptr, nullptr, nullptr};
+    }
     return {softmaxMaxOut, softmaxSumOut, softmaxOutOut, attentionOutOut};
 }
 

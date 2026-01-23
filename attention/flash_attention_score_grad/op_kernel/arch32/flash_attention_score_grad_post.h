@@ -803,7 +803,6 @@ public:
             dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                         tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
         }
-
         dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                     tilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
         dsinksumDataSizeGm.SetGlobalBuffer((__gm__ uint32_t *)workspace +
@@ -1033,7 +1032,6 @@ public:
             int s2Pad = (tilingData->postTilingData.s2 + 255) / 256 * 256;
             int dataSizePerN1 = tilingData->postTilingData.b * s1Pad * s2Pad / tilingData->postTilingData.baseMN;
             int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
-
             int dsinkSumMaxCopyTimePerN1 = (dataSizePerN1 * sizeof(float) + 2 * ubBaseSize -1) / ( 2 * ubBaseSize);
             int tailDsinkSumSize = (dataSizePerN1 * sizeof(float)) % (2 * ubBaseSize);
             int copyOffset = 0;
@@ -1078,8 +1076,6 @@ public:
                 dsinkGm.SetValue(n1temp, dsinkCalc);
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
-
-
             inQueue.FreeTensor(vecIn);
             outQueue.FreeTensor(vecOut);
         }

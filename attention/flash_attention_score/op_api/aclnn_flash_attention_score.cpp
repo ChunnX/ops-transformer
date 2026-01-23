@@ -98,6 +98,14 @@ struct FaShapeInfo {
     bool needPadValue = false;
 };
 
+static bool StrideLimited() {
+    NpuArch npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_2201) {
+        return true;
+    }
+    return false;
+}
+
 static void AnalysisAxisForBsh(const Shape &qShape, const Shape &kShape, const Shape &vShape, FaShapeInfo &shapeInfo)
 {
     shapeInfo.inputLayout = InputLayout::BSH;
@@ -388,18 +396,22 @@ static bool isSupportMLA(const FaShapeInfo &shapeInfo, const aclTensor *query)
 }
 
 static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key, const aclTensor *value,
-                                   const aclTensor *realShiftOptional, int64_t pseType, const aclTensor *sinkOptional)
+                                   const aclTensor *attentionOut, const aclTensor *realShiftOptional,
+                                   int64_t pseType, const aclTensor *sinkOptional)
 {
     auto vDtype = value->GetDataType();
     auto kDtype = key->GetDataType();
     auto qDtype = query->GetDataType();
+    auto outDtype = attentionOut->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
                 op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
                 op::ToString(DataType(vDtype)).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (!(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
+
+    if (StrideLimited() &&
+        !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query/key/value is [%s], should be fp16, bf16 or fp32.",
                 op::ToString(DataType(qDtype)).GetString());
         return ACLNN_ERR_PARAM_INVALID;
@@ -421,10 +433,10 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     }
     if (realShiftOptional != nullptr) {
         auto pseDtype = realShiftOptional->GetDataType();
-        if (pseDtype != qDtype) {
+        if (pseDtype != outDtype) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type %s of pse is not equal to the data type %s of query, key and value.",
-                    op::ToString(DataType(pseDtype)).GetString(), op::ToString(DataType(qDtype)).GetString());
+                    "The data type %s of pse is not equal to the data type %s of attentionOut.",
+                    op::ToString(DataType(pseDtype)).GetString(), op::ToString(DataType(outDtype)).GetString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -454,7 +466,7 @@ static inline bool CheckFormat(
     if (!formatValid) {
         OP_LOGE(
             ACLNN_ERR_PARAM_INVALID,
-            "Input and output format only support [ND]. Actual: query:[%s], key:[%s], value:[%s], softmaxMaxOut:[%s], softmaxSumOut:[%s], attentionOutOut:[%s].",
+            "Input and output format do not support [NZ]. Actual: query:[%s], key:[%s], value:[%s], softmaxMaxOut:[%s], softmaxSumOut:[%s], attentionOutOut:[%s].",
             op::ToString(query->GetStorageFormat()).GetString(), op::ToString(key->GetStorageFormat()).GetString(),
             op::ToString(value->GetStorageFormat()).GetString(), op::ToString(softmaxMaxOut->GetStorageFormat()).GetString(), 
             op::ToString(softmaxSumOut->GetStorageFormat()).GetString(), op::ToString(attentionOutOut->GetStorageFormat()).GetString());
@@ -482,7 +494,7 @@ static inline bool CheckFormat(
         formatValid = (formatValid && sinkOptional->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ);
     }
     if (!formatValid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,"Optional input format only support [ND]. Actual: queryRope:[%s], keyRope:[%s], realShiftOptional:[%s], "
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,"Optional input format do not support [NZ]. Actual: queryRope:[%s], keyRope:[%s], realShiftOptional:[%s], "
             "dropMaskOptional:[%s], paddingMaskOptional:[%s], attenMaskOptional:[%s], sinkOptional:[%s].",op::ToString(queryRope->GetStorageFormat()).GetString(),
             op::ToString(keyRope->GetStorageFormat()).GetString(),op::ToString(realShiftOptional->GetStorageFormat()).GetString(),
             op::ToString(dropMaskOptional->GetStorageFormat()).GetString(),op::ToString(paddingMaskOptional->GetStorageFormat()).GetString(),
@@ -522,6 +534,10 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
 
     if (shapeInfo.inputLayout != InputLayout::TND &&
         (shapeInfo.axes.b == 0 || shapeInfo.axes.s1 == 0 || shapeInfo.axes.s2 == 0)) {
+        return ACLNN_SUCCESS;
+    }
+
+    if (!StrideLimited()) {
         return ACLNN_SUCCESS;
     }
 
@@ -603,7 +619,8 @@ static aclnnStatus Contiguous(const aclTensor *&query, const aclTensor *&key, co
                               const aclTensor *&realShiftOptional, const aclTensor *&dropMaskOptional,
                               const aclTensor *&paddingMaskOptional, const aclTensor *&attenMaskOptional,
                               const aclTensor *&queryRope, const aclTensor *&keyRope, const aclTensor *&sinkOptional,
-                              aclOpExecutor *executor)
+                              const aclTensor *&dScaleQOptional, const aclTensor *&dScaleKOptional,
+                              const aclTensor *&dScaleVOptional, aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -639,12 +656,27 @@ static aclnnStatus Contiguous(const aclTensor *&query, const aclTensor *&key, co
         sinkOptional = l0op::Contiguous(sinkOptional, executor);
         CHECK_RET(sinkOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
+    if (dScaleQOptional) {
+        dScaleQOptional = l0op::Contiguous(dScaleQOptional, executor);
+        CHECK_RET(dScaleQOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (dScaleKOptional) {
+        dScaleKOptional = l0op::Contiguous(dScaleKOptional, executor);
+        CHECK_RET(dScaleKOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (dScaleVOptional) {
+        dScaleVOptional = l0op::Contiguous(dScaleVOptional, executor);
+        CHECK_RET(dScaleVOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key, const aclTensor *&value,
                                  const struct FaShapeInfo &shapeInfo, aclOpExecutor *executor)
 {
+    if (!StrideLimited()) {
+        return ACLNN_SUCCESS;
+    }
     if (shapeInfo.needReshape) {
         query = l0op::Reshape(
             query, executor->AllocIntArray(shapeInfo.reshapedQueryShape.data(), shapeInfo.reshapedQueryShape.size()),
@@ -714,6 +746,9 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
 static aclnnStatus Postprocess(const aclTensor *&l0AttentionOutOut, const aclTensor *attentionOutOut,
                                struct FaShapeInfo &shapeInfo, aclOpExecutor *executor)
 {
+    if (!StrideLimited()) {
+        return ACLNN_SUCCESS;
+    }
     if (shapeInfo.inputLayout == InputLayout::SBH && shapeInfo.needPad && !shapeInfo.needTranspose) {
         // (S,B,Hp) -> (S,B,N,Dp)
         FVector<int64_t, DIM_NUM_4> paddedSBNDShape{shapeInfo.axes.s1, shapeInfo.axes.b, shapeInfo.axes.n1,
@@ -873,16 +908,20 @@ aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
     const aclTensor *keyRope = nullptr;
     
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,
+                         attenMaskOptional, queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
                          l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -899,7 +938,12 @@ aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[DIM_NUM_3];
-
+    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
 
@@ -962,18 +1006,22 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
     const aclTensor *keyRope = nullptr;
     
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
                          l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -988,15 +1036,15 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
-
-    CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_NULLPTR);
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_NULLPTR;
     }
+    CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
+
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
@@ -1050,18 +1098,22 @@ aclnnStatus aclnnFlashAttentionScoreV2GetWorkspaceSize(
     const aclTensor *keyRope = nullptr;
     
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, pseType, nullptr) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, nullptr) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
                          l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -1076,7 +1128,12 @@ aclnnStatus aclnnFlashAttentionScoreV2GetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
-
+    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
 
@@ -1133,18 +1190,22 @@ aclnnStatus aclnnFlashAttentionScoreV3GetWorkspaceSize(
     const aclTensor *keyRope = nullptr;
     
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
                          l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -1164,7 +1225,12 @@ aclnnStatus aclnnFlashAttentionScoreV3GetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
-
+    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
 
@@ -1185,6 +1251,100 @@ aclnnStatus aclnnFlashAttentionScoreV3(void *workspace, uint64_t workspaceSize, 
                                        const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnFlashAttentionScoreV3);
+    // 固定写法，调用框架能力，完成计算
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+}
+
+aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *realShiftOptional,
+    const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional, const aclTensor *attenMaskOptional,
+    const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional, const aclTensor *dScaleQOptional,
+    const aclTensor *dScaleKOptional,  const aclTensor *dScaleVOptional,
+    const aclTensor *sinkOptional, const aclIntArray *prefixOptional,
+    const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional,
+    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValue,
+    double keepProb, int64_t preTokens, int64_t nextTokens, int64_t headNum, char *inputLayout, int64_t innerPrecise,
+    int64_t sparseMode, int64_t outDtype, int64_t pseType, char *softmaxOutLayout, int64_t seed, int64_t offset,
+    const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *softmaxOutOut,
+    const aclTensor *attentionOutOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    CHECK_RET(CheckFaParam(query, key, value, inputLayout, softmaxMaxOut, softmaxSumOut, attentionOutOut,
+        workspaceSize, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+    L2_DFX_PHASE_1(aclnnFlashAttentionScoreV4,
+                   DFX_IN(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,
+                          attenMaskOptional, queryRopeOptional, keyRopeOptional, dScaleQOptional, dScaleKOptional,
+                          dScaleVOptional, sinkOptional, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional,
+                          qStartIdxOptional, kvStartIdxOptional, scaleValue, keepProb, preTokens, nextTokens, headNum,
+                          inputLayout, innerPrecise, sparseMode, outDtype, pseType, seed, offset),
+                   DFX_OUT(softmaxMaxOut, softmaxSumOut, softmaxOutOut, attentionOutOut));
+
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    // b, n1, s1 为0时，不进行任何处理
+    // n2, s2, d 为0时，直接调用l0接口处理
+    if (softmaxMaxOut->IsEmpty() && softmaxSumOut->IsEmpty() && attentionOutOut->IsEmpty()) {
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    FaShapeInfo shapeInfo;
+    CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+
+    aclOpExecutor *l0Executor = uniqueExecutor.get();
+
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRopeOptional, keyRopeOptional, sinkOptional, dScaleQOptional, dScaleKOptional,
+                         dScaleVOptional, l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+
+    CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+
+    // sink shape is 0
+    if (sinkOptional != nullptr && sinkOptional->GetViewShape().GetDimNum() == 1 &&
+        sinkOptional->GetViewShape()[0] == 0) {
+        sinkOptional = nullptr;
+    }
+    auto l0FlashAttentionScoreOuts = l0op::FlashAttentionScore(
+        query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, sinkOptional,
+        prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional,
+        dScaleQOptional, dScaleKOptional, dScaleVOptional, queryRopeOptional, keyRopeOptional,
+        scaleValue, keepProb, preTokens, nextTokens, headNum, shapeInfo.l0InputLayoutStr.c_str(),
+        innerPrecise, sparseMode, pseType, seed, offset, outDtype, softmaxOutLayout, l0Executor);
+
+    auto l0SoftmaxMaxOut = l0FlashAttentionScoreOuts[0];
+    auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
+    // l0SoftmaxOutOut not used now
+    auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
+    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
+
+    auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
+    CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
+    CHECK_RET(viewCopyResult1 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    // l0SoftmaxOutOut not used now
+    auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
+    CHECK_RET(viewCopyResult3 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus aclnnFlashAttentionScoreV4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                       const aclrtStream stream)
+{
+    L2_DFX_PHASE_2(aclnnFlashAttentionScoreV4);
     // 固定写法，调用框架能力，完成计算
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
@@ -1230,18 +1390,22 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
     const aclTensor *keyRope = nullptr;
     
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
                          l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -1256,15 +1420,15 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
-
+    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
-    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-      OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
-      *workspaceSize = 0;
-      uniqueExecutor.ReleaseTo(executor);
-      return ACLNN_ERR_PARAM_NULLPTR;
-    }
+
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
@@ -1326,20 +1490,24 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
     const aclTensor *sinkOptional = nullptr;
     
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
 
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
-        l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
+                         l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
@@ -1356,15 +1524,15 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
-
+    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
-    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-      OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
-      *workspaceSize = 0;
-      uniqueExecutor.ReleaseTo(executor);
-      return ACLNN_ERR_PARAM_NULLPTR;
-    }
+
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
@@ -1424,18 +1592,22 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
     const aclTensor *keyRope = nullptr;
     
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
                          l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -1450,15 +1622,15 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
-
-    CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_NULLPTR);
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_NULLPTR;
     }
+    CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
+
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
@@ -1517,21 +1689,25 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
     }
 
     //检查format是否符合要求
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND910_95) {
+    if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
     FaShapeInfo shapeInfo;
-    CHECK_RET(InputDtypeCheck(query, key, value, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
 
-    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, queryRope, keyRope, sinkOptional,
-        l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+    const aclTensor *dScaleQ = nullptr;
+    const aclTensor *dScaleK = nullptr;
+    const aclTensor *dScaleV = nullptr;
+    CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
+                         l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
@@ -1552,15 +1728,15 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
     auto l0SoftmaxSumOut = l0FlashAttentionScoreOuts[1];
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
-
+    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_RET(Postprocess(l0AttentionOutOut, attentionOutOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
-    if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-      OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
-      *workspaceSize = 0;
-      uniqueExecutor.ReleaseTo(executor);
-      return ACLNN_ERR_PARAM_NULLPTR;
-    }
+
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     CHECK_RET(viewCopyResult0 != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);

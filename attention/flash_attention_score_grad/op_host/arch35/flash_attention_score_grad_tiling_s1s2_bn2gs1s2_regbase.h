@@ -216,7 +216,7 @@
      DtypeEnum inputDtype;
      bool isDeterministic = false;
      uint32_t deterSparseType;
-     bool isS1S2Same = true;
+     bool isS1S2Same = false;
      bool coreDivide = false;
      int64_t deterMaxRound = 0;
      // 每个 batch 的前缀面积总和 prefix, 小于128b传完整的前缀和，大于128b的，按步长传部分前缀和，在kernel内组装完整的前缀和
@@ -237,6 +237,9 @@
      bool hasRope = false;
      SplitAxisEnum splitAxis = SplitAxisEnum::BN2GS1S2;
      bool sValueZeroUnderTND = false;
+     bool isInvalidCol = false;
+     bool isInvalidRow = false;
+     uint64_t tailZeroCount = 0;
  
      ConstAxisTemplateNum s1TemplateType = ConstAxisTemplateNum::NUM128;
      ConstAxisTemplateNum s2TemplateType = ConstAxisTemplateNum::NUM128;
@@ -284,19 +287,26 @@
      uint32_t GetDeterSparseTilingKey();
      uint8_t GetSparseType();
      int64_t GetTotalPerBatchNum(uint8_t sparseType);
-     bool SupportTNDBns2(DeterPrefixData &deterPrefixData);
+     bool SupportTrans2BS2N2GD();
+     bool SupportTNDBns2(DeterPrefixData &deterPrefixData, int64_t round);
      void CalcleDeterParam();
      void CalcleCausalDeterParam();
+     void CalcleBandDeterParam();
      void CalcleTNDDeterParam();
      void CalcleTNDBandDeterParam();
+
      void CalcleTNDCausalDeterPrefix(DeterPrefixData &deterPrefixData,
                                      int64_t &m0Max, int64_t &m1Max, int64_t &m2Max);
      void CalcleTNDCausalDeterParam();
      void CalcleTNDCausalDeterParamNormal(DeterPrefixData &deterPrefixData, const int64_t m0Max, const int64_t m1Max, const int64_t m2Max);
      void CalcleTNDCausalDeterParamGQA(DeterPrefixData &deterPrefixData, const int64_t m0Max, const int64_t m1Max, const int64_t m2Max);
      void CalcleTNDDenseDeterParam();
-     void CalcleTNDBandDeterSyncRounds(std::vector<std::pair<uint64_t, uint64_t>> &syncRounds,
-                                       std::vector<std::pair<uint64_t, uint64_t>> &syncRoundRanges);
+     void CalcleTNDDenseBns2DeterParam(DeterPrefixData &deterPrefixData);
+     void CalcleTNDDeterSyncRounds(std::vector<std::pair<uint64_t, uint64_t>> &syncRounds,
+                                   std::vector<std::pair<uint64_t, uint64_t>> &syncRoundRanges);
+     void CalcleTNDDenseDeterSplitDkOffset(DeterPrefixData &deterPrefixData,
+                                           std::vector<std::pair<uint64_t, uint64_t>> &syncRounds,
+                                           std::vector<std::pair<uint64_t, uint64_t>> &syncRoundRanges);
      void UpdateSeparateDkOffset(
          std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> &coordinateInfo,
          TndBandDeterRoundInfo &tndBandDeterRoundInfo);
@@ -318,9 +328,9 @@
      int64_t GetKeyOffset(const int64_t *kvValue, int64_t w, int64_t y);
      bool IsSeparateS2(
          std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> &coordinateInfo);
-     std::tuple<int64_t, int64_t, int64_t>
-     CalTNDDenseIndex(DeterPrefixData &deterPrefixData,
-                      int64_t coreId, int64_t roundId);
+     template<const uint32_t deterSparseType>
+     std::tuple<int64_t, int64_t, int64_t> CalTNDDenseIndex(DeterPrefixData &deterPrefixData,
+                                                            int64_t coreId, int64_t roundId, int64_t N1);
      void CalcleActualToken(int64_t batchIdx, int64_t &actualCalcS1Token, int64_t &actualCalcS2Token);
      void GetWorkspaceSize4Deter(size_t &workspaceSize);
      void GetIsDeterArr();
@@ -402,9 +412,11 @@
          const std::vector<std::vector<float>> &acturalBlockInfo,
          const float maxBlockNumPerCore, int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM]);
      ge::graphStatus GetSparseBlockInfoBn2();
+     bool CheckIsLargeInvalidBlk();
  
      FuzzyBaseInfoParamsRegbase fBaseParams;
      platform_ascendc::SocVersion socVersion;
+     NpuArch npuArch = NpuArch::DAV_RESV;
  };
  
  class FlashAttentionScoreGradTilingUnpaddedAttensionRegbase : public FlashAttentionScoreGradTilingUs1s2Bs2Regbase {

@@ -9,6 +9,7 @@
  */
 
 #include "flash_attention_score_tiling_regbase.h"
+#include "../flash_attention_score_tiling_common.h"
 
 namespace optiling {
 namespace FA {
@@ -51,12 +52,13 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetPlatformInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
-        auto compileInfoPtr = reinterpret_cast<const FACompileInfoCommon *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compileInfoPtr is null."),
                    return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
         socVersion = compileInfoPtr->socVersion;
+        npuArch = compileInfoPtr->npuArch;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
@@ -65,6 +67,7 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetPlatformInfo()
         aivNum = ascendcPlatform.GetCoreNumAiv();
         aicNum = ascendcPlatform.GetCoreNumAic();
         socVersion = ascendcPlatform.GetSocVersion();
+        npuArch = ascendcPlatform.GetCurNpuArch();
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
@@ -357,6 +360,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     }
     s1Size = *std::max_element(actualSeqLenData.begin(), actualSeqLenData.end());
     s2Size = *std::max_element(actualSeqLenKvData.begin(), actualSeqLenKvData.end());
+    OP_CHECK_IF(s1Size <= 0,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "s1Size should be larger than 0."), return false);
     OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "head_num is [%ld], but got query dim1 [%ld].", n1Size,
                                             queryShape.GetDim(1)),
@@ -968,10 +973,6 @@ bool FlashAttentionScoreTilingRegbase::IsUseSpliteCoreMode(SparseMode inputSpars
 
 void FlashAttentionScoreTilingRegbase::SetSplitCoreModeParam()
 {
-    if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
-        return;
-    }
-
     CalcThresholdForS2Size();
 
     // 索引从0开始，需要将基本块个数减1

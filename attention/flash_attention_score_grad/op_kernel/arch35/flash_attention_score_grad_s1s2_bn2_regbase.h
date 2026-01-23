@@ -16,7 +16,7 @@
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BN2_REGBASE_H_
 
 #include "../../../common/op_kernel/arch35/dropmask.h"
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "matmul_modules/fag_custom_matmul_policy.h"
 #include "vector_api/cast_softmax_grad.h"

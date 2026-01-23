@@ -62,9 +62,9 @@ public:
     }
  
     constexpr static bool IS_FP8_INPUT =
-        IsSameType<INPUT_TYPE, fp8_e5m2_t>::value || IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value;
+        IsSameType<INPUT_TYPE, fp8_e5m2_t>::value || IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value || IsSameType<INPUT_TYPE, hifloat8_t>::value;
     constexpr static bool IS_FP32_INPUT = IsSameType<INPUT_TYPE, float>::value;
-    constexpr static float FP8_MAX = IsSameType<INPUT_TYPE, fp8_e5m2_t>::value ? 57344 : 448;
+    constexpr static float FP8_MAX = IsSameType<INPUT_TYPE, fp8_e5m2_t>::value ? 57344 : IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value ? 448 : 32768;
     constexpr static uint32_t BITS_EACH_UINT64 = 64;
     constexpr static uint32_t MAX_BITS_IN_TILING = 32 * BITS_EACH_UINT64;
     constexpr static uint32_t INT64_BLOCK_NUM = 32 / sizeof(int64_t);
@@ -110,6 +110,8 @@ protected:
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
+    typename std::conditional<IS_FP8_INPUT, BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC>, std::nullptr_t>::type dSTransL1Buf;    
+    typename std::conditional<IS_FP8_INPUT, BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC>, std::nullptr_t>::type vL1Buf;
  
     GM_ADDR prefixNAddr;
     GM_ADDR actualSeqQlenAddr;
@@ -202,7 +204,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     vecBlock.SetVecBlockParams(pipeIn, tilingData, vBlockIdx, cBlockIdx, vSubBlockIdx, attenMaskInfo, pseInfo,
                                dropInfo);
     vecBlock.InitUbBuffer();
-    vecBlock.InitGlobalBuffer(dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
+    vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
                               deqScaleV, deqScaleDy, dq, dk, dv, workspace);
  
     // pass params to cube block
@@ -234,7 +236,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
     deqScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
     deqScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
     deqScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
-    deqScaleDyGm.SetGlobalBuffer((__gm__ float *)deqScaleDy);
+
  
     // init workspace address
     if constexpr (!IS_FP32_INPUT) {
@@ -266,12 +268,18 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonBuffer()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
-    if constexpr (IS_FP8_INPUT || (DETER_SPARSE_TYPE) == DETER_OLD) {
+    if constexpr ((DETER_SPARSE_TYPE) == DETER_OLD) {
         dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE) * NUM_TWO);
-    } else {
+    } else if constexpr (IS_FP8_INPUT) {
         dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+        dSTransL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));        
+    } else {
+        dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));  
     }
-    pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+    pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(OUTDTYPE));
+    if constexpr (IS_FP8_INPUT) {
+        vL1Buf.Init(l1BufferManager, CUBE_BASEN * HEAD_DIM_ALIGN * sizeof(OUTDTYPE));
+    }
  
     pipe->InitBuffer(mm1ResBuf[0], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(mm1ResBuf[1], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
@@ -818,7 +826,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         runInfo.quantScaleInfo.deqScaleQValue = deqScaleQGm.GetValue(deqScaleQGmOffset);
         runInfo.quantScaleInfo.deqScaleKValue = deqScaleKGm.GetValue(deqScaleKGmOffset);
         runInfo.quantScaleInfo.deqScaleVValue = deqScaleVGm.GetValue(deqScaleKGmOffset);
-        runInfo.quantScaleInfo.deqScaleDyValue = deqScaleDyGm.GetValue(deqScaleQGmOffset);
     }
     GetDerived()->SetUniqueRunInfo(runInfo);
 
@@ -1396,11 +1403,11 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetD
     int64_t n2Offset = 0;
     int64_t gOffset = 0;
     int64_t s1Offset = 0;
-    int64_t scaleNumPerS1 = Ceil<int64_t>(constInfo.commonConstInfo.s1Size, CUBE_BASEM);
+    int64_t scaleNumPerS1 = Ceil<int64_t>(constInfo.commonConstInfo.s1Size, CUBE_BASEM * 2);    // FP8基本块=64*256，S1量化粒度=128
     bOffset = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.n2G * scaleNumPerS1;
     n2Offset = runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize * scaleNumPerS1;
     gOffset = runInfo.commonRunInfo.goIdx * scaleNumPerS1;
-    s1Offset = runInfo.commonRunInfo.s1oIdx;
+    s1Offset = runInfo.commonRunInfo.s1oIdx / 2;    // FP8基本块=64*256，S1量化粒度=128
     scaleOffset = bOffset + n2Offset + gOffset + s1Offset;
     return scaleOffset;
 }

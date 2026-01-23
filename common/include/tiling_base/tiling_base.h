@@ -67,6 +67,7 @@ struct FlashAttentionScoreGradCompileInfo {
     uint64_t l2CacheSize;
     int64_t coreNum;
     platform_ascendc::SocVersion socVersion;
+    NpuArch npuArch;
 };
 
 struct FACompileInfoCommon {

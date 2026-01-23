@@ -265,8 +265,6 @@ ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext *context, int64_t t1
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context);
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d);
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
-bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape);
-bool isTndSABHit(gert::TilingContext *context);
 
 }
 } // namespace optiling

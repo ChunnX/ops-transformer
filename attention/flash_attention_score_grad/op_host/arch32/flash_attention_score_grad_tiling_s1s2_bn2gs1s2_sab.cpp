@@ -1431,6 +1431,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetWorkspaceSiz
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context_, "GetWorkspaceSizes is nullptr."),
                return ge::GRAPH_FAILED);
+    
+    // begin position
     size_t workspaceSize = MUL_CORE_SYNC_BUFFER;
     uint32_t s1Inner = std::min(INITIAL_S1_SPLIT_NUM, fBaseParams.s1Align);
 
@@ -1451,6 +1453,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetWorkspaceSiz
         workspaceSize = (workspaceSize + static_cast<size_t>(fBaseParams.kRopeSizeAlign) * FP32_BYTES + GM_ALIGN) /
                         GM_ALIGN * GM_ALIGN;
     }
+
     // matmal3 v
     workspaceSize =
         (workspaceSize + static_cast<size_t>(fBaseParams.vSizeAlign) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
@@ -2009,19 +2012,19 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPostTiling()
     workspaceOffsets =
         (workspaceOffsets + static_cast<size_t>(fBaseParams.vSizeAlign) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
 
-   // dsink workspace
-   if (fBaseParams.sink == 1) {
-       tilingData->postTilingData.set_dsinksumWorkSpaceOffset(workspaceOffsets);
-
-       size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
-       size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
-       workspaceOffsets =
-           (workspaceOffsets + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES +
+    // dsink workspace
+    if (fBaseParams.sink == 1) {
+        tilingData->postTilingData.set_dsinksumWorkSpaceOffset(workspaceOffsets);
+        
+        size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
+        size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
+        workspaceOffsets =
+            (workspaceOffsets + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES +
             GM_ALIGN) /
-           GM_ALIGN * GM_ALIGN;
-       tilingData->postTilingData.set_dsinksumDataSizeOffset(workspaceOffsets);
-       workspaceOffsets = (workspaceOffsets + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
-   }
+            GM_ALIGN * GM_ALIGN;
+        tilingData->postTilingData.set_dsinksumDataSizeOffset(workspaceOffsets);
+        workspaceOffsets = (workspaceOffsets + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+    }
 
     // mask bool workspace size
     if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
@@ -2125,15 +2128,13 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DetermineMode()
     }
 }
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
     FlashAttentionScoreGrad, FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb,
-    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
-                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
+    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
     15500);
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
     FlashAttentionScoreGrad, FlashAttentionScoreGradTilingSameABDeterministic,
-    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
-                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
+    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
     1100);
 
 } // namespace optiling

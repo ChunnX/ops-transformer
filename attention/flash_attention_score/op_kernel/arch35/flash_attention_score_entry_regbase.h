@@ -40,6 +40,28 @@
     GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);                \
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;                      \
 
+#ifdef __CCE_KT_TEST__
+#define INVOKE_FA_OP_IMPL_BASEAPI(templateClass, ...)                                                          \
+    do {                                                                                                       \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
+        REGBASE_COPY_TILING_DATA(tiling);                                                                      \
+        TPipe tPipe;                                                                                           \
+        if (tilingData->inputParamsRegbase.needDropMaskOp) {                                                   \
+            FlashAttentionScoreDropMaskAdapterRegbase dropMaskAdapter;                                         \
+            dropMaskAdapter.Init(dropMask, user, tilingData, &tPipe);                                          \
+            dropMaskAdapter.Process();                                                                         \
+            tPipe.Reset();                                                                                     \
+        }                                                                                                      \
+        using CubeBlockType = typename BaseApi::FABlockCube<__VA_ARGS__>;                                      \
+        using VecBlockType = typename BaseApi::FABlockVecTrain<__VA_ARGS__>;                                   \
+        templateClass<CubeBlockType, VecBlockType> op;                                                         \
+        op.InitBaseAPI(query, key, value, pse, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,     \
+                actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, nullptr,       \
+                nullptr,queryRope, keyRope, softmaxMax, softmaxSum, softmaxOut, nullptr, attentionOut, user,   \
+                tilingData, &tPipe);                                                                           \
+        op.Process();                                                                                          \
+    } while (0)
+#else
 #define INVOKE_FA_OP_IMPL_BASEAPI(templateClass, ...)                                                          \
     do {                                                                                                       \
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                    \
@@ -60,6 +82,7 @@
                 tilingData, &tPipe);                                                                           \
         op.Process();                                                                                          \
     } while (0)
+#endif
 #endif
 
 template<uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,

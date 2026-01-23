@@ -16,7 +16,7 @@
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BN2GS1S2_REGBASE_H_
 
 #include <algorithm>
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "matmul_modules/fag_custom_matmul_policy.h"
 #include "vector_api/cast_softmax_grad.h"
@@ -1659,12 +1659,11 @@ FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FUNCTION_PARAMS_TEMPLATE>
     }
     LocalTensor<T2> softmaxGradResTensor = softmaxGradResBuf.Get<T2>();
     if constexpr (HEAD_DIM_ALIGN <= VECTOR_BASEN) {
-        CopyInSoftmaxGrad<T1, T2, OUTDTYPE, VECTOR_BASEM, HEAD_DIM_ALIGN, IS_D_NO_EQUAL>(
+        CopyInSoftmaxGrad<OUTDTYPE, T2, VECTOR_BASEM, HEAD_DIM_ALIGN, IS_D_NO_EQUAL>(
             constInfo, runInfo, 0, runInfo.commonRunInfo.halfS1RealSize, runInfo.commonRunInfo.halfS1RealSize,
             attenMaskOrYInQue, pseOrDyInQue, dxGm, yGm);
-        CalculateCastSoftmaxGrad<T1, T2, OUTDTYPE, VECTOR_BASEM, HEAD_DIM_ALIGN>(
-            constInfo, runInfo.commonRunInfo.halfS1RealSize, attenMaskOrYInQue, pseOrDyInQue, softmaxGradResTensor, 
-			runInfo.quantScaleInfo.deqScaleDyValue);
+        CalculateCastSoftmaxGrad<OUTDTYPE, T2, VECTOR_BASEM, HEAD_DIM_ALIGN>(
+            constInfo, runInfo.commonRunInfo.halfS1RealSize, attenMaskOrYInQue, pseOrDyInQue, softmaxGradResTensor);
     } else {
         uint32_t loopNum = Ceil<uint32_t>(runInfo.commonRunInfo.halfS1RealSize, constInfo.sfmgMaxLoopSize);
         uint32_t loopSize = Ceil<uint32_t>(runInfo.commonRunInfo.halfS1RealSize, loopNum);
@@ -1674,11 +1673,10 @@ FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FUNCTION_PARAMS_TEMPLATE>
             if (loopIdx == loopNum - 1) {
                 curLoopSize = tailLoopSize;
             }
-            CopyInSoftmaxGrad<T1, T2, OUTDTYPE, VECTOR_BASEM, HEAD_DIM_ALIGN, IS_D_NO_EQUAL>(constInfo, runInfo, loopIdx, curLoopSize, loopSize,
+            CopyInSoftmaxGrad<OUTDTYPE, T2, VECTOR_BASEM, HEAD_DIM_ALIGN, IS_D_NO_EQUAL>(constInfo, runInfo, loopIdx, curLoopSize, loopSize,
                                                                     attenMaskOrYInQue, pseOrDyInQue, dxGm, yGm);
-            CalculateCastSoftmaxGrad<T1, T2, OUTDTYPE, VECTOR_BASEM, HEAD_DIM_ALIGN>(
-                constInfo, curLoopSize, attenMaskOrYInQue, pseOrDyInQue, softmaxGradResTensor[loopSize * loopIdx], 
-				runInfo.quantScaleInfo.deqScaleDyValue);
+            CalculateCastSoftmaxGrad<OUTDTYPE, T2, VECTOR_BASEM, HEAD_DIM_ALIGN>(
+                constInfo, curLoopSize, attenMaskOrYInQue, pseOrDyInQue, softmaxGradResTensor[loopSize * loopIdx]);
         }
     }
 }
@@ -1699,7 +1697,7 @@ FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FUNCTION_PARAMS_TEMPLATE>
     CopyInAttenMask<IS_ATTEN_MASK, VECTOR_BASEM, VECTOR_BASEN>(constInfo, runInfo, attenMaskInfo, attenMaskOrYInQue,
                                                                pseOrDyInQue, attenMaskU8Gm);
     CopyInPse<OUTDTYPE, T2, IS_PSE>(constInfo, runInfo, pseInfo, pseOrDyInQue, pseGm);
-    CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, T2, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD(DETER_SPARSE_TYPE), VECTOR_BASEM, VECTOR_BASEN>(
+    CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, T2, false, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD(DETER_SPARSE_TYPE), VECTOR_BASEM, VECTOR_BASEN>(
         constInfo, runInfo, pseInfo, attenMaskInfo, maxSumQue[runInfo.commonRunInfo.taskIdMod2], attenMaskOrYInQue,
         pseOrDyInQue, mm2ResQueInTensor, mm2ResQueInTensor, pseSlope);
     if (dropInfo.dropMaskOuter) {

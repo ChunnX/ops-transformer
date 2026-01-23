@@ -326,9 +326,9 @@ public:
         return sink;
     }
 
-    void set_sink(uint32_t sink)
+    void set_sink(uint32_t sink_val)
     {
-        this->sink = sink;
+        this->sink = sink_val;
     }
 
     void reset()
@@ -1115,6 +1115,7 @@ public:
     uint64_t dsinksumDataSizeOffset = 0;
     uint32_t baseMN = 0;
     uint8_t PostParamsPH[4] = {};
+
     uint32_t get_coreNum() const
     {
         return coreNum;

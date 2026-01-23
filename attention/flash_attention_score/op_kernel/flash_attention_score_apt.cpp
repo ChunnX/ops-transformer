@@ -13,11 +13,11 @@
  * \brief
  */
 
-#include "kernel_operator.h"
+#include "kernel_basic_intf.h"
 #include "arch35/flash_attention_score_empty_tensor_regbase.h"
 #include "arch35/flash_attention_score_template_tiling_key.h"
 #include "arch35/flash_attention_score_entry_regbase.h"
-#ifdef NOT_DYNAMIC_COMPILE
+#if __has_include("../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h")
 #include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #else
 #include "../common/arch35/flash_attention_score_tiling_regbase.h"

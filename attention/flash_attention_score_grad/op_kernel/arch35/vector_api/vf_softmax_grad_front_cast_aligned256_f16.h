@@ -173,7 +173,7 @@ __aicore__ inline void MySoftmaxGradFrontCastAligned256F16(const LocalTensor<T> 
 
     if constexpr (srcN <= 128) {
         const uint32_t fullExeSize = srcN;
-        uint32_t reduceSize = realN >> 1;
+        uint32_t reduceSize = (realN + 1) >> 1;
         CastAligned256F16VF128<T1>(srcLocalInt, dstLocalInt, gradLocalInt, fullExeSize, reduceSize, srcM);
     } else if constexpr (srcN <= 256) {
         const uint32_t fullExeSize = 128;
