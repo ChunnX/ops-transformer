@@ -80,7 +80,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestW8A8NormalCase)
             {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}
         },
         {
-            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -135,7 +135,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestW4A8NormalCase)
             {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}
         },
         {
-            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -201,7 +201,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8NormalCaseTransposeWeightFal
          {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
          {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
         {
-            {yShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -266,7 +266,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8NormalCaseTransposeWeightTru
          {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
          {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
         {
-            {yShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -331,7 +331,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseSharedOffset)
          {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
          {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
         {
-            {yShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -392,7 +392,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseNullRowindex)
          {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
          {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
         {
-            {yShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -453,7 +453,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseWrongxDtype)
          {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
          {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
         {
-            {yShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -514,7 +514,7 @@ TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseWrongScaleDtype)
          {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
          {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
         {
-            {yShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},

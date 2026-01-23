@@ -57,6 +57,7 @@ constexpr uint32_t DIM_NUM_PERTOKENSCALE = 3;
 constexpr uint32_t DIM_NUM_WEIGHT = 3;
 constexpr uint32_t DIM_NUM_SCALE = 4;
 constexpr uint32_t DIM_NUM_Y = 2;
+constexpr uint32_t OUT_DTYPE_BF16_INDEX = 2;
 } // namespace GroupedMatmulFinalizeRoutingArch35TilingConstant
 
 class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQbmmTiling {
@@ -95,8 +96,11 @@ private:
                               const gert::Shape &pertokenScaleShape, const gert::Shape &scaleShape,
                               const gert::Shape &yShape);
     bool CheckDtype();
+    bool CheckOptional(uint32_t index, const char* paramName, ge::DataType targetDtype);
+    bool CheckOptionalAttr();
     bool IsFp4Dtype(ge::DataType dtype);
     bool IsFp8Dtype(ge::DataType dtype);
+
     GMMFinalizeRoutingTilingData tilingData_;
     uint64_t sharedInputLen_ = 0;
     uint64_t sharedInputOffset_ = 0;

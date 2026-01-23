@@ -36,30 +36,26 @@ void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
     return;
 }
 
-bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
 {
-    auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "Attrs is nullptr."), return false);
-    OP_CHECK_IF(attrs->GetAttrNum() < ATTR_INDEX_TUNING_CONFIG + 1,
-                OP_LOGE(context_->GetNodeName(), "The num of attrs should be greater than %u, actual is %zu",
-                        ATTR_INDEX_TUNING_CONFIG + 1, attrs->GetAttrNum()),
-                return false);
-    const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
-    const uint32_t *shareInputOffsetPtr = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_SHARE_INPUT_OFFSET);
-    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
-    const uint8_t *groupListTypePtr = attrs->GetAttrPointer<uint8_t>(ATTR_INDEX_GROUP_LIST_TYPE); // 通路保证非负数
-    const uint32_t *outputBSPtr = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_OUTPUT_BS);
-
-    OP_CHECK_IF(shareInputWeightPtr == nullptr, OP_LOGE(context_->GetNodeName(), "Attr residualScale is nullptr."),
-                return false);
+    auto *attrs = context_->GetAttrs();
+    const int64_t *shareInputOffsetPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SHARE_INPUT_OFFSET);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
+    const int64_t *outputBSPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_OUTPUT_BS);
+    const int64_t *outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DTYPE);
     OP_CHECK_IF(outputBSPtr == nullptr, OP_LOGE(context_->GetNodeName(), "Attr batch is nullptr."), return false);
+    int64_t shareInputOffset = shareInputOffsetPtr != nullptr ? *shareInputOffsetPtr : 0;
+    int64_t groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : 1;
+    int64_t outputBS = outputBSPtr != nullptr ? *outputBSPtr : 0;
+    int64_t outputDtype = outputDtypePtr != nullptr ? *outputDtypePtr : 0;
+    OP_CHECK_IF(
+        shareInputOffset < 0 || outputBS < 0 || groupListType < 0 || outputDtype < 0,
+        OP_LOGE(context_->GetNodeName(), "Attr shareInputOffset, groupListType, outputBS, outputDtype should be >=0."),
+        return false);
 
-    inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
-    inputParams_.groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : inputParams_.groupListType;
-    sharedInputOffset_ = shareInputOffsetPtr != nullptr ? *shareInputOffsetPtr : sharedInputOffset_;
-    sharedInputWeight_ = *shareInputWeightPtr;
-    outputBs_ = *outputBSPtr;
-
+    inputParams_.groupListType = static_cast<uint64_t>(groupListType);
+    sharedInputOffset_ = static_cast<uint64_t>(shareInputOffset);
+    outputBs_ = static_cast<uint64_t>(outputBS);
     OP_CHECK_IF(inputParams_.groupListType != 0 && inputParams_.groupListType != 1,
                 OP_LOGE(context_->GetNodeName(), "Attr groupListType must be 0 or 1, actual is %d.",
                         inputParams_.groupListType),
@@ -70,6 +66,32 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
                         outputBs_),
                 return false);
 
+    OP_CHECK_IF(outputDtype > OUT_DTYPE_BF16_INDEX,
+                OP_LOGE(context_->GetNodeName(),
+                        "Attr dtype only support 0(float32), 1(float16) or 2(bfloat16), actual is %d.", outputDtype),
+                return false);
+
+    OP_CHECK_IF(inputParams_.transA,
+                OP_LOGE(context_->GetNodeName(), "Attr transpose_x only support false, actual is true"), return false);
+    return true;
+}
+bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
+{
+    auto attrs = context_->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "Attrs is nullptr."), return false);
+    OP_CHECK_IF(attrs->GetAttrNum() < ATTR_INDEX_TUNING_CONFIG + 1,
+                OP_LOGE(context_->GetNodeName(), "The num of attrs should be greater than %u, actual is %zu",
+                        ATTR_INDEX_TUNING_CONFIG + 1, attrs->GetAttrNum()),
+                return false);
+    const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
+    const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
+    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
+    OP_CHECK_IF(shareInputWeightPtr == nullptr, OP_LOGE(context_->GetNodeName(), "Attr residualScale is nullptr."),
+                return false);
+    inputParams_.transA = transposeXPtr != nullptr ? *transposeXPtr : false;
+    inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
+    sharedInputWeight_ = *shareInputWeightPtr;
+    OP_CHECK_IF(!CheckOptionalAttr(), OP_LOGE(context_->GetNodeName(), "Check Optional Attrs Failed."), return false);
     return true;
 }
 
@@ -89,15 +111,53 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     auto outDesc = context_->GetOutputDesc(Y_INDEX);
     OP_CHECK_IF(outDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input outDesc is nullptr."), return false);
     inputParams_.cDtype = outDesc->GetDataType();
+    OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "Output dtype should be DT_FLOAT,but now is %s ",
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype).c_str()),
+                return false);
+
     auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
     inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
     OP_CHECK_IF(inputParams_.hasBias && biasDesc == nullptr,
                 OP_LOGE(context_->GetNodeName(), "Bias from tensor is not nullptr, but bias from desc is nullptr."),
                 return false);
-    inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : inputParams_.biasDtype;
+    inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
+    OP_CHECK_IF(inputParams_.biasDtype != ge::DT_BF16,
+                OP_LOGE(context_->GetNodeName(), "Bias dtype should be DT_BF16,but now is %s ",
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
+                return false);
 
-    return CheckDtype();
+    OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
+
+    OP_CHECK_IF(!CheckOptional(GROUPLIST_INDEX, "GroupList", ge::DT_INT64),
+                OP_LOGE(context_->GetNodeName(), "GroupList check failed."), return false);
+
+    OP_CHECK_IF(!CheckOptional(SHARE_INPUT_INDEX, "SharedInput", ge::DT_BF16),
+                OP_LOGE(context_->GetNodeName(), "SharedInput check failed."), return false);
+
+    OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", ge::DT_FLOAT),
+                OP_LOGE(context_->GetNodeName(), "LogitIndex check failed."), return false);
+
+    OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
+                OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
+    return true;
+}
+
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptional(uint32_t index, const char *paramName,
+                                                            ge::DataType targetDtype)
+{
+    auto optionalDesc = context_->GetOptionalInputDesc(index);
+    if (optionalDesc == nullptr) {
+        return true;
+    }
+    auto realDtype = optionalDesc->GetDataType();
+    OP_CHECK_IF(realDtype != targetDtype,
+                OP_LOGE(context_->GetNodeName(), "%s dtype should be %s,but now is %s ", paramName,
+                        ge::TypeUtils::DataTypeToSerialString(targetDtype).c_str(),
+                        ge::TypeUtils::DataTypeToSerialString(realDtype).c_str()),
+                return false);
+    return true;
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::IsFp4Dtype(ge::DataType dtype)
@@ -200,18 +260,15 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
 
     auto sharedInputDesc = context_->GetOptionalInputDesc(SHARE_INPUT_INDEX);
     sharedInputLen_ = sharedInputDesc != nullptr ?
-                          context_->GetOptionalInputShape(SHARE_INPUT_INDEX)->GetStorageShape()[0] :
-                          sharedInputLen_;
+                          context_->GetOptionalInputShape(SHARE_INPUT_INDEX)->GetStorageShape()[0] : sharedInputLen_;
 
     OP_CHECK_IF(
         sharedInputLen_ > outputBs_,
-        OP_LOGE(context_->GetNodeName(), "Input shared_input_len (%lu) out of batch(%lu).", sharedInputLen_, outputBs_),
-        return false);
+        OP_LOGE(context_->GetNodeName(), "Input shared_input_len (%lu) out of batch(%lu).", sharedInputLen_, outputBs_), return false);
 
     OP_CHECK_IF(sharedInputOffset_ + sharedInputLen_ > outputBs_,
                 OP_LOGE(context_->GetNodeName(), "SharedInputOffset + sharedInputLen (%lu) out of batch(%lu).",
-                        sharedInputOffset_ + sharedInputLen_, outputBs_),
-                return false);
+                        sharedInputOffset_ + sharedInputLen_, outputBs_), return false);
 
     auto LogitDesc = context_->GetOptionalInputDesc(LOGIT_INDEX);
     OP_CHECK_IF(LogitDesc == nullptr, OP_LOGE(context_->GetNodeName(), "LogitDesc is nullptr."), return false);
@@ -225,9 +282,10 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
     OP_CHECK_IF(!SetQuantModeForGMMFinalizeRouting(),
                 OP_LOGE(context_->GetNodeName(), "SetQuantModeForGMMFinalizeRouting failed."), return false);
     OP_CHECK_IF(rowIndex_ > inputParams_.mSize,
-                OP_LOGE(context_->GetNodeName(), "Input rowIndex (%lu) out of M (%lu).", rowIndex_, inputParams_.mSize),
+                OP_LOGE(context_->GetNodeName(), "Input rowIndex (%lu) out of M (%lu).", rowIndex_, inputParams_.mSize), return false);
+    OP_CHECK_IF(outputBs_ > inputParams_.mSize,
+                OP_LOGE(context_->GetNodeName(), "OutputBs (%lu) out of M (%lu).", outputBs_, inputParams_.mSize),
                 return false);
-
     return true;
 }
 
@@ -313,8 +371,9 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
 {
     auto tilingDataSize = sizeof(GMMFinalizeRoutingTilingData);
     context_->SetBlockDim(aicoreParams_.aicNum);
+    context_->SetScheduleMode(1);
     OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", tilingDataSize),
+                OP_LOGE(context_->GetNodeName(), "Tiling data  size[%zu] is not aligned to 8", tilingDataSize),
                 return ge::GRAPH_FAILED);
     error_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), tilingDataSize);
