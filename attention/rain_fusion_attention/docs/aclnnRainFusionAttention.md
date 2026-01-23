@@ -4,18 +4,17 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 
 ## 功能说明
 
--   **接口功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
+-   **算子功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
 
 -   **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
@@ -38,7 +37,7 @@ RainFusionAttention输入query、key、value的数据排布格式支持从多种
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用"aclnnRainFusionAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnRainFusionAttention"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnRainFusionAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnRainFusionAttention"接口执行计算。
 
 ```c++
 aclnnStatus aclnnRainFusionAttentionGetWorkspaceSize(
@@ -75,7 +74,7 @@ aclnnStatus aclnnRainFusionAttention(
 
 ## aclnnRainFusionAttentionGetWorkspaceSize
 
-- **参数说明**
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
@@ -339,12 +338,12 @@ aclnnStatus aclnnRainFusionAttention(
       <td>-</td>
     </tr>
   </tbody>
-  </table>
+</table>
 
 
-- **返回值**
+- **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -386,7 +385,7 @@ aclnnStatus aclnnRainFusionAttention(
 
 ## aclnnRainFusionAttention
 
-- **参数说明**
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -423,7 +422,7 @@ aclnnStatus aclnnRainFusionAttention(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
