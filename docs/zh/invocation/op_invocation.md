@@ -119,7 +119,7 @@ int main()
    add_compile_options(-std=c++11)
 
    # 设置编译输出目录为当前目录下的bin文件夹
-   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")    
+   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")
 
    # 设置调试和发布模式的编译选项
    set(CMAKE_CXX_FLAGS_DEBUG "-fPIC -O0 -g -Wall")

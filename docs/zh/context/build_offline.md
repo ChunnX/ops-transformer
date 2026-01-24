@@ -18,14 +18,14 @@
 自定义算子包编译时，需增加--cann_3rd_lib_path配置选项并指定路径，命令如下：
 
 ```bash
-bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}] --cann-3rd_lib_path=${cann_3rd_lib_path}
+bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}] --cann_3rd_lib_path=${cann_3rd_lib_path}
 # 以FlashAttentionScore算子编译为例，假设第三方软件存放的目录为/path/cann_3rd_lib_path
-# bash build.sh --pkg --soc=ascend910b --ops=flash_attention_score --cann-3rd_lib_path=/path/cann_3rd_lib_path
+# bash build.sh --pkg --soc=ascend910b --ops=flash_attention_score --cann_3rd_lib_path=/path/cann_3rd_lib_path
 ```
 
 ## 离线编译（ops-transformer包）
 整包编译时，需增加--cann_3rd_lib_path配置选项并指定路径，命令如下：
 
 ```bash
-bash build.sh --pkg [--jit] --soc=${soc_version} --cann-3rd_lib_path=${cann_3rd_lib_path}
+bash build.sh --pkg [--jit] --soc=${soc_version} --cann_3rd_lib_path=${cann_3rd_lib_path}
 ```
