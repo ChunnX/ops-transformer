@@ -1,19 +1,25 @@
 # aclnnMoeTokenUnpermuteWithEp
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_unpermute_with_ep)
+
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 
 ## 功能说明
 
-**算子功能：** 根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。
+- **接口功能：** 根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。
 
-**计算公式：**
+- **计算公式：**
 
 $$
 sortedIndices = sortedIndices[rangeOptional[0]<=i<rangeOptional[1]]
@@ -47,49 +53,228 @@ $$
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEp”接口执行计算。
 
-* `aclnnStatus aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(const aclTensor *permutedTokens, const aclTensor *sortedIndices, const aclTensor *probsOptional, int64_t numTopk, const aclIntArray *rangeOptional, bool paddedMode, const aclIntArray *restoreShapeOptional, const aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)`
-
-* `aclnnStatus aclnnMoeTokenUnpermuteWithEp(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
+```c++
+aclnnStatus aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(
+    const aclTensor   *permutedTokens,
+    const aclTensor   *sortedIndices,
+    const aclTensor   *probsOptional,
+    int64_t            numTopk,
+    const aclIntArray *rangeOptional,
+    bool               paddedMode
+    const aclIntArray *restoreShapeOptional
+    const aclTensor   *out
+    uint64_t          *workspaceSize,
+    aclOpExecutor     **executor)
+```
+```c++
+aclnnStatus aclnnMoeTokenUnpermuteWithEp(
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream    stream)
+```
 
 ## aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize
 
 -   **参数说明：**
-    - permutedTokens（aclTensor \*，计算输入）：表示经过扩展并排序过的tokens，公式中的`permutedTokens`，Device侧的aclTensor。shape支持2D维度，shape为（（rangeOptional[1] - rangeOptional[0]）*topK_num，hidden_size）。数据类型支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-
-    - sortedIndices（aclTensor \*，计算输入）：表示需要计算的数据在permutedTokens中的位置，公式中的`sortedIndices`，Device侧的aclTensor。shape支持1D维度，shape为（num\_tokens * topK\_num），num\_tokens为原tokens的数目。要求元素值大于等于0小于2134372523。数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-
-    - probsOptional（aclTensor \*，计算输入）：表示输入tokens对应的专家概率，Device侧的aclTensor。可选输入，传入非空并合法的Tensor时，permutedTokens中的输入数据与probsOptional相乘；传入空时，permutedTokens中的输入数据不进行乘法。shape支持2D维度，shape为（num\_tokens，topK_num），num\_tokens为原tokens的数目。数据类型支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-
-    - numTopk（int64\_t，计算输入）：被选中的专家个数。
-
-    - rangeOptional（aclIntArray \*，计算输入）：ep切分的有效范围，size为2。为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](aclnnMoeTokenUnpermute.md)。
-
-    - paddedMode（bool，计算输入）：true表示开启paddedMode，false表示关闭paddedMode，paddedMode解释见restoreShapeOptional参数。目前仅支持false。
-
-    - restoreShapeOptional（aclIntArray \*，计算输入）：paddedMode=true时生效，否则不会对其进行操作。paddedMode=true时，out的shape将表征为restoreShapeOptional。目前仅支持nullptr。
-
-    - out（aclTensor \*，计算输出）：表示permutedTokens反重排的输出结果，公式中的`out`，Device侧的aclTensor。shape支持2D维度，paddedMode=false时，shape为（num\_tokens，hidden\_size），paddedMode=true时，shape与restoreShapeOptional保持一致。数据类型支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-
-    - workspaceSize（uint64\_t \*，出参）：返回需要在Device侧申请的workspace大小。
-
-    - executor（aclOpExecutor \*\*，出参）：返回op执行器，包含了算子计算流程。
+    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+    <col style="width: 187px">
+    <col style="width: 121px">
+    <col style="width: 287px">
+    <col style="width: 387px">
+    <col style="width: 187px">
+    <col style="width: 187px">
+    <col style="width: 187px">
+    <col style="width: 146px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+        <td>permutedTokens</td>
+        <td>输入</td>
+        <td>表示经过扩展并排序过的tokens。</td>
+        <td>shape支持2D维度，不支持空tensor。</td>
+        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>（（rangeOptional[1] - rangeOptional[0]）*topK_num，hidden_size）</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>sortedIndices</td>
+        <td>输入</td>
+        <td>表示需要计算的数据在permutedTokens中的位置。</td>
+        <td>shape支持1D维度, 要求元素值大于等于0小于2134372523，num_tokens为原tokens的数目，不支持空Tensor。</td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>（num_tokens * topK_num）</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>probsOptional</td>
+        <td>可选输入</td>
+        <td>表示输入tokens对应的专家概率。</td>
+        <td>
+        • shape支持2D维度, num_tokens为原tokens的数目；<br>
+        • 传入非空并合法的Tensor时，permutedTokens中的输入数据与probsOptional相乘<br>
+        • 传入空时，permutedTokens中的输入数据不进行乘法。</td>
+        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>（num_tokens，topK_num）</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>numTopk</td>
+        <td>输入</td>
+        <td>被选中的专家个数。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+      <tr>
+        <td>rangeOptional</td>
+        <td>输入</td>
+        <td>ep切分的有效范围。</td>
+        <td>size为2。为空时，忽略numTopk，执行逻辑回退到<a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md">aclnnMoeTokenUnpermute</a>。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>paddedMode</td>
+        <td>输入</td>
+        <td>-</td>
+        <td>true表示开启paddedMode，false表示关闭paddedMode,目前仅支持false。</td>
+        <td>bool</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>restoreShapeOptional</td>
+        <td>输入</td>
+        <td>-</td>
+        <td>paddedMode=true时生效，否则不会对其进行操作,目前仅支持nullptr。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>out</td>
+        <td>输出</td>
+        <td>表示permutedTokens反重排的输出结果。</td>
+        <td>shape支持2D维度。</td>
+        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>
+          • paddedMode=false时：（num_tokens，hidden_size）<br>
+          • paddedMode=true时：与restoreShapeOptional保持一致
+        </td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    </tbody></table>
 
 -   **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    ```
+
     第一段接口完成入参校验，出现以下场景时报错：
-    161001(ACLNN_ERR_PARAM_NULLPTR)：1. 输入和输出的Tensor是空指针。
-    161002(ACLNN_ERR_PARAM_INVALID)：1. 输入和输出的数据类型不在支持的范围内。
-    ```
+
+    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+        <col style="width: 267px">
+        <col style="width: 124px">
+        <col style="width: 775px">
+        </colgroup>
+        <thead>
+            <tr>
+            <th>返回值</th>
+            <th>错误码</th>
+            <th>描述</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+            <td> ACLNN_ERR_PARAM_NULLPTR </td>
+            <td> 161001 </td>
+            <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+            </tr>
+            <tr>
+            <td> ACLNN_ERR_PARAM_INVALID </td>
+            <td> 161002 </td>
+            <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+            </tr>
+        </tbody></table>
 
 ## aclnnMoeTokenUnpermuteWithEp
 
 -   **参数说明：**
-    -   workspace（void \*，入参）：在Device侧申请的workspace内存地址。
-    -   workspaceSize（uint64\_t，入参）：在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize获取。
-    -   executor（aclOpExecutor \*，入参）：op执行器，包含了算子计算流程。
-    -   stream（aclrtStream，入参）：指定执行任务的Stream。
+    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+        <col style="width: 173px">
+        <col style="width: 133px">
+        <col style="width: 860px">
+        </colgroup>
+            <thead>
+                <tr>
+                <th>参数名</th>
+                <th>输入/输出</th>
+                <th>描述</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                <td>workspace</td>
+                <td>输入</td>
+                <td>在Device侧申请的workspace内存地址。</td>
+                </tr>
+                <tr>
+                <td>workspaceSize</td>
+                <td>输入</td>
+                <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize获取。</td>
+                </tr>
+                <tr>
+                <td>executor</td>
+                <td>输入</td><td> op执行器，包含了算子计算流程。</td>
+                </tr>
+                <tr>
+                <td>stream</td>
+                <td>输入</td>
+                <td> 指定执行任务的Stream。</td>
+                </tr>
+            </tbody>
+        </table>
 
 -   **返回值：**
 
@@ -103,7 +288,7 @@ $$
 
 - topK_num <= 512。
 - 不支持paddedMode为`True`。
-- 当rangeOptional为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](aclnnMoeTokenUnpermute.md)。
+- 当rangeOptional为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)。
 
 ## 调用示例
 

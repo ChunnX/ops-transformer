@@ -1,17 +1,22 @@
 # aclnnMoeTokenPermuteGrad
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_permute_grad)
+
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term> |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| 产品                                                         |  是否支持   |
+| :----------------------------------------------------------- |:-------:|
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 
-## 功能说明
+## 接口说明
 
-- **算子功能**：[aclnnMoeTokenPermute](./aclnnMoeTokenPermute.md)的反向传播计算。
+- **算子功能**：[aclnnMoeTokenPermute](../../moe_token_permute/docs/aclnnMoeTokenPermute.md)的反向传播计算。
 - **计算公式**：
 
   $$
@@ -30,38 +35,193 @@
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeTokenPermuteGradGetWorkspaceSize” 接口获取入参并根据计算流程计算所需workspace大小以及包含了算子计算流程的执行器，再调用 “aclnnMoeTokenPermuteGrad” 接口执行计算。
 
-* `aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(const aclTensor *permutedOutputGrad, const aclTensor *sortedIndices, int64_t numTopk, bool paddedMode, aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)`
-* `aclnnStatus aclnnMoeTokenPermuteGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
+```c++
+aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
+    const aclTensor *permutedOutputGrad,
+    const aclTensor *sortedIndices,
+    int64_t          numTopk,
+    bool             paddedMode
+    const aclTensor *out,
+    uint64_t        *workspaceSize,
+    aclOpExecutor  **executor)
+```
+
+```c++
+aclnnStatus aclnnMoeTokenPermuteGrad(
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream    stream)
+```
 
 ## aclnnMoeTokenPermuteGradGetWorkspaceSize
 
 - **参数说明：**：
-  - permutedOutputGrad（aclTensor\*，计算输入）：Device侧的aclTensor，正向输出permutedTokens的梯度，要求为一个维度为2D的Tensor，shape为（tokens_num * topK_num，hidden_size），tokens_num为token数目，topK_num为numTopk的值，数据类型支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
-  - sortedIndices （aclTensor\*，计算输入）：Device侧的aclTensor，shape为（tokens_num * topK_num），数据类型支持INT32，取值范围是[0, tokens_num \* topK_num - 1]，且没有重复索引。[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
-  - numTopk（int64\_t，计算输入）：被选中的专家个数。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numTopk <= 512。
-  - paddedMode（bool，计算输入）：true表示开启paddedMode，false表示关闭paddedMode，目前仅支持false。
-  - out（aclTensor\*，计算输出）：输入token的梯度，要求为一个维度为2D的Tensor，shape为（tokens_num，hidden_size），数据类型同permutedOutputGrad，支持BFLOAT16、FLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND。
-  - workspaceSize（uint64\_t\*，出参）：返回需要在Device侧申请的workspace大小。
-  - executor（aclOpExecutor\*\*，出参）：返回op执行器，包含了算子计算流程。
+
+    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+    <col style="width: 187px">
+    <col style="width: 121px">
+    <col style="width: 287px">
+    <col style="width: 387px">
+    <col style="width: 187px">
+    <col style="width: 187px">
+    <col style="width: 187px">
+    <col style="width: 146px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+        <td>permutedOutputGrad</td>
+        <td>输入</td>
+        <td>正向输出permutedTokens的梯度。</td>
+        <td>要求为一个维度为2D的Tensor，tokens_num为token数目，topK_num为numTopk的值。</td>
+        <td>BFLOAT16、FLOAT16、FLOAT32</td>
+        <td>ND</td>
+        <td>[tokens_num * topK_num，hidden_size]</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>sortedIndices</td>
+        <td>输入</td>
+        <td>-</td>
+        <td>取值范围是(0, tokens_num * topK_num - 1)，且没有重复索引。</td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>tokens_num * topK_num</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>numTopk</td>
+        <td>输入</td>
+        <td>被选中的专家个数。</td>
+        <td>numTopk <= 512。</td>
+        <td>与permute一致。</td>
+        <td>ND</td>
+        <td>-</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>paddedMode</td>
+        <td>输入</td>
+        <td>-</td>
+        <td>true表示开启paddedMode，false表示关闭paddedMode，目前仅支持false</td>
+        <td>bool</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>out</td>
+        <td>输出</td>
+        <td>输入token的梯度。</td>
+        <td>-</td>
+        <td>BFLOAT16、FLOAT16、FLOAT32。</td>
+        <td>ND</td>
+        <td>（tokens_num，hidden_size）</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    </tbody></table>
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  ```
-  第一段接口完成入参校验，出现以下场景时报错：
-  返回161001(ACLNN_ERR_PARAM_NULLPTR)：1. 输入和输出的Tensor是空指针。
-  返回161002(ACLNN_ERR_PARAM_INVALID)：1. 输入和输出的数据类型和数据格式不在支持的范围之内。
-  ```
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    第一段接口完成入参校验，出现以下场景时报错：
+
+    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+        <col style="width: 267px">
+        <col style="width: 124px">
+        <col style="width: 775px">
+        </colgroup>
+        <thead>
+            <tr>
+            <th>返回值</th>
+            <th>错误码</th>
+            <th>描述</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+            <td> ACLNN_ERR_PARAM_NULLPTR </td>
+            <td> 161001 </td>
+            <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+            </tr>
+            <tr>
+            <td> ACLNN_ERR_PARAM_INVALID </td>
+            <td> 161002 </td>
+            <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+            </tr>
+        </tbody></table>
 
 ## aclnnMoeTokenPermuteGrad
 
 - **参数说明：**
-  - workspace（void\*，入参）：在Device侧申请的workspace内存地址。
-  - workspaceSize（uint64\_t，入参）：在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteGradGetWorkspaceSize获取。
-  - executor（aclOpExecutor\*，入参）：op执行器，包含了算子计算流程。
-  - stream（aclrtStream，入参）：指定执行任务的Stream。
 
+    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+        <col style="width: 173px">
+        <col style="width: 133px">
+        <col style="width: 860px">
+        </colgroup>
+            <thead>
+                <tr>
+                <th>参数名</th>
+                <th>输入/输出</th>
+                <th>描述</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                <td>workspace</td>
+                <td>输入</td>
+                <td>在Device侧申请的workspace内存地址。</td>
+                </tr>
+                <tr>
+                <td>workspaceSize</td>
+                <td>输入</td>
+                <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteGradGetWorkspaceSize获取。</td>
+                </tr>
+                <tr>
+                <td>executor</td>
+                <td>输入</td><td> op执行器，包含了算子计算流程。</td>
+                </tr>
+                <tr>
+                <td>stream</td>
+                <td>输入</td>
+                <td> 指定执行任务的Stream。</td>
+                </tr>
+            </tbody>
+        </table>
+        
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -72,6 +232,14 @@
   - aclnnMoeTokenPermuteGrad默认确定性实现。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numTopk <= 512。
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  在调用本接口时，框架内部会转调用[aclnnMoeInitRoutingV2Grad](../../moe_init_routing_v2_grad/docs/aclnnMoeInitRoutingV2Grad.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
+  - permutedOutputGrad输入等同于aclnnMoeInitRoutingV2Grad接口的gradExpandedX输入。
+  - sortedIndices输入等同于aclnnMoeInitRoutingV2Grad接口的expandedRowIdx输入。
+  - numTopk输入等同于aclnnMoeInitRoutingV2Grad接口的topK输入。
+  - paddedMode输入等同于aclnnMoeInitRoutingV2Grad接口的dropPadMode输入。
+  - out输出等同于aclnnMoeInitRoutingV2Grad接口的out输出。
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
