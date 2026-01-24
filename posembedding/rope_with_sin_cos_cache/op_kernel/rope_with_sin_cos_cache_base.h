@@ -36,6 +36,8 @@ public:
     __aicore__ inline void SToVSync();
     __aicore__ inline void MTE3ToVSync();
     __aicore__ inline void MTE2ToVSync();
+    __aicore__ inline void VToMTE2Sync();
+    __aicore__ inline void VToMTE3Sync();
 
 protected:
     uint32_t blockIdx_;
@@ -167,6 +169,21 @@ __aicore__ inline void RopeWithSinCosCacheBase<T>::MTE2ToVSync()
     WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
 }
 
+template <typename T>
+__aicore__ inline void RopeWithSinCosCacheBase<T>::VToMTE2Sync()
+{
+    event_t eventIDVtoMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+    SetFlag<HardEvent::V_MTE2>(eventIDVtoMTE2);
+    WaitFlag<HardEvent::V_MTE2>(eventIDVtoMTE2);
+}
+
+template <typename T>
+__aicore__ inline void RopeWithSinCosCacheBase<T>::VToMTE3Sync()
+{
+    event_t eventIDVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIDVtoMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIDVtoMTE3);
+}
 } // namespace RopeWithSinCosCache
 
 #endif // namespace RopeWithSinCosCache

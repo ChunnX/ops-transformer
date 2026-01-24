@@ -13,6 +13,7 @@
  * \brief
  */
 #include <iostream>
+#include <log/log.h>
 #include <cstdio>
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
@@ -37,6 +38,7 @@ constexpr uint32_t INDEX_KEYOUT_OUTPUT = 1;
 static constexpr uint32_t TILING_BF16 = 20;
 static constexpr uint32_t TILING_FP16 = 21;
 static constexpr uint32_t TILING_FP32 = 22;
+static constexpr uint32_t HAlignSize = 64;
 
 constexpr size_t DIM_0 = 0;
 constexpr size_t DIM_1 = 1;
@@ -81,6 +83,27 @@ struct TilingParams {
 } // namespace
 
 namespace optiling {
+
+inline uint32_t GetLengthByType(int32_t dtype)
+{
+    switch (dtype) {
+        case ge::DT_FLOAT16:
+        case ge::DT_INT16:
+        case ge::DT_UINT16:
+        case ge::DT_BF16:
+            return sizeof(int16_t);
+        case ge::DT_FLOAT:
+        case ge::DT_INT32:
+        case ge::DT_UINT32:
+            return sizeof(int32_t);
+        case ge::DT_DOUBLE:
+        case ge::DT_INT64:
+        case ge::DT_UINT64:
+            return sizeof(int64_t);
+        default:
+            return 0;
+    }
+}
 
 static void SetTiling(TilingParams& params, RopeWithSinCosCacheTilingData& tiling)
 {
@@ -144,6 +167,24 @@ static ge::graphStatus TilingCompute(gert::TilingContext *context, TilingParams 
     auto cosSinSize = context->GetInputShape(INPUT_COSSINCACHE_INDEX)->GetStorageShape().GetDimNum();
     uint64_t rotaryDim = static_cast<uint64_t>(
         context->GetInputShape(INPUT_COSSINCACHE_INDEX)->GetStorageShape().GetDim(cosSinSize - 1));
+
+    int32_t qDtype = context->GetInputDesc(INPUT_QUERY_IN_INDEX)->GetDataType();
+    uint32_t queryInTypeLength = GetLengthByType(qDtype);
+    OP_CHECK_IF((queryInTypeLength == 0), 
+        OP_LOGE(context->GetNodeName(), "queryInTypeLength can't be 0."), 
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((headSize % (HAlignSize / queryInTypeLength) != 0), 
+        OP_LOGE(context->GetNodeName(), "headSize must be 64-byte aligned."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((rotaryDim % (HAlignSize / queryInTypeLength) != 0), 
+        OP_LOGE(context->GetNodeName(), "rotaryDim must be 64-byte aligned."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((headSize < rotaryDim), 
+        OP_LOGE(context->GetNodeName(), "headSize can't be smaller than rotaryDim."),
+        return ge::GRAPH_FAILED);
 
     auto platformInfo = context->GetPlatformInfo();
     if (platformInfo == nullptr) {
