@@ -266,6 +266,7 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::ProcessQuantInfo()
     if (quantScaleDtypeCheckRet != ge::GRAPH_SUCCESS) {
         return quantScaleDtypeCheckRet;
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::ProcessDropoutInfo()
@@ -440,7 +441,7 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::SetSplitAxis()
     }
 
     if (!fBaseParams.isBn2 && !fBaseParams.hasRope && fBaseParams.d <= BN2_MAX_D &&
-        (fBaseParams.layoutType == INPUT_FROAMT_TND || fBaseParams.isAllSame && !fBaseParams.isDeterministic) && fBaseParams.n1 == fBaseParams.n2 &&
+        (fBaseParams.layoutType == INPUT_FROAMT_TND || (fBaseParams.isAllSame && !fBaseParams.isDeterministic)) && fBaseParams.n1 == fBaseParams.n2 &&
         (fBaseParams.queryType != ge::DT_FLOAT) && !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8)) {
         fBaseParams.layoutType = INPUT_FROAMT_TND;
         fBaseParams.splitAxis = SplitAxisEnum::BN2S2;
@@ -1464,7 +1465,7 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::CalcleCausalDeterParam()
         int64_t skipM = (fBaseParams.s1 - fBaseParams.s2) / (fBaseParams.s1Inner * fBaseParams.s1CvRatio);
         m -= skipM;
     } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
-               fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) && n > m) {
+               (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) && n > m)) {
         n = m;
     } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && m < n) {
         fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_BAND);
@@ -2004,7 +2005,7 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::CalcleTNDDenseDeterSplitDkOff
         const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
 
         TndBandDeterRoundInfo tndBandDeterRoundInfo;
-        for (uint64_t round = fBaseParams.deterMaxRound; round > 0; round--) {
+        for (int64_t round = fBaseParams.deterMaxRound; round > 0; round--) {
             auto oriCoordinateInfo = CalTNDDenseIndex<static_cast<uint32_t>(DeterSparseType::DETER_DENSE)>(deterPrefixData,
                 coreId + 1, round, fBaseParams.n1);
             int64_t w, x, y;
@@ -2015,7 +2016,6 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::CalcleTNDDenseDeterSplitDkOff
                 continue;
             }
             int64_t m = deterPrefixData.mNewList[batchId - 1];
-            int64_t n = deterPrefixData.nNewList[batchId - 1];
 
             if (fBaseParams.separateDkOffset[coreId] == -1 && x < m && round == fBaseParams.deterMaxRound) {
                 fBaseParams.separateDkOffset[coreId] = GetKeyOffset(kvValue, w, y);
@@ -2324,7 +2324,7 @@ bool FlashAttentionScoreGradTilingUs1s2Bs2Regbase::CheckExceedL2Cache()
     std::array<int64_t, CORE_LIST_NUM> loopIdx;
     std::set<int> dqOffsetSet;
     std::set<int> dkDvOffsetSet;
-    int64_t usedl2CacheSize = 0;
+    uint64_t usedl2CacheSize = 0;
     int64_t calcNum = 0;
     int32_t inputSize = FP16_BYTES;
     std::fill(std::begin(loopIdx), std::end(loopIdx), static_cast<int64_t>(0));
@@ -3096,7 +3096,7 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::GetParseS1S2OuterInfo(int64_t
             fBaseParams.isInvalidCol = true;
         }
         // check invalid row or col block for BN2
-        for (int64_t j = 0; j < invalidS1Array.size(); j++) {
+        for (size_t j = 0; j < invalidS1Array.size(); j++) {
             if (j >= parseInfo[i][BEGIN_IDX] && j < parseInfo[i][END_IDX]) {
                 invalidS1Array[j] = true;
             }
@@ -3104,7 +3104,7 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::GetParseS1S2OuterInfo(int64_t
         OP_LOGD("Sparse", " idx = %ld: Begin = %ld, End = %ld, Length = %ld, total_Length = %ld", i, parseInfo[i][0],
                   parseInfo[i][1], tmpSize, parseInfo[i][LENGTH_IDX]);
     }
-    for (int64_t j = 0; j < invalidS1Array.size(); j++) {
+    for (size_t j = 0; j < invalidS1Array.size(); j++) {
         if (!invalidS1Array[j]) {
             fBaseParams.isInvalidRow = true;
             break;
@@ -3557,7 +3557,7 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::FillBlockInfoLoadBalanceForBn
                     fBaseParams.isInvalidCol = true;
                 }
                 // check invalid row or col block for BN2
-                for (int64_t k = 0; k < invalidS1Array.size(); k++) {
+                for (size_t k = 0; k < invalidS1Array.size(); k++) {
                     if (k >= acturalS1Begin && k < acturalS1End) {
                         invalidS1Array[k] = true;
                     }
@@ -3566,7 +3566,7 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::FillBlockInfoLoadBalanceForBn
         }
 
         // BN2场景下检查是否无效基本块行，用于清零GM
-        for (int64_t j = 0; j < invalidS1Array.size(); j++) {
+        for (size_t j = 0; j < invalidS1Array.size(); j++) {
             if (!invalidS1Array[j]) {
                 fBaseParams.isInvalidRow = true;
                 break;
@@ -3678,7 +3678,7 @@ bool FlashAttentionScoreGradTilingUs1s2Bs2Regbase::isPossible(
     const std::vector<std::vector<float>> &acturalBlockInfo, const float possibleMax)
 {
     float currentSum = 0;
-    int64_t needCoreNum = 1;
+    uint64_t needCoreNum = 1;
     int64_t n2g = fBaseParams.n2 * fBaseParams.g;
     int64_t bn2g = fBaseParams.b * n2g;
     if (fBaseParams.isBn2MultiBlk) {
@@ -3801,13 +3801,12 @@ bool FlashAttentionScoreGradTilingUs1s2Bs2Regbase::CaclePerCoreBlockInfoBn2(
     const float maxBlockNumPerCore, int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM])
 {
     float currentSum = 0;
-    int64_t coreIdx = 0;
+    uint64_t coreIdx = 0;
     int64_t n2g = fBaseParams.n2 * fBaseParams.g;
     int64_t bn2g = fBaseParams.b * n2g;
     for (int64_t i = 0; i < bn2g; i++) {
         int64_t b = i / n2g;
         int64_t n = i % n2g;
-        int64_t actualS1Outer = (fBaseParams.actualSeqQlen[b] + fBaseParams.s1CvInner - 1) / fBaseParams.s1CvInner;
         float num = acturalBlockInfo[b][fBaseParams.s2Outer];
         if (coreIdx >= fBaseParams.aicNum) {
             OP_LOGD("CaclePerCoreBlockInfoBn2", " Not support BN2_MULTIBLK.");

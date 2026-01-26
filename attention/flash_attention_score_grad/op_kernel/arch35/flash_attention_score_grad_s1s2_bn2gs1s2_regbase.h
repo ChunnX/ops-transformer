@@ -188,6 +188,8 @@ public:
         GetMm3Cfg<T1>(IS_ATTEN_MASK, IS_PSE, IS_DROP, CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN, IS_TSCM_REUSE,
                       IS_L0DB, IS_L0C_REUSE, SHARED_C1_BUFFER_SZIE, MM3_MAX_BASE_RATIO);
     constexpr static uint32_t L0C_BUF_NUM = GET_L0C_BUF_NUM(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN);
+    constexpr static uint8_t ALIGN_NUM_32 = 32;
+    constexpr static uint8_t VEC_CORE_NUM_64 = 64;
 
     using aType1 = MatmulType<TPosition::GM, CubeFormat::ND, T1, true, LayoutMode::NONE, true>;
     using bType1 = MatmulType<TPosition::GM, CubeFormat::ND, T1, true, LayoutMode::NONE, true>;
@@ -533,8 +535,13 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FU
             static_cast<bool>(tilingData->s1s2BNGS1S2SplitCoreParams.noNeedDeter);
         constInfo.deterConstInfo.usedCubeCoreNum =
             static_cast<uint8_t>(tilingData->s1s2BNGS1S2SplitCoreParams.blockOuter);
-        // 确定性计算中会用满V核
-        constInfo.deterConstInfo.usedVectorCoreNum = static_cast<uint8_t>(tilingData->s1s2BNGS1S2BaseParams.coreNum);
+        if (static_cast<uint8_t>(tilingData->s1s2BNGS1S2BaseParams.coreNum) == VEC_CORE_NUM_64) {
+            // 64V核场景确定性计算中会用满V核
+            constInfo.deterConstInfo.usedVectorCoreNum = static_cast<uint8_t>(tilingData->s1s2BNGS1S2BaseParams.coreNum);
+        } else {
+            // 非64V核场景确定性计算使用V核数量为往下32取整
+            constInfo.deterConstInfo.usedVectorCoreNum = static_cast<uint8_t>(tilingData->s1s2BNGS1S2BaseParams.coreNum) / ALIGN_NUM_32 * ALIGN_NUM_32;
+        }
         // 确定性计算中每个v核处理两行s1
         constInfo.deterConstInfo.eachVecCoreS1Offset =
             static_cast<uint8_t>(CUBE_BASEM / constInfo.deterConstInfo.usedVectorCoreNum);
@@ -2508,7 +2515,9 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FU
         dataCopyParams.blockCount = (loopIdx < loopTimes - 1)
                                         ? eachLoopBlockCount
                                         : constInfo.deterConstInfo.usedCubeCoreNum - loopIdx * eachLoopBlockCount;
-        DataCopy(dqDeterBuf, deterGm[dqSrcOfs], dataCopyParams);
+        if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+            DataCopy(dqDeterBuf, deterGm[dqSrcOfs], dataCopyParams);
+        }      
         dqSrcOfs += eachLoopBlockCount * BASE_DQ_SIZE;
         deterInOutQue.EnQue(dqDeterBuf);
         deterInOutQue.DeQue<T2>();
@@ -2524,9 +2533,11 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FU
                 continue;
             }
             dqOffset[cIx] += constInfo.deterConstInfo.deterVecCoreS1Offset;
-            AscendC::DataCopyPad(dqWorkSpaceGm[dqOffset[cIx]],
+            if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+                AscendC::DataCopyPad(dqWorkSpaceGm[dqOffset[cIx]],
                                  dqDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dqEachVectorSize],
                                  dataCopyPadParams);
+            }
             PipeBarrier<PIPE_MTE3>();
         }
         deterInOutQue.FreeTensor(dqDeterBuf);
@@ -2609,8 +2620,10 @@ FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FUNCTION_PARAMS_TEMPLATE>
         if (loopIdx > 0) {
             WaitFlag<HardEvent::MTE3_MTE2>(constInfo.deterConstInfo.eventIDMte3ToMte2);
         }
-        DataCopy(dkDeterBuf, deterGm[dkSrcOfs], dataCopyParams);
-        DataCopy(dvDeterBuf, deterGm[dvSrcOfs], dataCopyParams);
+        if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+            DataCopy(dkDeterBuf, deterGm[dkSrcOfs], dataCopyParams);
+            DataCopy(dvDeterBuf, deterGm[dvSrcOfs], dataCopyParams);
+        }
         dkSrcOfs += eachLoopBlockCount * BASE_DKV_SIZE;
         dvSrcOfs += eachLoopBlockCount * BASE_DKV_SIZE;
 
@@ -2626,12 +2639,14 @@ FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FUNCTION_PARAMS_TEMPLATE>
             }
             dkOffset[cIx] += constInfo.deterConstInfo.deterDkVecCoreS2Offset;
             dvOffset[cIx] += constInfo.deterConstInfo.deterDvVecCoreS2Offset;
-            AscendC::DataCopyPad(dkWorkSpaceGm[dkOffset[cIx]],
-                                 dkDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
-                                 dataCopyPadParams);
-            AscendC::DataCopyPad(dvWorkSpaceGm[dvOffset[cIx]],
-                                 dvDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
-                                 dataCopyDvPadParams);
+            if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+                AscendC::DataCopyPad(dkWorkSpaceGm[dkOffset[cIx]],
+                                    dkDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
+                                    dataCopyPadParams);
+                AscendC::DataCopyPad(dvWorkSpaceGm[dvOffset[cIx]],
+                                    dvDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
+                                    dataCopyDvPadParams);
+            }
             PipeBarrier<PIPE_MTE3>();
         }
         if (loopIdx < loopTimes - 1) {
@@ -2705,7 +2720,9 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FU
         dataCopyParams.blockCount = (loopIdx < loopTimes - 1)
                                         ? eachLoopBlockCount
                                         : constInfo.deterConstInfo.usedCubeCoreNum - loopIdx * eachLoopBlockCount;
-        DataCopy(dqDeterBuf, deterGm[dqSrcOfs], dataCopyParams);
+        if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+            DataCopy(dqDeterBuf, deterGm[dqSrcOfs], dataCopyParams);
+        }
         dqSrcOfs += eachLoopBlockCount * BASE_DQ_SIZE;
         deterInOutQue.EnQue(dqDeterBuf);
         deterInOutQue.DeQue<T2>();
@@ -2718,9 +2735,11 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FU
                 continue;
             }
             dqOffset[cIx] += constInfo.deterConstInfo.deterVecCoreS1Offset;
-            AscendC::DataCopyPad(dqWorkSpaceGm[dqOffset[cIx]],
-                                 dqDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dqEachVectorSize],
-                                 dataCopyPadParams);
+            if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+                AscendC::DataCopyPad(dqWorkSpaceGm[dqOffset[cIx]],
+                                    dqDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dqEachVectorSize],
+                                    dataCopyPadParams);
+            }
             PipeBarrier<PIPE_MTE3>();
         }
         deterInOutQue.FreeTensor(dqDeterBuf);
@@ -2759,8 +2778,10 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FU
         if (loopIdx > 0) {
             WaitFlag<HardEvent::MTE3_MTE2>(constInfo.deterConstInfo.eventIDMte3ToMte2);
         }
-        DataCopy(dkDeterBuf, deterGm[dkSrcOfs], dataCopyParams);
-        DataCopy(dvDeterBuf, deterGm[dvSrcOfs], dataCopyParams);
+        if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+            DataCopy(dkDeterBuf, deterGm[dkSrcOfs], dataCopyParams);
+            DataCopy(dvDeterBuf, deterGm[dvSrcOfs], dataCopyParams);
+        }
         dkSrcOfs += eachLoopBlockCount * BASE_DKV_SIZE;
         dvSrcOfs += eachLoopBlockCount * BASE_DKV_SIZE;
 
@@ -2776,12 +2797,14 @@ __aicore__ inline void FlashAttentionScoreGradUs1s2Bbn2gs1s2StaticRegbase<FAG_FU
             }
             dkOffset[cIx] += constInfo.deterConstInfo.deterDkVecCoreS2Offset;
             dvOffset[cIx] += constInfo.deterConstInfo.deterDvVecCoreS2Offset;
-            AscendC::DataCopyPad(dkWorkSpaceGm[dkOffset[cIx]],
-                                 dkDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
-                                 dataCopyPadParams);
-            AscendC::DataCopyPad(dvWorkSpaceGm[dvOffset[cIx]],
-                                 dvDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
-                                 dataCopyDvPadParams);
+            if (vBlockIdx < constInfo.deterConstInfo.usedVectorCoreNum) {
+                AscendC::DataCopyPad(dkWorkSpaceGm[dkOffset[cIx]],
+                                    dkDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
+                                    dataCopyPadParams);
+                AscendC::DataCopyPad(dvWorkSpaceGm[dvOffset[cIx]],
+                                    dvDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dkvEachVectorSize],
+                                    dataCopyDvPadParams);
+            }
             PipeBarrier<PIPE_MTE3>();
         }
         if (loopIdx < loopTimes - 1) {
