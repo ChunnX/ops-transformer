@@ -71,7 +71,6 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 constexpr uint32_t N2_SIZE_LIMIT = 1;
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
-constexpr uint32_t SPARSE_MODE_ZERO = 0;
 
 constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
 constexpr uint32_t DOUBLE_BUFFER = 2; // 双Buffer

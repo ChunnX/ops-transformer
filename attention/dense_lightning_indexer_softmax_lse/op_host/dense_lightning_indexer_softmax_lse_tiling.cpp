@@ -15,6 +15,7 @@
 
 #include "log/log.h"
 #include "dense_lightning_indexer_softmax_lse_tiling.h"
+#include "../op_kernel/dense_lightning_indexer_softmax_lse_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -160,8 +161,8 @@ ge::graphStatus DenseLISoftmaxLseInfoParser::GetAndCheckAttrParaInfo()
         OP_LOGI(context_->GetNodeName(), "next tokens is:%d", *opParamInfo_.nextTokens);
     }
     OP_LOGI(context_->GetNodeName(), "GetAndCheckAttrParaInfo end");
-    OP_CHECK_IF(!((*opParamInfo_.sparseMode == SPARSE_MODE_ZERO) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
-                OP_LOGE(opName_, "input attr sparse_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.sparseMode != SPARSE_MODE_LOWER,
+                OP_LOGE(opName_, "input attr sparse_mode only supported 3."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.preTokens != INT64_MAX,
                 OP_LOGE(opName_, "input attr pre_tokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.nextTokens != INT64_MAX,
@@ -562,33 +563,9 @@ ge::graphStatus DenseLightningIndexerSoftmaxLseTiling::DoTiling(DenseLISoftmaxLs
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
     // -------------set tilingkey-----------------
-    uint32_t inputQType = static_cast<uint32_t>(tilingInfo->inputQType), layoutVal = 0U, inputQVal = 0U;
-    switch (tilingInfo->layout) {
-        case DataLayout::BSND:
-            layoutVal = 0;
-            break;
-        case DataLayout::TND:
-            layoutVal = 10;
-            break;
-        default:
-            OP_LOGE(tilingInfo->opName, "not support inputLayout %d", tilingInfo->layout);
-            return ge::GRAPH_FAILED;
-    }
-    switch (tilingInfo->inputQType) {
-        case ge::DT_FLOAT16:
-            inputQVal = 0;
-            break;
-        case ge::DT_BF16:
-            inputQVal = 1U;
-            break;
-        default:
-            OP_LOGE(tilingInfo->opName, "not support inputQType %d", inputQType);
-            return ge::GRAPH_FAILED;
-    }
-
-    context_->SetTilingKey(layoutVal + inputQVal);
-    OP_LOGD(tilingInfo->opName, "tilingKey: %lu", layoutVal + inputQVal);
-
+    uint32_t layout = static_cast<uint32_t>(tilingInfo->layout);
+    uint32_t tilingKey = GET_TPL_TILING_KEY(layout);
+    context_->SetTilingKey(tilingKey);
     return ge::GRAPH_SUCCESS;
 }
 
