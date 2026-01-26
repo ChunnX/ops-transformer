@@ -14,8 +14,8 @@ import torch
 
 # 定义测试参数组合
 TEST_PARAMS = {
-    # 基础场景 BSND TND
-    "sas_default_params":{
+    "decode_1":{
+        "Testcase_Name": [None],
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -23,18 +23,18 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.float8_e4m3fn],
         "B": [1],
         "S1": [1],
-        "T1": [1],
+        "S2": [8193],
         "N1": [64],
         "N2": [1],
         "D": [512],
         "K": [512],
-        "block_num1": [16],
-        "block_num2": [16],
+        "block_num1": [None],
+        "block_num2": [None],
         "block_size1": [128],
         "block_size2": [128],
-        "cu_seqlens_q": [[0, 1]],
-        "seqused_kv": [[1024]],
-        "softmax_scale": [0.04167],
+        "cu_seqlens_q": [None],
+        "seqused_kv": [None],
+        "softmax_scale": [0.04419417],
         "cmp_ratio": [1],
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
@@ -43,59 +43,46 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SWA"] # SWA SCFA CFA
+        "template_run_mode": ["SWA"], # SWA SCFA CFA
+        "actlen_mode":["random"],
+        "S1EQS2":[False]
+    },
 
-        # decode首case
-        # "layout_q": ["TND"],
-        # "layout_kv": ["PA_ND"],
-        # "q_type": [torch.bfloat16],
-        # "ori_kv_type": [torch.bfloat16],
-        # "cmp_kv_type": [torch.bfloat16],
-        # "B": [1],
-        # "S1": [1],
-        # "T1": [1],
-        # "N1": [64],
-        # "N2": [1],
-        # "D": [512],
-        # "K": [512],
-        # "block_num1": [65],
-        # "block_num2": [17],
-        # "block_size": [128],
-        # "cu_seqlens_q": [[0, 1]],
-        # "seqused_kv": [[8193]],
-        # "softmax_scale": [0.04419417],
-        # "cmp_ratio": [4],
-        # "ori_mask_mode": [4],
-        # "cmp_mask_mode": [3],
-        # "ori_win_left": [128],
-        # "ori_win_right": [0]
-
-        # prefill首case
-        # "layout_q": ["TND"],
-        # "layout_kv": ["PA_ND"],
-        # "q_type": [torch.bfloat16],
-        # "ori_kv_type": [torch.bfloat16],
-        # "cmp_kv_type": [torch.bfloat16],
-        # "B": [1],
-        # "S1": [8192],
-        # "T1": [8192],
-        # "N1": [64],
-        # "N2": [1],
-        # "D": [512],
-        # "K": [512],
-        # "block_num1": [65],
-        # "block_num2": [17],
-        # "block_size": [128],
-        # "cu_seqlens_q": [[0, 8192]],
-        # "seqused_kv": [[8192]],
-        # "softmax_scale": [0.04419417],
-        # "cmp_ratio": [4],
-        # "ori_mask_mode": [4],
-        # "cmp_mask_mode": [3],
-        # "ori_win_left": [128],
-        # "ori_win_right": [0]
-    }
+    "prefill_1":{
+        "Testcase_Name": [None],
+        "layout_q": ["TND"],
+        "layout_kv": ["PA_ND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.float8_e4m3fn],
+        "cmp_kv_type": [torch.float8_e4m3fn],
+        "B": [1],
+        "S1": [10],
+        "S2": [4096], 
+        "N1": [64],
+        "N2": [1],
+        "D": [512],
+        "K": [512],
+        "block_num1": [None],
+        "block_num2": [None],
+        "block_size1": [128],
+        "block_size2": [128],
+        "cu_seqlens_q": [None],
+        "seqused_kv": [None],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [1],
+        "ori_mask_mode": [4],
+        "cmp_mask_mode": [3],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+        "kv_quant_mode": [1],
+        "tile_size": [64],
+        "rope_head_dim": [64],
+        "template_run_mode": ["SWA"], # SWA SCFA CFA
+        "actlen_mode":["random"],
+        "S1EQS2":[False]
+    },
 }
 
-# 按需选择要启用的测试参数（例如默认启用所有）
-ENABLED_PARAMS = [TEST_PARAMS["sas_default_params"]]
+
+# 按需选择要启用的测试参数
+ENABLED_PARAMS = [TEST_PARAMS["decode_1"], TEST_PARAMS["prefill_1"]]

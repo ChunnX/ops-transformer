@@ -17,7 +17,6 @@
 #define COMPRESSOR_KERNEL_H
 
 #include "compressor_comm.h"
-#include "compressor_vector_comm.h"
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
 #include "compressor_comm.h"
@@ -500,8 +499,10 @@ __aicore__ inline void CompressorKernel<COMP>::CalcParams(RunInfo &info) {
                 // 加上头块如果有
                 uint32_t midTc = (headSize > 0) ? (curDealTcNum - 1) : curDealTcNum;
                 remainSLen = headSize + midTc * constInfo.cmpRatio;
+                info.scEnd = curValidSc;
             } else {
                 remainSLen = curDealTcNum * constInfo.cmpRatio;
+                info.scEnd = info.scStart + curValidSc;
             }
 
             curSEnd = curSStart + remainSLen;
@@ -509,8 +510,6 @@ __aicore__ inline void CompressorKernel<COMP>::CalcParams(RunInfo &info) {
             if (curSEnd > curActSeqLength) {
                 curSEnd = curActSeqLength;
             }
-
-            info.scEnd = info.scStart + curValidSc;
         }
         // printf("[CalcParams] dealTcNum:%u headSize:%u curBatchTcNum:%u curDealTcNum:%u curDealTcNum:%u tcNumCount:%u\n", dealTcNum, headSize, curBatchTcNum, curDealTcNum, tcNumCount);
         // printf("[CalcParams] sStart:%u sEnd:%u scStart:%u scEnd:%u\n", info.sStart, info.sEnd, info.scStart, info.scEnd);
@@ -582,13 +581,13 @@ __aicore__ inline void CompressorKernel<COMP>::Process() {
         extraInfo0.vec1ResOffset = vec2Info.dealScSize * constInfo.headDim;
         bool isNeedExcute = IsNeedExcute(i);
         if ASCEND_IS_AIC {
-            if (isNeedExcute) {
+            if (isNeedExcute && i < constInfo.realDealBasicBlockNum) {
                 CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
                 ComputeMm1(extraInfo0);
                 CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
             }
         } else {
-            if (isNeedExcute) {
+            if (isNeedExcute && i < constInfo.realDealBasicBlockNum) {
                 CrossCoreWaitFlag(SYNC_C1_V1_FLAG);
                 ComputeVec1(extraInfo0);
                 CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C1_FLAG);

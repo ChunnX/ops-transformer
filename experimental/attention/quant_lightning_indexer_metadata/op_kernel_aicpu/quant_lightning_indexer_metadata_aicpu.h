@@ -10,12 +10,12 @@
  */
 
  /*!
- * \file lightning_indexer_quant_metadata_aicpu.h
+ * \file quant_lightning_indexer_metadata_aicpu.h
  * \brief
  */
 
-#ifndef LIGHTNING_INDEXER_QUANT_METADATA_AICPU_H
-#define LIGHTNING_INDEXER_QUANT_METADATA_AICPU_H
+#ifndef QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H
+#define QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H
 
 #include "cpu_context.h"
 #include "cpu_kernel.h"
@@ -24,7 +24,7 @@
 #include <vector>
 #include <array>
 
-#include  "lightning_indexer_quant_metadata.h"
+#include "../../quant_lightning_indexer/op_kernel/quant_lightning_indexer_metadata.h"
 
 namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
@@ -208,10 +208,10 @@ struct AssignContext {
     S1GCache s1GCache {};
     CoreCache coreCache {};
 };
-class LightningIndexerQuantMetadataCpuKernel : public CpuKernel {
+class QuantLightningIndexerMetadataCpuKernel : public CpuKernel {
 public:
-    LightningIndexerQuantMetadataCpuKernel() = default;
-    ~LightningIndexerQuantMetadataCpuKernel() = default;
+    QuantLightningIndexerMetadataCpuKernel() = default;
+    ~QuantLightningIndexerMetadataCpuKernel() = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:

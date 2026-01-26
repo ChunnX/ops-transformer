@@ -8,19 +8,19 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "lightning_indexer_quant_metadata_aicpu.h"
+#include "quant_lightning_indexer_metadata_aicpu.h"
 #include "../../common/aicpu/cpu_context_util.h"
 #include <cstdio>
 #include <math.h>
 
 namespace aicpu {
 uint32_t
-LightningIndexerQuantMetadataCpuKernel::Compute(CpuKernelContext &ctx) {
+QuantLightningIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx) {
   bool success = Prepare(ctx) && BalanceSchedule() && GenMetaData();
   return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool LightningIndexerQuantMetadataCpuKernel::Prepare(CpuKernelContext &ctx) {
+bool QuantLightningIndexerMetadataCpuKernel::Prepare(CpuKernelContext &ctx) {
   // input
   actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
   actSeqLenKV_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenKV));
@@ -57,25 +57,23 @@ bool LightningIndexerQuantMetadataCpuKernel::Prepare(CpuKernelContext &ctx) {
   return (ParamsCheck() && ParamsInit());
 }
 
-bool LightningIndexerQuantMetadataCpuKernel::ParamsCheck() {
+bool QuantLightningIndexerMetadataCpuKernel::ParamsCheck() {
 
     return true; 
 }
 
-ValidSocVersion LightningIndexerQuantMetadataCpuKernel::ProcessSocVersion() {
-    if (socVersion_ == "Ascend910_9392" || socVersion_ == "ASCEND910B" || socVersion_ == "ascend910B" ||
-                socVersion_ == "Ascend910B" || socVersion_ == "Ascend910_93" || socVersion_ == "Ascend910" ||
-                socVersion_ == "ascend910" || socVersion_ == "ASCEND910") {
-        return ValidSocVersion::ASCEND910B;
-    } else if (socVersion_ == "Ascend910_9589" || socVersion_ == "ASCEND910D" || socVersion_ == "ascend910D" ||
-                socVersion_ == "Ascend910D" || socVersion_ == "Ascend910_95") {
+ValidSocVersion QuantLightningIndexerMetadataCpuKernel::ProcessSocVersion() {
+    const std::string ascend910D = "Ascend910_95";
+    if (socVersion_.find(ascend910D) != std::string::npos) {
         return ValidSocVersion::ASCEND910D;
+    } else {
+        return ValidSocVersion::ASCEND910B;
     }
-    
+
     return ValidSocVersion::RESERVED_VERSION;
 }
 
-bool LightningIndexerQuantMetadataCpuKernel::ParamsInit() {
+bool QuantLightningIndexerMetadataCpuKernel::ParamsInit() {
     
     groupSize_ = numHeadsQ_ / numHeadsK_;
     if (actSeqLenQ_ != nullptr) {
@@ -102,7 +100,7 @@ bool LightningIndexerQuantMetadataCpuKernel::ParamsInit() {
     return true;
 }
 
-uint32_t LightningIndexerQuantMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
+uint32_t QuantLightningIndexerMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
     if (actSeqLenQ_ == nullptr) {
         return maxSeqlenQ_;
@@ -120,7 +118,7 @@ uint32_t LightningIndexerQuantMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
     }
 }
 
-uint32_t LightningIndexerQuantMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
+uint32_t QuantLightningIndexerMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
     uint32_t s2Size = 0;
     if (actSeqLenKV_ == nullptr) {
@@ -141,7 +139,7 @@ uint32_t LightningIndexerQuantMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
     return s2Size;
 }
 
-void LightningIndexerQuantMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
+void QuantLightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
 {
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     SplitInfo &splitInfo = splitContext.splitInfo;
@@ -159,7 +157,7 @@ void LightningIndexerQuantMetadataCpuKernel::CalcSplitInfo(SplitContext &splitCo
     return;
 }
 
-int64_t LightningIndexerQuantMetadataCpuKernel::CalcPreTokenLeftUp(
+int64_t QuantLightningIndexerMetadataCpuKernel::CalcPreTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(sparseMode_);
@@ -169,7 +167,7 @@ int64_t LightningIndexerQuantMetadataCpuKernel::CalcPreTokenLeftUp(
     return preToken_;
 }
 
-int64_t LightningIndexerQuantMetadataCpuKernel::CalcNextTokenLeftUp(
+int64_t QuantLightningIndexerMetadataCpuKernel::CalcNextTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(sparseMode_);
@@ -187,7 +185,7 @@ int64_t LightningIndexerQuantMetadataCpuKernel::CalcNextTokenLeftUp(
     }
 }
 
-int64_t LightningIndexerQuantMetadataCpuKernel::CalcCost(
+int64_t QuantLightningIndexerMetadataCpuKernel::CalcCost(
     uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignCoefM = 16U;
@@ -197,7 +195,7 @@ int64_t LightningIndexerQuantMetadataCpuKernel::CalcCost(
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
-BlockCost<int64_t> LightningIndexerQuantMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, 
+BlockCost<int64_t> QuantLightningIndexerMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
     uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize)
 {
     BlockCost<int64_t> typeCost {};
@@ -208,7 +206,7 @@ BlockCost<int64_t> LightningIndexerQuantMetadataCpuKernel::CalcCostTable(uint32_
     return typeCost;
 }
 
-Range<uint32_t> LightningIndexerQuantMetadataCpuKernel::CalcS2Range(
+Range<uint32_t> QuantLightningIndexerMetadataCpuKernel::CalcS2Range(
     uint32_t s1GIdx, const BatchCache &batchCache)
 {
     uint32_t s2Start = 0U;
@@ -276,7 +274,7 @@ Range<uint32_t> LightningIndexerQuantMetadataCpuKernel::CalcS2Range(
 
 }
 
-void LightningIndexerQuantMetadataCpuKernel::CalcBatchCache(
+void QuantLightningIndexerMetadataCpuKernel::CalcBatchCache(
     uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -290,7 +288,7 @@ void LightningIndexerQuantMetadataCpuKernel::CalcBatchCache(
         splitInfo.s2TailSize[bIdx]);
 }
 
-void LightningIndexerQuantMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, 
+void QuantLightningIndexerMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -334,7 +332,7 @@ void LightningIndexerQuantMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::CalcBatchCost(
+void QuantLightningIndexerMetadataCpuKernel::CalcBatchCost(
     uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -365,7 +363,7 @@ void LightningIndexerQuantMetadataCpuKernel::CalcBatchCost(
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
+void QuantLightningIndexerMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     CostInfo &costInfo = splitContext.costInfo;
@@ -384,7 +382,7 @@ void LightningIndexerQuantMetadataCpuKernel::CalcCostInfo(SplitContext &splitCon
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantLightningIndexerMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
@@ -432,7 +430,7 @@ void LightningIndexerQuantMetadataCpuKernel::UpdateCursor(const SplitContext &sp
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantLightningIndexerMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -467,7 +465,7 @@ void LightningIndexerQuantMetadataCpuKernel::AssignByBatch(const SplitContext &s
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantLightningIndexerMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -493,7 +491,7 @@ void LightningIndexerQuantMetadataCpuKernel::AssignByRow(const SplitContext &spl
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantLightningIndexerMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -518,7 +516,7 @@ void LightningIndexerQuantMetadataCpuKernel::AssignByBlock(const SplitContext &s
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantLightningIndexerMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -541,7 +539,7 @@ void LightningIndexerQuantMetadataCpuKernel::ForceAssign(const SplitContext &spl
     UpdateCursor(splitContext, assignContext); 
 }
 
-bool LightningIndexerQuantMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes)
+bool QuantLightningIndexerMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
     // 核0无需处理
@@ -560,7 +558,7 @@ bool LightningIndexerQuantMetadataCpuKernel::IsNeedRecordFDInfo(const AssignCont
     return true;
 }
 
-void LightningIndexerQuantMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result)
+void QuantLightningIndexerMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
@@ -584,7 +582,7 @@ void LightningIndexerQuantMetadataCpuKernel::RecordFDInfo(const SplitContext &sp
     result.numOfFdHead++;
 }
 
-void LightningIndexerQuantMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
+void QuantLightningIndexerMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
@@ -660,7 +658,7 @@ void LightningIndexerQuantMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
 
-void LightningIndexerQuantMetadataCpuKernel::CopyTmpResult(SplitResult &tmpRes, SplitResult &splitRes)
+void QuantLightningIndexerMetadataCpuKernel::CopyTmpResult(SplitResult &tmpRes, SplitResult &splitRes)
 {
     uint64_t len = tmpRes.bN2End.size();
     splitRes.usedCoreNum = tmpRes.usedCoreNum;
@@ -682,7 +680,7 @@ void LightningIndexerQuantMetadataCpuKernel::CopyTmpResult(SplitResult &tmpRes, 
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::ClearTmpResult(SplitResult &tmpResult)
+void QuantLightningIndexerMetadataCpuKernel::ClearTmpResult(SplitResult &tmpResult)
 {
     uint64_t len = tmpResult.bN2End.size();
     tmpResult.usedCoreNum = 0U;
@@ -704,7 +702,7 @@ void LightningIndexerQuantMetadataCpuKernel::ClearTmpResult(SplitResult &tmpResu
     }
 }
 
-void LightningIndexerQuantMetadataCpuKernel::SplitFD(SplitResult &result)
+void QuantLightningIndexerMetadataCpuKernel::SplitFD(SplitResult &result)
 {
     uint32_t totalFDLoad = 0;
     uint32_t totalFDHeadSplit = 0;
@@ -745,7 +743,7 @@ void LightningIndexerQuantMetadataCpuKernel::SplitFD(SplitResult &result)
     result.usedVecNumOfFd = curCoreIndex + 1;
 }
 
-bool LightningIndexerQuantMetadataCpuKernel::BalanceSchedule() {
+bool QuantLightningIndexerMetadataCpuKernel::BalanceSchedule() {
     
     SplitContext splitContext(batchSize_);
     
@@ -774,9 +772,9 @@ bool LightningIndexerQuantMetadataCpuKernel::BalanceSchedule() {
     return true;
 }
 
-bool LightningIndexerQuantMetadataCpuKernel::GenMetaData() {
+bool QuantLightningIndexerMetadataCpuKernel::GenMetaData() {
     // return true;
-    optiling::detail::LiqMetaData* metaDataPtr = (optiling::detail::LiqMetaData*)metaData_->GetData();
+    optiling::detail::QliMetaData* metaDataPtr = (optiling::detail::QliMetaData*)metaData_->GetData();
     metaDataPtr->usedCoreNum = splitRes_.usedCoreNum;
     metaDataPtr->ldRes.ldNum = splitRes_.numOfFdHead;
     metaDataPtr->ldRes.ldUsedVecNum = splitRes_.usedVecNumOfFd;
@@ -807,7 +805,7 @@ bool LightningIndexerQuantMetadataCpuKernel::GenMetaData() {
 }
 
 namespace {
-    static const char *kernelType = "LightningIndexerQuantMetadata";
-    REGISTER_CPU_KERNEL(kernelType, LightningIndexerQuantMetadataCpuKernel);
+    static const char *kernelType = "QuantLightningIndexerMetadata";
+    REGISTER_CPU_KERNEL(kernelType, QuantLightningIndexerMetadataCpuKernel);
 }
 }; // namespace aicpu

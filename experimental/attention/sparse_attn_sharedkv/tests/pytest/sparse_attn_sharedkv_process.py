@@ -138,8 +138,7 @@ class GeneralizedSFA:
                         mm1_res = torch.matmul(q_curr_fp32, k_concat_fp32.T)
                         scale_res = mm1_res * self.softmax_scale
                         softmax_res = self.sinks_softmax(scale_res, cur_sinks_expand)
-                        # mm2_res = torch.matmul(softmax_res.to(dtype=q_bnsd.dtype).to(dtype=torch.float), v_concat_fp32)
-                        mm2_res = torch.matmul(softmax_res, v_concat_fp32) # TODO: 暂时保持库上golden不变，待AMLA golden精度问题确认之后，此处改为降精度版本
+                        mm2_res = torch.matmul(softmax_res.to(dtype=q_bnsd.dtype).to(dtype=torch.float), v_concat_fp32)
                         attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = mm2_res.to(dtype=q_bnsd.dtype)
                     elif RUN_MODE == 1:
                         ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
@@ -469,7 +468,7 @@ def gen_ori_kv(ori_kv_type, B, N2, D, block_num1, block_size1, seqused_kv):
         ori_block_num_sum += cur_ori_kv_block_num
 
     if block_num1 < ori_block_num_sum:
-        raise ValueError(f"ori_kv actual_block_num < needed_block_num, which is {block_num1 < ori_block_num_sum}")
+        raise ValueError(f"ori_kv actual_block_num < needed_block_num, which is {block_num1} < {ori_block_num_sum}")
 
     ori_block_id_list = np.arange(block_num1)
     ori_block_id_list = np.random.permutation(ori_block_id_list).astype(np.int32)
@@ -530,7 +529,7 @@ def gen_cmp_kv(layout_q, cmp_kv_type, B, S1, T1, N2, D, K, block_num2, block_siz
         cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
         cmp_block_num_sum += cur_cmp_kv_block_num
     if block_num2 < cmp_block_num_sum:
-        raise ValueError(f"cmp_kv actual_block_num < needed_block_num, which is {block_num2 < cmp_block_num_sum}")
+        raise ValueError(f"cmp_kv actual_block_num < needed_block_num, which is {block_num2} < {cmp_block_num_sum}")
 
     cmp_block_id_list = np.arange(block_num2)
     cmp_block_id_list = np.random.permutation(cmp_block_id_list).astype(np.int32)
@@ -566,6 +565,8 @@ def gen_cmp_kv(layout_q, cmp_kv_type, B, S1, T1, N2, D, K, block_num2, block_siz
     else:
         cmp_sparse_indices = None
     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
+    if cmp_block_table.shape[1] == 0:
+        cmp_block_table = None
     return cmp_k_in_pa_shape, cmp_sparse_indices, cmp_block_table, cmp_k_bnsd
 
 def test_sas_process(params):
@@ -636,7 +637,8 @@ def test_sas_process(params):
 
     if template_idx == 1 or template_idx == 2:
         cmp_k_in_pa_shape = cmp_k_in_pa_shape.npu()
-        cmp_block_table = cmp_block_table.npu()
+        if cmp_block_table is not None:
+            cmp_block_table = cmp_block_table.npu()
     if template_idx == 2:
         cmp_sparse_indices = cmp_sparse_indices.npu()
 
@@ -671,7 +673,7 @@ def test_sas_process(params):
             layout_kv=layout_kv,
             has_ori_kv=ori_k_in_pa_shape != None,
             has_cmp_kv=cmp_k_in_pa_shape != None)
-        npu_result = torch.ops.custom.npu_sparse_attn_sharedkv(q,
+        npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                                ori_kv=ori_k_in_pa_shape,
                                                                ori_block_table=ori_block_table,
                                                                cu_seqlens_q=cu_seqlens_q,
@@ -703,7 +705,7 @@ def test_sas_process(params):
             layout_kv=layout_kv,
             has_ori_kv=ori_k_in_pa_shape != None,
             has_cmp_kv=cmp_k_in_pa_shape != None)
-        npu_result = torch.ops.custom.npu_sparse_attn_sharedkv(q,
+        npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                                ori_kv=ori_k_in_pa_shape,
                                                                cmp_kv=cmp_k_in_pa_shape,
                                                                ori_block_table=ori_block_table,
@@ -740,7 +742,7 @@ def test_sas_process(params):
             layout_kv=layout_kv,
             has_ori_kv=ori_k_in_pa_shape != None,
             has_cmp_kv=cmp_k_in_pa_shape != None)
-        npu_result = torch.ops.custom.npu_sparse_attn_sharedkv(q,
+        npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                                 ori_kv=ori_k_in_pa_shape,
                                                                 cmp_kv=cmp_k_in_pa_shape,
                                                                 cmp_sparse_indices=cmp_sparse_indices,

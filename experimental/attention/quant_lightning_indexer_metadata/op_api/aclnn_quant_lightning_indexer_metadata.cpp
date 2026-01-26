@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file aclnn_lightning_indexer_quant_metadata.cpp
+ * \file aclnn_quant_lightning_indexer_metadata.cpp
  * \brief
  */
 
-#include "aclnn_lightning_indexer_quant_metadata.h"
+#include "aclnn_quant_lightning_indexer_metadata.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
-#include "l0_lightning_indexer_quant_metadata.h"
+#include "l0_quant_lightning_indexer_metadata.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -56,7 +56,7 @@ static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsQueryOptional,
 }
 
 __attribute__((visibility("default")))
-aclnnStatus aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
+aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t numHeadsQ,
@@ -79,7 +79,7 @@ aclnnStatus aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
     uint64_t* workspaceSize,
     aclOpExecutor** executor) {
   L2_DFX_PHASE_1(
-      aclnnLightningIndexerQuantMetadata,
+      aclnnQuantLightningIndexerMetadata,
       DFX_IN(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim, queryQuantMode,
              keyQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional,
              sparseCountOptional, sparseModeOptional, isFdOptional, preTokensOptional, nextTokensOptional, cmpRatioOptional),
@@ -98,7 +98,7 @@ aclnnStatus aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
   uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
   const char* socVersion = npuInfo.GetSocLongVersion().c_str();
 
-  auto output = l0op::LightningIndexerQuantMetadata(
+  auto output = l0op::QuantLightningIndexerMetadata(
                          actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum, aivCoreNum, socVersion,
                          numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode, batchSizeOptional, maxSeqlenQOptional,  
                          maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional, sparseCountOptional, sparseModeOptional,
@@ -111,11 +111,11 @@ aclnnStatus aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
 }
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnLightningIndexerQuantMetadata(void* workspace,
+aclnnQuantLightningIndexerMetadata(void* workspace,
                               uint64_t workspaceSize,
                               aclOpExecutor* executor,
                               aclrtStream stream) {
-  L2_DFX_PHASE_2(aclnnLightningIndexerQuantMetadata);
+  L2_DFX_PHASE_2(aclnnQuantLightningIndexerMetadata);
   return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

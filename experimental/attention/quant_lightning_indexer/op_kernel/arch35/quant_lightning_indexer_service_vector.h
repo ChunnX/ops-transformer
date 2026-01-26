@@ -80,6 +80,7 @@ protected:
 
     static constexpr uint32_t KSCALE_S_MTE2_EVENT = EVENT_ID7;
     static constexpr uint32_t MTE3_MTE2_EVENT = EVENT_ID0;
+    static constexpr uint32_t V_MTE2_EVENT = EVENT_ID7;
 
 private:
     __aicore__ inline void GetKeyScale(const QLICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
@@ -468,8 +469,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             copyInParams.blockLen = validS2Len * sizeof(SCORE_T); // byte
             uint8_t rightPad = CeilAlign(validS2Len, 8) - validS2Len;
             AscendC::DataCopyPadExtParams<SCORE_T> padParams{true, 0, rightPad, 0};
-            SetFlag<HardEvent::V_MTE2>(1);
-            WaitFlag<HardEvent::V_MTE2>(1);
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
             AscendC::DataCopyPad(topkInputLocal_, scoreGm[rowIdx * CeilAlign(constInfo_.kSeqSize, s2BaseSize_)], copyInParams, padParams);
             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);

@@ -41,7 +41,7 @@ TEMPLATES_DEF
 class SCFABlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t s1BaseSize = 64; // todo: FA中来自模板参数 先写固定值，后期根据SCFA情况修改
+    static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
     static constexpr uint32_t dVBaseSize = 512;
@@ -158,8 +158,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo &runInf
 {
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * runInfo.qSNumInOneBlock;
-    // 推理无效行场景，s1方向起始跳过无效行
-    coordInfo[runInfo.taskIdMod3].s1Coord += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0; // todo
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -169,7 +167,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1(
     ConstInfo &constInfo)
 {
     CalcS1Coord(runInfo, constInfo);
-    // CalcS2Coord(runInfo, constInfo);
 
     IterateBmm1SCFA(outputBuf, inputRightBuf, runInfo, constInfo);
 }
@@ -199,9 +196,9 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
         LocalTensor<Q_T> inputLeftTensor = inputLeftBuf.GetTensor<Q_T>();
 
         uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-            coordInfo[runInfo.taskIdMod3].s1Coord, 0); // todo:确保kernel层传了这些值，或者自己算offset
+            coordInfo[runInfo.taskIdMod3].s1Coord, 0);
         CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[gmOffset], runInfo.mRealSize, constInfo.dSize,
-            constInfo.mm1Ka); // todo:确保kernel层根据layout区分传了constInfo.mm1Ka
+            constInfo.mm1Ka);
 
         inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非S2的第一次循环直接复用Q
@@ -271,7 +268,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
     MMParam param = {(uint32_t)s1BaseSize,          // singleM 64
                         (uint32_t)constInfo.dSizeV, // singleN 512
                         (uint32_t)runInfo.s2RealSize, // singleK 128
-                        0,    // isLeftTranspose    // todo: useDn?
+                        0,    // isLeftTranspose
                         0     // isRightTranspose
                     };
     MatmulN<Q_T, Q_T, T, 64, 128, 128, ABLayout::MK, ABLayout::KN>(

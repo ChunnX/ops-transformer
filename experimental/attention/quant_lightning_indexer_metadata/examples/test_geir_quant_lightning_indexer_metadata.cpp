@@ -25,7 +25,7 @@
 #include "nn_other.h"
 
 #include "../op_graph/lightning_indexer_quant_metadata_proto.h"
-#include "../op_kernel_aicpu/lightning_indexer_quant_metadata.h"
+#include "../../quant_lightning_indexer/op_kernel/quant_lightning_indexer_metadata.h"
 
 using namespace ge;
 
@@ -51,7 +51,7 @@ static const std::vector<int32_t> actualSeqLengthsQuery = {3, 6, 9, 12};
 static const std::vector<int32_t> actualSeqLengthsKey = {10240, 10240, 10240, 10240};
 static const std::vector<int64_t> actualSeqLengthsQueryShape = {batchSize};
 static const std::vector<int64_t> actualSeqLengthsKeyShape = {batchSize};
-static const std::vector<int64_t> metadataShape = {optiling::LIQ_META_SIZE};
+static const std::vector<int64_t> metadataShape = {optiling::QLI_META_SIZE};
 static const std::string dumpFile = "./dump";
 
 using namespace ge;
@@ -75,8 +75,8 @@ private:
 };
 
 static void DumpMeta(void* data) {
-  optiling::detail::LiqMetaData* metaDataPtr =
-      (optiling::detail::LiqMetaData*)data;
+  optiling::detail::QliMetaData* metaDataPtr =
+      (optiling::detail::QliMetaData*)data;
 
 }
 

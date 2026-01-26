@@ -15,8 +15,8 @@
 #include <tuple>
 #include <vector>
 #include "acl/acl.h"
-#include "../op_kernel_aicpu/lightning_indexer_quant_metadata.h"
-#include "../op_api/aclnn_lightning_indexer_quant_metadata.h"
+#include "../../quant_lightning_indexer/op_kernel/quant_lightning_indexer_metadata.h"
+#include "../op_api/aclnn_quant_lightning_indexer_metadata.h"
 
 static const uint32_t batchSize = 4;
 static const uint32_t seqSizeK = 10240;
@@ -40,7 +40,7 @@ static const std::vector<int32_t> actualSeqLengthsQuery = {3, 6, 9, 12};
 static const std::vector<int32_t> actualSeqLengthsKey = {10240, 10240, 10240, 10240};
 static const std::vector<int64_t> actualSeqLengthsQueryShape = {batchSize};
 static const std::vector<int64_t> actualSeqLengthsKeyShape = {batchSize};
-static const std::vector<int64_t> metadataShape = {optiling::LIQ_META_SIZE};
+static const std::vector<int64_t> metadataShape = {optiling::QLI_META_SIZE};
 static const std::vector<int64_t> actualSeqLengthsQueryStride = {1};
 static const std::vector<int64_t> actualSeqLengthsKeyStride = {1};
 static const std::vector<int64_t> metadataStride = {1};
@@ -73,8 +73,8 @@ std::tuple<aclTensor*, void*> CreateTensor(size_t size,  // in bytes
 }
 
 static void DumpMeta(void *data) {
-  optiling::detail::LiqMetaData *metaDataPtr =
-      (optiling::detail::LiqMetaData *)data;
+  optiling::detail::QliMetaData *metaDataPtr =
+      (optiling::detail::QliMetaData *)data;
 }
 
 int main() {
@@ -129,26 +129,26 @@ int main() {
 
 
   std::tie(metadataTensor, metadataDevPtr) =
-      CreateTensor(sizeof(int32_t) * optiling::LIQ_META_SIZE, metadataShape,
+      CreateTensor(sizeof(int32_t) * optiling::QLI_META_SIZE, metadataShape,
                    metadataStride, aclDataType::ACL_INT32);
   if (metadataTensor == nullptr) {
     return -1;
   }
 
-  ret = aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
+  ret = aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
         qSeqLenTensor, kvSeqLenTensor, aicCoreNum, aivCoreNum, batchSize,
         seqSizeQ, numHeadsQ, seqSizeK, numHeadsK, &layoutQuery[0], &layoutKV[0],
         sparseMode, &socVersion[0], isFD, preToken, nextToken, cmpRatio, metadataTensor, &workspaceSize, &executor);
   if (ret != ACL_SUCCESS) {
-    printf("aclnnLightningIndexerQuantMetadataGetWorkspaceSize %d\n",
+    printf("aclnnQuantLightningIndexerMetadataGetWorkspaceSize %d\n",
            ret);
     return -1;
   }
 
-  ret = aclnnLightningIndexerQuantMetadata(workspace, workspaceSize,
+  ret = aclnnQuantLightningIndexerMetadata(workspace, workspaceSize,
                                                  executor, stream);
   if (ret != ACL_SUCCESS) {
-    printf("aclnnLightningIndexerQuantMetadata %d\n", ret);
+    printf("aclnnQuantLightningIndexerMetadata %d\n", ret);
     return -1;
   }
 
@@ -158,10 +158,10 @@ int main() {
     return -1;
   }
 
-  std::vector<int32_t> metdataHost(optiling::LIQ_META_SIZE);
+  std::vector<int32_t> metdataHost(optiling::QLI_META_SIZE);
   ret = aclrtMemcpy(metdataHost.data(),
                     metdataHost.size() * sizeof(metdataHost[0]), metadataDevPtr,
-                    optiling::LIQ_META_SIZE * sizeof(int32_t),
+                    optiling::QLI_META_SIZE * sizeof(int32_t),
                     ACL_MEMCPY_DEVICE_TO_HOST);
   if (ret != ACL_SUCCESS) {
     printf("aclrtMemcpy %d\n", ret);

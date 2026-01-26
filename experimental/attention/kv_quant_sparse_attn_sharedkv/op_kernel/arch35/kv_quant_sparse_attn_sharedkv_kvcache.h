@@ -27,23 +27,22 @@ using namespace AscendC::Impl::Detail;
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t * actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t * actualSeqKvlenAddr)
 {
     int32_t actualS1Size = 0;
     int32_t actualS2Size = 0;
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
     int32_t sIdx = runParam.boIdx;
-    if (constInfo.isActualLenDimsNull) {
-        actualS1Size = constInfo.s1Size;
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        // actual seq length first
+        actualS1Size = (actualSeqQlenAddr == nullptr) ? (cuSeqlensQAddr[sIdx + 1] - cuSeqlensQAddr[sIdx]) :
+            actualSeqQlenAddr[sIdx];
     } else {
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-            actualS1Size = actualSeqQlenAddr[sIdx + 1] - actualSeqQlenAddr[sIdx];
-        } else {
-            actualS1Size = (constInfo.actualSeqLenSize == actualSeqMin) ? actualSeqQlenAddr[0] :
-                actualSeqQlenAddr[sIdx];
-        }
+        actualS1Size = (actualSeqQlenAddr == nullptr) ? constInfo.s1Size :
+            actualSeqQlenAddr[sIdx];
     }
+
     if (constInfo.isActualLenDimsKVNull) {
         actualS2Size = constInfo.s2Size;
     } else {
@@ -63,35 +62,40 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     runParam.preTokensPerBatch = -(runParam.actualS2Size - runParam.actualS1Size - constInfo.oriWinLeft);
     runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
-
-    // 根据nextToken, 剔除行无效区域
-    runParam.actualS1Size = (runParam.nextTokensPerBatch >= 0) ? runParam.actualS1Size :
-        (runParam.actualS1Size + runParam.nextTokensPerBatch);
 }
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
 {
-    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
+    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, actualSeqQlenAddr, actualSeqKvlenAddr);
 }
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo, bool lastBN, 
-    int64_t nextGs1Idx)
+    int64_t nextGs1Idx, int64_t gS1StartIdx)
 {
-    int32_t s1LoopTimes = 0;
     runParam.qSNumInOneBlock = constInfo.s1BaseSize / constInfo.gSize; // 不切G轴, 计算每个基本快可以拷贝多少行s
+    runParam.gs1LoopStartIdx = gS1StartIdx;
+    if (runParam.nextTokensPerBatch < 0) {
+        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatch * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+        if (gs1LoopStartIdx > gS1StartIdx) {
+            runParam.gs1LoopStartIdx = gs1LoopStartIdx;
+        }
+    }
+
+    int32_t gs1LoopEndIdx = 0;
     if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
-        s1LoopTimes = runParam.actualS1Size; // 对于SCFA, 不切G轴, 每次拷贝一行的topk，只算一行的qs
+        gs1LoopEndIdx = runParam.actualS1Size; // 对于SCFA, 不切G轴, 每次拷贝一行的topk，只算一行的qs
     } else { // SWA/CFA
-        s1LoopTimes = (runParam.actualS1Size + runParam.qSNumInOneBlock - 1) / runParam.qSNumInOneBlock; // 不需要取topk, 每次计算gSize行, 循环qs次
+        // 不需要取topk, 每次计算gSize行, 循环qs次
+        gs1LoopEndIdx = (runParam.actualS1Size + runParam.qSNumInOneBlock - 1) / runParam.qSNumInOneBlock;
     }
     // 不是最后一个bn, 赋值souterBlockNum
     if (!lastBN) {
-        runParam.s1LoopTimes = s1LoopTimes;
+        runParam.gs1LoopEndIdx = gs1LoopEndIdx;
     } else { // 最后一个bn, 从数组下一个元素取值
-        runParam.s1LoopTimes = nextGs1Idx == 0 ? s1LoopTimes : nextGs1Idx;
+        runParam.gs1LoopEndIdx = nextGs1Idx == 0 ? gs1LoopEndIdx : nextGs1Idx;
     }
 }
 
@@ -104,12 +108,9 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
         runParam.s1RealSize = 0;
         runParam.mRealSize = 0;
     } else {
-        // actualS1Size在前面已经减去被nextTokensPerBatch截掉的部分
         runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
     }
-
-    cubeSOuterOffset += (runParam.nextTokensPerBatch < 0) ? -runParam.nextTokensPerBatch : 0;
 
     runParam.cubeMOuterOffset = cubeSOuterOffset * constInfo.gSize;
     runParam.halfMRealSize = (runParam.mRealSize + 1) >> 1;
@@ -134,16 +135,13 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstInfo &constInfo,
-    int32_t sIdx, __gm__ int32_t *actualSeqQlenAddr)
+    int32_t sIdx, __gm__ int32_t *cuSeqlensQAddr)
 {
     if ASCEND_IS_AIV {
-        int64_t actualSeqLen = 0;
         int64_t seqOffset = 0;
         if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-            actualSeqLen = actualSeqQlenAddr[sIdx + 1] - actualSeqQlenAddr[sIdx];
-            seqOffset = actualSeqQlenAddr[sIdx];
+            seqOffset = cuSeqlensQAddr[sIdx];
         } else {
-            actualSeqLen = constInfo.s1Size;
             seqOffset = sIdx * constInfo.s1Size;
         }
 
@@ -161,21 +159,26 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 
 TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t sOuterLoopIdx, __gm__ int32_t *actualSeqQlenAddr)
+    uint32_t sOuterLoopIdx, __gm__ int32_t *cuSeqlensQAddr)
 {
-    // 后续的函数依赖 sOuterOffset
+    if (runParam.nextTokensPerBatch < 0) {
+        if (runParam.s1oIdx < (runParam.nextTokensPerBatch * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+            return true;
+        }
+    }
+
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQlenAddr);
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
     return false;
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *actualSeqQlenAddr) 
+__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr) 
 {
     if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
-        if (runParam.boIdx > 0 && actualSeqQlenAddr[runParam.boIdx + 1] - actualSeqQlenAddr[runParam.boIdx] == 0) {
+        if (runParam.boIdx > 0 && cuSeqlensQAddr[runParam.boIdx + 1] - cuSeqlensQAddr[runParam.boIdx] == 0) {
             return true;
         }
     }

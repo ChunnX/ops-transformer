@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_LIGHTNING_INDEXER_QUANT_METADATA_AICPU_H
-#define ACLNN_LIGHTNING_INDEXER_QUANT_METADATA_AICPU_H
+#ifndef ACLNN_QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H
+#define ACLNN_QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H
 
 #include "aclnn/aclnn_base.h"
 
@@ -17,28 +17,32 @@
 extern "C" {
 #endif
 
-/* funtion: aclnnLightningIndexerQuantMetadataGetWorkspaceSize
+/* funtion: aclnnQuantLightningIndexerMetadataGetWorkspaceSize
  * parameters :
- * actualSeqLengthsQuery : required
- * actualSeqLengthsKey : required
- * aicCoreNum : required
- * aivCoreNum : required
- * int64_t batchSize : required
- * int64_t querySeqSize : required
- * int64_t queryHeadNum : required
- * int64_t kvSeqSize : required
- * int64_t kvHeadNum : required
- * layoutQuery : optional
- * layoutKey : optional
- * sparseMode : optional
- * socVersion : optional
- * isFd : optional
+ * query : required
+ * actualSeqLengthsQuery : optional
+ * actualSeqLengthsKey : optional
+ * numHeadsQ : required
+ * numHeadsK : required
+ * headDim : required
+ * queryQuantMode : required
+ * keyQuantMode : required
+ * int64_t batchSize : optional
+ * int64_t maxSeqlenQ : optional
+ * int64_t maxSeqlenK : optional
+ * char* layoutQuery : optional
+ * char* layoutKey : optional
+ * int64_t sparseCount : optional
+ * int64_t sparseMode : optional
+ * int64_t preTokens : optional
+ * int64_t nextTokens : optional
+ * cmpRatio : optional
  * out : required
  * workspaceSize : size of workspace(output).
  * executor : executor context(output).
  */
 __attribute__((visibility("default"))) aclnnStatus
-aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
+aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t numHeadsQ,
@@ -61,7 +65,7 @@ aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
     uint64_t* workspaceSize,
     aclOpExecutor** executor);
 
-/* funtion: aclnnLightningIndexerQuantMetadata
+/* funtion: aclnnQuantLightningIndexerMetadata
  * parameters :
  * workspace : workspace memory addr(input).
  * workspaceSize : size of workspace(input).
@@ -69,7 +73,7 @@ aclnnLightningIndexerQuantMetadataGetWorkspaceSize(
  * stream : acl stream.
  */
 __attribute__((visibility("default"))) aclnnStatus
-aclnnLightningIndexerQuantMetadata(void* workspace,
+aclnnQuantLightningIndexerMetadata(void* workspace,
                               uint64_t workspaceSize,
                               aclOpExecutor* executor,
                               aclrtStream stream);
@@ -78,4 +82,4 @@ aclnnLightningIndexerQuantMetadata(void* workspace,
 }
 #endif
 
-#endif  // ACLNN_LIGHTNING_INDEXER_QUANT_METADATA_AICPU_H
+#endif  // ACLNN_QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H

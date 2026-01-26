@@ -116,7 +116,7 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
     print_log(
         '---------------------------------------------------------------------------------------')
 # fuzz 中 precision_method == 1的精度对比方式
-def check_result(expect, result):
+def check_result(expect, npu_result):
     diff_thd=0.01
     pct_thd=0.005
     max_diff_hd=0.1
@@ -124,7 +124,7 @@ def check_result(expect, result):
     atol=0.000025
     max_error_idx = 10000000
 
-    real_data = result.cpu().to(torch.float32).numpy()
+    real_data = npu_result.cpu().to(torch.float32).numpy()
     data_compe = expect.cpu().to(torch.float32).numpy()
     real_data = real_data.flatten()
     data_compe = data_compe.flatten()
@@ -159,41 +159,11 @@ def check_result(expect, result):
     if 'nan' in str(real_data) or 'inf' in str(real_data) or 'nan' in str(data_compe) or 'inf' in str(data_compe):
         has_nan_inf = True
 
-    if str(real_data.dtype) == 'bfloat16':
+    if npu_result.dtype == torch.bfloat16:
         rtol=0.0078125
         atol=0.0001
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
                                     equal_nan=True)
-    elif str(real_data.dtype) == 'float8_e4m3fn':
-        nan_mask = np.isnan(real_data)
-        real_data[nan_mask] = 0
-        arr_string = real_data.tobytes()
-        real_data = np.frombuffer(arr_string, dtype="uint8")
-        nan_mask = np.isnan(data_compe)
-        data_compe[nan_mask] = 0
-        arr_string = data_compe.tobytes()
-        data_compe = np.frombuffer(arr_string, dtype="uint8")
-        diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
-    elif str(real_data.dtype) == 'float8_e5m2':
-        nan_mask = np.isnan(real_data)
-        real_data[nan_mask] = 0
-        nan_pos_inf = np.isposinf(real_data)
-        real_data[nan_pos_inf] = 57344
-        nan_neg_inf = np.isneginf(real_data)
-        real_data[nan_neg_inf] = -57344
-
-        arr_string = real_data.tobytes()
-        real_data = np.frombuffer(arr_string, dtype="uint8")
-        nan_mask = np.isnan(data_compe)
-        data_compe[nan_mask] = 0
-        nan_pos_inf = np.isposinf(data_compe)
-        data_compe[nan_pos_inf] = 57344
-        nan_neg_inf = np.isneginf(data_compe)
-        data_compe[nan_neg_inf] = -57344
-
-        arr_string = data_compe.tobytes()
-        data_compe = np.frombuffer(arr_string, dtype="uint8")
-        diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
     else:
         diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
     err_idx = np.where(diff_result != np.array((True,)))[0]

@@ -9,8 +9,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
-
-import test_sas
+import os
 import torch
 import torch_npu
 import check_valid_param
@@ -342,8 +341,34 @@ def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv
                 cmp_sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return cmp_sparse_indices
 
-def test_sas_quant_process(params):
-    layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2, \
+def save_test_case(input_data, output_dir):
+    """
+    保存单条测试用例到文件
+    """
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+
+    # TODO: 确认文件名
+    case_name = input_data['Testcase_Name']
+    
+    # 生成文件名
+    input_filename = f"sas_case_{case_name}.pt"
+    input_filepath = os.path.join(output_dir, input_filename)
+    
+    # 保存数据
+    torch.save(input_data, input_filepath)
+    print(f"测试用例已保存到: {input_filepath}")
+    
+    return input_filepath
+
+def generate_and_save_testdata(params, savePt=False, save_path=""):
+    '''
+    生成input param及cpuout
+    runNpu: 生成完毕后执行npu计算
+    return test_data
+    '''
+
+    Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2, \
     block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, \
     ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode = params
 
@@ -522,6 +547,103 @@ def test_sas_quant_process(params):
     ori_v_in_pa_shape = ori_k_in_pa_shape.clone()
     cmp_v_in_pa_shape = cmp_k_in_pa_shape.clone()
 
+    test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
+                              block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
+                              ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
+    cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
+    
+    print("mode:%s\n",template_run_mode)
+
+    if template_run_mode == "SWA":
+        cmp_k_in_pa_shape = None
+        cmp_sparse_indices = None
+        cmp_block_table = None
+    elif template_run_mode == "CFA":
+        cmp_sparse_indices = None
+
+    cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
+    seqused_kv = torch.tensor(seqused_kv).to(torch.int32)
+    max_seqlen_q = S1
+    if layout_q == "TND":
+        max_seqlen_q = cu_seqlens_q.max().item()
+    else:
+        cu_seqlens_q = None
+        max_seqlen_q = S1
+    max_seqlen_kv = seqused_kv.max().item()
+
+    # 保存pt
+    input_data = {
+        # 命名用变量
+        'Testcase_Name':Testcase_Name,
+
+        # 固定参数
+        'params': params,
+
+        # 输入张量
+        'metadata_input': {
+            'num_heads_q': N1,
+            'num_heads_kv': N2,
+            'head_dim': D,
+            'cu_seqlens_q': cu_seqlens_q, 
+            'seqused_kv': seqused_kv,    
+            'batch_size': B,
+            'max_seqlen_q': max_seqlen_q,
+            'max_seqlen_kv': max_seqlen_kv,
+            'topk': K if template_run_mode == "SCFA" else 0, # 仅SCFA需要
+            'cmp_ratio': cmp_ratio if template_run_mode != "SWA" else 0,  # 仅SWA 不需要
+            'ori_mask_mode': ori_mask_mode,
+            'cmp_mask_mode': cmp_mask_mode,
+            'ori_win_left': ori_win_left,
+            'ori_win_right': ori_win_right,
+            'layout_q': layout_q,
+            'layout_kv': layout_kv,
+            'has_ori_kv': True,
+            'has_cmp_kv': False if template_run_mode == "SWA" else True  # SWA 为false
+        },
+
+        'input': {
+            'q': q,
+            'ori_kv': ori_k_in_pa_shape,
+            'cmp_kv': cmp_k_in_pa_shape,
+            'cmp_sparse_indices': cmp_sparse_indices,
+            'ori_block_table': ori_block_table,
+            'cmp_block_table': cmp_block_table,
+            'cu_seqlens_q': cu_seqlens_q,
+            'seqused_kv': seqused_kv,
+            'sinks': sinks,
+            'kv_quant_mode': 1,
+            'tile_size': 64,
+            'rope_head_dim': 64,
+            'softmax_scale': softmax_scale,
+            'cmp_ratio': cmp_ratio,
+            'ori_mask_mode': ori_mask_mode,
+            'cmp_mask_mode': cmp_mask_mode,
+            'ori_win_left': ori_win_left,
+            'ori_win_right': ori_win_right,
+            'layout_q': layout_q,
+            'layout_kv': layout_kv
+        },
+
+        'cpu_output': cpu_result
+    }
+
+    if savePt:  
+        save_test_case(input_data, save_path)
+        
+    return input_data
+
+def test_sas_quant_process(test_data, device_id=0):
+    params = test_data['params']
+    metadata_input = test_data['metadata_input']
+    input = test_data['input']
+    cpu_output = test_data['cpu_output']
+
+    print("执行用例：", test_data['Testcase_Name'])
+    print("test_data:", params)
+
+    torch_npu.npu.set_device(device_id)
+
+    print("npu_kv_quant_sparse_attn_sharedkv_metadata...")
     # 手动构造metadata
     # metadata = torch.zeros((2048), dtype=torch.int32)
     # metadata[:3] = torch.tensor([1, 64, 128], dtype=torch.int32)  # 3个数：usedCoreNum, mBaseSize, s2BaseSize
@@ -529,84 +651,54 @@ def test_sas_quant_process(params):
     # metadata[35:67] = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 mEnd
     # metadata[67:99] = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 s2End
 
-    test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
-                              block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
-                              ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
-    cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
-    
-    torch_npu.npu.set_device(0)
-    q = q.npu()
-    ori_k_in_pa_shape = ori_k_in_pa_shape.npu()
-    ori_block_table = ori_block_table.npu()
-    if template_run_mode == "SWA":
-        cmp_k_in_pa_shape = None
-        cmp_sparse_indices = None
-        cmp_block_table = None
-    elif template_run_mode == "CFA":
-        cmp_k_in_pa_shape = cmp_k_in_pa_shape.npu()
-        cmp_block_table = cmp_block_table.npu()
-        cmp_sparse_indices = None
-    else:
-        cmp_k_in_pa_shape = cmp_k_in_pa_shape.npu()
-        cmp_sparse_indices = cmp_sparse_indices.npu()
-        cmp_block_table = cmp_block_table.npu()
+    # metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
+    metadata = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv_metadata(
+                                                        num_heads_q = metadata_input['num_heads_q'],
+                                                        num_heads_kv = metadata_input['num_heads_kv'],
+                                                        head_dim = metadata_input['head_dim'],
+                                                        cu_seqlens_q = metadata_input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None, 
+                                                        seqused_kv = metadata_input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,    
+                                                        batch_size = metadata_input['batch_size'],
+                                                        max_seqlen_q = metadata_input['max_seqlen_q'],
+                                                        max_seqlen_kv = metadata_input['max_seqlen_kv'],
+                                                        topk = metadata_input['topk'],
+                                                        cmp_ratio = metadata_input['cmp_ratio'],
+                                                        ori_mask_mode = metadata_input['ori_mask_mode'],
+                                                        cmp_mask_mode = metadata_input['cmp_mask_mode'],
+                                                        ori_win_left = metadata_input['ori_win_left'],
+                                                        ori_win_right = metadata_input['ori_win_right'],
+                                                        layout_q = metadata_input['layout_q'],
+                                                        layout_kv = metadata_input['layout_kv'],
+                                                        has_ori_kv = metadata_input['has_ori_kv'],
+                                                        has_cmp_kv = metadata_input['has_cmp_kv'])
 
-    cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
-    seqused_kv = torch.tensor(seqused_kv).to(torch.int32)
-    if layout_q == "TND":
-        cu_seqlens_q = cu_seqlens_q.npu()
-    else:
-        cu_seqlens_q = None
-    seqused_kv = seqused_kv.npu()
-    sinks = sinks.npu()
-    #metadata = metadata.npu()
     torch.npu.synchronize()
+    metadata.npu()
+    print("npu_kv_quant_sparse_attn_sharedkv...")
 
-    metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
-                                                        num_heads_q = N1,
-                                                        num_heads_kv = N2,
-                                                        head_dim = D,
-                                                        cu_seqlens_q = cu_seqlens_q,
-                                                        seqused_kv = seqused_kv,
-                                                        batch_size = B,
-                                                        max_seqlen_q = 1,
-                                                        max_seqlen_kv = 1024,
-                                                        topk = K,
-                                                        cmp_ratio = cmp_ratio,
-                                                        ori_mask_mode = ori_mask_mode,
-                                                        cmp_mask_mode = cmp_mask_mode,
-                                                        ori_win_left = ori_win_left,
-                                                        ori_win_right = ori_win_right,
-                                                        layout_q = layout_q,
-                                                        layout_kv = layout_kv,
-                                                        has_ori_kv = True,
-                                                        has_cmp_kv = True)
-
-    torch.set_printoptions(threshold=float('inf'))
-    print(metadata)
-
-    npu_result = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv(q,
-                                                                ori_kv=ori_k_in_pa_shape,
-                                                                cmp_kv=cmp_k_in_pa_shape,
-                                                                cmp_sparse_indices=cmp_sparse_indices,
-                                                                ori_block_table=ori_block_table,
-                                                                cmp_block_table=cmp_block_table,
-                                                                cu_seqlens_q=cu_seqlens_q,
-                                                                seqused_kv=seqused_kv,
-                                                                sinks=sinks,
-                                                                metadata=metadata,
-                                                                kv_quant_mode=1,
-                                                                tile_size=64,
-                                                                rope_head_dim=64,
-                                                                softmax_scale=softmax_scale,
-                                                                cmp_ratio=cmp_ratio,
-                                                                ori_mask_mode=ori_mask_mode,
-                                                                cmp_mask_mode=cmp_mask_mode,
-                                                                ori_win_left=ori_win_left,
-                                                                ori_win_right=ori_win_right,
-                                                                layout_q=layout_q,
-                                                                layout_kv=layout_kv)
+    npu_result, _ = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv(
+                                                        q=input['q'].npu() if input['q'] is not None else None,
+                                                        ori_kv=input['ori_kv'].npu() if input['ori_kv'] is not None else None,
+                                                        cmp_kv=input['cmp_kv'].npu() if input['cmp_kv'] is not None else None,
+                                                        cmp_sparse_indices=input['cmp_sparse_indices'].npu() if input['cmp_sparse_indices'] is not None else None,
+                                                        ori_block_table=input['ori_block_table'].npu() if input['ori_block_table'] is not None else None,
+                                                        cmp_block_table=input['cmp_block_table'].npu() if input['cmp_block_table'] is not None else None,
+                                                        cu_seqlens_q=input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None,
+                                                        seqused_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,
+                                                        sinks=input['sinks'].npu() if input['sinks'] is not None else None,
+                                                        metadata=metadata,
+                                                        kv_quant_mode=input['kv_quant_mode'],
+                                                        tile_size=input['tile_size'],
+                                                        rope_head_dim=input['rope_head_dim'],
+                                                        softmax_scale=input['softmax_scale'],
+                                                        cmp_ratio=input['cmp_ratio'],
+                                                        ori_mask_mode=input['ori_mask_mode'],
+                                                        cmp_mask_mode=input['cmp_mask_mode'],
+                                                        ori_win_left=input['ori_win_left'],
+                                                        ori_win_right=input['ori_win_right'],
+                                                        layout_q=input['layout_q'],
+                                                        layout_kv=input['layout_kv'])
 
     torch.npu.synchronize()
 
-    return npu_result, cpu_result
+    return npu_result, cpu_output

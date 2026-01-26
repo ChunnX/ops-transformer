@@ -10,12 +10,12 @@
  */
 
  /*!
- * \file lightning_indexer_quant_metadata.h
+ * \file quant_lightning_indexer_metadata.h
  * \brief
  */
 
-#ifndef LIGHTNING_INDEXER_QUANT_METADATA_H
-#define LIGHTNING_INDEXER_QUANT_METADATA_H
+#ifndef QUANT_LIGHTNING_INDEXER_METADATA_H
+#define QUANT_LIGHTNING_INDEXER_METADATA_H
 
 #include <cstdint>
 
@@ -23,8 +23,8 @@ namespace optiling {
 const uint32_t AIC_CORE_NUM = 36;
 const uint32_t AIV_CORE_NUM = 36 * 2;
 const uint32_t MAX_LD_NUM = AIC_CORE_NUM;
-constexpr uint32_t LIQ_META_SIZE = 1024;
-using LIQ_METADATA_T = int32_t;
+constexpr uint32_t QLI_META_SIZE = 1024;
+using QLI_METADATA_T = int32_t;
 
 namespace detail {
     // 分核功能模块输出：LD信息，包含需要归约的数据索引及其分核信息
@@ -44,7 +44,7 @@ namespace detail {
         uint32_t ldBalanceEndIdx2[AIV_CORE_NUM];    // FD负载均衡阶段，每个vector的二级索引，脚标为vector ID，值为归约任务的m轴切分ID
     };
 
-    struct LiqMetaData { // __attribute__((aligned(8))) 
+    struct QliMetaData { // __attribute__((aligned(8)))
         uint32_t usedCoreNum = 0U;                  // 使用的核数量
         uint32_t mBaseSize = 0U;                    
         uint32_t s2BaseSize = 0U;
@@ -55,7 +55,7 @@ namespace detail {
         struct LDResult ldRes;                      // LD信息
     };
 };
-static_assert(LIQ_META_SIZE * sizeof(LIQ_METADATA_T) >= sizeof(detail::LiqMetaData));
+static_assert(QLI_META_SIZE * sizeof(QLI_METADATA_T) >= sizeof(detail::QliMetaData));
 };
 
 #endif

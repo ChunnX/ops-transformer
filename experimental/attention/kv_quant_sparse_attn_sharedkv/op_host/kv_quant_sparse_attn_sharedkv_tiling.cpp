@@ -23,13 +23,8 @@ using std::string;
 using std::pair;
 namespace optiling {
 
-// static const std::string QUERY_NAME = "query";
 static const std::string ORI_BLOCK_TABLE_NAME = "ori_block_table";
 static const std::string CMP_BLOCK_TABLE_NAME = "cmp_block_table";
-// static const std::string SPARSE_INDICES_NAME = "sparse_indices";
-// static const std::string QUERY_ROPE_NAME = "query_rope";
-// static const std::string KEY_ROPE_NAME = "key_rope";
-// static const std::string ATTEN_OUT_NAME = "attention_out";
 static const std::string SINKS_NAME = "sinks";
 
 std::string KvQuantSASLayoutToSerialString(SASLayout layout)
@@ -107,12 +102,6 @@ ge::graphStatus KvQuantSASInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_);
         return GRAPH_FAILED;
     }
-    // OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
-    //            return ge::GRAPH_FAILED);
-    // OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-    //            OP_LOGE(context_->GetNodeName(), "RawTilingData got from GE context is nullptr."),
-    //            return ge::GRAPH_FAILED);
-    // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -504,14 +493,11 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.cmpKvType = cmpKvType_;
     sasInfo.outputType = outputType_;
     sasInfo.dSize = dSizeQ_;
-    sasInfo.dSizeV = 512; // TODO 暂时写死
+    sasInfo.dSizeV = 512;
     sasInfo.dSizeVInput = dSizeKV_;
-
-    // sasInfo.l2CacheSize = l2CacheSize_;
 
     sasInfo.totalBlockNum = (opParamInfo_.oriKv.tensor != nullptr) ?
         opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0) : 0;
-    // sasInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
     sasInfo.sparseBlockSize = 1; // 写死为1
     sasInfo.oriBlockSize = oriBlockSize_;
     sasInfo.cmpBlockSize = cmpBlockSize_;

@@ -452,7 +452,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcScEndIdx(uint32_t bStart
         if (bIdx == bStart) {
             curActSeqLength_ = GetSeqLength(bIdx);
             curStartPos_ = GetStartPos(bIdx);
-            accScSize += GetScSize();
+            accScSize += GetScSize() - scStart;  // 需要减去本batch已经处理完的sc
             // printf("[GetEndIdx]  bIdx:%u accScSize:%u dealScSize:%u headSize:%u curStartPos_:%u curActSeqLength_:%u \n", bIdx, accScSize, dealScSize, headSize, curStartPos_, curActSeqLength_);
             if (accScSize >= dealScSize) {
                 scEnd = scStart + dealScSize;

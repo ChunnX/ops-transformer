@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_LIGHTNING_INDEXER_QUANT_METADATA_AICPU_H
-#define L0_LIGHTNING_INDEXER_QUANT_METADATA_AICPU_H
+#ifndef L0_QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H
+#define L0_QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* LightningIndexerQuantMetadata(
+const aclTensor* QuantLightningIndexerMetadata(
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t aicCoreNum,

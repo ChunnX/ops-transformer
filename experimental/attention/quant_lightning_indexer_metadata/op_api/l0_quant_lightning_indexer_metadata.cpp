@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file l0_lightning_indexer_quant_metadata.cpp
+ * \file l0_quant_lightning_indexer_metadata.cpp
  * \brief
  */
 
-#include "l0_lightning_indexer_quant_metadata.h"
+#include "l0_quant_lightning_indexer_metadata.h"
 #include "opdev/aicpu/aicpu_task.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
@@ -24,9 +24,9 @@
 
 using namespace op;
 namespace l0op {
-OP_TYPE_REGISTER(LightningIndexerQuantMetadata);
+OP_TYPE_REGISTER(QuantLightningIndexerMetadata);
 
-const aclTensor* LightningIndexerQuantMetadata(
+const aclTensor* QuantLightningIndexerMetadata(
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t aicCoreNum,
@@ -50,15 +50,15 @@ const aclTensor* LightningIndexerQuantMetadata(
     int64_t cmpRatioOptional,
     const aclTensor* metaData,
     aclOpExecutor* executor) {
-  L0_DFX(LightningIndexerQuantMetadata, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum, aivCoreNum, socVersion,
+  L0_DFX(QuantLightningIndexerMetadata, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum, aivCoreNum, socVersion,
                          numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode, batchSizeOptional, maxSeqlenQOptional,  
                          maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional, sparseCountOptional, sparseModeOptional,
                          isFdOptional, preTokensOptional, nextTokensOptional, cmpRatioOptional, metaData);
 
-  static internal::AicpuTaskSpace space("LightningIndexerQuantMetadata");
+  static internal::AicpuTaskSpace space("QuantLightningIndexerMetadata");
 
   auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-      LightningIndexerQuantMetadata,
+      QuantLightningIndexerMetadata,
       OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", "query_quant_mode",
                      "key_quant_mode", "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_query", "layout_key", "sparse_count",
                      "sparse_mode", "is_fd", "pre_tokens", "next_tokens", "cmp_ratio"}),
@@ -68,7 +68,7 @@ const aclTensor* LightningIndexerQuantMetadata(
               sparseCountOptional, sparseModeOptional, isFdOptional, preTokensOptional, nextTokensOptional, cmpRatioOptional));
   OP_CHECK(ret == ACL_SUCCESS,
            OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                   "LightningIndexerQuantMetadata"
+                   "QuantLightningIndexerMetadata"
                    " ADD_TO_LAUNCHER_LIST_AICPU failed."),
            return nullptr);
   return metaData;
