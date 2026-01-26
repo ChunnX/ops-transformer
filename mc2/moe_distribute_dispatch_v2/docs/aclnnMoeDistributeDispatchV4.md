@@ -20,13 +20,13 @@
     - 情形1：如果不存在tp域通信。
 
     $$
-    expandXOut = AllToAllV(agOut)\\
+    expandXOut = AllToAllV(X)\\
     $$
 
     - 情形2：如果存在tp域通信。
 
     $$
-    allToAllOut = AllToAllV(agOut)\\
+    allToAllOut = AllToAllV(X)\\
     expandXOut = AllGatherV(allToAllOut)\\
     $$
 
