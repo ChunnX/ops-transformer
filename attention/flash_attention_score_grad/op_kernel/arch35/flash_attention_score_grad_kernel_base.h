@@ -554,6 +554,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         constInfo.dAlignToBlock = AlignTo(constInfo.commonConstInfo.dSizeV, INPUT_BLOCK_NUM);
         constInfo.dAlignToBlockForFp8 = AlignTo(constInfo.commonConstInfo.dSizeV, INPUT_BLOCK_NUM_FOR_FP8);
     }
+    uint32_t maxContinuousBlockNum = constInfo.commonConstInfo.s1Size < MIN_SWIZZLE_S1 ?
+                                         MAX_CONTINUOUS_BLOCK_NUM :
+                                         (constInfo.commonConstInfo.s1Size / MIN_SWIZZLE_S1) * BASE_SWIZZLE_BLOCK_NUM;
+    constInfo.continuousBlockNum = tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen > maxContinuousBlockNum ?
+                                       maxContinuousBlockNum :
+                                       tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen;
     GetDerived()->SetUniqueConstInfo(constInfo);
 }
  
@@ -1057,14 +1063,11 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetNextValidIdxFromFormula(FagRunInfo &runInfo, int64_t loopIdx)
 {
-    int64_t continuousBlockNum = tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen > MAX_CONTINUOUS_BLOCK_NUM ?
-                                     MAX_CONTINUOUS_BLOCK_NUM :
-                                     tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen;
-    int64_t blockGroupIdx = loopIdx / continuousBlockNum;      // 第几组
-    int64_t blockGroupInnerIdx = loopIdx % continuousBlockNum; // 组内第几个
+    int64_t blockGroupIdx = loopIdx / constInfo.continuousBlockNum;      // 第几组
+    int64_t blockGroupInnerIdx = loopIdx % constInfo.continuousBlockNum; // 组内第几个
  
-    int64_t globalIdx = (tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1) * continuousBlockNum * blockGroupIdx +
-                        cBlockIdx * continuousBlockNum + blockGroupInnerIdx;
+    int64_t globalIdx = (tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1) * constInfo.continuousBlockNum * blockGroupIdx +
+                        cBlockIdx * constInfo.continuousBlockNum + blockGroupInnerIdx;
     int64_t totalPerBatchNum = static_cast<int64_t>(tilingData->s1s2BNGS1S2BaseParams.totalPerBatchNum);
     uint8_t sparseType = static_cast<uint8_t>(tilingData->s1s2BNGS1S2BaseParams.sparseType);
  

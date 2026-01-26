@@ -207,6 +207,7 @@ struct FagConstInfo {
     int64_t mm3Ka;
     int64_t mm4Kb;
     int64_t dRopeSize = 64; // rope旋转的维度
+    uint32_t continuousBlockNum = 0; // 核内连续块数量
 };
 
 // fp8反量化因子
