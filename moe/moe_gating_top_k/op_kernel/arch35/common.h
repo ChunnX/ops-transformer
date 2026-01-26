@@ -30,14 +30,6 @@ constexpr int64_t MERGE_LIST_FOUR = 4;
 constexpr int64_t MERGE_LIST_IDX_TWO = 2;
 constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 
-__aicore__ inline int64_t Ceil(int64_t a, int64_t b)
-{
-    if (b == 0) {
-        return 0;
-    }
-    return (a + b - 1) / b;
-}
-
 __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
 {
     if (bytes == 0) {
@@ -46,21 +38,29 @@ __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
     return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES / bytes;
 }
 
+__aicore__ inline int64_t Ceil(int64_t a, int64_t b)
+{
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
+}
+
 __aicore__ inline int64_t AlignBytes(int64_t elementNum, int64_t bytes)
 {
     return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES;
 }
 
 template <typename T>
-__aicore__ inline T Min(T a, T b)
-{
-    return a > b ? b : a;
-}
-
-template <typename T>
 __aicore__ inline T Max(T a, T b)
 {
     return a < b ? b : a;
+}
+
+template <typename T>
+__aicore__ inline T Min(T a, T b)
+{
+    return a > b ? b : a;
 }
 
 template <typename T1, typename T2>

@@ -107,14 +107,14 @@ private:
         if (colCountAlign - colCount != 0) {
             U scalar;
             if constexpr (IsSameType<U, half>::value) {
-                uint16_t tmp = 0xFC00; // -inf
-                scalar = *((half*)&tmp);
+                uint16_t localScalar = 0xFC00; // -inf
+                scalar = *((half*)&localScalar);
             } else if constexpr (IsSameType<U, bfloat16_t>::value) {
-                uint16_t tmp = 0xFF80; // -inf
-                scalar = *((bfloat16_t*)&tmp);
+                uint16_t localScalar = 0xFF80; // -inf
+                scalar = *((bfloat16_t*)&localScalar);
             } else {
-                uint32_t tmp = 0xFF800000; // -inf
-                scalar = *((float*)&tmp);
+                uint32_t localScalar = 0xFF800000; // -inf
+                scalar = *((float*)&localScalar);
             }
             // 当对齐后大小与实际大小不一致，需要将 colCount到colAlign之间的数据掩成-1
             uint64_t mask[2] = {
@@ -281,23 +281,23 @@ private:
 
     __aicore__ inline void ParesTiling(const MoeGatingTopKSoftmaxV2KFullLoadTilingData* __restrict tilingData)
     {
-        row = tilingData->row;
         col = tilingData->col;
+        row = tilingData->row;
         k = tilingData->k;
         kAlign = tilingData->kAlign;
         blockNum = tilingData->blockNum;
-        blockFormer = tilingData->blockFormer;
         blockTail = tilingData->blockTail;
+        blockFormer = tilingData->blockFormer;
         ubLoop = tilingData->ubLoop;
         ubFormer = tilingData->ubFormer;
         ubFormerAlign = tilingData->ubFormerAlign;
         ubTail = tilingData->ubTail;
         ubTailAlign = tilingData->ubTailAlign;
         softmaxFlag = tilingData->softmaxFlag;
-        ubFormerSoftmaxTilingData = tilingData->ubFormerSoftmaxTilingData;
         ubTailSoftmaxTilingData = tilingData->ubTailSoftmaxTilingData;
         topkFormerTilingData = tilingData->topkFormerTilingData;
         topkTailTilingData = tilingData->topkTailTilingData;
+        ubFormerSoftmaxTilingData = tilingData->ubFormerSoftmaxTilingData;
     }
 
 private:
@@ -315,23 +315,23 @@ private:
     GlobalTensor<int32_t> indicesOutTensorGM;
     GlobalTensor<float> softmaxOutTensorGM;
 
+    uint32_t k;
     uint32_t row;
     uint32_t col;
-    uint32_t k;
     uint32_t kAlign;
     uint32_t blockNum;
     uint32_t blockFormer;
     uint32_t blockTail;
+    uint32_t ubTail;
     uint32_t ubLoop;
     uint32_t ubFormer;
     uint32_t ubFormerAlign;
-    uint32_t ubTail;
     uint32_t ubTailAlign;
     uint32_t softmaxFlag;
     SoftMaxTiling ubFormerSoftmaxTilingData;
     SoftMaxTiling ubTailSoftmaxTilingData;
-    TopkTiling topkFormerTilingData;
     TopkTiling topkTailTilingData;
+    TopkTiling topkFormerTilingData;
 
     bool exitFinished{false};
 };

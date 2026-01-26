@@ -1,5 +1,7 @@
 # aclnnMoeFinalizeRoutingV2Grad
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_finalize_routing_v2_grad)
+
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
@@ -7,32 +9,22 @@
 | <term>Ascend 950PR/Ascend 950DT</term>                      |     √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
 
-- **算子功能**：aclnnMoeFinalizeRoutingV2的反向传播。
-- **计算公式**：
-    R: batch * sequence
+- 接口功能：aclnnMoeFinalizeRoutingV2的反向传播。
+- 计算公式：
 
-    H: hidden
+    $$
+    i : 0 \sim R * K - 1
+    $$
     
-    K: topK
-
-    gradY: (R, H)
-
-    expandedRowIdx: (R * K)
-
-    expandedXOptional: (R * K, H) or (activeNum, H) or (expertNum, expertCapacity, H)
-
-    scalesOptional: (R, K)
-
-    expertIdxOptional: (R, K)
-
-    biasOptional：(E, H)
-   
-    i : 0 ~ R * K - 1
-
-    j : 0 ~ H
+    $$
+    j : 0 \sim H
+    $$
 
     (1) scalesOptional为空指针：
 
@@ -59,6 +51,8 @@
     $$
     gradScalesOut[i] = sum((expandedXOptional[expandedRowIdx[i]][j] + biasOptional[expertIdxOptional[i]][j]) * gradY[i / K][j])
     $$
+
+    其中R代表batch * sequence， H代表hidden，K代表topK。
 
 ## 函数原型
 
@@ -260,8 +254,8 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - scalesOptional数据类型要求与gradY一致。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-        - scalesOptional数据类型可以与gradY不一致。
+    -   <term>Ascend 950PR/Ascend 950DT</term>：
+        -  scalesOptional数据类型可以与gradY不一致。
 
 -   **返回值**
 

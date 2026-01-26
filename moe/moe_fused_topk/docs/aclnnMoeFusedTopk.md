@@ -1,14 +1,19 @@
 # aclnnMoeFusedTopk
 
 ## 产品支持情况
+
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
+|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
 |  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
+|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
+|  <term>Atlas 推理系列产品</term>    |     ×    |
+|  <term>Atlas 训练系列产品</term>    |     ×    |
 
 ## 功能说明
 
--   算子功能：MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
+-   接口功能：MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
 -   计算公式：
 
     对输入做sigmoid：
@@ -46,7 +51,7 @@
     $$
     y = y / (ReduceSum(y, dim=-1))*scale
     $$
-
+    
     如果enableExpertMapping为true，再将indices中的物理专家按照输入的mappingNum和mappingTable映射到逻辑专家，得到输出的indices。
 
 
@@ -54,58 +59,310 @@
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeFusedTopkGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFusedTopk”接口执行计算。
 
-- `aclnnMoeFusedTopkGetWorkspaceSize(const aclTensor* x, const aclTensor* addNum, const aclTensor* mappingNum, const aclTensor* mappingTable, uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType, bool isNorm, float scale, bool enableExpertMapping, aclTensor* y, aclTensor* indices, uint64_t* workspaceSize, aclOpExecutor** executor)`
+```Cpp
+aclnnMoeFusedTopkGetWorkspaceSize(
+  const aclTensor* x, 
+  const aclTensor* addNum, 
+  const aclTensor* mappingNum, 
+  const aclTensor* mappingTable, 
+  uint32_t         groupNum, 
+  uint32_t         groupTopk, 
+  uint32_t         topN, 
+  uint32_t         topK, 
+  uint32_t         activateType, 
+  bool             isNorm, 
+  float            scale, 
+  bool             enableExpertMapping, 
+  aclTensor*       y, 
+  aclTensor*       indices, 
+  uint64_t*        workspaceSize, 
+  aclOpExecutor**  executor)
+```
 
-- `aclnnStatus aclnnMoeFusedTopk(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)`
+```Cpp
+aclnnStatus aclnnMoeFusedTopk(
+  void*          workspace, 
+  uint64_t       workspaceSize, 
+  aclOpExecutor* executor, 
+  aclrtStream    stream)
+```
 
 ## aclnnMoeFusedTopkGetWorkspaceSize
 
 - **参数说明**：
-  - x（aclTensor\*，计算输入）：Device侧的aclTensor，每个token对应各个专家的分数，shape为(numToken, expertNum)，数据类型支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - addNum（aclTensor\*，计算输入）：Device侧的aclTensor，与输入x进行计算的偏置值，shape为(expertNum)，数据类型要求与`x`一致，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - mappingNum（aclTensor\*，计算输入）：Device侧的aclTensor，`enableExpertMapping`为false时不启用，shape为(expertNum)，每个物理专家被实际映射到的逻辑专家数量，数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - mappingTable（aclTensor\*，计算输入）：Device侧的aclTensor，`enableExpertMapping`为false时不启用，shape为(expertNum, maxMappingNum)，每个物理专家/逻辑专家映射表，maxMappingNum小于等于128，数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - groupNum (uint32_t，计算输入)：分组数量，必须大于0。
-  - groupTopk (uint32_t，计算输入)：被选择的组的数量，必须大于0。
-  - topN (uint32_t，计算输入)：组内选取的用于求和的专家数量，必须大于0。
-  - topK (uint32_t，计算输入)：最终选取的专家数量，必须大于0。
-  - activateType (uint32_t，计算输入)：激活类型，当前只支持0(ACTIVATION_SIGMOID)。
-  - isNorm (bool，计算输入)：是否对输出进行归一化。
-  - scale (float，计算输入)：归一化后的系数乘。
-  - enableExpertMapping (bool，计算输入)：是否使能物理专家到逻辑专家的映射。
-  - y (aclTensor\*，计算输出)：Device侧的aclTensor，shape为(numToken, topK)，数据类型支持FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - indices (aclTensor\*，计算输出)：Device侧的aclTensor，shape为(numToken, topK)，数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。
-  - workspaceSize（uint64_t\*，出参）：返回需要在Device侧申请的workspace大小。
-  - executor（aclOpExecutor\*\*，出参）：返回op执行器，包含了算子计算流程。
+
+  <table style="undefined;table-layout: fixed; width: 1517px"><colgroup>
+  <col style="width: 216px">
+  <col style="width: 134px">
+  <col style="width: 321px">
+  <col style="width: 204px">
+  <col style="width: 165px">
+  <col style="width: 130px">
+  <col style="width: 196px">
+  <col style="width: 151px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>x</td>
+      <td>输入</td>
+      <td>每个token对应各个专家的分数。</td>
+      <td>-</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>(numToken, expertNum)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>addNum</td>
+      <td>输入</td>
+      <td>与输入x进行计算的偏置值。</td>
+      <td>-</td>
+      <td>与x一致</td>
+      <td>ND</td>
+      <td>(expertNum)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>mappingNum</td>
+      <td>输入</td>
+      <td>每个物理专家被实际映射到的逻辑专家数量。</td>
+      <td>enableExpertMapping为false时不启用。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(expertNum)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>mappingTable</td>
+      <td>输入</td>
+      <td>每个物理专家/逻辑专家映射表。</td>
+      <td>enableExpertMapping为false时不启用。<br>小于等于128。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(expertNum, maxMappingNum)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>groupNum</td>
+      <td>输入</td>
+      <td>分组数量，必须大于0。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>groupTopk</td>
+      <td>输入</td>
+      <td>被选择的组的数量，必须大于0。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>topN</td>
+      <td>输入</td>
+      <td>组内选取的用于求和的专家数量，必须大于0。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>topK</td>
+      <td>输入</td>
+      <td>最终选取的专家数量，必须大于0。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>activateType</td>
+      <td>输入</td>
+      <td>激活类型，当前只支持0(ACTIVATION_SIGMOID)。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>isNorm</td>
+      <td>输入</td>
+      <td>是否对输出进行归一化。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>scale</td>
+      <td>输入</td>
+      <td>归一化后的系数乘。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>enableExpertMapping</td>
+      <td>输入</td>
+      <td>是否使能物理专家到逻辑专家的映射。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>y</td>
+      <td>输出</td>
+      <td>Device侧的aclTensor。</td>
+      <td>-</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>(numToken, topK)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>indices</td>
+      <td>输出</td>
+      <td>Device侧的aclTensor。</td>
+      <td>-</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(numToken, topK)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody></table>
 
 - **返回值**：
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  ```
   第一段接口完成入参校验，出现以下场景时报错：
-  161001 (ACLNN_ERR_PARAM_NULLPTR)：1.输入x或者addNum为空指针。
-                                    2.输出y或者indices为空指针。
-                                    3.当enableExpertMapping为true时，输入mappingNum或者mappingTable为空指针。
-  161002 (ACLNN_ERR_PARAM_INVALID)：1.输入或者输出的数据类型或数据格式不在支持的范围内。
-                                    2.输入的参数不满足约束。
-                                    3.输入输出的Shape不满足约束。
-  ```
+
+  <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+  <col style="width: 287px">
+  <col style="width: 119px">
+  <col style="width: 743px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_NULLPTR</td>
+      <td rowspan="3">161001</td>
+      <td>输入x或者addNum为空指针。</td>
+    </tr>
+    <tr>
+      <td>输出y或者indices为空指针。</td>
+    </tr>
+    <tr>
+      <td>当enableExpertMapping为true时，输入mappingNum或者mappingTable为空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
+      <td>输入或者输出的数据类型或数据格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>输入的参数不满足约束。</td>
+    </tr>
+    <tr>
+      <td>输入输出的Shape不满足约束。</td>
+    </tr>
+  </tbody>
+  </table>
 
 ## aclnnMoeFusedTopk
 
 - **参数说明**：
 
-  - workspace(void \*，入参)：在Device侧申请的workspace内存地址。
-  - workspaceSize(uint64_t，入参)：在Device侧申请的workspace大小，由第一段接口aclnnMoeFusedTopkGetWorkspaceSize获取。
-  - executor(aclOpExecutor \*，入参)：op执行器，包含了算子计算流程。
-  - stream(aclrtStream，入参)：指定执行任务的Stream。
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeFusedTopkGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
 - **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnMoeFusedTopk默认确定性实现。
 

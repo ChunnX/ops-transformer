@@ -28,18 +28,15 @@ public:
     explicit MoeFinalizeRoutingV2GradRegbaseSplitH(gert::TilingContext* context)
         : MoeFinalizeRoutingV2GradTiling(context)
     {}
-    ~MoeFinalizeRoutingV2GradRegbaseSplitH() override = default;
 
     void Reset(gert::TilingContext* context) override
     {
         MoeFinalizeRoutingV2GradTiling::Reset(context);
     }
 
+    ~MoeFinalizeRoutingV2GradRegbaseSplitH() override = default;
+
 protected:
-    ge::graphStatus CalcTilingKey() override;
-
-    ge::graphStatus PostTiling() override;
-
     bool IsCapable() override
     {
         if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
@@ -47,6 +44,10 @@ protected:
         }
         return true;
     }
+
+    ge::graphStatus CalcTilingKey() override;
+
+    ge::graphStatus PostTiling() override;
 
     ge::graphStatus CheckOptionalInputDtype() override;
 

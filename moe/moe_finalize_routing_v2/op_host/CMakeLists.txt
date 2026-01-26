@@ -8,11 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         moe_finalize_routing_v2_def.cpp
     )
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend910_95")
+    if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
         add_ops_compile_options(
             OP_NAME MoeFinalizeRoutingV2
             OPTIONS --cce-auto-sync=on
