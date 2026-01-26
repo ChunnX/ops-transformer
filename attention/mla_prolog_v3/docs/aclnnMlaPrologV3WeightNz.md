@@ -164,7 +164,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | quantScaleCkrOptional      | 输入      | 用于对krCache输出数据做量化操作的参数，Device侧的aclTensor。| - 支支持非空Tensor（仅INT8 dtype量化输出场景需传）    | FLOAT    | - | ND   | (1,Dr)     |×   |
   | smoothScalesCqOptional     | 输入      | 用于对RmsNormCq输出做动态量化操作的参数，Device侧的aclTensor。   | - 支持非空Tensor（仅INT8 dtype场景可选传）| FLOAT  | - | ND | (1,Hcq)                       |×   |
   | actualSeqLenOptional     | 输入      | 表示每个batch中的序列长度，以前缀和的形式储存，Device侧的aclTensor。 | - BS合轴且CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时需传  | INT64    | - | ND   | (B)     |×   |
-  | kNopeClipAlphaOptional     | 输入      | 表示对kvCache做clip操作时的缩放因子，Device侧的aclTensor。  | - 不支持空Tensor | FLOAT  | - | ND | (1)    |×   |
+  | kNopeClipAlphaOptional     | 输入      | 表示对kvCache做clip操作时的缩放因子，Device侧的aclTensor。  | - 在半量化和全量化的pertile场景下shape为1，其余场景可不填，不支持空Tensor | FLOAT  | - | ND | (1)    |×   |
   | rmsnormEpsilonCq           | 输入      | 计算$c^Q$的RmsNorm公式中的$\epsilon$参数，Host侧参数。        | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型 | DOUBLE         | - | -          | - |-   |
   | rmsnormEpsilonCkv          | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\epsilon$参数，Host侧参数。   | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型   | DOUBLE         | - | -          | -  |-   |
   | cacheModeOptional          | 输入      | 表示kvCache的模式，Host侧参数。| - 用户未特意指定时，建议传入"PA_BSND" <br> - 仅支持char*类型 <br> - 可选值为："PA_BSND"、 "PA_NZ"、 "PA_BLK_BSND"、 "PA_BLK_NZ"、 "BSND"、 "TND" <br> - A2、A3支持所有可选值，A5当前仅支持"PA_BSND"和"PA_NZ" | CHAR*          | CHAR* | -          | - |-   |
@@ -173,7 +173,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | kvCacheQuantMode     | 输入      | 表示kv_cache的量化模式，Host侧参数。  | - 0表示非量化，1表示per-tensor量化，2表示per-channel量化，3-表示per-tile量化，默认值为0| INT64  | INT64| -- | --    |-   |
   | queryQuantMode     | 输入      | 表示query的量化模式，Host侧参数。  | - 0表示非量化，1表示per-token-head量化，默认值为0| INT64  | INT64| -- | --    |-   |
   | ckvkrRepoMode     | 输入      | 表示kv_cache和kr_cache的存储模式，Host侧参数。  | - 0表示kv_cache和kr_cache分别存储，1表示kv_cache和kr_cache合并存储，默认值为0| INT64  | - | -- | --    |-   |
-  | quantScaleRepoMode     | 输入      | 表示量化scale的存储模式，Host侧参数。  | - 0表示量化scale和数据分别存储，1表示量化scale和数据合并存储，默认值为0| INT64  | - | -- | --    |-   |
+  | quantScaleRepoMode     | 输入      | 表示量化scale的存储模式，Host侧参数。  | - 0表示量化scale和数据分别存储，1表示量化scale和数据合并存储作为kvCacheRef输出，默认值为0| INT64  | - | -- | --    |-   |
   | tileSize     | 输入      | 表示per-tile量化时每个tile的大小，仅在kv_cache_quant_mode为3时有效，Host侧参数。  | - 默认值为128 | INT64 | - | -- | --    |-   |
   | qcQrScale     | 输入      |   表示Query的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | - | -   | -  |- |
   | kcScale     | 输入      |   表示Key的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | - | -    | -  |- |
@@ -325,7 +325,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td> kvCache per-tile量化 </td>
       <td>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequant_scale_x、dequant_scale_w_dq、dequant_scale_w_uq_qr、dequant_scale_w_dkv_kr、quant_scale_ckv字段必须传入，smooth_scale_cq字段可选传入 <br>
-          出参：queryOut返回pertoken_head量化数据，kvCacheRef出参返回pertensor量化数据，其余出参范围非量化数据
+          出参：kvCacheRef出参返回pertile量化数据，其余出参范围非量化数据
       </td>
     </tr>
     <tr>
@@ -618,18 +618,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td>NULLPTR</td>
     </tr>
     <tr>
-      <td> kNopeClipAlphaOptional </td>
-      <td>NULLPTR</td>
-      <td>NULLPTR</td>
-      <td>NULLPTR</td>
-      <td>FLOAT</td>
-      <td>NULLPTR</td>
-      <td>NULLPTR</td>
-      <td>FLOAT</td>
-      <td>NULLPTR</td>
-      <td>NULLPTR</td>
-    </tr>
-    <tr>
       <td> queryOut </td>
       <td>BFLOAT16</td>
       <td>BFLOAT16</td>
@@ -637,7 +625,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td>BFLOAT16</td>
       <td>BFLOAT16</td>
       <td>INT8</td>
-      <td>INT8</td>
+      <td>BFLOAT16</td>
       <td>BFLOAT16</td>
       <td>FLOAT8_E4M3FN</td>
     </tr>
