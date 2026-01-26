@@ -1488,9 +1488,11 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::CalcleCausalDeterParam()
         if ((t % MULT_BASE) == 1) {
             int64_t m1 = m - t1 * MULT_BASE * k;
             if (ell == 0) {
-                rUpper += m1;
+                int64_t rm3 = (fBaseParams.g != 1) ? (m + m1 + 1) * t1 : 0;
+                rUpper += m1 + rm3;
             } else {
-                rUpper += std::max(m1, MULT_BASE * m1 - MULT_BASE * k + 1);
+                int64_t rm3 = (fBaseParams.g != 1) ? (m + m1 + 1) * t1 : 0;
+                rUpper += std::max(m1, MULT_BASE * m1 - MULT_BASE * k + 1) + rm3;
             }
             bTail = bTail - 1;
         } else {
