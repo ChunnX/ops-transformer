@@ -45,10 +45,7 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (socVersion != platform_ascendc::SocVersion::ASCEND910_95) {
-            return false;
-        }
-        return true;
+        return socVersion == platform_ascendc::SocVersion::ASCEND910_95;
     }
 
     // 3、计算数据切分TilingData

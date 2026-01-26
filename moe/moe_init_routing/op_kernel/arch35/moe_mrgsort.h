@@ -46,12 +46,6 @@ class MoeMrgsort {
  private:
   MoeMrgsortParam* param = nullptr;
 
-  GlobalTensor<float> gmInputs[4];
-  GlobalTensor<float> gmOutput;
-
-  LocalTensor<float> ubInputs[4];
-  LocalTensor<float> ubOutput;
-
   int64_t listNum{0};
   int64_t remainListNum{0};
   int64_t outOffset{0};
@@ -60,6 +54,12 @@ class MoeMrgsort {
   int64_t lengths[4];
   int64_t allRemainElements{0};
   int64_t curLoopSortedNum{0};
+
+  GlobalTensor<float> gmInputs[4];
+  GlobalTensor<float> gmOutput;
+
+  LocalTensor<float> ubInputs[4];
+  LocalTensor<float> ubOutput;
 
   // for MrgSort
   uint16_t validBitTail{0};

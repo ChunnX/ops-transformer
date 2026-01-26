@@ -51,7 +51,7 @@ public:
         for (int64_t nUbLoopIdx = 0; nUbLoopIdx < nQuotient; nUbLoopIdx++) {
             int64_t currentN =
                 (nUbLoopIdx == (nQuotient - 1)) ? (this->singleN - (nQuotient - 1) * td_->nUbFactor) : td_->nUbFactor;
-            int64_t nIndexOffset = nUbLoopIdx * td_->nUbFactor * td_->k;
+            int64_t indexOffset = nUbLoopIdx * td_->nUbFactor * td_->k;
             int64_t nOutputOffset = nUbLoopIdx * td_->nUbFactor * td_->h;
             for (int64_t hUbLoopIdx = 0; hUbLoopIdx < hQuotient; hUbLoopIdx++) {
                 int64_t currentH =
@@ -60,7 +60,7 @@ public:
                     (((currentH * sizeof(T) + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE) / sizeof(T);
                 int64_t inputOffset = hUbLoopIdx * td_->hUbFactor;
                 int64_t outputOffset = nOutputOffset + hUbLoopIdx * td_->hUbFactor;
-                ProcessUB(nIndexOffset, inputOffset, outputOffset, currentN, currentH, currentHAlign);
+                ProcessUB(indexOffset, inputOffset, outputOffset, currentN, currentH, currentHAlign);
             }
         }
     }
@@ -105,16 +105,17 @@ private:
             int64_t nInputOffset = nIdx * td_->kUbFactor * currentHAlign;
             for (int64_t kIdx = 0; kIdx < currentK; kIdx++) {
                 int64_t curIndexOffset = indexOffset + nIndexOffset + kIdx;
+                int64_t inputUbOffset = nInputOffset + kIdx * currentHAlign;
                 int32_t rowIdx = indexGm.GetValue(curIndexOffset);
                 if constexpr (Mode == DROP_PAD_MODE) {
                     if (rowIdx == -1) {
-                        Duplicate(inputUb[nInputOffset + kIdx * currentHAlign], static_cast<T>(0.0f), currentHAlign);
+                        Duplicate(inputUb[inputUbOffset], static_cast<T>(0.0f), currentHAlign);
                         continue;
                     }
                 }
                 if constexpr (Mode == ACTIVE_MODE) {
                     if (rowIdx >= td_->activeNum) {
-                        Duplicate(inputUb[nInputOffset + kIdx * currentHAlign], static_cast<T>(0.0f), currentHAlign);
+                        Duplicate(inputUb[inputUbOffset], static_cast<T>(0.0f), currentHAlign);
                         continue;
                     }
                 }
@@ -130,7 +131,7 @@ private:
                 copyInParams.srcStride = 0;
                 copyInParams.dstStride = 0;
                 DataCopyPad(
-                    inputUb[nInputOffset + kIdx * currentHAlign], inputGm[curInputOffset], copyInParams,
+                    inputUb[inputUbOffset], inputGm[curInputOffset], copyInParams,
                     dataCopyPadExtParams);
             }
         }
@@ -185,12 +186,12 @@ private:
     {
         LocalTensor<T> outputUb = outputQueue.template DeQue<T>();
 
-        DataCopyExtParams copyInParams;
-        copyInParams.blockCount = currentN;
-        copyInParams.blockLen = currentH * sizeof(T);
-        copyInParams.srcStride = 0;
-        copyInParams.dstStride = (td_->h - currentH) * sizeof(T);
-        DataCopyPad(outputGm[outputOffset], outputUb, copyInParams);
+        DataCopyExtParams copyOutParams;
+        copyOutParams.blockCount = currentN;
+        copyOutParams.blockLen = currentH * sizeof(T);
+        copyOutParams.srcStride = 0;
+        copyOutParams.dstStride = (td_->h - currentH) * sizeof(T);
+        DataCopyPad(outputGm[outputOffset], outputUb, copyOutParams);
         outputQueue.FreeTensor(outputUb);
     }
 

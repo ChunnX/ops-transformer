@@ -24,7 +24,7 @@ static ge::graphStatus TilingForMoeInitRoutingV3(gert::TilingContext *context)
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-static ge::graphStatus TilingPrepareForMoeInitRountingV3(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepareForMoeInitRountingV3(gert::TilingParseContext *context)
 {   
     OP_LOGD(context, "TilingPrepareForMoeInitRountingV3 enter.");
 
@@ -34,17 +34,15 @@ static ge::graphStatus TilingPrepareForMoeInitRountingV3(gert::TilingParseContex
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(
-        (compileInfo->aivNum <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV3 fail to get core num."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((compileInfo->aivNum <= 0), OP_LOGE(context, "TilingPrepareForMoeInitRountingV3 fail to get core num."),
+                 return ge::GRAPH_FAILED);
 
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = static_cast<int64_t>(ubSize);
     compileInfo->socVersion = ascendcPlatform.GetSocVersion();
-    OP_CHECK_IF(
-        (compileInfo->ubSize <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV3 fail to get ub size."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((compileInfo->ubSize <= 0), OP_LOGE(context, "TilingPrepareForMoeInitRountingV3 fail to get ub size."),
+                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -52,4 +50,4 @@ static ge::graphStatus TilingPrepareForMoeInitRountingV3(gert::TilingParseContex
 IMPL_OP_OPTILING(MoeInitRoutingV3)
     .Tiling(TilingForMoeInitRoutingV3)
     .TilingParse<MoeInitRoutingV3CompileInfo>(TilingPrepareForMoeInitRountingV3);
-} // namespace optiling
+}  // namespace optiling

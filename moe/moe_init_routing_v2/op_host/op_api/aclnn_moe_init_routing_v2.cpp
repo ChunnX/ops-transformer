@@ -12,6 +12,8 @@
  * \file aclnn_moe_init_routing_v2.cpp
  * \brief
  */
+#include <string>
+#include "graph/types.h"
 #include "aclnn_moe_init_routing_v2.h"
 
 #ifdef __cplusplus

@@ -52,9 +52,9 @@ class MoeGatherOut {
   int64_t coreNum_;
   int64_t needCoreNum;
   int64_t blockIdx;
-  int64_t cols;
   int64_t n;
   int64_t k;
+  int64_t cols;
   int64_t activateRows;
   int64_t currentLoopRows;
   int64_t coreRows;
@@ -158,9 +158,9 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR inputActivations, GM_ADDR e
   this->coreNum_ = tilingData->coreNum;
   this->needCoreNum = this->gatherOutTilingData->needCoreNum;
   this->activateRows = this->gatherOutTilingData->activateRows;
-  this->cols = tilingData->cols;
   this->n = tilingData->n;
   this->k = tilingData->k;
+  this->cols = tilingData->cols;
   this->maxColsOneLoop = this->gatherOutTilingData->maxColsOneLoop;
 
   if (this->blockIdx == this->gatherOutTilingData->needCoreNum - 1) {

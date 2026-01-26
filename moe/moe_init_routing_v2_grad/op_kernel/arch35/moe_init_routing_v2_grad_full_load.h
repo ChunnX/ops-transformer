@@ -98,16 +98,16 @@ private:
                     }
                 }
                 int64_t curInputOffset = rowIdx * td_->h + inputOffset;
-                DataCopyPadExtParams<T> dataCopyPadExtParams;
-                dataCopyPadExtParams.isPad = false;
-                dataCopyPadExtParams.leftPadding = 0;
-                dataCopyPadExtParams.rightPadding = 0;
-                dataCopyPadExtParams.paddingValue = 0;
                 DataCopyExtParams copyInParams;
                 copyInParams.blockCount = 1;
                 copyInParams.blockLen = currentH * sizeof(T);
                 copyInParams.srcStride = 0;
                 copyInParams.dstStride = 0;
+                DataCopyPadExtParams<T> dataCopyPadExtParams;
+                dataCopyPadExtParams.isPad = false;
+                dataCopyPadExtParams.leftPadding = 0;
+                dataCopyPadExtParams.rightPadding = 0;
+                dataCopyPadExtParams.paddingValue = 0;
                 DataCopyPad(
                     inputUb[nInputOffset + kIdx * currentHAlign], inputGm[curInputOffset], copyInParams,
                     dataCopyPadExtParams);

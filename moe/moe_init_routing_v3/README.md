@@ -4,9 +4,16 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term> |    √    |
+<<<<<<< HEAD
+|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
+=======
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+>>>>>>> 16db4f0e... 整改产品名称
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -41,7 +48,6 @@
   4.计算quant结果：
     - 动态quant：
         - 若不输入scale：
-
             $$
             dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
             $$
@@ -49,9 +55,7 @@
             $$
             quantResult = round(x / dynamicQuantScaleOutOptional)
             $$
-
         - 若输入scale:
-
             $$
             dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
             $$
@@ -67,7 +71,6 @@
     $$
 
   6.expandedRowIdxOut的有效元素数量availableIdxNum计算方式为，expertIdx中activeExpertRangeOptional范围内的元素的个数
-
     $$
     availableIdxNum = |\{x\in expertIdx| expert\_start \le x<expert\_end \ \}|
     $$
@@ -170,10 +173,13 @@
     <tr>
       <td>quantMode</td>
       <td>属性</td>
-      <td>取值为0、1、-1。
+      <td>取值为0、1、-1、2、3。
         <li>0：表示静态 quant 场景。</li>
         <li>1：表示动态 quant 场景。</li>
-        <li>-1：表示不量化场景。</li></td>
+        <li>-1：表示不量化场景。</li>
+        <li>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。</li>
+        <li>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。</li>
+      </td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -196,8 +202,8 @@
     <tr>
       <td>expandedXOut</td>
       <td>输出</td>
-      <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景下数据类型支持INT8。</td>
-      <td>FLOAT32、FLOAT16、BFLOAT16、INT8</td>
+      <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</td>
+      <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -233,12 +239,15 @@
   - dropPadMode 当前只支持0，代表 Dropless 场景。
   - expertTokensNumType 当前只支持 1 和 2，分别代表 count 模式和 key\_value 模式。
   - expertTokensNumFlag 只支持 true，代表输出 expertTokensCountOrCumsumOut。
-  - quantMode 只支持 1 和 -1，分别代表动态 quant 场景和不量化场景。
+  - quantMode:
+    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3，分别表示不量化、动态量化、MXFP8量化到FLOAT8_E5m2、MXFP8量化到FLOAT8_E4M3FN。
   
-- 其他限制：该算子支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板：
+- 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板：
+  - 支持性能模板的产品：
+    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
 
-  - 性能模板支持型号：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
-  
   - 进入低时延性能模板需要同时满足以下条件：
     - x、expertIdx、scaleOptional 输入 Shape 要求分别为：(1, 7168)、(1, 8)、(256, 7168)。
     - x 数据类型要求：BFLOAT16。

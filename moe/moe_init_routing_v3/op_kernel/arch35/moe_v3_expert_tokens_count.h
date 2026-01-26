@@ -28,7 +28,7 @@ class ExpertTokensCount {
 public:
     __aicore__ inline ExpertTokensCount(){};
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
-                                const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -52,7 +52,7 @@ private:
     TQue<QuePosition::VECOUT, 1> expertIdxCountOutQueue_;
     TQue<QuePosition::VECOUT, 1> expertTotalCountQueue_;
 
-    const MoeV3ExpertTokensCountTilingData *expertTokensCountTilingData_;
+    const MoeV3Arch35ExpertTokensCountTilingData *expertTokensCountTilingData_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
     int64_t perCoreElements_;
@@ -106,7 +106,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeExpertCo
 }
 
 __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
-                                               const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                               const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
     expertTokensCountTilingData_ = &(tilingData->expertTokensCountTilingDataOp);

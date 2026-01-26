@@ -22,7 +22,7 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM = 2;
 
-template <typename T>
+template <typename T, const int COPYOUTTYPE>
 class MoeGatherOutDynamicQuant {
 public:
     __aicore__ inline MoeGatherOutDynamicQuant(){};
@@ -32,10 +32,12 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void CopyOutXDynamicQuantFromGather(int64_t progress);
+    __aicore__ inline void CopyOutXDynamicQuantFromScatter(int64_t progress);
+    __aicore__ inline void CopyOutXPartialDynamicQuantFromGather(int64_t progress);
+    __aicore__ inline void CopyOutXPartialDynamicQuantFromScatter(int64_t progress);
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
-    __aicore__ inline void CopyOutXQuantEH(int64_t progress);
     __aicore__ inline void Compute(LocalTensor<float> &smoothLocal);
-    __aicore__ inline void CopyOutPartialXQuantEH(int64_t progress);
     __aicore__ inline float ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &tempLocal,
                                        LocalTensor<float> &scaleLocal, int32_t srcIdx, int32_t expertIdx, int64_t j);
     __aicore__ inline void ComputeScale(LocalTensor<float> &inLocal, LocalTensor<float> &tempLocal, float scaleTemp,
@@ -84,23 +86,30 @@ private:
 
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
+    int64_t dropPadMode_;
+    int64_t activeNum_;
+    int64_t ep_;
+    int64_t smoothType_;
+    int64_t coreNum_;
+    int64_t expertTotalCount_ = 0;
 };
 
-template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyInExpandedExpertIdx(int64_t progress)
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::CopyInExpandedExpertIdx(int64_t progress)
 {
     indicesOffset_ = progress * perLoopRows_;
     LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(currentLoopRows_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
     DataCopyPad(indicesLocal, expandedRowIdxGm_[indicesOffset_], dataCopyParams, dataCopyPadParams);
-    DataCopyPad(indicesLocal[currentLoopRowsAlign_], expandedExpertIdxGm_[indicesOffset_], dataCopyParams,
-                dataCopyPadParams);
+    if constexpr (COPYOUTTYPE == SCATTER) { 
+        DataCopyPad(indicesLocal[currentLoopRowsAlign_], expandedExpertIdxGm_[indicesOffset_], dataCopyParams, dataCopyPadParams); 
+    }
     expandRowIdxInQueue_.EnQue<int32_t>(indicesLocal);
 }
 
-template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::Compute(LocalTensor<float> &smoothLocal)
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::Compute(LocalTensor<float> &smoothLocal)
 {
     LocalTensor<float> inLocal = inputXInQueue_.DeQue<float>();
 
@@ -123,41 +132,55 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Compute(LocalTensor<float> &
 
     ReduceMax(scaleLocal, tempLocal, tempLocal, cols_); // get max value and index [0,1]
 
-    float scaleValue = scaleLocal.GetValue(0) / 127.0f;
+    float scaleValue = scaleLocal.GetValue(0) / MAX_INT8;
 
-    Duplicate<float>(scaleLocal, scaleValue, 8);
+    Duplicate<float>(scaleLocal, scaleValue, INT32_ONE_BLOCK_NUM);
+    PipeBarrier<PIPE_V>();
     Duplicate<float>(tempLocal, scaleValue, cols_);
     PipeBarrier<PIPE_V>();
 
     Div(tempLocal, inLocal, tempLocal, cols_);
     PipeBarrier<PIPE_V>();
 
-    Cast(tempLocal.ReinterpretCast<half>(), tempLocal, RoundMode::CAST_TRUNC, cols_); // fp32->fp16
+    LocalTensor<int32_t> intLocal = tempLocal.ReinterpretCast<int32_t>();
+    Cast(intLocal, tempLocal, RoundMode::CAST_RINT, cols_);
     PipeBarrier<PIPE_V>();
-
-    Cast(outLocal, tempLocal.ReinterpretCast<half>(), RoundMode::CAST_ROUND, cols_); // fp16->int8
+    SetDeqScale((half)1.000000e+00f);
+    Cast(intLocal.ReinterpretCast<half>(), intLocal, RoundMode::CAST_ROUND, cols_);
+    PipeBarrier<PIPE_V>();
+    Cast(outLocal, intLocal.ReinterpretCast<half>(), RoundMode::CAST_TRUNC, cols_);
 
     calcQueue_.FreeTensor(tempLocal);
     inputXOutQueue_.EnQue(outLocal);
     scaleOutQueue_.EnQue(scaleLocal);
 }
 
-template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyOutXQuantEH(int64_t progress)
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::CopyOutXDynamicQuantFromScatter(int64_t progress)
 {
-    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
-    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(T)), 0, 0, 0};
     DataCopyExtParams smoothParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(float)), 0, 0, 0};
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(int8_t)), 0, 0, 0};
-
+    DataCopyExtParams quantScaleParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
+
+    // copyin [1,H] scale
+    if (smoothType_ == SCALE_1H) {
+        DataCopyPad(smoothLocal, quantSmoothGm_, smoothParams, {false, 0, 0, 0});
+        smoothInQueue_.EnQue(smoothLocal);
+        smoothLocal = smoothInQueue_.DeQue<float>();
+    }
+
     int32_t lastExpertIdx = -1;
     for (int64_t i = 0; i < currentLoopRows_; i++) {
-        LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
         int64_t rowOffset = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
+        if (dropPadMode_ == DROPLESS_MODE && (rowOffset + i) >= activeNum_) {
+            break;
+        }
+        LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
         int32_t srcIdx = indicesLocal.GetValue(i);
+
         int32_t expertIdx = indicesLocal.GetValue(currentLoopRowsAlign_ + i) - expertStart_;
         if constexpr (IsSameType<T, float>::value) {
             DataCopyPad(inLocal, inputXGm_[srcIdx / k_ * cols_], copyInParams, {false, 0, 0, 0});
@@ -166,8 +189,9 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyOutXQuantEH(int64_t prog
         }
         inputXInQueue_.EnQue<T>(inLocal);
 
-        if (isInputScale_ && expertIdx != lastExpertIdx) {
-            DataCopyPad(smoothLocal, quantSmoothGm_[expertIdx * cols_], smoothParams, {false, 0, 0, 0});
+        // copyin dynamic scale
+        if (smoothType_ == SCALE_EH && expertIdx != lastExpertIdx) {
+            DataCopyPad(smoothLocal, quantSmoothGm_[expertIdx * this->cols_], smoothParams, {false, 0, 0, 0});
             smoothInQueue_.EnQue(smoothLocal);
             smoothLocal = smoothInQueue_.DeQue<float>();
             lastExpertIdx = expertIdx;
@@ -175,7 +199,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyOutXQuantEH(int64_t prog
         Compute(smoothLocal);
         inputXInQueue_.FreeTensor(inLocal);
         LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
-        DataCopyPad(expandedScaleGm_[(rowOffset + i)], scaleLocal, {1, 4, 0, 0, 0});
+        DataCopyPad(expandedScaleGm_[(rowOffset + i)], scaleLocal, quantScaleParams);
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
         DataCopyPad(expandedXGm_[(rowOffset + i) * cols_], outLocal, copyOutParams);
 
@@ -187,10 +211,66 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyOutXQuantEH(int64_t prog
     expandRowIdxInQueue_.FreeTensor(indicesLocal);
 }
 
-template <typename T>
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::CopyOutXDynamicQuantFromGather(int64_t progress)
+{
+    // 不开EP，且输入的scale为None或者1维度
+    DataCopyExtParams copyInParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams smoothParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(float)), 0, 0, 0};
+    DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(int8_t)), 0, 0, 0};
+    DataCopyExtParams quantScaleParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+
+    // gather索引
+    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
+    LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
+
+    int64_t rowOffset = blockIdx_ * perCoreRow_ + progress * perLoopRows_;
+    int64_t startXRow = rowOffset / k_;
+    int64_t endXRow = (rowOffset + currentLoopRows_ - 1) / k_;
+    int64_t curIndex = 0;
+
+    if (smoothType_ == SCALE_1H) {
+        DataCopyPad(smoothLocal, quantSmoothGm_, smoothParams, {false, 0, 0, 0});
+        smoothInQueue_.EnQue(smoothLocal);
+        smoothLocal = smoothInQueue_.DeQue<float>();
+    }
+
+    for (int64_t row = startXRow; row <= endXRow; row++) {
+        LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
+        if constexpr (IsSameType<T, float>::value) {
+            DataCopyPad(inLocal, inputXGm_[row * cols_], copyInParams, {false, 0, 0, 0});
+        } else {
+            DataCopyPad(inLocal[perLoopColsAlign_], inputXGm_[row * cols_], copyInParams, {false, 0, 0, 0});
+        }
+        inputXInQueue_.EnQue<T>(inLocal);
+        Compute(smoothLocal);
+        LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
+        LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
+
+        while (curIndex < currentLoopRows_ && (rowOffset + curIndex) / this->k_ == row) {
+            int32_t outIndex = indicesLocal.GetValue(curIndex);
+            curIndex++;
+            if (outIndex == -1 || dropPadMode_ == DROPLESS_MODE && outIndex >= this->activeNum_) {
+                continue;
+            }
+            DataCopyPad(expandedXGm_[outIndex * cols_], outLocal, copyOutParams);
+            DataCopyPad(expandedScaleGm_[outIndex], scaleLocal, quantScaleParams);
+        }
+
+        inputXInQueue_.FreeTensor(inLocal);
+        inputXOutQueue_.FreeTensor(outLocal);
+        scaleOutQueue_.FreeTensor(scaleLocal);
+    }
+
+    smoothInQueue_.FreeTensor(smoothLocal);
+    expandRowIdxInQueue_.FreeTensor(indicesLocal);
+}
+
+template <typename T, const int COPYOUTTYPE>
 __aicore__ inline float
-MoeGatherOutDynamicQuant<T>::ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &tempLocal,
-                                        LocalTensor<float> &scaleLocal, int32_t srcIdx, int32_t expertIdx, int64_t j)
+MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &tempLocal,
+                                                     LocalTensor<float> &scaleLocal, int32_t srcIdx, int32_t expertIdx,
+                                                     int64_t j)
 {
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
 
@@ -227,18 +307,18 @@ MoeGatherOutDynamicQuant<T>::ComputeMax(LocalTensor<float> &inLocal, LocalTensor
     Abs(tempLocal, inLocal, colsTileLength_);
     PipeBarrier<PIPE_V>();
 
-    ReduceMax(scaleLocal[8], tempLocal, tempLocal, colsTileLength_);
+    ReduceMax(scaleLocal[INT32_ONE_BLOCK_NUM], tempLocal, tempLocal, colsTileLength_);
 
     DataCopyPad(quantTempGm_[j * perLoopCols_], inLocal, intriParamsFp32);
     smoothInQueue_.FreeTensor(smoothLocal);
     SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-    return scaleLocal.GetValue(8);
+    return scaleLocal.GetValue(INT32_ONE_BLOCK_NUM);
 }
 
-template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::ComputeScale(LocalTensor<float> &inLocal,
-                                                                 LocalTensor<float> &tempLocal, float scaleTemp,
-                                                                 int64_t dstIndex, int64_t j)
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void
+MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::ComputeScale(LocalTensor<float> &inLocal, LocalTensor<float> &tempLocal,
+                                                       float scaleTemp, int64_t dstIndex, int64_t j)
 {
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(int8_t)), 0, 0, 0};
@@ -268,34 +348,42 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::ComputeScale(LocalTensor<flo
     SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
 }
 
-template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyOutPartialXQuantEH(int64_t progress)
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void
+MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::CopyOutXPartialDynamicQuantFromScatter(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
-    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-
     for (int64_t i = 0; i < currentLoopRows_; i++) {
         int64_t rowOffset = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
+        if (dropPadMode_ == DROPLESS_MODE && (rowOffset + i) >= activeNum_) {
+            break;
+        }
         int32_t srcIdx = indicesLocal.GetValue(i);
         int32_t expertIdx = indicesLocal.GetValue(currentLoopRowsAlign_ + i) - expertStart_;
-
         LocalTensor<float> inLocal = inputXInQueue_.AllocTensor<float>();
         LocalTensor<float> tempLocal = calcQueue_.AllocTensor<float>();
         LocalTensor<float> scaleLocal = scaleOutQueue_.AllocTensor<float>();
 
-        uint32_t tmp = 0xFF7FFFFF;
-        float reduceMax = *((float *)&tmp);
+        float tileMax;
+        float reduceMax = *((float *)&INF);
         for (int64_t j = 0; j < colLoops_; j++) {
             colsTileLength_ = perLoopCols_;
             if (j == colLoops_ - 1) {
                 colsTileLength_ = lastLoopCols_;
             }
-            float tileMax = ComputeMax(inLocal, tempLocal, scaleLocal, srcIdx / k_, expertIdx, j);
+
+            if (smoothType_ == SCALE_1H) {
+                // 1H
+                tileMax = ComputeMax(inLocal, tempLocal, scaleLocal, srcIdx / k_, 0, j);
+            } else {
+                // EH
+                tileMax = ComputeMax(inLocal, tempLocal, scaleLocal, srcIdx / k_, expertIdx, j);
+            }
             reduceMax = (reduceMax > tileMax) ? reduceMax : tileMax;
         }
 
-        float scaleTemp = reduceMax / 127.0f;
-        Duplicate<float>(scaleLocal, scaleTemp, 8);
+        float scaleTemp = reduceMax / MAX_INT8;
+        Duplicate<float>(scaleLocal, scaleTemp, INT32_ONE_BLOCK_NUM);
         scaleOutQueue_.EnQue(scaleLocal);
         scaleLocal = scaleOutQueue_.DeQue<float>();
 
@@ -315,11 +403,65 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyOutPartialXQuantEH(int64
     expandRowIdxInQueue_.FreeTensor(indicesLocal);
 }
 
-template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx,
-                                                         GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                                         GM_ADDR expandedScale,
-                                                         const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::CopyOutXPartialDynamicQuantFromGather(int64_t progress)
+{
+    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
+    int64_t rowOffset = blockIdx_ * perCoreRow_ + progress * perLoopRows_;
+    int64_t startXRow = rowOffset / k_;
+    int64_t endXRow = (rowOffset + currentLoopRows_ - 1) / k_;
+    int64_t curIndex = 0;
+
+    DataCopyExtParams quantScaleParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+
+    for (int64_t row = startXRow; row <= endXRow; row++) {
+        LocalTensor<float> inLocal = inputXInQueue_.AllocTensor<float>();
+        LocalTensor<float> tempLocal = calcQueue_.AllocTensor<float>();
+        LocalTensor<float> quantScaleLocal = scaleOutQueue_.AllocTensor<float>();
+
+        float reduceMax = *((float *)&INF);
+        for (int64_t j = 0; j < colLoops_; j++) {
+            colsTileLength_ = perLoopCols_;
+            if (j == colLoops_ - 1) {
+                colsTileLength_ = lastLoopCols_;
+            }
+
+            float tileMax = ComputeMax(inLocal, tempLocal, quantScaleLocal, row, 0, j);
+            reduceMax = (reduceMax > tileMax) ? reduceMax : tileMax;
+        }
+
+        float scaleTemp = reduceMax / MAX_INT8;
+        Duplicate<float>(quantScaleLocal, scaleTemp, INT32_ONE_BLOCK_NUM);
+        scaleOutQueue_.EnQue(quantScaleLocal);
+        quantScaleLocal = scaleOutQueue_.DeQue<float>();
+
+        while (curIndex < currentLoopRows_ && (curIndex + rowOffset) / k_ == row) {
+            int32_t outIndex = indicesLocal.GetValue(curIndex);
+            curIndex++;
+            if (outIndex == -1 || (dropPadMode_ == DROPLESS_MODE && outIndex >= activeNum_)) {
+                continue;
+            }
+            DataCopyPad(expandedScaleGm_[outIndex], quantScaleLocal, quantScaleParams);
+            for (int64_t j = 0; j < colLoops_; j++) {
+                colsTileLength_ = perLoopCols_;
+                if (j == colLoops_ - 1) {
+                    colsTileLength_ = lastLoopCols_;
+                }
+                ComputeScale(inLocal, tempLocal, scaleTemp, outIndex, j);
+            }
+        }
+        inputXInQueue_.FreeTensor(inLocal);
+        calcQueue_.FreeTensor(tempLocal);
+        scaleOutQueue_.FreeTensor(quantScaleLocal);
+    }
+    expandRowIdxInQueue_.FreeTensor(indicesLocal);
+}
+
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void
+MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx,
+                                               GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale,
+                                               const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -331,15 +473,25 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR
     isInputScale_ = tilingData->isInputScale;
     expertStart_ = tilingData->expertStart;
     rowIdxType_ = tilingData->rowIdxType;
+    dropPadMode_ = tilingData->dropPadMode;
+    activeNum_ = tilingData->activeNum;
+    ep_ = tilingData->ep;
+    smoothType_ = tilingData->smoothType;
+    coreNum_ = tilingData->coreNum;
 
     // core split
     int64_t actualExpertNum_ = tilingData->actualExpertNum;
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
-                                        1);
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        expertTotalCountGm_);
-    int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
+    if (ep_) {
+        expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) * 2 +
+                                                Align(actualExpertNum_, sizeof(int32_t)),
+                                            1);
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                          AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
+        expertTotalCount_ = expertTotalCountGm_.GetValue(0);
+    } else {
+        expertTotalCount_ = totalLength_;
+    }
+
     perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
     needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
     int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
@@ -370,13 +522,26 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR
     expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + blockIdx_ * perCoreRow_,
                                          Align(coreRows_, sizeof(int32_t)));
 
-    if (rowIdxType_ == SCATTER) {
-        expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
-                                          Align(perCoreRow_, sizeof(int32_t)));
+    if constexpr (COPYOUTTYPE == SCATTER) {
+        // 获取scatter索引
+        if (rowIdxType_ == SCATTER) {
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
+                                              Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) +
+                                                  blockIdx_ * perCoreRow_,
+                                              Align(perCoreRow_, sizeof(int32_t)));
+        }
     } else {
-        expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) +
-                                              blockIdx_ * perCoreRow_,
-                                          Align(perCoreRow_, sizeof(int32_t)));
+        // 获取gather索引
+        if (rowIdxType_ == GATHER) {
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
+                                              Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) +
+                                                  blockIdx_ * perCoreRow_,
+                                              Align(perCoreRow_, sizeof(int32_t)));
+        }
     }
 
     if (isInputScale_) {
@@ -387,8 +552,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR
     if (colLoops_ > 1) {
         // cols非全载 smooth*x结果临时存储
         quantTempGm_.SetGlobalBuffer((__gm__ float *)sortedExpertIdx + Align(totalLength_, sizeof(int32_t)) * 2 +
-                                         Align(actualExpertNum_, sizeof(int32_t)) + Align(1, sizeof(int32_t)) +
-                                         blockIdx_ * cols_,
+                                         Align(actualExpertNum_, sizeof(int32_t)) * 2 +
+                                         Align(totalLength_, sizeof(int32_t)) + blockIdx_ * cols_,
                                      cols_ * sizeof(float));
     }
 
@@ -407,29 +572,37 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR
     pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);                 // 32 + 32
 }
 
-template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::Process()
+template <typename T, const int COPYOUTTYPE>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
         currentLoopRows_ = perLoopRows_;
         if (colLoops_ > 1) {
             // 一行无法全载，需要workspace
-            for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) {
+            for (int64_t loop = 0; loop < rowLoops_; loop++) {
+                if (loop == rowLoops_ - 1) {
+                    currentLoopRows_ = lastLoopRows_;
+                }
                 CopyInExpandedExpertIdx(loop);
-                CopyOutPartialXQuantEH(loop);
+                if constexpr (COPYOUTTYPE == GATHER) {
+                    CopyOutXPartialDynamicQuantFromGather(loop);
+                } else {
+                    CopyOutXPartialDynamicQuantFromScatter(loop);
+                }
             }
-            currentLoopRows_ = lastLoopRows_;
-            CopyInExpandedExpertIdx(rowLoops_ - 1);
-            CopyOutPartialXQuantEH(rowLoops_ - 1);
         } else {
             // 一行可以全载
-            for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) {
+            for (int64_t loop = 0; loop < rowLoops_; loop++) {
+                if (loop == rowLoops_ - 1) {
+                    currentLoopRows_ = lastLoopRows_;
+                }
                 CopyInExpandedExpertIdx(loop);
-                CopyOutXQuantEH(loop);
+                if constexpr (COPYOUTTYPE == GATHER) {
+                    CopyOutXDynamicQuantFromGather(loop);
+                } else {
+                    CopyOutXDynamicQuantFromScatter(loop);
+                }
             }
-            currentLoopRows_ = lastLoopRows_;
-            CopyInExpandedExpertIdx(rowLoops_ - 1);
-            CopyOutXQuantEH(rowLoops_ - 1);
         }
     }
 }

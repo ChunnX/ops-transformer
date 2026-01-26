@@ -24,7 +24,7 @@ class MoeSortOneCore : public MoeSortBase {
 public:
     __aicore__ inline MoeSortOneCore(){};
     __aicore__ inline void Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR workspace,
-                                const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -83,9 +83,7 @@ __aicore__ inline void MoeSortOneCore::SortCompute()
     int64_t duplicateNum = this->totalLength % ONE_REPEAT_SORT_NUM;
     if (duplicateNum > 0) {
         int duplicateIndex = this->totalLength - duplicateNum;
-        uint64_t mask0 = UINT64_MAX;
-        mask0 = mask0 << duplicateNum;
-        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
+        uint64_t mask0 = (UINT64_MAX << duplicateNum) & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
         uint64_t mask[2] = {mask0, 0};
         Duplicate(expertIdxFp32[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
     }
@@ -101,13 +99,11 @@ __aicore__ inline void MoeSortOneCore::SortCompute()
 
     LocalTensor<float> outLocal = sortDataCopyOutQueue.AllocTensor<float>();
     LocalTensor<float> sortedExpertForSourceRowLocal = outLocal[0];
-    LocalTensor<uint32_t> expandDstToSrcRowLocal;
-    expandDstToSrcRowLocal = outLocal[this->sortNum].ReinterpretCast<uint32_t>();
+    LocalTensor<uint32_t> expandDstToSrcRowLocal = outLocal[this->sortNum].ReinterpretCast<uint32_t>();
     Extract(sortedExpertForSourceRowLocal, expandDstToSrcRowLocal, sortedLocal, this->sortNum / ONE_REPEAT_SORT_NUM);
     Muls(sortedExpertForSourceRowLocal, sortedExpertForSourceRowLocal, (float)-1, this->tileLength);
 
-    LocalTensor<int32_t> expertForSourceRowLocalInt32;
-    expertForSourceRowLocalInt32 = sortedExpertForSourceRowLocal.ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> expertForSourceRowLocalInt32 = sortedExpertForSourceRowLocal.ReinterpretCast<int32_t>();
     Cast(expertForSourceRowLocalInt32, sortedExpertForSourceRowLocal, RoundMode::CAST_ROUND, this->tileLength);
     sortDataCopyOutQueue.EnQue<float>(outLocal);
     sortDataCopyInQueue.FreeTensor(inLocal);
@@ -125,7 +121,7 @@ __aicore__ inline void MoeSortOneCore::CopyOut()
 }
 
 __aicore__ inline void MoeSortOneCore::Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR workspace,
-                                            const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                            const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     this->pipe = tPipe;
     this->tileLength = Align(tilingData->vbsComputeParamsOp.lastCorePerLoopElements, sizeof(int32_t));
