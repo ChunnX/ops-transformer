@@ -631,6 +631,8 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetWorkspaceSize()
 ge::graphStatus MoeTokenPermuteWithEpTilingBase::PostTiling()
 {
     context_->SetBlockDim(aivNum);
+    // 涉及核间同步的算子必须设置schedule_mode为1，独占全核
+    context_->SetScheduleMode(1);
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, currentWorkspace);
     currentWorkspace[0] = workspaceSize_;
