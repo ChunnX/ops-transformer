@@ -664,7 +664,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV2GetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnFusedInferAttentionScoreV2GetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -1041,7 +1041,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
       - <term>Ascend 950PR/Ascend 950DT</term>：支持query dtype为FLOAT16/BFLOAT16，支持key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4（INT32）。
     - page attention 全量化场景
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持query dtype为INT8。
-      - <term>Ascend 950PR/Ascend 950DT</term>：支持query和kv cache全部为INT8/HIFLOAT8/FLOAT8_E4M3FN。
+      - <term>Ascend 950PR/Ascend 950DT</term>：支持query和kv cache全部为INT8。
     - page attention 不支持tensorlist场景，不支持左padding场景。
     - page attention场景下，必须传入actualSeqLengthsKv。
     - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
