@@ -500,9 +500,9 @@ __aicore__ inline void MoeDistributeCombineV2<TemplateMC2TypeFunc>::Init(
         tpSendCountGM_.SetGlobalBuffer((__gm__ int32_t*)tpSendCount);
         tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
         tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
+        winDataSizeOffsetTp_ = static_cast<uint64_t>(dataState_) * (tilingData->moeDistributeCombineV2Info.totalWinSizeTp / 2UL);
         tpWindowGM_ = GetWinAddrByRankId(tpRankId_, TP_DOMAIN);
         CheckWindowSize(totalWinSizeTp_, tpWinContext_->winSize, tpipe_, XOut);
-        winDataSizeOffsetTp_ = static_cast<uint64_t>(dataState_) * (tilingData->moeDistributeCombineV2Info.totalWinSizeTp / 2UL);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
         for (int temptpRankId = 0; temptpRankId < tpWorldSize_; temptpRankId++) {
             OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(temptpRankId, TP_DOMAIN)), totalWinSizeTp_);

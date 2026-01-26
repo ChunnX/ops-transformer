@@ -31,7 +31,11 @@ protected:
         op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
         cout << "l2_aclnn_moe_update_expert_test SetUp" << endl;
     }
-    static void TearDownTestCase() { cout << "l2_aclnn_moe_update_expert_test TearDown" << endl; }
+    static void TearDownTestCase()
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "l2_aclnn_moe_update_expert_test TearDown" << endl;
+    }
 };
 
 TEST_F(l2_aclnn_moe_update_expert_test, test_moe_update_expert_no_tailor) {

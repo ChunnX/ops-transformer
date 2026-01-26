@@ -100,7 +100,7 @@ TEST_F(MoeUpdateExpertTiling, moe_update_expert_test_tiling_expert_tailor)
         tilingDataSize
     );
 
-    uint64_t expectTilingKey =11UL; // 根据实际情况设置
+    uint64_t expectTilingKey = 5UL; // 根据实际情况设置
     std::string expectTilingData = "34359738496 21474836736 20 0 8 0 1 "; // 根据实际情况设置
     std::vector<size_t> expectWorkspaces = {4294967295}; // 根据实际情况设置
     uint64_t mc2TilingDataReservedLen = 0; // 根据实际情况设置
