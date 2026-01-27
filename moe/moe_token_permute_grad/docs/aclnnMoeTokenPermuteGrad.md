@@ -56,172 +56,173 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
 
 ## aclnnMoeTokenPermuteGradGetWorkspaceSize
 
-- **参数说明：**：
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 187px">
-    <col style="width: 121px">
-    <col style="width: 287px">
-    <col style="width: 387px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>permutedOutputGrad</td>
-        <td>输入</td>
-        <td>正向输出permutedTokens的梯度。</td>
-        <td>要求为一个维度为2D的Tensor，tokens_num为token数目，topK_num为numTopk的值。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[tokens_num * topK_num，hidden_size]</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>sortedIndices</td>
-        <td>输入</td>
-        <td>-</td>
-        <td>取值范围是(0, tokens_num * topK_num - 1)，且没有重复索引。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>tokens_num * topK_num</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>numTopk</td>
-        <td>输入</td>
-        <td>被选中的专家个数。</td>
-        <td>numTopk <= 512。</td>
-        <td>与permute一致。</td>
-        <td>ND</td>
-        <td>-</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>paddedMode</td>
-        <td>输入</td>
-        <td>-</td>
-        <td>true表示开启paddedMode，false表示关闭paddedMode，目前仅支持false</td>
-        <td>bool</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>out</td>
-        <td>输出</td>
-        <td>输入token的梯度。</td>
-        <td>-</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32。</td>
-        <td>ND</td>
-        <td>（tokens_num，hidden_size）</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 187px">
+  <col style="width: 121px">
+  <col style="width: 287px">
+  <col style="width: 387px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+  <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>permutedOutputGrad</td>
+      <td>输入</td>
+      <td>正向输出permutedTokens的梯度。</td>
+      <td>要求为一个维度为2D的Tensor，tokens_num为token数目，topK_num为numTopk的值。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>[tokens_num * topK_num，hidden_size]</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>sortedIndices</td>
+      <td>输入</td>
+      <td>-</td>
+      <td>取值范围是(0, tokens_num * topK_num - 1)，且没有重复索引。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>tokens_num * topK_num</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>numTopk</td>
+      <td>输入</td>
+      <td>被选中的专家个数。</td>
+      <td>numTopk <= 512。</td>
+      <td>与permute一致。</td>
+      <td>ND</td>
+      <td>-</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>paddedMode</td>
+      <td>输入</td>
+      <td>-</td>
+      <td>true表示开启paddedMode，false表示关闭paddedMode，目前仅支持false</td>
+      <td>bool</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>out</td>
+      <td>输出</td>
+      <td>输入token的梯度。</td>
+      <td>-</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32。</td>
+      <td>ND</td>
+      <td>（tokens_num，hidden_size）</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  </tbody></table>
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-        <col style="width: 267px">
-        <col style="width: 124px">
-        <col style="width: 775px">
-        </colgroup>
-        <thead>
-            <tr>
-            <th>返回值</th>
-            <th>错误码</th>
-            <th>描述</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-            <td> ACLNN_ERR_PARAM_NULLPTR </td>
-            <td> 161001 </td>
-            <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
-            </tr>
-            <tr>
-            <td> ACLNN_ERR_PARAM_INVALID </td>
-            <td> 161002 </td>
-            <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
-            </tr>
-        </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+      <col style="width: 267px">
+      <col style="width: 124px">
+      <col style="width: 775px">
+      </colgroup>
+      <thead>
+          <tr>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+          </tr>
+      </thead>
+      <tbody>
+          <tr>
+          <td> ACLNN_ERR_PARAM_NULLPTR </td>
+          <td> 161001 </td>
+          <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+          </tr>
+          <tr>
+          <td> ACLNN_ERR_PARAM_INVALID </td>
+          <td> 161002 </td>
+          <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+          </tr>
+      </tbody>
+  </table>
 
 ## aclnnMoeTokenPermuteGrad
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-        <col style="width: 173px">
-        <col style="width: 133px">
-        <col style="width: 860px">
-        </colgroup>
-            <thead>
-                <tr>
-                <th>参数名</th>
-                <th>输入/输出</th>
-                <th>描述</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                <td>workspace</td>
-                <td>输入</td>
-                <td>在Device侧申请的workspace内存地址。</td>
-                </tr>
-                <tr>
-                <td>workspaceSize</td>
-                <td>输入</td>
-                <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteGradGetWorkspaceSize获取。</td>
-                </tr>
-                <tr>
-                <td>executor</td>
-                <td>输入</td><td> op执行器，包含了算子计算流程。</td>
-                </tr>
-                <tr>
-                <td>stream</td>
-                <td>输入</td>
-                <td> 指定执行任务的Stream。</td>
-                </tr>
-            </tbody>
-        </table>
-        
+  <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+      <col style="width: 173px">
+      <col style="width: 133px">
+      <col style="width: 860px">
+      </colgroup>
+      <thead>
+          <tr>
+          <th>参数名</th>
+          <th>输入/输出</th>
+          <th>描述</th>
+          </tr>
+      </thead>
+      <tbody>
+          <tr>
+          <td>workspace</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace内存地址。</td>
+          </tr>
+          <tr>
+          <td>workspaceSize</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteGradGetWorkspaceSize获取。</td>
+          </tr>
+          <tr>
+          <td>executor</td>
+          <td>输入</td><td> op执行器，包含了算子计算流程。</td>
+          </tr>
+          <tr>
+          <td>stream</td>
+          <td>输入</td>
+          <td> 指定执行任务的Stream。</td>
+          </tr>
+      </tbody>
+  </table>
+    
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。

@@ -18,40 +18,40 @@
 - **接口功能**：aclnnMoeTokenPermuteWithRoutingMap的反向传播。
 - **计算公式**：
 
-$$
-permuteTokenId， outIndex= sortedIndices.sort(dim=-1)
-$$
+    $$
+    permuteTokenId， outIndex= sortedIndices.sort(dim=-1)
+    $$
 
-$$
-capacity = permutedTokenOutputGrad.size(0) / numExperts
-$$
+    $$
+    capacity = permutedTokenOutputGrad.size(0) / numExperts
+    $$
 
-- probs不为None：
-  
-  $$
-  probsGradOutOptional = zeros(tokens_num， numExperts)
-  $$
-  
-  - paddedMode为true时
-  
-  $$
-  probsGradOutOptional [sortedIndices[i]， i/capacity] = permutedProbsOutputGradOptional[i]
-  $$
-  
-  - paddedMode为false时
-  
-  $$
-  probsGradOutOptional = maskedscatter(probsGradOutOptional，routingMap，permutedProbsOutputGradOptional)
-  $$
-- probs为None：
-  
-  $$
-  tokensGradout= zeros(restoreShapeOptional， dtype=permutedTokens.dtype， device=permutedTokens.device)
-  $$
-  
-  $$
-  tokensGradout[permuteTokenId[i]] += permutedTokens[outIndex[i]]
-  $$
+    - probs不为None：
+    
+    $$
+    probsGradOutOptional = zeros(tokens_num， numExperts)
+    $$
+    
+    - paddedMode为true时
+    
+    $$
+    probsGradOutOptional [sortedIndices[i]， i/capacity] = permutedProbsOutputGradOptional[i]
+    $$
+    
+    - paddedMode为false时
+    
+    $$
+    probsGradOutOptional = maskedscatter(probsGradOutOptional，routingMap，permutedProbsOutputGradOptional)
+    $$
+    - probs为None：
+    
+    $$
+    tokensGradout= zeros(restoreShapeOptional， dtype=permutedTokens.dtype， device=permutedTokens.device)
+    $$
+    
+    $$
+    tokensGradout[permuteTokenId[i]] += permutedTokens[outIndex[i]]
+    $$
 
 ## 函数原型
 
@@ -83,226 +83,227 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
 ## aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize
 
 - **参数说明:**
-   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 187px">
-    <col style="width: 121px">
-    <col style="width: 287px">
-    <col style="width: 387px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>permutedTokensOutputGrad</td>
-        <td>输入</td>
-        <td>表示正向输出permutedTokens的梯度。</td>
-        <td>shape支持2D维度，不支持空tensor，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>
-        • 非droppad模式:（tokens_num * topK_num，hidden_size）<br>
-        • droppad模式: （experts_num * capacity，hidden_size）</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>permutedProbsOutputGradOptional</td>
-        <td>可选输入</td>
-        <td>正向输出permutedProbs的梯度。</td>
-        <td>
-        •  不传则表示不需要计算probsGradOutOptional；<br>
-        • shape为一个1D维度，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量;<br>
-        • 数据类型与permutedTokensOutputGrad一致或者当permutedTokensOutputGrad是BFLOAT16时支持FLOAT。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>
-        • 非droppad模式:（tokens_num * topK_num）<br>
-        • droppad模式: （experts_num * capacity）</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>sortedIndices</td>
-        <td>输入</td>
-        <td>-</td>
-        <td>非droppad模式索引取值范围[0，tokens_num * topK_num - 1]， droppad模式索引取值范围[0，experts_num * capacity - 1]。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>
-        • 非droppad模式:（tokens_num * topK_num，）<br>
-        • droppad模式: （experts_num * capacity）</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>routingMap</td>
-        <td>输入</td>
-        <td>代表token到expert的映射关系。</td>
-        <td>要求shape为一个2D的tensor，非droppad模式要求每行中包含topK个true 或 1。</td>
-        <td>INT8、bool(当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false)</td>
-        <td>ND</td>
-        <td>（tokens_num，experts_num）</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>experts_num</td>
-        <td>输入</td>
-        <td>表示参与运算的专家个数。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 187px">
+  <col style="width: 121px">
+  <col style="width: 287px">
+  <col style="width: 387px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+  <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>permutedTokensOutputGrad</td>
+      <td>输入</td>
+      <td>表示正向输出permutedTokens的梯度。</td>
+      <td>shape支持2D维度，不支持空tensor，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>
+      • 非droppad模式:（tokens_num * topK_num，hidden_size）<br>
+      • droppad模式: （experts_num * capacity，hidden_size）</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>permutedProbsOutputGradOptional</td>
+      <td>可选输入</td>
+      <td>正向输出permutedProbs的梯度。</td>
+      <td>
+      •  不传则表示不需要计算probsGradOutOptional；<br>
+      • shape为一个1D维度，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量;<br>
+      • 数据类型与permutedTokensOutputGrad一致或者当permutedTokensOutputGrad是BFLOAT16时支持FLOAT。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>
+      • 非droppad模式:（tokens_num * topK_num）<br>
+      • droppad模式: （experts_num * capacity）</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>sortedIndices</td>
+      <td>输入</td>
+      <td>-</td>
+      <td>非droppad模式索引取值范围[0，tokens_num * topK_num - 1]， droppad模式索引取值范围[0，experts_num * capacity - 1]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>
+      • 非droppad模式:（tokens_num * topK_num，）<br>
+      • droppad模式: （experts_num * capacity）</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>routingMap</td>
+      <td>输入</td>
+      <td>代表token到expert的映射关系。</td>
+      <td>要求shape为一个2D的tensor，非droppad模式要求每行中包含topK个true 或 1。</td>
+      <td>INT8、bool(当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false)</td>
+      <td>ND</td>
+      <td>（tokens_num，experts_num）</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>experts_num</td>
+      <td>输入</td>
+      <td>表示参与运算的专家个数。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
       <tr>
-        <td>tokens_num</td>
-        <td>输入</td>
-        <td>表示参与运算的token个数。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>dropAndPad</td>
-        <td>输入</td>
-        <td>-</td>
-        <td>true表示开启dropPaddedMode，false表示关闭dropPaddedMode。</td>
-        <td>bool</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>tokensGradOut</td>
-        <td>输出</td>
-        <td>输入permutedTokens的梯度</td>
-        <td>要求为一个维度为2D的Tensor。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>（tokens_num ，hidden_size）</td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>probsGradOutOptional</td>
-        <td>可选输出</td>
-        <td>正向算子输入probs的梯度。</td>
-        <td>shape支持2D维度</td>
-        <td>同permutedProbsOutputGradOptional</td>
-        <td>ND</td>
-        <td>（tokens_num，experts_num）</td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    </tbody></table>
+      <td>tokens_num</td>
+      <td>输入</td>
+      <td>表示参与运算的token个数。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>dropAndPad</td>
+      <td>输入</td>
+      <td>-</td>
+      <td>true表示开启dropPaddedMode，false表示关闭dropPaddedMode。</td>
+      <td>bool</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>tokensGradOut</td>
+      <td>输出</td>
+      <td>输入permutedTokens的梯度</td>
+      <td>要求为一个维度为2D的Tensor。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>（tokens_num ，hidden_size）</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>probsGradOutOptional</td>
+      <td>可选输出</td>
+      <td>正向算子输入probs的梯度。</td>
+      <td>shape支持2D维度</td>
+      <td>同permutedProbsOutputGradOptional</td>
+      <td>ND</td>
+      <td>（tokens_num，experts_num）</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  </tbody></table>
 
 - **返回值：**
   
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-        <col style="width: 267px">
-        <col style="width: 124px">
-        <col style="width: 775px">
-        </colgroup>
-        <thead>
-            <tr>
-            <th>返回值</th>
-            <th>错误码</th>
-            <th>描述</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-            <td> ACLNN_ERR_PARAM_NULLPTR </td>
-            <td> 161001 </td>
-            <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
-            </tr>
-            <tr>
-            <td> ACLNN_ERR_PARAM_INVALID </td>
-            <td> 161002 </td>
-            <td>
-                1.输入和输出的数据类型和数据格式不在支持的范围之内。<br>
-                2.输入和输出的Shape不在支持的范围内。
-            </td>
-            </tr>
-        </tbody></table>
-  
+  <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+      <col style="width: 267px">
+      <col style="width: 124px">
+      <col style="width: 775px">
+      </colgroup>
+      <thead>
+          <tr>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+          </tr>
+      </thead>
+      <tbody>
+          <tr>
+          <td> ACLNN_ERR_PARAM_NULLPTR </td>
+          <td> 161001 </td>
+          <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+          </tr>
+          <tr>
+          <td> ACLNN_ERR_PARAM_INVALID </td>
+          <td> 161002 </td>
+          <td>
+              1.输入和输出的数据类型和数据格式不在支持的范围之内。<br>
+              2.输入和输出的Shape不在支持的范围内。
+          </td>
+          </tr>
+      </tbody>
+  </table>
+
 
 ## aclnnMoeTokenPermuteWithRoutingMapGrad
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-        <col style="width: 173px">
-        <col style="width: 133px">
-        <col style="width: 860px">
-        </colgroup>
-            <thead>
-                <tr>
-                <th>参数名</th>
-                <th>输入/输出</th>
-                <th>描述</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                <td>workspace</td>
-                <td>输入</td>
-                <td>在Device侧申请的workspace内存地址。</td>
-                </tr>
-                <tr>
-                <td>workspaceSize</td>
-                <td>输入</td>
-                <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize获取。</td>
-                </tr>
-                <tr>
-                <td>executor</td>
-                <td>输入</td><td> op执行器，包含了算子计算流程。</td>
-                </tr>
-                <tr>
-                <td>stream</td>
-                <td>输入</td>
-                <td> 指定执行任务的Stream。</td>
-                </tr>
-            </tbody>
-        </table>
+  <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
+  <col style="width: 173px">
+  <col style="width: 133px">
+  <col style="width: 860px">
+  </colgroup>
+      <thead>
+          <tr>
+          <th>参数名</th>
+          <th>输入/输出</th>
+          <th>描述</th>
+          </tr>
+      </thead>
+      <tbody>
+          <tr>
+          <td>workspace</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace内存地址。</td>
+          </tr>
+          <tr>
+          <td>workspaceSize</td>
+          <td>输入</td>
+          <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize获取。</td>
+          </tr>
+          <tr>
+          <td>executor</td>
+          <td>输入</td><td> op执行器，包含了算子计算流程。</td>
+          </tr>
+          <tr>
+          <td>stream</td>
+          <td>输入</td>
+          <td> 指定执行任务的Stream。</td>
+          </tr>
+      </tbody>
+  </table>
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](./common/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](./common/aclnn返回码.md)。
 
 ## 约束说明
 
