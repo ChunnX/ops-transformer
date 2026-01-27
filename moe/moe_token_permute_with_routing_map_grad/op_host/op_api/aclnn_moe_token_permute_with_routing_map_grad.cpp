@@ -13,6 +13,7 @@
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/transpose.h"
 #include "aclnn_kernels/cast.h"
+#include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
@@ -67,7 +68,7 @@ static const std::initializer_list<op::DataType> ASCEND910B_AICORE_DTYPE_SUPPORT
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_INT32, op::DataType::DT_INT16,
     op::DataType::DT_BF16};
 
-static const std::initializer_list<op::DataType> ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST = {
+static const std::initializer_list<op::DataType> ARCH3510_AICORE_DTYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_INT32,
     op::DataType::DT_INT16, op::DataType::DT_BF16,    op::DataType::DT_INT8,
     op::DataType::DT_UINT8, op::DataType::DT_INT64,   op::DataType::DT_BOOL};
@@ -75,8 +76,8 @@ static const std::initializer_list<op::DataType> ASCEND910_95_AICORE_DTYPE_SUPPO
 static bool IsAICoreSupport(const aclTensor* self)
 {
     // 根据芯片类型和输入self类型判断是否走aicore
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95) {
-        return CheckType(self->GetDataType(), ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST);
+    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+        return CheckType(self->GetDataType(), ARCH3510_AICORE_DTYPE_SUPPORT_LIST);
     } else if (
         GetCurrentPlatformInfo().GetSocVersion() >= SocVersion::ASCEND910B &&
         GetCurrentPlatformInfo().GetSocVersion() <= SocVersion::ASCEND910E) {
@@ -90,8 +91,12 @@ static bool IsAICoreSupport(const aclTensor* self)
     }
     return false;
 }
+
 static const std::initializer_list<DataType> dtype_list = {
     op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT, op::DataType::DT_BF16};
+
+
+static const std::initializer_list<DataType> token_mix_dtype_list = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
 
 static const std::initializer_list<DataType> routing_map_dtype_list = {op::DataType::DT_INT8, op::DataType::DT_BOOL};
 
@@ -99,8 +104,8 @@ static const std::initializer_list<DataType> indice_dtype_list = {op::DataType::
 
 static inline bool CheckNotNull(
     const aclTensor* permutedTokenOutputGrad, const aclTensor* permutedProbsOutputGradOptional,
-    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, aclTensor* tokensGradOut,
-    aclTensor* probsGradOutOptional)
+    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, const aclTensor* tokensGradOut,
+    const aclTensor* probsGradOutOptional)
 {
     OP_CHECK_NULL(permutedTokenOutputGrad, return false);
     OP_CHECK_NULL(sortedIndices, return false);
@@ -119,16 +124,26 @@ static inline bool CheckNotNull(
 
 static inline bool CheckDtypeValid(
     const aclTensor* permutedTokenOutputGrad, const aclTensor* permutedProbsOutputGradOptional,
-    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, aclTensor* tokensGradOut,
-    aclTensor* probsGradOutOptional)
+    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, const aclTensor* tokensGradOut,
+    const aclTensor* probsGradOutOptional)
 {
     // 检查permutedTokenOutputGrad的数据类型是否在支持列表内
     OP_CHECK_DTYPE_NOT_SUPPORT(permutedTokenOutputGrad, dtype_list, return false);
+    OP_CHECK_DTYPE_NOT_MATCH(permutedTokenOutputGrad, tokensGradOut->GetDataType(), return false);
     if (permutedProbsOutputGradOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(permutedProbsOutputGradOptional, dtype_list, return false);
-        OP_CHECK_DTYPE_NOT_MATCH(permutedProbsOutputGradOptional, permutedTokenOutputGrad->GetDataType(), return false);
+        if (probsGradOutOptional != nullptr) {
+            OP_CHECK_DTYPE_NOT_MATCH(permutedProbsOutputGradOptional, probsGradOutOptional->GetDataType(),
+                                     return false);
+        }
+        if (permutedProbsOutputGradOptional->GetDataType() != op::DataType::DT_FLOAT) {
+            OP_CHECK_DTYPE_NOT_MATCH(permutedProbsOutputGradOptional, permutedTokenOutputGrad->GetDataType(),
+                                     return false);
+        }
+        else {
+            OP_CHECK_DTYPE_NOT_SUPPORT(permutedTokenOutputGrad,token_mix_dtype_list, return false);
+        }
     }
-
     // 检查out的数据类型是否在支持列表内
     if (routingMapOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(routingMapOptional, routing_map_dtype_list, return false);

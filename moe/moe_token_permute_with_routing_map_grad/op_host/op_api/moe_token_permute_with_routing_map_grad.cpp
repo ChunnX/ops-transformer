@@ -32,12 +32,40 @@ const std::array<const aclTensor*, 2> MoeTokenPermuteWithRoutingMapGrad(
     L0_DFX(
         MoeTokenPermuteWithRoutingMapGrad, permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices,
         routingMapOptional, numExperts, tokensNum, dropAndPad);
+    if (dropAndPad) {
+        op::Shape permuteTokensGradShape; // pad模式构造
+        permuteTokensGradShape.AppendDim(permutedTokenOutputGrad->GetViewShape().GetDim(0));
+        permuteTokensGradShape.AppendDim(0);
+        ge::DataType tokenDtype;
+        if (permutedProbsOutputGradOptional != nullptr) {
+            tokenDtype = permutedProbsOutputGradOptional->GetDataType();
+        } else {
+            tokenDtype = permutedTokenOutputGrad->GetDataType();
+        }
+        auto permuteTokensGrad = executor->AllocTensor(permuteTokensGradShape, tokenDtype, op::Format::FORMAT_ND);
+        if (permuteTokensGrad == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc permuteTokensGrad tensor failed.");
+            return std::array<const aclTensor *, 2>{nullptr, nullptr};
+        }
+        auto tokensOutGrad = executor->AllocTensor(permuteTokensGradShape, tokenDtype, op::Format::FORMAT_ND);
+        if (tokensOutGrad == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc tokensOutGrad tensor failed.");
+            return std::array<const aclTensor *, 2>{nullptr, nullptr};
+        }
+        ADD_TO_LAUNCHER_LIST_AICORE(
+            MoeTokenPermuteWithRoutingMapGrad,
+            OP_INPUT(permuteTokensGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional),
+            OP_OUTPUT(tokensOutGrad, probsGradOut), OP_ATTR(numExperts, tokensNum, dropAndPad));
 
-    ADD_TO_LAUNCHER_LIST_AICORE(
-        MoeTokenPermuteWithRoutingMapGrad,
-        OP_INPUT(permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional),
-        OP_OUTPUT(tokensGradOut, probsGradOut), OP_ATTR(numExperts, tokensNum, dropAndPad));
+        return std::array<const aclTensor*, 2>{tokensOutGrad, probsGradOut};
+    }
+    else {
+        ADD_TO_LAUNCHER_LIST_AICORE(
+            MoeTokenPermuteWithRoutingMapGrad,
+            OP_INPUT(permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional),
+            OP_OUTPUT(tokensGradOut, probsGradOut), OP_ATTR(numExperts, tokensNum, dropAndPad));
 
-    return std::array<const aclTensor*, 2>{tokensGradOut, probsGradOut};
+        return std::array<const aclTensor *, 2>{tokensGradOut, probsGradOut};
+    }
 }
 } // namespace l0op
