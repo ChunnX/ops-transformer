@@ -207,7 +207,7 @@ actual is %zu",
             firstDim != inputParams_.groupNum,
             OP_LOGE(inputParams_.opName,
                                       "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-         but the actual is (%lu, ).",
+but the actual is (%lu, ).",
                                       inputParams_.groupNum, inputParams_.groupNum, firstDim),
             return false);
     } else {
@@ -215,7 +215,7 @@ actual is %zu",
             firstDim != inputParams_.groupNum || lastDim != 1,
             OP_LOGE(inputParams_.opName,
                                       "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-         but the actual is (%lu, %lu).",
+but the actual is (%lu, %lu).",
                                       inputParams_.groupNum, inputParams_.groupNum, firstDim, lastDim),
             return false);
     }
@@ -232,7 +232,7 @@ actual is %zu",
     OP_CHECK_IF(firstDim != inputParams_.groupNum || lastDim != inputParams_.nSize,
                OP_LOGE(inputParams_.opName,
                                          "In T-C quant mode, the expected shape of scale2 is (%lu, %lu), \
-         but the actual is (%lu, %lu).",
+but the actual is (%lu, %lu).",
                                          inputParams_.groupNum, inputParams_.nSize, firstDim, lastDim),
                return false);
 

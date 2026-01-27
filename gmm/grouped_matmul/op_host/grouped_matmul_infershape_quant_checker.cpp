@@ -429,7 +429,7 @@ perTokenScale is (g,), which is (%ld,), but the actual shape is (%ld,).",
                 OP_LOGE(
                     context->GetNodeName(),
                     "When perTokenScale dim num is 2 in split k scenario, the expected shape of perTokenScale is (g,m) \
- or (g,1), which is (%ld,%ld) or (%ld,1), but the actual shape is (%ld,%ld).",
+or (g,1), which is (%ld,%ld) or (%ld,1), but the actual shape is (%ld,%ld).",
                     groupNum_, xMDim_, groupNum_, perTokenScaleShape->GetDim(0), perTokenScaleShape->GetDim(1)),
                 return ge::GRAPH_FAILED);
         }

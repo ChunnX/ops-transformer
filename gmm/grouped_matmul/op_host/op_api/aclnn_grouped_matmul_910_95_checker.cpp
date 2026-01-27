@@ -118,7 +118,7 @@ aclnnStatus AclnnGroupedMatmul91095Checker<T>::CheckGeneralQuantShape() const
                        GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(0), xName_.c_str());
             CHECK_COND(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0) == groupNum, ACLNN_ERR_PARAM_INVALID,
                        "When groupType is 2 (split K), the first dim of %s[%ld] should be equal to that of \
-                        %s[%ld].",
+%s[%ld].",
                        yName_.c_str(), GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0),
                        groupTensorName_.c_str(), groupNum);
         }
