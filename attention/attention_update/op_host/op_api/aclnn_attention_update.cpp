@@ -16,6 +16,7 @@
 #include "aclnn_attention_update.h"
 #include "attention_update.h"
 #include "aclnn_kernels/contiguous.h"
+#include "external/aclnn_kernels/aclnn_platform.h"
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/common_types.h"
@@ -383,7 +384,7 @@ aclnnStatus aclnnAttentionUpdateGetWorkspaceSize(
     
     // 固定写法，参数检查
     aclnnStatus ret;
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95) {
+    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
         ret = attention_update::CheckParams_95(lse, localOut, out, lseOut, updateType);
     } else {
         ret = attention_update::CheckParams(lse, localOut, out, lseOut, updateType);

@@ -54,7 +54,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_samll_right)
                                               196608);
     uint64_t expectTilingKey = 1;
     string expectTilingData =
-        "24 128 64 0 0 0 0 0 0 0 3072 3072 256 256 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 1 8 4 0 0 128 ";
+        "24 128 64 0 0 0 0 0 0 0 3072 3072 256 256 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 1 8 4 0 0 128 11 1 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -84,7 +84,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_bf16_samll_right)
                                               196608);
     uint64_t expectTilingKey = 1;
     string expectTilingData =
-        "24 128 64 0 0 0 0 0 0 0 6144 6144 256 512 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 2 16 8 0 0 64 ";
+        "24 128 64 0 0 0 0 0 0 0 6144 6144 256 512 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 2 16 8 0 0 64 11 1 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -114,7 +114,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_samll_right)
                                               196608);
     uint64_t expectTilingKey = 1;
     string expectTilingData =
-        "24 128 64 0 0 0 0 0 0 0 6144 6144 512 512 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 2 16 8 0 0 64 ";
+        "24 128 64 0 0 0 0 0 0 0 6144 6144 512 512 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 2 16 8 0 0 64 11 1 128 128 16 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -144,7 +144,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_compute_ab_right)
                                               196608);
     uint64_t expectTilingKey = 3;
     string expectTilingData =
-        "40 128 64 5 1 1 4 1 1 1 38400 30720 1280 1024 3 3 1 0 0 30720 30720 2048 1920 1920 128 30 240 960 8 120 120 4 128 ";
+        "40 128 64 5 1 1 4 1 1 1 38400 30720 1280 1024 3 3 1 0 0 30720 30720 2048 1920 1920 128 30 240 960 8 120 120 4 128 15 15 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -174,7 +174,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_compute_ab_right)
                                               196608);
     uint64_t expectTilingKey = 3;
     string expectTilingData =
-        "40 128 64 4 4 4 3 1 1 1 40960 30720 2048 1536 3 3 1 1 1 36864 4096 2048 2304 256 128 20 320 1152 16 288 32 8 64 ";
+        "40 128 64 4 4 4 3 1 1 1 40960 30720 2048 1536 3 3 1 1 1 36864 4096 2048 2304 256 128 20 320 1152 16 288 32 8 64 18 2 128 128 16 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -204,7 +204,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_compute_ab_cast_right)
                                               196608);
     uint64_t expectTilingKey = 4;
     string expectTilingData =
-        "32 128 64 2 2 2 2 2 2 2 15360 15360 512 512 0 0 0 0 0 3840 3840 256 1920 1920 128 30 240 960 8 120 120 4 128 ";
+        "32 128 64 2 2 2 2 2 2 2 15360 15360 512 512 0 0 0 0 0 3840 3840 256 1920 1920 128 30 240 960 8 120 120 4 128 15 15 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -234,7 +234,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_compute_ab_cast_right)
                                               196608);
     uint64_t expectTilingKey = 4;
     string expectTilingData =
-        "32 128 64 2 2 2 2 2 2 2 20480 20480 1024 1024 0 0 0 0 0 4608 512 256 2304 256 128 20 320 1152 16 288 32 8 64 ";
+        "32 128 64 2 2 2 2 2 2 2 20480 20480 1024 1024 0 0 0 0 0 4608 512 256 2304 256 128 20 320 1152 16 288 32 8 64 18 2 128 128 16 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -264,7 +264,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_bf16_compute_ab_cast_right)
                                               196608);
     uint64_t expectTilingKey = 4;
     string expectTilingData =
-        "32 128 64 2 2 2 2 2 2 2 21504 21504 512 1024 0 0 0 0 0 4608 768 256 2304 384 128 21 336 1152 16 144 24 8 64 ";
+        "32 128 64 2 2 2 2 2 2 2 21504 21504 512 1024 0 0 0 0 0 4608 768 256 2304 384 128 21 336 1152 16 144 24 8 64 18 3 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -290,7 +290,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_bf16_samll_TND) {
                                             40,
                                             196608);
     uint64_t expectTilingKey = 1;
-    string expectTilingData = "24 128 64 0 0 0 0 0 0 0 6144 6144 256 512 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 2 16 8 0 0 64 ";
+    string expectTilingData = "24 128 64 0 0 0 0 0 0 0 6144 6144 256 512 0 0 0 0 0 1408 128 128 1408 128 128 12 1536 2 16 8 0 0 64 11 1 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16*1024*1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -316,7 +316,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_compute_ab_TND) {
                                             40,
                                             196608);
     uint64_t expectTilingKey = 3;
-    string expectTilingData = "40 128 64 2 2 2 1 1 1 1 40960 20480 1024 512 12 4 1 1 1 66560 66560 3328 2560 2560 128 40 640 1280 16 320 320 8 64 ";
+    string expectTilingData = "40 128 64 2 2 2 1 1 1 1 40960 20480 1024 512 12 4 1 1 1 66560 66560 3328 2560 2560 128 40 640 1280 16 320 320 8 64 20 20 128 128 16 ";
     std::vector<size_t> expectWorkspaces = {16*1024*1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -342,7 +342,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_compute_ab_TND) {
                                             40,
                                             196608);
     uint64_t expectTilingKey = 3;
-    string expectTilingData = "40 128 64 4 3 3 3 1 3 3 40960 30720 1024 768 25 19 1 0 0 263680 263680 13184 2560 2560 128 40 320 1280 8 160 160 4 128 ";
+    string expectTilingData = "40 128 64 4 3 3 3 1 3 3 40960 30720 1024 768 25 19 1 0 0 263680 263680 13184 2560 2560 128 40 320 1280 8 160 160 4 128 20 20 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16*1024*1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -368,7 +368,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_bf16_compute_ab_cast_TND) {
                                             40,
                                             196608);
     uint64_t expectTilingKey = 4;
-    string expectTilingData = "40 128 64 2 1 1 2 2 1 1 32768 32768 512 1024 51 39 0 0 0 210944 210944 13184 2048 2048 128 32 512 1024 16 128 128 8 64 ";
+    string expectTilingData = "40 128 64 2 1 1 2 2 1 1 32768 32768 512 1024 51 39 0 0 0 210944 210944 13184 2048 2048 128 32 512 1024 16 128 128 8 64 16 16 128 128 8 ";
     std::vector<size_t> expectWorkspaces = {16*1024*1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -398,7 +398,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_small_D64)
                                               196608);
     uint64_t expectTilingKey = 1;
     string expectTilingData =
-        "24 64 32 0 0 0 0 0 0 0 1536 1536 128 128 0 0 0 0 0 704 64 64 704 64 64 12 768 1 4 2 0 0 64 ";
+        "24 64 32 0 0 0 0 0 0 0 1536 1536 128 128 0 0 0 0 0 704 64 64 704 64 64 12 768 1 4 2 0 0 64 11 1 64 64 4 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -428,7 +428,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_small_D64)
                                               196608);
     uint64_t expectTilingKey = 1;
     string expectTilingData =
-        "24 64 32 0 0 0 0 0 0 0 3072 3072 256 256 0 0 0 0 0 704 64 64 704 64 64 12 768 1 8 4 0 0 64 ";
+        "24 64 32 0 0 0 0 0 0 0 3072 3072 256 256 0 0 0 0 0 704 64 64 704 64 64 12 768 1 8 4 0 0 64 11 1 64 64 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -458,7 +458,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_bf16_small_D64)
                                               196608);
     uint64_t expectTilingKey = 1;
     string expectTilingData =
-        "24 64 32 0 0 0 0 0 0 0 3072 3072 128 256 0 0 0 0 0 704 64 64 704 64 64 12 768 1 8 4 0 0 64 ";
+        "24 64 32 0 0 0 0 0 0 0 3072 3072 128 256 0 0 0 0 0 704 64 64 704 64 64 12 768 1 8 4 0 0 64 11 1 64 64 4 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -488,7 +488,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_compute_ab_D64)
                                               196608);
     uint64_t expectTilingKey = 3;
     string expectTilingData =
-        "40 64 32 11 6 6 10 1 6 6 39424 35840 1408 1280 558 558 1 0 0 6684672 4325376 393216 1088 704 64 28 112 544 4 68 44 2 128 ";
+        "40 64 32 11 6 6 10 1 6 6 39424 35840 1408 1280 558 558 1 0 0 6684672 4325376 393216 1088 704 64 28 112 544 4 68 44 2 64 17 11 64 64 4 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -518,7 +518,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_compute_ab_D64)
                                               196608);
     uint64_t expectTilingKey = 3;
     string expectTilingData =
-        "40 64 32 4 4 4 3 1 1 1 41984 31488 1024 768 1535 1535 1 1 1 15728640 393216 393216 2560 64 64 41 328 1280 8 320 8 4 64 ";
+        "40 64 32 4 4 4 3 1 1 1 41984 31488 1024 768 1535 1535 1 1 1 15728640 393216 393216 2560 64 64 41 328 1280 8 320 8 4 64 40 1 64 64 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -548,7 +548,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_compute_ab_cast_D64)
                                               196608);
     uint64_t expectTilingKey = 4;
     string expectTilingData =
-        "40 64 32 24 12 12 24 24 12 12 36864 36864 3072 3072 1 1 0 0 0 25344 2304 2304 704 64 64 12 48 352 4 44 4 2 128 ";
+        "40 64 32 24 12 12 24 24 12 12 36864 36864 3072 3072 1 1 0 0 0 25344 2304 2304 704 64 64 12 48 352 4 44 4 2 64 11 1 64 64 4 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -578,7 +578,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_compute_ab_cast_D64)
                                               196608);
     uint64_t expectTilingKey = 4;
     string expectTilingData =
-        "40 64 32 12 12 12 12 12 12 12 36864 36864 3072 3072 2 2 0 0 0 25344 2304 2304 704 64 64 12 96 352 8 88 8 4 64 ";
+        "40 64 32 12 12 12 12 12 12 12 36864 36864 3072 3072 2 2 0 0 0 25344 2304 2304 704 64 64 12 96 352 8 88 8 4 64 11 1 64 64 8 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -608,7 +608,7 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_bf16_compute_ab_cast_D64)
                                               196608);
     uint64_t expectTilingKey = 4;
     string expectTilingData =
-        "40 64 32 12 12 12 12 12 12 12 36864 36864 1536 3072 2 2 0 0 0 25344 2304 2304 704 64 64 12 96 352 8 44 4 4 64 ";
+        "40 64 32 12 12 12 12 12 12 12 36864 36864 1536 3072 2 2 0 0 0 25344 2304 2304 704 64 64 12 96 352 8 44 4 4 64 11 1 64 64 4 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

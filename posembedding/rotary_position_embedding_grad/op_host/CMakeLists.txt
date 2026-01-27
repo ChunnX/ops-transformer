@@ -15,6 +15,11 @@ if (BUILD_OPEN_PROJECT)
     add_modules_sources(OPTYPE rotary_position_embedding_grad ACLNNTYPE aclnn)
 endif()
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
+    set(rotary_position_embedding_grad_apt_depends posembedding/apply_rotary_pos_emb CACHE INTERNAL "Dependencies for rotary_position_embedding_grad")
+endif()
+
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
             OP_NAME RotaryPositionEmbeddingGrad

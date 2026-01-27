@@ -111,6 +111,7 @@ struct ApplyRotaryPosEmbParams {
     int64_t blockLenq2q1 = 0;
     int64_t mask = 0;
     int64_t tilingKey = 0;
+    int64_t blockMoveQ = 0;
     platform_ascendc::SocVersion  socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 
@@ -191,8 +192,10 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
                 OP_LOGE(context->GetNodeName(), "all input dim0 must equal"), return ge::GRAPH_FAILED);
     OP_CHECK_IF((params.kDim1 != params.qDim1) || (params.cosDim1 != params.kDim1),
                 OP_LOGE(context->GetNodeName(), "all input dim1 must equal"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params.kDim3 != params.qDim3) || (params.cosDim3 != params.kDim3),
-                OP_LOGE(context->GetNodeName(), "all input dim3 must equal"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((params.cosDim3 != LASTDIM_64 && params.cosDim3 != LASTDIM_128),
+                OP_LOGE(context->GetNodeName(), "The head_dim for cos/sin must be 64 or 128"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(params.qDim3 < params.cosDim3,
+                OP_LOGE(context->GetNodeName(), "The head_dim of Q must >= the head_dim of cos/sin"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(params.qDim3 != LASTDIM_128 && params.qDim3 != LASTDIM_64, OP_LOGE(context->GetNodeName(), "last dim is not 128 or 64"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(params.coscNum != 1, OP_LOGE(context->GetNodeName(), "cos dim2 is not one"), return ge::GRAPH_FAILED);
@@ -264,7 +267,8 @@ ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context,
     params.comBatchLLL = params.lastCBatchL - params.preCLLTimes * params.comBatchBB;
 
     params.blockLenQ = params.qcdNum / params.oneBlock;  // Q_ND block数，搬运
-    params.srcStrideK = params.kcdNum / params.oneBlock; // K_ND blcok数，搬入Q时为K预留的拼接空间
+    params.srcStrideK = params.kcdNum / params.oneBlock;  // K_ND blcok数，搬入Q时为K预留的拼接空间
+    
     params.dstRepSBr = params.lastDim / params.oneBlockFp32;
     params.blockLenq2q1 = params.halfNum / params.oneBlockFp32;
     params.mulNum = params.mulNum * DIM_2 / params.oneBlockFp32;
@@ -278,7 +282,6 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.castDtypeSize = params.isCast ? DIM_4 : params.dtypeSize;
     params.oneBlock = BLOCK_SIZE / params.dtypeSize;                       // 搬运，一个block可以存放的输入数据
     params.oneBlockFp32 = params.isCast ? ONE_BLOCK_NUM : params.oneBlock; // 计算，一个block存放的计算数据量
-    params.mask = (params.isCast || params.isFp32) ? REPEAT_FP32 : REPEAT_FP16;
     OP_LOGD(context->GetNodeName(), "isCast is %d, dtypeSize is %d, isFp32 is %d", params.isCast, params.dtypeSize,
             params.isFp32);
 
@@ -290,11 +293,14 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.lastCoreBatch = ab - (params.useCoreNum - 1) * params.preCoreBatch;  // 尾核处理batch数据量
     OP_LOGD(context->GetNodeName(), "preCoreBatch %ld, lastCoreBatch is %ld", params.preCoreBatch,
             params.lastCoreBatch);
-    params.lastDim = params.kDim3;
-    params.halfNum = params.kDim3 / DIM_2;
+    params.mask = (params.isCast || params.isFp32) ? REPEAT_FP32 : REPEAT_FP16;
+    params.mask = (params.cosDim3 <= params.mask) ? params.cosDim3 : params.mask;
+    params.lastDim = params.cosDim3;
+    params.blockMoveQ = params.lastDim / params.oneBlock;  // 部分维度旋转搬运block数
+    params.halfNum = params.lastDim / DIM_2;
 
-    params.qcdNum = params.qcNum * params.qDim3;       // Q_n * D
-    params.kcdNum = params.kcNum * params.kDim3;       // K_n * D
+    params.qcdNum = params.qcNum * params.lastDim;       // Q_n * lastDim ：这里指的是搬运的q的元素数据量
+    params.kcdNum = params.kcNum * params.lastDim;       // K_n * lastDim ：这里指的是搬运的k的元素数据量
     params.coscdNum = params.coscNum * params.cosDim3; // coscNum = 1 --> 1 * D
     params.qkcNum = params.qcNum + params.kcNum;       // (Q_n + K_n), Q、K在N轴上进行拼接
     // kernel侧Mul()中repeatTimes参数为uint8_t类型，避免使用qkcNum传参计算时超出范围
@@ -304,8 +310,8 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.mulNum = params.qkcNum * params.halfNum;    // (Q_n + K_n) * D / 2
     params.qcdHalfNum = params.qcNum * params.halfNum; // Q_n * D / 2
     // 单核处理的数据偏移 batch * ND
-    params.qCoreOffset = params.preCoreBatch * params.qcdNum;
-    params.kCoreOffset = params.preCoreBatch * params.kcdNum;
+    params.qCoreOffset = params.preCoreBatch * params.qcNum * params.qDim3;
+    params.kCoreOffset = params.preCoreBatch * params.kcNum * params.kDim3;
     params.cosCoreOffset = params.preCoreBatch * params.coscdNum;
     // ub size
     params.qPart1Ub = params.qkcNum * params.lastDim * params.castDtypeSize; // 搬运 (Q_n + K_n) * D * 4(fp32)/2(fp16/bf16)
@@ -316,15 +322,12 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
                     static_cast<int64_t>(params.isCast) * (params.sin1UbSize * 2);
     OP_LOGD(context->GetNodeName(), "speUb is %ld, totalUbSize is %ld", speUb, params.totalUbSize);
 
-    // 小shape，每核处理一个batcch
+    // 小shape，每核处理一个batch
     if (params.preCoreBatch == 1 && speUb <= params.totalUbSize) {
         params.tilingKey = static_cast<int64_t>(ApplyRotaryPosEmbTilingKey::TILINGKEY_SMALL);
         params.mulNum = params.qkcNum * params.lastDim;
         params.blockLenQ = params.halfNum / params.oneBlockFp32; // D/2 占用block数，搬运
         params.dstRepSBr = params.lastDim / params.oneBlockFp32; // D 占用block数，计算
-        if (params.lastDim <= params.mask) {
-            params.mask = params.lastDim;  // lastDim值放开至64的情况下，数据类型为F16时，lastDim值可能小于mask值，则重新设置mask值为lastDim
-        }
         params.qcdHalfNum = params.lastDim / params.mask; // D 计算时的repeat次数（按列计算），至少会执行一次，不能为0
         return ge::GRAPH_SUCCESS;
     }
@@ -346,7 +349,7 @@ void ApplyRotaryPosEmbTiling::PrintTilingData(gert::TilingContext *context, Appl
             "preCLLTimes is %ld, qCoreOffset is %ld, kCoreOffset is %ld, cosCoreOffset is %ld,"
             "qcNum is %ld, kcNum is %ld, coscNum is %ld, qcdNum is %ld, kcdNum is %ld,"
             "coscdNum is %ld, qkcNum is %ld, mulNum is %ld, qcdHalfNum is %ld, dstRepSBr is %ld,"
-            "blockLenQ is %ld, srcStrideK is %ld, blockLenq2q1 is %ld,  mask is %ld, tilingKey is %ld",
+            "blockLenQ is %ld, srcStrideK is %ld, blockLenq2q1 is %ld,  mask is %ld, tilingKey is %ld, qDim3 is %ld, kDim3 is %ld, blockMoveQ is %ld",
             tiling.get_useCoreNum(), tiling.get_lastDim(), tiling.get_halfNum(), tiling.get_preCBatchB(),
             tiling.get_preCBatchL(), tiling.get_lastCBatchL(), tiling.get_comBatchBB(), tiling.get_comBatchBBL(),
             tiling.get_comBatchBLL(), tiling.get_comBatchLLL(), tiling.get_qPart1Ub(), tiling.get_q2q1Part1Ub(),
@@ -355,7 +358,7 @@ void ApplyRotaryPosEmbTiling::PrintTilingData(gert::TilingContext *context, Appl
             tiling.get_kCoreOffset(), tiling.get_cosCoreOffset(), params.qcNum, params.kcNum, params.coscNum,
             tiling.get_qcdNum(), tiling.get_kcdNum(), tiling.get_coscdNum(), tiling.get_qkcNum(), tiling.get_mulNum(),
             tiling.get_qcdHalfNum(), tiling.get_dstRepSBr(), tiling.get_blockLenQ(), tiling.get_srcStrideK(),
-            tiling.get_blockLenq2q1(), tiling.get_mask(), params.tilingKey);
+            tiling.get_blockLenq2q1(), tiling.get_mask(), params.tilingKey, tiling.get_qDim3(), tiling.get_kDim3(), tiling.get_blockMoveQ());
 }
 
 void ApplyRotaryPosEmbTiling::SetTilingData(gert::TilingContext *context, ApplyRotaryPosEmbTilingData &tiling,
@@ -394,6 +397,11 @@ void ApplyRotaryPosEmbTiling::SetTilingData(gert::TilingContext *context, ApplyR
     tiling.set_srcStrideK(params.srcStrideK);
     tiling.set_blockLenq2q1(params.blockLenq2q1);
     tiling.set_mask(params.mask);
+    tiling.set_qcNum(params.qcNum);
+    tiling.set_kcNum(params.kcNum);
+    tiling.set_qDim3(params.qDim3);
+    tiling.set_kDim3(params.kDim3);
+    tiling.set_blockMoveQ(params.blockMoveQ);
 
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());

@@ -24,6 +24,7 @@ constexpr int64_t CONST_TWO = 2;
 constexpr int64_t CONST_FOUR = 4;
 constexpr int64_t DB_FLAG = 2;
 constexpr int64_t TILING_KEY_AB = 20030;
+constexpr uint64_t ROPE_AB_TILING_PRIORITY = 10000;
 
 class ApplyRotaryPosEmbTilingAB : public ApplyRotaryPosEmbRegbaseTilingBaseClass {
 public:
@@ -57,13 +58,13 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::DoOpTiling()
         qn_ = b_ * qn_;
         kn_ = b_ * kn_;
     }
+
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
     if (dSplitCoef_ == 0 || typeSize == 0) {
         OP_LOGE(context_->GetNodeName(), "dSplitCoef_ can't be 0 or typeSize can't be 0.");
         return ge::GRAPH_FAILED;
     }
     dAlign_ = Ops::Base::CeilAlign(d_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
-
     blockFactor_ = Ops::Base::CeilDiv(bs, int64_t(aicoreParams_.blockDim));
     blockNum_ = Ops::Base::CeilDiv(bs, blockFactor_);
     blockTail_ = bs - (blockNum_ - 1) * blockFactor_;
@@ -115,7 +116,7 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::PostTiling()
             "ApplyRotaryPosEmbAB tilingData is B: %ld, CosB: %ld, S: %ld, D: %ld, QN: %ld, KN: %ld, kAlign: %ld, "
             "dSplitCoef: %ld, BlockNum: %ld, BlockFactor: %ld, BlockTail: %ld, ubFactorBS: %ld, UBLoop: %ld, UBFactor: "
             "%ld, "
-            "UBTail: %ld, RotaryMode: %ld, TilingKey: %ld.",
+            "UBTail: %ld, RotaryMode: %ld, TilingKey: %lu.",
             tilingData_.get_B(), tilingData_.get_CosB(), tilingData_.get_S(), tilingData_.get_D(), tilingData_.get_QN(),
             tilingData_.get_KN(), tilingData_.get_dAlign(), tilingData_.get_dSplitCoef(), tilingData_.get_blockNumBS(),
             tilingData_.get_blockFactorBS(), tilingData_.get_blockTailBS(), tilingData_.get_ubFactorBS(),
@@ -132,7 +133,7 @@ uint64_t ApplyRotaryPosEmbTilingAB::GetTilingKey() const
 
 bool ApplyRotaryPosEmbTilingAB::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
         return false;
     }
 
@@ -145,6 +146,6 @@ bool ApplyRotaryPosEmbTilingAB::IsCapable()
     return false;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingAB, 30000);
+REGISTER_OPS_TILING_TEMPLATE(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingAB, ROPE_AB_TILING_PRIORITY);
 
 } // namespace optiling

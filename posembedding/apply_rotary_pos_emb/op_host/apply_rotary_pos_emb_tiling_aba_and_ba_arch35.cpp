@@ -20,7 +20,7 @@
 
 namespace optiling {
 
-constexpr uint64_t ROPE_ABA_AND_BA_TILING_PRIORITY = 10000;
+constexpr uint64_t ROPE_ABA_AND_BA_TILING_PRIORITY = 20000;
 constexpr int64_t UB_FACTOR = 4;
 constexpr int64_t MAX_COPY_BLOCK_COUNT = 4095;
 constexpr int32_t WORKSPACE_SIZE = 16 * 1024 * 1024;
@@ -70,7 +70,7 @@ private:
 
 bool ApplyRotaryPosEmbTilingABAAndBA::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
         return false;
     }
     // 当前只支持bnsd格式下，11sd（ba）和b1sd（aba）两种boardcast，后续可支持全部的ba和aba boardcast

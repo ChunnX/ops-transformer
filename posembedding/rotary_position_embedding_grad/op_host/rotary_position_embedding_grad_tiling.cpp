@@ -55,7 +55,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
 
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95 &&
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
         (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
         OP_LOGE(context_->GetNodeName(), "only support mode 0 or 1.");
         return ge::GRAPH_FAILED;
@@ -140,7 +140,7 @@ ge::graphStatus TilingPrepareForRotaryPositionEmbeddingGrad(gert::TilingParseCon
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     compileInfoPtr->ubSize = ubSizePlatForm;
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
-    if (compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         return TilingPrepare4ReduceOp(context, &compileInfoPtr->opInfo);
     }
     return ge::GRAPH_SUCCESS;

@@ -17,7 +17,7 @@
 #include "util/math_util.h"
 
 namespace optiling {
-constexpr uint64_t ROPE_BAB_TILING_PRIORITY = 20000;
+constexpr uint64_t ROPE_BAB_TILING_PRIORITY = 30000;
 constexpr int64_t MIN_UB_LOAD_D_NUM = 4; // q/k, qout/kout 或sin, cos开doublebuffer
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr int64_t MIN_COPY_BLOCK_COUNT = 4095;
@@ -46,7 +46,7 @@ protected:
 
     bool IsCapable() override
     {
-        if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
+        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
             return false;
         }
         // BSND format, 1s1d模版，后续可扩展支持所有bab类型的boardcast
@@ -188,7 +188,7 @@ void ApplyRotaryPosEmbTilingBAB::PrintTilingData()
             "blockFactorB_ is %ld, blockNumS %ld, blockFactorS is %ld, ubLoopNumS is %ld,"
             "ubFactorS is %ld, ubTailFactorS %ld, ubLoopNumB is %ld, ubFactorB is %ld,"
             "ubTailFactorB is %ld, ubLoopNumQN is %ld, ubFactorQN is %ld, ubTailFactorQN is %ld,"
-            "ubLoopNumKN is %ld, ubFactorKN is %ld, ubTailFactorKN is %ld, tilingKey is %ld",
+            "ubLoopNumKN is %ld, ubFactorKN is %ld, ubTailFactorKN is %ld, tilingKey is %lu",
             usedCoreNum_, tilingData_.get_B(), tilingData_.get_S(), tilingData_.get_D(), tilingData_.get_QN(),
             tilingData_.get_KN(), tilingData_.get_blockNumB(), tilingData_.get_blockFactorB(),
             tilingData_.get_blockNumS(), tilingData_.get_blockFactorS(), tilingData_.get_ubLoopNumS(),

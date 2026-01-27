@@ -132,7 +132,7 @@ ge::graphStatus RopeGradRegBaseTilingClassAB::PostTiling()
 
 bool RopeGradRegBaseTilingClassAB::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
         return false;
     }
 

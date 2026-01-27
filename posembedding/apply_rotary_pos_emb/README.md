@@ -7,12 +7,16 @@
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    √     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
 - 算子功能：执行旋转位置编码计算，推理网络为了提升性能，将query和key两路算子融合成一路。计算结果执行原地更新。
 - 计算公式：
   （1）rotaryMode为"half"：
+
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
   $$
@@ -44,7 +48,9 @@
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
+
   （2）rotaryMode为"quarter"：
+
   $$
   query\_q1 = query[..., : query.shape[-1] // 4]
   $$
@@ -92,7 +98,9 @@
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
+
   （3）rotaryMode为"interleave"：
+
   $$
   query\_q1 = query[..., ::2].view(-1, 1)
   $$
@@ -136,9 +144,13 @@
 | layout     | 属性     | 表示输入张量的布局格式 | int64：1-BSND、2-SBND、3-BNSD、4-TND | - |
 | rotary_mode| 属性     | 公式中的旋转模式       | string："half"、"interleave"、"quarter"模式 | - |
 
+- <term>Atlas 推理系列产品</term>：不支持BFLOAT16
+
+
+
 ## 约束说明
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 输入张量query、key、cos、sin支持4维和3维的shape，layout支持1-BSND和4-TND，且4个输入shape的前2维（BSND格式）或者第一维（TND格式）和最后一维必须相等，cos和sin的shape倒数第2维（N维）必须等于1，输入shape最后一维必须等于128或者64。
     - 输入张量query、key、cos、sin的dtype必须相同。
     - layout为1时，输入queryRef的shape用（q_b, q_s, q_n, q_d）表示，keyRef shape用（q_b, q_s, k_n, q_d）表示，cos和sin shape用（q_b, q_s, 1, q_d）表示。其中，b表示batch_size，s表示seq_length，n表示head_num，d表示head_dim。layout为4时，输入queryRef的shape用（q_t, q_n, q_d）表示，keyRef shape用（q_t, k_n, q_d）表示，cos和sin shape用（q_t, 1, q_d）表示。其中，t表示b和s合轴，n表示head_num，d表示head_dim
@@ -163,5 +175,3 @@
 |--------------|------------------------------------------------------------------------|----------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_apply_rotary_pos_emb.cpp](examples/test_aclnn_apply_rotary_pos_emb.cpp) | 通过[aclnnApplyRotaryPosEmb](./docs/aclnnApplyRotaryPosEmb.md)接口方式调用ApplyRotaryPosEmb算子。    |
 | aclnn调用 | [test_aclnn_apply_rotary_pos_emb_v2.cpp](examples/test_aclnn_apply_rotary_pos_emb_v2.cpp) | 通过[aclnnApplyRotaryPosEmbV2](./docs/aclnnApplyRotaryPosEmbV2.md)接口方式调用ApplyRotaryPosEmb算子。    |
-
-

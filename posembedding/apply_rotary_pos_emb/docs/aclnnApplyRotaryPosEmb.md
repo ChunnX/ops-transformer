@@ -13,9 +13,10 @@
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    √     |
 | <term>Atlas 训练系列产品</term>                              |    x     |
-| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
+
 
 ## 功能说明
+
 -  接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
 -  计算公式：
 
@@ -76,7 +77,7 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 
 ## aclnnApplyRotaryPosEmbGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1557px">
   <colgroup>
@@ -202,9 +203,10 @@ aclnnStatus aclnnApplyRotaryPosEmb(
   </tbody>
   </table>
 
+  - <term>Atlas 推理系列产品</term>：不支持BFLOAT16
   - <term>Ascend 950PR/Ascend 950DT</term>：不支持layout为4
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
@@ -230,7 +232,7 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 
 ## aclnnApplyRotaryPosEmb
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1557px">
   <colgroup>
@@ -267,7 +269,7 @@ aclnnStatus aclnnApplyRotaryPosEmb(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

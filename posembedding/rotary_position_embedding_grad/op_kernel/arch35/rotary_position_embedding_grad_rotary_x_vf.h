@@ -16,7 +16,7 @@
 #define __ROTARY_POSITION_EMBEDDING_GRAD_ROTARY_X_VF__
 
 #include "kernel_operator.h"
-#include "../../inc/load_store_utils.h"
+#include "op_kernel/load_store_utils.h"
 
 using namespace AscendC;
 namespace RotaryPositionEmbeddingGrad {

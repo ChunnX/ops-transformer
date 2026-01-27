@@ -46,7 +46,7 @@ protected:
     bool IsCapable() override
     {
         // BSND format, 1s1d模版，后续可扩展支持所有bab类型的boardcast
-        if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) && (layout_ == RopeLayout::BSND) &&
+        if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) && (layout_ == RopeLayout::BSND) &&
             (cosb_ == 1)) {
             return true;
         }

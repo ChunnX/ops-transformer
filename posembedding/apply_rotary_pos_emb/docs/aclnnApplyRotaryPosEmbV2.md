@@ -1,5 +1,7 @@
 # aclnnApplyRotaryPosEmbV2
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/posembedding/apply_rotary_pos_emb)
+
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
@@ -7,8 +9,13 @@
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    √    |
+| <term>Atlas 训练系列产品</term>                              |    x    |
+
 
 ## 功能说明
+
 -  接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
    本接口针对[aclnnApplyRotaryPosEmb](aclnnApplyRotaryPosEmb.md)做了如下功能变更，请根据实际情况选择合适的接口：
    
@@ -16,6 +23,7 @@
 -  计算公式：
 
   （1）rotaryMode为"half"：
+
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
   $$
@@ -47,7 +55,9 @@
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
+
   （2）rotaryMode为"quarter"：
+
   $$
   query\_q1 = query[..., : query.shape[-1] // 4]
   $$
@@ -95,7 +105,9 @@
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
+
   （3）rotaryMode为"interleave"：
+  
   $$
   query\_q1 = query[..., ::2].view(-1, 1)
   $$
@@ -154,7 +166,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 
 ## aclnnApplyRotaryPosEmbV2GetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1557px">
   <colgroup>
@@ -207,7 +219,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>表示要执行旋转位置编码的第二个张量，公式中的key，计算结果原地更新。</td>
       <td>
         <ul>
-          <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
+          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
             <ul>
               <li>不支持空Tensor。</li>
               <li>shape最后一维（D）必须等于128或者64。</li>
@@ -230,7 +242,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>表示参与计算的位置编码张量，公式中的cos。</td>
       <td>
         <ul>
-          <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
+          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</li>
             <ul>
               <li>不支持空Tensor。</li>
               <li>shape中B维度与queryRef、keyRef的B维度一致。</li>
@@ -285,7 +297,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>
         <ul>
           <li>取值范围：1-BSND、2-SBND、3-BNSD、4-TND。</li>
-          <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1-BSND的4维Tensor、4-TND的3维Tensor。</li>
+          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1-BSND的4维Tensor、4-TND的3维Tensor。</li>
           <li><term>Ascend 950PR/Ascend 950DT</term>：支持1-BSND、2-SBND、3-BNSD的4维Tensor。</li>
         </ul>
       </td>
@@ -301,7 +313,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       <td>
         <ul>
           <li>取值范围："half"、"interleave"、"quarter"。</li>
-          <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持"half"模式。</li>
+          <li><term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持"half"模式。</li>
           <li><term>Ascend 950PR/Ascend 950DT</term>：支持"half"、"interleave"、"quarter"模式。</li>
         </ul>
       </td>
@@ -333,7 +345,9 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
   </tbody>
   </table>
 
-- **返回值：**
+  - <term>Atlas 推理系列产品</term>：不支持BFLOAT16
+
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
@@ -361,7 +375,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 
 ## aclnnApplyRotaryPosEmbV2
 
-- **参数说明：**
+- **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1557px">
   <colgroup>
@@ -398,7 +412,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -407,7 +421,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
 - 确定性计算：
   - aclnnApplyRotaryPosEmbV2默认确定性实现。
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - layout为1时，queryRef、keyRef、cos、sin输入shape的前2维（B、S）必须相等；layout为4时，第1维（T）必须相等。
     - queryRef、keyRef输入shape的最后一维（D）必须相等，cos、sin输入shape的最后一维（D）必须相等。
     - 输入张量queryRef、keyRef、cos、sin的dtype必须相同。
@@ -421,7 +435,7 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       当计算出`ub_required`的大小超过当前AI处理器的UB空间总大小时，不支持使用该融合算子。
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
-    - 对于任意layout，queryRef与keyRef除N维度外其他维度必须相同；queryRef、keyRef、cos、sin的S维度必须相同；queryRef、keyRef输入shape的最后一维（D）必须相等；cos、sin输入shape的最后一维（D）必须相等。
+    - 对于任意layout，queryRef与keyRef除N维度外其他维度必须相同；queryRef、keyRef、cos、sin的S,D维度必须相同。
     - 输入张量queryRef、keyRef、cos、sin的dtype必须相同。
     - rotaryMode为"half"和"interleave"时，输入shape最后一维必须被2整除；rotaryMode为"quarter"时，输入shape最后一维必须被4整除。
 

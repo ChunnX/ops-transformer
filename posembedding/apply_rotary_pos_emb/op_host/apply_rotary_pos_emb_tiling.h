@@ -19,6 +19,7 @@
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_base.h"
+#include "tiling_base/tiling_util.h"
 #include "platform/platform_infos_def.h"
 
 namespace optiling {
@@ -57,6 +58,11 @@ TILING_DATA_FIELD_DEF(int64_t, blockLenQ);
 TILING_DATA_FIELD_DEF(int64_t, srcStrideK);
 TILING_DATA_FIELD_DEF(int64_t, blockLenq2q1);
 TILING_DATA_FIELD_DEF(int64_t, mask);
+TILING_DATA_FIELD_DEF(int64_t, qcNum);
+TILING_DATA_FIELD_DEF(int64_t, kcNum);
+TILING_DATA_FIELD_DEF(int64_t, qDim3);
+TILING_DATA_FIELD_DEF(int64_t, kDim3);
+TILING_DATA_FIELD_DEF(int64_t, blockMoveQ);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingData)
@@ -204,13 +210,25 @@ private:
     ge::graphStatus CheckShape();
     ge::graphStatus CheckDtypeAndAttr();
     ge::graphStatus CheckParam();
-    ge::graphStatus CheckShapeRelation(const gert::Shape &qShape, const gert::Shape &kShape,
-                                       const gert::Shape &cosShape, const gert::Shape &sinShape);
-    ge::graphStatus CheckRotaryModeShapeRelation(int64_t d);
-    ge::graphStatus CheckShapeAllPositive(int64_t idx);
+    ge::graphStatus CheckShapeRelation();
+    ge::graphStatus CheckRotaryModeShapeRelation(const int64_t &d);
+    ge::graphStatus CheckShapeAllPositive(const int64_t &idx, const gert::Shape &shape);
     ge::graphStatus CheckShapeAllPositive();
     void ConvertRotaryMode();
     std::string rotaryModeStr_;
+
+    ge::DataType qDataType_;
+    ge::DataType kDataType_;
+    ge::DataType cosDataType_;
+    ge::DataType sinDataType_;
+    ge::DataType qOutDataType_;
+    ge::DataType kOutDataType_;
+    gert::Shape qShape_;
+    gert::Shape kShape_;
+    gert::Shape cosShape_;
+    gert::Shape sinShape_;
+    gert::Shape qOutShape_;
+    gert::Shape kOutShape_;
 };
 
 } // namespace optiling

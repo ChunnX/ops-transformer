@@ -17,6 +17,7 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
+    set(rotary_position_embedding_apt_depends posembedding/apply_rotary_pos_emb CACHE INTERNAL "Dependencies for rotary_position_embedding")
     add_ops_compile_options(
         OP_NAME RotaryPositionEmbedding
         COMPUTE_UNIT ascend910_9599

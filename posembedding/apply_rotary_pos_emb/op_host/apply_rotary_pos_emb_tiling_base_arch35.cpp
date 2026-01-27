@@ -60,18 +60,53 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::GetPlatformInfo()
 
 ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckNullptr()
 {
-    for (int64_t i = 0; i <= SIN_INDEX; i++) {
-        auto desc = context_->GetInputDesc(i);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, desc);
-        auto shape = context_->GetInputShape(i);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, shape);
-    }
+    auto qDesc = context_->GetInputDesc(Q_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, qDesc);
+    qDataType_ = qDesc->GetDataType();
+    auto qShapePoint = context_->GetInputShape(Q_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, qShapePoint);
+    qShape_ = qShapePoint->GetStorageShape();
+
+    auto kDesc = context_->GetInputDesc(K_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kDesc);
+    kDataType_ = kDesc->GetDataType();
+    auto kShapePoint = context_->GetInputShape(K_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kShapePoint);
+    kShape_ = kShapePoint->GetStorageShape();
+
+    auto cosDesc = context_->GetInputDesc(COS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, cosDesc);
+    cosDataType_ = cosDesc->GetDataType();
+    auto cosShapePoint = context_->GetInputShape(COS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, cosShapePoint);
+    cosShape_ = cosShapePoint->GetStorageShape();
+
+    auto sinDesc = context_->GetInputDesc(SIN_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, sinDesc);
+    sinDataType_ = sinDesc->GetDataType();
+    auto sinShapePoint = context_->GetInputShape(SIN_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, sinShapePoint);
+    sinShape_ = sinShapePoint->GetStorageShape();
+
+    auto qOutDesc = context_->GetOutputDesc(QOUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, qOutDesc);
+    qOutDataType_ = qOutDesc->GetDataType();
+    auto qOutShapePoint = context_->GetOutputShape(QOUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, qOutShapePoint);
+    qOutShape_ = qOutShapePoint->GetStorageShape();
+
+    auto kOutDesc = context_->GetOutputDesc(KOUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kOutDesc);
+    kOutDataType_ = kOutDesc->GetDataType();
+    auto kOutShapePoint = context_->GetOutputShape(KOUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kOutShapePoint);
+    kOutShape_ = kOutShapePoint->GetStorageShape();
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeAllPositive(int64_t idx)
+ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeAllPositive(const int64_t &idx,
+                                                                               const gert::Shape &shape)
 {
-    auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         OP_CHECK_IF(
             shape.GetDim(i) <= 0,
@@ -83,8 +118,8 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeAllPositive(i
 
 ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeAllPositive()
 {
-    ge::graphStatus qRes = CheckShapeAllPositive(Q_INDEX);
-    ge::graphStatus kRes = CheckShapeAllPositive(K_INDEX);
+    ge::graphStatus qRes = CheckShapeAllPositive(Q_INDEX, qShape_);
+    ge::graphStatus kRes = CheckShapeAllPositive(K_INDEX, kShape_);
     // q, k有一个为空Tensor时，提示用 rotaryPositionEmbedding 算子
     OP_CHECK_IF(qRes != kRes,
                 OP_LOGE(context_, "q or k has non positive shape, please use rotaryPositionEmbedding operator"),
@@ -92,14 +127,18 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeAllPositive()
     // q, k 都为空Tensor，处理空tensor
     OP_CHECK_IF(qRes != ge::GRAPH_SUCCESS, OP_LOGE(context_, "query and key has non positive shape."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckShapeAllPositive(COS_INDEX) != ge::GRAPH_SUCCESS, OP_LOGE(context_, "cos has non positive shape."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckShapeAllPositive(SIN_INDEX) != ge::GRAPH_SUCCESS, OP_LOGE(context_, "sin has non positive shape."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        CheckShapeAllPositive(COS_INDEX, cosShape_) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_, "cos has non positive shape."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        CheckShapeAllPositive(SIN_INDEX, sinShape_) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_, "sin has non positive shape."),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckRotaryModeShapeRelation(int64_t d)
+ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckRotaryModeShapeRelation(const int64_t &d)
 {
     OP_CHECK_IF(d > D_LIMIT, OP_LOGE(context_, "D must be small than %ld, actual %ld.", D_LIMIT, d),
                 return ge::GRAPH_FAILED);
@@ -115,10 +154,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckRotaryModeShapeRel
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation(const gert::Shape &qShape,
-                                                                            const gert::Shape &kShape,
-                                                                            const gert::Shape &cosShape,
-                                                                            const gert::Shape &sinShape)
+ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation()
 {
     int64_t bIdx = DIM_0;
     int64_t sIdx = DIM_1;
@@ -132,62 +168,54 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation(cons
         bIdx = DIM_1;
         nIdx = DIM_2;
     }
-    auto &qOutShape = context_->GetOutputShape(QOUT_INDEX)->GetStorageShape();
-    auto &kOutShape = context_->GetOutputShape(KOUT_INDEX)->GetStorageShape();
-    OP_CHECK_IF(cosShape != sinShape, OP_LOGE(context_, "shape of cos and sin should be same."),
+    OP_CHECK_IF(cosShape_ != sinShape_, OP_LOGE(context_, "shape of cos and sin should be same."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qShape != qOutShape, OP_LOGE(context_, "shape of query in and out should be same."),
+    OP_CHECK_IF(qShape_ != qOutShape_, OP_LOGE(context_, "shape of query in and out should be same."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kShape != kOutShape, OP_LOGE(context_, "shape of key in and out should be same."),
+    OP_CHECK_IF(kShape_ != kOutShape_, OP_LOGE(context_, "shape of key in and out should be same."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cosShape.GetDim(nIdx) != 1,
-                OP_LOGE(context_, "N of cos, sin should be 1, actual %ld.", cosShape.GetDim(nIdx)),
+    OP_CHECK_IF(cosShape_.GetDim(nIdx) != 1,
+                OP_LOGE(context_, "N of cos, sin should be 1, actual %ld.", cosShape_.GetDim(nIdx)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!(cosShape.GetDim(sIdx) == qShape.GetDim(sIdx) && kShape.GetDim(sIdx) == qShape.GetDim(sIdx)),
+    OP_CHECK_IF(!(cosShape_.GetDim(sIdx) == qShape_.GetDim(sIdx) && kShape_.GetDim(sIdx) == qShape_.GetDim(sIdx)),
                 OP_LOGE(context_, "S of query, key, cos, sin should be same, actual %ld %ld %ld %ld.",
-                        qShape.GetDim(sIdx), kShape.GetDim(sIdx), cosShape.GetDim(sIdx), cosShape.GetDim(sIdx)),
+                        qShape_.GetDim(sIdx), kShape_.GetDim(sIdx), cosShape_.GetDim(sIdx), cosShape_.GetDim(sIdx)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!(cosShape.GetDim(dIdx) == qShape.GetDim(dIdx) && kShape.GetDim(dIdx) == qShape.GetDim(dIdx)),
+    OP_CHECK_IF(!(cosShape_.GetDim(dIdx) == qShape_.GetDim(dIdx) && kShape_.GetDim(dIdx) == qShape_.GetDim(dIdx)),
                 OP_LOGE(context_, "D of query, key, cos, sin should be same, actual %ld %ld %ld %ld.",
-                        qShape.GetDim(dIdx), kShape.GetDim(dIdx), cosShape.GetDim(dIdx), cosShape.GetDim(dIdx)),
+                        qShape_.GetDim(dIdx), kShape_.GetDim(dIdx), cosShape_.GetDim(dIdx), cosShape_.GetDim(dIdx)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        kShape.GetDim(bIdx) != qShape.GetDim(bIdx),
-        OP_LOGE(context_, "B of query, key should be same, actual %ld %ld.", qShape.GetDim(bIdx), kShape.GetDim(bIdx)),
+        kShape_.GetDim(bIdx) != qShape_.GetDim(bIdx),
+        OP_LOGE(context_,"B of query, key should be same, actual %ld %ld.", qShape_.GetDim(bIdx), kShape_.GetDim(bIdx)),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!(cosShape.GetDim(bIdx) == qShape.GetDim(bIdx) || cosShape.GetDim(bIdx) == 1),
+    OP_CHECK_IF(!(cosShape_.GetDim(bIdx) == qShape_.GetDim(bIdx) || cosShape_.GetDim(bIdx) == 1),
                 OP_LOGE(context_, "B of cos, sin should be able to broadcast to query, key, actual %ld %ld %ld %ld.",
-                        cosShape.GetDim(bIdx), cosShape.GetDim(bIdx), qShape.GetDim(bIdx), kShape.GetDim(bIdx)),
+                        cosShape_.GetDim(bIdx), cosShape_.GetDim(bIdx), qShape_.GetDim(bIdx), kShape_.GetDim(bIdx)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckRotaryModeShapeRelation(qShape.GetDim(dIdx)) != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(CheckRotaryModeShapeRelation(qShape_.GetDim(dIdx)) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "D is invalid for rotary mode."), return ge::GRAPH_FAILED);
     return CheckShapeAllPositive();
 }
 
 ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShape()
 {
-    auto &qShape = context_->GetInputShape(Q_INDEX)->GetStorageShape();
-    auto &kShape = context_->GetInputShape(K_INDEX)->GetStorageShape();
-    auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
-    auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
-    auto &qoutShape = context_->GetOutputShape(QOUT_INDEX)->GetStorageShape();
-    auto &koutShape = context_->GetOutputShape(KOUT_INDEX)->GetStorageShape();
-    OP_CHECK_IF(qShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of query expect 4, actual %zu.", qShape.GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of key expect 4, actual %zu.", kShape.GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cosShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of cos expect 4, actual %zu.", cosShape.GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sinShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of sin expect 4, actual %zu.", sinShape.GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qoutShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of query out expect 4, actual %zu.", qoutShape.GetDimNum()),
+    OP_CHECK_IF(qShape_.GetDimNum() != DIM_NUM,
+                OP_LOGE(context_, "dim of query expect 4, actual %zu.", qShape_.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kShape_.GetDimNum() != DIM_NUM,
+                OP_LOGE(context_, "dim of key expect 4, actual %zu.", kShape_.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cosShape_.GetDimNum() != DIM_NUM,
+                OP_LOGE(context_, "dim of cos expect 4, actual %zu.", cosShape_.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sinShape_.GetDimNum() != DIM_NUM,
+                OP_LOGE(context_, "dim of sin expect 4, actual %zu.", sinShape_.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qOutShape_.GetDimNum() != DIM_NUM,
+                OP_LOGE(context_, "dim of query out expect 4, actual %zu.", qOutShape_.GetDimNum()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(koutShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of key out expect 4, actual %zu.", koutShape.GetDimNum()),
+    OP_CHECK_IF(kOutShape_.GetDimNum() != DIM_NUM,
+                OP_LOGE(context_, "dim of key out expect 4, actual %zu.", kOutShape_.GetDimNum()),
                 return ge::GRAPH_FAILED);
 
-    return CheckShapeRelation(qShape, kShape, cosShape, sinShape);
+    return CheckShapeRelation();
 }
 
 ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckDtypeAndAttr()
@@ -196,33 +224,30 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckDtypeAndAttr()
         (rotaryModeStr_ != "half" && rotaryModeStr_ != "interleave" && rotaryModeStr_ != "quarter"),
         OP_LOGE(context_, "rotary mode only support half, interleave, quarter, actual %s.", rotaryModeStr_.c_str()),
         return ge::GRAPH_FAILED);
-    auto targetType = context_->GetInputDesc(Q_INDEX)->GetDataType();
-    OP_CHECK_IF(std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), targetType) == SUPPORT_DTYPE.end(),
-                OP_LOGE(context_->GetNodeName(), "Only support F32, BF16, F16 datetype, actual %d.", targetType),
+    OP_CHECK_IF(std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), qDataType_) == SUPPORT_DTYPE.end(),
+                OP_LOGE(context_->GetNodeName(), "Only support F32, BF16, F16 datetype, actual %d.", qDataType_),
                 return ge::GRAPH_FAILED);
-    for (int64_t i = Q_INDEX; i <= SIN_INDEX; i++) {
-        auto type = context_->GetInputDesc(i)->GetDataType();
-        OP_CHECK_IF(type != targetType,
-                    OP_LOGE(context_, "input %ld datatype expect %d, actual %d.", i, targetType, type),
-                    return ge::GRAPH_FAILED);
-    }
-    for (int64_t i = QOUT_INDEX; i <= KOUT_INDEX; i++) {
-        auto type = context_->GetInputDesc(i)->GetDataType();
-        OP_CHECK_IF(type != targetType,
-                    OP_LOGE(context_, "output %ld datatype expect %d, actual %d.", i, targetType, type),
-                    return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(kDataType_ != qDataType_,
+                OP_LOGE(context_, "the input k's datatype expect %d, actual %d.", qDataType_, kDataType_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cosDataType_ != qDataType_,
+                OP_LOGE(context_, "the input cos's datatype expect %d, actual %d.", qDataType_, cosDataType_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sinDataType_ != qDataType_,
+                OP_LOGE(context_, "the input sin's datatype expect %d, actual %d.", qDataType_, sinDataType_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qOutDataType_ != qDataType_,
+                OP_LOGE(context_, "the output q's datatype expect %d, actual %d.", qDataType_, qOutDataType_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kOutDataType_ != qDataType_,
+                OP_LOGE(context_, "the output k's datatype expect %d, actual %d.", qDataType_, kOutDataType_),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckParam()
 {
-    auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95) {
-        return ge::GRAPH_SUCCESS;
-    }
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check nullptr fail."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckDtypeAndAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check dtype and attr fail."),
                 return ge::GRAPH_FAILED);
@@ -249,7 +274,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::GetShapeAttrsInfo()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
         return ge::GRAPH_SUCCESS;
     }
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
@@ -266,33 +291,30 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::GetShapeAttrsInfo()
 
     OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check param fail."), return ge::GRAPH_FAILED);
 
-    dtype_ = context_->GetInputDesc(Q_INDEX)->GetDataType();
+    dtype_ = qDataType_;
     ConvertRotaryMode();
 
-    auto qShape = context_->GetInputShape(Q_INDEX)->GetStorageShape();
-    auto kShape = context_->GetInputShape(K_INDEX)->GetStorageShape();
-    auto cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
     if (layout_ == ApplyRotaryPosEmbLayout::BSND) {
-        b_ = qShape.GetDim(DIM_0);
-        cosb_ = cosShape.GetDim(DIM_0);
-        s_ = qShape.GetDim(DIM_1);
-        qn_ = qShape.GetDim(DIM_2);
-        kn_ = kShape.GetDim(DIM_2);
-        d_ = qShape.GetDim(DIM_3);
+        b_ = qShape_.GetDim(DIM_0);
+        cosb_ = cosShape_.GetDim(DIM_0);
+        s_ = qShape_.GetDim(DIM_1);
+        qn_ = qShape_.GetDim(DIM_2);
+        kn_ = kShape_.GetDim(DIM_2);
+        d_ = qShape_.GetDim(DIM_3);
     } else if (layout_ == ApplyRotaryPosEmbLayout::BNSD) {
-        b_ = qShape.GetDim(DIM_0);
-        cosb_ = cosShape.GetDim(DIM_0);
-        qn_ = qShape.GetDim(DIM_1);
-        kn_ = kShape.GetDim(DIM_1);
-        s_ = qShape.GetDim(DIM_2);
-        d_ = qShape.GetDim(DIM_3);
+        b_ = qShape_.GetDim(DIM_0);
+        cosb_ = cosShape_.GetDim(DIM_0);
+        qn_ = qShape_.GetDim(DIM_1);
+        kn_ = kShape_.GetDim(DIM_1);
+        s_ = qShape_.GetDim(DIM_2);
+        d_ = qShape_.GetDim(DIM_3);
     } else if (layout_ == ApplyRotaryPosEmbLayout::SBND) {
-        s_ = qShape.GetDim(DIM_0);
-        b_ = qShape.GetDim(DIM_1);
-        cosb_ = cosShape.GetDim(DIM_1);
-        qn_ = qShape.GetDim(DIM_2);
-        kn_ = kShape.GetDim(DIM_2);
-        d_ = qShape.GetDim(DIM_3);
+        s_ = qShape_.GetDim(DIM_0);
+        b_ = qShape_.GetDim(DIM_1);
+        cosb_ = cosShape_.GetDim(DIM_1);
+        qn_ = qShape_.GetDim(DIM_2);
+        kn_ = kShape_.GetDim(DIM_2);
+        d_ = qShape_.GetDim(DIM_3);
     }
     return ge::GRAPH_SUCCESS;
 }
