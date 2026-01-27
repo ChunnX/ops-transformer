@@ -174,8 +174,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
   <tr>
    <td>performanceInfoOptional</td>
    <td>输入</td>
-   <td>表示各卡通信耗时打点信息。结合DeepXTrace工具使用，可动态记录各卡通信时间。</td>
-   <td>单次算子调用各卡通信耗时会累加到该Tensor上，用户使用前按需清零。</td>
+   <td>表示本卡等待各卡数据的通信时间，单位为us（微秒）。</td>
+   <td>单次算子调用各卡通信耗时会累加到该Tensor上，算子内部不进行自动清零，因此用户每次启用此Tensor开始记录耗时前需对Tensor清零。</td>
    <td>INT64</td>
    <td>ND</td>
    <td>-</td>
