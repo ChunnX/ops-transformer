@@ -177,6 +177,8 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeLseMVF(uint32_t
 
         AscendC::MicroAPI::MaskReg preg1;
         uint32_t sreg = curBlockNum;
+        static constexpr AscendC::MicroAPI::ExpSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING,
+                                                                    AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
         for (uint16_t i = 0; i < vfLoop; i++) {
             preg1 = AscendC::MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(sreg);
             AscendC::MicroAPI::DataCopy<float>(vregMax, lseUbAddr + i * VL);
@@ -201,8 +203,7 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeLseMVF(uint32_t
                 AscendC::MicroAPI::DataCopy<float>(vregLse, lseUbAddr + i * VL + j * blockStride);
                 AscendC::MicroAPI::Sub<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(vregSubLseMRes, vregLse,
                                                                                          vregLseM, preg1);
-                AscendC::MicroAPI::Exp<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(vregLseExpFinal,
-                                                                                         vregSubLseMRes, preg1);
+                AscendC::MicroAPI::Exp<float, &mode>(vregLseExpFinal, vregSubLseMRes, preg1);
                 AscendC::MicroAPI::DataCopy<float>(expUbAddr + i * VL + j * blockStride, vregLseExpFinal, preg1);
             }
         }
