@@ -603,16 +603,16 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
     OP_CHECK_IF(coreNum_ <= 0, OP_LOGE(context->GetNodeName(), "Invalid core num[%u], expect greater than 0", coreNum_),
                 return false);
 
-    cubeBlockDimN_ = static_cast<uint8_t>(coreNum_);
+    cubeNumBlocksN_ = static_cast<uint8_t>(coreNum_);
     if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
         resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
         resplitParam_.mainBlockCount = nSize_ / (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
     } else if (nSize_ > coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {
         // 该场景下可以保证分满核且尾块在128~256之间
-        CalcFullBlockDimResplitTiling(c0Size);
+        CalcFullNumBlocksResplitTiling(c0Size);
     } else {
         // N <= 4096场景，优先保证单核尾块大于128，可能无法分满核
-        CalcNoFullBlockDimResplitTiling(c0Size);
+        CalcNoFullNumBlocksResplitTiling(c0Size);
     }
     OP_CHECK_IF(!CheckResplitTilingResult(context), OP_LOGE(context->GetNodeName(), "Invalid resplit tiling result"),
                 return false);
@@ -631,7 +631,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetBaseTiling()
     tilingData_.gmmWeightQuantParam.groupType = static_cast<int8_t>(groupType_);
     tilingData_.gmmWeightQuantParam.groupListType = static_cast<uint8_t>(groupListType_);
     tilingData_.gmmWeightQuantParam.hasBias = static_cast<uint8_t>(hasBias_);
-    tilingData_.gmmWeightQuantParam.cubeBlockDimN = cubeBlockDimN_;
+    tilingData_.gmmWeightQuantParam.cubeNumBlocksN = cubeNumBlocksN_;
     tilingData_.gmmWeightQuantParam.groupSize = groupSize_;
     tilingData_.gmmWeightQuantParam.mainBlockSize = resplitParam_.mainBlockSize;
     tilingData_.gmmWeightQuantParam.mainBlockCount = resplitParam_.mainBlockCount * coreNum_;
@@ -1037,7 +1037,7 @@ bool GroupedWeightQuantBatchMatmulTiling::GetC0Size(const gert::TilingContext *c
     return true;
 }
 
-void GroupedWeightQuantBatchMatmulTiling::CalcFullBlockDimResplitTiling(uint64_t c0Size)
+void GroupedWeightQuantBatchMatmulTiling::CalcFullNumBlocksResplitTiling(uint64_t c0Size)
 {
     resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
     resplitParam_.mainBlockCount = 0UL;
@@ -1069,7 +1069,7 @@ void GroupedWeightQuantBatchMatmulTiling::CalcFullBlockDimResplitTiling(uint64_t
     }
 }
 
-void GroupedWeightQuantBatchMatmulTiling::CalcNoFullBlockDimResplitTiling(uint64_t c0Size)
+void GroupedWeightQuantBatchMatmulTiling::CalcNoFullNumBlocksResplitTiling(uint64_t c0Size)
 {
     resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
     // 该场景无法维持主块分核，默认写0
@@ -1086,7 +1086,7 @@ void GroupedWeightQuantBatchMatmulTiling::CalcNoFullBlockDimResplitTiling(uint64
     }
 
     uint64_t taskNum = std::max(1UL, nSize_ / BASIC_BLOCK_BASE_N_MIN);  // 实际任务数，必然小于核数
-    cubeBlockDimN_ = static_cast<uint8_t>(taskNum);
+    cubeNumBlocksN_ = static_cast<uint8_t>(taskNum);
     if (weightNzFlag_ && c0Size != 0UL && taskNum != 0UL) {
         resplitParam_.firstTailBlockSize = static_cast<uint16_t>(nSize_ / c0Size / taskNum);
         resplitParam_.secondTailBlockSize = static_cast<uint16_t>(resplitParam_.firstTailBlockSize + 1U);

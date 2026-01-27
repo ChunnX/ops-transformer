@@ -57,11 +57,11 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_0)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16809984);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t blockDim = 20;
+    uint32_t NumBlocks = 20;
 
     GMMSwigluQuantTilingData* tilingData = reinterpret_cast<GMMSwigluQuantTilingData*>(tiling);
     tilingData->gmmSwigluBaseParams.groupNum = 4;
-    tilingData->gmmSwigluBaseParams.coreNum = blockDim;
+    tilingData->gmmSwigluBaseParams.coreNum = NumBlocks;
     tilingData->gmmSwigluBaseParams.M = 16;
     tilingData->gmmSwigluBaseParams.K = 256;
     tilingData->gmmSwigluBaseParams.N = 512;
@@ -71,7 +71,7 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_0)
     tilingData->gmmSwiglu.tokenLen = 512;
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(grouped_matmul_swiglu_quant, blockDim, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
+    ICPU_RUN_KF(grouped_matmul_swiglu_quant, NumBlocks, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
@@ -108,11 +108,11 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_1)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16809984);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t blockDim = 20;
+    uint32_t NumBlocks = 20;
 
     GMMSwigluQuantTilingData* tilingData = reinterpret_cast<GMMSwigluQuantTilingData*>(tiling);
     tilingData->gmmSwigluBaseParams.groupNum = 4;
-    tilingData->gmmSwigluBaseParams.coreNum = blockDim;
+    tilingData->gmmSwigluBaseParams.coreNum = NumBlocks;
     tilingData->gmmSwigluBaseParams.M = 16384;
     tilingData->gmmSwigluBaseParams.K = 256;
     tilingData->gmmSwigluBaseParams.N = 4096;
@@ -122,7 +122,7 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_1)
     tilingData->gmmSwiglu.tokenLen = 4096;
 
     ICPU_SET_TILING_KEY(1);
-    ICPU_RUN_KF(grouped_matmul_swiglu_quant, blockDim, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
+    ICPU_RUN_KF(grouped_matmul_swiglu_quant, NumBlocks, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);

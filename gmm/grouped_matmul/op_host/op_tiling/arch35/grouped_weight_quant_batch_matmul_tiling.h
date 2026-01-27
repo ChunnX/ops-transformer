@@ -258,8 +258,8 @@ protected:
     bool SetAntiquantGroupSize(const gert::TilingContext *context);
     bool CheckGroupSize(const gert::TilingContext *context) const;
     bool GetC0Size(const gert::TilingContext *context, ge::DataType dtype, uint64_t &c0Size) const;
-    void CalcFullBlockDimResplitTiling(uint64_t c0Size);
-    void CalcNoFullBlockDimResplitTiling(uint64_t c0Size);
+    void CalcFullNumBlocksResplitTiling(uint64_t c0Size);
+    void CalcNoFullNumBlocksResplitTiling(uint64_t c0Size);
     bool CheckResplitTilingResult(const gert::TilingContext *context) const;
     void PrintInputParam(const gert::TilingContext *context) const;
     void PrintTilingResult(const gert::TilingContext *context);
@@ -289,7 +289,7 @@ private:
     uint32_t groupListType_ = 0;
     uint32_t coreNum_ = 0;
     uint32_t groupSize_ = 0;
-    uint8_t cubeBlockDimN_ = 0;
+    uint8_t cubeNumBlocksN_ = 0;
 
     uint16_t numX_ = 0;
     uint16_t numWeight_ = 0;

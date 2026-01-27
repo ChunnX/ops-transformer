@@ -279,7 +279,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
         // mxA8W4场景，Dn2nz严重阻塞流水，在weight较小的时候不启用prefetch策略
         if (gmmBaseTiling_->mainBlockCount == 0 &&
             gmmBaseTiling_->firstTailBlockCount + gmmBaseTiling_->secondTailBlockCount <
-                gmmBaseTiling_->cubeBlockDimN) {
+                gmmBaseTiling_->cubeNumBlocksN) {
             return;
         }
     }
@@ -288,13 +288,13 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
     /*
      * 准入条件：
      * 1. m <= 512
-     * 2. A的大小在cubeBlockDimN上可被一条mte2指令均分载入
+     * 2. A的大小在cubeNumBlocksN上可被一条mte2指令均分载入
      * 3. 核数是N分核数的倍数
      */
-    if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeBlockDimN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
-        (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeBlockDimN == 0)) {
+    if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
+        (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
         uint64_t aPrefetchSize =
-            CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeBlockDimN)),
+            CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
                       64UL); // 64 表示128B的cacheline对齐
         basicBlock_.PrefetchA(aPrefetchSize, mSize * kSize);
     }

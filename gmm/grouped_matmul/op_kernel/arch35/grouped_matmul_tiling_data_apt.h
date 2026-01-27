@@ -70,7 +70,7 @@ struct GMMWeightQuantParam {
     int8_t groupType = 0;
     uint8_t groupListType = 0;
     uint8_t hasBias = 0;
-    uint8_t cubeBlockDimN = 0;
+    uint8_t cubeNumBlocksN = 0;
     uint8_t reserved = 0;
     uint32_t groupSize = 0;
     uint32_t mainBlockSize = 0;

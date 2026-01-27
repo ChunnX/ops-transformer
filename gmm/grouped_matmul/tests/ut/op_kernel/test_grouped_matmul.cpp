@@ -71,18 +71,18 @@ TEST_F(grouped_matmul_test, test_case_fp16)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t blockDim = 40;
+    uint32_t NumBlocks = 40;
 
     GMMTilingData* tilingData = reinterpret_cast<GMMTilingData*>(tiling);
     tilingData->gmmBaseParams.groupNum = E;
-    tilingData->gmmBaseParams.coreNum = blockDim;
+    tilingData->gmmBaseParams.coreNum = NumBlocks;
     tilingData->gmmBaseParams.groupType = 0;
 
     tilingData->gmmArray.mList[0] = 345;
     tilingData->gmmArray.kList[0] = -1;
     tilingData->gmmArray.nList[0] = 567;
 
-    tilingData->mmTilingData.usedCoreNum = blockDim;
+    tilingData->mmTilingData.usedCoreNum = NumBlocks;
     tilingData->mmTilingData.M = 345;
     tilingData->mmTilingData.N = 567;
     tilingData->mmTilingData.Ka = 1280;
@@ -106,7 +106,7 @@ TEST_F(grouped_matmul_test, test_case_fp16)
     tilingData->mmTilingData.dbL0B = true;
     tilingData->mmTilingData.dbL0C = false;
 
-    ICPU_RUN_KF(func, blockDim, x, weight, groupedList, y, y,y,y,y,y,y,  workspace, tiling);
+    ICPU_RUN_KF(func, NumBlocks, x, weight, groupedList, y, y,y,y,y,y,y,  workspace, tiling);
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
@@ -132,11 +132,11 @@ TEST_F(grouped_matmul_test, test_case_fp16)
 
 //     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
 //     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-//     uint32_t blockDim = 40;
+//     uint32_t NumBlocks = 40;
 
 //     GMMTilingData* tilingData = reinterpret_cast<GMMTilingData*>(tiling);
 //     tilingData->gmmBaseParams.groupNum = 2;
-//     tilingData->gmmBaseParams.coreNum = blockDim;
+//     tilingData->gmmBaseParams.coreNum = NumBlocks;
 //     tilingData->gmmBaseParams.groupType = 2;
 
 //     tilingData->gmmArray.mList[0] = 345;
@@ -169,7 +169,7 @@ TEST_F(grouped_matmul_test, test_case_fp16)
 
 
 //     ICPU_SET_TILING_KEY(0);
-//     ICPU_RUN_KF(grouped_matmul, blockDim, x, weight, groupedList, y, y, workspace, tiling);
+//     ICPU_RUN_KF(grouped_matmul, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
 
 //     AscendC::GmFree(x);
 //     AscendC::GmFree(weight);
