@@ -16,8 +16,8 @@
 #ifndef __GROUPED_MATMUL_ADD_NO_QUANT_KERNEL_ACT
 #define __GROUPED_MATMUL_ADD_NO_QUANT_KERNEL_ACT
 
-#include "../../../common/groupedmatmul_act/kernel/kernel_grouped_matmul_add.h"
-#include "../../../common/groupedmatmul_act/block/block_scheduler_grouped_matmul_aswt.h"
+#include "../../../common/cgmct/kernel/kernel_grouped_matmul_add.h"
+#include "../../../common/cgmct/block/block_scheduler_grouped_matmul_aswt.h"
 #include "../grouped_matmul_add.h"
 #include "grouped_matmul_add_tiling_data.h"
 

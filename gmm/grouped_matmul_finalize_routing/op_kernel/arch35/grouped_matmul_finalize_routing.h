@@ -46,7 +46,7 @@ __aicore__ inline void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_
     using LayoutB = layoutB;
     using LayoutC = layout::RowMajorAlign;
     using weightscaleType = AscendC::fp8_e8m0_t;
-    using BiasType = bfloat16_t; 
+    using BiasType = bfloat16_t;
 
 
     using ProblemShape = Cgmct::Gemm::MatmulShape;
