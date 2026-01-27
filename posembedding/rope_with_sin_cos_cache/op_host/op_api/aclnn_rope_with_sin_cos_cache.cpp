@@ -21,7 +21,7 @@
 #include "aclnn_kernels/cast.h"
 #include "aclnn_rope_with_sin_cos_cache.h"
 #include "aclnn_kernels/common/op_error_check.h"
-
+#include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn/aclnn_base.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
@@ -60,7 +60,7 @@ static const std::initializer_list<std::vector<int64_t>> mrope_support_list = {{
 static const std::initializer_list<DataType>& GetSupportDtypeList()
 {
     auto socVersion = GetCurrentPlatformInfo().GetSocVersion();
-    if (socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93) {
+    if (socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93 || Ops::Transformer::AclnnUtil::IsRegbase()) {
         return ASCEND910B_DTYPE_SUPPORT_LIST;
     } else {
         return emptyDtypes;

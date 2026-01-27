@@ -57,8 +57,21 @@ public:
         this->Attr("qStride").AttrType(OPTIONAL).Int(0);
         this->Attr("kStride").AttrType(OPTIONAL).Int(0);
         this->Attr("isNeoxStyle").AttrType(OPTIONAL).Bool(true);
-        this->AICore().AddConfig("ascend910b");
-        this->AICore().AddConfig("ascend910_93");
+        
+        OpAICoreConfig membaseCfg;
+        membaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "rope_with_sin_cos_cache");
+        this->AICore().AddConfig("ascend910b", membaseCfg);
+        this->AICore().AddConfig("ascend910_93", membaseCfg);
+        
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "rope_with_sin_cos_cache_apt");
+        this->AICore().AddConfig("ascend910_95", regbaseCfg);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
         this->AICore().AddConfig("kirinx90", config_kirin);
