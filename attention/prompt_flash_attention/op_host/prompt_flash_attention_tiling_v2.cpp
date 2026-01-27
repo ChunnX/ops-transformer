@@ -123,6 +123,8 @@ constexpr int32_t ROPE_DIMENSION_SIZE_TILING_V2 = 64;
 constexpr int32_t POS_SHIFT_MAX = 1048576; // 2^20
 constexpr int32_t POS_SHIFT_MIN = -1048576; // -2^20
 
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+
 const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> inOutDtypeSupported = {
     {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
     {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16},
@@ -4723,6 +4725,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::DoOpTiling()
     OP_CHECK_IF(ret == ge::GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),return ge::GRAPH_FAILED);
     ret = DoSubOpTiling(tilingData, contextParamsForPFATiling);
     SetTilingKey(contextParamsForPFATiling);
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     OP_LOGI(contextParamsForPFATiling.opName, "All the PFATiling work is done.");
     return ret;
 }
