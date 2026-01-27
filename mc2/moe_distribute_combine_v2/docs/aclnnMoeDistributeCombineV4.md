@@ -702,31 +702,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
 ## 调用示例
 
-<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：类似下文<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>调用示例，其中V4接口相较于V3接口新增的场景参数按上述参数说明传值即可。
-
-- 文件准备：
-  1.新建combineDemo目录，按照下方指导在combineDemo下新建aclnnCombineDemo.cpp，buildCombine.sh，文件并参考如下代码修改。
-
-  2.安装cann包，并根据下方指导编译运行combineDemo。
-
--  编译脚本
-    ```bash
-    #!/bin/bash
-    cann_path="/path/to/cann_env" # 更改cann包环境的路径
-    g++ "aclnnCombineDemo.cpp" -o combineDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
-                        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi_math -lop_common -lpthread -lhccl
-    ```
-- 编译与运行：
-
-    ```bash
-    # source cann环境
-    source /path/to/cann_env/latest/bin/setenv.bash
-
-    # 编译aclnnCombineDemo.cpp
-    bash buildCombine.sh
-
-    ./combineDemo
-    ```
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：请参考[aclnnMoeDistributeCombineV2](../docs/aclnnMoeDistributeCombineV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，其中V4接口相较于V3接口新增的场景参数按上述参数说明传值即可。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
        
