@@ -64,16 +64,16 @@ public:
     template <bool isGmm>
     __aicore__ inline void Init(const TCubeTiling* __restrict &tilingData, uint32_t blockIdx);
     // 每一个group需要更新mm的group偏移和MNK
-    template <bool aTrans, bool bTrans, class xType, class scaleType>
+    template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx);
     template <bool isGmm>
     __aicore__ inline void UpdateGroupParams(); // 每一个group需要更新mm的参数
     __aicore__ inline void UpdateTailTile();
     template <bool isGmm>
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, bool isLastGroupRound);
-    template <bool aTrans, bool bTrans>
+    template <bool aTrans, bool bTrans, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateBlockParams(uint64_t roundIdx, bool isLastGroupRound = true);
-    template <bool aTrans, bool bTrans, class scaleType = AscendC::fp8_e8m0_t>
+    template <bool aTrans, bool bTrans, class scaleType = AscendC::fp8_e8m0_t, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void CalcGMOffset();
     __aicore__ inline void ResetAddressOffsets();
     __aicore__ inline uint32_t GetStartBlockIdx() const;
@@ -123,7 +123,7 @@ __aicore__ inline void QuantASWBlockSch::Init(const TCubeTiling* __restrict &til
     }
 }
 
-template <bool aTrans, bool bTrans, class xType, class scaleType>
+template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFormat>
 __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx)
 {
     // 用初始化或上个group的mm的m,k,n值更新group矩阵的偏移量。group内2维mm。
@@ -133,7 +133,19 @@ __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n,
             params_.bGroupAddrOffset += params_.n * params_.k / 2;
         } else {
             params_.aGroupAddrOffset += params_.m * params_.k;
-            params_.bGroupAddrOffset += params_.n * params_.k;
+            if constexpr (wFormat == CubeFormat::NZ) {
+                if constexpr (bTrans) {
+                    params_.bGroupAddrOffset += QuantUtils::CeilDiv(params_.k, QuantUtils::WEIGHTNZ_K0_32) *
+                                                QuantUtils::CeilDiv(params_.n, QuantUtils::WEIGHTNZ_N0_16) *
+                                                QuantUtils::WEIGHTNZ_N0_K0;
+                } else {
+                    params_.bGroupAddrOffset += QuantUtils::CeilDiv(params_.n, QuantUtils::WEIGHTNZ_N0_32) *
+                                                QuantUtils::CeilDiv(params_.k, QuantUtils::WEIGHTNZ_K0_16) *
+                                                QuantUtils::WEIGHTNZ_N0_K0;
+                }
+            } else {
+                params_.bGroupAddrOffset += params_.n * params_.k;
+            }
         }
         params_.cGroupAddrOffset += params_.m * params_.n;
         if constexpr (QuantUtils::IsMxType<scaleType>()) {
@@ -243,7 +255,7 @@ __aicore__ inline uint32_t QuantASWBlockSch::GetEndBlockIdx() const
     return endBlockIdx_;
 }
 
-template <bool aTrans, bool bTrans>
+template <bool aTrans, bool bTrans, CubeFormat wFormat>
 __aicore__ inline void QuantASWBlockSch::UpdateBlockParams(uint64_t roundIdx, bool isLastGroupRound)
 {
     params_.singleCoreM = params_.mIndex != (params_.mCnt - 1) ? tilingData_->baseM : params_.mBaseTail;
@@ -262,7 +274,12 @@ __aicore__ inline void QuantASWBlockSch::UpdateBlockParams(uint64_t roundIdx, bo
         }
         if constexpr (!bTrans) { // (k, n)
             singleCoreNSplit = QuantUtils::Align(singleCoreNSplit, QuantUtils::INNER_AXIS_MIN_SPLIT_VAL);
+        } else {
+            if constexpr (wFormat == CubeFormat::NZ) {
+                singleCoreNSplit = QuantUtils::Align(singleCoreNSplit, QuantUtils::WEIGHTNZ_N0_16);
+            }
         }
+
         uint64_t totalTailTile = params_.mTailTile * params_.nTailTile;
         uint64_t mSplitIdx = (blockIdx_ % totalTailTile) % params_.mTailTile;
         uint64_t nSplitIdx = (blockIdx_ % totalTailTile) / params_.mTailTile;
@@ -293,7 +310,7 @@ __aicore__ inline void QuantASWBlockSch::ResetAddressOffsets()
     params_.nSplitAddrOffset = 0;
 }
 
-template <bool aTrans, bool bTrans, class scaleType>
+template <bool aTrans, bool bTrans, class scaleType, CubeFormat wFormat>
 __aicore__ inline void QuantASWBlockSch::CalcGMOffset()
 {
     uint64_t mOffset = params_.mIndex * tilingData_->baseM + params_.mSplitAddrOffset;
@@ -304,10 +321,19 @@ __aicore__ inline void QuantASWBlockSch::CalcGMOffset()
         offset_.offsetA = mOffset * params_.k;
     }
 
-    if constexpr (bTrans) {
-        offset_.offsetB = nOffset * params_.k;
+    if constexpr (wFormat == CubeFormat::NZ) {
+        if constexpr (bTrans) {
+            offset_.offsetB = nOffset * QuantUtils::WEIGHTNZ_K0_32;
+        } else {
+            offset_.offsetB =
+                nOffset * QuantUtils::CeilDiv(params_.k, QuantUtils::WEIGHTNZ_K0_16) * QuantUtils::WEIGHTNZ_K0_16;
+        }
     } else {
-        offset_.offsetB = nOffset;
+        if constexpr (bTrans) {
+            offset_.offsetB = nOffset * params_.k;
+        } else {
+            offset_.offsetB = nOffset;
+        }
     }
 
     offset_.offsetC = mOffset * params_.n + nOffset;

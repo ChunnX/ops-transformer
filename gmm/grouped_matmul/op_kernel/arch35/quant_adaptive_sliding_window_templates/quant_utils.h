@@ -37,6 +37,12 @@ constexpr uint8_t SPLIT_K = 2;
 constexpr uint64_t CUBE_BLOCK = 16;
 constexpr uint64_t INNER_AXIS_MIN_SPLIT_VAL = 128; // ND2NZ cacheline 128
 
+constexpr uint32_t WEIGHTNZ_K0_16 = 16;
+constexpr uint32_t WEIGHTNZ_N0_16 = 16;
+constexpr uint32_t WEIGHTNZ_K0_32 = 32;
+constexpr uint32_t WEIGHTNZ_N0_32 = 32;
+constexpr uint32_t WEIGHTNZ_N0_K0 = 512;
+
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t FLAG_ID_MAX = 16;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;

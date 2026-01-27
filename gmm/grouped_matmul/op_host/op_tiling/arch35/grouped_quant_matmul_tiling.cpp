@@ -165,6 +165,40 @@ the dtype of output is FLOAT16, actual is %s.",
     return true;
 }
 
+bool GroupedQbmmTiling::CheckDtypeForWeightNz(bool isPertokenScaleNull) const
+{
+    OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT8 || inputParams_.bDtype != ge::DT_INT8,
+                OP_LOGE(context_->GetNodeName(),
+                        "When the weight is in Nz format, the dtype of x/weight should be INT8, actual is %s, %s.",
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
+                return false);
+    if (!isPertokenScaleNull) {
+        OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format and the pertokenScale should be FLOAT, actual is %s.",
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
+                    return false);
+        OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_BF16 && inputParams_.scaleDtype != ge::DT_FLOAT,
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format and the pertokenScale is FLOAT, the dtype of scale \
+should be in {BF16, FLOAT}, actual is %s.",
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+                    return false);
+    } else {
+        static const std::vector<ge::DataType> legalScaleDtypes = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
+                                                                   ge::DT_BF16};
+        OP_CHECK_IF(std::find(legalScaleDtypes.begin(), legalScaleDtypes.end(), inputParams_.scaleDtype) ==
+                        legalScaleDtypes.end(),
+                    OP_LOGE(inputParams_.opName,
+                            "When the weight is in Nz format and the pertokenScale is None, the dtype of scale should \
+be in {UINT64, INT64, FLOAT, BF16}, actual is %s.",
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+                    return false);
+    }
+    return true;
+}
+
 bool GroupedQbmmTiling::AnalyzeDtype()
 {
     static const std::vector<ge::DataType> legalInputDtypes = {
@@ -203,7 +237,11 @@ FLOAT4_E1M2}, actual is %s.",
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
-
+    isWeightNz_ = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    if (isWeightNz_) {
+        OP_CHECK_IF(!CheckDtypeForWeightNz(nullptr == pertokenScaleDesc),
+                    OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
+    }
     auto yDesc = context_->GetOutputDesc(Y_INDEX);
     OP_CHECK_IF(yDesc == nullptr, OP_LOGE(context_->GetNodeName(), "yDesc is nullptr."), return false);
     inputParams_.cDtype = yDesc->GetDataType();
@@ -389,6 +427,58 @@ bool GroupedQbmmTiling::CheckQuantParams(const gert::StorageShape *xScaleStorage
     return true;
 }
 
+bool GroupedQbmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
+{
+    auto wDimNum = wShape.GetDimNum();
+    OP_CHECK_IF(wDimNum != WEIGHTNZ_DIM_NUM,
+                OP_LOGE(context_->GetNodeName(),
+                        "When the weight is in Nz format, the dimension number should be 5, actual is %zu.", wDimNum),
+                return false);
+    OP_CHECK_IF(wShape[WEIGHTNZ_FIFTH_DIM] != WEIGHTNZ_N0_32,
+                OP_LOGE(context_->GetNodeName(),
+                        "When the weight is in Nz format, the fifth dimension should be 32, actual is %lld.",
+                        wShape[WEIGHTNZ_FIFTH_DIM]),
+                return false);
+    OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_K0_16,
+                OP_LOGE(context_->GetNodeName(),
+                        "When the weight is in Nz format, the forth dimension should be 16, actual is %lld.",
+                        wShape[WEIGHTNZ_FORTH_DIM]),
+                return false);
+    auto wShapeDimThird = static_cast<uint64_t>(wShape[WEIGHTNZ_THIRD_DIM]);
+    auto wShapeDimSecond = static_cast<uint64_t>(wShape[WEIGHTNZ_SECOND_DIM]);
+    if (!inputParams_.transB) {
+        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_16),
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format, the third dimension should be equal to ceil(kSize/16) = \
+%lu, actual is %lu.",
+                            CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_16), wShapeDimThird),
+                    return false);
+        OP_CHECK_IF(wShapeDimSecond != CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_32),
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format, the second dimension should be equal to ceil(nSize/32) = \
+%lu, actual is %lu.",
+                            CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_32), wShapeDimSecond),
+                    return false);
+    } else {
+        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_16),
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format, the third dimension should be equal to ceil(nSize/16) = \
+%lu, actual is %lu.",
+                            CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_16), wShapeDimThird),
+                    return false);
+        OP_CHECK_IF(wShapeDimSecond != CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_32),
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format, the second dimension should be equal to ceil(kSize/32) = \
+%lu, actual is %lu.",
+                            CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_32), wShapeDimSecond),
+                    return false);
+    }
+    OP_CHECK_IF(1 == inputParams_.kSize || 1 == inputParams_.nSize,
+                OP_LOGE(context_->GetNodeName(), "When the weight is in Nz format, nSize or kSize cannot be 1."),
+                return false);
+    return true;
+}
+
 bool GroupedQbmmTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetDynamicInputShape(X_INDEX, 0);
@@ -399,6 +489,7 @@ bool GroupedQbmmTiling::AnalyzeInputs()
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape &weightNzStorageShape = wStorageShape->GetStorageShape();
 
     // 全量化scale必须有值，目前无输出int32等不需要scale的场景
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
@@ -419,6 +510,11 @@ bool GroupedQbmmTiling::AnalyzeInputs()
                OP_LOGE(inputParams_.opName, "SetQuantMode failed."), return false);
     OP_CHECK_IF(!CheckQuantParams(xScaleStorageShape, wScaleShape),
                OP_LOGE(inputParams_.opName, "CheckQuantParams failed."), return false);
+
+    if (isWeightNz_) {
+        OP_CHECK_IF(!CheckShapeForWeightNz(weightNzStorageShape), OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed."),
+                    return false);
+    }
     if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) {
         OP_CHECK_IF(!CheckFp4Shape(), OP_LOGE(inputParams_.opName, "CheckFp4Shape failed."), return false);
         if (inputParams_.hasBias) {

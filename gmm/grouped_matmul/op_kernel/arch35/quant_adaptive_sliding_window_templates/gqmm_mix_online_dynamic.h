@@ -361,7 +361,7 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Pro
         int32_t kSize;
         // 更新group内的输入参数M,N,K
         SetMNK(groupIdx, mSize, nSize, kSize);
-        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType>(mSize, nSize, kSize, groupIdx);
+        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx);
         if (mSize <= 0 || nSize <= 0) {
             continue;
         }
@@ -395,12 +395,12 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Pro
         bool isLastGroupRound = IsLastGroupAndRound(groupIdx, roundIdx);
         block_.template UpdateBasicIndex<true>(roundIdx, isLastGroupRound);
         // 1. Set single core param
-        block_.template UpdateBlockParams<aTrans, bTrans>(roundIdx, isLastGroupRound);
+        block_.template UpdateBlockParams<aTrans, bTrans, wFormat>(roundIdx, isLastGroupRound);
         if (block_.params_.singleCoreM <= 0 || block_.params_.singleCoreN <= 0) {
             return;
         }
         mm.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-        block_.template CalcGMOffset<aTrans, bTrans, scaleType>();
+        block_.template CalcGMOffset<aTrans, bTrans, scaleType, wFormat>();
         if ASCEND_IS_AIC {
             if (isVecSetSyncCom_) {
                 WaitForVector();

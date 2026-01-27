@@ -53,6 +53,19 @@ constexpr uint64_t MXFP_BASEK_FACTOR = 64;
 constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
 constexpr size_t MXFP_TYPE_M_SCALE_DIM_NUM = 4;
 constexpr size_t MXFP_PER_TOKEN_SCALE_DIM_NUM = 3;
+
+constexpr size_t WEIGHTNZ_DIM_NUM = 5;
+constexpr size_t WEIGHTNZ_FIRST_DIM = 0;
+constexpr size_t WEIGHTNZ_SECOND_DIM = 1;
+constexpr size_t WEIGHTNZ_THIRD_DIM = 2;
+constexpr size_t WEIGHTNZ_FORTH_DIM = 3;
+constexpr size_t WEIGHTNZ_FIFTH_DIM = 4;
+
+constexpr uint32_t WEIGHTNZ_K0_16 = 16;
+constexpr uint32_t WEIGHTNZ_N0_16 = 16;
+constexpr uint32_t WEIGHTNZ_K0_32 = 32;
+constexpr uint32_t WEIGHTNZ_N0_32 = 32;
+
 } // namespace GmmConstant
 
 enum class QuantMode : uint32_t {
@@ -187,8 +200,11 @@ private:
     bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape) const;
     bool SetMKNList();
     bool IsBiasInL1() const;
+    bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
+    bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
 
     GroupedMatmulTilingData::GMMQuantTilingData tilingData_;
+    bool isWeightNz_ = false;
 
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
     int32_t kList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};

@@ -85,7 +85,7 @@ protected:
     using bType = typename AscendC::Conditional<
         QuantUtils::IsMxType<scaleType>(),
         matmul::MatmulTypeWithScale<AscendC::TPosition::GM, AscendC::TPosition::GM, CubeFormat::ND, wType, bTrans>,
-        matmul::MatmulType<AscendC::TPosition::GM, CubeFormat::ND, wType, bTrans>>::type;
+        matmul::MatmulType<AscendC::TPosition::GM, wFormat, wType, bTrans>>::type;
     using cType = matmul::MatmulType<AscendC::TPosition::GM, CubeFormat::ND, yType>;
     using biasMatmulType = matmul::MatmulType<AscendC::TPosition::GM, CubeFormat::ND, biasType>;
     using MmType = typename AscendC::Conditional<
@@ -290,7 +290,7 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         int32_t kSize;
         // 更新group内的输入参数M,N,K
         SetMNK(groupIdx, mSize, nSize, kSize);
-        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType>(mSize, nSize, kSize, groupIdx);
+        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx);
         if (mSize <= 0 || kSize <= 0 || nSize <= 0) {
             continue;
         }
@@ -306,12 +306,12 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
             bool isLastGroupRound = IsLastGroupAndRound(groupIdx, roundIdx);
             block_.template UpdateBasicIndex<true>(roundIdx, isLastGroupRound);
             // 1. Set single core param
-            block_.template UpdateBlockParams<aTrans, bTrans>(roundIdx, isLastGroupRound);
+            block_.template UpdateBlockParams<aTrans, bTrans, wFormat>(roundIdx, isLastGroupRound);
             if (block_.params_.singleCoreM <= 0 || block_.params_.singleCoreN <= 0) {
                 continue;
             }
             // 2. compute offset
-            block_.template CalcGMOffset<aTrans, bTrans, scaleType>();
+            block_.template CalcGMOffset<aTrans, bTrans, scaleType, wFormat>();
             // 3. set offset and compute
             SetMMParaAndCompute();
         }
