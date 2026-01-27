@@ -607,62 +607,47 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingCo
 // 检查入参 shape 之间的关系
 ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext* context) const
 {
-    OP_TILING_CHECK(
-        (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr) || (context->GetInputShape(GMM_X_INDEX) == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr) || (context->GetInputShape(GMM_X_INDEX) == nullptr),
+                     OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned nullptr."), return ge::GRAPH_FAILED);
 
     uint64_t gmmWeightH1 = tilingData->commonTilingInfo.isGmmWeightTrans ?
                                context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(NUM_TWO) :
                                context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(1);
     uint64_t gmmXH1 = context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(
-        gmmXH1 != gmmWeightH1,
-        OP_LOGE(
-            A_INNER_DEBUG, "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of gmmWeight(e, H1, N1) !",
-            gmmXH1, gmmWeightH1),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXH1 != gmmWeightH1, OP_LOGE(A_INNER_DEBUG,
+                    "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of gmmWeight(e, H1, N1) !", gmmXH1, gmmWeightH1),
+                    return ge::GRAPH_FAILED);
 
     if (tilingData->commonTilingInfo.isNeedMM) {
         uint64_t mmXH2 = context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape().GetDim(1);
         uint64_t mmWeightH2 = tilingData->commonTilingInfo.isMmWeightTrans ?
                                   context->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(1) :
                                   context->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(
-            mmXH2 != mmWeightH2,
-            OP_LOGE(
-                A_INNER_DEBUG, "The H2 %lu of mmX(BS, H2) should be equal to the H2 %lu of mmWeight(H2, N2)!", mmXH2,
-                mmWeightH2),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmXH2 != mmWeightH2, OP_LOGE(A_INNER_DEBUG,
+                        "The H2 %lu of mmX(BS, H2) should be equal to the H2 %lu of mmWeight(H2, N2)!", mmXH2, mmWeightH2),
+                        return ge::GRAPH_FAILED);
 
         uint64_t mmXBS = context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape().GetDim(0);
         uint64_t mmYBS = context->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(
-            mmXBS != mmYBS,
-            OP_LOGE(
-                A_INNER_DEBUG, "The BS %lu of mmX(BS, H2) should be equal to the BS %lu of mmY(BS, N2)!", mmXBS, mmYBS),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmXBS != mmYBS, OP_LOGE(A_INNER_DEBUG,
+                        "The BS %lu of mmX(BS, H2) should be equal to the BS %lu of mmY(BS, N2)!", mmXBS, mmYBS),
+                        return ge::GRAPH_FAILED);
     }
 
     if (tilingData->commonTilingInfo.isPermuteOut) {
-        OP_TILING_CHECK(
-            (context->GetOutputShape(OUTPUT_GMM_Y_INDEX) == nullptr) ||
-                (context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX) == nullptr),
-            OP_LOGE(A_INNER_DEBUG, "GetPermuteOutputShape GmmY or permuteOut returned null."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((context->GetOutputShape(OUTPUT_GMM_Y_INDEX) == nullptr) ||
+                        (context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX) == nullptr),
+                        OP_LOGE(A_INNER_DEBUG, "GetPermuteOutputShape GmmY or permuteOut returned null."),
+                        return ge::GRAPH_FAILED);
         uint64_t gmmYA = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(0);
         uint64_t permuteA = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(0);
         uint64_t permuteH1 = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(
-            gmmXH1 != permuteH1,
-            OP_LOGE(
-                A_INNER_DEBUG, "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of permuteOut(A, H1)!",
-                gmmXH1, permuteH1),
-            return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(
-            gmmYA != permuteA,
-            OP_LOGE(
-                A_INNER_DEBUG, "The A %lu of gmmY(A, H1) should be equal to the A %lu of permuteOut(A, H1)!", gmmYA,
-                permuteA),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(gmmXH1 != permuteH1, OP_LOGE(A_INNER_DEBUG,
+                        "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of permuteOut(A, H1)!", gmmXH1, permuteH1),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(gmmYA != permuteA, OP_LOGE(A_INNER_DEBUG,
+                        "The A %lu of gmmY(A, H1) should be equal to the A %lu of permuteOut(A, H1)!", gmmYA, permuteA),
+                        return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -714,20 +699,17 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
         OP_LOGE(A_INNER_DEBUG, "GetOutputShape gmmY returned null."), return ge::GRAPH_FAILED);
 
     if (context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDimNum() != NUM_TWO) {
-        OP_LOGE(
-            A_INNER_DEBUG, "The dim of gmmX(BSK, H1) should be 2, but got %lu!",
+        OP_LOGE(A_INNER_DEBUG, "The dim of gmmX(BSK, H1) should be 2, but got %lu!",
             context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
     if (context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDimNum() != NUM_THREE) {
-        OP_LOGE(
-            A_INNER_DEBUG, "The dim of gmmWeight(e, H1, N1) should be 3, but got %lu!",
+        OP_LOGE(A_INNER_DEBUG, "The dim of gmmWeight(e, H1, N1) should be 3, but got %lu!",
             context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
     if (context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDimNum() != NUM_TWO) {
-        OP_LOGE(
-            A_INNER_DEBUG, "The dim of gmmY(A, N1) should be 2, but got %lu!",
+        OP_LOGE(A_INNER_DEBUG, "The dim of gmmY(A, N1) should be 2, but got %lu!",
             context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
@@ -748,8 +730,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
             return ge::GRAPH_FAILED;
         }
         if (context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDimNum() != NUM_TWO) {
-            OP_LOGE(
-                A_INNER_DEBUG, "The dim of permuteOut(A, H1) should be 2, but got %lu!",
+            OP_LOGE(A_INNER_DEBUG, "The dim of permuteOut(A, H1) should be 2, but got %lu!",
                 context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDimNum());
             return ge::GRAPH_FAILED;
         }

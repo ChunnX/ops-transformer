@@ -100,8 +100,90 @@ static graphStatus CheckDimsOptional(const gert::InferShapeContext* context, con
                                             "Dim of x and dim of mmWeight do not match for MatMul");
         result = ge::GRAPH_FAILED;
     }
-
     return result;
+}
+
+static ge::graphStatus InferGMMOutputShape(
+    const gert::InferShapeContext* context,
+    gert::Shape* gmmYShape,
+    const int64_t* epWorldSizePtr,
+    const gert::ContinuousVector* recvCountsPtr,
+    const gert::ContinuousVector* sendCountsPtr,
+    const int64_t e, int64_t& a, const int64_t n1)
+{
+    gmmYShape->SetDimNum(DIM_NUM_2);
+    gmmYShape->SetDim(DIM_0, FIRST_ELE_SIZE);
+    gmmYShape->SetDim(DIM_1, FIRST_ELE_SIZE);
+    if (e != FIRST_ELE_SIZE) {
+        int64_t arraySize = e * (*epWorldSizePtr);
+        OPS_ERR_IF(recvCountsPtr->GetSize() < static_cast<size_t>(arraySize),
+                   VECTOR_INFER_SHAPE_INNER_ERR_REPORT
+                   (context->GetNodeName(), "recvCounts size should not be smaller than e * epWorldSize."),
+                   return ge::GRAPH_FAILED);
+        OPS_ERR_IF(sendCountsPtr->GetSize() < static_cast<size_t>(arraySize),
+                   VECTOR_INFER_SHAPE_INNER_ERR_REPORT
+                   (context->GetNodeName(), "sendCounts size should not be smaller than e * epWorldSize."),
+                   return ge::GRAPH_FAILED);
+        for (int64_t i = 0; i < arraySize; i++) {
+            a += static_cast<const int64_t*>(recvCountsPtr->GetData())[i];
+        }
+        gmmYShape->SetDim(DIM_0, a);
+        gmmYShape->SetDim(DIM_1, n1);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus InferMMOutputShape(
+    const gert::InferShapeContext* context,
+    const gert::Shape* mmXShape,
+    const gert::Shape* mmWeightShape,
+    const bool* transMmWeightPtr,
+    gert::Shape* mmYShape)
+{
+    OPS_ERR_IF(mmYShape == nullptr,
+               VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "the shape of output mm_y is nullptr."),
+               return ge::GRAPH_FAILED);
+    mmYShape->SetDimNum(DIM_NUM_0);
+    if ((mmXShape != nullptr) && (mmWeightShape != nullptr) && (mmYShape != nullptr) && (transMmWeightPtr != nullptr)) {
+        OPS_ERR_IF(CheckDimsOptional(context, mmXShape, mmWeightShape, *transMmWeightPtr) != ge::GRAPH_SUCCESS,
+                   VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckDimsOptional failed."),
+                   return ge::GRAPH_FAILED);
+        int64_t bs = mmXShape->GetDim(DIM_0);
+        mmYShape->SetDimNum(DIM_NUM_2);
+        mmYShape->SetDim(DIM_0, FIRST_ELE_SIZE);
+        mmYShape->SetDim(DIM_1, FIRST_ELE_SIZE);
+        if (bs != FIRST_ELE_SIZE) {
+            int64_t n2 = *transMmWeightPtr ? mmWeightShape->GetDim(DIM_0) : mmWeightShape->GetDim(DIM_1);
+            mmYShape->SetDimNum(DIM_NUM_2);
+            mmYShape->SetDim(DIM_0, bs);
+            mmYShape->SetDim(DIM_1, n2);
+        }
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus InferPermuteOutputShape(
+    const gert::InferShapeContext* context,
+    const bool* permuteOutFlagPtr,
+    const int64_t e, const int64_t a, const int64_t h,
+    gert::Shape* permuteOutShape)
+{
+    OPS_ERR_IF(permuteOutShape == nullptr,
+               VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "the shape of output permute_out is nullptr."),
+               return ge::GRAPH_FAILED);
+    permuteOutShape->SetDimNum(DIM_NUM_0);
+    if ((permuteOutShape != nullptr) && (permuteOutFlagPtr != nullptr) && (*permuteOutFlagPtr == true)) {
+        permuteOutShape->SetDimNum(DIM_NUM_2);
+        permuteOutShape->SetDim(DIM_0, FIRST_ELE_SIZE);
+        permuteOutShape->SetDim(DIM_1, FIRST_ELE_SIZE);
+        if (e != FIRST_ELE_SIZE) {
+            permuteOutShape->SetDim(DIM_0, a);
+            permuteOutShape->SetDim(DIM_1, h);
+        }
+    }
+
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext* context)
@@ -130,67 +212,28 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext*
     OPS_CHECK_NULL_WITH_CONTEXT(context, sendCountsPtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, transGmmWeightPtr);
     OPS_ERR_IF(CheckDims(context, gmmXShape, gmmWeightShape, *transGmmWeightPtr) != ge::GRAPH_SUCCESS,
-             VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckDims failed."), return ge::GRAPH_FAILED);
+               VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckDims failed."), return ge::GRAPH_FAILED);
 
-    int64_t E = gmmWeightShape->GetDim(DIM_0);
-    int64_t A = 0;
-    int64_t H = gmmXShape->GetDim(DIM_1);
-    int64_t N1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
+    int64_t e = gmmWeightShape->GetDim(DIM_0);
+    int64_t a = 0;
+    int64_t h = gmmXShape->GetDim(DIM_1);
+    int64_t n1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
     
-    gmmYShape->SetDimNum(DIM_NUM_2);
-    gmmYShape->SetDim(DIM_0, FIRST_ELE_SIZE);
-    gmmYShape->SetDim(DIM_1, FIRST_ELE_SIZE);
-    if (E != FIRST_ELE_SIZE) {
-        int64_t arraySize = E * *epWorldSizePtr;
-        OPS_ERR_IF(recvCountsPtr->GetSize() < static_cast<size_t>(arraySize),
-                 VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                                                     "recvCounts size should not be smaller than E * epWorldSize."),
-                 return ge::GRAPH_FAILED);
-        OPS_ERR_IF(sendCountsPtr->GetSize() < static_cast<size_t>(arraySize),
-                 VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                                                     "sendCounts size should not be smaller than E * epWorldSize."),
-                 return ge::GRAPH_FAILED);
-        for (int64_t i = 0; i < arraySize; i++) {
-            A += static_cast<const int64_t*>(recvCountsPtr->GetData())[i];
-        }
-        gmmYShape->SetDim(DIM_0, A);
-        gmmYShape->SetDim(DIM_1, N1);
+    ge::graphStatus ret = InferGMMOutputShape(context, gmmYShape, epWorldSizePtr,
+                                              recvCountsPtr, sendCountsPtr, e, a, n1);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
     }
 
-    OPS_ERR_IF(mmYShape == nullptr,
-            VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "the shape of output mm_y is nullptr."),
-            return ge::GRAPH_FAILED);
-    mmYShape->SetDimNum(DIM_NUM_0);
-    if (mmXShape != nullptr && mmWeightShape != nullptr && mmYShape != nullptr && transMmWeightPtr != nullptr) {
-        OPS_ERR_IF(CheckDimsOptional(context, mmXShape, mmWeightShape, *transMmWeightPtr) != ge::GRAPH_SUCCESS,
-                 VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckDimsOptional failed."),
-                 return ge::GRAPH_FAILED);
-        int64_t BS = mmXShape->GetDim(DIM_0);
-        mmYShape->SetDimNum(DIM_NUM_2);
-        mmYShape->SetDim(DIM_0, FIRST_ELE_SIZE);
-        mmYShape->SetDim(DIM_1, FIRST_ELE_SIZE);
-        if (BS != FIRST_ELE_SIZE) {
-            int64_t N2 = *transMmWeightPtr ? mmWeightShape->GetDim(DIM_0) : mmWeightShape->GetDim(DIM_1);
-            mmYShape->SetDimNum(DIM_NUM_2);
-            mmYShape->SetDim(DIM_0, BS);
-            mmYShape->SetDim(DIM_1, N2);
-        }
+    ret = InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
     }
 
-    OPS_ERR_IF(permuteOutShape == nullptr,
-            VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "the shape of output permute_out is nullptr."),
-            return ge::GRAPH_FAILED);
-    permuteOutShape->SetDimNum(DIM_NUM_0);
-    if (permuteOutShape != nullptr && permuteOutFlagPtr != nullptr && *permuteOutFlagPtr == true) {
-        permuteOutShape->SetDimNum(DIM_NUM_2);
-        permuteOutShape->SetDim(DIM_0, FIRST_ELE_SIZE);
-        permuteOutShape->SetDim(DIM_1, FIRST_ELE_SIZE);
-        if (E != FIRST_ELE_SIZE) {
-            permuteOutShape->SetDim(DIM_0, A);
-            permuteOutShape->SetDim(DIM_1, H);
-        }
+    ret = InferPermuteOutputShape(context, permuteOutFlagPtr, e, a, h, permuteOutShape);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
     }
-
     return ge::GRAPH_SUCCESS;
 }
 

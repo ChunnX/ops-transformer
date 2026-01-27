@@ -223,29 +223,22 @@ static bool CheckDimRelationship(
     return true;
 }
 
-static bool CheckSendCntAndRecvCnt(
-    const gert::RuntimeAttrs* attrs, int64_t BsK, int64_t A, int64_t H, int64_t eExpert, int64_t epWorldSize, 
+static bool CheckRecvCnt(
+    const gert::RuntimeAttrs* attrs, 
+    int64_t BsK, int64_t H, int64_t eExpert, int64_t epWorldSize,
     gert::TilingContext* context)
 {
     auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
     size_t recvSize = recvCountsPtr->GetSize();
     const int64_t* recvArray = static_cast<const int64_t*>(recvCountsPtr->GetData());
-    size_t sendSize = sendCountsPtr->GetSize();
-    const int64_t* sendArray = static_cast<const int64_t*>(sendCountsPtr->GetData());
     OP_TILING_CHECK(
         static_cast<int64_t>(recvSize) != epWorldSize * eExpert,
         OP_LOGE(
-            C_INNER_DEBUG, "The length of recvCnts[%lu] should be equal to eExpert * epworldSize[%ld]", recvSize,
-            epWorldSize * eExpert),
+            C_INNER_DEBUG, 
+            "The length of recvCnts[%lu] should be equal to eExpert * epworldSize[%ld]"
+            "Got: epWorldSize = %ld, eExpert = %ld", 
+            recvSize, epWorldSize * eExpert, epWorldSize, eExpert),
         return false);
-    OP_TILING_CHECK(
-        static_cast<int64_t>(sendSize) != epWorldSize * eExpert,
-        OP_LOGE(
-            C_INNER_DEBUG, "The length of sendCnts[%lu] should be equal to eExpert * epworldSize[%ld]", sendSize,
-            epWorldSize * eExpert),
-        return false);
-
     int64_t recvSum = 0;
     for (uint64_t i = 0; i < recvSize; i++) {
         recvSum += recvArray[i];
@@ -254,31 +247,17 @@ static bool CheckSendCntAndRecvCnt(
         BsK != recvSum, OP_LOGE(C_INNER_DEBUG, "BsK[%ld] should be equal to the sum of recvCounts[%ld]!", BsK, recvSum),
         return false);
 
-    int64_t sendSum = 0;
-    for (uint64_t i = 0; i < sendSize; i++) {
-        sendSum += sendArray[i];
-    }
-    OP_TILING_CHECK(
-        A != sendSum, OP_LOGE(C_INNER_DEBUG, "A[%ld] should be equal to the sum of sendCounts[%ld]!", A, sendSum),
-        return false);
-
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_93) {
         for (int64_t i = 1; i <= epWorldSize; i++) {
             recvSum = 0;
-            sendSum = 0;
             for (int64_t j = (i - 1) * eExpert; j <= i * eExpert - 1; j++) {
-                OP_TILING_CHECK(
-                    (sendArray[j] < NUM_ZERO) || (sendArray[j] > A),
-                    OP_LOGE(C_INNER_DEBUG, "sendCounts[%ld] should be in [0, a[%ld]], but get %ld",j, A, sendArray[j]),
-                    return false);
                 OP_TILING_CHECK(
                     (recvArray[j] < NUM_ZERO) || (recvArray[j] > BsK),
                     OP_LOGE(C_INNER_DEBUG, "recvCounts[%ld] should be in [0, bsK[%ld]], but get %ld",j, BsK, recvArray[j]),
                     return false);
                 recvSum += recvArray[j] * H;
-                sendSum += sendArray[j] * H;
             }
             OP_TILING_CHECK(recvSum < RECV_SEND_MIN,
                 OP_LOGE(
@@ -287,6 +266,47 @@ static bool CheckSendCntAndRecvCnt(
                     "but got %ld Byte!",
                     i - 1, (i - 1) * eExpert, i * eExpert - 1, 2 * recvSum),
                 return false);
+        }
+    }
+    return true;
+}
+
+static bool CheckSendCnt(
+    const gert::RuntimeAttrs* attrs, 
+    int64_t A,  int64_t H, int64_t eExpert, int64_t epWorldSize,
+    gert::TilingContext* context)
+{
+    auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
+    size_t sendSize = sendCountsPtr->GetSize();
+    const int64_t* sendArray = static_cast<const int64_t*>(sendCountsPtr->GetData());
+    OP_TILING_CHECK(
+        static_cast<int64_t>(sendSize) != epWorldSize * eExpert,
+        OP_LOGE(
+            C_INNER_DEBUG,
+            "The length of sendCnts[%lu] should be equal to eExpert * epworldSize[%ld]"
+            "Got: epWorldSize = %ld, eExpert = %ld", 
+            sendSize, epWorldSize * eExpert, epWorldSize, eExpert),
+        return false);
+    int64_t sendSum = 0;
+    for (uint64_t i = 0; i < sendSize; i++) {
+        sendSum += sendArray[i];
+    }
+    OP_TILING_CHECK(
+        A != sendSum, OP_LOGE(C_INNER_DEBUG, "A[%ld] should be equal to the sum of sendCounts[%ld]!", A, sendSum),
+        return false);
+    
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_93) {
+        for (int64_t i = 1; i <= epWorldSize; i++) {
+            sendSum = 0;
+            for (int64_t j = (i - 1) * eExpert; j <= i * eExpert - 1; j++) {
+                OP_TILING_CHECK(
+                    (sendArray[j] < NUM_ZERO) || (sendArray[j] > A),
+                    OP_LOGE(C_INNER_DEBUG, "sendCounts[%ld] should be in [0, a[%ld]], but get %ld",j, A, sendArray[j]),
+                    return false);
+                sendSum += sendArray[j] * H;
+            }
             OP_TILING_CHECK(sendSum < RECV_SEND_MIN,
                 OP_LOGE(
                     C_INNER_DEBUG,
@@ -299,14 +319,23 @@ static bool CheckSendCntAndRecvCnt(
     return true;
 }
 
-static bool CheckDimValue(
-    GroupedMatMulAlltoAllvTilingData* tilingData, const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
-    const gert::StorageShape* mmX, const gert::StorageShape* mmWeight, const gert::StorageShape* y,
-    const gert::StorageShape* mmY, const gert::RuntimeAttrs* attrs, gert::TilingContext* context)
+static bool CheckSendCntAndRecvCnt(
+    const gert::RuntimeAttrs* attrs, int64_t BsK, int64_t A, int64_t H, int64_t eExpert, int64_t epWorldSize,
+    gert::TilingContext* context)
 {
-    (void)mmY; // Unused
-    auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
+    if (!CheckRecvCnt(attrs, BsK, H, eExpert, epWorldSize, context)) {
+        return false;
+    }
+    if (!CheckSendCnt(attrs, A, H, eExpert, epWorldSize, context)) {
+        return false;
+    }
+    return true;
+}
+
+static bool CheckCommunicationConfig(
+    const gert::ContinuousVector* recvCountsPtr,
+    const gert::ContinuousVector* sendCountsPtr)
+{
     size_t recvSize = recvCountsPtr->GetSize();
     size_t sendSize = sendCountsPtr->GetSize();
     OP_TILING_CHECK(
@@ -315,34 +344,49 @@ static bool CheckDimValue(
     OP_TILING_CHECK(
         sendSize <= 0 || sendSize > MAX_EXPERT_NUM,
         OP_LOGE(C_INNER_DEBUG, "The length of sendCnts[%lu] should be in (0, 256]", sendSize), return false);
+    return true;
+}
 
-    int64_t A = gmmX->GetStorageShape().GetDim(0);
-    int64_t H = gmmX->GetStorageShape().GetDim(1);
-    int64_t E_ep = gmmWeight->GetStorageShape().GetDim(0);
-    int64_t N1 = tilingData->commonTilingInfo.isGmmWeightTrans ? gmmWeight->GetStorageShape().GetDim(1) :
+static bool CheckCoreDimensionsAndCommunication(
+    GroupedMatMulAlltoAllvTilingData* tilingData,
+    const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
+    const gert::StorageShape* y,
+    const gert::RuntimeAttrs* attrs, gert::TilingContext* context)
+{
+    int64_t a = gmmX->GetStorageShape().GetDim(0);
+    int64_t h = gmmX->GetStorageShape().GetDim(1);
+    int64_t eEp = gmmWeight->GetStorageShape().GetDim(0);
+    int64_t n1 = tilingData->commonTilingInfo.isGmmWeightTrans ? gmmWeight->GetStorageShape().GetDim(1) :
                                                                  gmmWeight->GetStorageShape().GetDim(INDEX_TWO);
 
-    int64_t BsK = y->GetStorageShape().GetDim(0);
+    int64_t bsk = y->GetStorageShape().GetDim(0);
     int64_t epWorldSize = static_cast<int64_t>(tilingData->commonTilingInfo.epWorldSize);
 
     OP_TILING_CHECK(
-        (BsK <= NUM_ZERO || BsK >= MAX_BSK_VALUE), OP_LOGE(C_INNER_DEBUG, "BsK[%ld] should be in (0, 52428800)!", BsK),
+        (bsk <= NUM_ZERO || bsk >= MAX_BSK_VALUE), OP_LOGE(C_INNER_DEBUG, "BsK[%ld] should be in (0, 52428800)!", bsk),
         return false);
     OP_TILING_CHECK(
-        (H <= NUM_ZERO || H >= MAX_DIM_VALUE), OP_LOGE(C_INNER_DEBUG, "H1[%ld] should be in (0, 65536)!", H),
+        (h <= NUM_ZERO || h >= MAX_DIM_VALUE), OP_LOGE(C_INNER_DEBUG, "H1[%ld] should be in (0, 65536)!", h),
         return false);
     OP_TILING_CHECK(
-        (N1 <= NUM_ZERO || N1 >= MAX_DIM_VALUE), OP_LOGE(C_INNER_DEBUG, "N1[%ld] should be in (0, 65536)!", N1),
+        (n1 <= NUM_ZERO || n1 >= MAX_DIM_VALUE), OP_LOGE(C_INNER_DEBUG, "N1[%ld] should be in (0, 65536)!", n1),
         return false);
 
     OP_TILING_CHECK(
-        (E_ep <= NUM_ZERO || E_ep > MAX_EXPERT_NUM_PER_RANK),
-        OP_LOGE(C_INNER_DEBUG, "E_ep[%ld] should be in (0, 32]!", E_ep), return false);
+        (eEp <= NUM_ZERO || eEp > MAX_EXPERT_NUM_PER_RANK),
+        OP_LOGE(C_INNER_DEBUG, "E_ep[%ld] should be in (0, 32]!", eEp), return false);
 
     OP_TILING_CHECK(
-        !CheckSendCntAndRecvCnt(attrs, BsK, A, H, E_ep, epWorldSize, context),
+        !CheckSendCntAndRecvCnt(attrs, bsk, a, h, eEp, epWorldSize, context),
         OP_LOGE(C_INNER_DEBUG, "CheckSendCntAndRecvCnt failed!"), return false);
+    return true;
+}
+
+static bool CheckEpWorldSizeConstraints(
+    GroupedMatMulAlltoAllvTilingData* tilingData, gert::TilingContext* context)
+{
     std::vector<int64_t> epWorldSizeOptional;
+    int64_t epWorldSize = static_cast<int64_t>(tilingData->commonTilingInfo.epWorldSize);
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     epWorldSizeOptional = {8, 16, 32, 64, 128}; // A3限制epWorldSize为{8，16，32，64, 128}
@@ -353,18 +397,32 @@ static bool CheckDimValue(
     OP_TILING_CHECK(
         std::find(epWorldSizeOptional.begin(), epWorldSizeOptional.end(), epWorldSize) == epWorldSizeOptional.end(),
         OP_LOGE(C_INNER_DEBUG, "epWorldSize[%ld] should be %s!", epWorldSize, epWorldSizeNum.c_str()), return false);
+    return true;
+}
 
-    tilingData->commonTilingInfo.BsK = static_cast<uint64_t>(BsK);
-    tilingData->commonTilingInfo.H = static_cast<uint64_t>(H);
-    tilingData->commonTilingInfo.A = static_cast<uint64_t>(A);
-    tilingData->commonTilingInfo.N1 = static_cast<uint64_t>(N1);
-    tilingData->commonTilingInfo.E_ep = static_cast<uint64_t>(E_ep);
+static bool SetupTilingDataFromValidatedDims(
+    GroupedMatMulAlltoAllvTilingData* tilingData, const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
+    const gert::StorageShape* mmX, const gert::StorageShape* mmWeight, const gert::StorageShape* y)
+{
+    int64_t a = gmmX->GetStorageShape().GetDim(0);
+    int64_t h = gmmX->GetStorageShape().GetDim(1);
+    int64_t eEp = gmmWeight->GetStorageShape().GetDim(0);
+    int64_t n1 = tilingData->commonTilingInfo.isGmmWeightTrans ? gmmWeight->GetStorageShape().GetDim(1) :
+                                                                 gmmWeight->GetStorageShape().GetDim(INDEX_TWO);
+
+    int64_t bsk = y->GetStorageShape().GetDim(0);
+
+    tilingData->commonTilingInfo.BsK = static_cast<uint64_t>(bsk);
+    tilingData->commonTilingInfo.H = static_cast<uint64_t>(h);
+    tilingData->commonTilingInfo.A = static_cast<uint64_t>(a);
+    tilingData->commonTilingInfo.N1 = static_cast<uint64_t>(n1);
+    tilingData->commonTilingInfo.E_ep = static_cast<uint64_t>(eEp);
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         int64_t bs = mmX->GetStorageShape().GetDim(0);
         int64_t sharedH = mmX->GetStorageShape().GetDim(1);
         int64_t n2 = tilingData->commonTilingInfo.isMmWeightTrans ? mmWeight->GetStorageShape().GetDim(0) :
                                                                     mmWeight->GetStorageShape().GetDim(1);
-        int64_t k = BsK / bs;
+        int64_t k = (bs != 0) ? bsk / bs : 0;
         OP_TILING_CHECK(
             (bs <= NUM_ZERO), OP_LOGE(C_INNER_DEBUG, "bs[%ld] should be larger than 0!", bs),
             return false);
@@ -380,13 +438,37 @@ static bool CheckDimValue(
         tilingData->commonTilingInfo.sharedMatmulH = static_cast<uint64_t>(sharedH);
         tilingData->commonTilingInfo.N2 = static_cast<uint64_t>(n2);
     }
+    return true;
+}
+
+static bool CheckDimValue(
+    GroupedMatMulAlltoAllvTilingData* tilingData, const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
+    const gert::StorageShape* mmX, const gert::StorageShape* mmWeight, const gert::StorageShape* y,
+    const gert::StorageShape* mmY, const gert::RuntimeAttrs* attrs, gert::TilingContext* context)
+{
+    (void)mmY; // Unused
+    auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
+    auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
+    
+    if (!CheckCommunicationConfig(recvCountsPtr, sendCountsPtr)) {
+        return false;
+    }
+    if (!CheckCoreDimensionsAndCommunication(tilingData, gmmX, gmmWeight, y, attrs, context)) {
+        return false;
+    }
+    if (!CheckEpWorldSizeConstraints(tilingData, context)) {
+        return false;
+    }
+    if (!SetupTilingDataFromValidatedDims(tilingData, gmmX, gmmWeight, mmX, mmWeight, y)) {
+        return false;
+    }
+
     std::copy_n(
         static_cast<const int64_t*>(recvCountsPtr->GetData()), recvCountsPtr->GetSize(),
         tilingData->aicpuTilingInfo.recvCnt);
     std::copy_n(
         static_cast<const int64_t*>(sendCountsPtr->GetData()), sendCountsPtr->GetSize(),
         tilingData->aicpuTilingInfo.sendCnt);
-
     return true;
 }
 
@@ -476,6 +558,72 @@ static bool CheckAndSetAttrs(const gert::TilingContext* context, GroupedMatMulAl
     return true;
 }
 
+static bool CkeckInput(
+    GroupedMatMulAlltoAllvTilingData* tilingData,
+    const gert::StorageShape* gmmXStorageShape,
+    const gert::StorageShape* gmmWeightStorageShape,
+    const gert::StorageShape* sendCountsTensorStorageShape,
+    const gert::StorageShape* recvCountsTensorStorageShape)
+{
+    // 在aclnn侧有拦截
+    OP_TILING_CHECK(gmmXStorageShape == nullptr, OP_LOGE(C_INNER_DEBUG, "gmmXStorageShape is null!"), return false);
+    OP_TILING_CHECK(
+        gmmWeightStorageShape == nullptr, OP_LOGE(C_INNER_DEBUG, "gmmWeightStorageShape is null!"), return false);
+
+    // 暂时拦截
+    if (sendCountsTensorStorageShape != nullptr || recvCountsTensorStorageShape != nullptr) {
+        OP_LOGE(C_INNER_DEBUG, "sendCountsTensor and recvCountsTensor should all be nullptr now!");
+        return false;
+    }
+    if (sendCountsTensorStorageShape != nullptr && recvCountsTensorStorageShape != nullptr) {
+        tilingData->commonTilingInfo.isOptionalSendRecvCountTensors = true;
+    } else {
+        tilingData->commonTilingInfo.isOptionalSendRecvCountTensors = false;
+    }
+
+    return true;
+}
+
+static bool CkeckOutput(
+    GroupedMatMulAlltoAllvTilingData* tilingData,
+    const gert::StorageShape* mmXStorageShape,
+    const gert::StorageShape* mmWeightStorageShape,
+    const gert::StorageShape* outputYStorageShape,
+    const gert::StorageShape* outputMmYStorageShape)
+{
+    OP_TILING_CHECK(
+        outputYStorageShape == nullptr, OP_LOGE(C_INNER_DEBUG, "outputYStorageShape is null!"), return false);
+
+    bool isMmXStorageShapeNull = (mmXStorageShape == nullptr);
+    bool isMmWeightStorageShapeNull = (mmWeightStorageShape == nullptr);
+    bool isOutputMmYStorageShapeNull = (outputMmYStorageShape == nullptr);
+    bool isOutputMmYStorageShapeValidDim = ((!isOutputMmYStorageShapeNull) && 
+                                            (outputMmYStorageShape->GetStorageShape().GetDimNum() != NUM_ZERO));
+
+    // 拦截条件一：三者都为nullptr，或者 outputMmYStorageShape 不为 nullptr 但维度为 0
+    bool allNull = isMmXStorageShapeNull && isMmWeightStorageShapeNull && 
+                   (isOutputMmYStorageShapeNull || (!isOutputMmYStorageShapeValidDim));
+    // 拦截条件二：三者都不为nullptr，且 outputMmYStorageShape 的维度不为 0
+    bool allNotNull = !isMmXStorageShapeNull && !isMmWeightStorageShapeNull && 
+                      !isOutputMmYStorageShapeNull && isOutputMmYStorageShapeValidDim;
+
+    if (!(allNull || allNotNull)) {
+        OP_LOGE(C_INNER_DEBUG, 
+                "mmX, mmWeight and mmY should all be nullptr or all be not nullptr!"
+                "mmXStorageShape is %s, mmWeightStorageShape is %s, outputMmYStorageShape is %s"
+                "outputMmY dim num = %s",
+                isMmXStorageShapeNull ? "null" : "not null",
+                isMmWeightStorageShapeNull ? "null" : "not null",
+                isOutputMmYStorageShapeNull ? "null" : "not null",
+                isOutputMmYStorageShapeNull ? "N/A" : (isOutputMmYStorageShapeValidDim ? "valid" : "zero dim"));
+        return false;
+    }
+
+    tilingData->commonTilingInfo.isOptionalMatmul = (mmXStorageShape != nullptr);
+
+    return true;
+}
+
 static bool CheckInputAndOutput(gert::TilingContext* context, GroupedMatMulAlltoAllvTilingData* tilingData)
 {
     auto attrs = context->GetAttrs();
@@ -491,32 +639,13 @@ static bool CheckInputAndOutput(gert::TilingContext* context, GroupedMatMulAllto
     const gert::StorageShape* outputYStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
     const gert::StorageShape* outputMmYStorageShape = context->GetOutputShape(OUTPUT_MM_Y_OPTIONAL_INDEX);
 
-    // 在aclnn侧有拦截
-    OP_TILING_CHECK(gmmXStorageShape == nullptr, OP_LOGE(C_INNER_DEBUG, "gmmXStorageShape is null!"), return false);
-    OP_TILING_CHECK(
-        gmmWeightStorageShape == nullptr, OP_LOGE(C_INNER_DEBUG, "gmmWeightStorageShape is null!"), return false);
-    OP_TILING_CHECK(
-        outputYStorageShape == nullptr, OP_LOGE(C_INNER_DEBUG, "outputYStorageShape is null!"), return false);
-
-    // 暂时拦截
-    if (sendCountsTensorStorageShape != nullptr || recvCountsTensorStorageShape != nullptr) {
-        OP_LOGE(C_INNER_DEBUG, "sendCountsTensor and recvCountsTensor should all be nullptr now!");
+    if (!CkeckInput(tilingData, gmmXStorageShape, gmmWeightStorageShape,
+                    sendCountsTensorStorageShape, recvCountsTensorStorageShape)) {
         return false;
     }
-    if (sendCountsTensorStorageShape != nullptr && recvCountsTensorStorageShape != nullptr) {
-        tilingData->commonTilingInfo.isOptionalSendRecvCountTensors = true;
-    } else {
-        tilingData->commonTilingInfo.isOptionalSendRecvCountTensors = false;
-    }
-
-    if (!((mmXStorageShape == nullptr) && (mmWeightStorageShape == nullptr) &&
-          (outputMmYStorageShape == nullptr || outputMmYStorageShape->GetStorageShape().GetDimNum() == NUM_ZERO)) &&
-        !((mmXStorageShape != nullptr) && (mmWeightStorageShape != nullptr) &&
-          (outputMmYStorageShape != nullptr && outputMmYStorageShape->GetStorageShape().GetDimNum() != NUM_ZERO))) {
-        OP_LOGE(C_INNER_DEBUG, "mmX, mmWeight and mmY should all be nullptr or all be not nullptr!");
+    if (!CkeckOutput(tilingData, mmXStorageShape, mmWeightStorageShape, outputYStorageShape, outputMmYStorageShape)) {
         return false;
     }
-    tilingData->commonTilingInfo.isOptionalMatmul = (mmXStorageShape != nullptr);
 
     OP_TILING_CHECK(!CheckDtype(context, tilingData), OP_LOGE(C_INNER_DEBUG, "CheckDtype failed!"), return false);
 
