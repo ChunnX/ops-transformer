@@ -343,6 +343,8 @@ ge::graphStatus MoeInitRountingTilingBase::PostTiling()
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
     context_->SetLocalMemorySize(aicoreParams_.ubSize);
+    // 涉及核间同步的算子必须设置schedule_mode为1，独占全核
+    context_->SetScheduleMode(1);
     moeInitRoutingTilingData.SaveToBuffer(
         context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(moeInitRoutingTilingData.GetDataSize());

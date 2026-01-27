@@ -109,6 +109,20 @@ static bool CheckShapeValid(const aclTensor* routingMap, const aclTensor* probsO
                 ACLNN_ERR_PARAM_INVALID, "The dimensions of probs should be two, but got %ld.",
                 static_cast<int64_t>(probsDimNum)),
             return false);
+        OP_CHECK(
+            probsOptional->GetViewShape().GetDim(1) == routingMap->GetViewShape().GetDim(1),
+            OP_LOGE(
+                ACLNN_ERR_PARAM_INVALID, "The dim 1 of probs %ld should be same with routingMap's dim 0 %ld.",
+                static_cast<int64_t>(probsOptional->GetViewShape().GetDim(1)),
+                static_cast<int64_t>(routingMap->GetViewShape().GetDim(1))),
+            return false);
+        OP_CHECK(
+            probsOptional->GetViewShape().GetDim(0) == routingMap->GetViewShape().GetDim(0),
+            OP_LOGE(
+                ACLNN_ERR_PARAM_INVALID, "The dim 0 of probs %ld should be same with routingMap's dim 0 %ld.",
+                static_cast<int64_t>(probsOptional->GetViewShape().GetDim(0)),
+                static_cast<int64_t>(routingMap->GetViewShape().GetDim(0))),
+            return false);
     }
 
     return true;
@@ -207,7 +221,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     // 空Tensor处理
-    if (routingMap->IsEmpty() || permuteTokensOut->IsEmpty()) {
+    if (routingMap->IsEmpty()) {
         *workspaceSize = uniqueExecutor->GetWorkspaceSize();
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
@@ -246,9 +260,14 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
     auto sortedIndicesResult = l0op::ViewCopy(sortedIndicesOpOut, sortedIndicesOut, uniqueExecutor.get());
     CHECK_RET(sortedIndicesResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    CHECK_RET(ProbsOptionalHandler(probsOptional,  MoeTokenPermuteWithRoutingMapOut[1], permuteProbsOutOptional,
-                                   uniqueExecutor.get()) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+    if (probsOptional != nullptr) {
+        auto permuteProbsOpOut = MoeTokenPermuteWithRoutingMapOut[1];
+        CHECK_RET(permuteProbsOpOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+        // 如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
+        auto permuteProbsResult = l0op::ViewCopy(permuteProbsOpOut, permuteProbsOutOptional, uniqueExecutor.get());
+        CHECK_RET(permuteProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     const aclTensor* permuteTokensOpOut;
     #ifdef BUILD_OPEN_PROJECT_API
