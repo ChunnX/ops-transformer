@@ -210,7 +210,6 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorContext &context,
     this->context_ = &context;
     this->baseParams_ = &tilingData->baseParams;
     this->pageAttentionParams_ = &tilingData->pageAttentionParams;
-    this->outerSplitParams_ = &tilingData->outerSplitParams;
     this->innerSplitParams_ = &tilingData->innerSplitParams;
     this->workspaceParams_ = &tilingData->workspaceParams;
     

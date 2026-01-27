@@ -81,6 +81,7 @@ private:
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> startPosGm_;
     bool isExistSeqUsed = false;
+    bool isExistStartPos = false;
 
     // =================================L1 Buffer=================================
     static constexpr uint32_t L1_X_SIZE = 128 * 1024;
@@ -154,8 +155,11 @@ template <typename COMP> __aicore__ inline void CompressorBlockCube<COMP>::Init(
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
     wkvGm_.SetGlobalBuffer((__gm__ X_T *)wKv);
     wgateGm_.SetGlobalBuffer((__gm__ X_T *)wGate);
-    startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     isExistSeqUsed = (seqUsed != nullptr);
+    isExistStartPos = (startPos != nullptr);
+    if (isExistStartPos) {
+        startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+    }
     if (isExistSeqUsed) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
     }
@@ -274,7 +278,10 @@ __aicore__ inline uint32_t CompressorBlockCube<COMP>::GetSeqUsed(uint32_t bIdx)
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockCube<COMP>::GetStartPos(uint32_t bIdx)
 {
-    return (uint32_t)startPosGm_.GetValue(bIdx);
+    if (isExistStartPos) {
+        return (uint32_t)startPosGm_.GetValue(bIdx);
+    }
+    return 0;
 }
 
 template <typename COMP>
@@ -304,10 +311,10 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
                     curBIdx_--;
                     uint32_t bStartPos = GetStartPos(curBIdx_);
                     uint32_t bSeqUsed = GetSeqUsed(curBIdx_);
-                    curSIdx_ = (bStartPos + bSeqUsed + constInfo_.cmpRatio - 1) / constInfo_.cmpRatio * constInfo_.cmpRatio - constInfo_.cmpRatio - bStartPos;
+                    curSIdx_ = bStartPos + bSeqUsed == 0 ? 0 : max(Trunc(bStartPos + bSeqUsed - 1, constInfo_.cmpRatio), bStartPos) - bStartPos;
                 }
             } else {
-                curSIdx_ = curSIdx_ - constInfo_.cmpRatio;
+                curSIdx_ = curSIdx_ < constInfo_.cmpRatio ? 0 : curSIdx_ - constInfo_.cmpRatio;
             }
         }
         if (isLastM) {

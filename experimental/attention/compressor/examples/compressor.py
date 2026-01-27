@@ -126,13 +126,19 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
     print_log(
         '---------------------------------------------------------------------------------------')
 # fuzz 中precision_method == 1的精度对比方式
-def check_result(expect, result, pct_thd = 0.05):
-    diff_thd=0.01
-    max_diff_hd=0.1
-    rtol=0.005
-    atol=0.000025
-    max_error_idx = 10000000
+def check_result(expect, result, data_type, pct_thd = 0.005):
+    if data_type == torch.bfloat16:
+        diff_thd=0.005
+        max_diff_hd=10
+        rtol=0.005
+        atol=0.0078125
+    else:
+        diff_thd=0.005
+        max_diff_hd=10
+        rtol=0.005
+        atol=0.000025
 
+    max_error_idx = 10000000
     real_data = result.cpu().numpy()
     data_compe = expect.cpu().numpy()
     real_data = real_data.flatten()
@@ -412,8 +418,6 @@ def cpu_compressor(
         S = x.shape[1]
         new_kv_state = new_kv_state.reshape(B * S, new_kv_state.shape[-1])
         new_score_state = new_score_state.reshape(B * S, new_score_state.shape[-1])
-        rope_sin = rope_sin.reshape(rope_sin.shape[0] * rope_sin.shape[1], rope_sin.shape[-1])
-        rope_cos = rope_cos.reshape(rope_cos.shape[0] * rope_cos.shape[1], rope_cos.shape[-1])
         cmp_kv = np.zeros(shape=(B, (S + cmp_ratio - 1) // cmp_ratio, head_dim), dtype=matmul_dtype)
     else:
         cmp_kv = np.zeros(shape=(min(x.shape[0], x.shape[0] // cmp_ratio + B), head_dim), dtype=matmul_dtype)
@@ -535,7 +539,6 @@ def cpu_compressor(
                 # print(f"=========RmsNorm {sc_cmp_kv.shape}")
                 # print(list(sc_cmp_kv))
                 # inplace rotary_emb
-                sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[out_sum_sc_cnt, :], rope_cos[out_sum_sc_cnt, :], rotary_mode)
                 # print(f"=========rope_cos {rope_cos.shape}")
                 # print(list(rope_cos))
                 # print(f"=========rope_sin {rope_sin.shape}")
@@ -543,9 +546,11 @@ def cpu_compressor(
                 # print(f"=========rope {sc_cmp_kv.shape}")
                 # print(list(sc_cmp_kv))
                 if bs_combine_flag == False:
+                    sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[b_idx, batch_out_sc_id, :], rope_cos[b_idx, batch_out_sc_id, :], rotary_mode)
                     cmp_kv[b_idx, batch_out_sc_id, :] = sc_cmp_kv
                     cmp_kv_mask[b_idx, batch_out_sc_id, :] = 1
                 else:
+                    sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[out_sum_sc_cnt, :], rope_cos[out_sum_sc_cnt, :], rotary_mode)
                     cmp_kv[out_sum_sc_cnt, :] = sc_cmp_kv
                     cmp_kv_mask[out_sum_sc_cnt, :] = 1
                 batch_out_sc_id = batch_out_sc_id + 1
@@ -564,7 +569,7 @@ def cpu_compressor(
     return cmp_kv_torch, cmp_kv_mask
 
 def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0, start_pos=None, seqused=None, cu_seqlens=None,
-                         block_size = 128, rotary_mode = 2, date_type = torch.float16, hidden_size = 4096,
+                         block_size = 128, rotary_mode = 2, data_type = torch.bfloat16, hidden_size = 4096,
                          rope_head_dim = 64, norm_eps = 1e-6):
     torch_npu.npu.set_device(int(DEVICE_ID))
     ### ======================== set input params finish ========================
@@ -665,13 +670,13 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
         rope_cos_shape = rope_sin_shape
 
-    x = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(date_type)
-    wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(date_type)
-    wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(date_type)
+    x = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(data_type)
+    wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type)
+    wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type)
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32)
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(date_type)
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(date_type)
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(date_type)
+    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(data_type)
+    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type)
+    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type)
     print(f"start_pos={start_pos}")
     print(f"seqused={seqused}")
     print(f"cu_seqlens={cu_seqlens}")
@@ -744,19 +749,19 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
 
     # 结果精度对比
     print("\n==========================================================check result=========================================================")
-    if check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32)) == False:
+    if check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type) == False:
         print(f"test_data = {test_data}")
     print("\n==========================================================check kv state update=========================================================")
-    if check_result(cpu_kv_state[update_kv].to(torch.float32), kv_state.cpu()[update_kv].to(torch.float32)) == False:
+    if check_result(cpu_kv_state[update_kv].to(torch.float32), kv_state.cpu()[update_kv].to(torch.float32), data_type) == False:
         print(f"test_data = {test_data}")
     print("\n==========================================================check score state update=========================================================")
-    if check_result(cpu_score_state[update_score].to(torch.float32), score_state.cpu()[update_score].to(torch.float32)) == False:
+    if check_result(cpu_score_state[update_score].to(torch.float32), score_state.cpu()[update_score].to(torch.float32), data_type) == False:
         print(f"test_data = {test_data}")
     print("\n==========================================================check kv state origin=========================================================")
-    if check_result(cpu_kv_state[~update_kv].to(torch.float32), kv_state.cpu()[~update_kv].to(torch.float32), 0.0) == False:
+    if check_result(cpu_kv_state[~update_kv].to(torch.float32), kv_state.cpu()[~update_kv].to(torch.float32), data_type, 0.0) == False:
         print(f"test_data = {test_data}")
     print("\n==========================================================check score state origin=========================================================")
-    if check_result(cpu_score_state[~update_score].to(torch.float32), score_state.cpu()[~update_score].to(torch.float32), 0.0) == False:
+    if check_result(cpu_score_state[~update_score].to(torch.float32), score_state.cpu()[~update_score].to(torch.float32), data_type, 0.0) == False:
         print(f"test_data = {test_data}")
 
 if __name__ == "__main__":
@@ -773,18 +778,18 @@ if __name__ == "__main__":
     parser.add_argument('--cu_seqlens', type=int, nargs='*', help='when x is [T, h], it is required, len is B+1')
     parser.add_argument('--block_size', type=int, default=128)
     parser.add_argument('--rotary_mode', type=int, choices=[1, 2], default=2, help='1:half 2:interleave')
-    parser.add_argument('--date_type', type=str, choices=["bfloat16", "float16"], default="bfloat16", help='bfloat16 or float16')
+    parser.add_argument('--data_type', type=str, choices=["bfloat16", "float16"], default="bfloat16", help='bfloat16 or float16')
     parser.add_argument('--hidden_size', type=int, default=4096)
     parser.add_argument('--rope_head_dim', type=int, choices=[64], default=64)
     parser.add_argument('--norm_eps', type=float, default=1e-6)
     args = parser.parse_args()
 
-    if args.date_type == "float16":
-        date_type = torch.float16
-    elif args.date_type == "bfloat16":
-        date_type = torch.bfloat16
+    if args.data_type == "float16":
+        data_type = torch.float16
+    elif args.data_type == "bfloat16":
+        data_type = torch.bfloat16
     else:
-        raise ValueError("Error: date_type only support bfloat16 and float16")
+        raise ValueError("Error: data_type only support bfloat16 and float16")
         sys.exit(1)
 
     run_compressor_eager(
@@ -800,7 +805,7 @@ if __name__ == "__main__":
             args.cu_seqlens,
             args.block_size,
             args.rotary_mode,
-            date_type,
+            data_type,
             args.hidden_size,
             args.rope_head_dim,
             args.norm_eps)

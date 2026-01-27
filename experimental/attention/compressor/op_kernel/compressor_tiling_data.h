@@ -44,12 +44,6 @@ namespace optiling {
         uint32_t maxBlockNumPerBatch;
     };
 
-    struct CompressorOuterSplitParams {
-        uint32_t bEnd[CMP_MAX_AIC_CORE_NUM];
-        uint32_t sEnd[CMP_MAX_AIC_CORE_NUM];
-        uint32_t dEnd[CMP_MAX_AIC_CORE_NUM];
-    };
-
     struct CompressorInnerSplitParams {
         uint32_t mBaseSize;
         uint32_t dBaseSize;
@@ -64,7 +58,6 @@ namespace optiling {
     struct CompressorTilingData {
         CompressorBaseParams baseParams;
         CompressorPageAttentionParams pageAttentionParams;
-        CompressorOuterSplitParams outerSplitParams;
         CompressorInnerSplitParams innerSplitParams;
         CompressorWorkspaceParams workspaceParams;
     };

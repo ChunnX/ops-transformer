@@ -225,7 +225,6 @@ struct RunInfo {
     uint32_t isActualSeqLengthsNull : 1; \
     uint32_t isActualSeqLengthsKVNull : 1; \
     uint32_t sparseBlockCount; \
-    uint32_t coreNum;  \
     float softmaxScale; \
     uint32_t cmpRatio : 9; \
     uint32_t dSizeRope : 11; \

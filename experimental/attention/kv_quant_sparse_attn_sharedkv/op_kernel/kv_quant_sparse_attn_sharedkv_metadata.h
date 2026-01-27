@@ -19,42 +19,66 @@
 #include <cstdint>
 
 namespace optiling {
-static constexpr uint32_t AIC_CORE_NUM = 36;  //TODO 根据编译宏确定 aicpu与kernel的宏保持一致
-const uint32_t AIV_CORE_NUM = 36 * 2;
-static constexpr uint32_t MAX_FD_NUM = AIC_CORE_NUM;
-constexpr uint32_t SCFA_META_SIZE = 1024;
+
+// Constants
+static constexpr uint32_t AIC_CORE_NUM = 36;  // TODO 根据编译宏确定 aicpu与kernel的宏保持一致
+static constexpr uint32_t MAX_AIV_AIC_RATIO = 2;
+constexpr uint32_t SCFA_META_SIZE = 2048;
 using SCFA_METADATA_T = int32_t;
 
+static constexpr uint32_t CORE_METADATA_SIZE = 32;
+static constexpr uint32_t FA_METADATA_SIZE = 16;
+static constexpr uint32_t FD_METADATA_SIZE = 8;
+
+// FA Metadata Index Definitions
+static constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
+static constexpr uint32_t FA_BN2_START_INDEX = 1;
+static constexpr uint32_t FA_M_START_INDEX = 2;
+static constexpr uint32_t FA_S2_START_INDEX = 3;
+static constexpr uint32_t FA_BN2_END_INDEX = 4;
+static constexpr uint32_t FA_M_END_INDEX = 5;
+static constexpr uint32_t FA_S2_END_INDEX = 6;
+static constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
+static constexpr uint32_t FA_FD_VECTOR_NUM_INDEX = 8;
+
+// FD Metadata Index Definitions
+static constexpr uint32_t FD_BN2_IDX_INDEX = 0;
+static constexpr uint32_t FD_M_IDX_INDEX = 1;
+static constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 2;
+static constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3;
+static constexpr uint32_t FD_M_START_INDEX = 4;
+static constexpr uint32_t FD_M_NUM_INDEX = 5;
+
+/**
+ * @brief  获取属性的绝对索引
+ * @details 此函数用于计算属性的绝对索引，输入参数包括属性类索引、属性实例索引和元数据索引。
+ *
+ * @param  aicIdx    aic序号: 0~AIC_CORE_NUM
+ * @param  aivIdx    aiv序号: 根据C:V比例，0~1 or 1~2
+ * @param  metaIdx   metadata中对应变量的INDEX
+ *
+ * @return 返回计算得到的属性绝对索引
+ */
+__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t aicIdx, uint32_t metaIdx, bool isFDMeta=false, uint32_t aivIdx=0)
+{
+    uint32_t baseIndex = CORE_METADATA_SIZE * aicIdx + FD_METADATA_SIZE * aivIdx + metaIdx;
+    return isFDMeta ? baseIndex + FA_METADATA_SIZE : baseIndex;
+}
+
 namespace detail {
-    // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
-    struct FlashDecodeResult {
-        // 1、归约任务的索引信息
-        uint32_t fdNum = 0U;                        // 归约任务数量
-        uint32_t fdBN2Idx[MAX_FD_NUM];                // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
-        uint32_t fdMIdx[MAX_FD_NUM];                  // 每个归约任务的GS1索引，脚标为归约任务的序号
-        uint32_t fdS2SplitNum[MAX_FD_NUM];            // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
-        
-        // 2、FD负载均衡阶段，归约任务的分核（vec）信息
-        uint32_t fdUsedVecNum = 0U;                 // 归约过程使用的vector数量
-        uint32_t fdBalanceMBaseSize = 0U;           // 命名存疑？
-        uint32_t fdBalanceMSplitNum[MAX_FD_NUM];      // 每个归约任务m轴切分份数，脚标为归约任务的序号
-        uint32_t fdBalanceMTailSize[MAX_FD_NUM];      // 每个归约任务m轴切分的最后一份的大小，脚标为归约任务的序号
-        uint32_t fdBalanceEndIdx1[AIV_CORE_NUM];    // FD负载均衡阶段，每个vector的一级索引，脚标为vector ID，值为归约任务的ID
-        uint32_t fdBalanceEndIdx2[AIV_CORE_NUM];    // FD负载均衡阶段，每个vector的二级索引，脚标为vector ID，值为归约任务的m轴切分ID
+    struct CoreMetadata{
+        uint32_t faMetadata[FA_METADATA_SIZE];
+        uint32_t fdMetadata0[FD_METADATA_SIZE];
+        uint32_t fdMetadata1[FD_METADATA_SIZE];
     };
 
-    struct SasMetaData { // __attribute__((aligned(8))) 
-        uint32_t usedCoreNum = 0U;                  // 使用的核数量
-        uint32_t mBaseSize = 0U;                    
-        uint32_t s2BaseSize = 0U;
-        uint32_t bN2End[AIC_CORE_NUM];                  // 每个核处理数据的BN2结束点
-        uint32_t mEnd[AIC_CORE_NUM];                    // 每个核处理数据的M结束点
-        uint32_t s2End[AIC_CORE_NUM];                   // 每个核处理数据的S2结束点
-        uint32_t headFdDataIdx[AIC_CORE_NUM];   // 每个core处理的第1个归约任务的数据应存放的workspace位置
-        struct FlashDecodeResult fdRes;             // FD信息
+    struct SasMetaData {
+        struct CoreMetadata coreMetadata[AIC_CORE_NUM];
     };
 };
-static_assert(SCFA_META_SIZE * sizeof(SCFA_METADATA_T) >= sizeof(detail::SasMetaData));
+
+static_assert(SCFA_META_SIZE * sizeof(SCFA_METADATA_T) >= sizeof(detail::SasMetaData),
+                "SCFA_META_SIZE is not large enough to hold SasMetaData");
 };
 
-#endif
+#endif // KV_QUANT_SPARSE_ATTN_SHAREDKV_METADATA_H
