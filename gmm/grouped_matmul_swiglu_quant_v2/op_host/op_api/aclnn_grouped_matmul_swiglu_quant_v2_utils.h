@@ -37,6 +37,7 @@ constexpr int64_t MXFP4_K_CONSTRAINT = 2L;
 constexpr int64_t SWIGLU_N_CONSTRAINT = 2L;
 constexpr int64_t MXFP4_N_CONSTRAINT = 4L;
 constexpr size_t SINGLE_TENSOR_SIZE = 1;
+constexpr int64_t MAX_GROUP_LIST_SIZE = 1024L;
 
 const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
                                                               DataType::DT_FLOAT8_E5M2};
@@ -49,8 +50,6 @@ const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataTyp
 const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
 const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
 const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
-const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
-                                                                     DataType::DT_FLOAT8_E5M2};
 const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT8_E4M3FN,
                                                                            DataType::DT_FLOAT8_E5M2,
                                                                            DataType::DT_FLOAT4_E1M2,
@@ -218,13 +217,6 @@ protected:
                     transposeWeightScale ? "true" : "false", transposeWeight ? "true" : "false");
             return false;
         }
-        
-        if (transposeX || transposeXScale) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The transposition of x/xScale should be false, but actual transposition are %s/%s.",
-                    transposeX ? "true" : "false", transposeXScale ? "true" : "false");
-            return false;
-        }
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
@@ -239,6 +231,17 @@ protected:
             CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
             uniqueExecutor.ReleaseTo(executor_);
+        }
+
+        if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
+            (gmmDsqParams_.xScale->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.xScale->GetViewShape().GetDim(1) == 1)) {
+            return true;
+        }
+        if (transposeX || transposeXScale) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "The transposition of x/xScale should be false, but actual transposition are %s/%s.",
+                    transposeX ? "true" : "false", transposeXScale ? "true" : "false");
+            return false;
         }
         return true;
     }
@@ -319,8 +322,14 @@ protected:
         OP_CHECK_DTYPE_NOT_SUPPORT(x, X_DTYPE_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(xScale, X_SCALE_DTYPE_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(groupList, GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(output, QUANTOUT_DTYPE_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(outputScale, QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
+        DataType outputDtype = gmmDsqParams_.output->GetDataType();
+        if (outputDtype != DataType::DT_FLOAT8_E4M3FN && outputDtype != DataType::DT_FLOAT8_E5M2) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When the dtypes of x and weight inputs are DT_FLOAT8_E4M3FN or "
+            "DT_FLOAT8_E5M2, the dtypes of output should be DT_FLOAT8_E4M3FN or DT_FLOAT8_E5M2, but actual value "
+            "is %s.", op::ToString(outputDtype).GetString());
+            return false;
+        }
         return true;
     }
 
@@ -435,10 +444,13 @@ and greater or equal to 4, but actual value is %lu.",
 
     bool CheckInputOutShape() override
     {
-        if (gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In mxfp8 quant mode, M and N cannot both be 1.");
+        int64_t groupListLen = gmmDsqParams_.groupList->GetViewShape().GetDim(0);
+        if (groupListLen > MAX_GROUP_LIST_SIZE) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The length of groupList should not be greater than 1024, but actual is %ld.",
+            groupListLen);
             return false;
         }
+        
         if (!CheckMXTranspose()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "CheckMXTranspose failed.");
             return false;

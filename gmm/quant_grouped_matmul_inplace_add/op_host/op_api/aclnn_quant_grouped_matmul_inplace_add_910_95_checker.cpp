@@ -221,6 +221,9 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAdd91095Checker<T>::CheckQuantGroupedM
                "In quant case, the size of x, weight and y should all be 1, but actual sizes are %zu, %zu and %zu.",
                GetInputTensorSize(gmmParams_.x), GetInputTensorSize(gmmParams_.weight),
                GetInputTensorSize(gmmParams_.y));
+    int64_t groupListLen = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
+    CHECK_COND(groupListLen <= 1024, ACLNN_ERR_PARAM_INVALID, // The group number should not be greater than 1024
+                "The length of groupList should not be greater than 1024, but actual is %ld.", groupListLen);
     CHECK_RET(CheckQuantCasesFormat() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckGeneralQuantShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
