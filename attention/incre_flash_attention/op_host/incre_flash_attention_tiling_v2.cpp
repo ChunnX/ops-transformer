@@ -2536,8 +2536,8 @@ ge::graphStatus IFATilingV2::CheckAntiQuantParam(const int64_t antiquantMode, co
               inputKvType_ == ge::DT_FLOAT4_E2M1)),
               OP_LOGE(ifaContext_->opName, "When input key/value dataType is fp8/hifp8/fp4_e2m1, antiquantOffset is not supported."),
               return ge::GRAPH_FAILED);
-  OP_CHECK_IF(((antiquantMode == PER_TOKEN_PA_MODE || antiquantMode == PER_TOKEN_HEAD_PA_MODE) && inputKvType_ != ge::DT_INT8),
-            OP_LOGE(ifaContext_->opName, "When antiquantMode of key/value is 4 or 5, input key/value type should be int8, "
+  OP_CHECK_IF(((antiquantMode == PER_TENSOR_HEAD_MODE || antiquantMode == PER_TOKEN_PA_MODE || antiquantMode == PER_TOKEN_HEAD_PA_MODE) && inputKvType_ != ge::DT_INT8),
+            OP_LOGE(ifaContext_->opName, "When antiquantMode of key/value is 2, 4 or 5, input key/value type should be int8, "
                       "but now is %s.", DataTypeToString(inputKvType_).c_str()),
             return ge::GRAPH_FAILED);
   OP_CHECK_IF((antiquantMode == PER_TOKEN_GROUP_MODE && !(inputKvType_ == ge::DT_FLOAT4_E2M1)),
@@ -2587,6 +2587,16 @@ ge::graphStatus IFATilingV2::CheckAntiQuantParam(const int64_t antiquantMode, co
       OP_LOGE(ifaContext_->opName, "Datatype of antiquant scale and antiquant offset should be the same.");
       return ge::GRAPH_FAILED;
     }
+  }
+
+  gert::Shape keyAntiquantScaleTensorShape = antiquantScaleTensor->GetStorageShape();
+  gert::Shape expectedShape1 = gert::Shape({1});
+  if (antiquantMode == PER_CHANNEL_MODE) {
+    // per-tensor
+    OP_CHECK_IF((ShapeEqual(expectedShape1, keyAntiquantScaleTensorShape) && inputKvType_ != ge::DT_INT8),
+                OP_LOGE(ifaContext_->opName,
+                        "In per-tensor mode, the input key/value type should be int8, but now is %s.", DataTypeToString(inputKvType_).c_str()),
+                return ge::GRAPH_FAILED);
   }
   return ge::GRAPH_SUCCESS;
 }
