@@ -895,7 +895,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
 {
     MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams;
     uint64_t ubMte2BufferIdx = (ubMte2LoopIdx_ - 1) & (vecConfig.ubMte2BufferNum - 1);
-    xA8W4NzParams.nRealSizeAlign = CeilAlign(ubConsumeConfig.l1RequireVfComputeRealN, static_cast<uint64_t>(BLOCK_CUBE));
+    mxA8W4NzParams.nRealSizeAlign = CeilAlign(ubConsumeConfig.l1RequireVfComputeRealN, static_cast<uint64_t>(BLOCK_CUBE));
     mxA8W4NzParams.weightLowBitPhyAddr =
         (__ubuf__ wType *)
             ubWeightInputLowBitTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]

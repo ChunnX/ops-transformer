@@ -144,6 +144,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::InitWorkspaceSize(uint
     uint64_t wsOffset = 2 * gmmBaseTiling_->m * gmmBaseTiling_->k;
     aMaxWs_ = (__gm__ float *)(workspace + wsOffset);
 
+    // amax会将内轴brcb至一个blk，此时占用的空间为 m * 8。整体的空间占用需要做到512B对齐，方便后续tensor读写
     wsOffset += CeilAlign(gmmBaseTiling_->m * 8 * sizeof(float), 512UL);
     weightS8WsAddr_ =
         (__gm__ int8_t *)(workspace + wsOffset + cubeBlockIdx * WORKSPACE_CACHE_WEIGHT_S8_SIZE * CV_LOOP_BUF_NUM);
