@@ -187,7 +187,6 @@ private:
     CompressorContext *context_ = nullptr;
     CompressorBaseParams *baseParams_ = nullptr;
     CompressorPageAttentionParams *pageAttentionParams_ = nullptr;
-    CompressorOuterSplitParams *outerSplitParams_ = nullptr;
     CompressorInnerSplitParams *innerSplitParams_ = nullptr;
     CompressorWorkspaceParams *workspaceParams_ = nullptr;
 

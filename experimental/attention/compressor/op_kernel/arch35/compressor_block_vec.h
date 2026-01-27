@@ -96,7 +96,8 @@ private:
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
     __aicore__ inline uint32_t GetSeqLength(uint32_t bIdx);
     __aicore__ inline uint32_t GetBsLength(uint32_t index);
-    __aicore__ inline int64_t CalcGlobalScStart(uint32_t bStart, uint32_t scStart);
+    __aicore__ inline uint64_t CalcGlobalScStart(uint32_t bStart, uint32_t scStart, uint32_t bEnd, uint32_t scEnd, uint64_t &globalScStart);
+    __aicore__ inline void UpdateOutputIdx(uint32_t &outputBStart, uint32_t &outputSStart, uint32_t &dealScSize, uint32_t &curDealScSize);
     __aicore__ inline void DealVec1BaseBlock(const RunInfo &info, BlockInfo &blockInfo, uint32_t startTcIdx, uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline void UpdateBlockInfo(BlockInfo &blockInfo);
     __aicore__ inline void CopyInApe(LocalTensor<T> apeUb, uint32_t dStartIdx, uint32_t dDealSize);
@@ -160,6 +161,7 @@ private:
     GlobalTensor<X_T> ropeCosGm_;
     GlobalTensor<X_T> cmpKvOutGm_;
     bool isExistSeqUsed = false;
+    bool isExistStartPos = false;
 
     // ================================Local Buffer区====================================
     TBuf<TPosition::VECIN> mm1ResUb;
@@ -220,11 +222,15 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(
 
     startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     isExistSeqUsed = (seqUsed != nullptr);
+    isExistStartPos = (startPos != nullptr);
     if (isExistSeqUsed) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
     }
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+    }
+    if (isExistStartPos) {
+        startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
 }
 
@@ -298,7 +304,10 @@ __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetSeqUsed(uint32_t bIdx
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetStartPos(uint32_t bIdx)
 {
-    return (uint32_t)startPosGm_.GetValue(bIdx);
+    if (isExistStartPos) {
+        return startPosGm_.GetValue(bIdx);
+    }
+    return 0;
 }
 
 // TODO 使用这种方式获取seq的约束为顺序访问，随机访问不可用
@@ -377,10 +386,15 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcTcEndIdx(uint32_t bStart
     uint32_t accBasicNum = 0;
     for (int bIdx = bStart; bIdx < constInfo_.batchSize; ++bIdx) {
         bEnd = bIdx;
+
+        curActSeqLength_ = GetSeqLength(bIdx);
+        curStartPos_ = GetStartPos(bIdx);
+        if (curActSeqLength_ == 0) {
+            sEnd = 0;
+            continue;
+        }
         // 计算起始batch的剩余块
         if (bIdx == bStart) {
-            curActSeqLength_ = GetSeqLength(bIdx);
-            curStartPos_ = GetStartPos(bIdx);
             uint32_t curRemainTcNum = 0;
             // 计算起始batch的剩余seq长度 起始位置计算头块
             uint32_t headSize = 0;
@@ -414,8 +428,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcTcEndIdx(uint32_t bStart
                 accBasicNum += curRemainTcNum;
             }
         } else {
-            curActSeqLength_ = GetSeqLength(bIdx);
-            curStartPos_ = GetStartPos(bIdx);
             uint32_t curBasicNum = GetBasicNum();
             // printf("[GetEndIdx] accBasicNum:%u curBasicNum:%u dealTcNum:%u\n", accBasicNum, curBasicNum, dealTcNum);
             if (accBasicNum + curBasicNum > dealTcNum) {
@@ -448,10 +460,15 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcScEndIdx(uint32_t bStart
     uint32_t accScSize = 0;
     for (int bIdx = bStart; bIdx < constInfo_.batchSize; ++bIdx) {
         bEnd = bIdx;
+
+        curActSeqLength_ = GetSeqLength(bIdx);
+        curStartPos_ = GetStartPos(bIdx);
+        if (curActSeqLength_ == 0) {
+            scEnd = 0;
+            continue;
+        }
         // 计算起始batch的剩余块
         if (bIdx == bStart) {
-            curActSeqLength_ = GetSeqLength(bIdx);
-            curStartPos_ = GetStartPos(bIdx);
             accScSize += GetScSize() - scStart;  // 需要减去本batch已经处理完的sc
             // printf("[GetEndIdx]  bIdx:%u accScSize:%u dealScSize:%u headSize:%u curStartPos_:%u curActSeqLength_:%u \n", bIdx, accScSize, dealScSize, headSize, curStartPos_, curActSeqLength_);
             if (accScSize >= dealScSize) {
@@ -459,8 +476,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcScEndIdx(uint32_t bStart
                 return;
             }
         } else {
-            curActSeqLength_ = GetSeqLength(bIdx);
-            curStartPos_ = GetStartPos(bIdx);
             uint32_t curBasicNum = GetScSize();
             uint32_t curBasicNumEnd = dealScSize - accScSize;
             
@@ -1202,14 +1217,14 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const Compressor::Ru
     uint32_t computeSize = dealRowCount * constInfo_.ropeHeadDim;
     uint32_t normNum = constInfo_.headDim - constInfo_.ropeHeadDim;
 
+    // 将Tcast成X_T
+ 	Cast(outputUb, normResUb, RoundMode::CAST_ROUND, dealRowCount * constInfo_.headDim);
+
     LocalTensor<T> tmpRopeInUb = tmpBuff1.Get<T>();
     uint32_t offset = computeSize * sizeof(T);
-    LocalTensor<T> tmpNormInUb = tmpBuff1.GetWithOffset<T>(dealRowCount * normNum, offset); // (num, offset)
-    offset += dealRowCount * normNum * sizeof(T);
+    
     LocalTensor<X_T> tmpRopeOutUb = tmpBuff1.GetWithOffset<X_T>(computeSize, offset);
-    offset += computeSize * sizeof(T);
-    LocalTensor<X_T> tmpNormOutUb = tmpBuff1.GetWithOffset<X_T>(dealRowCount * normNum, offset);
-    offset += dealRowCount * normNum * sizeof(X_T);
+    offset += computeSize * sizeof(X_T);
 
     // 分离rope部分
     DataCopyParams ropeCopyParams;
@@ -1220,7 +1235,10 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const Compressor::Ru
     DataCopy(tmpRopeInUb, normResUb[normNum], ropeCopyParams);
 
     // 读取sin cos
-    int64_t SinCosOffset = CalcGlobalScStart(OutputBStartIdx, OutputSStartIdx + startRow) * constInfo_.ropeHeadDim;
+    uint64_t globalScStart = 0;
+    CalcGlobalScStart(0, 0, OutputBStartIdx, OutputSStartIdx, globalScStart);
+    int64_t SinCosOffset = globalScStart * constInfo_.ropeHeadDim;
+    
     // sin与cos各占一半, 实际分别最多只会用8K,总占用16K
     LocalTensor<X_T> sinUb = inputQue1.AllocTensor<X_T>();
     LocalTensor<X_T> cosUb = sinUb[BLOCK_VEC_BASE_BUFFER_SIZE / 2 / sizeof(X_T)];
@@ -1243,30 +1261,12 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const Compressor::Ru
     // DumpTensorForDim2(tmpRopeOutUb, 304, computeSize);
     inputQue1.FreeTensor(sinUb);
 
-    // 分离normal部分
-    DataCopyParams normCopyParams;
-    normCopyParams.blockCount = static_cast<uint16_t>(dealRowCount);
-    normCopyParams.blockLen = static_cast<uint16_t>(normNum * sizeof(T) / DATABLOCK_BYTES);
-    normCopyParams.srcStride = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(T) / DATABLOCK_BYTES);
-    normCopyParams.dstStride = 0;
-    DataCopy(tmpNormInUb, normResUb, normCopyParams);
-    PipeBarrier<PIPE_V>();
-    // normal部分cast成X_T
-    Cast(tmpNormOutUb, tmpNormInUb, RoundMode::CAST_ROUND, dealRowCount * normNum);
-
     // normal部分和rope拼接，并搬到outputub
     ropeCopyParams.blockCount = dealRowCount;
     ropeCopyParams.blockLen = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(X_T) / DATABLOCK_BYTES);
     ropeCopyParams.srcStride = 0;
     ropeCopyParams.dstStride = static_cast<uint16_t>(normNum * sizeof(X_T) / DATABLOCK_BYTES);
     DataCopy(outputUb[normNum], tmpRopeOutUb, ropeCopyParams);
-
-    PipeBarrier<PIPE_V>();
-    normCopyParams.blockCount = dealRowCount;
-    normCopyParams.blockLen = static_cast<uint16_t>(normNum * sizeof(X_T) / DATABLOCK_BYTES);
-    normCopyParams.srcStride = 0;
-    normCopyParams.dstStride = static_cast<uint16_t>(constInfo_.ropeHeadDim * sizeof(X_T) / DATABLOCK_BYTES);
-    DataCopy(outputUb, tmpNormOutUb, normCopyParams);
 }
 
 template <typename COMP> 
@@ -1322,25 +1322,71 @@ __aicore__ inline void CompressorBlockVector<COMP>::SplitCoreV2(const Compressor
 }
 
 template <typename COMP> 
-__aicore__ inline int64_t CompressorBlockVector<COMP>::CalcGlobalScStart(uint32_t bStart, uint32_t scStart)
+__aicore__ inline uint64_t CompressorBlockVector<COMP>::CalcGlobalScStart(uint32_t bStart, uint32_t scStart, uint32_t bEnd,
+                                                                            uint32_t scEnd, uint64_t &globalScStart)
 {
-    int64_t globalScStart = 0;
-    for (uint32_t bIdx = 0; bIdx < bStart; ++bIdx) {
-        curActSeqLength_ = GetSeqLength(bIdx);
+    for (uint32_t bIdx = bStart; bIdx < bEnd; ++bIdx) {
+        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+            curActSeqLength_ = GetSeqLength(bIdx);
+        } else {
+            curActSeqLength_ = constInfo_.sSize;
+        }
         curStartPos_ = GetStartPos(bIdx);
         globalScStart += GetScSize();
     }
-    globalScStart += scStart;
+    globalScStart -= scStart;
+    globalScStart += scEnd;
     return globalScStart;
 }
 
 template <typename COMP> 
+__aicore__ inline void CompressorBlockVector<COMP>::UpdateOutputIdx(uint32_t &outputBStart, uint32_t &outputSStart,
+                                                                        uint32_t &dealScSize, uint32_t &curDealScSize) 
+{
+    curActSeqLength_ = GetSeqLength(outputBStart);
+    curStartPos_ = GetStartPos(outputBStart);
+    uint32_t curBatchScSize = (curStartPos_ + curActSeqLength_) / constInfo_.cmpRatio - curStartPos_ / constInfo_.cmpRatio;
+    uint32_t curBatchRemainScSize = curBatchScSize - outputSStart;
+    curDealScSize = curBatchRemainScSize > dealScSize ? dealScSize : curBatchRemainScSize;
+    dealScSize -= curDealScSize;
+    outputSStart += curDealScSize;
+    if (outputSStart == curBatchScSize) {
+        outputBStart++;
+        outputSStart = 0;
+    }
+}
+
+template <typename COMP> 
 __aicore__ inline void CompressorBlockVector<COMP>::CopyFinalResultOut(const Compressor::RunInfo& info, const LocalTensor<X_T> &cmpKvOutUb,
-    uint32_t startRow, uint32_t dealRowCount)
+                                                                        uint32_t startRow, uint32_t dealRowCount)
 {   
-    int64_t outOffset = CalcGlobalScStart(OutputBStartIdx, OutputSStartIdx + startRow) * constInfo_.headDim;
+    uint64_t globalScStart = 0;
+    CalcGlobalScStart(0, 0, OutputBStartIdx, OutputSStartIdx, globalScStart);
+    uint64_t outOffset = globalScStart * constInfo_.headDim;
     uint32_t copySize = dealRowCount * constInfo_.headDim;
-    DataCopy(cmpKvOutGm_[outOffset], cmpKvOutUb, copySize);
+
+    uint32_t dealScSize = dealRowCount;
+    uint32_t curDealScSize = 0;
+    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+        DataCopy(cmpKvOutGm_[outOffset], cmpKvOutUb, copySize);
+        while (dealScSize > 0) {
+            UpdateOutputIdx(OutputBStartIdx, OutputSStartIdx, dealScSize, curDealScSize);
+        }
+    } else {
+        // 处理BSH有效数据在内存上不连续（可能存在pad）
+        uint32_t ubProcessedCount = 0;
+        uint32_t preOutputBStartIdx = 0;
+        uint32_t preOutputSStartIdx = 0;
+        while (dealScSize > 0) {
+            // 逐batch计算写出索引
+            preOutputBStartIdx = OutputBStartIdx;
+            preOutputSStartIdx = OutputSStartIdx;
+            UpdateOutputIdx(OutputBStartIdx, OutputSStartIdx, dealScSize, curDealScSize);
+            DataCopy(cmpKvOutGm_[globalScStart * constInfo_.headDim], cmpKvOutUb[ubProcessedCount * constInfo_.headDim], curDealScSize * constInfo_.headDim);
+            CalcGlobalScStart(preOutputBStartIdx, preOutputSStartIdx, OutputBStartIdx, OutputSStartIdx, globalScStart);
+            ubProcessedCount += curDealScSize;
+        }
+    }
 } 
 } // namespace Compressor
 #endif // COMPRESSOR_BLOCK_VECTOR_H

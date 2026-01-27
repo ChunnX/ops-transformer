@@ -263,6 +263,7 @@ private:
 private:
     CpuKernelContext* context_ = nullptr;
     // input
+    Tensor *query_ = nullptr;
     Tensor *actSeqLenQ_ = nullptr;
     Tensor *actSeqLenKV_ = nullptr;
     //Tensor *sparseSeqLenKV_ = nullptr;
@@ -295,8 +296,8 @@ private:
 
     // SplitParams
     uint32_t coreNum_ = 24U; // new
-    int64_t preToken_ = 0; // new
-    int64_t nextToken_ = 0; // new
+    int64_t  preToken_ = 9223372036854775807;
+    int64_t  nextToken_ = 9223372036854775807;
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 0;
     uint32_t s2BaseSize_ = 0;
@@ -307,9 +308,9 @@ private:
 private:
     enum class ParamId : uint32_t {
         // input
-        actSeqLenQ = 0,
-        actSeqLenKV = 1,
-        sparseSeqLenKV = 2,
+        query = 0,
+        actSeqLenQ = 1,
+        actSeqLenKV = 2,
         // output
         metaData = 0,
     };

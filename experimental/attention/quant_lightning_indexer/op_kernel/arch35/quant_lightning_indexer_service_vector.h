@@ -381,7 +381,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
     //outUB_ --->  scoreGm
     int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx : 
-                            CeilDiv(curS1ProcNum, 2) * CeilAlign(constInfo_.kSeqSize, s2BaseSize_) + curS2Idx;
+                            CeilDiv(s1BaseSize_, 2) * CeilAlign(constInfo_.kSeqSize, s2BaseSize_) + curS2Idx;
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
@@ -453,6 +453,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
         // scoreGm coord (vecId, i, 0)
         auto rowIdx = vecId * CeilDiv(curS1ProcNum, 2) + i;
+        auto vecOffset = vecId * CeilDiv(s1BaseSize_, 2) + i;
         if (rowIdx > s1BaseSize_) {
             return;
         }
@@ -471,7 +472,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             AscendC::DataCopyPadExtParams<SCORE_T> padParams{true, 0, rightPad, 0};
             SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
             WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
-            AscendC::DataCopyPad(topkInputLocal_, scoreGm[rowIdx * CeilAlign(constInfo_.kSeqSize, s2BaseSize_)], copyInParams, padParams);
+            AscendC::DataCopyPad(topkInputLocal_, scoreGm[vecOffset * CeilAlign(constInfo_.kSeqSize, s2BaseSize_)], copyInParams, padParams);
             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
