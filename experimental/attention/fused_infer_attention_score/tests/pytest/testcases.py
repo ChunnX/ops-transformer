@@ -18,9 +18,9 @@ TEST_PARAMS = {
     "base_default": {
         "in_layout": ["BNSD"],
         "dtype": [torch.float16],
-        "head_dim": [128], # 以下为必选
+        "head_dim": [128], 
         "kv_seq": [512],
-        "q_seq": [128],   # >1,PFA
+        "q_seq": [128],   
         "kv_head_num": [32],
         "q_head_num": [64],
         "batch_size": [24],
@@ -30,27 +30,15 @@ TEST_PARAMS = {
     "mla": {
         "in_layout": ["BNSD"],
         "dtype": [torch.float16],
-        "head_dim": [128], # 以下为必选
+        "head_dim": [128],
         "kv_seq": [512],
-        "q_seq": [64],   # >1,PFA
+        "q_seq": [64],   
         "kv_head_num": [1],
         "q_head_num": [5],
         "batch_size": [4],
         "rope": [64],
     }, # q(4, 5, 64, 128), k(4, 1, 512, 128), v(4, 1, 512, 128), rope=64
-
-    "pa": {
-        "in_layout": ["BNSD"],
-        "dtype": [torch.float16],
-        "head_dim": [128], # 以下为必选
-        "kv_seq": [16384],
-        "q_seq": [32],   # >1,PFA
-        "kv_head_num": [4],
-        "q_head_num": [8],
-        "batch_size": [2],
-        "rope": [0]
-    },
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-ENABLED_PARAMS = [TEST_PARAMS["base_default"],TEST_PARAMS["mla"],TEST_PARAMS["pa"], ] # 或指定子集，如[TEST_PARAMS["base"], TEST_PARAMS["mixed"]], TEST_PARAMS
+ENABLED_PARAMS = [TEST_PARAMS["base_default"]] # 或指定子集，如[TEST_PARAMS["base"], TEST_PARAMS["mixed"]], TEST_PARAMS

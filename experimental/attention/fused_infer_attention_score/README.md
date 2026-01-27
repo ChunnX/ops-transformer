@@ -47,7 +47,12 @@
   <tr><td rowspan="1" align="center">算子输出</td><td align="center">atten_out</td><td align="center">bnsd、bsnd</td><td align="center">float16、bfloat16</td><td align="center">ND</td></tr>
   </table>
 
-不支持任何高阶特性（mask、pse、pa、fd、actual_seq等）不支持入图
+不支持任何高阶特性（mask、pse、pa、fd、actual_seq等）不支持入图。本工程支持的case情况如下：
+1、qk headdim = 128， rope = 0， v headdim = 128.
+2、qk headdim = 64 rope = 0， v headdim = 64.
+3、qk headdim = 128， rope = 64， v headdim = 128.
+4、qk headdim = 512， rope = 64， kvn = 1, g = 1, 2, 4, 8, 16, 32, 64, 128.
+
 ## 编译运行 
 - 配置环境变量  
 以命令行方式下载样例代码，master分支为例 
@@ -83,12 +88,15 @@ bash build.sh --pkg  --experimental --soc=ascend910b --ops=fused_infer_attention
 - 编译+执行aclnn接口样例，采集样例性能：
 ```bash
 # 切换到fused_infer_attention_score目录
-cd ${git_clone_path}/experimental/experimental/attention/fused_infer_attention_score/
+cd ${git_clone_path}/experimental/attention/fused_infer_attention_score/
 # 编译+执行aclnn接口+采集性能数据
 bash run.sh
-# 切换aclnn用例性能数据目录(在/experimental/experimental/attention/fused_infer_attention_score目录下会生成output目录，里面存放了性能数据)
-cd ${git_clone_path}/experimental/experimental/attention/fused_infer_attention_score/output
+# 切换aclnn用例性能数据目录(在/experimental/attention/fused_infer_attention_score目录下会生成output目录，里面存放了性能数据)
+cd ${git_clone_path}/experimental/attention/fused_infer_attention_score/output
 ```
+注意:
+pytest使用详见[pytest框架使用说明](./tests/pytest/README.md)
+run.sh中提供的性能收集命令只支持pytest框架单次使用单个用例测试，因此，在使用run.sh脚本时确保testcases.py文件中只有一个测试case被选中，算子执行时间会在屏幕上打印出来（Task Duration）。
 
 本demo提供了preload流水优化对比：通过修改**attention/common/op_kernel/arch32/fia_kernel_nonquant.h** 和 **/common/op_kernel/arch32/fia_kernel_nonquant_mla.h** 中的**PRELOAD_NUM_ACTUAL**变量，然后再次运行run.sh即可得到修改后的性能数据。该变量值为0时表示无preload，该变量值为2时表示开启2轮preload流水优化。
 下表为preload开启与关闭的性能对比
