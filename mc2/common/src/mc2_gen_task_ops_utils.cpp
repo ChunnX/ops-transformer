@@ -13,9 +13,8 @@
  */
 
 #include "mc2_gen_task_ops_utils.h"
-
+#include "platform/platform_info.h"
 #include "graph/ascend_string.h"
-#include "exe_graph/runtime/exe_res_generation_context.h"
 #include "mc2_log.h"
 
 namespace {
@@ -41,6 +40,24 @@ bool Mc2GenTaskOpsUtils::IsComputationOnly()
     return (env != nullptr && std::atoi(env) == 1);
 }
 
+bool Mc2GenTaskOpsUtils::IsTargetPlatform(const char *nodeName, const std::set<std::string> &targetPlatform)
+{
+    fe::PlatFormInfos platform_info;
+    fe::OptionalInfos optional_info;
+    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info) !=
+        ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(nodeName, "Cannot get platform info!");
+        return false;
+    }
+    std::string short_soc_version;
+    if (!platform_info.GetPlatformRes("version", "Short_SoC_version", short_soc_version) || short_soc_version.empty()) {
+        OPS_LOG_E(nodeName, "Cannot get short soc version!");
+        return false;
+    }
+    OPS_LOG_D(nodeName, "Get soc version: %s", short_soc_version.c_str());
+    return targetPlatform.count(short_soc_version) > 0;
+}
+
 int64_t Mc2GenTaskOpsUtils::GetAttachStreamIdByContext(const gert::ExeResGenerationContext *context, size_t idx)
 {
 #ifndef ASCEND_OPSPROTO_UT
@@ -61,7 +78,10 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(const gert::ExeResGener
                                                          const ge::AscendString &name,
                                                          const ge::AscendString &reuse_key)
 {
-    GE_ASSERT_NOTNULL(context);
+    if (context == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Failed to get context.");
+        return ge::GRAPH_FAILED;
+    }
     gert::StreamInfo stream_info;
     std::vector<int64_t> stream_depend_value(0);
     stream_info.name = name;
@@ -84,8 +104,15 @@ ge::Status Mc2GenTaskOpsUtils::InsertHiddenInputsForAicoreTask(
     const gert::ExeResGenerationContext *context, ge::KernelLaunchInfo &aicore_task,
     size_t (*get_insert_idx)(const std::vector<ge::ArgDescInfo> &), size_t input_cnt)
 {
-    GE_ASSERT_NOTNULL(context);
-    GE_ASSERT_NOTNULL(get_insert_idx);
+    if (context == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Failed to get context.");
+        return ge::GRAPH_FAILED;
+    }
+
+    if (get_insert_idx == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Failed to get get_insert_idx.");
+        return ge::GRAPH_FAILED;
+    }
 
     std::vector<ge::ArgDescInfo> argDescInfos; // ArgDescInfo
 
@@ -177,7 +204,10 @@ ge::Status Mc2GenTaskOpsUtils::CreateAicpuTaskV1(const gert::ExeResGenerationCon
 ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(const gert::ExeResGenerationContext *context,
                                                    std::vector<std::vector<uint8_t>> &tasks)
 {
-    GE_ASSERT_NOTNULL(context);
+    if (context == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Failed to get context.");
+        return ge::GRAPH_FAILED;
+    }
     int64_t aicore_idx = 0; // 新定义下aicoreTask的vector 成员变量数为1，有且仅有一个aicoreTask
     OPS_LOG_I(context->GetNodeName(), "Start to generate task for MC2, task size %lu, aicore index %ld.", tasks.size(),
               aicore_idx);
@@ -197,7 +227,10 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(const gert::ExeResGenerationC
     ge::KernelLaunchInfo aicpu_task =
         ge::KernelLaunchInfo::CreateAicpuKfcTask(context, SO_NAME.c_str(), KERNEL_NAME_V1.c_str());
     aicpu_task.SetStreamId(static_cast<uint32_t>(attach_stream_id));
-    GE_ASSERT_SUCCESS(CreateAicpuTaskV1(context, aicpu_task)); // 之后换一个名称可能清晰一点，上面已经有create了
+    if (CreateAicpuTaskV1(context, aicpu_task) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(context->GetNodeName(), "Failed to get aicpu task.");
+        return ge::GRAPH_FAILED;
+    }
     tasks.insert(tasks.begin() + aicore_idx, aicpu_task.Serialize());
     ++aicore_idx;
 
