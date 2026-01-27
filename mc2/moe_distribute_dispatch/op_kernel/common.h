@@ -16,6 +16,12 @@
 #ifndef MC2_MOE_DISPATCH_COMM_H
 #define MC2_MOE_DISPATCH_COMM_H
 
+#if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
+#include "../common/inc/kernel/mc2_kernel_utils.h"
+#else
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#endif
+
 constexpr uint32_t NEED_ONE_HUNDRED_AND_TWENTY_SEVEN = 127;
 constexpr uint32_t RIGHT_SHIFT_BIT_SEVEN = 7;
 constexpr uint32_t NEED_THIRTY_FIRST = 31;
@@ -94,14 +100,6 @@ template <typename T>
 __aicore__ inline T Align512(T x)
 {
     return (x + ALIGN_UP_TO_512_MASK) & (~ALIGN_UP_TO_512_MASK);
-}
-
-template <AscendC::HardEvent event>
-__aicore__ inline void SyncFunc()
-{
-    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
 }
 
 template <MicroAPI::HistogramsType htype, typename T, typename U>

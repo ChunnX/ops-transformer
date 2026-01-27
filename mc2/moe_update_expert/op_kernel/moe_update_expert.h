@@ -19,6 +19,11 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_update_expert_tiling.h"
+#if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
+#include "../common/inc/kernel/mc2_kernel_utils.h"
+#else
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#endif
 
 namespace MoeUpdateExpertNamespace {
 constexpr uint32_t UB_ALIGN = 32U;
@@ -28,13 +33,6 @@ constexpr uint8_t BUFFER_NUM = 2;
 
 using namespace AscendC;
 
-template <AscendC::HardEvent event>
-__aicore__ inline void SyncFunc()
-{
-    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
-}
 
 #define UPDATE_EXPERT_DECLARE typename DataType, typename ScalesDataType, bool EnablePruning
 #define UPDATE_EXPERT_ARGS DataType, ScalesDataType, EnablePruning

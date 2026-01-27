@@ -21,8 +21,10 @@
 
 #if __has_include("../common/inc/kernel/moe_distribute_base.h")
 #include "../common/inc/kernel/moe_distribute_base.h"
+#include "../common/inc/kernel/mc2_kernel_utils.h"
 #else
 #include "../../common/inc/kernel/moe_distribute_base.h"
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
 
 namespace DistributeBarrierImpl {
@@ -35,13 +37,6 @@ constexpr uint32_t LOCAL_STATUS_PADDING = 3U;
 constexpr uint64_t WIN_STATE_OFFSET = 512 * 1024;  // 状态区的偏移(A区域和B区域)
 constexpr uint64_t STATE_WIN_OFFSET = 900 * 1024;  // flag标记位的偏移
 constexpr uint64_t CYCLES_PER_US = 50UL;
-
-template <AscendC::HardEvent event>
-__aicore__ inline void SyncFunc() {
-  int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-  AscendC::SetFlag<event>(eventID);
-  AscendC::WaitFlag<event>(eventID);
-}
 
 #define TemplateMC2TypeClass typename XType
 #define TemplateMC2TypeFunc XType

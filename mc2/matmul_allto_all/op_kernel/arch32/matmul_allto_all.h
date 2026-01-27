@@ -53,12 +53,6 @@ using namespace Catlass;
 
 namespace MatmulAlltoAllImpl {
 
-template<AscendC::HardEvent event>
-__aicore__ inline void SyncFunc() {
-    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
-}
 // MMA2A : MatmulAlltoAll
 #define TemplateMMA2AClass typename AType, typename BType, typename BiasType, typename pertokenScaleType, typename scaleType, typename cType, bool hasBias, bool TB
 #define TemplateMMA2AFunc AType, BType, BiasType, pertokenScaleType, scaleType, cType, hasBias, TB

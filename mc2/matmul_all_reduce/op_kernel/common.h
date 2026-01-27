@@ -16,6 +16,11 @@
 #define MC2_ALLREDUCE_COMM_H
 
 #include "lib/hccl/hccl.h"
+#ifdef __CCE_KT_TEST__
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#else
+#include "../common/inc/kernel/mc2_kernel_utils.h"
+#endif
 
 #if defined(__CCE_KT_TEST__)
 #define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
@@ -346,13 +351,6 @@ __aicore__ inline void Mc2SyncAll()
     }
 }
 
-template <AscendC::HardEvent event>
-__aicore__ inline void SyncFunc()
-{
-    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
-}
 #endif
 } // namespace AscendC
 #endif // MC2_ALLREDUCE_COMM_H

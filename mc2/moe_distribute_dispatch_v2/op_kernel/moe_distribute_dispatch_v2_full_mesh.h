@@ -18,7 +18,14 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
+#if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
+#include "../common/inc/kernel/mc2_kernel_utils.h"
 #include "../common/inc/kernel/moe_distribute_base.h"
+#else
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#include "../../common/inc/kernel/moe_distribute_base.h"
+#endif
+
 #if __has_include("../moe_distribute_dispatch/check_winsize.h")
 #include "../moe_distribute_dispatch/check_winsize.h"
 #else
@@ -44,13 +51,6 @@ constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t AIV_STATE_SIZE = 64U;
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
-template<AscendC::HardEvent event>
-__aicore__ inline void SyncFunc()
-{
-    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
-}
 
 #define TemplateMC2TypeClass typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist, bool IsNeedAllgather
 #define TemplateMC2TypeFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist, IsNeedAllgather

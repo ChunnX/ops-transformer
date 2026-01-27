@@ -18,7 +18,13 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_combine_tiling.h"
+#if __has_include("../common/inc/kernel/moe_distribute_base.h")
 #include "../common/inc/kernel/moe_distribute_base.h"
+#include "../common/inc/kernel/mc2_kernel_utils.h"
+#else
+#include "../../common/inc/kernel/moe_distribute_base.h"
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#endif
 namespace MoeDistributeCombineImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
 constexpr uint32_t STATE_OFFSET = 512; // 状态空间偏移地址
@@ -35,14 +41,6 @@ constexpr uint64_t STATE_WIN_OFFSET = 900 * 1024;
 constexpr uint32_t VEC_LEN = 256U;
 constexpr float SCALE_PARAM = 127.0;
 constexpr uint32_t BLOCK_NUM = 256U / UB_ALIGN;     // BlockReduceMax 256字节对齐，计算每256字节block数量
-
-template<AscendC::HardEvent event>
-__aicore__ inline void SyncFunc()
-{
-    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
-}
 
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType, bool IsNeedReduceScatter, bool IsQuant
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType, IsNeedReduceScatter, IsQuant
