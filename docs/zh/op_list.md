@@ -36,6 +36,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/attention_worker_scheduler/README.md">attention_worker_scheduler</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>AI CPU</td>
+    <td>Attention和FFN分离部署场景下，Attention侧数据扫描算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/flash_attention_score/README.md">flash_attention_score</a></td>
     <td>√</td>
     <td>√</td>
@@ -293,6 +303,16 @@
     <td>√</td>
     <td>AI Core</td>
     <td>全量推理场景的FlashAttention算子。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
+    <td><a href="../../ffn/ffn_worker_scheduler/README.md">ffn_worker_scheduler</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>AI CPU</td>
+    <td>Attention和FFN分离场景下，FFN侧数据扫描算子。</td>
   </tr>
   <tr>
     <td>ffn</td>
