@@ -15,137 +15,47 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
+#include "aclnn_moe_distribute_combine_v2_base.h"
 
 using namespace Ops::Transformer;
 using namespace op;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-enum NnopbaseHcclServerType {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
-extern aclnnStatus aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(const aclTensor* expandX, const aclTensor* expertIds,
-                                                                  const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
-                                                                  const aclTensor* expertScales, const aclTensor* tpSendCounts,
-                                                                  const aclTensor* xActiveMask, const aclTensor* activationScale,
-                                                                  const aclTensor* weightScale, const aclTensor* groupList,
-                                                                  const aclTensor* expandScales, const aclTensor* sharedExpertX,
-                                                                  const aclTensor* elasticInfo, const aclTensor* oriX,
-                                                                  const aclTensor* constExpertAlpha1, const aclTensor* constExpertAlpha2, 
-                                                                  const aclTensor* constExpertV, const aclTensor *performanceInfo,
-                                                                  const char* groupEp, int64_t epWorldSize,
-                                                                  int64_t epRankId, int64_t moeExpertNum,
-                                                                  const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
-                                                                  int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-                                                                  int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-                                                                  int64_t groupListType, const char* commAlg, 
-                                                                  int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
-                                                                  aclTensor* x, uint64_t* workspaceSize,
-                                                                  aclOpExecutor** executor);
 extern aclnnStatus aclnnInnerMoeDistributeCombineV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                   aclrtStream stream);
 
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
-                         const aclTensor* epSendCounts, const aclTensor* expertScales,
-                         const char* groupEp, aclTensor* x)
-{
-    OP_LOGD("aclnn_moe_distribute_combine_v3 CheckNotNull start");
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
-    OP_CHECK_NULL(epSendCounts, return false);
-    OP_CHECK_NULL(expertScales, return false);
-    OP_CHECK_NULL(x, return false);
-    if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupEp name is Empty.");
-        return false;
-    }
-    OP_LOGD("aclnn_moe_distribute_combine_v3 CheckNotNull success");
-    return true;
-}
-
-// 入参校验
-static aclnnStatus CheckParams(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* expandIdx,
-                               const aclTensor* epSendCounts, 
-                               const aclTensor* expertScales, const char* groupEp, const char* groupTp,
-                               aclTensor* x)
-{
-    OP_LOGD("aclnn_moe_distribute_combine_v3 checkparams start");
-    CHECK_RET(CheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp,
-                           x), ACLNN_ERR_PARAM_NULLPTR);
-
-    if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupTp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    OP_LOGD("aclnn_moe_distribute_combine_v3 checkparams success");
-    return ACLNN_SUCCESS;
-}
-
 aclnnStatus aclnnMoeDistributeCombineV3GetWorkspaceSize(const aclTensor* expandX, const aclTensor* expertIds,
-                                                            const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
-                                                            const aclTensor* expertScales, const aclTensor* tpSendCountsOptional,
-                                                            const aclTensor* xActiveMaskOptional, const aclTensor* activationScaleOptional,
-                                                            const aclTensor* weightScaleOptional, const aclTensor* groupListOptional,
-                                                            const aclTensor* expandScalesOptional, const aclTensor* sharedExpertXOptional,
-                                                            const aclTensor* elasticInfoOptional, const aclTensor* oriXOptional,
-                                                            const aclTensor* constExpertAlpha1Optional, const aclTensor* constExpertAlpha2Optional, 
-                                                            const aclTensor* constExpertVOptional,
-                                                            const char* groupEp, int64_t epWorldSize,
-                                                            int64_t epRankId, int64_t moeExpertNum,
-                                                            const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
-                                                            int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-                                                            int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-                                                            int64_t groupListType, const char* commAlg, 
-                                                            int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
-                                                            aclTensor* xOut, uint64_t* workspaceSize,
-                                                            aclOpExecutor** executor)
+    const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts, const aclTensor* expertScales,
+    const aclTensor* tpSendCountsOptional, const aclTensor* xActiveMaskOptional, const aclTensor* activationScaleOptional,
+    const aclTensor* weightScaleOptional, const aclTensor* groupListOptional, const aclTensor* expandScalesOptional,
+    const aclTensor* sharedExpertXOptional, const aclTensor* elasticInfoOptional, const aclTensor* oriXOptional,
+    const aclTensor* constExpertAlpha1Optional, const aclTensor* constExpertAlpha2Optional, 
+    const aclTensor* constExpertVOptional, const char* groupEp, int64_t epWorldSize,
+    int64_t epRankId, int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
+    int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs,
+    int64_t outDtype, int64_t commQuantMode, int64_t groupListType, const char* commAlg, 
+    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
+    aclTensor* xOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
-    auto ret_param = CheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
-        groupTp, xOut);
-    CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-
-    if (is910B) {
-        return aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
-            tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
-            sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional, 
-            constExpertVOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum, "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum,
-            xOut, workspaceSize, executor);
-    }
-
-    return aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales,
-        tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
-        sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional, 
-        constExpertVOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum, 
-        xOut, workspaceSize, executor);
+    OP_LOGD("aclnn_combine v3 WorkspaceSize start");
+    aclnnStatus getWorkspaceSizesRes = aclnnMoeDistributeCombineBaseGetWorkspaceSize(
+        expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
+        activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
+        elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
+        constExpertVOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId,
+        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, 
+        zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
+    return getWorkspaceSizesRes;
 }
 
 aclnnStatus aclnnMoeDistributeCombineV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                   aclrtStream stream)
 {
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-            NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else {
-            NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        }
-    }
-
+    OP_LOGD("aclnn_combine v3 start");
     return aclnnInnerMoeDistributeCombineV2(workspace, workspaceSize, executor, stream);
 }
 
