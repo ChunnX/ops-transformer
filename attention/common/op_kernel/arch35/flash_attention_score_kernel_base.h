@@ -366,9 +366,13 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     constInfo.gSize = sharedParams.gSize;
     constInfo.s1OuterSize = sharedParams.s1OuterSize;
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
+    constInfo.s1D = constInfo.s1Size * constInfo.dSize;
     constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
+    constInfo.gD = constInfo.gSize * constInfo.dSize;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
 
+    constInfo.n2GD = constInfo.n2Size * constInfo.gD;
+    constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
     constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
     constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
     constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;

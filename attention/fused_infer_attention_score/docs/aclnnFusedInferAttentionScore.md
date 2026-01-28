@@ -405,7 +405,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>blockSize</td>
         <td>输入</td>
         <td>PageAttention中KV存储每个block中最大的token个数。</td>
-        <td>不传时按照0处理。</td>
+        <td>综合约束请见<a href="#约束说明">约束说明</a>。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
