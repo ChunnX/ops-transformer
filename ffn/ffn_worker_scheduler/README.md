@@ -179,45 +179,12 @@ $$
   </tbody>
   </table>
 
-- **返回值：**
-
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn返回码.md)。
-
-  第一段接口完成入参校验，出现以下场景时报错：
-
-  <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回码</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>参数scheduleContextRef是空指针。</td>
-    </tr>
-    <tr>
-      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>参数scheduleContextRef维度不为1。</td>
-    </tr>
-    <tr>
-      <td>161002</td>
-      <td>参数scheduleContextRef是空tensor。</td>
-    </tr>
-    <tr>
-      <td>161002</td>
-      <td>参数executeMode非0。</td>
-    </tr>
-  </tbody>
-  </table>
-
 
 ## 约束说明
-- aclnnInplaceFfnWorkerScheduler默认为确定性实现，暂不支持非确定性实现，确定性计算配置也不会生效。
+无。
+
+## 调用说明
+
+| 调用方式  | 样例代码                                                                | 说明                                                                                          |
+| ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| aclnn接口 | [test_aclnn_inplace_ffn_worker_scheduler](./examples/test_aclnn_inplace_ffn_worker_scheduler.cpp) | 通过[`aclnnInplaceFfnWorkerScheduler`](./docs/aclnnInplaceFfnWorkerScheduler.md)接口方式调用FfnWorkScheduler算子。 |
