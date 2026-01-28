@@ -15,7 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_WEIGHT_QUANT_310_H
 #define MATMUL_ALL_REDUCE_WEIGHT_QUANT_310_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
@@ -25,6 +25,7 @@
 #include "../common.h"
 #include "mm_allreduce.h"
 #include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_weight_nz_performance.h"
+#include "../arch32/weight_quant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
@@ -39,13 +40,14 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR biasGM, GM_ADDR cGM,
-        GM_ADDR workspaceGM, WeightQuantMatmulAllReduceNzTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
+        GM_ADDR workspaceGM, Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData* tilingData, TPipe* tPipe,
+        HcclServer* hcclServer);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InnerProcess(
         uint32_t tileCnt, Mc2WeightQuantBatchMatmulV2NzTilingData* mmTiling, uint32_t shift, int32_t coreNum);
-    WeightQuantMatmulAllReduceNzTilingData* tilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData* tilingData_;
     HcclServer* hcclServer_;
     TPipe* tPipe_;
     GM_ADDR aGM_;
@@ -101,7 +103,7 @@ template <
 __aicore__ inline void
 MatmulAllReduceWeightQuant310<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR biasGM, GM_ADDR cGM,
-    GM_ADDR workspaceGM, WeightQuantMatmulAllReduceNzTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
+    GM_ADDR workspaceGM, Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
 {
     __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
     __gm__ uint8_t* workspaceMsg = (__gm__ uint8_t*)(context->WorkSpace + tilingData->msg.notifyOff);
@@ -157,8 +159,8 @@ __aicore__ inline void MatmulAllReduceWeightQuant310<
     }
 }
 
-__aicore__ inline void MatMulEmptyTensorBrcBias(
-    GM_ADDR biasGM, GM_ADDR cGM, WeightQuantMatmulAllReduceNzTilingData* tilingData, TBuf<TPosition::VECCALC>& tmpBuf)
+__aicore__ inline void MatMulEmptyTensorBrcBias(GM_ADDR biasGM, GM_ADDR cGM,
+    Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData* tilingData, TBuf<TPosition::VECCALC>& tmpBuf)
 {
     // 搬运biase对齐部分
     int32_t cSizeHalf = (tilingData->param.rankN * tilingData->param.rankM) * sizeof(DTYPE_X1) / sizeof(DTYPE_Y);
@@ -197,9 +199,8 @@ __aicore__ inline void MatMulEmptyTensorBrcBias(
     }
 }
 
-__aicore__ inline void WeightQuantEmptyTensorKernel(
-    GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM, WeightQuantMatmulAllReduceNzTilingData* tilingData,
-    HcclServer* hcclServer)
+__aicore__ inline void WeightQuantEmptyTensorKernel(GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
+    Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData* tilingData, HcclServer* hcclServer)
 {
     TBuf<TPosition::VECCALC> tmpBuf;
     GetTPipePtr()->InitBuffer(tmpBuf, TOTAL_UB_SIZE);
@@ -230,9 +231,9 @@ __aicore__ inline void WeightQuantEmptyTensorKernel(
 
 #define INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(templateClass, ...)                                                        \
     do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(WeightQuantMatmulAllReduceNzTilingData, msg, msg, tilingGM);                            \
+        GET_TILING_DATA_MEMBER(Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData, msg, msg, tilingGM);                            \
         if (msg.debugMode != static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_AICPU)) {                                  \
-            GET_TILING_DATA_WITH_STRUCT(WeightQuantMatmulAllReduceNzTilingData, tilingData, tilingGM);                 \
+            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData, tilingData, tilingGM);                 \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_Y, __VA_ARGS__> op;                                       \
             op.Init(                                                                                                   \
                 aGM, bGM, antiquantScaleGM, antiquantOffsetGM, biasGM, cGM, userWS, &tilingData, &tPipe, &hcclServer); \

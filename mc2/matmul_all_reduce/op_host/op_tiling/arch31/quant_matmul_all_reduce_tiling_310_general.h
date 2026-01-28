@@ -129,7 +129,6 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
 public:
     explicit QuantMatmulAllReduceTiling310General(gert::TilingContext* context) : MatmulAllReduceTilingBase(context)
     {
-        quantMatmulAllReduceTilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
     }
     ~QuantMatmulAllReduceTiling310General() override = default;
 
@@ -144,18 +143,18 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Msg& MutableMc2MsgData() override;
+    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
 
-    RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
 
-    TCubeTiling& MutableTCubeTileTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
 
-    TCubeTiling& MutableTCubeTailTilingData() override;
+    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
 
     ge::graphStatus DoQuantTiling();
 
 private:
-    QuantMatmulAllReduceTilingData quantMatmulAllReduceTilingData_;
+    Mc2Tiling::QuantMatmulAllReduceTilingData quantMatmulAllReduceTilingData_{};
     uint64_t myWorkSpaceSize_{0U};
 };
 } // namespace optiling

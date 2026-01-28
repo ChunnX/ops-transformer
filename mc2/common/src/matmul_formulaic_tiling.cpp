@@ -176,7 +176,7 @@ void MatmulFormulaicTiling::SetWeightFormat(
 }
 
 ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(
-    TilingArgs &args, ::TCubeTiling &cubeTiling, Mc2Tiling::TileL2Tiling &tileL2Tiling) {
+    TilingArgs &args, AscendC::tiling::TCubeTiling &cubeTiling, Mc2Tiling::TileL2Tiling &tileL2Tiling) {
   // 1.设置默认BaseM/N/K
   InitBaseBlockTiling();
   InitTilingArgs(args);
@@ -238,70 +238,7 @@ ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(
 }
 
 ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(
-    TilingArgs &args, optiling::TCubeTiling &cubeTiling,
-    optiling::TileL2Tiling &tileL2Tiling) {
-  // 1.设置默认BaseM/N/K
-  InitBaseBlockTiling();
-  InitTilingArgs(args);
-  // 2.小Shape的BaseM/N/K计算
-  uint32_t usedCoreNum = MathCeil(args_.rankTileM, runInfo_.baseM) *
-                         MathCeil(args_.nValue, runInfo_.baseN);
-  if (args_.nValue == 0) {
-    usedCoreNum = MathCeil(args_.rankTileM, runInfo_.baseM) *
-                  MathCeil(args_.kValue, runInfo_.baseK);
-  }
-  if (usedCoreNum <= args_.aicCoreNum * FOMUL_AIC_NUM_THRESHOLD) {
-    CalcBaseBlockTiling();
-  }
-  // 3.计算Depth&Step数据
-  UpdateDepth();
-  runInfo_.stepKa = runInfo_.depthA1 / DB_ON;
-  runInfo_.stepKb = runInfo_.depthB1 / DB_ON;
-
-  // 4.计算L2Cache切分的TilingData
-  bool enableL2Tile = DoL2CacheTiling();
-
-  // 5.设置TilingData
-  if (args_.nValue == 0) {
-    usedCoreNum = MathCeil(args_.rankTileM, runInfo_.baseM) *
-                  MathCeil(args_.kValue, runInfo_.baseK);
-  } else {
-    usedCoreNum = MathCeil(args_.rankTileM, runInfo_.baseM) *
-                  MathCeil(args_.nValue, runInfo_.baseN);
-  }
-  usedCoreNum = std::min(usedCoreNum, args_.aicCoreNum);
-  OP_LOGD(opName_, "usedCoreNum is %u.", usedCoreNum);
-  cubeTiling.set_usedCoreNum(usedCoreNum);
-  cubeTiling.set_singleCoreM(runInfo_.baseM);
-  cubeTiling.set_singleCoreN(runInfo_.baseN);
-  cubeTiling.set_singleCoreK(args.kValue);
-  cubeTiling.set_baseM(runInfo_.baseM);
-  cubeTiling.set_baseN(runInfo_.baseN);
-  cubeTiling.set_baseK(runInfo_.baseK);
-  cubeTiling.set_depthA1(runInfo_.depthA1);
-  cubeTiling.set_depthB1(runInfo_.depthB1);
-  cubeTiling.set_stepM(1);
-  cubeTiling.set_stepN(1);
-  cubeTiling.set_stepKa(runInfo_.stepKa);
-  cubeTiling.set_stepKb(runInfo_.stepKb);
-  cubeTiling.set_dbL0C(1);  // 这里是关闭L0C的double buffer，需要适配打开
-  tileL2Tiling.set_enableL2Tile(0);  //
-  if (enableL2Tile && args_.rankDim > MIN_SUPPORT_L2CACHE_DIM) {
-    tileL2Tiling.set_mL2TileCnt(runInfo_.l2Info.mL2TileCnt);
-    tileL2Tiling.set_nL2TileCnt(runInfo_.l2Info.nL2TileCnt);
-    tileL2Tiling.set_mTileBlocks(runInfo_.l2Info.mTileBlocks);
-    tileL2Tiling.set_nTileBlocks(runInfo_.l2Info.nTileBlocks);
-    tileL2Tiling.set_mTailBlocks(runInfo_.l2Info.mTailBlocks);
-    tileL2Tiling.set_nTailBlocks(runInfo_.l2Info.nTailBlocks);
-    tileL2Tiling.set_rankTileNum(args.rankTileNum);
-    tileL2Tiling.set_enableL2Tile(1);
-  }
-
-  return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(
-    TilingArgs &args, optiling::TCubeTiling &cubeTiling) {
+    TilingArgs &args, AscendC::tiling::TCubeTiling &cubeTiling) {
   // 1.设置默认BaseM/N/K
   InitBaseBlockTiling();
   InitTilingArgs(args);
@@ -323,20 +260,20 @@ ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(
   args.usedCoreNum = runInfo_.usedCoreNum;
   // 5.设置TilingData
   OP_LOGD(opName_, "usedCoreNum is %u.", runInfo_.usedCoreNum);
-  cubeTiling.set_usedCoreNum(runInfo_.usedCoreNum);
-  cubeTiling.set_singleCoreM(runInfo_.singleCoreM);
-  cubeTiling.set_singleCoreN(runInfo_.singleCoreN);
-  cubeTiling.set_singleCoreK(args.kValue);
-  cubeTiling.set_baseM(runInfo_.baseM);
-  cubeTiling.set_baseN(runInfo_.baseN);
-  cubeTiling.set_baseK(runInfo_.baseK);
-  cubeTiling.set_depthA1(runInfo_.depthA1);
-  cubeTiling.set_depthB1(runInfo_.depthB1);
-  cubeTiling.set_stepM(1);
-  cubeTiling.set_stepN(1);
-  cubeTiling.set_stepKa(runInfo_.stepKa);
-  cubeTiling.set_stepKb(runInfo_.stepKb);
-  cubeTiling.set_dbL0C(1);  // 这里是关闭L0C的double buffer，需要适配打开
+  cubeTiling.usedCoreNum=runInfo_.usedCoreNum;
+  cubeTiling.singleCoreM=runInfo_.singleCoreM;
+  cubeTiling.singleCoreN=runInfo_.singleCoreN;
+  cubeTiling.singleCoreK=args.kValue;
+  cubeTiling.baseM=runInfo_.baseM;
+  cubeTiling.baseN=runInfo_.baseN;
+  cubeTiling.baseK=runInfo_.baseK;
+  cubeTiling.depthA1=runInfo_.depthA1;
+  cubeTiling.depthB1=runInfo_.depthB1;
+  cubeTiling.stepM=1;
+  cubeTiling.stepN=1;
+  cubeTiling.stepKa=runInfo_.stepKa;
+  cubeTiling.stepKb=runInfo_.stepKb;
+  cubeTiling.dbL0C=1;  // 这里是关闭L0C的double buffer，需要适配打开
   return ge::GRAPH_SUCCESS;
 }
 

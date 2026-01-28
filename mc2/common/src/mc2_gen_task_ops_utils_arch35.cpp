@@ -26,8 +26,9 @@ const std::string MOE_DISTRIBUTE_DISPATCH_V2_OP_TYPE = "MoeDistributeDispatchV2"
 const std::string MOE_DISTRIBUTE_COMBINE_V2_OP_TYPE = "MoeDistributeCombineV2";
 const std::string ALL_TO_ALLV_GROUPED_MM_OP_TYPE = "AlltoAllvGroupedMatMul";
 const std::string GROUPED_MM_ALL_TO_ALLV_OP_TYPE = "GroupedMatMulAlltoAllv";
-const std::string ALL_GATHER_MM_OP_TYPE = "AllGatherMatmulV2";
-const std::string MM_REDUCE_SCATTER_OP_TYPE = "MatmulReduceScatterV2";
+const std::string ALL_GATHER_MM_V2_OP_TYPE = "AllGatherMatmulV2";
+const std::string MM_REDUCE_SCATTER_V2_OP_TYPE = "MatmulReduceScatterV2";
+const std::string MM_ALL_REDUCE_OP_TYPE = "MatmulAllReduce";
 const std::string ATTR_NAME_GROUP = "group";
 const std::string ATTR_NAME_GROUP_EP = "group_ep";
 const int32_t MAX_GROUP_CNT = 16;
@@ -39,8 +40,9 @@ struct GroupInfo {
 };
 // 当前 GetCCuTaskInfo 接口暂不支持多通信域的接口，对于双通信域的算子，暂时不增加 TP 属性名
 static const std::map<const std::string, const GroupInfo> GROUP_INFO_MAP_ARCH35{
-    {ALL_GATHER_MM_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
-    {MM_REDUCE_SCATTER_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
+    {ALL_GATHER_MM_V2_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
+    {MM_REDUCE_SCATTER_V2_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
+    {MM_ALL_REDUCE_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {ALL_TO_ALLV_GROUPED_MM_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {GROUPED_MM_ALL_TO_ALLV_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {MOE_DISTRIBUTE_DISPATCH_OP_TYPE, {2, {ATTR_NAME_GROUP_EP}}},
@@ -140,14 +142,14 @@ ge::Status Mc2Arch35GenTaskOpsUtils::CreateCCUFusionTask(const gert::ExeResGener
     // 获取aicore task
     ge::KernelLaunchInfo prevAicoreTask = ge::KernelLaunchInfo::LoadFromData(context, tasks.back());
 
-    // 设置aicore task的blockdim
-    int64_t blockDim = -1;
-    if (!context->GetIntAttrVal("tvm_blockdim", blockDim) || blockDim <= 0) {
-        OPS_LOG_E(context->GetNodeName(), "Can't get valid blockdim, get blockdim %ld.", blockDim);
+    // 设置aicore task的numBlocks
+    int64_t numBlocks = -1;
+    if (!context->GetIntAttrVal("tvm_blockdim", numBlocks) || numBlocks <= 0) {
+        OPS_LOG_E(context->GetNodeName(), "Can't get valid numBlocks, get numBlocks %ld.", numBlocks);
         return ge::GRAPH_FAILED;
     }
-    prevAicoreTask.SetBlockDim(blockDim);
-    OPS_LOG_I(context->GetNodeName(), "aicore task set blockdim successfully, set blockdim %ld.", blockDim);
+    prevAicoreTask.SetBlockDim(numBlocks);
+    OPS_LOG_I(context->GetNodeName(), "aicore task set numBlocks successfully, set numBlocks %ld.", numBlocks);
 
     // 获取aicore task的args format
     const char *prevArgsFormatStr = prevAicoreTask.GetArgsFormat();

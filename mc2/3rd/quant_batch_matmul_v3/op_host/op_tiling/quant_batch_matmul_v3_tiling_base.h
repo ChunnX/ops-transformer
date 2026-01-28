@@ -124,6 +124,7 @@ protected:
     // mc2使用的直接接口：begin
     virtual const gert::Shape GetX1Shape(const size_t index);
     virtual const gert::Shape GetX2Shape(const size_t index);
+    virtual const gert::Shape GetOutputShape(const size_t index);
     virtual const gert::Shape &GetScaleShape(const size_t index);
     virtual const gert::StorageShape *GetPertokenShape(const size_t index);
     virtual const gert::StorageShape *GetBiasShape(const size_t index);
@@ -153,7 +154,7 @@ protected:
     bool CheckOutputShapeAvailable() const;
     bool ReCalcGroupSize(uint64_t& groupSize, uint64_t inputSize, uint64_t scaleSize, const char* dimensionName);
     bool AnalyzeGroupInfo(const gert::Shape& scaleShape, const gert::StorageShape *pertokenShape);
-    void AnalyzeBatchInfo(const gert::Shape &oriShapeA, const gert::Shape &oriShapeB);
+    virtual void AnalyzeBatchInfo(const gert::Shape &oriShapeA, const gert::Shape &oriShapeB);
     void DoBatchFusion(uint64_t fusedDimValue);
     bool CheckShapeInRangeForMandtoryInputs(size_t x1ShapeLen, size_t x2ShapeLen) const;
     void SetTransAttr(Mc2QuantBatchMatmulV3Trans &trans) const;

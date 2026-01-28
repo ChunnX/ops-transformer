@@ -15,11 +15,12 @@
 #ifndef MM_ALLREDUCE_ADD_RMS_NORM_QUANT_H
 #define MM_ALLREDUCE_ADD_RMS_NORM_QUANT_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "../matmul_all_reduce/common.h"
 #include "../matmul_all_reduce/arch32/matmul_all_reduce_quant.h"
 #include "add_rms_norm_kernel.h"
+#include "matmul_all_reduce_add_rms_norm_tiling_data.h"
 
 namespace MatmulAllReduceAddRmsNormImpl {
 using namespace AscendC;
@@ -33,7 +34,7 @@ public:
         : MatmulAllReduceQuantBF16<xType, wType, yType, mmType, coreType, false>(
               addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
-        QuantMatmulAllReduceAddRmsNormTilingData* p = (QuantMatmulAllReduceAddRmsNormTilingData*)tilingData;
+        Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData* p = (Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData*)tilingData;
         arnTile_ = &p->addRMSNormTileTilingData;
         arnTail_ = &p->addRMSNormTailTilingData;
         arnTilineKey_ = &p->addRmsNormTilingeKeyData;
@@ -62,20 +63,20 @@ public:
     }
 
 private:
-    AddRMSNormTilingeKeyData* arnTilineKey_;
-    MC2AddRMSNormTilingData* arnTile_;
-    MC2AddRMSNormTilingData* arnTail_;
+    Mc2Tiling::AddRMSNormTilingeKeyData* arnTilineKey_;
+    Mc2Tiling::AddRMSNormTilingData* arnTile_;
+    Mc2Tiling::AddRMSNormTilingData* arnTail_;
 };
 
 #define REG_MM_OBJ_FOR_ARN(opTile, opTail)                                                     \
     REGIST_MATMUL_OBJ(                                                                         \
         &tPipe, GetSysWorkSpacePtr(), opTile.mm,                                               \
-        &(tilingData.qunatMatmulAllReduceTilingData.tilematmulTiling.matmulTiling), opTail.mm, \
-        &(tilingData.qunatMatmulAllReduceTilingData.tailmatmulTiling.matmulTiling))
+        &(tilingData.quantMatmulAllReduceTilingData.tilematmulTiling.matmulTiling), opTail.mm, \
+        &(tilingData.quantMatmulAllReduceTilingData.tailmatmulTiling.matmulTiling))
 
 #define INVOKE_MC2_ARN_QUANT_910_OP_IMPL(templateClass, coreType, regObjCb, ...)                     \
     do {                                                                                             \
-        GET_TILING_DATA_WITH_STRUCT(QuantMatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, nullptr, normOutGM, workspaceGM, normOutGM};           \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, dequantGM, nullptr};                            \
         ArnGmAddrs arnAddrs = {residualGM, gammaGM, yGM, normOutGM};                                 \

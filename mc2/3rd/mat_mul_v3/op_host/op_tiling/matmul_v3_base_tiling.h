@@ -141,7 +141,7 @@ protected:
                         uint64_t dtypeSize, ge::Format matFormat) const;
 
 private:
-    Mc2MatmulV3TilingData tilingDataSelf_;
+    Mc2MatmulV3TilingData tilingDataSelf_{};
 protected:
     Mc2MatmulV3CompileInfo compileInfo_;
     Mc2MatmulV3Args args_;

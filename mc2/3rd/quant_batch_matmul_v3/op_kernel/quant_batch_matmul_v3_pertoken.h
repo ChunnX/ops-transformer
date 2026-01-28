@@ -16,6 +16,8 @@
 #define MC2_QUANT_BATCH_MATMUL_V3_PERTOKEN_H
 
 #include "quant_batch_matmul_v3_base.h"
+#include "adv_api/pad/broadcast.h"
+#include "adv_api/quantization/ascend_dequant.h"
 
 namespace AscendC {
 
@@ -35,7 +37,12 @@ public:
                                 TPipe *tPipe)
     {
         blockIdx_ = GetBlockIdx();
-        blockIdx_ /= GetTaskRation();
+        if constexpr (isAllAiv) {
+            blockIdx_ /= GetTaskRation();
+            if (GetSubBlockIdx() > 0) {
+                return;
+            }
+        }
 
         InitTilingData(tilingData);
         if (blockIdx_ >= usedCoreNum_) {
@@ -64,7 +71,7 @@ public:
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR pertokenScale,
                                             GM_ADDR y, GM_ADDR workSpace)
     {
-        if (blockIdx_ >= usedCoreNum_) {
+        if (blockIdx_ >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
         if (isPerTensor_) {
@@ -101,7 +108,7 @@ public:
         uint32_t batchDim = DequantBmm::CeilDiv(batch_, singleCoreBatch_);
         uint32_t mDim = DequantBmm::CeilDiv(m_, singleCoreM_);
         uint32_t nDim = DequantBmm::CeilDiv(n_, singleCoreN_);
-        if (blockIdx_ >= usedCoreNum_) {
+        if (blockIdx_ >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
 

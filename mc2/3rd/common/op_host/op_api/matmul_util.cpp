@@ -208,11 +208,12 @@ static const aclTensor* ProcessEmptyTensorWithTrans(
     op::Shape outShape = {mDim, nDim};
     auto out = executor->AllocTensor(outShape, self->GetDataType());
     if (out->IsEmpty()) {
-        OP_LOGI("Returning an empty tensor without actually doing calculation");
+        OP_LOGI("Returning an empty tensor without calculation");
         return out;
     }
     FVector<int64_t> fillShape = GetShape(out);
-    const aclTensor* dims = executor->ConvertToTensor(fillShape.data(), fillShape.size(), op::DataType::DT_INT64);
+    const aclTensor* dims = executor->ConvertToTensor(fillShape.data(),
+        fillShape.size(), op::DataType::DT_INT64);
     aclIntArray* shapeArray = executor->AllocIntArray(fillShape.data(), fillShape.size());
     const aclScalar* valueScalar = executor->AllocScalar(0);
     const aclTensor* valueTensor = executor->ConvertToTensor(valueScalar, out->GetDataType());
@@ -774,7 +775,8 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor) {
   int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
   int64_t dim2 = tensor->GetViewShape().GetDimNum() - 2;
   // BMM 场景下，Batch维度的stride需要等于 N, D 的乘积
-  if (tensor->GetViewStrides()[dim2] == 1 && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
+  if (tensor->GetViewStrides()[dim2] == 1
+    && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
     int64_t tmpNxD = tensor->GetViewShape().GetDim(dim1) * tensor->GetViewShape().GetDim(dim2);
     // 多batch连续，3是batch索引
     for (int64_t batchDim = tensor->GetViewShape().GetDimNum() - 3; batchDim >= 0; batchDim--) {
@@ -783,7 +785,8 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor) {
       }
       tmpNxD *= tensor->GetViewShape().GetDim(batchDim);
     }
-    if (tensor->GetViewShape().GetDim(dim1) == 1 && tensor->GetViewShape().GetDim(dim2) == 1) {
+    if (tensor->GetViewShape().GetDim(dim1) == 1
+      && tensor->GetViewShape().GetDim(dim2) == 1) {
       return false;
     }
     return true;

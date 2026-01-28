@@ -19,6 +19,14 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 namespace Mc2Tiling {
+constexpr uint8_t COMM_ALG_DEFAULT = 0;
+constexpr uint8_t COMM_ALG_FULL_MESH = 1;
+constexpr uint8_t COMM_ALG_DOUBLE_RING = 2;
+constexpr uint8_t COMM_ALG_SWITCH_WING = 3;
+constexpr uint32_t DOUBLE_RING_FACTOR = 2;
+constexpr int64_t KVALUE_MIN = 256;
+constexpr int64_t KVALUE_MAX = 65535;
+
 struct MC2ServerCfg {          // server 通用参数
     uint32_t verseion;        // tiling结构体版本号
     uint8_t debugMode;        // 调测模式
@@ -32,7 +40,7 @@ struct MC2HcommCfg {
     uint8_t skipLocalRankCopy;     // 跳过本卡拷贝，在通信结果只需要给MC2内部计算使用或者本卡拷贝由aicore完成时，
                                    // 可以跳过本卡数据send-recv搬运
     uint8_t skipBufferWindowCopy;  // 跳过hbm到window间搬运 0 不跳过， 1 跳过snd-window， 2 跳过 window-rcv
-    uint8_t stepSize;              // 通信步长，粗粒度融合时填0 
+    uint8_t stepSize;              // 通信步长，粗粒度融合时填0
                                    // 细粒度融合时连续计算stepsize块数据再commit或wait通信
     char reserved[13];             // 保留字段,前面是3字节，为字节对齐，预留13字节
     char groupName[128];           // groupName， 128是通信域名称限制
@@ -122,6 +130,8 @@ struct RCSTiling {
     uint32_t commWorkSpaceSize;
     uint32_t isInputCommQuantScale;
     uint32_t dataType;
+    uint32_t commInt8WorkSpace;
+    uint32_t dynamicQuantTempBuffSize;
 };
 
 struct TileL2Tiling {

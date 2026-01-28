@@ -131,12 +131,11 @@ ge::Status Mc2GenTaskOpsUtils::InsertHiddenInputsForAicoreTask(
     }
 
     auto argDescInfosSerialize = ge::ArgsFormatSerializer::Serialize(argDescInfos);
-    std::string argsFormatSerializeStr = std::string(argDescInfosSerialize.GetString(), argDescInfosSerialize.GetLength());
-    if (aicore_task.SetArgsFormat(argsFormatSerializeStr.c_str()) != ge::GRAPH_SUCCESS) {
+    if (aicore_task.SetArgsFormat(argDescInfosSerialize.GetString()) != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(context->GetNodeName(), "Failed to set args format for aicore task.");
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_I(context->GetNodeName(), "aicore ArgsFormat: %s", argsFormatSerializeStr.c_str());
+    OPS_LOG_I(context->GetNodeName(), "aicore ArgsFormat: %s", argDescInfosSerialize.GetString());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -216,7 +215,6 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(const gert::ExeResGenerationC
     const int64_t attach_stream_id = GetAttachStreamIdByContext(context);
     const int64_t stream_id = context->GetStreamId();
 
-    /* wait aicpu record [aicore] wait */
     // wait task
     ge::KernelLaunchInfo aicpu_wait_for_aicore_task = ge::KernelLaunchInfo::CreateHcomWaitTask(context);
     aicpu_wait_for_aicore_task.SetStreamId(static_cast<uint32_t>(attach_stream_id));

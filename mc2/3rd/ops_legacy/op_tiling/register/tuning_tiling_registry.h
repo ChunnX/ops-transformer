@@ -15,7 +15,7 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include "graph/ascend_string.h"
-#include "inc/legacy/register/tuning_tiling_reflection_utils.h"
+#include "tuning_tiling_reflection_utils.h"
 namespace tuningtiling {
 struct TilingItem {
     ge::AscendString dtype_;

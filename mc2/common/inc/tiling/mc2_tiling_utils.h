@@ -23,6 +23,7 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "formulaic_tiling_datatype.h"
 #include "graph/utils/type_utils.h"
+#include "mc2_hcom_topo_info.h"
 #include "matmul_formulaic_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
@@ -44,7 +45,14 @@ constexpr size_t RES_LEN = 64;
 constexpr size_t MAX_MSG_NUM = 16;
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
 constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
-constexpr uint8_t AIV_ENGINE = 2;   // 当前通信API未提供枚举，后续会提供， 0：AICPU，1：CCU，2：AIV
+/**
+当前通信API未提供枚举，后续会提供
+0：默认值 1：HOST_TS（A2/3支持 A5不支持）2：AICPU_TS（A2/3支持 A5不支持）
+3：AIV 4：AIV_ONLY（A2/3支持 A5不支持） 5：CCU_MS（A2/3支持 A5不支持）
+6：CCU_SCHED（A2/3支持 A5不支持） 7：AICPU_UB/ROCE（A5不支持）
+**/
+constexpr uint8_t AIV_ENGINE = 3;
+constexpr uint8_t A5_CCU_ENGINE = 5;
 constexpr uint8_t Y_INDEX = 3;
 constexpr uint8_t COMM_ALG_DEFAULT = 0;
 constexpr uint8_t COMM_ALG_FULL_MESH = 1;
@@ -52,6 +60,7 @@ constexpr uint8_t COMM_ALG_DOUBLE_RING = 2;
 constexpr uint8_t COMM_ALG_SWITCH_WING = 3;
 constexpr uint8_t COMM_VERSION3 = 3;
 constexpr double COMM_GROW_RATIO = 1.15;
+constexpr uint64_t MTE_STATE_ZONE_SIZE = 1024UL * 1024UL;
 
 constexpr uint64_t LARGE_K = 8192;
 constexpr uint64_t LARGE_N = 5120;
@@ -67,7 +76,7 @@ constexpr double TIME_UPPER_RATIO = 3.5;
 constexpr double SCATTER_LARGERNK_COMM_GROW_RATIO1 = 1.5;
 constexpr double SCATTER_LARGERNK_COMM_GROW_RATIO2 = 1.2;
 constexpr double CUBE_UTIL_THRESH = 0.85;
-constexpr uint32_t AICPU_BLOCK_DIM_A2 = 6U;
+constexpr uint32_t AICPU_NUM_BLOCKS_A2 = 6U;
 
 constexpr auto DEFAULT_KEY_FOR_FITTING_MAP = "0_0";
 
@@ -125,6 +134,15 @@ void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3A
 ge::graphStatus GetMatmulV3PriorityPolicy(
     const platform_ascendc::SocVersion socVersion,
     std::vector<int32_t> &priorities, const char *opName);
+
+inline std::string GetSocVersion(const gert::TilingContext *context)
+{
+    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
+    std::string socVersion;
+    (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
+    return socVersion;
+}
 
 class Mc2TilingUtils {
  public:
@@ -192,6 +210,42 @@ const std::map<platform_ascendc::SocVersion, std::set<uint32_t>>
 const std::set<ge::Format> SUPPORTED_FORMAT = {
     ge::FORMAT_NCL,  ge::FORMAT_NCDHW, ge::FORMAT_DHWCN,
     ge::FORMAT_NHWC, ge::FORMAT_NCHW,  ge::FORMAT_ND};
+
+inline ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBufferSize, const char* nodeName)
+{
+    HcclComm hcclComm;
+    OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm)
+        != HCCL_SUCCESS, OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
+    if (hcclComm == nullptr) {
+        OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetGroupLocalWindowSize(groupStr, cclBufferSize) != HCCL_SUCCESS,
+            OP_LOGE(nodeName, "GetGroupLocalWindowSize from topoInfo failed"), return ge::GRAPH_FAILED);
+        OP_LOGD(nodeName, "Get cclBufferSize by topoInfo");
+    } else {
+        OP_LOGD(nodeName, "Get cclBufferSize from HCCL");
+    }
+    OP_TILING_CHECK(*cclBufferSize == 0,
+            OP_LOGE(nodeName, "Get cclBufferSize failed, cclBufferSize is 0"), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const char *nodeName,
+    uint64_t &hcclBufferSizeEp, uint64_t &maxWindowSizeEp, uint32_t attrGroupEpIndex)
+{
+    auto attrs = context->GetAttrs();
+    if (mc2tiling::GetSocVersion(context) == "Ascend910_95") {
+        // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
+        hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+        // A5 上前 1MB 作为状态区，剩余空间用作数据区
+        maxWindowSizeEp = hcclBufferSizeEp - MTE_STATE_ZONE_SIZE;
+    } else {
+        auto groupEpHccl = attrs->GetAttrPointer<char>(static_cast<int>(attrGroupEpIndex));
+        OP_TILING_CHECK(GetCclBufferSize(groupEpHccl, &hcclBufferSizeEp, nodeName) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "Get Ep HcclBufferSizeEP failed, HcclBufferSizeEP is %lu", maxWindowSizeEp),
+            return ge::GRAPH_FAILED);
+        maxWindowSizeEp = hcclBufferSizeEp;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 }  // namespace mc2tiling
 
 #endif

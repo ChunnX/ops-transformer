@@ -11,9 +11,6 @@
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_msd_group.h
  * \brief
- * ATTENTION: MAKE SURE 'BEGIN_TILING_DATA_DEF' STAY IN THE SAME LINE (30) USING BLANK LINES.
- * 
- * 
  */
 
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_TILING_MSD_GROUP_H
@@ -23,40 +20,9 @@
 #include "weight_quant_batch_matmul_v2_tiling_key.h"
 #include "tiling_base/tiling_key.h"
 #include "../../op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h"
+#include "../../op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 
 namespace optiling {
-
-using Ops::Transformer::OpTiling::RecursiveSum;
-
-BEGIN_TILING_DATA_DEF(Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-TILING_DATA_FIELD_DEF(uint8_t, vecBlockDimN);
-TILING_DATA_FIELD_DEF(uint8_t, cubeBlockDimK);
-TILING_DATA_FIELD_DEF(uint8_t, cubeBlockDimN);
-TILING_DATA_FIELD_DEF(uint8_t, vec1SingleCoreM);
-TILING_DATA_FIELD_DEF(uint8_t, hasBias);
-TILING_DATA_FIELD_DEF(uint8_t, reserve1);
-TILING_DATA_FIELD_DEF(uint16_t, reserve2);
-TILING_DATA_FIELD_DEF(uint32_t, reserve3);
-TILING_DATA_FIELD_DEF(uint32_t, singleCoreK);
-TILING_DATA_FIELD_DEF(uint32_t, vecSingleCoreN);
-TILING_DATA_FIELD_DEF(uint32_t, singleCoreGroup);
-TILING_DATA_FIELD_DEF(uint64_t, mSize);
-TILING_DATA_FIELD_DEF(uint64_t, kSize);
-TILING_DATA_FIELD_DEF(uint64_t, nSize);
-TILING_DATA_FIELD_DEF(uint64_t, groupSize);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365333139882753, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365058261975809, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_367514982809857, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_367240104902913, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365315960602881, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365041082695937, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_367514983858433, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
-REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_367240105951489, Mc2WeightQuantBatchMatmulV2MsdGroupTilingData)
 
 class Mc2WeightQuantBatchMatmulV2TilingMsdGroup : public Mc2WeightQuantBatchMatmulV2Tiling
 {

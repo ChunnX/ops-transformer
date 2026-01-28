@@ -32,7 +32,11 @@ class l2_inplace_matmul_all_reduce_add_rms_norm_test : public testing::Test {
     cout << "l2_inplace_matmul_all_reduce_add_rms_norm_test SetUp" << endl;
   }
 
-  static void TearDownTestCase() { cout << "l2_inplace_matmul_all_reduce_add_rms_norm_test TearDown" << endl; }
+  static void TearDownTestCase()
+  {
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    cout << "l2_inplace_matmul_all_reduce_add_rms_norm_test TearDown" << endl;
+  }
 };
 
 TEST_F(l2_inplace_matmul_all_reduce_add_rms_norm_test, test_inplace_mm_all_reduce_add_rms_norm_first_api) {

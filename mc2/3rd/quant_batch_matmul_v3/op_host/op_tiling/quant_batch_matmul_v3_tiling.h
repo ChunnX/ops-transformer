@@ -9,7 +9,7 @@
  */
 
 // mc2编译依赖
-// 
+//
 // mc2编译依赖
 /*!
  * \file quant_batch_matmul_v3_tiling.h
@@ -20,73 +20,9 @@
 #define MC2_QUANT_BATCH_MATMUL_V3_TILING_H
 
 #include "quant_batch_matmul_v3_tiling_base.h"
+#include "../../op_kernel/quant_batch_matmul_v3_tiling_data.h"
 
 namespace optiling {
-
-// Mc2QuantBatchMatmulV3Tiling set Mc2QuantBatchMatmulV3Params tilingData, mc2 calls Mc2QuantBatchMatmulV3Tiling DoLibApiTiling
-BEGIN_TILING_DATA_DEF(Mc2QuantBatchMatmulV3Params)
-    TILING_DATA_FIELD_DEF(uint32_t, batchA);
-    TILING_DATA_FIELD_DEF(uint32_t, batchB);
-    TILING_DATA_FIELD_DEF(uint32_t, batchC);
-    TILING_DATA_FIELD_DEF(uint32_t, batchA1);
-    TILING_DATA_FIELD_DEF(uint32_t, batchA2);
-    TILING_DATA_FIELD_DEF(uint32_t, batchA3);
-    TILING_DATA_FIELD_DEF(uint32_t, batchA4);
-    TILING_DATA_FIELD_DEF(uint32_t, batchB1);
-    TILING_DATA_FIELD_DEF(uint32_t, batchB2);
-    TILING_DATA_FIELD_DEF(uint32_t, batchB3);
-    TILING_DATA_FIELD_DEF(uint32_t, batchB4);
-    TILING_DATA_FIELD_DEF(uint32_t, batchC1);
-    TILING_DATA_FIELD_DEF(uint32_t, batchC2);
-    TILING_DATA_FIELD_DEF(uint32_t, batchC3);
-    TILING_DATA_FIELD_DEF(uint32_t, batchC4);
-    TILING_DATA_FIELD_DEF(uint32_t, singleCoreBatch);
-    TILING_DATA_FIELD_DEF(uint32_t, isPerTensor);
-    TILING_DATA_FIELD_DEF(uint32_t, isPertoken);
-    TILING_DATA_FIELD_DEF(uint32_t, isDoubleScale);
-    TILING_DATA_FIELD_DEF(uint32_t, biasThreeDim);
-    TILING_DATA_FIELD_DEF(uint32_t, ubCalcM);
-    TILING_DATA_FIELD_DEF(uint32_t, ubCalcN);
-    TILING_DATA_FIELD_DEF(uint32_t, needUbBuffer);
-    TILING_DATA_FIELD_DEF(uint32_t, realSingleCoreM);
-    TILING_DATA_FIELD_DEF(uint32_t, realSingleCoreN);
-    TILING_DATA_FIELD_DEF(uint32_t, biasDtype); //代替原来的isBiasBf16
-    TILING_DATA_FIELD_DEF(uint32_t, ubSize);
-    TILING_DATA_FIELD_DEF(uint32_t, isMClash);
-    TILING_DATA_FIELD_DEF(uint32_t, isNClash);
-    TILING_DATA_FIELD_DEF(uint32_t, groupSizeM);
-    TILING_DATA_FIELD_DEF(uint32_t, groupSizeN);
-    TILING_DATA_FIELD_DEF(uint32_t, groupSizeK);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(Mc2QuantBatchMatmulV3ParamsOp, Mc2QuantBatchMatmulV3Params)
-
-BEGIN_TILING_DATA_DEF(Mc2L2cacheTileParam)
-    TILING_DATA_FIELD_DEF(uint32_t, mTileCntL2);
-    TILING_DATA_FIELD_DEF(uint32_t, nTileCntL2);
-    TILING_DATA_FIELD_DEF(uint32_t, mTileBlock);
-    TILING_DATA_FIELD_DEF(uint32_t, nTileBlock);
-    TILING_DATA_FIELD_DEF(uint32_t, calOrder);
-    TILING_DATA_FIELD_DEF(uint32_t, isBasicTiling);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(Mc2L2cacheTileParamOp, Mc2L2cacheTileParam)
-
-BEGIN_TILING_DATA_DEF(Mc2SlidingWindowParam)
-    TILING_DATA_FIELD_DEF(uint32_t, mTailTile);
-    TILING_DATA_FIELD_DEF(uint32_t, nTailTile);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(Mc2SlidingWindowParamOp, Mc2SlidingWindowParam)
-
-BEGIN_TILING_DATA_DEF(Mc2QuantBatchMatmulV3TilingData)
-    TILING_DATA_FIELD_DEF_STRUCT(Mc2QuantBatchMatmulV3Params, params);
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
-    TILING_DATA_FIELD_DEF_STRUCT(Mc2L2cacheTileParam, tileL2cacheTiling);
-    TILING_DATA_FIELD_DEF_STRUCT(Mc2SlidingWindowParam, adaptiveSlidingWin);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(Mc2QuantBatchMatmulV3, Mc2QuantBatchMatmulV3TilingData)
-REGISTER_TILING_DATA_CLASS(Mc2QuantBatchMatmulV3TilingDataOp, Mc2QuantBatchMatmulV3TilingData)
 
 class Mc2QuantBatchMatmulV3Tiling : public Mc2QuantBatchMatmulV3TilingBase {
 public:
@@ -142,7 +78,7 @@ protected:
     ge::graphStatus CalcUbTiling(uint32_t baseN, uint32_t baseM);
     void SpiltSingleCore(int32_t &singleCoreM, int32_t &singleCoreN);
     void SpiltForWorkSpaceLimit(int32_t singleCoreM, int32_t singleCoreN, int32_t blockDim);
-    bool SetBlockDimsAndSingleCore(TCubeTiling &mt);
+    bool SetBlockDimsAndSingleCore(AscendC::tiling::TCubeTiling &mt);
     bool CalcUsedL1AndUBSize(int32_t aL1Size, int32_t bL1Size, bool &fallback);
     bool CheckShapeInBoundary(const gert::Shape &shape, uint32_t shapeIdx) const;
     ge::graphStatus InitTilingData(matmul_tiling::MatmulApiTilingBase &mm, bool fallback = false);
@@ -152,21 +88,21 @@ protected:
     void ConstructCacheParams(BatchmatmulCompileParas &compileParams, BatchmatmulRunParas &runParams) const;
     void ModifyCacheParams(BatchmatmulRunParas &runParams) const;
     bool NeedAtomiClean() const;
-    
+
     bool CheckDimValue(const gert::Shape &scaleShape, const gert::StorageShape *biasShape,
                        const gert::StorageShape *pertokenShape, const std::vector<int64_t> &dimValueOfMKN) const;
-    
+
     bool CheckShapeInRangeForOptionalInputs(const gert::StorageShape* biasShape,
                                             const gert::StorageShape* pertokenShape) const;
     bool BiasShapeCheck(const gert::Shape &biasShape) const;
     uint64_t GetTotalSize(uint64_t m, uint64_t k, uint64_t n) const;
-    
+
     uint32_t GetABankConflictSize();
     void UpdateSmallMTbeTiling();
     void UpdateSmallMTbeTiling(uint64_t baseM, uint64_t baseN, uint64_t baseK);
     void SetQuantBatchMatmulRunParas(QuantBatchMatmulRunParas& runParams, const optiling::Mc2QuantBatchMatmulInfo& inputParams);
     // 新增数据成员请注意：如果是在GetShapeAttrsInfo函数过程中获取的，请放到Mc2QuantBatchMatmulInfo结构体中，或者保证在DoOpTiling赋值
-    Mc2QuantBatchMatmulV3TilingData tilingDataSelf_;
+    Mc2QuantBatchMatmulV3TilingData tilingDataSelf_{};
     Mc2QuantBatchMatmulV3TilingData &tilingData_;
 };
 }  // namespace optiling

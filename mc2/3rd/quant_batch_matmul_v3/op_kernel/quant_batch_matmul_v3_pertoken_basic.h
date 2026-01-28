@@ -29,6 +29,9 @@ public:
     {
         blockIdx_ = GetBlockIdx();
         blockIdx_ /= GetTaskRation();
+        if (GetSubBlockIdx() > 0) {
+            return;
+        }
         subBlockIdx_ = GetSubBlockIdx();
         usedCoreNum_ = tilingData->matmulTiling.usedCoreNum;
         if (blockIdx_ >= usedCoreNum_) {
@@ -62,7 +65,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (blockIdx_ >= usedCoreNum_) {
+        if (blockIdx_ >= usedCoreNum_ || GetSubBlockIdx() > 0) {
             return;
         }
         for (uint64_t batchIndex = 0; batchIndex < batch_; batchIndex++) {

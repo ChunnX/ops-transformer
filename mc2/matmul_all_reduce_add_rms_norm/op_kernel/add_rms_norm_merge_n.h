@@ -15,6 +15,8 @@
 #ifndef MC2_ADD_RMS_NORM_MERGE_N_H
 #define MC2_ADD_RMS_NORM_MERGE_N_H
 #include "rms_norm_base.h"
+#include "adv_api/pad/broadcast.h"
+#include "adv_api/quantization/ascend_dequant.h"
 
 using namespace AscendC;
 
@@ -25,10 +27,10 @@ class KernelAddRmsNormMergeN
 public:
     __aicore__ inline KernelAddRmsNormMergeN()
     {}
-    __aicore__ inline void Init(GM_ADDR gammaGM, MC2AddRMSNormTilingData& tiling, TPipe* pipe, uint32_t blockDim)
+    __aicore__ inline void Init(GM_ADDR gammaGM, Mc2Tiling::AddRMSNormTilingData& tiling, TPipe* pipe, uint32_t numBlocks)
     {
-        ASSERT(blockDim != 0 && "Block dim can not be zero!");
-        this->blockDim_ = blockDim;
+        ASSERT(numBlocks != 0 && "Block dim can not be zero!");
+        this->numBlocks_ = numBlocks;
         this->numRow_ = tiling.num_row;
         this->numCol_ = tiling.num_col;
         uint32_t numPerBlock = ONE_BLK_SIZE / sizeof(T);
@@ -39,17 +41,17 @@ public:
         this->epsilon_ = tiling.epsilon;
         this->avgFactor_ = (numCol_ != 0) ? (float)1.0 / numCol_ : 0;
 
-        if (GetBlockIdx() < blockDim_ - 1) {
+        if (GetBlockIdx() < numBlocks_ - 1) {
             this->rowWork_ = blockFactor_;
         } else {
-            this->rowWork_ = numRow_ - (blockDim_ - 1) * blockFactor_;
+            this->rowWork_ = numRow_ - (numBlocks_ - 1) * blockFactor_;
         }
         this->gmBlockOffset_ = GetBlockIdx() * blockFactor_ * numCol_;
         this->gmBlockSize_ = rowWork_ * numCol_;
 
         // get start index for current core, core parallel
-        gamma_.SetGlobalBuffer((__gm__ T*)gammaGM, numCol_);        
-        
+        gamma_.SetGlobalBuffer((__gm__ T*)gammaGM, numCol_);
+
         // pipe alloc memory to queue, the unit is Bytes
         pipe->InitBuffer(inQueueX_, DOUBLE_BUFFER_QUEUE, ubFactor_ * sizeof(T));
         pipe->InitBuffer(inQueueGamma_, 1, ubFactor_ * sizeof(T));
@@ -61,7 +63,7 @@ public:
     }
 
     __aicore__ inline void ComputeProcess(
-        GM_ADDR normOutGM, GM_ADDR residualGM, GM_ADDR yGM, MC2AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
+        GM_ADDR normOutGM, GM_ADDR residualGM, GM_ADDR yGM, Mc2Tiling::AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
         uint32_t rcvCnt)
     {
         uint64_t cOffset = CalcShapeOffset(sizeof(T), tilingData.num_row, tilingData.num_col); // 偏移*size
@@ -288,7 +290,7 @@ private:
 
     uint32_t rowWork_ = 1;
     bool isNumColAlign_;
-    uint32_t blockDim_;
+    uint32_t numBlocks_;
     uint64_t gmBlockOffset_;
     uint64_t gmBlockSize_;
 };

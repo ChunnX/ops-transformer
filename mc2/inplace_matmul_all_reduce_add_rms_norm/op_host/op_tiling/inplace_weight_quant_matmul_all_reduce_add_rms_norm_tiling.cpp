@@ -15,7 +15,8 @@
 #ifndef _INPLACE_WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
 #define _INPLACE_WEIGHT_QUANT_MATMUL_ALL_REDUCE_ADD_RMS_NORM_TILING_CC_
 
-#include "inplace_weight_quant_matmul_all_reduce_add_rms_norm_tiling.h"
+#include "../../../matmul_all_reduce_add_rms_norm/op_host/op_tiling/weight_quant_matmul_all_reduce_add_rms_norm_tiling.h"
+
 namespace optiling {
 namespace {
 constexpr char MRN[] = "MatmulAllReduceAddRmsNorm";

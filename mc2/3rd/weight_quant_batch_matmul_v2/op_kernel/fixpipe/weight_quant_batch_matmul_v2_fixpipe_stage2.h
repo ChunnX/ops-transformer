@@ -15,8 +15,7 @@
 
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_FIXPIPE_STAGE2_H
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_FIXPIPE_STAGE2_H
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "../tool.h"
 
 namespace Mc2WeightQuantBatchMatmulV2 {

@@ -15,7 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_BMM_H
 #define MATMUL_ALL_REDUCE_QUANT_BMM_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
@@ -25,6 +25,7 @@
 #include "../common.h"
 #include "mm_allreduce.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h"
+#include "../arch32/quant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
@@ -37,14 +38,14 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
+        Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InnerProcess(uint32_t tileCnt, Mc2QuantBatchMatmulV3TilingData& quant_tiling, uint32_t shift);
 
 private:
-    QuantMatmulAllReduceTilingData* tilingData_;
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData_;
     HcclServer* hcclServer_;
     TPipe* tPipe_;
     GM_ADDR cGM_;
@@ -59,7 +60,7 @@ private:
 template <typename aType, typename bType, typename biasType, typename cType, bool aTrans, bool bTrans>
 __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aTrans, bTrans>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
 {
     GetTPipePtr()->InitBuffer(tmpBuf_, TOTAL_UB_SIZE);
     auto&& cfg = tilingData->param;
@@ -128,7 +129,7 @@ __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aT
 
 #define INVOKE_QUANT_BMM_OP_IMPL(templateClass, ...)                                              \
     do {                                                                                          \
-        GET_TILING_DATA_WITH_STRUCT(QuantMatmulAllReduceTilingData, tilingData, tilingGM);        \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);        \
         templateClass<DTYPE_X1, DTYPE_X2, int32_t, DTYPE_Y, __VA_ARGS__> op;                      \
         op.Init(aGM, bGM, dequantGM, biasGM, cGM, workspaceGM, &tilingData, &tPipe, &hcclServer); \
         op.Process();                                                                             \

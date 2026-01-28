@@ -51,6 +51,8 @@ constexpr uint32_t SCALER_FACTOR_MAX=127;
 constexpr uint32_t SCALER_FACTOR_MIN=1;
 constexpr uint32_t SCALER_FACTOR_DEFAULT=1;
 constexpr uint32_t SCALER_FACTOR_B_BIT=8;
+constexpr uint32_t SCALER_FACTOR_M_BIT = 16;
+constexpr uint32_t SCALER_FACTOR_N_BIT = 24;
 
 constexpr uint64_t BASEM_BASEN_RATIO = 2;
 constexpr uint64_t BASEK_LIMIT = 4095;
@@ -170,12 +172,14 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling()
     tilingData_.matmulTiling.dbL0B = 2;  // db switch, 1: off, 2: on
     tilingData_.matmulTiling.dbL0C = basicTiling_.dbL0c;
     if (inputParams_.isMxPerGroup) {
+        tilingData_.matmulTiling.mxTypePara =
+            (SCALER_FACTOR_MIN << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_MIN << SCALER_FACTOR_M_BIT);
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
             basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
-            tilingData_.matmulTiling.mxTypePara = (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) +
+            tilingData_.matmulTiling.mxTypePara += (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) +
                                                     basicTiling_.scaleFactorA;
         } else {
-            tilingData_.matmulTiling.mxTypePara = (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) +
+            tilingData_.matmulTiling.mxTypePara += (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) +
                                                     SCALER_FACTOR_DEFAULT;
         }
     }

@@ -59,8 +59,9 @@ const std::string MOE_DISTRIBUTE_DISPATCH_V2_OP_TYPE = "MoeDistributeDispatchV2"
 const std::string MOE_DISTRIBUTE_COMBINE_V2_OP_TYPE = "MoeDistributeCombineV2";
 const std::string ALL_TO_ALLV_GROUPED_MM_OP_TYPE = "AlltoAllvGroupedMatMul";
 const std::string GROUPED_MM_ALL_TO_ALLV_OP_TYPE = "GroupedMatMulAlltoAllv";
-const std::string ALL_GATHER_MM_OP_TYPE = "AllGatherMatmulV2";
-const std::string MM_REDUCE_SCATTER_OP_TYPE = "MatmulReduceScatterV2";
+const std::string ALL_GATHER_MM_V2_OP_TYPE = "AllGatherMatmulV2";
+const std::string MM_REDUCE_SCATTER_V2_OP_TYPE = "MatmulReduceScatterV2";
+const std::string MM_ALL_REDUCE_OP_TYPE = "MatmulAllReduce";
 const std::string ATTR_NAME_GROUP = "group";
 const std::string ATTR_NAME_GROUP_EP = "group_ep";
 const int32_t MAX_GROUP_CNT = 16;
@@ -71,8 +72,9 @@ struct GroupInfo {
 };
 // 当前 GetCCuTaskInfo 接口暂不支持多通信域的接口，对于双通信域的算子，暂时不增加 TP 属性名
 static const std::map<const std::string, const GroupInfo> GROUP_INFO_MAP_A5 {
-  {ALL_GATHER_MM_OP_TYPE,              {1, {ATTR_NAME_GROUP}}},
-  {MM_REDUCE_SCATTER_OP_TYPE,          {1, {ATTR_NAME_GROUP}}},
+  {ALL_GATHER_MM_V2_OP_TYPE,           {1, {ATTR_NAME_GROUP}}},
+  {MM_REDUCE_SCATTER_V2_OP_TYPE,       {1, {ATTR_NAME_GROUP}}},
+  {MM_ALL_REDUCE_OP_TYPE,              {1, {ATTR_NAME_GROUP}}},
   {ALL_TO_ALLV_GROUPED_MM_OP_TYPE,     {1, {ATTR_NAME_GROUP}}},
   {GROUPED_MM_ALL_TO_ALLV_OP_TYPE,     {1, {ATTR_NAME_GROUP}}},
   {MOE_DISTRIBUTE_DISPATCH_OP_TYPE,    {2, {ATTR_NAME_GROUP_EP}}},
@@ -140,7 +142,7 @@ ge::Status Mc2A5GenTaskUtils::InsertContextForCcuFusion(const gert::ExeResGenera
   // is_all_kernel为true表示优先进行二进制复用，如果没有匹配到则进行在线编译
   aicore_fusion_task_info->set_is_all_kernel(isAllKernel);
   OPS_LOG_I(context->GetNodeName(), "set is all kernel to %u.", isAllKernel);
-  // 设置attribute中的block_dim 
+  // 设置attribute中的numBlocks 
   auto config = aicore_fusion_task_info->mutable_config();
   GE_ASSERT_NOTNULL(config);
   config->add_launch_attribute();
@@ -150,13 +152,13 @@ ge::Status Mc2A5GenTaskUtils::InsertContextForCcuFusion(const gert::ExeResGenera
   auto value = launch_attribute->mutable_value();
   GE_ASSERT_NOTNULL(value);
 
-  int64_t block_dim = 1;
-  if (!context->GetIntAttrVal("tvm_blockdim", block_dim) || block_dim <= 0) {
-    OPS_LOG_I(context->GetNodeName(), "Can't get valid blockdim, get blockdim %ld, set blockdim 1.", block_dim);
-    block_dim = 1;
+  int64_t numBlocks = 1;
+  if (!context->GetIntAttrVal("tvm_blockdim", numBlocks) || numBlocks <= 0) {
+    OPS_LOG_I(context->GetNodeName(), "Can't get valid numBlocks, get numBlocks %ld, set numBlocks 1.", numBlocks);
+    numBlocks = 1;
   }
-  OPS_LOG_I(context->GetNodeName(), "get blockdim %ld", block_dim);
-  value->set_block_dim(block_dim);
+  OPS_LOG_I(context->GetNodeName(), "get numBlocks %ld", numBlocks);
+  value->set_block_dim(numBlocks);
 
   auto aicore_context = aicore_fusion_task_info->mutable_context();
   GE_ASSERT_NOTNULL(aicore_context);
@@ -208,11 +210,13 @@ ge::Status Mc2A5GenTaskUtils::CreateCcuFusionTask(const gert::ExeResGenerationCo
   } else {
     stream_id = context->GetStreamId();
   }
-  GE_ASSERT_TRUE(stream_id > 0);
+  GE_ASSERT_TRUE(stream_id >= 0);
   ccu_fusion_task.set_id(context->GetOpId());
   ccu_fusion_task.set_notify_id(UINT32_MAX);
   ccu_fusion_task.set_type(type);
   ccu_fusion_task.set_stream_id(stream_id);
+  // 算子临时规避整网执行方案：aic（1个） + ccu（4个） 一共占据 5 个 sqe
+  ccu_fusion_task.set_sqe_num(5);
   OPS_LOG_I(context->GetNodeName(), "Create fusion task(type %u) for mc2 node successfully, %s stream id %ld.",
             static_cast<uint32_t>(type), (is_attached_stream ? "attached" : "main"), stream_id);
   return ge::GRAPH_SUCCESS;
@@ -243,7 +247,7 @@ ge::Status Mc2A5GenTaskUtils::Mc2GenTaskCallBack910A5(const gert::ExeResGenerati
   auto iter = tasks.erase(tasks.begin() + aicore_idx);
   // 创建 fusion task
   domi::TaskDef fusion_task{};
-  GE_ASSERT_SUCCESS(CreateCcuFusionTask(context, fusion_task, RT_MODEL_TASK_FUSION_KERNEL, true));
+  GE_ASSERT_SUCCESS(CreateCcuFusionTask(context, fusion_task, RT_MODEL_TASK_FUSION_KERNEL, false));
   tasks.insert(iter, fusion_task);
   OPS_LOG_D(context->GetNodeName(), "after CreateCcuFusionTask.");
   return InsertContextForCcuFusion(context, tasks[static_cast<size_t>(aicore_idx)], argDescs, isAllKernel);

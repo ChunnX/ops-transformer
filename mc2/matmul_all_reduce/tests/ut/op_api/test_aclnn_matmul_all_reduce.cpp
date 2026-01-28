@@ -27,9 +27,17 @@ namespace MatmulAllReduceUT {
 
 class l2_matmul_all_reduce_test : public testing::Test {
  protected:
-  static void SetUpTestCase() { cout << "l2_matmul_all_reduce_test SetUp" << endl; }
+  static void SetUpTestCase()
+  {
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    cout << "l2_matmul_all_reduce_test SetUp" << endl;
+  }
 
-  static void TearDownTestCase() { cout << "l2_matmul_all_reduce_test TearDown" << endl; }
+  static void TearDownTestCase()
+  {
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    cout << "l2_matmul_all_reduce_test TearDown" << endl;
+  }
 };
 
 TEST_F(l2_matmul_all_reduce_test, test_mm_all_reduce_first_api) {
@@ -68,7 +76,7 @@ TEST_F(l2_matmul_all_reduce_test, test_mm_all_reduce_empty_M) {
   uint64_t workspace_size = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-  EXPECT_NE(aclRet, ACLNN_SUCCESS);
+  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
 TEST_F(l2_matmul_all_reduce_test, test_mm_all_reduce_null_x1) {

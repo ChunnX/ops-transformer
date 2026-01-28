@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_all_gather_matmul.h"
+#include "all_gather_matmul_v2/op_api/aclnn_all_gather_matmul_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "op_mc2.h"
@@ -68,7 +69,10 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
   OP_CHECK_NULL(output, return false);
   return true;
 }
-
+static inline bool IsAscend910A5(void)
+{
+  return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
   op::DataType::DT_FLOAT16, op::DataType::DT_BF16
@@ -88,7 +92,6 @@ static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclT
   }
   return true;
 }
-
 static bool CheckAttr(int64_t streamMode) {
   if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
@@ -206,6 +209,12 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   bool transposeX2 = IsTransposeLastTwoDims(x2);
   CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
   bool isGatherOut = IsGatherOut(gatherOut);
+  if (IsAscend910A5()) {
+    const char *commMode = "ccu";
+    return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, gatherIndex,
+                                                  commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
+                                                  const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize, executor);
+  }
   aclnnStatus ret = aclnnInnerAllGatherMatmulGetWorkspaceSize(x1, x2, bias, group, transposeX1, transposeX2,
                                                               gatherIndex, commTurn, rankSize, isGatherOut,
                                                               output, gatherOut, workspaceSize, executor);
@@ -217,6 +226,9 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
 
 aclnnStatus aclnnAllGatherMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                  aclrtStream stream) {
+  if (IsAscend910A5()) {
+    return aclnnAllGatherMatmulV2(workspace, workspaceSize, executor, stream);
+  }
   if (workspace == nullptr || workspaceSize == 0UL) {
     OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
     return ACLNN_SUCCESS;

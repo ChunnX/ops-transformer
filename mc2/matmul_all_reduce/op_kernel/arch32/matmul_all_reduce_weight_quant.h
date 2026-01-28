@@ -15,7 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_WEIGHT_QUANT_H
 #define MATMUL_ALL_REDUCE_WEIGHT_QUANT_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
@@ -39,7 +39,7 @@ public:
         : MatmulAllReduceBase<xType, yType, Mc2CoreType::ON_CUBE_AND_VECTOR>(
               addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
-        mc2TilingData_ = (WeightQuantMatmulAllReduceTilingData*)tilingData;
+        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceTilingData*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
         this->tailInfo_.mmTiling = &mc2TilingData_->tailmatmulTiling.matmulTiling;
     }
@@ -81,13 +81,13 @@ protected:
     }
 
 private:
-    WeightQuantMatmulAllReduceTilingData* mc2TilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceTilingData* mc2TilingData_;
     mmType mmOp_;
 };
 
 #define INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(bTransFlag, quantType, offsetFlag)                         \
     do {                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM);       \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM);       \
         using opType = WEIGH_QUANT_MATMUL_CLASS_NAME<                                                  \
             DTYPE_X1, DTYPE_X2, DTYPE_BIAS_FOR_MC2, DTYPE_Y, false, bTransFlag, quantType, offsetFlag, \
             Mc2QuantType::NONE>;                                                                          \

@@ -11,7 +11,7 @@
 #ifndef CATLASS_CATLASS_HPP
 #define CATLASS_CATLASS_HPP
 
-#include <kernel_operator.h>
+#include "basic_api/kernel_basic_intf.h"
 
 #include "detail/alignment.hpp"
 #include "detail/dependent_false.hpp"

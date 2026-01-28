@@ -397,6 +397,7 @@ function(add_ops_src_copy)
         "moe_update_expert;"
         "all_gather_matmul;"
         "matmul_all_reduce;"
+        "matmul_all_reduce_apt;"
         "matmul_all_reduce_add_rms_norm;"
         "inplace_matmul_all_reduce_add_rms_norm;"
         "quant_reduce_scatter;"

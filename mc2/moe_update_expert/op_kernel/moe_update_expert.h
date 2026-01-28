@@ -16,7 +16,8 @@
 #ifndef MOE_UPDATE_EXPERT_H
 #define MOE_UPDATE_EXPERT_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
+#include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_update_expert_tiling.h"
 #if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
@@ -32,7 +33,6 @@ constexpr int32_t ALIGN_256_BYTES = 256;
 constexpr uint8_t BUFFER_NUM = 2;
 
 using namespace AscendC;
-
 
 #define UPDATE_EXPERT_DECLARE typename DataType, typename ScalesDataType, bool EnablePruning
 #define UPDATE_EXPERT_ARGS DataType, ScalesDataType, EnablePruning

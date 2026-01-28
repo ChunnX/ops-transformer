@@ -96,6 +96,8 @@ public:
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
 
+    uint64_t GetKernelType() const;
+
 protected:
     ge::graphStatus CalcUbTiling() override;
     bool CheckDtype() const override;
@@ -125,8 +127,6 @@ protected:
     void CalL1TilingDepthAfullload(uint64_t leftL1Size);
     void CalL1TilingDepthANotfullload(uint64_t leftL1Size);
     uint64_t GetBiasMode() const;
-    uint64_t GetKernelType() const;
-
     bool IsInValidPerblockTailSplit(uint64_t splitCnt) const;
     bool IsInValidWeighNzTailSplit(uint64_t splitCnt, bool isPreSplit) const;
     void Reset();

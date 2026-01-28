@@ -16,7 +16,8 @@
 #define MATMUL_REDUCE_SCATTER_FULL_MESH_H
 
 #include "matmul_reduce_scatter_base.h"
-#include "kernel_operator_intf.h"
+#include "basic_api/kernel_basic_intf.h"
+#include "adv_api/hccl/hccl.h"
 
 namespace AscendC {
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
@@ -186,11 +187,11 @@ MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Floa
         }
         return;
     }
-    using A_T = typename A_TYPE::T;
     using C_T = typename C_TYPE::T;
+    using A_T = typename A_TYPE::T;
     auto &&cfg = this->tilingData_->param;
-    const uint64_t aOffset = (uint64_t)tiling.M * (uint64_t)tiling.Ka * sizeof(A_T);
     const uint64_t cOffset = (uint64_t)tiling.M * (uint64_t)tiling.N * sizeof(C_T);
+    const uint64_t aOffset = (uint64_t)tiling.M * (uint64_t)tiling.Ka * sizeof(A_T);
     const uint64_t raOffset = (uint64_t)cfg.rankM * (uint64_t)cfg.rankK / (uint64_t)this->rankDim_ * sizeof(A_T);
     const uint64_t rcOffset = (uint64_t)cfg.rankM * (uint64_t)cfg.rankN / (uint64_t)this->rankDim_ * sizeof(C_T);
 
@@ -213,8 +214,8 @@ MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Floa
             hccl_.Commit(handleId);
         }
 
-        aWork += aOffset;
         cWork += cOffset;
+        aWork += aOffset;
     }
     mm.End();
 }
@@ -237,13 +238,12 @@ __aicore__ inline void
 MatmulReduceScatterFullMesh<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::HcclFinalize()
 {
      if ASCEND_IS_AIC {
-        if (this->debugOnlyCalc_) {
-            return;
+        if (!this->debugOnlyCalc_) {
+            // 保证所有核计算结束再Finalize
+            CrossCoreSetFlag<0, PIPE_FIX>(EVENT_ID_6);
+            CrossCoreWaitFlag(EVENT_ID_6);
+            hccl_.Finalize();
         }
-        // 保证所有核计算结束再Finalize
-        CrossCoreSetFlag<0, PIPE_FIX>(EVENT_ID_6);
-        CrossCoreWaitFlag(EVENT_ID_6);
-        hccl_.Finalize();
     }
 }
 }

@@ -18,7 +18,7 @@
 #include <limits>
 
 #include "kernel_log.h"
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "kernel_utils.h"
 #include "lib/matmul_intf.h"
 

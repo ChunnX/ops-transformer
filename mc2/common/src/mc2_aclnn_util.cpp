@@ -20,15 +20,18 @@ bool IsNeedScaleTrans(const aclTensor *mxScaleTensor)
     if (mxScaleTensor->GetViewShape().GetDimNum() < MX_SCALE_MAX_DIM) {
         return Ops::Transformer::IsTransposeLastTwoDims(mxScaleTensor);
     }
+    bool transposeFlag = false;
     int64_t dimNum = mxScaleTensor->GetViewShape().GetDimNum();
     int64_t lastDim = mxScaleTensor->GetViewShape().GetDim(dimNum - 1);     // 1:最后一个维度
     int64_t lastSecondDim = mxScaleTensor->GetViewShape().GetDim(dimNum - 2); // 2:倒数第二个维度
     int64_t lastThirdDim = mxScaleTensor->GetViewShape().GetDim(dimNum - 3);  // 3:倒数第三个维度
     if (mxScaleTensor->GetViewStrides()[dimNum - 3] == lastDim &&   // 3:倒数第三个维度
-        mxScaleTensor->GetViewStrides()[dimNum - 2] == lastDim * lastThirdDim &&  // 2:倒数第二个维度
-        (lastSecondDim == 1 && lastThirdDim == 1)) {
-        return true;
+        mxScaleTensor->GetViewStrides()[dimNum - 2] == lastDim * lastThirdDim) {    // 2:倒数第二个维度
+        transposeFlag = true;
+        if (lastSecondDim == 1 && lastThirdDim == 1) {
+            transposeFlag = false;
+        }
     }
-    return false;
+    return transposeFlag;
 }
 } // namespace MC2Aclnn

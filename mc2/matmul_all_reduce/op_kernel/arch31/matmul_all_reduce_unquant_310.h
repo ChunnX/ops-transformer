@@ -15,7 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_UNQUANT_310_H
 #define MATMUL_ALL_REDUCE_UNQUANT_310_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
@@ -27,6 +27,7 @@
 #include "../matmul_all_reduce_tiling_key.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h"
+#include "../arch32/unquant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
@@ -38,14 +39,14 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
+        Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InnerProcess(uint32_t tileCnt, Mc2MatmulV3TilingData& mm_tiling, uint32_t shift);
 
 private:
-    UnQuantMatmulAllReduceTilingData* tilingData_;
+    Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData_;
     HcclServer* hcclServer_;
     TPipe* tPipe_;
     GM_ADDR cGM_;
@@ -59,7 +60,7 @@ private:
 template <typename aType, typename bType, typename biasType, typename cType, bool mixNdNz>
 __aicore__ inline void MatmulAllReduceUnquant310<aType, bType, biasType, cType, mixNdNz>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
+    Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
 {
     GetTPipePtr()->InitBuffer(tmpBuf_, TOTAL_UB_SIZE);
     auto&& cfg = tilingData->param;
@@ -161,8 +162,8 @@ __aicore__ inline void MatmulAllReduceUnquant310<aType, bType, biasType, cType, 
     }
 }
 
-__aicore__ inline void MatMulEmptyTensorKernelUnquantNzBias(
-    GM_ADDR biasGM, GM_ADDR cGM, UnQuantMatmulAllReduceTilingData* tilingData, TBuf<TPosition::VECCALC>& tmpBuf)
+__aicore__ inline void MatMulEmptyTensorKernelUnquantNzBias(GM_ADDR biasGM, GM_ADDR cGM,
+    Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData, TBuf<TPosition::VECCALC>& tmpBuf)
 {
     // 搬运biase对齐部分
     int32_t cSizeHalf = (tilingData->param.rankN * tilingData->param.rankM) * sizeof(DTYPE_X1) / sizeof(DTYPE_Y);
@@ -202,7 +203,7 @@ __aicore__ inline void MatMulEmptyTensorKernelUnquantNzBias(
 }
 
 __aicore__ inline void MatMulEmptyTensorKernelUnquantNz(
-    GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM, UnQuantMatmulAllReduceTilingData* tilingData,
+    GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM, Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData,
     HcclServer* hcclServer)
 {
     TBuf<TPosition::VECCALC> tmpBuf;
@@ -234,11 +235,11 @@ __aicore__ inline void MatMulEmptyTensorKernelUnquantNz(
 
 #define INVOKE_UNQUANT_BMM_OP_IMPL_310(templateClass)                                        \
     do {                                                                                     \
-        GET_TILING_DATA_MEMBER(UnQuantMatmulAllReduceTilingData, msg, msg, tilingGM);        \
+        GET_TILING_DATA_MEMBER(Mc2Tiling::UnQuantMatmulAllReduceTilingData, msg, msg, tilingGM);        \
         if (msg.debugMode == static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_AICPU)) {        \
             continue;                                                                        \
         }                                                                                    \
-        GET_TILING_DATA_WITH_STRUCT(UnQuantMatmulAllReduceTilingData, tilingData, tilingGM); \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::UnQuantMatmulAllReduceTilingData, tilingData, tilingGM); \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_Y, MIXND2NZ> op;                              \
         op.Init(aGM, bGM, biasGM, cGM, userWS, &tilingData, &tPipe, &hcclServer);            \
         op.Process();                                                                        \

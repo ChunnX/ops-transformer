@@ -15,7 +15,7 @@
 #ifndef RAC_SERVET_H
 #define RAC_SERVET_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "../common.h"
 
 namespace AscendC {

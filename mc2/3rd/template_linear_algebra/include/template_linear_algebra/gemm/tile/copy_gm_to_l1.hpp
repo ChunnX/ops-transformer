@@ -12,6 +12,7 @@
 #define CATLASS_GEMM_TILE_COPY_GM_TO_L1_HPP
 
 #include "../../catlass.hpp"
+#include "../../numeric_size.hpp"
 #include "../../layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
 #include "../../../tla/tensor.hpp"
@@ -35,7 +36,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::RowMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -77,7 +78,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::RowMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -182,7 +183,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
     using LayoutDst = layout::nN;
     using LayoutSrc = layout::ColumnMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -287,7 +288,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::ColumnMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -329,7 +330,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::ColumnMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -374,7 +375,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>, Gemm::
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::VectorLayout;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Methods
 
@@ -410,7 +411,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
     using LayoutDst = layout::nN;
     using LayoutSrc = layout::ColumnMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Methods
 
@@ -515,7 +516,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::RowMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Methods
 
@@ -559,7 +560,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::RowMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -576,6 +577,11 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
         intriParams.ndNum = 1;
         intriParams.dValue = layoutSrc.shape(1);
+        // There is an issue with AscenC in the data migration of nd2nz of type int4b_t: dValue needs to be passed
+        // with the length of int8, and it is uncertain whether this will be fixed in subsequent versions.
+        if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
+            intriParams.dValue = CeilDiv(intriParams.dValue, 2);
+        }
         intriParams.srcNdMatrixStride = 0;
         intriParams.dstNzC0Stride = layoutDst.stride(3) / ELE_NUM_PER_C0;
         intriParams.dstNzMatrixStride = 0;
@@ -583,6 +589,9 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
         if (layoutSrc.stride(0) < STRIDE_LIMIT) {
             intriParams.nValue = layoutSrc.shape(0);
             intriParams.srcDValue = layoutSrc.stride(0);
+            if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
+                intriParams.srcDValue = CeilDiv(intriParams.srcDValue, 2);
+            }
             intriParams.dstNzNStride = layoutDst.stride(0) / ELE_NUM_PER_C0;
             AscendC::DataCopy(dstTensor, srcTensor, intriParams);
         } else {
@@ -636,7 +645,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::ColumnMajor>> {
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::ColumnMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -653,6 +662,11 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::ColumnMajor>> {
 
         intriParams.ndNum = 1;
         intriParams.dValue = layoutSrc.shape(0);
+        // There is an issue with AscenC in the data migration of nd2nz of type int4b_t: dValue needs to be passed
+        // with the length of int8, and it is uncertain whether this will be fixed in subsequent versions.
+        if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
+            intriParams.dValue = CeilDiv(intriParams.dValue, 2);
+        }
         intriParams.srcNdMatrixStride = 0;
         intriParams.dstNzC0Stride = layoutDst.stride(1) / ELE_NUM_PER_C0;
         intriParams.dstNzMatrixStride = 0;
@@ -660,6 +674,9 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::ColumnMajor>> {
         if (layoutSrc.stride(1) < STRIDE_LIMIT) {
             intriParams.nValue = layoutSrc.shape(1);
             intriParams.srcDValue = layoutSrc.stride(1);
+            if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
+                intriParams.srcDValue = CeilDiv(intriParams.srcDValue, 2);
+            }
             intriParams.dstNzNStride = layoutDst.stride(2) / ELE_NUM_PER_C0;
             AscendC::DataCopy(dstTensor, srcTensor, intriParams);
         } else {
@@ -682,7 +699,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::zN>> {
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::zN;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -729,7 +746,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::nZ>> {
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::nZ;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -773,7 +790,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::PaddingRowMajor
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::PaddingRowMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -809,7 +826,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::PaddingColumnMa
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::PaddingColumnMajor;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 
@@ -1137,7 +1154,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout, AscendC
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
     // Mehtods
 

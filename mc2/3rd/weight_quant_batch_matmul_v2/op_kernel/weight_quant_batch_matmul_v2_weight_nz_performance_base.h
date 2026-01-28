@@ -16,8 +16,7 @@
 #ifndef WEIGHT_QUANT_BATCHMATMUL_V2_WEIGHT_NZ_PERFORMANCE_BASE_H
 #define WEIGHT_QUANT_BATCHMATMUL_V2_WEIGHT_NZ_PERFORMANCE_BASE_H
 
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "weight_quant_batch_matmul_v2_constant.h"
 

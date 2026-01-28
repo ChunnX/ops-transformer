@@ -11,5 +11,8 @@
 set(CMAKE_LIBRARY_OUTPUT_DIRECTOR ${PROJECT_SOURCE_DIR}/build)
 
 file(GLOB_RECURSE OP_TILING_FILES "*.cpp")
+if(UT_TEST_ALL OR OP_HOST_UT)
+    list(FILTER OP_TILING_FILES EXCLUDE REGEX "op_cache_tiling.cpp")
+endif()
 
 target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OP_TILING_FILES})

@@ -25,21 +25,20 @@ class AllGatherMatmulFullMesh : public AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYP
 public:
     __aicore__ inline AllGatherMatmulFullMesh() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM,
-        GM_ADDR workspaceGM, GM_ADDR contextGM, Mc2Tiling::AllGatherMatmulTilingData *tilingData, __gm__ void* mc2InitTiling,
-        __gm__ void* mc2CcTiling, TPipe *tPipe);
+        GM_ADDR workspaceGM, GM_ADDR contextGM, Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+        __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void HcclPrepare();
     __aicore__ inline void InnerProcess();
 
-    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
-        HcclHandle &handleId, uint32_t tileCnt);
+    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void MatmulKernelComputeL2Cache(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
         Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
-    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
-        HcclHandle &handleId, uint32_t tileCnt);
-
+    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
+        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void HcclFinalize();
 
 private:

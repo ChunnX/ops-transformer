@@ -12,6 +12,7 @@
  * \file matmul_v3_base_tiling.cc
  * \brief
  */
+#include <cinttypes>
 #include "matmul_v3_base_tiling.h"
 #include "../../op_kernel/mat_mul_v3_tiling_key.h"
 
@@ -569,11 +570,11 @@ ge::graphStatus Mc2MatmulV3BaseTiling::DoOpTiling()
         if (tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::MULTI_CORE_SPLIT_K) {
             bool isSingleRound =
                 MathUtil::CeilDivision(args_.mValue,
-                    static_cast<uint64_t>(tilingData_.matmulTiling.get_singleCoreM())) *
+                    static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreM)) *
                 MathUtil::CeilDivision(args_.nValue,
-                    static_cast<uint64_t>(tilingData_.matmulTiling.get_singleCoreN())) *
+                    static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreN)) *
                 MathUtil::CeilDivision(args_.kValue,
-                    static_cast<uint64_t>(tilingData_.matmulTiling.get_singleCoreK())) <= compileInfo_.aicNum;
+                    static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreK)) <= compileInfo_.aicNum;
             OP_TILING_CHECK(args_.isATrans || !args_.isBTrans || !isSingleRound || args_.aType != ge::DT_FLOAT,
                 CUBE_INNER_ERR_REPORT(args_.opName, "MULTI_CORE_SPLIT_K only support fp322fp32, "
                 "transA=false and transB=true, and multi round is not permitted."),
@@ -769,21 +770,21 @@ void Mc2MatmulV3BaseTiling::SetParamsV310()
 
 void Mc2MatmulV3BaseTiling::SetNd2NzInfo()
 {
-    tilingData_.set_baseAN(static_cast<uint32_t>(runInfo_.baseAN));
-    tilingData_.set_baseAD(static_cast<uint32_t>(runInfo_.baseAD));
-    tilingData_.set_baseBN(static_cast<uint32_t>(runInfo_.baseBN));
-    tilingData_.set_baseBD(static_cast<uint32_t>(runInfo_.baseBD));
+    tilingData_.baseAN = static_cast<uint32_t>(runInfo_.baseAN);
+    tilingData_.baseAD = static_cast<uint32_t>(runInfo_.baseAD);
+    tilingData_.baseBN = static_cast<uint32_t>(runInfo_.baseBN);
+    tilingData_.baseBD = static_cast<uint32_t>(runInfo_.baseBD);
 }
 
 void Mc2MatmulV3BaseTiling::SetRunInfo()
 {
-    tilingData_.matmulRunInfo.set_transA(static_cast<uint32_t>(args_.isATrans));
-    tilingData_.matmulRunInfo.set_transB(static_cast<uint32_t>(args_.isBTrans));
-    tilingData_.matmulRunInfo.set_nd2nzA(static_cast<uint32_t>(args_.nd2nzA));
-    tilingData_.matmulRunInfo.set_nd2nzB(static_cast<uint32_t>(args_.nd2nzB));
-    tilingData_.matmulRunInfo.set_isNzA(static_cast<uint32_t>(args_.isNzA));
-    tilingData_.matmulRunInfo.set_isNzB(static_cast<uint32_t>(args_.isNzB));
-    tilingData_.matmulRunInfo.set_isHf32(static_cast<uint32_t>(args_.isHf32));
+    tilingData_.matmulRunInfo.transA = static_cast<uint32_t>(args_.isATrans);
+    tilingData_.matmulRunInfo.transB = static_cast<uint32_t>(args_.isBTrans);
+    tilingData_.matmulRunInfo.nd2nzA = static_cast<uint32_t>(args_.nd2nzA);
+    tilingData_.matmulRunInfo.nd2nzB = static_cast<uint32_t>(args_.nd2nzB);
+    tilingData_.matmulRunInfo.isNzA = static_cast<uint32_t>(args_.isNzA);
+    tilingData_.matmulRunInfo.isNzB = static_cast<uint32_t>(args_.isNzB);
+    tilingData_.matmulRunInfo.isHf32 = static_cast<uint32_t>(args_.isHf32);
 }
 
 bool Mc2MatmulV3BaseTiling::GetTilingFromRepo()
@@ -891,39 +892,39 @@ bool Mc2MatmulV3BaseTiling::TranslateAoeTiling(tuningtiling::TuningTilingDefPtr 
     if (aoeTiling == nullptr) {
         return false;
     }
-    tilingData_.matmulTiling.set_usedCoreNum(aoeTiling->usedCoreNum);
-    tilingData_.matmulTiling.set_singleCoreM(aoeTiling->singleCoreM);
-    tilingData_.matmulTiling.set_singleCoreN(aoeTiling->singleCoreN);
-    tilingData_.matmulTiling.set_singleCoreK(aoeTiling->singleCoreK);
-    tilingData_.matmulTiling.set_baseM(aoeTiling->baseM);
-    tilingData_.matmulTiling.set_baseN(aoeTiling->baseN);
-    tilingData_.matmulTiling.set_baseK(aoeTiling->baseK);
-    tilingData_.matmulTiling.set_depthA1(aoeTiling->depthA1);
-    tilingData_.matmulTiling.set_depthB1(aoeTiling->depthB1);
-    tilingData_.matmulTiling.set_stepM(aoeTiling->stepM);
-    tilingData_.matmulTiling.set_stepN(aoeTiling->stepN);
-    tilingData_.matmulTiling.set_iterateOrder(aoeTiling->iterateOrder);
-    tilingData_.matmulTiling.set_stepKa(aoeTiling->stepKa);
-    tilingData_.matmulTiling.set_stepKb(aoeTiling->stepKb);
-    tilingData_.matmulTiling.set_dbL0A(aoeTiling->dbL0A);
-    tilingData_.matmulTiling.set_dbL0B(aoeTiling->dbL0B);
-    tilingData_.matmulTiling.set_dbL0C(aoeTiling->dbL0C);
-    tilingData_.matmulTiling.set_dbL0C(aoeTiling->dbL0C);
+    tilingData_.matmulTiling.usedCoreNum = aoeTiling->usedCoreNum;
+    tilingData_.matmulTiling.singleCoreM = aoeTiling->singleCoreM;
+    tilingData_.matmulTiling.singleCoreN = aoeTiling->singleCoreN;
+    tilingData_.matmulTiling.singleCoreK = aoeTiling->singleCoreK;
+    tilingData_.matmulTiling.baseM = aoeTiling->baseM;
+    tilingData_.matmulTiling.baseN = aoeTiling->baseN;
+    tilingData_.matmulTiling.baseK = aoeTiling->baseK;
+    tilingData_.matmulTiling.depthA1 = aoeTiling->depthA1;
+    tilingData_.matmulTiling.depthB1 = aoeTiling->depthB1;
+    tilingData_.matmulTiling.stepM = aoeTiling->stepM;
+    tilingData_.matmulTiling.stepN = aoeTiling->stepN;
+    tilingData_.matmulTiling.iterateOrder = aoeTiling->iterateOrder;
+    tilingData_.matmulTiling.stepKa = aoeTiling->stepKa;
+    tilingData_.matmulTiling.stepKb = aoeTiling->stepKb;
+    tilingData_.matmulTiling.dbL0A = aoeTiling->dbL0A;
+    tilingData_.matmulTiling.dbL0B = aoeTiling->dbL0B;
+    tilingData_.matmulTiling.dbL0C = aoeTiling->dbL0C;
+    tilingData_.matmulTiling.dbL0C = aoeTiling->dbL0C;
     if (!compileInfo_.supportL0c2out) {
-        tilingData_.matmulTiling.set_transLength(L0C_SIZE_256_KB / NUM_HALF);
-        tilingData_.matmulTiling.set_shareUbSize(0);
+        tilingData_.matmulTiling.transLength = L0C_SIZE_256_KB / NUM_HALF;
+        tilingData_.matmulTiling.shareUbSize = 0;
     }
-    tilingData_.tileL2cacheTiling.set_mTileCntL2(aoeTiling->l2MTileCnt);
-    tilingData_.tileL2cacheTiling.set_nTileCntL2(aoeTiling->l2NTileCnt);
-    tilingData_.tileL2cacheTiling.set_mTileBlock(aoeTiling->l2MTileBlock);
-    tilingData_.tileL2cacheTiling.set_nTileBlock(aoeTiling->l2NTileBlock);
-    tilingData_.tileL2cacheTiling.set_calOrder(aoeTiling->l2IterateOrder);
-    tilingData_.matmulRunInfo.set_transA(args_.isATrans);
-    tilingData_.matmulRunInfo.set_transB(args_.isBTrans);
-    tilingData_.matmulRunInfo.set_nd2nzA(args_.nd2nzA);
-    tilingData_.matmulRunInfo.set_nd2nzB(args_.nd2nzB);
-    tilingData_.matmulRunInfo.set_isNzA(args_.isNzA);
-    tilingData_.matmulRunInfo.set_isNzB(args_.isNzB);
+    tilingData_.tileL2cacheTiling.mTileCntL2 = aoeTiling->l2MTileCnt;
+    tilingData_.tileL2cacheTiling.nTileCntL2 = aoeTiling->l2NTileCnt;
+    tilingData_.tileL2cacheTiling.mTileBlock = aoeTiling->l2MTileBlock;
+    tilingData_.tileL2cacheTiling.nTileBlock = aoeTiling->l2NTileBlock;
+    tilingData_.tileL2cacheTiling.calOrder = aoeTiling->l2IterateOrder;
+    tilingData_.matmulRunInfo.transA = args_.isATrans;
+    tilingData_.matmulRunInfo.transB = args_.isBTrans;
+    tilingData_.matmulRunInfo.nd2nzA = args_.nd2nzA;
+    tilingData_.matmulRunInfo.nd2nzB = args_.nd2nzB;
+    tilingData_.matmulRunInfo.isNzA = args_.isNzA;
+    tilingData_.matmulRunInfo.isNzB = args_.isNzB;
     if (!CheckAoeTilingEnable(aoeTiling->tilingEnable, args_.opName)) {
         OP_LOGW(args_.opName, "Get tiling from repo, but the tilingEnable is invalid.");
         return false;
@@ -2285,12 +2286,12 @@ void Mc2MatmulV3BaseTiling::IsGmToL1ByShape()
         bMatrix = args_.isBTrans ? args_.nValue : args_.kValue;
     }
     if (!args_.hasBias && aMatrix <= SHAPE_LIMIT && bMatrix <= SHAPE_LIMIT) {
-        tilingData_.matmulTiling.set_shareL1Size(static_cast<uint32_t>(0));
+        tilingData_.matmulTiling.shareL1Size = static_cast<uint32_t>(0);
         if (runInfo_.stepM == STEP_NUM_3 && args_.hasBias){
-            tilingData_.matmulTiling.set_shareL1Size(static_cast<uint32_t>(L1_BIAS_SIZE));
+            tilingData_.matmulTiling.shareL1Size = static_cast<uint32_t>(L1_BIAS_SIZE);
         }
         tilingEnable_.tilingEnableSplitCore = Mc2TilingEnableSplitCore::SINGLE_CORE_SPLIT_K_GM_TO_L1;
-        tilingData_.matmulTiling.set_shareL0CSize(static_cast<uint32_t>(0));
+        tilingData_.matmulTiling.shareL0CSize = static_cast<uint32_t>(0);
     }
 }
 
@@ -2636,31 +2637,31 @@ ge::graphStatus Mc2MatmulV3BaseTiling::DoLibApiTiling()
         if (CheckMMTilingDataIsVaild()) {
             return ge::FAILED;
         }
-        tilingData_.matmulTiling.set_usedCoreNum(static_cast<uint32_t>(runInfo_.usedCoreNum));
-        tilingData_.matmulTiling.set_singleCoreM(static_cast<uint32_t>(runInfo_.singleCoreM));
-        tilingData_.matmulTiling.set_singleCoreN(static_cast<uint32_t>(runInfo_.singleCoreN));
-        tilingData_.matmulTiling.set_singleCoreK(static_cast<uint32_t>(runInfo_.singleCoreK));
-        tilingData_.matmulTiling.set_baseM(static_cast<uint32_t>(runInfo_.baseM));
-        tilingData_.matmulTiling.set_baseN(static_cast<uint32_t>(runInfo_.baseN));
-        tilingData_.matmulTiling.set_baseK(static_cast<uint32_t>(runInfo_.baseK));
-        tilingData_.matmulTiling.set_depthA1(static_cast<uint32_t>(runInfo_.depthA1));
-        tilingData_.matmulTiling.set_depthB1(static_cast<uint32_t>(runInfo_.depthB1));
-        tilingData_.matmulTiling.set_stepM(static_cast<uint32_t>(runInfo_.stepM));
-        tilingData_.matmulTiling.set_stepN(static_cast<uint32_t>(runInfo_.stepN));
-        tilingData_.matmulTiling.set_stepKa(static_cast<uint32_t>(runInfo_.stepKa));
-        tilingData_.matmulTiling.set_stepKb(static_cast<uint32_t>(runInfo_.stepKb));
-        tilingData_.matmulTiling.set_iterateOrder(static_cast<uint32_t>(runInfo_.iterateOrder));
-        tilingData_.matmulTiling.set_dbL0C(static_cast<uint32_t>(runInfo_.dbL0c));
+        tilingData_.matmulTiling.usedCoreNum = static_cast<uint32_t>(runInfo_.usedCoreNum);
+        tilingData_.matmulTiling.singleCoreM = static_cast<uint32_t>(runInfo_.singleCoreM);
+        tilingData_.matmulTiling.singleCoreN = static_cast<uint32_t>(runInfo_.singleCoreN);
+        tilingData_.matmulTiling.singleCoreK = static_cast<uint32_t>(runInfo_.singleCoreK);
+        tilingData_.matmulTiling.baseM = static_cast<uint32_t>(runInfo_.baseM);
+        tilingData_.matmulTiling.baseN = static_cast<uint32_t>(runInfo_.baseN);
+        tilingData_.matmulTiling.baseK = static_cast<uint32_t>(runInfo_.baseK);
+        tilingData_.matmulTiling.depthA1 = static_cast<uint32_t>(runInfo_.depthA1);
+        tilingData_.matmulTiling.depthB1 = static_cast<uint32_t>(runInfo_.depthB1);
+        tilingData_.matmulTiling.stepM = static_cast<uint32_t>(runInfo_.stepM);
+        tilingData_.matmulTiling.stepN = static_cast<uint32_t>(runInfo_.stepN);
+        tilingData_.matmulTiling.stepKa = static_cast<uint32_t>(runInfo_.stepKa);
+        tilingData_.matmulTiling.stepKb = static_cast<uint32_t>(runInfo_.stepKb);
+        tilingData_.matmulTiling.iterateOrder = static_cast<uint32_t>(runInfo_.iterateOrder);
+        tilingData_.matmulTiling.dbL0C = static_cast<uint32_t>(runInfo_.dbL0c);
         if (!compileInfo_.supportL0c2out) {
-            tilingData_.matmulTiling.set_transLength(static_cast<uint32_t>(L0C_SIZE_256_KB / NUM_HALF));
-            tilingData_.matmulTiling.set_shareUbSize(0);
+            tilingData_.matmulTiling.transLength = static_cast<uint32_t>(L0C_SIZE_256_KB / NUM_HALF);
+            tilingData_.matmulTiling.shareUbSize = 0;
         }
-        tilingData_.tileL2cacheTiling.set_mTileCntL2(static_cast<uint32_t>(runInfo_.l2Info.mTile));
-        tilingData_.tileL2cacheTiling.set_nTileCntL2(static_cast<uint32_t>(runInfo_.l2Info.nTile));
-        tilingData_.tileL2cacheTiling.set_mTileBlock(static_cast<uint32_t>(runInfo_.l2Info.mTileBlock));
-        tilingData_.tileL2cacheTiling.set_nTileBlock(static_cast<uint32_t>(runInfo_.l2Info.nTileBlock));
-        tilingData_.tileL2cacheTiling.set_calOrder(static_cast<uint32_t>(runInfo_.l2Info.calOrder));
-        tilingData_.l2cacheUseInfo.set_l2CacheFlag(l2CacheFlag_);
+        tilingData_.tileL2cacheTiling.mTileCntL2 = static_cast<uint32_t>(runInfo_.l2Info.mTile);
+        tilingData_.tileL2cacheTiling.nTileCntL2 = static_cast<uint32_t>(runInfo_.l2Info.nTile);
+        tilingData_.tileL2cacheTiling.mTileBlock = static_cast<uint32_t>(runInfo_.l2Info.mTileBlock);
+        tilingData_.tileL2cacheTiling.nTileBlock = static_cast<uint32_t>(runInfo_.l2Info.nTileBlock);
+        tilingData_.tileL2cacheTiling.calOrder = static_cast<uint32_t>(runInfo_.l2Info.calOrder);
+        tilingData_.l2cacheUseInfo.l2CacheFlag = l2CacheFlag_;
     }
     SetNd2NzInfo();
     DoTilingKey();
@@ -2688,11 +2689,11 @@ void Mc2MatmulV3BaseTiling::DoTilingKey()
 ge::graphStatus Mc2MatmulV3BaseTiling::GetWorkspaceSize()
 {
     uint64_t align256Byte = 256 / aDtypeSize_;  // 256B 对齐shape
-    uint64_t alignedM = ops::CeilAlign(tilingData_.matmulTiling.get_M(), 16);
-    uint64_t alignedN = ops::CeilAlign(tilingData_.matmulTiling.get_N(), 16);
+    uint64_t alignedM = ops::CeilAlign(tilingData_.matmulTiling.M, 16);
+    uint64_t alignedN = ops::CeilAlign(tilingData_.matmulTiling.N, 16);
 
-    alignedM = std::max(alignedM, static_cast<uint64_t>(tilingData_.matmulTiling.get_singleCoreM()));
-    alignedN = std::max(alignedN, static_cast<uint64_t>(tilingData_.matmulTiling.get_singleCoreN()));
+    alignedM = std::max(alignedM, static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreM));
+    alignedN = std::max(alignedN, static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreN));
 
     workspaceSize_ = RPC_WORKSIZE * MB_SIZE; // 20MB reserve > 16MB for rpc
     if (tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::SINGLE_CORE_SPLIT_K || tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::SINGLE_CORE_NKM_SPLIT_K ||
@@ -2704,16 +2705,16 @@ ge::graphStatus Mc2MatmulV3BaseTiling::GetWorkspaceSize()
     if (tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::DETERMINISTIC_SPLIT_K) {
         uint64_t singleSize = alignedM * alignedN;
         workspaceSize_ =
-            static_cast<uint64_t>(tilingData_.matmulTiling.get_usedCoreNum()) * singleSize * DB_SIZE * DATA_SIZE_FP32 +
+            static_cast<uint64_t>(tilingData_.matmulTiling.usedCoreNum) * singleSize * DB_SIZE * DATA_SIZE_FP32 +
             RPC_WORKSIZE * MB_SIZE;
     }
     if (tilingEnable_.tilingEnableFixOpti == Mc2TilingEnableFixOpti::BASE_ENABLE_ALIGNOUT) {
-        workspaceSize_ += ops::CeilAlign(args_.nValue, CACHELINE / cDtypeSize_) * tilingData_.matmulTiling.get_baseM() *
-           tilingData_.matmulTiling.get_usedCoreNum() * NUMBER_TWO * cDtypeSize_;
+        workspaceSize_ += ops::CeilAlign(args_.nValue, CACHELINE / cDtypeSize_) * tilingData_.matmulTiling.baseM *
+           tilingData_.matmulTiling.usedCoreNum * NUMBER_TWO * cDtypeSize_;
     }
     if (tilingEnable_.tilingEnableFixOpti == Mc2TilingEnableFixOpti::VEC_NZ2ND_UNALIGNOUT) {
-        workspaceSize_ += ops::CeilAlign(args_.nValue, N_ALIGNED) * tilingData_.matmulTiling.get_baseM() *
-           tilingData_.matmulTiling.get_usedCoreNum() * NUMBER_TWO * cDtypeSize_;
+        workspaceSize_ += ops::CeilAlign(args_.nValue, N_ALIGNED) * tilingData_.matmulTiling.baseM *
+           tilingData_.matmulTiling.usedCoreNum * NUMBER_TWO * cDtypeSize_;
     }
     if (!compileInfo_.supportL0c2out) {
         return ge::GRAPH_SUCCESS;
@@ -2742,13 +2743,18 @@ ge::graphStatus Mc2MatmulV3BaseTiling::GetWorkspaceSize()
 
 ge::graphStatus Mc2MatmulV3BaseTiling::PostTiling()
 {
-    OP_TILING_CHECK(tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
-        OP_LOGE(args_.opName, "tiling data size[%zu] is not aligned to 8", tilingData_.GetDataSize()),
+    size_t tilingDataSize = sizeof(Mc2MatmulV3TilingData);
+    OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
+        OP_LOGE(args_.opName, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
     OPS_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
-    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
-    context_->SetBlockDim(tilingData_.matmulTiling.get_usedCoreNum());
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+    if (ret != EOK){
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
+    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
+    context_->SetBlockDim(tilingData_.matmulTiling.usedCoreNum);
     context_->SetScheduleMode(1);
     size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
     OP_TILING_CHECK(workspaces == nullptr, CUBE_INNER_ERR_REPORT(context_->GetNodeName(), "workspaces is null"),

@@ -14,7 +14,7 @@
  */
 #ifndef _REDUCE_COMMON_H_
 #define _REDUCE_COMMON_H_
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 
 using namespace AscendC;
 

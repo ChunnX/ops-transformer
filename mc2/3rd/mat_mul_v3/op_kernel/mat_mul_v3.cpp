@@ -167,6 +167,7 @@ template <int LOADMODE, int SPLITCOREMODE, int FIXOPTI, int MIXND2NZ>
 __global__ __aicore__ void mat_mul_v3(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    REGISTER_TILING_DEFAULT(Mc2MatmulV3TilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
     GET_TILING_DATA(tilingData, tilingGM);
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ < 220

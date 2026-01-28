@@ -33,6 +33,7 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
+#include "tiling/mc2_tiling_utils.h"
 #include "batch_matmul_reduce_scatter_all_to_all_formulaic_tiling.h"
 #include "op_mc2.h"
 #include "mc2_moe_utils.h"
@@ -70,45 +71,45 @@ struct BmmTilingConfig {
     ReduceScatterAlltoAllMatmulInfo& mmV3ArgsInfo;
 };
 
-static void PrintCommonTilingVariables(BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
+static void PrintCommonTilingVariables(BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - epGroupSize is %u.", tilingData.commonTiling.get_epGroupSize());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - tpGroupSize is %u.", tilingData.commonTiling.get_tpGroupSize());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - expert is %lu.", tilingData.commonTiling.get_expert());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - EOverEp is %lu.", tilingData.commonTiling.get_EOverEp());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - C is %lu.", tilingData.commonTiling.get_C());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - COverTp is %lu.", tilingData.commonTiling.get_COverTp());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - H is %lu.", tilingData.commonTiling.get_H());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - HOverTp is %lu.", tilingData.commonTiling.get_HOverTp());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - MOverTp is %lu.", tilingData.commonTiling.get_MOverTp());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - aivCoreNum is %u.", tilingData.commonTiling.get_aivCoreNum());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - inputDatasize is %u.", tilingData.commonTiling.get_inputDatasize());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - biasDatasize is %u.", tilingData.commonTiling.get_biasDatasize());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - ubCapacityForAdd is %lu.", tilingData.commonTiling.get_ubCapacityForAdd());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - totalUbSize is %lu.", tilingData.commonTiling.get_totalUbSize());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - isBias is %d.", tilingData.commonTiling.get_isBias());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - isWeightTrans is %d.", tilingData.commonTiling.get_isWeightTrans());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - yShardFlag is %u.", tilingData.commonTiling.get_yShardFlag());
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - epGroupSize is %u.", tilingData->commonTiling.epGroupSize);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - tpGroupSize is %u.", tilingData->commonTiling.tpGroupSize);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - expert is %lu.", tilingData->commonTiling.expert);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - EOverEp is %lu.", tilingData->commonTiling.EOverEp);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - C is %lu.", tilingData->commonTiling.C);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - COverTp is %lu.", tilingData->commonTiling.COverTp);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - H is %lu.", tilingData->commonTiling.H);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - HOverTp is %lu.", tilingData->commonTiling.HOverTp);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - MOverTp is %lu.", tilingData->commonTiling.MOverTp);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - aivCoreNum is %u.", tilingData->commonTiling.aivCoreNum);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - inputDatasize is %u.", tilingData->commonTiling.inputDatasize);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - biasDatasize is %u.", tilingData->commonTiling.biasDatasize);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - ubCapacityForAdd is %lu.", tilingData->commonTiling.ubCapacityForAdd);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - totalUbSize is %lu.", tilingData->commonTiling.totalUbSize);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - isBias is %d.", tilingData->commonTiling.isBias);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - isWeightTrans is %d.", tilingData->commonTiling.isWeightTrans);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Common tiling - yShardFlag is %u.", tilingData->commonTiling.yShardFlag);
 }
 
-static void PrintSliceTileInfo(BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
+static void PrintSliceTileInfo(BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tile length is %lu.", tilingData.commonTiling.localTileE.get_tileLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tile Count is %lu.", tilingData.commonTiling.localTileE.get_tileCnt());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tail length is %lu.", tilingData.commonTiling.localTileE.get_tailLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tail Count is %lu.", tilingData.commonTiling.localTileE.get_tailCnt());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tile length is %lu.", tilingData.commonTiling.localTileC.get_tileLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tile Count is %lu.", tilingData.commonTiling.localTileC.get_tileCnt());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tail length is %lu.", tilingData.commonTiling.localTileC.get_tailLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tail Count is %lu.", tilingData.commonTiling.localTileC.get_tailCnt());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tile length is %lu.", tilingData.commonTiling.domesticTileE.get_tileLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tile Count is %lu.", tilingData.commonTiling.domesticTileE.get_tileCnt());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tail length is %lu.", tilingData.commonTiling.domesticTileE.get_tailLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tail Count is %lu.", tilingData.commonTiling.domesticTileE.get_tailCnt());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tile length is %lu.", tilingData.commonTiling.domesticTileC.get_tileLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tile Count is %lu.", tilingData.commonTiling.domesticTileC.get_tileCnt());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tail length is %lu.", tilingData.commonTiling.domesticTileC.get_tailLen());
-    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tail Count is %lu.", tilingData.commonTiling.domesticTileC.get_tailCnt());
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tile length is %lu.", tilingData->commonTiling.localTileE.tileLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tile Count is %lu.", tilingData->commonTiling.localTileE.tileCnt);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tail length is %lu.", tilingData->commonTiling.localTileE.tailLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local E - Tail Count is %lu.", tilingData->commonTiling.localTileE.tailCnt);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tile length is %lu.", tilingData->commonTiling.localTileC.tileLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tile Count is %lu.", tilingData->commonTiling.localTileC.tileCnt);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tail length is %lu.", tilingData->commonTiling.localTileC.tailLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Local C - Tail Count is %lu.", tilingData->commonTiling.localTileC.tailCnt);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tile length is %lu.", tilingData->commonTiling.domesticTileE.tileLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tile Count is %lu.", tilingData->commonTiling.domesticTileE.tileCnt);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tail length is %lu.", tilingData->commonTiling.domesticTileE.tailLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local E - Tail Count is %lu.", tilingData->commonTiling.domesticTileE.tailCnt);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tile length is %lu.", tilingData->commonTiling.domesticTileC.tileLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tile Count is %lu.", tilingData->commonTiling.domesticTileC.tileCnt);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tail length is %lu.", tilingData->commonTiling.domesticTileC.tailLen);
+    OP_LOGD("BatchMatMulReduceScatterAlltoAll", "Non-Local C - Tail Count is %lu.", tilingData->commonTiling.domesticTileC.tailCnt);
 }
 
 static matmul_tiling::DataType GetMatMulTilingDataType(ge::DataType geDtype)
@@ -131,39 +132,39 @@ static uint32_t GetDataSize(ge::DataType geDtype)
     }
 }
 
-static void InitTileInfo(BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
+static void InitTileInfo(BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
-    if (tilingData.commonTiling.get_yShardFlag() == 1U){
-        tilingData.commonTiling.localTileC.set_tileLen(tilingData.commonTiling.get_C() / tilingData.commonTiling.get_tpGroupSize());
+    if (tilingData->commonTiling.yShardFlag == 1U){
+        tilingData->commonTiling.localTileC.tileLen = tilingData->commonTiling.C / tilingData->commonTiling.tpGroupSize;
     } else {
-        tilingData.commonTiling.localTileC.set_tileLen(tilingData.commonTiling.get_C());
+        tilingData->commonTiling.localTileC.tileLen = tilingData->commonTiling.C;
     }
-    tilingData.commonTiling.localTileC.set_tileCnt(1U);
-    tilingData.commonTiling.localTileC.set_tailLen(0U);
-    tilingData.commonTiling.localTileC.set_tailCnt(0U);
+    tilingData->commonTiling.localTileC.tileCnt = 1U;
+    tilingData->commonTiling.localTileC.tailLen = 0U;
+    tilingData->commonTiling.localTileC.tailCnt = 0U;
 
-    tilingData.commonTiling.localTileE.set_tileLen(tilingData.commonTiling.get_EOverEp());
-    tilingData.commonTiling.localTileE.set_tileCnt(1U);
-    tilingData.commonTiling.localTileE.set_tailLen(0U);
-    tilingData.commonTiling.localTileE.set_tailCnt(0U);
+    tilingData->commonTiling.localTileE.tileLen = tilingData->commonTiling.EOverEp;
+    tilingData->commonTiling.localTileE.tileCnt = 1U;
+    tilingData->commonTiling.localTileE.tailLen = 0U;
+    tilingData->commonTiling.localTileE.tailCnt = 0U;
 
-    if (tilingData.commonTiling.get_yShardFlag() == 1U){
-        tilingData.commonTiling.domesticTileC.set_tileLen(tilingData.commonTiling.get_C() / tilingData.commonTiling.get_tpGroupSize());
+    if (tilingData->commonTiling.yShardFlag == 1U){
+        tilingData->commonTiling.domesticTileC.tileLen = tilingData->commonTiling.C / tilingData->commonTiling.tpGroupSize;
     } else {
-        tilingData.commonTiling.domesticTileC.set_tileLen(tilingData.commonTiling.get_C());
+        tilingData->commonTiling.domesticTileC.tileLen = tilingData->commonTiling.C;
     }
-    tilingData.commonTiling.domesticTileC.set_tileCnt(1U);
-    tilingData.commonTiling.domesticTileC.set_tailLen(0U);
-    tilingData.commonTiling.domesticTileC.set_tailCnt(0U);
+    tilingData->commonTiling.domesticTileC.tileCnt = 1U;
+    tilingData->commonTiling.domesticTileC.tailLen = 0U;
+    tilingData->commonTiling.domesticTileC.tailCnt = 0U;
 
-    tilingData.commonTiling.domesticTileE.set_tileLen(tilingData.commonTiling.get_EOverEp());
-    tilingData.commonTiling.domesticTileE.set_tileCnt(1U);
-    tilingData.commonTiling.domesticTileE.set_tailLen(0U);
-    tilingData.commonTiling.domesticTileE.set_tailCnt(0U);
+    tilingData->commonTiling.domesticTileE.tileLen = tilingData->commonTiling.EOverEp;
+    tilingData->commonTiling.domesticTileE.tileCnt = 1U;
+    tilingData->commonTiling.domesticTileE.tailLen = 0U;
+    tilingData->commonTiling.domesticTileE.tailCnt = 0U;
 }
 
 static ge::graphStatus CalculateMaxSplitUB(int64_t ubSize, bool bias_flag, bool xCastFlag, bool biasCastFlag,
-    BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
     uint64_t ubCapacity = 1U;
     uint64_t addLeft = 2U;
@@ -191,15 +192,15 @@ static ge::graphStatus CalculateMaxSplitUB(int64_t ubSize, bool bias_flag, bool 
     coeff = addLeft + addLeftCast + addRight + addRightCast + addOut;
     ubCapacity = ubSize / coeff;
     ubCapacity = ubCapacity / ALIGN16 * ALIGN16;
-    tilingData.commonTiling.set_ubCapacityForAdd(ubCapacity);
+    tilingData->commonTiling.ubCapacityForAdd = ubCapacity;
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t UpdateTilingKey(BatchMatMulReduceScatterAlltoAllTilingData &tilingData, bool isLite)
+static uint64_t UpdateTilingKey(BatchMatMulReduceScatterAlltoAllTilingData *tilingData, bool isLite)
 {
-    uint8_t yShardFlag = tilingData.commonTiling.get_yShardFlag();
-    bool isWeightTrans = tilingData.commonTiling.get_isWeightTrans();
-    bool isBias = tilingData.commonTiling.get_isBias();
+    uint8_t yShardFlag = tilingData->commonTiling.yShardFlag;
+    bool isWeightTrans = tilingData->commonTiling.isWeightTrans;
+    bool isBias = tilingData->commonTiling.isBias;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(yShardFlag, isWeightTrans, isBias, isLite);
 
@@ -229,100 +230,100 @@ static void CompleteBmmStructs(ReduceScatterAlltoAllBatchInfo &BMMV3BatchInfo,
 }
 
 static void GetBatchMatMulReduceScatterAlltoAllFormulateTileCnt(mc2tiling::TilingArgs& formulaicArgs,
-    BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
-    ReduceScatterAll2AllBMMShardH formulaicTiling(formulaicArgs, tilingData.commonTiling.get_epGroupSize(),
-        tilingData.commonTiling.get_tpGroupSize(), tilingData.commonTiling.get_EOverEp());
+    ReduceScatterAll2AllBMMShardH formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
+        tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp);
     formulaicTiling.GetTiling();
 
     if (formulaicTiling.tilingC.cutRes.shortTileAtBack) {
-        tilingData.commonTiling.domesticTileC.set_tileLen(formulaicTiling.tilingC.cutRes.longTileLen);
-        tilingData.commonTiling.domesticTileC.set_tileCnt(formulaicTiling.tilingC.cutRes.numLongTile);
-        tilingData.commonTiling.domesticTileC.set_tailLen(formulaicTiling.tilingC.cutRes.shortTileLen);
-        tilingData.commonTiling.domesticTileC.set_tailCnt(formulaicTiling.tilingC.cutRes.numShortTile);
+        tilingData->commonTiling.domesticTileC.tileLen = formulaicTiling.tilingC.cutRes.longTileLen;
+        tilingData->commonTiling.domesticTileC.tileCnt = formulaicTiling.tilingC.cutRes.numLongTile;
+        tilingData->commonTiling.domesticTileC.tailLen = formulaicTiling.tilingC.cutRes.shortTileLen;
+        tilingData->commonTiling.domesticTileC.tailCnt = formulaicTiling.tilingC.cutRes.numShortTile;
     } else {
-        tilingData.commonTiling.domesticTileC.set_tileLen(formulaicTiling.tilingC.cutRes.shortTileLen);
-        tilingData.commonTiling.domesticTileC.set_tileCnt(formulaicTiling.tilingC.cutRes.numShortTile);
-        tilingData.commonTiling.domesticTileC.set_tailLen(formulaicTiling.tilingC.cutRes.longTileLen);
-        tilingData.commonTiling.domesticTileC.set_tailCnt(formulaicTiling.tilingC.cutRes.numLongTile);
+        tilingData->commonTiling.domesticTileC.tileLen = formulaicTiling.tilingC.cutRes.shortTileLen;
+        tilingData->commonTiling.domesticTileC.tileCnt = formulaicTiling.tilingC.cutRes.numShortTile;
+        tilingData->commonTiling.domesticTileC.tailLen = formulaicTiling.tilingC.cutRes.longTileLen;
+        tilingData->commonTiling.domesticTileC.tailCnt = formulaicTiling.tilingC.cutRes.numLongTile;
     }
 
     if (formulaicTiling.cutE.shortTileAtBack) {
-        tilingData.commonTiling.domesticTileE.set_tileLen(formulaicTiling.cutE.longTileLen);
-        tilingData.commonTiling.domesticTileE.set_tileCnt(formulaicTiling.cutE.numLongTile);
-        tilingData.commonTiling.domesticTileE.set_tailLen(formulaicTiling.cutE.shortTileLen);
-        tilingData.commonTiling.domesticTileE.set_tailCnt(formulaicTiling.cutE.numShortTile);
+        tilingData->commonTiling.domesticTileE.tileLen = formulaicTiling.cutE.longTileLen;
+        tilingData->commonTiling.domesticTileE.tileCnt = formulaicTiling.cutE.numLongTile;
+        tilingData->commonTiling.domesticTileE.tailLen = formulaicTiling.cutE.shortTileLen;
+        tilingData->commonTiling.domesticTileE.tailCnt = formulaicTiling.cutE.numShortTile;
     } else {
-        tilingData.commonTiling.domesticTileE.set_tileLen(formulaicTiling.cutE.shortTileLen);
-        tilingData.commonTiling.domesticTileE.set_tileCnt(formulaicTiling.cutE.numShortTile);
-        tilingData.commonTiling.domesticTileE.set_tailLen(formulaicTiling.cutE.longTileLen);
-        tilingData.commonTiling.domesticTileE.set_tailCnt(formulaicTiling.cutE.numLongTile);
+        tilingData->commonTiling.domesticTileE.tileLen = formulaicTiling.cutE.shortTileLen;
+        tilingData->commonTiling.domesticTileE.tileCnt = formulaicTiling.cutE.numShortTile;
+        tilingData->commonTiling.domesticTileE.tailLen = formulaicTiling.cutE.longTileLen;
+        tilingData->commonTiling.domesticTileE.tailCnt = formulaicTiling.cutE.numLongTile;
     }
 
     if (formulaicTiling.localCutE.shortTileAtBack) {
-        tilingData.commonTiling.localTileE.set_tileLen(formulaicTiling.localCutE.longTileLen);
-        tilingData.commonTiling.localTileE.set_tileCnt(formulaicTiling.localCutE.numLongTile);
-        tilingData.commonTiling.localTileE.set_tailLen(formulaicTiling.localCutE.shortTileLen);
-        tilingData.commonTiling.localTileE.set_tailCnt(formulaicTiling.localCutE.numShortTile);
+        tilingData->commonTiling.localTileE.tileLen = formulaicTiling.localCutE.longTileLen;
+        tilingData->commonTiling.localTileE.tileCnt = formulaicTiling.localCutE.numLongTile;
+        tilingData->commonTiling.localTileE.tailLen = formulaicTiling.localCutE.shortTileLen;
+        tilingData->commonTiling.localTileE.tailCnt = formulaicTiling.localCutE.numShortTile;
     } else {
-        tilingData.commonTiling.localTileE.set_tileLen(formulaicTiling.localCutE.shortTileLen);
-        tilingData.commonTiling.localTileE.set_tileCnt(formulaicTiling.localCutE.numShortTile);
-        tilingData.commonTiling.localTileE.set_tailLen(formulaicTiling.localCutE.longTileLen);
-        tilingData.commonTiling.localTileE.set_tailCnt(formulaicTiling.localCutE.numLongTile);
+        tilingData->commonTiling.localTileE.tileLen = formulaicTiling.localCutE.shortTileLen;
+        tilingData->commonTiling.localTileE.tileCnt = formulaicTiling.localCutE.numShortTile;
+        tilingData->commonTiling.localTileE.tailLen = formulaicTiling.localCutE.longTileLen;
+        tilingData->commonTiling.localTileE.tailCnt = formulaicTiling.localCutE.numLongTile;
     }
     return;
 }
 
 static void GetBatchMatMulReduceScatterAlltoAllFormulateTileCntShard(mc2tiling::TilingArgs& formulaicArgs,
-    BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
-    ReduceScatterAll2AllBMM formulaicTiling(formulaicArgs, tilingData.commonTiling.get_epGroupSize(),
-                            tilingData.commonTiling.get_tpGroupSize(), tilingData.commonTiling.get_EOverEp());
+    ReduceScatterAll2AllBMM formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
+                            tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp);
     formulaicTiling.GetTiling();
 
-    tilingData.commonTiling.domesticTileC.set_tileLen(formulaicTiling.tilingC.cutRes.longTileLen / tilingData.commonTiling.get_tpGroupSize());
-    tilingData.commonTiling.domesticTileC.set_tileCnt(formulaicTiling.tilingC.cutRes.numLongTile);
-    tilingData.commonTiling.domesticTileC.set_tailLen(formulaicTiling.tilingC.cutRes.shortTileLen / tilingData.commonTiling.get_tpGroupSize());
-    tilingData.commonTiling.domesticTileC.set_tailCnt(formulaicTiling.tilingC.cutRes.numShortTile);
+    tilingData->commonTiling.domesticTileC.tileLen = formulaicTiling.tilingC.cutRes.longTileLen / tilingData->commonTiling.tpGroupSize;
+    tilingData->commonTiling.domesticTileC.tileCnt = formulaicTiling.tilingC.cutRes.numLongTile;
+    tilingData->commonTiling.domesticTileC.tailLen = formulaicTiling.tilingC.cutRes.shortTileLen / tilingData->commonTiling.tpGroupSize;
+    tilingData->commonTiling.domesticTileC.tailCnt = formulaicTiling.tilingC.cutRes.numShortTile;
 
-    tilingData.commonTiling.domesticTileE.set_tileLen(formulaicTiling.cutE.longTileLen);
-    tilingData.commonTiling.domesticTileE.set_tileCnt(formulaicTiling.cutE.numLongTile);
-    tilingData.commonTiling.domesticTileE.set_tailLen(formulaicTiling.cutE.shortTileLen);
-    tilingData.commonTiling.domesticTileE.set_tailCnt(formulaicTiling.cutE.numShortTile);
+    tilingData->commonTiling.domesticTileE.tileLen = formulaicTiling.cutE.longTileLen;
+    tilingData->commonTiling.domesticTileE.tileCnt = formulaicTiling.cutE.numLongTile;
+    tilingData->commonTiling.domesticTileE.tailLen = formulaicTiling.cutE.shortTileLen;
+    tilingData->commonTiling.domesticTileE.tailCnt = formulaicTiling.cutE.numShortTile;
 
-    tilingData.commonTiling.localTileE.set_tileLen(formulaicTiling.localCutE.longTileLen);
-    tilingData.commonTiling.localTileE.set_tileCnt(formulaicTiling.localCutE.numLongTile);
-    tilingData.commonTiling.localTileE.set_tailLen(formulaicTiling.localCutE.shortTileLen);
-    tilingData.commonTiling.localTileE.set_tailCnt(formulaicTiling.localCutE.numShortTile);
+    tilingData->commonTiling.localTileE.tileLen = formulaicTiling.localCutE.longTileLen;
+    tilingData->commonTiling.localTileE.tileCnt = formulaicTiling.localCutE.numLongTile;
+    tilingData->commonTiling.localTileE.tailLen = formulaicTiling.localCutE.shortTileLen;
+    tilingData->commonTiling.localTileE.tailCnt = formulaicTiling.localCutE.numShortTile;
 
     return;
 }
 
-static ge::graphStatus DoBmmTiling(BmmTilingConfig& config, uint32_t tileLen, uint32_t batch, bool isLocal, bool isTail) 
+static ge::graphStatus DoBmmTiling(BmmTilingConfig& config, uint32_t tileLen, uint32_t batch, bool isLocal, bool isTail)
 {
-    CompleteBmmStructs(config.bmmV3BatchInfo, config.mmV3ArgsInfo, tileLen, 
-                      config.tilingData.commonTiling.get_H(),
-                      config.tilingData.commonTiling.get_MOverTp(), batch);
+    CompleteBmmStructs(config.bmmV3BatchInfo, config.mmV3ArgsInfo, tileLen,
+                      config.tilingData.commonTiling.H,
+                      config.tilingData.commonTiling.MOverTp, batch);
 
 	auto bmmTilingLambda = [isLocal, isTail, &config]() -> decltype(config.tilingData.domesticTiling.bmmTilingData)&
     {
-        if (isLocal && isTail) 
+        if (isLocal && isTail)
         {
             return config.tilingData.localTailTiling.bmmTilingData;
         }
-        if (isLocal) 
+        if (isLocal)
         {
             return config.tilingData.localTiling.bmmTilingData;
-        }   
-        if (isTail) 
+        }
+        if (isTail)
         {
             return config.tilingData.domesticTailTiling.bmmTilingData;
-        }  
+        }
         return config.tilingData.domesticTiling.bmmTilingData;
     };
 	auto& bmmTilingData = bmmTilingLambda();
 
-    BatchMatMulReduceScatterAlltoAllTiling bmmTiling(config.context, bmmTilingData, 
+    BatchMatMulReduceScatterAlltoAllTiling bmmTiling(config.context, bmmTilingData,
                                                    config.bmmV3BatchInfo, config.mmV3ArgsInfo);
     if (bmmTiling.DoTiling() != ge::GRAPH_SUCCESS) {
         OP_LOGE(config.context->GetNodeName(), "Do BmmV3Tiling failed under shard-1 %s %s section.",
@@ -335,34 +336,34 @@ static ge::graphStatus DoBmmTiling(BmmTilingConfig& config, uint32_t tileLen, ui
 static ge::graphStatus SetMatmulTilingBatchMatMulReduceScatterAlltoAll(BmmTilingConfig& config, mc2tiling::TilingArgs& formulaicArgs, bool isLite)
 {
     // 1. 调用公式化tiling接口，获取local和非local块的切分信息并更新commonTiling
-    if (config.tilingData.commonTiling.get_yShardFlag() == 0) {
-        GetBatchMatMulReduceScatterAlltoAllFormulateTileCnt(formulaicArgs, config.tilingData);
+    if (config.tilingData.commonTiling.yShardFlag == 0) {
+        GetBatchMatMulReduceScatterAlltoAllFormulateTileCnt(formulaicArgs, &(config.tilingData));
     } else {
-        GetBatchMatMulReduceScatterAlltoAllFormulateTileCntShard(formulaicArgs, config.tilingData);
+        GetBatchMatMulReduceScatterAlltoAllFormulateTileCntShard(formulaicArgs, &(config.tilingData));
     }
 
-    uint32_t factor = (isLite) ? config.tilingData.commonTiling.get_tpGroupSize() : 1U;
-    uint32_t localBatch = (isLite) ? config.tilingData.commonTiling.localTileE.get_tileLen() : 1U;
-    uint32_t nonLocalBatch = (isLite) ? config.tilingData.commonTiling.domesticTileE.get_tileLen() : 1U;
+    uint32_t factor = (isLite) ? config.tilingData.commonTiling.tpGroupSize : 1U;
+    uint32_t localBatch = (isLite) ? config.tilingData.commonTiling.localTileE.tileLen : 1U;
+    uint32_t nonLocalBatch = (isLite) ? config.tilingData.commonTiling.domesticTileE.tileLen : 1U;
     // 2. 将切块信息传入BmmV3 tiling，根据后续整改方案更新Bmm所需的相应参数并调用BmmV3 Tiling接口，获取local/non-local的BMM tiling信息
 	// Local standard slice BMM tiling
-    if (DoBmmTiling(config, config.tilingData.commonTiling.localTileC.get_tileLen() * factor, localBatch, true, false) != ge::GRAPH_SUCCESS) {
+    if (DoBmmTiling(config, config.tilingData.commonTiling.localTileC.tileLen * factor, localBatch, true, false) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     // Local tail slice BMM tiling
-    if (config.tilingData.commonTiling.localTileC.get_tailLen() != 0) {
-        if (DoBmmTiling(config, config.tilingData.commonTiling.localTileC.get_tailLen() * factor, localBatch, true, true) != ge::GRAPH_SUCCESS) {
+    if (config.tilingData.commonTiling.localTileC.tailLen != 0) {
+        if (DoBmmTiling(config, config.tilingData.commonTiling.localTileC.tailLen * factor, localBatch, true, true) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
-    factor = (isLite) ? (config.tilingData.commonTiling.get_tpGroupSize() * (config.tilingData.commonTiling.get_epGroupSize() - 1U)) : 1U;
+    factor = (isLite) ? (config.tilingData.commonTiling.tpGroupSize * (config.tilingData.commonTiling.epGroupSize - 1U)) : 1U;
     // Non-local standard slice BMM tiling
-    if (DoBmmTiling(config, config.tilingData.commonTiling.domesticTileC.get_tileLen() * factor, nonLocalBatch, false, false) != ge::GRAPH_SUCCESS) {
+    if (DoBmmTiling(config, config.tilingData.commonTiling.domesticTileC.tileLen * factor, nonLocalBatch, false, false) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     // Non-local tail slice BMM tiling
-    if (config.tilingData.commonTiling.domesticTileC.get_tailLen() != 0) {
-        if (DoBmmTiling(config, config.tilingData.commonTiling.domesticTileC.get_tailLen() * factor, nonLocalBatch, false, true) != ge::GRAPH_SUCCESS) {
+    if (config.tilingData.commonTiling.domesticTileC.tailLen != 0) {
+        if (DoBmmTiling(config, config.tilingData.commonTiling.domesticTileC.tailLen * factor, nonLocalBatch, false, true) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -383,7 +384,7 @@ static bool CommonCheckTensorShape(const char *nodeName, const gert::Shape *xSha
         OP_LOGE(nodeName, "The last dim of x must equal the corresponding dim of weight, "
             "but got x[2] = %ld, w[%lu] = %ld.", xShape->GetDim(X_DIM_M), wDimM, weightShape->GetDim(wDimM));
         return false;
-    }   
+    }
 
     // x[2]、w[wDimM] 是 M 轴，不支持为 0
     if (xShape->GetDim(X_DIM_M) == 0) {
@@ -480,7 +481,7 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
             OP_LOGE(nodeName, "The last dim of bias (H / tp) must equal the corresponding dim of weight, "
                 "but got bias[2] * tp = %ld, w[%lu] = %ld.", biasShape->GetDim(biasLastDimValue) * tpSize, wDimH, weightShape->GetDim(wDimH));
             return false;
-        }       
+        }
     }
 
     return true;
@@ -572,7 +573,7 @@ static ge::graphStatus TilingCheckBatchMatMulReduceScatterAlltoAll(gert::TilingC
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter BmmReduceScatterAlltoAll tiling check impl.");
     const gert::StorageShape *xStorageShape = context->GetInputShape(static_cast<size_t>(ops::MC2MoeInputIdx::K_X));
-    
+
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(nodeName, "xShape is null."), return ge::GRAPH_FAILED);
     const gert::StorageShape *weightStorageShape = context->GetInputShape(static_cast<size_t>(ops::
         MC2MoeInputIdx::K_WEIGHT));
@@ -591,24 +592,24 @@ static ge::graphStatus TilingCheckBatchMatMulReduceScatterAlltoAll(gert::TilingC
     }
 
 	// 设 w = [E, M, H], dimH 指 H 轴, dimM 指 M 轴
-	size_t wDimM = 1UL; 
+	size_t wDimM = 1UL;
     size_t wDimH = 2UL; // 1 2 分别代表 weight 没有转置时候的维度值, 2: H 轴, 1: M 轴
 	auto attrs = context->GetAttrs();
-    bool isWeightTrans = *(attrs->GetAttrPointer<bool>(ATTR_IS_WEIGHT_TRANS_INDEX));  
+    bool isWeightTrans = *(attrs->GetAttrPointer<bool>(ATTR_IS_WEIGHT_TRANS_INDEX));
 	// w_trans = [E, H, M]
     if (isWeightTrans) {
-		size_t wDimMTrans = 2UL; 
+		size_t wDimMTrans = 2UL;
         size_t wDimHTrans = 1UL;  // 2 1 分别代表 weight 转置时候的维度值, 2: M 轴, 1: H 轴
-		wDimM = wDimMTrans; 
-    	wDimH = wDimHTrans; 
-	}  
+		wDimM = wDimMTrans;
+    	wDimH = wDimHTrans;
+	}
 
     const gert::StorageShape *biasStorageShape = context->GetOptionalInputShape(static_cast<size_t>(ops::
         MC2MoeInputIdx::K_BIAS));
-    
+
     const gert::Shape *xShape = &xStorageShape->GetStorageShape();
     const gert::Shape *weightShape = &weightStorageShape->GetStorageShape();
-    const gert::Shape *biasShape = (biasStorageShape == nullptr) ? nullptr : &biasStorageShape->GetStorageShape(); 
+    const gert::Shape *biasShape = (biasStorageShape == nullptr) ? nullptr : &biasStorageShape->GetStorageShape();
 
     // tensor shape 检查
     if (!CheckTensorShape(nodeName, xShape, weightShape, biasShape, epSize, tpSize, wDimM, wDimH, yShard)) {
@@ -618,33 +619,33 @@ static ge::graphStatus TilingCheckBatchMatMulReduceScatterAlltoAll(gert::TilingC
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
+static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get workspace failed"),
         return ge::GRAPH_FAILED);
-    
+
     // 2EC*h + ECH
-    uint64_t commOut = 2UL * tilingData.commonTiling.get_expert() *
-                        tilingData.commonTiling.get_C() *
-                        tilingData.commonTiling.get_HOverTp() +
-                        tilingData.commonTiling.get_expert() *
-                        tilingData.commonTiling.get_C() *
-                        tilingData.commonTiling.get_H();
+    uint64_t commOut = 2UL * tilingData->commonTiling.expert *
+                        tilingData->commonTiling.C *
+                        tilingData->commonTiling.HOverTp +
+                        tilingData->commonTiling.expert *
+                        tilingData->commonTiling.C *
+                        tilingData->commonTiling.H;
 
-    commOut = commOut * static_cast<uint64_t>(tilingData.commonTiling.get_inputDatasize());
+    commOut = commOut * static_cast<uint64_t>(tilingData->commonTiling.inputDatasize);
 
-    uint64_t maxLocalELen = std::max(tilingData.commonTiling.localTileE.get_tileLen(), tilingData.commonTiling.localTileE.get_tailLen());
-    uint64_t maxLocalCLen = std::max(tilingData.commonTiling.localTileC.get_tileLen(), tilingData.commonTiling.localTileC.get_tailLen());
-    uint64_t maxNonLocalELen = std::max(tilingData.commonTiling.domesticTileE.get_tileLen(), tilingData.commonTiling.domesticTileE.get_tailLen());
-    uint64_t maxNonLocalCLen = std::max(tilingData.commonTiling.domesticTileC.get_tileLen(), tilingData.commonTiling.domesticTileC.get_tailLen());
+    uint64_t maxLocalELen = std::max(tilingData->commonTiling.localTileE.tileLen, tilingData->commonTiling.localTileE.tailLen);
+    uint64_t maxLocalCLen = std::max(tilingData->commonTiling.localTileC.tileLen, tilingData->commonTiling.localTileC.tailLen);
+    uint64_t maxNonLocalELen = std::max(tilingData->commonTiling.domesticTileE.tileLen, tilingData->commonTiling.domesticTileE.tailLen);
+    uint64_t maxNonLocalCLen = std::max(tilingData->commonTiling.domesticTileC.tileLen, tilingData->commonTiling.domesticTileC.tailLen);
 
-    uint64_t transOut = std::max(maxLocalELen * maxLocalCLen * tilingData.commonTiling.get_H(),
-                                 static_cast<uint64_t>(tilingData.commonTiling.get_epGroupSize() - 1) *
-                                 maxNonLocalELen * maxNonLocalCLen * tilingData.commonTiling.get_H());
+    uint64_t transOut = std::max(maxLocalELen * maxLocalCLen * tilingData->commonTiling.H,
+                                 static_cast<uint64_t>(tilingData->commonTiling.epGroupSize - 1) *
+                                 maxNonLocalELen * maxNonLocalCLen * tilingData->commonTiling.H);
 
-    transOut = transOut * static_cast<uint64_t>(tilingData.commonTiling.get_inputDatasize());
+    transOut = transOut * static_cast<uint64_t>(tilingData->commonTiling.inputDatasize);
 
     workspaces[0] = commOut + transOut + 16 * 1024 * 1024; // 16 mb, 1024 * 1024 is 1 mb
     OP_LOGD("BatchMatMulReduceScatterAlltoAll", "workspaces[0] size %ld", workspaces[0]);
@@ -652,78 +653,53 @@ static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, BatchMatMul
 }
 
 static ge::graphStatus MC2SetWorkspaceShard(gert::TilingContext* context,
-                                            BatchMatMulReduceScatterAlltoAllTilingData& tilingData, bool isLite)
+                                            BatchMatMulReduceScatterAlltoAllTilingData *tilingData, bool isLite)
 {
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get workspace failed"),
         return ge::GRAPH_FAILED);
-    
+
     // 2EcH + ECH
-    uint64_t commOut = 2 * static_cast<uint64_t>(tilingData.commonTiling.get_expert()) * \
-                        static_cast<uint64_t>(tilingData.commonTiling.get_COverTp()) * \
-                        static_cast<uint64_t>(tilingData.commonTiling.get_H()) + \
-                        static_cast<uint64_t>(tilingData.commonTiling.get_expert()) * \
-                        static_cast<uint64_t>(tilingData.commonTiling.get_C()) * \
-                        static_cast<uint64_t>(tilingData.commonTiling.get_H());
+    uint64_t commOut = 2 * static_cast<uint64_t>(tilingData->commonTiling.expert) * \
+                        static_cast<uint64_t>(tilingData->commonTiling.COverTp) * \
+                        static_cast<uint64_t>(tilingData->commonTiling.H) + \
+                        static_cast<uint64_t>(tilingData->commonTiling.expert) * \
+                        static_cast<uint64_t>(tilingData->commonTiling.C) * \
+                        static_cast<uint64_t>(tilingData->commonTiling.H);
 
     if (isLite) {
-        uint64_t localMaxC = std::max(tilingData.commonTiling.localTileC.get_tileLen(),
-                                      tilingData.commonTiling.localTileC.get_tailLen());
-        uint64_t nonLocalMaxC = std::max(tilingData.commonTiling.domesticTileC.get_tileLen(),
-                                         tilingData.commonTiling.domesticTileC.get_tailLen());
-        uint64_t localTransBefore = localMaxC * tilingData.commonTiling.localTileE.get_tileLen() *
-            tilingData.commonTiling.get_tpGroupSize() * tilingData.commonTiling.get_MOverTp();
-        uint64_t nonLocalTransBefore = nonLocalMaxC * tilingData.commonTiling.domesticTileE.get_tileLen() *
-            tilingData.commonTiling.get_tpGroupSize() * tilingData.commonTiling.get_MOverTp() *
-            (tilingData.commonTiling.get_epGroupSize() - 1U);
-        uint64_t localTransAfter = localMaxC * tilingData.commonTiling.localTileE.get_tileLen() *
-            tilingData.commonTiling.get_tpGroupSize() * tilingData.commonTiling.get_H();
-        uint64_t nonLocalTransAfter = nonLocalMaxC * tilingData.commonTiling.domesticTileE.get_tileLen() *
-            tilingData.commonTiling.get_tpGroupSize() * tilingData.commonTiling.get_H() *
-            (tilingData.commonTiling.get_epGroupSize() - 1U);
+        uint64_t localMaxC = std::max(tilingData->commonTiling.localTileC.tileLen,
+                                      tilingData->commonTiling.localTileC.tailLen);
+        uint64_t nonLocalMaxC = std::max(tilingData->commonTiling.domesticTileC.tileLen,
+                                         tilingData->commonTiling.domesticTileC.tailLen);
+        uint64_t localTransBefore = localMaxC * tilingData->commonTiling.localTileE.tileLen *
+            tilingData->commonTiling.tpGroupSize * tilingData->commonTiling.MOverTp;
+        uint64_t nonLocalTransBefore = nonLocalMaxC * tilingData->commonTiling.domesticTileE.tileLen *
+            tilingData->commonTiling.tpGroupSize * tilingData->commonTiling.MOverTp *
+            (tilingData->commonTiling.epGroupSize - 1U);
+        uint64_t localTransAfter = localMaxC * tilingData->commonTiling.localTileE.tileLen *
+            tilingData->commonTiling.tpGroupSize * tilingData->commonTiling.H;
+        uint64_t nonLocalTransAfter = nonLocalMaxC * tilingData->commonTiling.domesticTileE.tileLen *
+            tilingData->commonTiling.tpGroupSize * tilingData->commonTiling.H *
+            (tilingData->commonTiling.epGroupSize - 1U);
         commOut += std::max(localTransBefore, nonLocalTransBefore) + std::max(localTransAfter, nonLocalTransAfter);
     }
 
-    commOut = commOut * static_cast<uint64_t>(tilingData.commonTiling.get_inputDatasize());
+    commOut = commOut * static_cast<uint64_t>(tilingData->commonTiling.inputDatasize);
 
     workspaces[0] = commOut + 16 * 1024 * 1024; // 16 mb, 1024 * 1024 is 1 mb
     OP_LOGD("BatchMatMulReduceScatterAlltoAll", "workspaces[0] size %ld", workspaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetTilingData(gert::TilingContext *context, BatchMatMulReduceScatterAlltoAllTilingData& tilingData)
-{
-    auto rawTilingData = context->GetRawTilingData();
-    OP_TILING_CHECK(rawTilingData == nullptr,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "GetRawTilingData returned nullptr!"),
-                    return ge::GRAPH_FAILED);
-
-    tilingData.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
-    rawTilingData->SetDataSize(tilingData.GetDataSize());
-
-    return ge::GRAPH_SUCCESS;
-}
-
-// 子函数1: 初始化tiling数据结构
-static void InitTilingData(BatchMatMulReduceScatterAlltoAllTilingData &tilingData) {
-    tilingData.set_version(TWO);
-    tilingData.set_hcommCnt(TWO);
-    tilingData.commonTiling.set_ubCapacityForAdd(0);
-    tilingData.hcommCfgRS.set_skipLocalRankCopy(0);
-    tilingData.hcommCfgRS.set_skipBufferWindowCopy(0);
-    tilingData.hcommCfgRS.set_stepSize(0);
-    tilingData.hcommCfgATA.set_skipLocalRankCopy(0);
-    tilingData.hcommCfgATA.set_skipBufferWindowCopy(0);
-    tilingData.hcommCfgATA.set_stepSize(0);
-}
 struct TensorInfo {
-    uint64_t inputDatasize = 0; 
+    uint64_t inputDatasize = 0;
     uint64_t biasDatasize = 0;
-    ge::DataType inputDatatype = ge::DT_FLOAT; 
+    ge::DataType inputDatatype = ge::DT_FLOAT;
     ge::DataType biasDatatype = ge::DT_FLOAT;
-    bool isLite = false;  
-    const char* epGroup = nullptr; 
+    bool isLite = false;
+    const char* epGroup = nullptr;
     const char* tpGroup = nullptr;
     uint64_t aicCoreNum = 0;    // AIC 核心数
     uint64_t aivCoreNum = 0;    // AIV 核心数
@@ -731,8 +707,8 @@ struct TensorInfo {
     uint32_t blockDim=1;
     bool isWeightTrans = false;
     // 存放 tiling 公式所需的结构体参数
-    ReduceScatterAlltoAllMatmulInfo mmv3ArgsInfo;    
-    ReduceScatterAlltoAllBatchInfo bmmv3BatchInfo;  
+    ReduceScatterAlltoAllMatmulInfo mmv3ArgsInfo;
+    ReduceScatterAlltoAllBatchInfo bmmv3BatchInfo;
 };
 // 子函数2: 获取平台信息
 static void GetPlatformInfo(
@@ -745,10 +721,10 @@ static void GetPlatformInfo(
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, tensorInfo.ubSize);
     tensorInfo.blockDim = ascendcPlatform.CalcTschBlockDim(tensorInfo.aivCoreNum, tensorInfo.aicCoreNum, tensorInfo.aivCoreNum);
 }
-  
-// 子函数3: 获取关键参数并计算，填充tilingdata   
+
+// 子函数3: 获取关键参数并计算，填充tilingdata
 static ge::graphStatus CalculateTensorInfo(const gert::TilingContext* context, TensorInfo &tensorInfo,
-                                BatchMatMulReduceScatterAlltoAllTilingData &tilingData, const gert::StorageShape* biasInputShape) {
+                                BatchMatMulReduceScatterAlltoAllTilingData *tilingData, const gert::StorageShape* biasInputShape) {
     constexpr int MATMUL_INPUT_M_AXIS = 2;
     const gert::StorageShape* xInputShape = context->GetInputShape(X_INDEX);
     const gert::StorageShape* weightInputShape = context->GetInputShape(WEIGHT_INDEX);
@@ -778,71 +754,72 @@ static ge::graphStatus CalculateTensorInfo(const gert::TilingContext* context, T
     tensorInfo.inputDatasize = GetDataSize(tensorInfo.inputDatatype);
     tensorInfo.biasDatasize = GetDataSize(tensorInfo.biasDatatype);
     tensorInfo.isLite = (c <= LITE_THRESHOLD) && (*yShard == 1);
-    tilingData.commonTiling.set_COverTp(c);
-    tilingData.commonTiling.set_C(C);
-    tilingData.commonTiling.set_epGroupSize(ep);
-    tilingData.commonTiling.set_tpGroupSize(tp);
-    tilingData.commonTiling.set_expert(E);
-    tilingData.commonTiling.set_EOverEp(e);
-    tilingData.commonTiling.set_H(dimH);
-    tilingData.commonTiling.set_HOverTp(static_cast<int64_t>(dimH / tp));
-    tilingData.commonTiling.set_MOverTp(xInputShape->GetStorageShape().GetDim(MATMUL_INPUT_M_AXIS));//m
-    tilingData.commonTiling.set_yShardFlag(*yShard);
-    tilingData.commonTiling.set_isBias(biasInputShape == nullptr ? false : true);  
-    tilingData.commonTiling.set_inputDatasize(tensorInfo.inputDatasize);
-    tilingData.commonTiling.set_biasDatasize(tensorInfo.biasDatasize);
-    tilingData.commonTiling.set_aivCoreNum(tensorInfo.aivCoreNum);
-    tilingData.commonTiling.set_isWeightTrans(tensorInfo.isWeightTrans);
-    tilingData.commonTiling.set_totalUbSize(tensorInfo.ubSize);
+    tilingData->commonTiling.COverTp = c;
+    tilingData->commonTiling.C = C;
+    tilingData->commonTiling.epGroupSize = ep;
+    tilingData->commonTiling.tpGroupSize = tp;
+    tilingData->commonTiling.expert = E;
+    tilingData->commonTiling.EOverEp = e;
+    tilingData->commonTiling.H = dimH;
+    tilingData->commonTiling.HOverTp = static_cast<int64_t>(dimH / tp);
+    tilingData->commonTiling.MOverTp = xInputShape->GetStorageShape().GetDim(MATMUL_INPUT_M_AXIS);//m
+    tilingData->commonTiling.yShardFlag = *yShard;
+    tilingData->commonTiling.isBias = biasInputShape == nullptr ? false : true;
+    tilingData->commonTiling.inputDatasize = tensorInfo.inputDatasize;
+    tilingData->commonTiling.biasDatasize = tensorInfo.biasDatasize;
+    tilingData->commonTiling.aivCoreNum = tensorInfo.aivCoreNum;
+    tilingData->commonTiling.isWeightTrans = tensorInfo.isWeightTrans;
+    tilingData->commonTiling.totalUbSize = tensorInfo.ubSize;
     InitTileInfo(tilingData);
     return ge::GRAPH_SUCCESS;
-}   
+}
 
-// 子函数4: 设置Hcom配置
-static void SetHcomConfig(
-    BatchMatMulReduceScatterAlltoAllTilingData &tilingData,
-    const char* tpGroup,
-    const char* epGroup)
+static void SetHcclTiling(const gert::TilingContext *context, BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
 {
-    std::string epGroupStr = std::string(epGroup);
-    std::string tpGroupStr = std::string(tpGroup);
-    const std::string algConfigRSStr = "ReduceScatter=level0:ring";
-    const std::string algConfigATAStr = "AlltoAll=level0:fullmesh;level1:pairwise";
+    std::string reduceScatterConfig = "ReduceScatter=level0:doublering";
+    std::string alltoAllConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
 
-    std::vector<char> groupNameVecRS(ARR_LENGTH, '\0');
-    for (auto ite = tpGroupStr.begin(); ite != tpGroupStr.end(); ite++) {
-        groupNameVecRS[ite - tpGroupStr.begin()] = *ite;
-    }
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+        "GetAttrs returned nullptr!"), return);
+    auto epGroup = attrs->GetAttrPointer<char>(ATTR_EP_GROUP_INDEX);
+    auto tpGroup = attrs->GetAttrPointer<char>(ATTR_TP_GROUP_INDEX);
 
-    std::vector<char> groupNameVecATA(ARR_LENGTH, '\0');
-    for (auto ite = epGroupStr.begin(); ite != epGroupStr.end(); ite++) {
-        groupNameVecATA[ite - epGroupStr.begin()] = *ite;
-    }
-    std::vector<char> algConfigVecRS(ARR_LENGTH, '\0');
-    for (auto ite = algConfigRSStr.begin(); ite != algConfigRSStr.end(); ite++) {
-        algConfigVecRS[ite - algConfigRSStr.begin()] = *ite;
-    }
+    const uint32_t opType1 = OP_TYPE_ALL_TO_ALL;
+    const uint32_t opType2 = OP_TYPE_REDUCE_SCATTER;
+    const uint32_t reduceType = 0U;
+    ge::DataType outputDataType = context->GetOutputDesc(OUTPUT_Y_INDEX)->GetDataType();
+    ge::DataType inputDataType = context->GetInputDesc(X_INDEX)->GetDataType();
+    OP_TILING_CHECK(
+        mc2tiling::HCCL_DATA_TYPE.find(outputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "%s is Unsupported outputdata type!",
+        Ops::Base::ToString(outputDataType).c_str()),
+        return);
+    OP_TILING_CHECK(
+        mc2tiling::HCCL_DATA_TYPE.find(inputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "%s is Unsupported inputdata type!",
+        Ops::Base::ToString(inputDataType).c_str()),
+        return);
 
-    std::vector<char> algConfigVecATA(ARR_LENGTH, '\0');
-    for (auto ite = algConfigATAStr.begin(); ite != algConfigATAStr.end(); ite++) {
-        algConfigVecATA[ite - algConfigATAStr.begin()] = *ite;
-    }
+    auto dstDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(outputDataType)->second);
+    auto srcDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(inputDataType)->second);
 
-    tilingData.hcommCfgRS.set_groupName(groupNameVecRS.data());
-    tilingData.hcommCfgRS.set_algConfig(algConfigVecRS.data());
-    tilingData.hcommCfgRS.set_opType(OP_TYPE_REDUCE_SCATTER);        // numeric representation of ReduceScatter
-    tilingData.hcommCfgRS.set_reduceType(0);    // numeric representation of sum
-    tilingData.hcommCfgATA.set_groupName(groupNameVecATA.data());
-    tilingData.hcommCfgATA.set_algConfig(algConfigVecATA.data());
-    tilingData.hcommCfgATA.set_opType(OP_TYPE_ALL_TO_ALL);       // numeric representation of AlltoAll
-     }
+    Mc2CcTilingConfig hcclCcTilingConfig(epGroup, opType1, alltoAllConfig, reduceType, dstDataType, srcDataType);
+    hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling);
+    hcclCcTilingConfig.GetTiling(tilingData->alltoAllCcTiling);
+    hcclCcTilingConfig.SetGroupName(tpGroup);
+    hcclCcTilingConfig.SetOpType(opType2);
+    hcclCcTilingConfig.SetAlgConfig(reduceScatterConfig);
+    hcclCcTilingConfig.GetTiling(tilingData->reduceScatterCcTiling);
+    return;
+}
 
 // 子函数5: 设置公式参数
 static void SetFormulaicArgs(
     mc2tiling::TilingArgs &formulaicArgs,
-    BatchMatMulReduceScatterAlltoAllTilingData &tilingData,
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData,
     TensorInfo &tensorInfo)
-{   
+{
     auto &MMV3ArgsInfo =tensorInfo.mmv3ArgsInfo;
     auto &BMMV3BatchInfo=tensorInfo.bmmv3BatchInfo;
     MMV3ArgsInfo.opName = "BatchMatMulReduceScatterAlltoAll";
@@ -853,12 +830,12 @@ static void SetFormulaicArgs(
     MMV3ArgsInfo.cType = tensorInfo.inputDatatype;
     MMV3ArgsInfo.biasType = tensorInfo.biasDatatype;
     BMMV3BatchInfo.biasWithBatch = false;       // 出于性能考虑，当前bias计算在外部进行，算子内不会有bias场景
-    formulaicArgs.mValue = tilingData.commonTiling.get_C();
-    formulaicArgs.nValue = tilingData.commonTiling.get_H();
-    formulaicArgs.kValue = tilingData.commonTiling.get_MOverTp();
+    formulaicArgs.mValue = tilingData->commonTiling.C;
+    formulaicArgs.nValue = tilingData->commonTiling.H;
+    formulaicArgs.kValue = tilingData->commonTiling.MOverTp;
     formulaicArgs.inputDtypeSize = tensorInfo.inputDatasize;
     formulaicArgs.outputDtypeSize = tensorInfo.inputDatasize;
-    formulaicArgs.aicCoreNum = tensorInfo.aicCoreNum; 
+    formulaicArgs.aicCoreNum = tensorInfo.aicCoreNum;
     formulaicArgs.aType = GetMatMulTilingDataType(tensorInfo.inputDatatype);
     formulaicArgs.bType = GetMatMulTilingDataType(tensorInfo.inputDatatype);
     formulaicArgs.cType = GetMatMulTilingDataType(tensorInfo.inputDatatype);
@@ -868,18 +845,18 @@ static void SetFormulaicArgs(
 // 子函数6: 核心tiling逻辑
 static ge::graphStatus ComputeCoreTiling(
     gert::TilingContext *context,
-    BatchMatMulReduceScatterAlltoAllTilingData &tilingData,
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData,
     mc2tiling::TilingArgs &formulaicArgs,
     TensorInfo &tensorInfo)
 {
     bool xCastFlag    = tensorInfo.inputDatatype == ge::DT_BF16;
     bool biasCastFlag = tensorInfo.biasDatatype  == ge::DT_BF16;
-    BmmTilingConfig config{context, tilingData, tensorInfo.bmmv3BatchInfo, tensorInfo.mmv3ArgsInfo};	
+    BmmTilingConfig config{context, *tilingData, tensorInfo.bmmv3BatchInfo, tensorInfo.mmv3ArgsInfo};
     // 待修改，等BMM tiling提供接口和修改方案
     OP_TILING_CHECK(SetMatmulTilingBatchMatMulReduceScatterAlltoAll(config, formulaicArgs, tensorInfo.isLite) != ge::GRAPH_SUCCESS,
                         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set Matmul tiling Failed!"),
                         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CalculateMaxSplitUB(tensorInfo.ubSize, tilingData.commonTiling.get_isBias(),
+    OP_TILING_CHECK(CalculateMaxSplitUB(tensorInfo.ubSize, tilingData->commonTiling.isBias,
                         xCastFlag, biasCastFlag, tilingData) != ge::GRAPH_SUCCESS,
                         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Calculate max split UB Failed!"),
                         return ge::GRAPH_FAILED);
@@ -892,14 +869,13 @@ static ge::graphStatus BatchMatMulReduceScatterAlltoAllTilingFunc(gert::TilingCo
 {
     OP_TILING_CHECK(TilingCheckBatchMatMulReduceScatterAlltoAll(context) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling check shape Failed!"),
-                    return ge::GRAPH_FAILED);   
+                    return ge::GRAPH_FAILED);
 
-    BatchMatMulReduceScatterAlltoAllTilingData tilingData;
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData =
+        context->GetTilingData<BatchMatMulReduceScatterAlltoAllTilingData>();
     mc2tiling::TilingArgs formulaicArgs;
     ReduceScatterAlltoAllBatchInfo BMMV3BatchInfo;
     ReduceScatterAlltoAllMatmulInfo MMV3ArgsInfo;
-    //子函数1 初始化
-    InitTilingData(tilingData);  
     TensorInfo tensorInfo{};
     //子函数2 获取aiv,UB
     GetPlatformInfo(context,    tensorInfo);
@@ -911,14 +887,12 @@ static ge::graphStatus BatchMatMulReduceScatterAlltoAllTilingFunc(gert::TilingCo
     tensorInfo.inputDatatype = context->GetInputDesc(X_INDEX)->GetDataType();
     tensorInfo.biasDatatype = (biasInputShape == nullptr) ? tensorInfo.inputDatatype : context->GetOptionalInputDesc(BIAS_INDEX)->GetDataType();
     CalculateTensorInfo(context, tensorInfo,tilingData,biasInputShape);
-    //子函数4 设置通信
-    SetHcomConfig(tilingData, tensorInfo.tpGroup, tensorInfo.epGroup);   
     //子函数5  设置公式参数
-    SetFormulaicArgs(formulaicArgs, tilingData, tensorInfo);   
-    //子函数6 tiling分配 
-    ComputeCoreTiling(context, tilingData, formulaicArgs, tensorInfo);   
+    SetFormulaicArgs(formulaicArgs, tilingData, tensorInfo);
+    //子函数6 tiling分配
+    ComputeCoreTiling(context, tilingData, formulaicArgs, tensorInfo);
 
-    if (tilingData.commonTiling.get_yShardFlag() == 0) {
+    if (tilingData->commonTiling.yShardFlag == 0) {
         OP_TILING_CHECK(MC2SetWorkspace(context, tilingData) != ge::GRAPH_SUCCESS,
                             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set workspace Failed!"),
                             return ge::GRAPH_FAILED);
@@ -930,17 +904,16 @@ static ge::graphStatus BatchMatMulReduceScatterAlltoAllTilingFunc(gert::TilingCo
     uint64_t tilingKey = UpdateTilingKey(tilingData, tensorInfo.isLite);
     context->SetTilingKey(tilingKey);
     context->SetBlockDim(tensorInfo.blockDim);
-    OP_TILING_CHECK(SetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,
-                        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set Tiling Data Failed!"),
-                        return ge::GRAPH_FAILED);
+    context->GetRawTilingData()->SetDataSize(sizeof(BatchMatMulReduceScatterAlltoAllTilingData));
+    SetHcclTiling(context, tilingData);
     PrintCommonTilingVariables(tilingData);
     PrintSliceTileInfo(tilingData);
     return ge::GRAPH_SUCCESS;
 }
 struct BatchMatMulReduceScatterAlltoAllCompileInfo {};
-ge::graphStatus TilingParseForBatchMatMulReduceScatterAlltoAll(gert::TilingParseContext *context) { 
+ge::graphStatus TilingParseForBatchMatMulReduceScatterAlltoAll(gert::TilingParseContext *context) {
 	(void)context;
-	return ge::GRAPH_SUCCESS; 
+	return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(BatchMatMulReduceScatterAlltoAll)

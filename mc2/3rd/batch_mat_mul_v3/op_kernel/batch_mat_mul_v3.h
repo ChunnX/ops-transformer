@@ -19,7 +19,7 @@
 #include "batch_mat_mul_v3_com_base_block.h"
 #include "../../mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h"
 #include "../../mat_mul_v3/op_kernel/mat_mul_l1_full_load.h"
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 using namespace AscendC;
@@ -121,7 +121,7 @@ template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK
 __aicore__ inline void Mc2BatchMatMulUnalignedKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Process()
 {
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    const TCubeTiling &tiling = tilingPtr_->matmulTiling.matmulTiling;
+    const AscendC::tiling::TCubeTiling &tiling = tilingPtr_->matmulTiling.matmulTiling;
     const uint32_t &batchA1 = tilingPtr_->Mc2multiBatchInfo.aBatchDim0;
     const uint32_t &batchA2 = tilingPtr_->Mc2multiBatchInfo.aBatchDim1;
     const uint32_t &batchA3 = tilingPtr_->Mc2multiBatchInfo.aBatchDim2;

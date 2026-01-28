@@ -30,7 +30,7 @@
    )
  if(UT_TEST_ALL OR OP_HOST_UT)
    list(FILTER OPTILING_SRCS EXCLUDE REGEX "src/mc2_hcom_topo_info\\.cpp")
-   file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp)
+   file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp ${UT_COMMON_INC}/op_cache_tiling.cpp)
    add_library(mc2_tiling_ut_stub SHARED ${MC2_TILING_UT_STUB})
    target_include_directories(mc2_tiling_ut_stub PRIVATE
      ${OPS_TRANSFORMER_DIR}/mc2/common/inc
@@ -44,12 +44,8 @@
      target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
     endif()
   endif()
-  if(NOT ENABLE_BUILT_IN AND NOT ENABLE_TEST)
-   file(GLOB OPPROTO_SRCS
-     src/mc2_moe_utils.cpp
-     src/mc2_common_infershape.cpp
-     src/mc2_hcom_topo_info.cpp
-   )
+  if(NOT ENABLE_TEST)
+   file(GLOB OPPROTO_SRCS)
    if(OPPROTO_SRCS)
      add_infer_modules()
      target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPPROTO_SRCS})

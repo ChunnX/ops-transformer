@@ -28,16 +28,16 @@ class KernelAddRmsNormSingleN
 public:
     __aicore__ inline KernelAddRmsNormSingleN()
     {}
-    __aicore__ inline void Init(GM_ADDR gammaGM, MC2AddRMSNormTilingData& tiling, TPipe* pipe, uint32_t blockDim)
+    __aicore__ inline void Init(GM_ADDR gammaGM, Mc2Tiling::AddRMSNormTilingData& tiling, TPipe* pipe, uint32_t numBlocks)
     {
-        ASSERT(blockDim != 0 && "Block dim can not be zero!");
+        ASSERT(numBlocks != 0 && "Block dim can not be zero!");
         this->numCol_ = tiling.num_col;
         this->ubFactor_ = tiling.ub_factor;
         this->epsilon_ = tiling.epsilon;
         this->avgFactor_ = (numCol_ != 0) ? (float)1.0 / numCol_ : 0;
         // get start index for current core, core parallel
         gamma_.SetGlobalBuffer((__gm__ T*)gammaGM, numCol_);
-        pipe->InitBuffer(unitBuf_, SINGLE_N_BUFFER_SIZE); 
+        pipe->InitBuffer(unitBuf_, SINGLE_N_BUFFER_SIZE);
     }
 
     __aicore__ inline void Process()
@@ -50,7 +50,7 @@ public:
     }
 
     __aicore__ inline void ComputeProcess(
-        GM_ADDR normOutGM, GM_ADDR residualGM, GM_ADDR yGM, MC2AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
+        GM_ADDR normOutGM, GM_ADDR residualGM, GM_ADDR yGM, Mc2Tiling::AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
         uint32_t rcvCnt)
     {
         uint64_t cOffset = CalcShapeOffset(sizeof(T), tilingData.num_row, tilingData.num_col); // 偏移*size

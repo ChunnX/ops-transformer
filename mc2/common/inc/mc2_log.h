@@ -25,7 +25,6 @@
 #include "base/err_msg.h"
 #include "log/log.h"
 #include "securec.h"
-#include "tiling/mc2_tiling_struct.h"
 #include "kernel/mc2_tiling_struct.h"
 #include "tiling/tiling_api.h"
 #if __has_include("error_manager/error_manager.h")
@@ -38,7 +37,7 @@
 
 template <typename T>
 std::string ConcatString(const T &arg) {
-  std::ostringstream oss; 
+  std::ostringstream oss;
   oss << arg;
   return oss.str();
 }
@@ -52,15 +51,6 @@ std::string ConcatString(T arg, Ts... arg_left) {
 }
 
 namespace Mc2Log {
-void PrintMMV3TilingData(const std::string &opName,
-                         optiling::MC2MatmulV3TilingData &tiling);
-void PrintTCubeTilingData(const std::string &opName,
-                          optiling::TCubeTiling &tiling);
-void PrintRCSTilingData(const std::string &opName,
-                        optiling::RCSTiling &rcsTiling);
-void PrintMc2MsgData(const std::string &opName, optiling::Mc2Msg &msg);
-void PrintTileL2TilingData(const std::string &opName, optiling::TileL2Tiling &tileL2Tiling);
-
 void PrintMMV3TilingData(const std::string &opName, Mc2Tiling::MC2MatmulV3TilingData &tiling);
 
 void PrintRCSTilingData(const std::string &opName, Mc2Tiling::RCSTiling& rcsTiling);
@@ -103,7 +93,7 @@ struct ErrorResult {
   }
 };
 
-inline std::vector<char> CreateErrorMsg(const char *format, ...) 
+inline std::vector<char> CreateErrorMsg(const char *format, ...)
     __attribute__((format(printf, 1, 2)));
 
 inline std::vector<char> CreateErrorMsg();
@@ -138,7 +128,7 @@ inline const char *ConvertStringToCstr(const std::string &str) { return str.c_st
         EXPR;                                                   \
     }
 
-#define OPS_LOG_FULL(LEVEL, OPS_DESC, ...) 
+#define OPS_LOG_FULL(LEVEL, OPS_DESC, ...)
 
 #define OPS_LOG_E(opName, ...) \
   D_OP_LOGE(Ops::Base::GetOpInfo(opName), __VA_ARGS__)
@@ -255,7 +245,7 @@ namespace optiling {
 #else
 #define OPS_ERR_IF(COND, LOG_FUNC, EXPR)
 #define OPS_CHECK(COND, LOG_FUNC, EXPR)
-#define OPS_LOG_FULL(LEVEL, OPS_DESC, ...) 
+#define OPS_LOG_FULL(LEVEL, OPS_DESC, ...)
 #define OPS_LOG_E(opName, ...)
 #define OPS_LOG_W(opName, ...)
 #define OPS_LOG_I(opName, ...)

@@ -17,7 +17,7 @@
 
 #include "batch_mat_mul_v3_asw_block_advanced.h"
 #include "batch_mat_mul_v3_dasw_block_advanced.h"
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 namespace Mc2BatchMatMulV3Advanced {

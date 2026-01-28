@@ -16,10 +16,11 @@
 #define MC2_QUANT_BATCH_MATMUL_V3_BASE_H
 
 #include <cstdint>
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
+#include "basic_api/kernel_basic_intf.h"
+#include "adv_api/quantization/ascend_dequant.h"
 #include "kernel_type.h"
 #include "lib/matmul_intf.h"
+#include "quant_batch_matmul_v3_tiling_data.h"
 
 #define TemplateBasicType typename x1Type, typename x2Type, typename scaleType, typename yType, int x1Format, \
     int x2Format, bool aTrans, bool bTrans, class UPDATE_TYPE

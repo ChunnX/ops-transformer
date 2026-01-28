@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "moe_update_expert.h"
 #include "moe_update_expert_tiling_key.h"
 using namespace AscendC;

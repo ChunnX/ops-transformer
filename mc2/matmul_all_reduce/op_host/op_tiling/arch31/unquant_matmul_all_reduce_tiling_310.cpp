@@ -17,6 +17,7 @@
 #include "mc2_log.h"
 #include "op_mc2.h"
 using namespace Mc2Log;
+using namespace Mc2Tiling;
 
 namespace optiling {
 bool UnQuantMatmulAllReduceTiling310::IsCapable()
@@ -43,9 +44,9 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoOpTiling()
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
-        MutableTCubeTileTilingData().set_M(args_.orgMValue);
-        MutableTCubeTileTilingData().set_isBias(args_.isBias);
-        MutableTCubeTileTilingData().set_usedCoreNum(1);
+        MutableTCubeTileTilingData().M = args_.orgMValue;
+        MutableTCubeTileTilingData().isBias = args_.isBias;
+        MutableTCubeTileTilingData().usedCoreNum = 1;
         DoAllReduceTiling();
         return ge::GRAPH_SUCCESS;
     }
@@ -109,44 +110,53 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::GetWorkspaceSize()
 
 ge::graphStatus UnQuantMatmulAllReduceTiling310::PostTiling()
 {
+    size_t tilingDataSize = sizeof(UnQuantMatmulAllReduceTilingData);
     OP_LOGD(
         opName_, "final tiling data size: %zu and context capacity size: %zu ",
-        unquantMatmulAllReduceTilingData_.GetDataSize(), context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(unquantMatmulAllReduceTilingData_.GetDataSize());
+        tilingDataSize, context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(
-        unquantMatmulAllReduceTilingData_.GetDataSize() % sizeof(uint64_t) != 0,
+        tilingDataSize % sizeof(uint64_t) != 0,
         VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", unquantMatmulAllReduceTilingData_.GetDataSize()),
+            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
-    if (MutableRCSTilingData().get_rankID() == 0) {
+    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
+
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+        reinterpret_cast<void *>(&unquantMatmulAllReduceTilingData_), tilingDataSize);
+    if (ret != EOK){
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
+    if (MutableRCSTilingData().rankID == 0) {
         PrintRCSTilingData(context_->GetNodeName(), MutableRCSTilingData());
         PrintTCubeTilingData(context_->GetNodeName(), MutableTCubeTileTilingData());
         PrintMc2MsgData(context_->GetNodeName(), MutableMc2MsgData());
-        if (MutableRCSTilingData().get_tailM() > 0) {
+        if (MutableRCSTilingData().tailM > 0) {
             OP_LOGD(opName_, "have tail");
             PrintTCubeTilingData(context_->GetNodeName(), MutableTCubeTailTilingData());
         }
     }
+
     context_->SetBlockDim(args_.aicCoreNum);
     return ge::GRAPH_SUCCESS;
 }
 
-Mc2Msg& UnQuantMatmulAllReduceTiling310::MutableMc2MsgData()
+Mc2Tiling::Mc2Msg& UnQuantMatmulAllReduceTiling310::MutableMc2MsgData()
 {
     return unquantMatmulAllReduceTilingData_.msg;
 }
 
-RCSTiling& UnQuantMatmulAllReduceTiling310::MutableRCSTilingData()
+Mc2Tiling::RCSTiling& UnQuantMatmulAllReduceTiling310::MutableRCSTilingData()
 {
     return unquantMatmulAllReduceTilingData_.param;
 }
 
-TCubeTiling& UnQuantMatmulAllReduceTiling310::MutableTCubeTileTilingData()
+AscendC::tiling::TCubeTiling& UnQuantMatmulAllReduceTiling310::MutableTCubeTileTilingData()
 {
     return unquantMatmulAllReduceTilingData_.tilematmulTiling.matmulTiling;
 }
 
-TCubeTiling& UnQuantMatmulAllReduceTiling310::MutableTCubeTailTilingData()
+AscendC::tiling::TCubeTiling& UnQuantMatmulAllReduceTiling310::MutableTCubeTailTilingData()
 {
     return unquantMatmulAllReduceTilingData_.tailmatmulTiling.matmulTiling;
 }
@@ -161,8 +171,9 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
         return res;
     } else {
         GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
-        if (MutableRCSTilingData().get_tailCnt() == 0) {
+        if (MutableRCSTilingData().tailCnt == 0) {
             matmulTPLParam_ = mmTile.GetMatmulTPLParam();
+
             return ge::GRAPH_SUCCESS;
         }
         args_.mValue = tailMValue_;

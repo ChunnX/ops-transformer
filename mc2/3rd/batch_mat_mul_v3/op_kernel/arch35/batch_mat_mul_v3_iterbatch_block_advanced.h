@@ -15,7 +15,7 @@
 #ifndef BATCH_MATMUL_V3_ITERBATCH_BLOCK_ADVANCED_H
 #define BATCH_MATMUL_V3_ITERBATCH_BLOCK_ADVANCED_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 namespace Mc2BatchMatMulV3Advanced {

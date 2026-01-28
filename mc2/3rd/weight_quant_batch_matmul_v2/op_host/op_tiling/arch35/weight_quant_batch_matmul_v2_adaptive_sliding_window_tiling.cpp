@@ -49,6 +49,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::DoOpTiling()
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::InstantiateTilingData()
 {
+    size_t tilingDataSize = sizeof(WeightQuantBatchMatmulV2ASWTilingData);
     if (tilingData_ == nullptr) {
         try {
             // make_unique不会返回空指针，只会返回异常，无需在后面加空指针校验
@@ -59,9 +60,9 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::InstantiateTilingData()
         }
     }
     OP_TILING_CHECK(
-        context_->GetRawTilingData()->GetCapacity() < tilingData_->GetDataSize(),
+        context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
         OP_LOGE(opName_, "tiling data capacity %zu < actual tiling data size %zu",
-                                        context_->GetRawTilingData()->GetCapacity(), tilingData_->GetDataSize()),
+                                        context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -278,35 +279,35 @@ bool Mc2WeightQuantBatchMatmulV2TilingASW::CheckAntiQuantScale(uint64_t baseN, u
 
 void Mc2WeightQuantBatchMatmulV2TilingASW::SetTilingData()
 {
-    tilingData_->set_hasBias(0U);
-    tilingData_->set_mTailTile(adaptiveWin_.mTailTile);
-    tilingData_->set_nTailTile(adaptiveWin_.nTailTile);
+    tilingData_->hasBias = 0U;
+    tilingData_->mTailTile = adaptiveWin_.mTailTile;
+    tilingData_->nTailTile = adaptiveWin_.nTailTile;
 }
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::DoLibApiTiling()
 {
-    tilingData_->matmulTiling.set_M(matmulInfoPtr_->mSize);
-    tilingData_->matmulTiling.set_N(matmulInfoPtr_->nSize);
-    tilingData_->matmulTiling.set_Ka(matmulInfoPtr_->kSize);
-    tilingData_->matmulTiling.set_Kb(matmulInfoPtr_->kSize);
-    tilingData_->matmulTiling.set_usedCoreNum(basicTiling_.usedCoreNum);
-    tilingData_->matmulTiling.set_singleCoreM(basicTiling_.singleCoreM);
-    tilingData_->matmulTiling.set_singleCoreN(basicTiling_.singleCoreN);
-    tilingData_->matmulTiling.set_singleCoreK(basicTiling_.singleCoreK);
-    tilingData_->matmulTiling.set_baseM(basicTiling_.baseM);
-    tilingData_->matmulTiling.set_baseN(basicTiling_.baseN);
-    tilingData_->matmulTiling.set_baseK(basicTiling_.baseK);
-    tilingData_->matmulTiling.set_depthA1(basicTiling_.depthA1);
-    tilingData_->matmulTiling.set_depthB1(basicTiling_.depthB1);
-    tilingData_->matmulTiling.set_stepM(basicTiling_.stepM);
-    tilingData_->matmulTiling.set_stepN(basicTiling_.stepN);
-    tilingData_->matmulTiling.set_stepKa(basicTiling_.stepKa);
-    tilingData_->matmulTiling.set_stepKb(basicTiling_.stepKb);
-    tilingData_->matmulTiling.set_isBias(0);
-    tilingData_->matmulTiling.set_iterateOrder(basicTiling_.iterateOrder);
-    tilingData_->matmulTiling.set_dbL0A(2);  // db switch, 1: off, 2: on
-    tilingData_->matmulTiling.set_dbL0B(2);  // db switch, 1: off, 2: on
-    tilingData_->matmulTiling.set_dbL0C(basicTiling_.dbL0c);
+    tilingData_->matmulTiling.M = matmulInfoPtr_->mSize;
+    tilingData_->matmulTiling.N = matmulInfoPtr_->nSize;
+    tilingData_->matmulTiling.Ka = matmulInfoPtr_->kSize;
+    tilingData_->matmulTiling.Kb = matmulInfoPtr_->kSize;
+    tilingData_->matmulTiling.usedCoreNum = basicTiling_.usedCoreNum;
+    tilingData_->matmulTiling.singleCoreM = basicTiling_.singleCoreM;
+    tilingData_->matmulTiling.singleCoreN = basicTiling_.singleCoreN;
+    tilingData_->matmulTiling.singleCoreK = basicTiling_.singleCoreK;
+    tilingData_->matmulTiling.baseM = basicTiling_.baseM;
+    tilingData_->matmulTiling.baseN = basicTiling_.baseN;
+    tilingData_->matmulTiling.baseK = basicTiling_.baseK;
+    tilingData_->matmulTiling.depthA1 = basicTiling_.depthA1;
+    tilingData_->matmulTiling.depthB1 = basicTiling_.depthB1;
+    tilingData_->matmulTiling.stepM = basicTiling_.stepM;
+    tilingData_->matmulTiling.stepN = basicTiling_.stepN;
+    tilingData_->matmulTiling.stepKa = basicTiling_.stepKa;
+    tilingData_->matmulTiling.stepKb = basicTiling_.stepKb;
+    tilingData_->matmulTiling.isBias = 0;
+    tilingData_->matmulTiling.iterateOrder = basicTiling_.iterateOrder;
+    tilingData_->matmulTiling.dbL0A = 2;  // db switch, 1: off, 2: on
+    tilingData_->matmulTiling.dbL0B = 2;  // db switch, 1: off, 2: on
+    tilingData_->matmulTiling.dbL0C = basicTiling_.dbL0c;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -321,14 +322,20 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::GetWorkspaceSize()
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::PostTiling()
 {
-    OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
+    size_t tilingDataSize = sizeof(WeightQuantBatchMatmulV2ASWTilingData);
+    OP_LOGD(opName_, "final tiling data size: %zu", tilingDataSize);
     OP_TILING_CHECK(
-        tilingData_->GetDataSize() % sizeof(uint64_t) != 0,
-        CUBE_INNER_ERR_REPORT(opName_, "tiling data size[%zu] is not aligned to 8", tilingData_->GetDataSize()),
+        tilingDataSize % sizeof(uint64_t) != 0,
+        CUBE_INNER_ERR_REPORT(opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
-    tilingData_->SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+    errno_t ret = memcpy_s(context_->GetTilingData<WeightQuantBatchMatmulV2ASWTilingData>(),
+     context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+    if (ret != EOK){
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
     context_->SetBlockDim(basicTiling_.usedCoreNum);
-    context_->GetRawTilingData()->SetDataSize(tilingData_->GetDataSize());
+    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     return ge::GRAPH_SUCCESS;
 }
 

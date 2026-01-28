@@ -21,7 +21,7 @@
 #include "register/tilingdata_base.h"
 #include "mc2_tiling_struct.h"
 #include "tiling/tiling_api.h"
- 
+
 namespace mc2tiling {
 constexpr uint32_t AC_MAX_AIV = 64;
 constexpr uint32_t AC_MSG_CNT = 64;
@@ -279,13 +279,10 @@ class MatmulFormulaicTiling {
   void SetSocVersion(const platform_ascendc::SocVersion &version) {
     socInfo_.socVersion = version;
   }
-  ge::graphStatus GetCubeTiling(TilingArgs &args, ::TCubeTiling &cubeTiling,
+  ge::graphStatus GetCubeTiling(TilingArgs &args, AscendC::tiling::TCubeTiling &cubeTiling,
                                 Mc2Tiling::TileL2Tiling &tileL2Tiling);
   ge::graphStatus GetCubeTiling(TilingArgs &args,
-                                optiling::TCubeTiling &cubeTiling,
-                                optiling::TileL2Tiling &tileL2Tiling);
-  ge::graphStatus GetCubeTiling(TilingArgs &args,
-                                optiling::TCubeTiling &cubeTiling);
+                                AscendC::tiling::TCubeTiling &cubeTiling);
   static void GetBaseBlockParm(const platform_ascendc::SocVersion &version,
                                uint64_t &blockBaseM, uint64_t &blockBaseN,
                                uint64_t &blockBaseK, uint64_t &blockDepthA1,

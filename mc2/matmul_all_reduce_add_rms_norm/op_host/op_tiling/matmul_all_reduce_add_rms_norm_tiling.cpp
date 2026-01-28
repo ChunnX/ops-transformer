@@ -26,7 +26,7 @@ constexpr char MRN[] = "MatmulAllReduceAddRmsNorm";
 constexpr char IMRN[] = "InplaceMatmulAllReduceAddRmsNorm";
 } // namespace
 MMNTilingTransferHelper::MMNTilingTransferHelper(
-    MatmulAllReduceAddRmsNormTiling& MatmulAllReduceAddRmsNormTiling, MatmulAllReduce910TilingData& data)
+    MatmulAllReduceAddRmsNormTiling& MatmulAllReduceAddRmsNormTiling, Mc2Tiling::MatmulAllReduce910TilingData& data)
     : MatmulAllReduceTiling910(
           MatmulAllReduceAddRmsNormTiling.context_, &MatmulAllReduceAddRmsNormTiling.mrnCtxInfo_.mmrCtxInfo, &data),
       tilingProcesser_(MatmulAllReduceAddRmsNormTiling)
@@ -60,7 +60,7 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::DoOpTiling()
     GE_ASSERT_GRAPH_SUCCESS(CommonAddResNormTiling::CheckAddRmsNormInput(context_, mrnCtxInfo_.arnCtxInfo));
     GE_ASSERT_GRAPH_SUCCESS(ContextTransfer::CheckMRNCtxInfo(context_, mrnCtxInfo_));
     GE_ASSERT_GRAPH_SUCCESS(CheckMRNInput(mrnCtxInfo_));
-    hasTail_ = (tilingData_.matmulAllReduceTilingData.param.get_tailCnt() != 0);
+    hasTail_ = (tilingData_.matmulAllReduceTilingData.param.tailCnt != 0);
     AddRmsNormTilingInputFromMM addRmsNormTilingInputFromMm;
     addRmsNormTilingInputFromMm.m = helper_->tileMValue_;
     addRmsNormTilingInputFromMm.n = helper_->args_.nValue;
@@ -77,8 +77,8 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::DoOpTiling()
     AddRMSNormTilingOutput addRmsNormTilingOutput = {tilingData_.addRMSNormTileTilingData, tilingOutAddRmsNormTile_};
 
     GE_ASSERT_GRAPH_SUCCESS(CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutput));
-    tilingData_.addRmsNormTilingeKeyData.set_ARNKeyTile(tilingOutAddRmsNormTile_.tilingKey);
-    tilingData_.addRmsNormTilingeKeyData.set_ARNBlockDimTile(tilingOutAddRmsNormTile_.blockDim);
+    tilingData_.addRmsNormTilingeKeyData.ARNKeyTile = tilingOutAddRmsNormTile_.tilingKey;
+    tilingData_.addRmsNormTilingeKeyData.ARNNumBlocksTile = tilingOutAddRmsNormTile_.numBlocks;
 
     if (HasTail()) {
         addRmsNormTilingDepend.addRmsNormTilingInputFromMm.m = helper_->tailMValue_;
@@ -86,8 +86,8 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::DoOpTiling()
             tilingData_.addRMSNormTailTilingData, tilingOutAddRmsNormTail_};
         GE_ASSERT_GRAPH_SUCCESS(
             CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutputTail));
-        tilingData_.addRmsNormTilingeKeyData.set_ARNKeyTail(tilingOutAddRmsNormTail_.tilingKey);
-        tilingData_.addRmsNormTilingeKeyData.set_ARNBlockDimTail(tilingOutAddRmsNormTail_.blockDim);
+        tilingData_.addRmsNormTilingeKeyData.ARNKeyTail = tilingOutAddRmsNormTail_.tilingKey;
+        tilingData_.addRmsNormTilingeKeyData.ARNNumBlocksTail = tilingOutAddRmsNormTail_.numBlocks;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -119,7 +119,6 @@ bool MatmulAllReduceAddRmsNormTiling::IsCapable()
 MatmulAllReduceAddRmsNormTiling::MatmulAllReduceAddRmsNormTiling(gert::TilingContext* context)
     : TilingBaseClass(context)
 {
-    tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
     helper_ = std::move(std::unique_ptr<MMNTilingTransferHelper>(
         new (std::nothrow) MMNTilingTransferHelper(*this, tilingData_.matmulAllReduceTilingData)));
 }
@@ -144,29 +143,36 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
 
 ge::graphStatus MatmulAllReduceAddRmsNormTiling::PostTiling()
 {
+    constexpr size_t tilingDataSize = sizeof(Mc2Tiling::MatmulAllReduceAddRmsNormTilingData);
     OP_LOGD(
-        helper_->opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingData_.GetDataSize(),
+        helper_->opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingDataSize,
         context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     OP_TILING_CHECK(
-        tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
+        tilingDataSize % sizeof(uint64_t) != 0,
         VECTOR_INNER_ERR_REPORT_TILING(
             helper_->opName_,
             "tiling data size[%zu] not aligned to"
             " 8",
-            tilingData_.GetDataSize()),
+            tilingDataSize),
         return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+        reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+    if (ret != EOK){
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
     helper_->PrintTilingData();
-    auto blockDimOfArn = static_cast<uint64_t>(tilingOutAddRmsNormTile_.blockDim);
+    auto numBlocksOfArn = static_cast<uint64_t>(tilingOutAddRmsNormTile_.numBlocks);
     if (HasTail()) {
-        blockDimOfArn = std::max(blockDimOfArn, static_cast<uint64_t>(tilingOutAddRmsNormTail_.blockDim));
+        numBlocksOfArn = std::max(numBlocksOfArn, static_cast<uint64_t>(tilingOutAddRmsNormTail_.numBlocks));
     }
     OP_LOGI(
         helper_->opName_, "ctx block dim: %lu, mc2 block dim %lu, arn block dim %lu", helper_->args_.aicCoreNum,
-        helper_->args_.aicCoreNum, blockDimOfArn);
-    // 当前mc2给的aicCoreNum是硬件规格的最大个数, blockDimOfArn取了尾和非尾的最大值，最大值应该小于等于硬件规格的aiv num
+        helper_->args_.aicCoreNum, numBlocksOfArn);
+    // 当前mc2给的aicCoreNum是硬件规格的最大个数, numBlocksOfArn取了尾和非尾的最大值，最大值应该小于等于硬件规格的aiv num
     // 2代表aic和aiv个数规格定义是1比2的关系
-    GE_ASSERT_TRUE(helper_->args_.aicCoreNum * 2 >= blockDimOfArn);
+    GE_ASSERT_TRUE(helper_->args_.aicCoreNum * 2 >= numBlocksOfArn);
     context_->SetBlockDim(helper_->args_.aicCoreNum);
     return ge::GRAPH_SUCCESS;
 }

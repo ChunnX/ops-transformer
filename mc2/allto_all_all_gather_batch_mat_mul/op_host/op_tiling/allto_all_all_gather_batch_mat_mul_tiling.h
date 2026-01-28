@@ -17,16 +17,13 @@
 #define __ALL_TO_ALL_ALL_GATHER_BATCH_MATMUL_TILING_H__
 
 
-#include "register/tilingdata_base.h"
-#include "tiling/tiling_api.h"
-#include "tiling/mc2_tiling_struct.h"
-#include "tiling/new_mc2_tiling_struct.h"
-#include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
-#include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
-#include "mc2_log.h"
-#include "tiling/matmul_formulaic_tiling.h"
-#include "batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h"
-#include "batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h"
+#include <cstdint>
+#include "kernel_tiling/kernel_tiling.h"
+#include "../../op_kernel/allto_all_all_gather_batch_mat_mul_tiling_struct.h"
+#include "../../3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
+#include "../../3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
+#include "../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h"
+#include "../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h"
 
 namespace optiling {
 struct AlltoAllAllGatherBatchInfo {
@@ -60,64 +57,6 @@ struct AlltoAllAllGatherMatmulInfo {
     uint64_t kValue = 0L;
     uint64_t nValue = 0L;
 }; // BmmTiling计算时需要用到的结构体
-
-
-BEGIN_TILING_DATA_DEF(Mc2CommonTiling)
-TILING_DATA_FIELD_DEF(uint32_t, epGroupSize); // ep
-TILING_DATA_FIELD_DEF(uint32_t, tpGroupSize); // tp
-TILING_DATA_FIELD_DEF(uint64_t, expert);      // E
-TILING_DATA_FIELD_DEF(uint64_t, EOverEp);     // E/ep
-TILING_DATA_FIELD_DEF(uint64_t, C);
-TILING_DATA_FIELD_DEF(uint64_t, COverTp); // C/tp
-TILING_DATA_FIELD_DEF(uint64_t, H);       // H
-TILING_DATA_FIELD_DEF(uint64_t, HOverTp); // H/tp
-TILING_DATA_FIELD_DEF(uint64_t, MOverTp); // M/tp
-TILING_DATA_FIELD_DEF(uint32_t, aivCoreNum);
-TILING_DATA_FIELD_DEF(uint32_t, inputDatasize);
-TILING_DATA_FIELD_DEF(uint32_t, biasDatasize);
-TILING_DATA_FIELD_DEF(uint64_t, ubCapacityForTrans);
-TILING_DATA_FIELD_DEF(uint64_t, ubCapacityForAddActivate);
-TILING_DATA_FIELD_DEF(bool, isBias);
-TILING_DATA_FIELD_DEF(bool, y2Flag);
-TILING_DATA_FIELD_DEF(bool, y3Flag);
-TILING_DATA_FIELD_DEF(bool, isWeightTrans);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, localTileE);    // E 轴本地块切分信息
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, domesticTileE); // E 轴非本地块切分信息
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, localTileC);    // C 轴本地块切分信息
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, domesticTileC); // C 轴非本地块切分信息
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, localUbTranspose);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, localTailUbTranspose);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, domesticUbTranspose);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, domesticTailUbTranspose);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, localUbAdd);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, localTailUbAdd);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, domesticUbAdd);
-TILING_DATA_FIELD_DEF_STRUCT(TileInfo, domesticTailUbAdd);
-TILING_DATA_FIELD_DEF(uint32_t, activateType); // 激活措施：0为不激活，1为GELU，3为Relu，4为FastGELU
-TILING_DATA_FIELD_DEF(uint32_t, xShardFlag);
-TILING_DATA_FIELD_DEF(uint32_t, fastGeluBuffer);
-TILING_DATA_FIELD_DEF(uint64_t, totalUbSize);
-
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(Mc2CommonTilingOp, Mc2CommonTiling)
-
-
-BEGIN_TILING_DATA_DEF(AlltoAllAllGatherBatchMatMulTilingData)
-TILING_DATA_FIELD_DEF(uint32_t, version);                              // 新流程时此处填2
-TILING_DATA_FIELD_DEF(uint32_t, hcommCnt);                             // 通信域数量，本算子有allToall和allGather两个
-TILING_DATA_FIELD_DEF_STRUCT(Mc2ServerCfg, serverCfg);                 // server端通用参数
-TILING_DATA_FIELD_DEF_STRUCT(Mc2HcommCfg, hcommCfgATA);                // 通信域1：allToall
-TILING_DATA_FIELD_DEF_STRUCT(Mc2HcommCfg, hcommCfgAG);                 // 通信域2：allGather
-TILING_DATA_FIELD_DEF_STRUCT(Mc2CommonTiling, commonTiling);           // kernel侧需要的通用tiling
-TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, localTiling);        // local块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, domesticTiling);     // 非local块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, localTailTiling);    // local尾块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData, domesticTailTiling); // 非local尾块的matmul tiling数据
-TILING_DATA_FIELD_DEF_STRUCT(NewMc2MatmulTilingData,
-                             domesticTailETiling); // sherd-0切E不切C时非local尾块的matmul tiling数据
-
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(AlltoAllAllGatherBatchMatMul, AlltoAllAllGatherBatchMatMulTilingData);
 
 class AlltoAllAllGatherBatchMatMulTiling : public Mc2batch_mat_mul_v3::Mc2BatchMatmulV3BaseTiling {
 public:

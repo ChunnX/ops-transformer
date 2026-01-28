@@ -16,8 +16,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../op_kernel/moe_update_expert_tiling.h"
 
-#define __aicore__
-
 using namespace MoeUpdateExpertNamespace;
 
 inline void InitMoeUpdateExpertTilingData(uint8_t* tiling, MoeUpdateExpertTilingData* const_data)

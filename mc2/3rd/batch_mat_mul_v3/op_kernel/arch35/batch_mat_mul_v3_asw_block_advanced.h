@@ -15,7 +15,7 @@
 #ifndef BATCH_MATMUL_V3_ASW_BLOCK_ADVANCED_H
 #define BATCH_MATMUL_V3_ASW_BLOCK_ADVANCED_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "../../../mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../../mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"

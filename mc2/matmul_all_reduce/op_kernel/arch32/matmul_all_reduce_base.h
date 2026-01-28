@@ -15,10 +15,13 @@
 #ifndef MATMUL_ALL_REDUCE_BASE_H
 #define MATMUL_ALL_REDUCE_BASE_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
+#include "unquant_matmul_all_reduce_tiling_data.h"
+#include "weight_quant_matmul_all_reduce_tiling_data.h"
+#include "quant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
@@ -131,8 +134,8 @@ protected:
     MC2GmAddrs* addrs_;
     QuantGmAddrs* quantAddrs_;
     ArnGmAddrs* arnAddrs_;
-    Mc2Msg* msgInTiling_;
-    RCSTiling* paramInTiling_;
+    Mc2Tiling::Mc2Msg* msgInTiling_;
+    Mc2Tiling::RCSTiling* paramInTiling_;
     MC2TileInfo tileInfo_, tailInfo_;
     TPipe* tPipe_;
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;

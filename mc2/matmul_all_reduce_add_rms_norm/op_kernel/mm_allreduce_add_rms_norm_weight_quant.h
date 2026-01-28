@@ -15,11 +15,12 @@
 #ifndef MM_ALLREDUCE_ADD_RMS_NORM_WEIGHT_QUANT_H
 #define MM_ALLREDUCE_ADD_RMS_NORM_WEIGHT_QUANT_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "../matmul_all_reduce/common.h"
 #include "../matmul_all_reduce/arch32/matmul_all_reduce_weight_quant.h"
 #include "add_rms_norm_kernel.h"
+#include "matmul_all_reduce_add_rms_norm_tiling_data.h"
 
 namespace MatmulAllReduceAddRmsNormImpl {
 using namespace AscendC;
@@ -33,7 +34,7 @@ public:
         MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
         : MatmulAllReduceWeightQuant<xType, wType, yType, mmType>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
-        WeightQuantMatmulAllReduceAddRmsNormTilingData* p = (WeightQuantMatmulAllReduceAddRmsNormTilingData*)tilingData;
+        Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData* p = (Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData*)tilingData;
         arnTile_ = &p->addRMSNormTileTilingData;
         arnTail_ = &p->addRMSNormTailTilingData;
         arnTilineKey_ = &p->addRmsNormTilingeKeyData;
@@ -66,14 +67,14 @@ public:
     }
 
 private:
-    AddRMSNormTilingeKeyData* arnTilineKey_;
-    MC2AddRMSNormTilingData* arnTile_;
-    MC2AddRMSNormTilingData* arnTail_;
+    Mc2Tiling::AddRMSNormTilingeKeyData* arnTilineKey_;
+    Mc2Tiling::AddRMSNormTilingData* arnTile_;
+    Mc2Tiling::AddRMSNormTilingData* arnTail_;
 };
 
 #define INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(bTransFlag, quantType, offsetFlag)                         \
     do {                                                                                                   \
-        GET_TILING_DATA_WITH_STRUCT(WeightQuantMatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
         using opType = WEIGH_QUANT_MATMUL_CLASS_NAME<                                                      \
             DTYPE_X1, DTYPE_X2, DTYPE_BIAS_FOR_MC2, DTYPE_Y, false, bTransFlag, quantType, offsetFlag,     \
             Mc2QuantType::NONE>;                                                                              \

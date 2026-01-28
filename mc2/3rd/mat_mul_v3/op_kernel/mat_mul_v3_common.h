@@ -14,8 +14,10 @@
  */
 #ifndef __OP_KERNEL_MATMUL_V3_COMMON_H__
 #define __OP_KERNEL_MATMUL_V3_COMMON_H__
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
+#include "utils/std/algorithm.h"
 #include "lib/matmul_intf.h"
+#include "mat_mul_v3_tiling_data.h"
 
 
 using namespace AscendC;

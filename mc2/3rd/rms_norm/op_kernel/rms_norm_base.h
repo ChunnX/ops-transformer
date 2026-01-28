@@ -10,7 +10,7 @@
 
 #ifndef RMS_NORM_BASE_H_
 #define RMS_NORM_BASE_H_
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "../../norm_common/op_kernel/reduce_common.h"
 
 namespace RmsNorm {

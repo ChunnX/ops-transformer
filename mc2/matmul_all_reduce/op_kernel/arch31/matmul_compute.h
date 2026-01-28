@@ -80,7 +80,7 @@ public:
     __aicore__ inline MatmulCompute()
     {}
     __aicore__ inline void Init(
-        TCubeTiling& tiling, RCSTiling& cfg, Mc2L2cacheTilePara& tileL2cacheTiling,
+        AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
         const LocalTensor<uint8_t>& mmFormatUb);
     __aicore__ inline void InitGlobalBTensor(
         GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR antiquantScale, GM_ADDR antiquantOffset);
@@ -164,7 +164,8 @@ template <
     AntiQuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void
 MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::Init(
-    TCubeTiling& tiling, RCSTiling& cfg, Mc2L2cacheTilePara& tileL2cacheTiling, const LocalTensor<uint8_t>& mmFormatUb)
+    AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
+    const LocalTensor<uint8_t>& mmFormatUb)
 {
     // MatmulImpl初始化
     mm.SetSubBlockIdx(0);

@@ -27,6 +27,7 @@ constexpr int32_t BUF_CNT_SPLIT_M_MATMUL_ALLREDUCE_INT8 = 7;
 constexpr int32_t BUF_CNT_SPLIT_MN_MATMUL_ALLREDUCE_INT8 = 13;
 constexpr uint32_t SPLIT_M_MATMUL_ALLREDUCE_INT8 = 1;
 constexpr uint32_t SPLIT_MN_MATMUL_ALLREDUCE_INT8 = 2;
+constexpr uint32_t BYTE32_ALIGN = 32;
 
 template <class T> // commQuantScaleType = yType bf16/fp16
 class MatmulAllReduceReduceSum
@@ -180,12 +181,18 @@ public:
         uint32_t calcCnt = blockCntSpiltMN;
         uint16_t copyBlockCnt = 1;
         uint32_t copyBlockLen = calcCnt;
+        uint16_t copyInUbStride = 0;
+        uint16_t copyOutUbStride = 0;
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // 搬多行
             calcCnt = this->alginN * curBlockCntM;
             copyBlockCnt = curBlockCntM;
             copyBlockLen = this->N;
+            copyInUbStride = (this->alginN * sizeof(int8_t) - Ceil(this->N * sizeof(int8_t), BYTE32_ALIGN) * BYTE32_ALIGN) / BYTE32_ALIGN;
+            copyOutUbStride = (this->alginN * sizeof(int8_t) - Ceil(this->N * sizeof(int8_t), BYTE32_ALIGN) * BYTE32_ALIGN) / BYTE32_ALIGN;
         }
-        DataCopyParams copyParamsCurBlock = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), 0, 0};
+        DataCopyParams copyParamsCurBlock = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), 0, copyInUbStride};
+        DataCopyParams copyOutParamsCurBlock = {
+            copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), copyOutUbStride, 0};
         DataCopyParams copyParamsScaleQuant = {1, static_cast<uint16_t>(copyBlockLen * sizeof(T)), 0, 0};
         DataCopyPadParams padParams = {false, 0, 0, 0};
 
@@ -248,7 +255,7 @@ public:
         uint32_t rank_id = this->hccl_.GetRankId();
         queueZ.EnQue<int8_t>(zInt8Local);
         LocalTensor<int8_t> outLocal = queueZ.DeQue<int8_t>();
-        DataCopyPad(tempBufferGm_[rank_id * this->tileRankM * this->N], outLocal, copyParamsCurBlock);
+        DataCopyPad(tempBufferGm_[rank_id * this->tileRankM * this->N], outLocal, copyOutParamsCurBlock);
         queueZ.FreeTensor(zInt8Local);
         if (((loopIdx == (aivLoopNum - 1)) && (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8)) ||
             (this->splitMode == SPLIT_MN_MATMUL_ALLREDUCE_INT8)) {

@@ -141,7 +141,8 @@ bool MatmulAllReduceCheckDtypeValid(
 // 检查传入的reduction数值是否在可选范围内
 bool MatmulAllReduceCheckAttr(const char* reduceOp, int64_t streamMode)
 {
-    if (strcmp(reduceOp, REDUCE_OP_SUM)) {
+    bool flag = (strcmp(reduceOp, REDUCE_OP_SUM) == 0);
+    if (!flag) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
         return false;
     }
@@ -374,6 +375,13 @@ bool QuantMatmulAllReduceCheckShape(
     op::Shape outShape = x1->GetViewShape();
     outShape.SetDim(x1Len - 1, x2Dim1);
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(output, outShape, return false);
+
+    // 判断output是否为空tensor
+    if (output->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output is empty tensor, output shape is: %s",
+            op::ToString(output->GetViewShape()).GetString());
+        return false;
+    }
     
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
@@ -429,7 +437,8 @@ const aclTensor* QuantMatmulAllReduceTransTensor(const aclTensor* x2)
     aclGetDataType(x2, &dataType);
     std::vector<int64_t> stride(viewDimsNum);
     auto transStride = x2->GetViewStrides();
-    // x2和perblock情形的scale只有二维，已校验
+    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    // transpose the two dimensions
     stride[0] = transStride[1];
     stride[1] = transStride[0];
 
@@ -491,6 +500,11 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
             return ACLNN_ERR_INNER_NULLPTR;
         }
         tempX2 = QuantMatmulAllReduceCopyTensor(x2);
+    }
+    if (NnopbaseSetHcclServerType) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(

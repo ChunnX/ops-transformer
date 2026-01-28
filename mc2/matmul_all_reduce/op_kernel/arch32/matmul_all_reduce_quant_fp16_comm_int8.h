@@ -15,7 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_FP16_COMM_INT8_H
 #define MATMUL_ALL_REDUCE_QUANT_FP16_COMM_INT8_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "lib/hccl/hccl.h"
 #ifdef __CCE_KT_TEST__
@@ -46,7 +46,7 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
+        Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void InitScale(GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM);
     __aicore__ inline void Process();
 
@@ -58,7 +58,7 @@ private:
     __aicore__ inline uint32_t SendCountCheck(uint32_t prepareIndex);
 
 private:
-    QuantMatmulAllReduceTilingData* tilingData_;
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData_;
     TPipe* tPipe_;
     GM_ADDR cGM_;
     GM_ADDR aGM_;
@@ -100,7 +100,7 @@ template <
     typename aType, typename bType, typename biasType, typename cType, typename commType, bool aTrans, bool bTrans>
 __aicore__ inline void MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans, bTrans>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
 {
     __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
     OOMInit(context);

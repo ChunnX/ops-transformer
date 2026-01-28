@@ -18,16 +18,8 @@
 #include "../../../matmul_all_reduce/op_host/op_tiling/arch32/quant_matmul_all_reduce_tiling.h"
 #include "common_add_rms_norm_tiling.h"
 #include "context_transfer.h"
+#include "../../op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
 namespace optiling {
-BEGIN_TILING_DATA_DEF(QuantMatmulAllReduceAddRmsNormTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(QuantMatmulAllReduceTilingData, qunatMatmulAllReduceTilingData);
-TILING_DATA_FIELD_DEF_STRUCT(MC2AddRMSNormTilingData, addRMSNormTileTilingData);
-TILING_DATA_FIELD_DEF_STRUCT(MC2AddRMSNormTilingData, addRMSNormTailTilingData);
-TILING_DATA_FIELD_DEF_STRUCT(AddRMSNormTilingeKeyData, addRmsNormTilingeKeyData);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_8, QuantMatmulAllReduceAddRmsNormTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduceAddRmsNorm_4104, QuantMatmulAllReduceAddRmsNormTilingData);
 
 class QuantMMNTilingTransferHelper;
 class QuantMatmulAllReduceAddRmsNormTiling : public TilingBaseClass
@@ -52,7 +44,7 @@ protected:
 private:
     bool HasTail() const;
     MRNCtxInfo mrnCtxInfo_;
-    QuantMatmulAllReduceAddRmsNormTilingData tilingData_;
+    Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData tilingData_;
     bool hasTail_;
     TilingOut tilingOutAddRmsNormTile_;
     TilingOut tilingOutAddRmsNormTail_;
@@ -64,7 +56,7 @@ class QuantMMNTilingTransferHelper : public QuantMatmulAllReduceTiling
 public:
     QuantMMNTilingTransferHelper(
         QuantMatmulAllReduceAddRmsNormTiling& quantMatmulAllReduceAddRmsNormTiling,
-        QuantMatmulAllReduceTilingData& data);
+        Mc2Tiling::QuantMatmulAllReduceTilingData& data);
     ge::graphStatus GetShapeAttrsInfo() override;
 
 private:

@@ -15,7 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_PERTOKEN_COMM_INT8_H
 #define MATMUL_ALL_REDUCE_QUANT_PERTOKEN_COMM_INT8_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
@@ -28,6 +28,7 @@
 #include "matmul_all_reduce_quant_perchannel.h"
 #include "matmul_all_reduce_dequant_perchannel.h"
 #include "matmul_all_reduce_quant_reduce_sum.h"
+#include "quant_matmul_all_reduce_tiling_data.h"
 
 constexpr uint32_t MAX_HANDLE_ID_NUM = 16;
 constexpr uint32_t NUM_TWO_PERTOKEN = 2;
@@ -48,7 +49,7 @@ public:
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM, GM_ADDR pertokenScaleGM,
         GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
+        Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process(
         BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true>& opTile,
         BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true>& opTail);
@@ -61,7 +62,7 @@ private:
     __aicore__ inline void PrepareInit();
     __aicore__ inline uint32_t SendCountCheck(uint32_t prepareIndex);
 
-    QuantMatmulAllReduceTilingData* tilingData_;
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData_;
     TPipe* tPipe_;
     GM_ADDR aGM_;
     GM_ADDR bGM_;
@@ -169,7 +170,7 @@ __aicore__ inline void
 MatmulAllReduceQuantPertokenInt8<xType, wType, fFormat, wFormat, scaleType, yType, commType, aTrans, bTrans>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM, GM_ADDR pertokenScaleGM,
     GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
 {
     __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
     OOMInit(context);

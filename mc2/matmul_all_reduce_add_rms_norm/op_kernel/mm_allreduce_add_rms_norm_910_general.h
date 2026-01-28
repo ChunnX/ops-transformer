@@ -15,7 +15,7 @@
 #ifndef MM_ALLREDUCE_ADD_RMS_NORM_910_GENERAL_H
 #define MM_ALLREDUCE_ADD_RMS_NORM_910_GENERAL_H
 
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #if __has_include("../../matmul_all_reduce/op_kernel/common.h")
 #include "../../matmul_all_reduce/op_kernel/common.h"
@@ -28,6 +28,7 @@
 #include "../matmul_all_reduce/arch32/matmul_all_reduce_910_general.h"
 #endif
 #include "add_rms_norm_kernel.h"
+#include "matmul_all_reduce_add_rms_norm_tiling_data.h"
 
 namespace MatmulAllReduceAddRmsNormImpl {
 using namespace AscendC;
@@ -42,7 +43,7 @@ public:
         : MatmulAllReduce910General<xType, wType, yType, mmType, Mc2CoreType::ON_CUBE_AND_VECTOR>(
               addrs, arnAddrs, tilingData, tPipe)
     {
-        MatmulAllReduceAddRmsNormTilingData* p = (MatmulAllReduceAddRmsNormTilingData*)tilingData;
+        Mc2Tiling::MatmulAllReduceAddRmsNormTilingData* p = (Mc2Tiling::MatmulAllReduceAddRmsNormTilingData*)tilingData;
         arnTile_ = &p->addRMSNormTileTilingData;
         arnTail_ = &p->addRMSNormTailTilingData;
         arnTilineKey_ = &p->addRmsNormTilingeKeyData;
@@ -75,9 +76,9 @@ public:
     }
 
 private:
-    AddRMSNormTilingeKeyData* arnTilineKey_;
-    MC2AddRMSNormTilingData* arnTile_;
-    MC2AddRMSNormTilingData* arnTail_;
+    Mc2Tiling::AddRMSNormTilingeKeyData* arnTilineKey_;
+    Mc2Tiling::AddRMSNormTilingData* arnTile_;
+    Mc2Tiling::AddRMSNormTilingData* arnTail_;
 };
 
 #define INVOKE_MC2_ARN_910_OP_IMPL_HELPER(opTemplateClass, bTransFlag)                                     \
@@ -97,7 +98,7 @@ private:
 
 #define INVOKE_MC2_ARN_910_OP_IMPL(opTemplateClass)                                             \
     do {                                                                                        \
-        GET_TILING_DATA_WITH_STRUCT(MatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
         if (tilingData.matmulAllReduceTilingData.tilematmulTiling.matmulRunInfo.transB != 0U) { \
             INVOKE_MC2_ARN_910_OP_IMPL_HELPER(opTemplateClass, true);                           \
         } else {                                                                                \

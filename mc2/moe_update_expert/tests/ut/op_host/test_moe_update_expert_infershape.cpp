@@ -10,9 +10,8 @@
  
 #include <gtest/gtest.h>
 #include <iostream>
-#include "infer_shape_context_faker.h"
+#include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
-#include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MoeUpdateExpertInfershapeUT{
@@ -48,9 +47,12 @@ TEST_F(MoeUpdateExpertInfershape, moe_update_expert_test_shape) {
             {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(balance_mode)},
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{128, 8}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 TEST_F(MoeUpdateExpertInfershape, moe_update_expert_test_enhanced_shape) {
@@ -85,9 +87,12 @@ TEST_F(MoeUpdateExpertInfershape, moe_update_expert_test_enhanced_shape) {
             {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(balance_mode)},
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{128, 8}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 

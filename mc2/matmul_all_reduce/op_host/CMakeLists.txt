@@ -13,10 +13,10 @@ if (BUILD_OPEN_PROJECT)  # custom
         matmul_all_reduce_def.cpp
     )
     add_modules_sources(
- 	         OP_API_INDEPENDENT ON 
- 	         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
- 	         OP_MC2_ENABLE ON 
- 	         OPTYPE matmul_all_reduce matmul_all_reduce ACLNNTYPE aclnn aclnn_inner)
+        OP_API_INDEPENDENT ON 
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
+        OP_MC2_ENABLE ON 
+        OPTYPE matmul_all_reduce matmul_all_reduce ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(matmul_all_reduce_depends mc2/3rd mc2/common PARENT_SCOPE)
@@ -26,7 +26,14 @@ if (BUILD_OPEN_PROJECT)  # custom
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     # -DENABLE_CV_COMM_VIA_SSBUF=true: 启用CV模块通过共享系统缓冲区进行数据通信。
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-    if("${CONDITION_UNIT}" STREQUAL "ascend910b")
+    if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
+        add_ops_compile_options(
+            OP_NAME MatmulAllReduce
+            OPTIONS --cce-auto-sync=off
+                    -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
+        )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend910b")
         add_ops_compile_options(
             OP_NAME MatmulAllReduce
             OPTIONS --cce-auto-sync=off

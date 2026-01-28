@@ -16,33 +16,10 @@
 #define WEIGHT_QUANT_MATMUL_ALL_REDUCE_TILING_H
 #include "../matmul_all_reduce_tiling_base.h"
 #include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
+#include "../../../op_kernel/arch32/weight_quant_matmul_all_reduce_tiling_data.h"
 #include "weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h"
 
 namespace optiling {
-BEGIN_TILING_DATA_DEF(WeightQuantMatmulAllReduceTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(Mc2Msg, msg);
-TILING_DATA_FIELD_DEF_STRUCT(RCSTiling, param);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2WeightQuantBatchMatmulV2TilingData, tilematmulTiling);
-TILING_DATA_FIELD_DEF_STRUCT(Mc2WeightQuantBatchMatmulV2TilingData, tailmatmulTiling);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_2293772, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_69402636, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_4390924, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_71499788, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_6488076, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_73596940, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_3342348, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_70451212, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_5439500, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_72548364, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_7536652, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_74645516, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_4718604, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_71827468, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_5767180, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_72876044, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(MatmulAllReduce_28, WeightQuantMatmulAllReduceTilingData);
-REGISTER_TILING_DATA_CLASS(WeightQuantMatmulAllReduceTilingDataOp, WeightQuantMatmulAllReduceTilingData);
 
 struct WeightQuantMatmulTPLParam{
     uint64_t subAlgorithmCustom{65535};
@@ -62,7 +39,7 @@ class WeightQuantMatmulAllReduceTiling : public MatmulAllReduceTilingBase
 public:
     explicit WeightQuantMatmulAllReduceTiling(gert::TilingContext* context);
     WeightQuantMatmulAllReduceTiling(
-        gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, WeightQuantMatmulAllReduceTilingData* out);
+        gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, Mc2Tiling::WeightQuantMatmulAllReduceTilingData* out);
     ~WeightQuantMatmulAllReduceTiling() override = default;
 
 protected:
@@ -76,22 +53,22 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Msg& MutableMc2MsgData() override
+    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override
     {
         return weightQuantMatmulAllReduceTilingData_.msg;
     }
 
-    RCSTiling& MutableRCSTilingData() override
+    Mc2Tiling::RCSTiling& MutableRCSTilingData() override
     {
         return weightQuantMatmulAllReduceTilingData_.param;
     }
 
-    TCubeTiling& MutableTCubeTileTilingData() override
+    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override
     {
         return weightQuantMatmulAllReduceTilingData_.tilematmulTiling.matmulTiling;
     }
 
-    TCubeTiling& MutableTCubeTailTilingData() override
+    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override
     {
         return weightQuantMatmulAllReduceTilingData_.tailmatmulTiling.matmulTiling;
     }
@@ -104,8 +81,8 @@ protected:
 
 private:
     ge::graphStatus CheckAxisSize();
-    WeightQuantMatmulAllReduceTilingData weightQuantMatmulAllReduceTilingDataSelf_;
-    WeightQuantMatmulAllReduceTilingData& weightQuantMatmulAllReduceTilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceTilingData weightQuantMatmulAllReduceTilingDataSelf_{};
+    Mc2Tiling::WeightQuantMatmulAllReduceTilingData& weightQuantMatmulAllReduceTilingData_;
     uint64_t myWorkSpaceSize_{0U};
     WeightQuantMatmulTPLParam weightQuantMatmulTPLParam_;
 };

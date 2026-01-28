@@ -13,6 +13,7 @@
 
 #include "../catlass.hpp"
 #include "../coord.hpp"
+#include "../numeric_size.hpp"
 
 namespace Catlass::layout {
 
@@ -49,7 +50,8 @@ public:
     CATLASS_HOST_DEVICE
     static VectorLayout MakeLayoutInUb(TensorCoord const &tileShape)
     {
-        return VectorLayout{RoundUp<BYTE_PER_BLK / sizeof(Element)>(tileShape[0])};
+        constexpr uint32_t ELE_NUM_PER_BLK = BytesToBits(BYTE_PER_BLK) / SizeOfBits<Element>::value;
+        return VectorLayout{ELE_NUM_PER_BLK>(tileShape[0])};
     }
 
     CATLASS_HOST_DEVICE

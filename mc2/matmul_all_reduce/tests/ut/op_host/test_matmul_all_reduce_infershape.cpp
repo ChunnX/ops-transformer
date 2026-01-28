@@ -10,9 +10,8 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
-#include "infer_shape_context_faker.h"
+#include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
-#include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 class MatmulAllReduceInfershape : public testing::Test
@@ -56,9 +55,12 @@ TEST_F(MatmulAllReduceInfershape, infer_shape_for_2dim) {
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{32, 128}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 TEST_F(MatmulAllReduceInfershape, infer_shape_for_3dim) {
@@ -88,9 +90,12 @@ TEST_F(MatmulAllReduceInfershape, infer_shape_for_3dim) {
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{4, 8, 128}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 TEST_F(MatmulAllReduceInfershape, infer_shape_for_invalid_k) {
@@ -120,8 +125,11 @@ TEST_F(MatmulAllReduceInfershape, infer_shape_for_invalid_k) {
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
-    ExecuteTestCase(infershapeContextPara);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(MatmulAllReduceInfershape, infer_shape_for_invalid_zero_k) {
@@ -151,9 +159,12 @@ TEST_F(MatmulAllReduceInfershape, infer_shape_for_invalid_zero_k) {
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{32, 128}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 TEST_F(MatmulAllReduceInfershape, infer_shape_for_3dim_quant_v4)
@@ -184,9 +195,12 @@ TEST_F(MatmulAllReduceInfershape, infer_shape_for_3dim_quant_v4)
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{4, 8, 128}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 TEST_F(MatmulAllReduceInfershape, infer_shape_add_rms_norm) {
@@ -220,9 +234,12 @@ TEST_F(MatmulAllReduceInfershape, infer_shape_add_rms_norm) {
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{4, 8, 128}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 TEST_F(MatmulAllReduceInfershape, infer_dtype) {

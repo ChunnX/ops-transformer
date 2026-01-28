@@ -23,10 +23,18 @@
         target_sources(${OPHOST_NAME}_opapi_obj PRIVATE ${MC2_OPAPI_SRCS})
     endif()
     
-    file(GLOB MC2_3RD_BLUE_COMM
-        # mm  stub
-        ${CMAKE_CURRENT_SOURCE_DIR}/ops_legacy/op_tiling/op_cache_tiling.cpp
-    )
+    if(UT_TEST_ALL OR OP_HOST_UT)
+        file(GLOB MC2_3RD_BLUE_COMM
+            # mm  stub
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/ut/framework_normal/common/op_cache_tiling.cpp
+        )
+    else()
+        file(GLOB MC2_3RD_BLUE_COMM
+            # mm  stub
+            ${CMAKE_CURRENT_SOURCE_DIR}/ops_legacy/op_tiling/op_cache_tiling.cpp
+        )
+    endif()
+
     if(MC2_3RD_BLUE_COMM)
         add_tiling_modules()
         target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${MC2_3RD_BLUE_COMM})

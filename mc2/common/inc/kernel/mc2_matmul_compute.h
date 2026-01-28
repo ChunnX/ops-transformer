@@ -113,7 +113,7 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Comp
     // 每次block循环开始前需要计算初始blockIndex
     block_.InitBlockIndex(index);
     for (uint32_t i = 0; i < block_.args_.blockCnt; i++) {
-        // calculate blcokCurrIndex
+        // calculate blockCurrIndex
         block_.UpdateBlockIndex(i + offset);
         if (block_.args_.blockCurrIdx < block_.args_.totalBlockCnt) {
             block_.UpdateBlockParams();
@@ -143,7 +143,7 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Comp
     // 每次block循环开始前需要计算初始blockIndex
     block_.InitBlockWithoutIndex();
     for (uint32_t i = 0; i < block_.args_.blockCnt; i++) {
-        // calculate blcokCurrIndex
+        // calculate blockCurrIndex
         block_.UpdateBlockIndex(i);
         if (block_.args_.blockCurrIdx < block_.args_.totalBlockCnt) {
             block_.UpdateBlockParams();
@@ -182,15 +182,16 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, T>::Comp
             block_.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>();
             // 调用MatmulImpl完成一次Block计算
             mm_.SetSingleShape(block_.args_.singleCoreM, block_.args_.singleCoreN, tiling_.singleCoreK);
-            mm_.SetTensorA(aGlobal[block_.offset_.offsetA], block_.args_.isTransA);
             mm_.SetTensorB(bGlobal[block_.offset_.offsetB], block_.args_.isTransB);
+            mm_.SetTensorA(aGlobal[block_.offset_.offsetA], block_.args_.isTransA);
             if (tiling_.isBias) {
                 mm_.SetBias(biasGlobal[block_.offset_.offsetBias]);
             }
             mm_.Iterate();
             mm_.GetTensorC(cGlobal[block_.offset_.offsetC]);
             // 增加M等FIX同步
-            event_t eventIDFixToM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
+            event_t eventIDFixToM =
+                static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
             SetFlag<HardEvent::FIX_M>(eventIDFixToM);
             WaitFlag<HardEvent::FIX_M>(eventIDFixToM);
         }

@@ -141,6 +141,7 @@ template<int MULTIBATCHL1FULLLOAD, int MULTIBATCH, int LOADMODE, int ISMULTIBATC
 __global__ __aicore__ void batch_mat_mul_v3(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    REGISTER_TILING_DEFAULT(BatchMatmulTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ < 220
     GET_TILING_DATA(tilingData, tilingGM);

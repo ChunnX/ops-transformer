@@ -53,7 +53,7 @@ class matmul_reduce_scatter_test : public testing::Test {
 
 TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_test_no_bias) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    uint32_t blockDim = 20;
+    uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
@@ -90,7 +90,7 @@ TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_test_no_bias) {
 
 TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_bias) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    uint32_t blockDim = 20;
+    uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
@@ -129,7 +129,7 @@ TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_bias) {
 
 TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_test_computation_only) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    uint32_t blockDim = 20;
+    uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
@@ -164,7 +164,7 @@ TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_test_computation_only) 
  
 TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_test_communication_only) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    uint32_t blockDim = 20;
+    uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
@@ -199,7 +199,7 @@ TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_test_communication_only
 
 TEST_F(matmul_reduce_scatter_test, matmul_reduce_scatter_test_no_bias_normalization) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    uint32_t blockDim = 20;
+    uint32_t numBlocks = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;

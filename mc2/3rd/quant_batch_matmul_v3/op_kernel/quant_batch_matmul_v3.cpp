@@ -26,8 +26,9 @@
 #include "quant_batch_matmul_v3_pertoken_opt.h"
 #endif
 #endif
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "quant_batch_matmul_v3_tiling_key.h"
+#include "quant_batch_matmul_v3_tiling_data.h"
 
 // if run with ttk without bias, can't get DTYPE_BIAS macro
 #undef DTYPE_BIAS
@@ -178,6 +179,7 @@ __global__ __aicore__ void quant_batch_matmul_v3(GM_ADDR x1, GM_ADDR x2, GM_ADDR
     if (user1 == nullptr) {
         return;
     }
+    REGISTER_TILING_DEFAULT(Mc2QuantBatchMatmulV3TilingData);
     GET_TILING_DATA(tilingData, tiling);
 
 // 6bit from hight to low: needClean, pertoken, opt, basic, transX1, transX2

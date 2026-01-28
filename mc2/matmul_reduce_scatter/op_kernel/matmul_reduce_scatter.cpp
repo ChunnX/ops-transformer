@@ -12,12 +12,13 @@
  * \file matmul_reduce_scatter.cpp
  * \brief
  */
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 #include "matmul_reduce_scatter_tiling.h"
 #include "matmul_reduce_scatter_tiling_key.h"
-#if __CCE_AICORE__ != 310
+#if __CCE_AICORE__ == 310
+#else
     #include "matmul_reduce_scatter_full_mesh.h"
 #endif
 
@@ -30,7 +31,6 @@
         op.Process();                                                                    \
     } while (0)
 using namespace AscendC;
-using namespace matmul_reduce_scatter_tiling_key;
 
 namespace AscendC {
 template <class T> struct BiasType {
@@ -44,6 +44,7 @@ template<bool IsFullMesh, bool IsNd2Nz, bool IsBias>
 __global__ __aicore__ void matmul_reduce_scatter(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MatmulReduceScatterTilingData);
+    // matmulreducescatter算子kernel侧代码不支持A5
     #if __CCE_AICORE__ != 310
         auto tiling = (__gm__ MatmulReduceScatterTilingData*)tilingGM;
         __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));

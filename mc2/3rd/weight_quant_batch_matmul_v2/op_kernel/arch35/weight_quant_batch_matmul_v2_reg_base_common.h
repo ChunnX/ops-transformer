@@ -16,8 +16,7 @@
 #ifndef WEIGHT_QUANT_BATCHMATMUL_V2_REG_BASE_COMMON_H
 #define WEIGHT_QUANT_BATCHMATMUL_V2_REG_BASE_COMMON_H
 
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "tool_arch35.h"
 #include "../weight_quant_batch_matmul_v2_constant.h"

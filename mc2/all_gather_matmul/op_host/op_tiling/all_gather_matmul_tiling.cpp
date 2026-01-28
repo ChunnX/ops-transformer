@@ -103,10 +103,11 @@ static void PrintTilingData(Mc2Tiling::TileL2Tiling& tileL2Tiling)
 
 namespace optiling {
 
-static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling, Mc2Tiling::TileL2Tiling &l2Tiling);
+static ge::graphStatus CalcMatmulTiling(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling,
+                                        Mc2Tiling::TileL2Tiling &l2Tiling);
 
-static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args);
-
+static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::AllGatherMatmulTilingData& tilingData,
+                                       mc2tiling::TilingArgs& args);
 static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64)
 {
     // 检查允许通信的最大次数
@@ -526,7 +527,8 @@ static void SetSocParam(Mc2Tiling::AllGatherMatmulTilingData* tilingData, const 
   tilingData->socParam.isND2NZ = 1U; 
 }
 
-static ge::graphStatus InitHcclParam(const gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
+static ge::graphStatus InitHcclParam(const gert::TilingContext *context, 
+                                     Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
 {
   std::string algConfig = (tilingData->socParam.isA3 == 0) ?
     "AllGather=level0:fullmesh" : "AllGather=level0:doublering";

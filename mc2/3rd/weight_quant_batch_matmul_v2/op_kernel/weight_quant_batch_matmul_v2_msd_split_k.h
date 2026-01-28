@@ -15,8 +15,7 @@
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_MSD_SPLIT_K_H
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_MSD_SPLIT_K_H
 
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "tool.h"
 #include "weight_quant_batch_matmul_v2_constant.h"

@@ -25,19 +25,25 @@ constexpr uint64_t INT8_BLOCK_CUBE_TRANSPOSE = 32UL;
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::PostTiling()
 {
-    OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
+    size_t tilingDataSize = sizeof(Mc2WeightQuantBatchMatmulV2FixpipeTilingData);
+    OP_LOGD(opName_, "final tiling data size: %zu", tilingDataSize);
 
     OP_TILING_CHECK(
-        tilingData_->GetDataSize() % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingData_->GetDataSize()),
+        tilingDataSize % sizeof(uint64_t) != 0,
+        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
 
-    context_->GetRawTilingData()->SetDataSize(tilingData_->GetDataSize());
+    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     // 计算aic num n方向分核*m方向分核
     context_->SetBlockDim(
-        tilingData_->get_nBlockNum() *
-        ops::CeilDiv(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->get_singleCoreM())));
-    tilingData_->SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+        tilingData_->nBlockNum *
+        ops::CeilDiv(matmulInfoPtr_->mSize, static_cast<uint64_t>(tilingData_->singleCoreM)));
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+        tilingData_.get(), tilingDataSize);
+    if (ret != EOK){
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -144,6 +150,7 @@ bool Mc2WeightQuantBatchMatmulV2TilingFixpipe::CheckShapeIsCapable() const
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::InstantiateTilingData()
 {
+    size_t tilingDataSize = sizeof(Mc2WeightQuantBatchMatmulV2FixpipeTilingData);
     if (tilingData_ == nullptr) {
         tilingData_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2FixpipeTilingData>(
             new (std::nothrow) Mc2WeightQuantBatchMatmulV2FixpipeTilingData());
@@ -152,10 +159,10 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::InstantiateTilingData(
         tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        context_->GetRawTilingData()->GetCapacity() < tilingData_->GetDataSize(),
+        context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
         OP_LOGE(
             opName_, "tiling data capacity %zu < actual tiling data size %zu",
-            context_->GetRawTilingData()->GetCapacity(), tilingData_->GetDataSize()),
+            context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -166,7 +173,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::DoOpTiling()
         InstantiateTilingData() == ge::GRAPH_FAILED,
         OP_LOGE(opName_, "unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
 
-    tilingData_->set_hasBias(matmulInfoPtr_->hasBias);
+    tilingData_->hasBias = matmulInfoPtr_->hasBias;
     // 保证kernel的数据32对齐，避免为了处理16的尾块而引入其他计算
     uint64_t singleCoreN =
         ops::CeilAlign(ops::CeilDiv(matmulInfoPtr_->nSize, static_cast<uint64_t>(compileInfoPtr_->aicNum)), 32UL);
@@ -192,21 +199,21 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFixpipe::DoOpTiling()
     } else {
         aFullLoad_ = 1;
     }
-    tilingData_->set_nBlockNum(nBlkNum);
-    tilingData_->set_baseK(baseK);
-    tilingData_->set_baseM(singleCoreM);
-    tilingData_->set_baseN(baseN);
-    tilingData_->set_singleCoreM(std::min(matmulInfoPtr_->mSize, singleCoreM)); // 核内不切m
-    tilingData_->set_singleCoreN(singleCoreN);
-    tilingData_->set_mSize(matmulInfoPtr_->mSize);
-    tilingData_->set_kSize(matmulInfoPtr_->kSize);
-    tilingData_->set_nSize(matmulInfoPtr_->nSize);
+    tilingData_->nBlockNum = nBlkNum;
+    tilingData_->baseK = baseK;
+    tilingData_->baseM = singleCoreM;
+    tilingData_->baseN = baseN;
+    tilingData_->singleCoreM = std::min(matmulInfoPtr_->mSize, singleCoreM); // 核内不切m
+    tilingData_->singleCoreN = singleCoreN;
+    tilingData_->mSize = matmulInfoPtr_->mSize;
+    tilingData_->kSize = matmulInfoPtr_->kSize;
+    tilingData_->nSize = matmulInfoPtr_->nSize;
     return ge::GRAPH_SUCCESS;
 }
 
 // 5、计算TilingKey
 uint64_t Mc2WeightQuantBatchMatmulV2TilingFixpipe::GetTilingKey() const
-{   
+{
     uint64_t socVersionType = static_cast<uint64_t>(Mc2SocVersionType::SUPPORT_L0C_TO_OUT);
     uint64_t subSocVersionType = 0UL;
     uint64_t antiquantScenario = static_cast<uint64_t>(Mc2QuantizationScenario::DEFAULT);

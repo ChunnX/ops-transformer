@@ -21,7 +21,7 @@
 #include "mc2_hcom_topo_info.h"
 #include "util/math_util.h"
 #include "tiling/matmul_formulaic_tiling.h"
-#include "reduce_scatter_formulaic_tiling.h"
+#include "matmul_reduce_scatter_v2/op_host/op_tiling/reduce_scatter_formulaic_tiling.h"
 #include "../../op_kernel/matmul_reduce_scatter_tiling_key.h"
 #include "../../op_kernel/matmul_reduce_scatter_tiling.h"
 
@@ -421,9 +421,9 @@ static void SetReduceScatterTilingArgs(const gert::TilingContext* context, mc2ti
 
     const gert::StorageShape* aShape = context->GetInputShape(0);
     const gert::StorageShape* bShape = context->GetInputShape(1);
-    uint64_t mValue = aShape->GetStorageShape().GetDim(0);
     uint64_t kValue = aShape->GetStorageShape().GetDim(1);
     uint64_t nValue = bShape->GetStorageShape().GetDim(1);
+    uint64_t mValue = aShape->GetStorageShape().GetDim(0);
 
 	if (aShape->GetStorageShape().GetDim(1) != bShape->GetStorageShape().GetDim(0)) {
         OP_LOGD(context->GetNodeName(), "A.shape(1) %lu B.shape(0) %lu, istransB = %d",
@@ -476,7 +476,7 @@ struct KFCMsgBody {
     HcclAicpuOpParam msgRcvArea[mc2tiling::AC_MAX_AIV][mc2tiling::AC_MSG_CNT];
 };
 
-static void GetTilingKey(uint64_t& tilingKey, const MatmulReduceScatterTilingData& tilingData)  
+static void GetTilingKey(uint64_t& tilingKey, const MatmulReduceScatterTilingData& tilingData)
 { 
     bool mmReduceScatterFullMesh = true;
     bool mmReduceScatterNd2nzOpt = false;

@@ -10,9 +10,8 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "infer_shape_context_faker.h"
+#include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
-#include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace all_gather_matmul_ut {
@@ -51,9 +50,12 @@ TEST_F(AllGatherMatmulInferShapeTest, basic) {
             {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<int64_t>(false)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
 TEST_F(AllGatherMatmulInferShapeTest, empty_tensor_test) {
@@ -79,8 +81,11 @@ TEST_F(AllGatherMatmulInferShapeTest, empty_tensor_test) {
             {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<int64_t>(false)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
-    ExecuteTestCase(infershapeContextPara);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AllGatherMatmulInferShapeTest, is_gather_out_false) {
@@ -106,9 +111,12 @@ TEST_F(AllGatherMatmulInferShapeTest, is_gather_out_false) {
             {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<int64_t>(false)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
 TEST_F(AllGatherMatmulInferShapeTest, infer_datatype) {

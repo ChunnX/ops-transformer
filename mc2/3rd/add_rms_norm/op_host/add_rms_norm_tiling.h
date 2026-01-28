@@ -18,41 +18,4 @@
 #include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
 
-namespace optiling {
-    BEGIN_TILING_DATA_DEF(MC2AddRMSNormTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, num_row);
-    TILING_DATA_FIELD_DEF(uint32_t, num_col);
-    TILING_DATA_FIELD_DEF(uint32_t, block_factor);
-    TILING_DATA_FIELD_DEF(uint32_t, row_factor);
-    TILING_DATA_FIELD_DEF(uint32_t, ub_factor);
-    TILING_DATA_FIELD_DEF(float, epsilon);
-    TILING_DATA_FIELD_DEF(float, avg_factor);
-    END_TILING_DATA_DEF;
-
-    BEGIN_TILING_DATA_DEF(MC2AddRMSNormRegbaseTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, numRow);
-    TILING_DATA_FIELD_DEF(uint32_t, numCol);
-    TILING_DATA_FIELD_DEF(uint32_t, numColAlign);
-    TILING_DATA_FIELD_DEF(uint32_t, blockFactor);
-    TILING_DATA_FIELD_DEF(uint32_t, rowFactor);
-    TILING_DATA_FIELD_DEF(uint32_t, ubFactor);
-    TILING_DATA_FIELD_DEF(float, epsilon);
-    TILING_DATA_FIELD_DEF(float, avgFactor);
-    TILING_DATA_FIELD_DEF(uint32_t, ubLoop);
-    TILING_DATA_FIELD_DEF(uint32_t, colBuferLength);
-    TILING_DATA_FIELD_DEF(uint32_t, multiNNum);
-    TILING_DATA_FIELD_DEF(uint32_t, isNddma);
-    END_TILING_DATA_DEF;
-
-    REGISTER_TILING_DATA_CLASS(MC2AddRMSNormTilingDataOp, MC2AddRMSNormTilingData)
-
-    struct AddRmsNormCompileInfo
-    {
-        uint32_t totalCoreNum = 0;
-        uint64_t totalUbSize = 0;
-        platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910_95;
-    };
-
-    }  // namespace optiling
-
 #endif  // OPS_BUILT_IN_OP_TILING_RUNTIME_ADD_RMS_NORM_H_

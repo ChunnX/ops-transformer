@@ -36,9 +36,9 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
-        tilingData_.matmulTiling.set_M(args_.orgMValue);
-        tilingData_.matmulTiling.set_isBias(args_.isBias);
-        tilingData_.matmulTiling.set_usedCoreNum(1);
+        tilingData_.matmulTiling.M = args_.orgMValue;
+        tilingData_.matmulTiling.isBias = args_.isBias;
+        tilingData_.matmulTiling.usedCoreNum = 1;
         DoAllReduceTiling();
         return ge::GRAPH_SUCCESS;
     }
@@ -55,7 +55,7 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
     } else {
         args_.mValue = tileMValue_;
         DoMatmulTiling310(mmTile, MutableTCubeTileTilingData(), tilingData_.tileL2cacheTiling);
-        if (MutableRCSTilingData().get_tailCnt() > 0) {
+        if (MutableRCSTilingData().tailCnt > 0) {
             args_.mValue = tailMValue_;
             matmul_tiling::MultiCoreMatmulTiling mmTail(ascendcPlatform);
             DoMatmulTiling310(mmTail, MutableTCubeTailTilingData(), tilingData_.tailL2cacheTiling);
@@ -112,8 +112,8 @@ uint64_t MatmulAllReduceTiling310General::GetTilingKey() const
     return tilingKey;
 }
 
-void MatmulAllReduceTiling310General::DoMatmulTiling310(
-    matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling, Mc2L2cacheTilePara& l2cacheTiling)
+void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling& mm1,
+    AscendC::tiling::TCubeTiling& cubeTiling, Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling)
 {
     DoMatmulTiling(mm1, cubeTiling);
     SetTransLength(mm1, cubeTiling);
@@ -172,13 +172,14 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(
     tileLimit = TILE_LIMIT_310;
 }
 
-void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling)
+void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1,
+    AscendC::tiling::TCubeTiling& cubeTiling)
 {
     (void)mm1;
     // mdy after api supoort vec nd2nz shareub size cal.
     uint32_t ubTransLen = 128 * 1024;
-    cubeTiling.set_transLength(ubTransLen);
-    cubeTiling.set_shareUbSize(0);
+    cubeTiling.transLength = ubTransLen;
+    cubeTiling.shareUbSize = 0;
 }
 
 //注册Tiling类

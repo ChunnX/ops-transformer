@@ -15,6 +15,7 @@
 #include "../coord.hpp"
 #include "../detail/alignment.hpp"
 #include "../matrix_coord.hpp"
+#include "../numeric_size.hpp"
 
 namespace Catlass::layout {
 
@@ -55,7 +56,8 @@ public:
     CATLASS_HOST_DEVICE
     static RowMajor MakeLayoutInUb(MatrixCoord const &shape)
     {
-        return RowMajor(shape.row(), shape.column(), RoundUp<BYTE_PER_C0 / sizeof(Element)>(shape.column()));
+        constexpr uint32_t ELE_NUM_PER_BLK = BytesToBits(BYTE_PER_BLK) / SizeOfBits<Element>::value;
+        return RowMajor(shape.row(), shape.column(), RoundUp<ELE_NUM_PER_BLK>(shape.column()));
     }
 
     /// Returns the offset of a coordinate in linear memory.
@@ -311,8 +313,8 @@ public:
     CATLASS_HOST_DEVICE constexpr
     static nZ MakeLayout(Index orgRows, Index orgCols)
     {
-        constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-        constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BYTE_PER_FRCATLASSAL / sizeof(Element);
+        constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+        constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BytesToBits(BYTE_PER_FRCATLASSAL) / SizeOfBits<Element>::value;
         Index rowsRound = RoundUp<ELE_NUM_PER_C0>(orgRows);
         Index colsRound = RoundUp<C0_NUM_PER_FRCATLASSAL>(orgCols);
         return nZ(orgRows,
@@ -480,8 +482,8 @@ public:
     CATLASS_HOST_DEVICE constexpr
     static zN MakeLayout(Index orgRows, Index orgCols)
     {
-        constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-        constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BYTE_PER_FRCATLASSAL / sizeof(Element);
+        constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+        constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BytesToBits(BYTE_PER_FRCATLASSAL) / SizeOfBits<Element>::value;
         Index rowsRound = RoundUp<C0_NUM_PER_FRCATLASSAL>(orgRows);
         Index colsRound = RoundUp<ELE_NUM_PER_C0>(orgCols);
         return zN(orgRows,
@@ -664,8 +666,8 @@ public:
     CATLASS_HOST_DEVICE constexpr
     static zZ MakeLayout(Index orgRows, Index orgCols)
     {
-        constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-        constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BYTE_PER_FRCATLASSAL / sizeof(Element);
+        constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+        constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BytesToBits(BYTE_PER_FRCATLASSAL) / SizeOfBits<Element>::value;
         Index rowsRound = RoundUp<C0_NUM_PER_FRCATLASSAL>(orgRows);
         Index colsRound = RoundUp<ELE_NUM_PER_C0>(orgCols);
         return zZ(orgRows,
@@ -1104,8 +1106,8 @@ public:
     /// Make the layout of a coordinate (row, column)
     template <class Element>
     CATLASS_HOST_DEVICE static nN MakeLayout(Index orgRows, Index orgCols) {
-        static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-        static constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BYTE_PER_FRCATLASSAL / sizeof(Element);
+        static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+        static constexpr uint32_t ELE_NUM_PER_FRCATLASSAL = BytesToBits(BYTE_PER_FRCATLASSAL) / SizeOfBits<Element>::value;
         Index rowsRound = RoundUp<ELE_NUM_PER_C0>(orgRows);
         Index colsRound = RoundUp<C0_NUM_PER_FRCATLASSAL>(orgCols);
         return nN(orgRows,

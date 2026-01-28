@@ -30,8 +30,8 @@ protected:
 
     uint64_t GetTilingKey() const override;
 
-    void DoMatmulTiling310(
-        matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling, Mc2L2cacheTilePara& l2cacheTiling);
+    void DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling& mm1,
+        AscendC::tiling::TCubeTiling& cubeTiling, Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling);
 
     void DoWeightAntiQuantTiling();
 
@@ -39,7 +39,7 @@ protected:
         uint64_t& l2CacheSize, uint64_t& singleMatrixSize,
         uint32_t& tileSize, uint32_t& tileLimit, bool useNewPara) override;
 
-    void SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling);
+    void SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1, AscendC::tiling::TCubeTiling& cubeTiling);
 
 private:
     bool isTransB_ = false;

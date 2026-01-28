@@ -23,10 +23,10 @@ class KernelAddRmsNormSplitD
 public:
     __aicore__ inline KernelAddRmsNormSplitD()
     {}
-    __aicore__ inline void Init(GM_ADDR gamma, MC2AddRMSNormTilingData& tilingData, TPipe* Ppipe, uint32_t blockDim)
+    __aicore__ inline void Init(GM_ADDR gamma, Mc2Tiling::AddRMSNormTilingData& tilingData, TPipe* Ppipe, uint32_t numBlocks)
     {
-        ASSERT(blockDim != 0 && "Block dim can not be zero!");
-        this->blockDim = blockDim;
+        ASSERT(numBlocks != 0 && "Block dim can not be zero!");
+        this->numBlocks = numBlocks;
         this->numRow = tilingData.num_row;
         this->numCol = tilingData.num_col;
         this->blockFactor = tilingData.block_factor;
@@ -35,10 +35,10 @@ public:
         this->epsilon = tilingData.epsilon;
         this->avgFactor = (float)1.0 / tilingData.num_col;
 
-        if (GetBlockIdx() < blockDim - 1) {
+        if (GetBlockIdx() < numBlocks - 1) {
             this->rowWork = blockFactor;
-        } else if (GetBlockIdx() == blockDim - 1) {
-            this->rowWork = numRow - (blockDim - 1) * blockFactor;
+        } else if (GetBlockIdx() == numBlocks - 1) {
+            this->rowWork = numRow - (numBlocks - 1) * blockFactor;
         } else {
         }
         // get start index for current core, core parallel
@@ -59,10 +59,10 @@ public:
 
     __aicore__ inline void InitGlobalATensor(GM_ADDR normOut, GM_ADDR residual, GM_ADDR y)
     {
-        if (GetBlockIdx() < blockDim - 1) {
+        if (GetBlockIdx() < numBlocks - 1) {
             this->rowWork = blockFactor;
-        } else if (GetBlockIdx() == blockDim - 1) {
-            this->rowWork = numRow - (blockDim - 1) * blockFactor;
+        } else if (GetBlockIdx() == numBlocks - 1) {
+            this->rowWork = numRow - (numBlocks - 1) * blockFactor;
         }
         normOutGm.SetGlobalBuffer((__gm__ T*)normOut + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
         residualGm.SetGlobalBuffer((__gm__ T*)residual + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
@@ -70,7 +70,7 @@ public:
     }
 
     __aicore__ inline void ComputeProcess(
-        GM_ADDR normOut, GM_ADDR residual, GM_ADDR y, MC2AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
+        GM_ADDR normOut, GM_ADDR residual, GM_ADDR y, Mc2Tiling::AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
         uint32_t rcvCnt)
     {
         auto x1Addr = normOut;
@@ -321,7 +321,7 @@ private:
     uint32_t ubFactor;
     float epsilon;
     float avgFactor;
-    uint32_t blockDim;
+    uint32_t numBlocks;
     uint32_t rowWork = 1;
 
     int tempbufNum;

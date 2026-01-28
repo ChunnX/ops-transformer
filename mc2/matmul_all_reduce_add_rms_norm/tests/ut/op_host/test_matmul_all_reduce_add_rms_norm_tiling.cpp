@@ -18,7 +18,7 @@ using namespace std;
 namespace MatmulAllReduceAddRmsNormUT {
 struct TestParam {
     string caseName;
-    uint32_t blockDim;
+    uint32_t numBlocks;
     uint64_t tilingKey;
 };
 
@@ -172,12 +172,7 @@ static void TestOneParamCase(const WeightQuantTestParam& param) {
     if (!dequant_scaleExistFlag){
         quantScaleShape->shape_ = {};
     }
-    if (yShape->dtype_ == ge::DT_BF16) {
-        printf("the yDtype is BF16\n");
-    } else {
-        printf("Exist error!\n");
-    }
-    printf("dataType BF16 is : %d",ge::DataType::DT_BF16);
+
     MatmulAllReduceArnCompileInfo compileInfo {8, 262144};
     const std::string socVersion = "Ascend910B";
     uint64_t coreNum = 8;
@@ -230,19 +225,19 @@ TestOneParamCase(param);
 
 static TestParam casesParamsQuant[] = {
         // 量化
-        {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 0},
+        {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 8},
         // transB
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 1},
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_-1_0_0_1_10_0.1_INT8_INT8_INT32_BF16", 8, 0},
+        {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_0_0_1_0_0.1_INT8_INT8_INT32_BF16", 8, 4104},
+        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_-1_0_0_1_10_0.1_INT8_INT8_INT32_BF16", 8, 8},
         // 伪量化
-        {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_1_1_0_0_0.1_FLOAT16_INT8_FLOAT16_FLOAT16", 8, 365332065878785},
+        {"MODEL0_group_sum_4096_688_4096_1_0_0_0_-1_1_1_0_0_0.1_FLOAT16_INT8_FLOAT16_FLOAT16", 8, 5439500},
         // transB
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_1_1_0_0_0.1_FLOAT16_INT4_FLOAT16_FLOAT16", 8, 365332602749697},
+        {"MODEL0_group_sum_4_4096_11008_1_0_0_1_-1_1_1_0_0_0.1_FLOAT16_INT4_FLOAT16_FLOAT16", 8, 72548364},
         // per group
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_1_1_0_32_0.1_BF16_INT4_BF16_BF16", 8, 365333139620609},
+        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_1_1_0_32_0.1_BF16_INT4_BF16_BF16", 8, 7536652},
         // 非量化
-        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 65536UL},
-        {"MODEL0_group_sum_9471_18_379_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 65536UL},
+        {"MODEL0_group_sum_4_4096_11008_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 256UL},
+        {"MODEL0_group_sum_9471_18_379_1_0_0_0_32_0_0_0_32_0.1_BF16_BF16_BF16_BF16", 8, 256UL},
 
 };
 static TestParam InValidCheckcasesParamsQuant[] = {

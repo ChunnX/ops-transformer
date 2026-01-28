@@ -214,8 +214,8 @@ LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2QuantBatchMatmulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAndCompute()
 {
     if constexpr (DequantBmm::IsMxType<ScaleType>()) {
-        mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale]);
-        mm_.SetTensorScaleB(scaleBGlobal_[block_.offset_.offsetScale]);
+        mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], ATrans);
+        mm_.SetTensorScaleB(scaleBGlobal_[block_.offset_.offsetScale], BTrans);
     } else {
         if (static_cast<bool>(quantBmmTilingData_->params.isPerTensor) ||
             static_cast<bool>(quantBmmTilingData_->params.isDoubleScale)) {

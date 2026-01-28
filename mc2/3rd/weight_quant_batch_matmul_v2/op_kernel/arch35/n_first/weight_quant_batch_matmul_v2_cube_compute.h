@@ -16,8 +16,7 @@
 #define WEIGHT_QUANT_BATCHMATMUL_V2_CUBE_COMPUTE_H
 
 #include "basic_block_config.h"
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 
 using AscendC::BLOCK_CUBE;

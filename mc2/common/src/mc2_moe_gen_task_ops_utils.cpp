@@ -235,13 +235,13 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(const gert::ExeResGenerationC
             ge::KernelLaunchInfo::CreateAicpuKfcTask(context, soName.c_str(), kernelName.c_str());
         aicpuTask.SetStreamId(attachStreamId);
         if (NEED_SET_BLOCK_SET.find(opTypeStr) != NEED_SET_BLOCK_SET.end()) {
-            int64_t block_dim = 6;
-            if (!context->GetIntAttrVal("_aicpu_blockdim", block_dim) || block_dim <= 0) {
-                OPS_LOG_I(nodeName, "Can't get valid aicpu blockdim, set blockdim 6.");
-                block_dim = 6;
+            int64_t numBlocks = 6;
+            if (!context->GetIntAttrVal("_aicpu_blockdim", numBlocks) || numBlocks <= 0) {
+                OPS_LOG_I(nodeName, "Can't get valid aicpu numBlocks, set numBlocks 6.");
+                numBlocks = 6;
             }
-            aicpuTask.SetBlockDim(block_dim);
-            OPS_LOG_I(nodeName, "Set aicpu blockdim is %ld.", block_dim);
+            aicpuTask.SetBlockDim(numBlocks);
+            OPS_LOG_I(nodeName, "Set aicpu numBlocks is %ld.", numBlocks);
         }
         if (CreateAicpuTaskMc2Moe(context, aicpuTask, groupCnt) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;

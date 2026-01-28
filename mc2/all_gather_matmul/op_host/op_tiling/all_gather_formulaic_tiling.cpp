@@ -63,6 +63,11 @@ void AllGatherPlusMM::EstimateKernelTime()
     PrintEstimateKernelTimeResult(totalMatmulTime, totalTpTime);
 }
 
+void AllGatherPlusMM::SetCommTimeFactorForA5()
+{
+    commPerf_.ChangeCommTimeFactorByDivision(ALLGATHERMM_COMMTIME_FACTOR); // 2x time of factor
+}
+
 void AllGatherPlusMM::SetCommTimeFactorForOther()
 {
     // 通算并行时通信有膨胀，大K大N场景膨胀明显，做特殊处理
@@ -91,8 +96,11 @@ void AllGatherPlusMM::SetCommTimeFactorForOther()
 
 void AllGatherPlusMM::SetCommTimeFactor()
 {
-    SetCommTimeFactorForOther();
-    return;
+	if (clusterInfo_.socType == SocVersion::SOC910_95) {
+		SetCommTimeFactorForA5();
+	}else{
+        SetCommTimeFactorForOther();
+    }
 }
 
 void AllGatherPlusMM::SelectTilingMethod()
