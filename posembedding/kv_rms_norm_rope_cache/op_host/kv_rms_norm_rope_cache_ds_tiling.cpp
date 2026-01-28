@@ -240,5 +240,5 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE("KvRmsNormRopeCache", KvRmsNormRopeCacheTilingDs, TEMPLATE_DS_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(KvRmsNormRopeCache, KvRmsNormRopeCacheTilingDs, TEMPLATE_DS_PRIORITY);
 } // namespace optiling

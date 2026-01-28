@@ -452,6 +452,7 @@ private:
 // op_type: 算子名称， class_name: 注册的 tiling 类,
 // priority: tiling 类的优先级, 越小表示优先级越高, 即被选中的概率越大
 #define REGISTER_TILING_TEMPLATE(op_type, class_name, priority)                                \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;      \
     static Ops::Transformer::OpTiling::Register VAR_UNUSED##op_type_##class_name##priority_register = \
         Ops::Transformer::OpTiling::Register(op_type).tiling<class_name>(priority)
 
