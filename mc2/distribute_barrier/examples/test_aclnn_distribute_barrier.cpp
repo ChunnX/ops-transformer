@@ -102,11 +102,11 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
 
     int64_t Bs = 8;
     int64_t H = 7168;
-    int64_t K = 3;
+    int64_t K = 1;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 1;
     int64_t sharedExpertRankNum = 1;
-    int64_t moeExpertNum = 7;
+    int64_t moeExpertNum = 1;
     int64_t quantMode = 0;
     int64_t globalBs = Bs * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 1;
