@@ -22,14 +22,14 @@ extern "C" {
  * @brief aclnnGroupedMatmulFinalizeRoutingV3的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * 算子功能：实现GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。
- * @param [in] x1: matmul左矩阵，数据类型支持：int8。
- * @param [in] x2: matmul右矩阵，数据类型支持：int4。
- * @param [in] scaleOptional: 量化参数中的缩放因子，数据类型支持：int64。
+ * @param [in] x1: matmul左矩阵，数据类型支持：int8、 float8_e5m2、 float8_e4m3fn、 float4_e2m1、 float4_e1m2。
+ * @param [in] x2: matmul右矩阵，数据类型支持：int4、 float8_e5m2、 float8_e4m3fn、 float4_e2m1、 float4_e1m2。
+ * @param [in] scaleOptional: 量化参数中的缩放因子，数据类型支持：int64、 float8_e8m0。
  * @param [in] biasOptional: 偏置，数据类型支持：float32。
- * @param [in] offsetOptional: 量化参数偏移量，数据类型支持：float32。
+ * @param [in] offsetOptional: 量化参数偏移量，数据类型支持：float32。在MX量化模式中，仅支持为空。
  * @param [in] antiquantScaleOptional: 伪量化参数中缩放因子，暂不支持。
  * @param [in] antiquantOffsetOptional: 伪量化参数中偏移量，暂不支持。
- * @param [in] pertokenScaleOptional: 反量化参数，数据类型支持：float32。
+ * @param [in] pertokenScaleOptional: 反量化参数，数据类型支持：float32、 float8_e8m0。
  * @param [in] groupListOptional: 代表输入和输出分组轴方向的matmul大小分布，数据类型支持：int64。
  * @param [in] sharedInputOptional: 
  * moe计算中共享专家的输出，需要与moe专家的输出进行combine操作，数据类型支持：bfloat16、float16。
@@ -74,4 +74,4 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(void *workspace, uint6
 }
 #endif
 
-#endif  // OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_V2_H
+#endif  // OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_V3_H

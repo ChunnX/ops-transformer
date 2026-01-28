@@ -90,6 +90,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
                 return false);
     inputParams_.transA = transposeXPtr != nullptr ? *transposeXPtr : false;
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
+    inputParams_.groupType = SPLIT_M;
     sharedInputWeight_ = *shareInputWeightPtr;
     OP_CHECK_IF(!CheckOptionalAttr(), OP_LOGE(context_->GetNodeName(), "Check Optional Attrs Failed."), return false);
     return true;
@@ -228,6 +229,33 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckShapeForMxQuant(const gert::S
     return true;
 }
 
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape()
+{
+    bool a4w4 = IsFp4Dtype(inputParams_.aDtype) && IsFp4Dtype(inputParams_.bDtype);
+    if (!a4w4) {
+        return true;
+    }
+    OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
+                OP_LOGE(inputParams_.opName,
+                        "When the dtype of x is FLOAT4, the k size should be even number, but actual k size is %lu.",
+                        inputParams_.kSize),
+                return false);
+    // 2: mxfp4场景下不支持K轴为2
+    OP_CHECK_IF(inputParams_.kSize == 2,
+                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2."),
+                return false);
+    if (!inputParams_.transB) {
+        OP_CHECK_IF(
+            inputParams_.nSize % EVEN_FACTOR != 0,
+            OP_LOGE(inputParams_.opName,
+                    "When the dtype of weight is FLOAT4 and weight is not transposed, the n size should be even number, \
+but actual n size is %lu.",
+                    inputParams_.nSize),
+            return false);
+    }
+    return true;
+}
+
 bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
@@ -286,6 +314,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
     OP_CHECK_IF(outputBs_ > inputParams_.mSize,
                 OP_LOGE(context_->GetNodeName(), "OutputBs (%lu) out of M (%lu).", outputBs_, inputParams_.mSize),
                 return false);
+    OP_CHECK_IF(!CheckFp4Shape(), OP_LOGE(context_->GetNodeName(), "CheckFp4Shape failed."), return false);
     return true;
 }
 
@@ -373,7 +402,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
     context_->SetBlockDim(aicoreParams_.aicNum);
     context_->SetScheduleMode(1);
     OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE(context_->GetNodeName(), "Tiling data  size[%zu] is not aligned to 8", tilingDataSize),
+                OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", tilingDataSize),
                 return ge::GRAPH_FAILED);
     error_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), tilingDataSize);
