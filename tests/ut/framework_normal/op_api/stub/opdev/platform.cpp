@@ -10,8 +10,6 @@
 
 #include "platform.h"
 #include <iostream>
-#include <cstdint>
-#include <string>
 
 namespace op {
 
@@ -127,6 +125,19 @@ ge::AscendString ToString(SocVersion socVersion)
 void SetPlatformSocVersion(SocVersion socVersion)
 {
     g_socVersion = socVersion;
+}
+
+void SetPlatformNpuArch(NpuArch npuArch)
+{
+    static const std::map<NpuArch, SocVersion> NpuArchSocVersionMap = {
+        {NpuArch::DAV_3510, SocVersion::ASCEND910_95},
+        {NpuArch::DAV_RESV, SocVersion::RESERVED_VERSION},
+    };
+    g_socVersion = SocVersion::RESERVED_VERSION;
+    const auto it = NpuArchSocVersionMap.find(npuArch);
+    if (it != NpuArchSocVersionMap.end()) {
+        g_socVersion = it->second;
+    }
 }
 
 } // namespace op

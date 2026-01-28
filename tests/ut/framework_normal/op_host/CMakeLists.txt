@@ -26,6 +26,9 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_tiling_obj>>
       $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
   )
+  target_link_directories(${OPHOST_NAME}_ut PRIVATE
+      ${ASCEND_DIR}/lib64
+  )
   target_link_libraries(${OPHOST_NAME}_ut PRIVATE
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       -Wl,--no-as-needed
@@ -35,6 +38,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
           rt2_registry_static
       -Wl,--no-whole-archive
       tiling_api
+      runtime
   )
 
   ## add ophost ut exe:  transformer_op_host_ut

@@ -55,6 +55,7 @@ global_config:
     - common
     - mc2/3rd
     - mc2/common
+    - attention/common/op_kernel
 
 attention:
   flash_attention_score:
@@ -67,8 +68,6 @@ attention:
       - attention/flash_attention_score/README.md
     ut_cov_exclude:
       - attention/flash_attention_score
-    test:
-        ut: False
     options:
       - flash_attention_score
 
@@ -82,9 +81,6 @@ attention:
       - attention/flash_attention_score_grad/README.md
     ut_cov_exclude:
       - attention/flash_attention_score_grad
-    test:
-        examples: False
-        ut: False
     options:
       - flash_attention_score_grad
 
@@ -92,42 +88,33 @@ attention:
     module: True
     src:
       - attention/fused_infer_attention_score
-      - attention/common
     exclude:
       - attention/fused_infer_attention_score/docs
       - attention/fused_infer_attention_score/README.md
     ut_cov_exclude:
-      - attention/fused_infer_attention_score
-    options:
-      - fused_infer_attention_score
-
-  gather_pa_kv_cache:
-    module: True
-    src:
-      - attention/gather_pa_kv_cache
-      - attention/common
-    exclude:
-      - attention/gather_pa_kv_cache/docs
-      - attention/gather_pa_kv_cache/README.md
-    ut_cov_exclude:
-      - attention/gather_pa_kv_cache
+      - attention/fused_infer_attention_score/op_kernel
+      - attention/fused_infer_attention_score/tests
     test:
-        ut: True
+      examples: False
     options:
-      - gather_pa_kv_cache
+      - incre_flash_attention
+      # - fused_infer_attention_score
+      - prompt_flash_attention
 
   incre_flash_attention:
     module: True
     src:
       - attention/incre_flash_attention
-      - attention/common
     exclude:
       - attention/incre_flash_attention/docs
       - attention/incre_flash_attention/README.md
     ut_cov_exclude:
-      - attention/incre_flash_attention
+      - attention/incre_flash_attention/op_kernel
+    test:
+      examples: False
     options:
       - incre_flash_attention
+      - fused_infer_attention_score
 
   nsa_compress:
     module: True
@@ -138,8 +125,6 @@ attention:
       - attention/nsa_compress/README.md
     ut_cov_exclude:
       - attention/nsa_compress
-    test:
-        ut: False
     options:
       - nsa_compress
 
@@ -152,8 +137,6 @@ attention:
       - attention/nsa_compress_attention/README.md
     ut_cov_exclude:
       - attention/nsa_compress_attention
-    test:
-        ut: False
     options:
       - nsa_compress_attention
 
@@ -166,10 +149,10 @@ attention:
       - attention/nsa_compress_attention_infer/README.md
     ut_cov_exclude:
       - attention/nsa_compress_attention_infer
-    test:
-        ut: False
     options:
       - nsa_compress_attention_infer
+    test:
+        ut: False
 
   nsa_compress_grad:
     module: True
@@ -180,8 +163,6 @@ attention:
       - attention/nsa_compress_grad/README.md
     ut_cov_exclude:
       - attention/nsa_compress_grad
-    test:
-        ut: False
     options:
       - nsa_compress_grad
 
@@ -209,8 +190,6 @@ attention:
       - attention/nsa_selected_attention/README.md
     ut_cov_exclude:
       - attention/nsa_selected_attention
-    test:
-      ut: False
     options:
       - nsa_selected_attention
 
@@ -244,39 +223,42 @@ attention:
     module: True
     src:
       - attention/prompt_flash_attention
-      - attention/common
     exclude:
       - attention/prompt_flash_attention/docs
       - attention/prompt_flash_attention/README.md
     ut_cov_exclude:
-      - attention/prompt_flash_attention
+      - attention/prompt_flash_attention/op_kernel
+      - attention/prompt_flash_attention/tests
+      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_context.h
+    test:
+      examples: False
     options:
       - prompt_flash_attention
+      - fused_infer_attention_score
 
   mla_prolog:
       module: True
       src:
         - attention/mla_prolog
       ut_cov_exclude:
-        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
-        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
-        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp 
+        - attention\mla_prolog\examples
+        - attention\mla_prolog\docs
+        - attention/mla_prolog/tests
+        - attention/mla_prolog/op_kernel
+        - attention\mla_prolog_v2\examples
+        - attention\mla_prolog_v2\docs
+        - attention/mla_prolog_v2/tests
+        - attention/mla_prolog_v2/op_kernel
+        - attention\mla_prolog_v3\examples
+        - attention\mla_prolog_v3\docs
+        - attention/mla_prolog_v3/tests
+        - attention/mla_prolog_v3/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-        - attention/mla_prolog/op_kernel/arch32/rms_norm.h
-        - attention/mla_prolog/op_kernel/arch32/rope.h
-        - attention/mla_prolog/op_kernel/mla_prolog_vector_comm.h
-        - attention/mla_prolog/op_kernel/service_dequant.h
-        - attention/mla_prolog/op_kernel/service_gather_sin_cos.h
-        - attention/mla_prolog/op_kernel/service_rms_norm.h
-        - attention/mla_prolog/op_kernel/service_scatter_cache.h
-        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_tiling.cpp
-        - attention/mla_prolog/tests/ut/op_host/test_mla_prolog_tiling.cpp
-        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_infershape.cpp
-        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_infershape.cpp
-        - attention/mla_prolog_v2/tests/ut/op_api/test_aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_tiling.cpp
+        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       exclude:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
@@ -285,7 +267,7 @@ attention:
         ut: True
       options:
         - mla_prolog
-        
+
   mla_prolog_v2:
       module: True
       src:
@@ -294,25 +276,24 @@ attention:
         - attention/mla_prolog_v2/docs
         - attention/mla_prolog_v2/README.md
       ut_cov_exclude:
-        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
-        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
-        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp 
+        - attention\mla_prolog\examples
+        - attention\mla_prolog\docs
+        - attention/mla_prolog/tests
+        - attention/mla_prolog/op_kernel
+        - attention\mla_prolog_v2\examples
+        - attention\mla_prolog_v2\docs
+        - attention/mla_prolog_v2/tests
+        - attention/mla_prolog_v2/op_kernel
+        - attention\mla_prolog_v3\examples
+        - attention\mla_prolog_v3\docs
+        - attention/mla_prolog_v3/tests
+        - attention/mla_prolog_v3/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-        - attention/mla_prolog/op_kernel/arch32/rms_norm.h
-        - attention/mla_prolog/op_kernel/arch32/rope.h
-        - attention/mla_prolog/op_kernel/mla_prolog_vector_comm.h
-        - attention/mla_prolog/op_kernel/service_dequant.h
-        - attention/mla_prolog/op_kernel/service_gather_sin_cos.h
-        - attention/mla_prolog/op_kernel/service_rms_norm.h
-        - attention/mla_prolog/op_kernel/service_scatter_cache.h
-        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_tiling.cpp
-        - attention/mla_prolog/tests/ut/op_host/test_mla_prolog_tiling.cpp
-        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_infershape.cpp
-        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_infershape.cpp
-        - attention/mla_prolog_v2/tests/ut/op_api/test_aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_tiling.cpp
+        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
         examples: False
         ut: True
@@ -327,30 +308,30 @@ attention:
         - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/README.md
       ut_cov_exclude:
-        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
-        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
-        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp 
+        - attention\mla_prolog\examples
+        - attention\mla_prolog\docs
+        - attention/mla_prolog/tests
+        - attention/mla_prolog/op_kernel
+        - attention\mla_prolog_v2\examples
+        - attention\mla_prolog_v2\docs
+        - attention/mla_prolog_v2/tests
+        - attention/mla_prolog_v2/op_kernel
+        - attention\mla_prolog_v3\examples
+        - attention\mla_prolog_v3\docs
+        - attention/mla_prolog_v3/tests
+        - attention/mla_prolog_v3/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-        - attention/mla_prolog/op_kernel/arch32/rms_norm.h
-        - attention/mla_prolog/op_kernel/arch32/rope.h
-        - attention/mla_prolog/op_kernel/mla_prolog_vector_comm.h
-        - attention/mla_prolog/op_kernel/service_dequant.h
-        - attention/mla_prolog/op_kernel/service_gather_sin_cos.h
-        - attention/mla_prolog/op_kernel/service_rms_norm.h
-        - attention/mla_prolog/op_kernel/service_scatter_cache.h
-        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_tiling.cpp
-        - attention/mla_prolog/tests/ut/op_host/test_mla_prolog_tiling.cpp
-        - attention/mla_prolog_v3/tests/ut/op_host/test_mla_prolog_v3_infershape.cpp
-        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_infershape.cpp
-        - attention/mla_prolog_v2/tests/ut/op_api/test_aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v2/tests/ut/op_host/test_mla_prolog_v2_tiling.cpp
+        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
         examples: False
         ut: True
       options:
         - mla_prolog_v3
+
 gmm:
   grouped_matmul:
     module: True
@@ -363,6 +344,8 @@ gmm:
       - gmm/grouped_matmul
     options:
       - grouped_matmul
+    test: 
+      examples: False
 
   grouped_matmul_swiglu_quant:
     module: True
@@ -375,6 +358,8 @@ gmm:
       - gmm/grouped_matmul_swiglu_quant
     options:
       - grouped_matmul_swiglu_quant
+    test: 
+      examples: False
 
   grouped_matmul_swiglu_quant_v2:
     module: True
@@ -387,6 +372,8 @@ gmm:
       - gmm/grouped_matmul_swiglu_quant_v2
     options:
       - grouped_matmul_swiglu_quant_v2
+    test: 
+      examples: False
 
   grouped_matmul_add:
     module: True
@@ -399,6 +386,8 @@ gmm:
       - gmm/grouped_matmul_add
     options:
       - grouped_matmul_add
+    test: 
+      examples: False
 
   grouped_matmul_finalize_routing:
     module: True
@@ -423,7 +412,7 @@ ffn:
     ut_cov_exclude:
       - ffn/ffn
     test:
-        ut: False
+      ut: False
     options:
       - ffn
 
@@ -611,8 +600,6 @@ moe:
       - moe/moe_init_routing_v2/README.md
     ut_cov_exclude:
       - moe/moe_init_routing_v2
-    test:
-      ut: False
     options:
       - moe_init_routing_v2
 
@@ -712,6 +699,8 @@ moe:
       - moe/moe_token_permute_with_routing_map
     options:
       - moe_token_permute_with_routing_map
+    test:
+      examples: False
 
   moe_token_permute_with_routing_map_grad:
     module: True
@@ -788,6 +777,8 @@ moe:
       - moe/moe_token_unpermute_with_routing_map
     options:
       - moe_token_unpermute_with_routing_map
+    test:
+      examples: False
 
   moe_token_unpermute_with_routing_map_grad:
     module: True
@@ -864,6 +855,8 @@ posembedding:
       - posembedding/rope_with_sin_cos_cache
     options:
       - rope_with_sin_cos_cache
+    test: 
+      examples: False
 
   rotary_position_embedding:
     module: True
@@ -895,6 +888,7 @@ mc2:
       module: True
       src:
         - mc2/all_gather_matmul
+        - mc2/all_gather_matmul_v2
         - mc2/common
         - mc2/3rd
       exclude:
@@ -902,10 +896,24 @@ mc2:
         - mc2/all_gather_matmul/README.md
       ut_cov_exclude:
         - mc2/all_gather_matmul
+      options:
+        - all_gather_matmul
+
+    all_gather_matmul_v2:
+      module: True
+      src:
+        - mc2/all_gather_matmul_v2
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/all_gather_matmul_v2/docs
+        - mc2/all_gather_matmul_v2/README.md
+      ut_cov_exclude:
+        - mc2/all_gather_matmul_v2
       test:
         examples: False
       options:
-        - all_gather_matmul
+        - all_gather_matmul_v2
 
     allto_all_all_gather_batch_mat_mul:
       module: True
@@ -920,7 +928,6 @@ mc2:
         - mc2/allto_all_all_gather_batch_mat_mul
       test:
         examples: False
-        ut: False
       options:
         - allto_all_all_gather_batch_mat_mul
 
@@ -940,6 +947,22 @@ mc2:
       options:
         - allto_allv_grouped_mat_mul
 
+    allto_all_matmul:
+      module: True
+      src:
+        - mc2/allto_all_matmul
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/allto_all_matmul/docs
+        - mc2/allto_all_matmul/README.md
+      ut_cov_exclude:
+        - mc2/allto_all_matmul
+      test:
+        examples: False
+      options:
+        - allto_all_matmul
+
     batch_mat_mul_reduce_scatter_allto_all:
       module: True
       src:
@@ -953,9 +976,24 @@ mc2:
         - mc2/batch_mat_mul_reduce_scatter_allto_all
       test:
         examples: False
-        ut: False
       options:
         - batch_mat_mul_reduce_scatter_allto_all
+
+    grouped_mat_mul_all_reduce:
+      module: True
+      src:
+        - mc2/grouped_mat_mul_all_reduce
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/grouped_mat_mul_all_reduce/docs
+        - mc2/grouped_mat_mul_all_reduce/README.md
+      ut_cov_exclude:
+        - mc2/grouped_mat_mul_all_reduce
+      test:
+        examples: False
+      options:
+        - grouped_mat_mul_all_reduce
 
     grouped_mat_mul_allto_allv:
       module: True
@@ -988,7 +1026,6 @@ mc2:
         - mc2/inplace_matmul_all_reduce_add_rms_norm
       test:
         examples: False
-        ut: False
       options:
         - inplace_matmul_all_reduce_add_rms_norm
         - matmul_all_reduce_add_rms_norm
@@ -1004,9 +1041,6 @@ mc2:
         - mc2/matmul_all_reduce/README.md
       ut_cov_exclude:
         - mc2/matmul_all_reduce
-      test:
-        examples: False
-        ut: False
       options:
         - matmul_all_reduce
 
@@ -1022,9 +1056,6 @@ mc2:
         - mc2/matmul_all_reduce_add_rms_norm/README.md
       ut_cov_exclude:
         - mc2/matmul_all_reduce_add_rms_norm
-      test:
-        examples: False
-        ut: False
       options:
         - matmul_all_reduce_add_rms_norm
 
@@ -1032,6 +1063,7 @@ mc2:
       module: True
       src:
         - mc2/matmul_reduce_scatter
+        - mc2/matmul_reduce_scatter_v2
         - mc2/common
         - mc2/3rd
       exclude:
@@ -1039,10 +1071,70 @@ mc2:
         - mc2/matmul_reduce_scatter/README.md
       ut_cov_exclude:
         - mc2/matmul_reduce_scatter
+      options:
+        - matmul_reduce_scatter
+
+    matmul_allto_all:
+      module: True
+      src:
+        - mc2/matmul_allto_all
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/matmul_allto_all/docs
+        - mc2/matmul_allto_all/README.md
+      ut_cov_exclude:
+        - mc2/matmul_allto_all
+      options:
+        - matmul_allto_all
+
+    matmul_reduce_scatter_v2:
+      module: True
+      src:
+        - mc2/matmul_reduce_scatter_v2
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/matmul_reduce_scatter_v2/docs
+        - mc2/matmul_reduce_scatter_v2/README.md
+      ut_cov_exclude:
+        - mc2/matmul_reduce_scatter_v2
       test:
         examples: False
       options:
-        - matmul_reduce_scatter
+        - matmul_reduce_scatter_v2
+
+    quant_all_reduce:
+      module: True
+      src:
+        - mc2/quant_all_reduce
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/quant_all_reduce/docs
+        - mc2/quant_all_reduce/README.md
+      ut_cov_exclude:
+        - mc2/quant_all_reduce
+      test:
+        examples: False
+      options:
+        - quant_all_reduce
+
+    quant_reduce_scatter:
+      module: True
+      src:
+        - mc2/quant_reduce_scatter
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/quant_reduce_scatter/docs
+        - mc2/quant_reduce_scatter/README.md
+      ut_cov_exclude:
+        - mc2/quant_reduce_scatter
+      test:
+        examples: False
+      options:
+        - quant_reduce_scatter
 
   moe_distribute:
     distribute_barrier:
@@ -1062,6 +1154,36 @@ mc2:
         - moe_distribute_dispatch_v2
         - moe_distribute_combine_v2
 
+    elastic_receivable_info_collect:
+      module: True
+      src:
+        - mc2/elastic_receivable_info_collect
+        - mc2/common
+      exclude:
+        - mc2/elastic_receivable_info_collect/docs
+        - mc2/elastic_receivable_info_collect/README.md
+      ut_cov_exclude:
+        - mc2/elastic_receivable_info_collect
+      test:
+        examples: False
+      options:
+        - elastic_receivable_info_collect
+
+    elastic_receivable_test:
+      module: True
+      src:
+        - mc2/elastic_receivable_test
+        - mc2/common
+      exclude:
+        - mc2/elastic_receivable_test/docs
+        - mc2/elastic_receivable_test/README.md
+      ut_cov_exclude:
+        - mc2/elastic_receivable_test
+      test:
+        examples: False
+      options:
+        - elastic_receivable_test
+
     ffn_to_attention:
       module: True
       src:
@@ -1074,26 +1196,24 @@ mc2:
         - mc2/ffn_to_attention
       test:
         examples: False
-        ut: False   # 框架打桩有问题，opapi用例会挂，暂时屏蔽
       options:
         - ffn_to_attention
 
-    attention_to_ffn:
+    moe_distribute_buffer_reset:
       module: True
       src:
-        - mc2/attention_to_ffn
+        - mc2/moe_distribute_buffer_reset
         - mc2/common
       exclude:
-        - mc2/attention_to_ffn/docs
-        - mc2/attention_to_ffn/README.md
+        - mc2/moe_distribute_buffer_reset/docs
+        - mc2/moe_distribute_buffer_reset/README.md
       ut_cov_exclude:
-        - mc2/attention_to_ffn
+        - mc2/moe_distribute_buffer_reset
       test:
         examples: False
-        ut: False   # 框架打桩有问题，opapi用例会挂，暂时屏蔽
       options:
-        - attention_to_ffn
-    
+        - moe_distribute_buffer_reset
+
     moe_distribute_combine:
       module: True
       src:
@@ -1126,6 +1246,23 @@ mc2:
       options:
         - moe_distribute_combine_add_rms_norm
         - moe_distribute_dispatch_v2
+
+    moe_distribute_combine_setup:
+      module: True
+      src:
+        - mc2/moe_distribute_combine_setup
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/moe_distribute_combine_setup/docs
+        - mc2/moe_distribute_combine_setup/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_combine_setup
+      test:
+        examples: False
+        ut: False
+      options:
+        - moe_distribute_combine_setup
 
     moe_distribute_combine_v2:
       module: True
@@ -1191,3 +1328,18 @@ mc2:
         - moe_update_expert
         - moe_distribute_dispatch_v2
         - moe_distribute_combine_add_rms_norm
+
+    attention_to_ffn:
+      module: True
+      src:
+        - mc2/attention_to_ffn
+        - mc2/common
+      exclude:
+        - mc2/attention_to_ffn/docs
+        - mc2/attention_to_ffn/README.md
+      ut_cov_exclude:
+        - mc2/attention_to_ffn
+      test:
+        examples: False
+      options:
+        - attention_to_ffn

@@ -148,6 +148,8 @@ ge::AscendString ToString(SocVersion socVersion);
 
 void SetPlatformSocVersion(SocVersion socVersion);
 
+void SetPlatformNpuArch(NpuArch npuArch);
+
 } // namespace op
 
 #endif // OPS_TRANSFORMER_DEV_TESTS_UT_OP_API_STUB_OPDEV_PLATFORM_H

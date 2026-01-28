@@ -328,6 +328,7 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
     if (expectTilingData != "") {
         auto rawTilingData = tilingContext->GetRawTilingData();
         auto tilingDataReservedSize = tilingDataReservedLen * sizeof(uint64_t);
+        ASSERT_LE(tilingDataReservedSize, rawTilingData->GetDataSize());
         auto tilingDataResult = useHashTilingData ?
             to_string_fnv_hash(rawTilingData->GetData() + tilingDataReservedSize,
                            rawTilingData->GetDataSize() - tilingDataReservedSize) :
