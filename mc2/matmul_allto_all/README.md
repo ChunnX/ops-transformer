@@ -9,108 +9,218 @@
 
 ## 功能说明
 
-- 算子功能：完成Matmul计算与AlltoAll通信融合。
-- 计算公式：
-  假设x1的shape为(BS, H1), x2的shape为(H1, H2)。
+- 接口功能：完成量化的Matmul计算、Permute(保证通信后地址连续)和AlltoAll通信的融合，**先计算后通信**，支持非量化及K-C[量化模式](../../../docs/zh/context/量化介绍.md)。
+- 计算公式：假设x1的shape为(BS, H1)，x2的shape为(H1, H2)，rankSize为NPU卡数。
+    - 非量化场景：
 
-  $$
-  computeOut = x1 @ x2 + bias \\
-  permutedOut = computeOut.view(BS, rankSize, H2/rankSize).permute(1, 0, 2) \\
-  output = AlltoAll(permutedOut).view(rankSize*BS, H2/rankSize)
-  $$
+      $$
+      computeOut = x1 @ x2 + bias \\
+      permutedOut = computeOut.view(BS, rankSize, H2/rankSize).permute(1, 0, 2) \\
+      output = AlltoAll(permutedOut).view(rankSize*BS, H2/rankSize)
+      $$
 
-## 参数说明
+    - K-C量化模式：
 
-<table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
- <col style="width: 120px">
- <col style="width: 120px">
- <col style="width: 160px">
- <col style="width: 150px">
- <col style="width: 80px">
-  </colgroup>
-  <thead>
+      $$
+      computeOut = (x1 @ x2 + bias) * x1Scale * x2Scale \\
+      permutedOut = computeOut.view(BS, rankSize, H2 / rankSize).permute(1, 0, 2) \\
+      output = AlltoAll(permutedOut).view(rankSize * BS, H2 / rankSize)
+      $$
+
+    - K-C量化模式后加bias：
+
+      $$
+      computeOut = (x1 @ x2) * x1Scale * x2Scale  + bias \\
+      permutedOut = computeOut.view(BS, rankSize, H2 / rankSize).permute(1, 0, 2) \\
+      output = AlltoAll(permutedOut).view(rankSize * BS, H2 / rankSize)
+      $$
+
+## 参数说明​
+
+ <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 170px">
+  <col style="width: 200px">
+  <col style="width: 200px">
+  <col style="width: 170px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出/属性</th>
+        <th>描述</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+      </tr></thead>
+    <tbody>
     <tr>
-      <th>参数名</th>
-      <th>输入/输出/属性</th>
-      <th>描述</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>x1</td>
-      <td>输入</td>
-      <td>融合算子的左矩阵输入，对应公式中的x1</td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
-      <td>ND</td>
+    <td>x1</td>
+    <td>输入</td>
+    <td>MatMul左矩阵，即公式中的输入x1。</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+    <td>ND</td>
     </tr>
     <tr>
-      <td>x2</td>
-      <td>输入</td>
-      <td>融合算子的右矩阵输入，对应公式中的x2</td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
-      <td>ND</td>
+    <td>x2</td>
+    <td>输入</td>
+    <td>MatMul右矩阵，即公式中的输入x2。</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+    <td>ND</td>
     </tr>
     <tr>
-      <td>biasOptional</td>
-      <td>可选输入</td>
-      <td>矩阵乘运算后累加的偏置，对应公式中的bias</td>
-      <td>x1/x2为FLOAT16时，该参数类型为FLOAT16；x1/x2为BFLOAT16时，该参数类型为FLOAT32</td>
-      <td>ND</td>
+    <td>bias</td>
+    <td>可选输入</td>
+    <td>可选输入，阵乘运算后累加的偏置，对应公式中的bias。</td>
+    <td>FLOAT16、BFLOAT16、FLOAT</td>
+    <td>ND</td>
     </tr>
     <tr>
-      <td>alltoAllAxesOptional</td>
-      <td>可选输入</td>
-      <td>AlltoAll和Pemute数据交换的方向，支持配置空或者[-1,-2]，传入空时默认按[-1,-2]处理，表示将输入由(BS, H2)转为(BS * rankSize, H2 / rankSize)</td>
-      <td>aclIntArray*(元素类型INT64)</td>
-      <td>ND</td>
+    <td>x1_scale</td>
+    <td>可选输入</td>
+    <td>左矩阵的量化系数，对应公式中的x1Scale。</td>
+    <td>FLOAT</td>
+    <td>ND</td>
     </tr>
     <tr>
-      <td>group</td>
-      <td>输入</td>
-      <td>通信域名，字符串长度要求(0, 128)</td>
-      <td>STRING</td>
-      <td>ND</td>
+    <td>x2_scale</td>
+    <td>可选输入</td>
+    <td>右矩阵的量化系数，对应公式中的x2Scale。</td>
+    <td>FLOAT</td>
+    <td>ND</td>
     </tr>
     <tr>
-      <td>transposeX1</td>
-      <td>输入</td>
-      <td>标识左矩阵是否转置过，配置为True时左矩阵Shape为(H1, BS)，暂不支持配置为True</td>
-      <td>bool</td>
-      <td>ND</td>
+    <td>comm_scale</td>
+    <td>可选输入</td>
+    <td>预留参数，低比特通信的量化系数。</td>
+    <td>-</td>
+    <td>-</td>
     </tr>
     <tr>
-      <td>transposeX2</td>
-      <td>输入</td>
-      <td>标识右矩阵是否转置过，配置为True时右矩阵Shape为(H2, H1)</td>
-      <td>bool</td>
-      <td>ND</td>
+    <td>x1_offset</td>
+    <td>可选输入</td>
+    <td>预留参数，左矩阵的量化偏置。</td>
+    <td>-</td>
+    <td>-</td>
+    <tr>
+    <td>x2_offset</td>
+    <td>可选输入</td>
+    <td>预留参数，右矩阵的量化偏置。</td>
+    <td>-</td>
+    <td>-</td>
+    <tr>
+    <td>y</td>
+    <td>输出</td>
+    <td>计算+通信的结果，即公式中的输出output。</td>
+    <td>FLOAT16、BFLOAT16、FLOAT</td>
+    <td>ND</td>
     </tr>
     <tr>
-      <td>output</td>
-      <td>输出</td>
-      <td>公式中的输出output，数据类型与输入x1保持一致</td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
+    <td>group</td>
+    <td>必选属性</td>
+    <td>Host侧标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数，字符串长度要求(0, 128)。</td>
+    <td>STRING</td>
+    <td>-</td>
     </tr>
-  </tbody></table>
+    <tr>
+    <td>world_size</td>
+    <td>必选属性</td>
+    <td>使用的npu卡数，公式中的rankSize。</td>
+    <td>INT</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>all2all_axes</td>
+    <td>可选属性</td>
+    <td>AlltoAll和Pemute数据交换的方向，支持配置空或者[-1, -2]，传入空时默认按[-1, -2]处理，表示将输入由(BS, H2)转为(BS * rankSize, H2 / rankSize)。</td>
+    <td>aclIntArray*(元素类型INT64)</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>x1_quant_mode</td>
+    <td>可选属性</td>
+    <td>左矩阵的量化方式，当前仅支持配置为3，表示PerToken。</td>
+    <td>INT</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>x2_quant_mode</td>
+    <td>可选属性</td>
+    <td>左矩阵的量化方式，当前仅支持配置为2，表示PerChannel。</td>
+    <td>INT</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>comm_quant_mode</td>
+    <td>可选属性</td>
+    <td>低比特通信的量化方式，预留参数，当前仅支持配置为0，表示不量化。</td>
+    <td>INT</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>comm_quant_dtype</td>
+    <td>可选属性</td>
+    <td>低比特通信的量化类型，预留参数，当前仅支持配置为-1，表示ACL_DT_UNDEFINED。</td>
+    <td>INT</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>transpose_x1</td>
+    <td>可选属性</td>
+    <td>标识左矩阵是否转置过，暂不支持配置为True。</td>
+    <td>bool</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>transpose_x2</td>
+    <td>可选属性</td>
+    <td>标识右矩阵是否转置过，配置为True时右矩阵Shape为(H2，H1)。</td>
+    <td>bool</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>group_size</td>
+    <td>可选属性</td>
+    <td>用于Matmul计算三个方向上的量化分组大小，预留参数，仅支持配置为0，取值不生效。groupSize输入由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize中的高16位的数值无效），计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</td>
+    <td>INT</td>
+    <td>-</td>
+    </tr>
+    </tbody></table>
+
+x1QuantMode、x2QuantMode、commQuantMode的枚举值跟[量化模式](../../../docs/zh/context/量化介绍.md)关系如下:
+* 0: 不量化
+* 1: pertensor
+* 2: perchannel
+* 3: pertoken
+* 4: pergroup
+* 5: perblock
+* 6: mx量化
+* 7: pertoken动态量化  
 
 ## 约束说明
-* 默认支持确定性计算
-* 右矩阵和输出矩阵的H2必须整除NPU卡数
-* 不支持空tensor
-* x1、x2计算输入的数据类型要和output计算输出的数据类型一致，传入的x1、x2或者output不为空指针。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：output计算输出的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16；output计算输出的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持FLOAT32。
-* H1范围仅支持[1, 65535]
-* ranSize仅支持2,4,8
-* x1、x2、output的数据类型必须一致
+
+* 默认支持确定性计算。
+* NPU卡数(world_size)，根据设备型号有不同限制：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
+* 输入x1必须是2维，其shape为(BS, H1)，BS*rankSize和H2的值不得超过2147483647(INT32_MAX)，不支持非连续输入。
+* 输入x2必须是2维，其shape为(H1, H2)，H2必须整除NPU卡数，H1范围仅支持[1，65535]，H2的值不超过2147483647(INT32_MAX)，不支持非连续输入。
+* bias和x2_scale若非空，其维度必须为1维，shape为(H2，)。
+* x1_scale若非空，其维度必须为1维，shape为(H1，)。
+* all2all_axes为1维数组，shape必须为(2)。
+* 目前仅支持左矩阵perToken量化，x1QuantMode=3；右矩阵perChannel量化，x2QuantMode=2。
+* 不支持空tensor。
+* 非量化场景x1、x2计算输入的数据类型要和output计算输出的数据类型一致，传入的x1、x2或者output不为空指针。
+* 量化场景传入的x1、x2、x1Scale、x2Scale或者output不为空指针，且
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：biasOptional不为空指针。
+* x1、x2和bias计算输入的数据类型根据不同设备型号有不同的限制：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - 非量化场景下，output计算输出的数据类型为FLOAT16时，bias计算输入的数据类型支持FLOAT16；output计算输出的数据类型为BFLOAT16时，bias计算输入的数据类型支持FLOAT32。
+    - 量化场景下，支持K-C量化模式后加bias，x1、x2计算输入的数据类型必须为INT8；output计算输出的数据类型为BFLOAT16时，bias的数据类型为FLOAT或BFLOAT16；output的数据类型为FLOAT16时，biasOptional的数据类型为FLOAT16。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
 
 ## 调用说明
 
-
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_aclnn_matmul_allto_all](./examples/test_aclnn_matmul_allto_all.cpp) | 通过[aclnnMatmulAlltoAll](./docs/aclnnMatmulAlltoAll.md)接口方式调用MatmulAlltoAll算子。 |
-
+| aclnn接口  | [test_aclnn_matmul_allto_all.cpp](./examples/test_aclnn_matmul_allto_all.cpp) | 通过[aclnnMatMulAlltoAll](./docs/aclnnMatmulAlltoAll.md)接口方式调用非量化场景的MatMulAlltoAll算子。 |
+| aclnn接口  | [test_aclnn_quant_matmul_allto_all.cpp](./examples/test_aclnn_quant_matmul_allto_all.cpp) | 通过[aclnnQuantMatMulAlltoAll](./docs/aclnnQuantMatmulAlltoAll.md)接口方式调用量化场景的MatMulAlltoAll算子。 |

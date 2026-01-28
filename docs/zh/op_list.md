@@ -516,6 +516,16 @@
   </tr>
   <tr>
     <td>mc2</td>
+    <td><a href="../../mc2/matmul_allto_all/README.md">matmul_allto_all</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>AI Core</td>
+    <td>完成MatMul计算与AlltoAll通信融合。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
     <td><a href="../../mc2/matmul_all_reduce/README.md">matmul_all_reduce</a></td>
     <td>√</td>
     <td>√</td>
