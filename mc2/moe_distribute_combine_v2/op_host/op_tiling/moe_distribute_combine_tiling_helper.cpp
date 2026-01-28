@@ -14,6 +14,7 @@
  */
 
 #include "moe_distribute_combine_tiling_helper.h"
+#include "mc2_log.h"
 
 using namespace ge;
 
@@ -261,6 +262,26 @@ ge::graphStatus MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombin
     // 检查参数format信息
     OP_TILING_CHECK(!CheckTensorFormat(context, nodeName), OP_LOGE(nodeName, "param Format is invalid"),
                     return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombineA5(gert::TilingContext *context,
+    const char *nodeName, const bool isTokenMask)
+{
+    // 检查参数shape信息
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName), OP_LOGE(nodeName, "param shape is invalid"),
+                    return ge::GRAPH_FAILED);
+    // 检查参数dataType信息
+    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName), OP_LOGE(nodeName, "param dataType is invalid"),
+                    return ge::GRAPH_FAILED);
+    // 检查参数format信息
+    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName), OP_LOGE(nodeName, "param Format is invalid"),
+                    return ge::GRAPH_FAILED);
+    // 检查ActiveMask信息
+    if ((OpVersionManager::GetInstance().GetVersion() != OP_VERSION_1) && isTokenMask) {
+        OP_TILING_CHECK(!CheckActiveMask(context, nodeName), OP_LOGE(nodeName, "xActiveMask is invalid."),
+        return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

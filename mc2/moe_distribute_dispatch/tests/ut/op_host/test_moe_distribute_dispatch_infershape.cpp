@@ -9,9 +9,8 @@
  */
 #include <iostream>
 #include <gtest/gtest.h>
-#include "infer_shape_context_faker.h"
+#include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
-#include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #define private public
 #include "platform/platform_info.h"
@@ -74,9 +73,12 @@ TEST_F(MoeDistributeDispatchInfershape, infer_shape_0) {
             {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expand_x_output_shape = {{576, 7168}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expand_x_output_shape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expand_x_output_shape);
 }
 
 TEST_F(MoeDistributeDispatchInfershape, infer_shape_1) {
@@ -118,9 +120,12 @@ TEST_F(MoeDistributeDispatchInfershape, infer_shape_1) {
             {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expand_x_output_shape = {{576, 7168}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expand_x_output_shape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expand_x_output_shape);
 }
 
 TEST_F(MoeDistributeDispatchInfershape, infer_dtype_0) {

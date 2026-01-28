@@ -9,9 +9,8 @@
  */
 #include <iostream>
 #include <gtest/gtest.h>
-#include "infer_shape_context_faker.h"
+#include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
-#include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MoeDistributeCombineInferShapeUT {
@@ -67,8 +66,11 @@ TEST_F(MoeDistributeCombineInfershape, infer_shape_0) {
             {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
     std::vector<std::vector<int64_t>> x_output_shape = {{32, 7168},};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, x_output_shape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, x_output_shape);
 }
 TEST_F(MoeDistributeCombineInfershape, infer_dtype_0) {
     ge::DataType expand_x_type = ge::DT_FLOAT16;

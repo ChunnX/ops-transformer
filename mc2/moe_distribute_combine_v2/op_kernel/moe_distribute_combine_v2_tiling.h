@@ -42,6 +42,10 @@ struct MoeDistributeCombineV2Info {
     bool isExpertMask;             // input active mask 2dims or not
     bool hasSharedExpertX;         // input shared expert x or not
     bool hasElasticInfo;           // has elasticinfo or not
+    bool isPerformance;            // whether performance or not
+    bool reserved0;
+    bool reserved1;
+    bool reserved2;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
     uint64_t totalWinSizeTp;

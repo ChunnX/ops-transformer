@@ -16,10 +16,11 @@
 #ifndef MOE_DISTRIBUTE_DISPATCH_A2_H
 #define MOE_DISTRIBUTE_DISPATCH_A2_H
 #include <climits>
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
+#include "utils/std/algorithm.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_tiling.h"
-#if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
+#if __has_include("../common/inc/kernel/moe_distribute_base.h")
 #include "../common/inc/kernel/moe_distribute_base.h"
 #include "../common/inc/kernel/mc2_kernel_utils.h"
 #else
@@ -893,7 +894,7 @@ template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::CleanUpFlags()
 {
     if (aivId_ == 0) {
-        Duplicate<int32_t>(statusTensor_, 0, worldSize_ * DATA_OFFSET);
+        Duplicate<int32_t>(statusTensor_, 0, worldSize_ * DATA_OFFSET / sizeof(int32_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         uint32_t dstStrideU32 = dataSizePerRank_ - DATA_OFFSET;
         auto copyStatusParams = DataCopyExtParams{static_cast<uint16_t>(worldSize_), DATA_OFFSET, 0, dstStrideU32, 0};

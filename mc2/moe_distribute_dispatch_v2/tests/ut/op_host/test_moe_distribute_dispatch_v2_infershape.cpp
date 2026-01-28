@@ -9,10 +9,9 @@
  */
 #include <gtest/gtest.h>
 #include <iostream>
-#include "infer_shape_context_faker.h"
+#include "mc2_infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #include "infer_datatype_context_faker.h"
-#include "infer_shape_case_executor.h"
 #define private public
 #include "platform/platform_info.h"
 
@@ -60,9 +59,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferShape0)
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{576, 7168}};
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
 TEST_F(MoeDistributeDispatchV2Infershape, inferDtype0) {

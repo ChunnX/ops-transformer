@@ -1,11 +1,17 @@
 # aclnnMoeDistributeDispatchV3
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/moe_distribute_dispatch_v2)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -43,6 +49,7 @@
 
 > 说明：
 > `aclnnMoeDistributeCombineV3`、`aclnnMoeDistributeCombineAddRmsNormV2`算子在后续文档中统称为**CombineV3系列算子**。
+
 
 
 ## 函数原型
@@ -144,7 +151,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <td>scalesOptional</td>
     <td>输入</td>
     <td>每个专家的量化平滑参数。</td>
-    <td>2D Tensor，<br>非量化场景传空指针；动态量化可传有效数据或空指针。</td>
+    <td>2D Tensor，非量化场景传空指针；动态量化可传有效数据或空指针。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     <td><code>(sharedExpertNum + moeExpertNum, H)</code></td>
@@ -177,7 +184,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <td>当某些通信卡因异常而从通信域中剔除，实际参与通信的卡数可从本参数中获取。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>当传入有效数据时，shape为 <code>(4 + 2 * epWorldSize, )</code></td>
+    <td>-</td>
     <td>√</td>
     </tr>
     <tr>
@@ -373,7 +380,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>assistInfoForCombineOut</td>
     <td>输出</td>
-    <td>给同一专家发送的token个数（aclnnMoeDistributeCombineV3中的assistInfoForCombine）。</td>
+    <td>给同一专家发送的token个数（对应aclnnMoeDistributeCombineV3中的assistInfoForCombine）。</td>
     <td>1D Tensor。</td>
     <td>INT32</td>
     <td>-</td>
@@ -393,7 +400,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>epRecvCountsOut</td>
     <td>输出</td>
-    <td>从EP通信域各卡接收的token数（aclnnMoeDistributeCombineV3中的epSendCounts）。</td>
+    <td>从EP通信域各卡接收的token数（对应aclnnMoeDistributeCombineV3中的epSendCounts）。</td>
     <td>1D Tensor。</td>
     <td>INT32</td>
     <td>-</td>
@@ -403,7 +410,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>tpRecvCountsOut</td>
     <td>输出</td>
-    <td>从TP通信域各卡接收的token数（aclnnMoeDistributeCombineV3中的tpSendCounts）。</td>
+    <td>从TP通信域各卡接收的token数（对应aclnnMoeDistributeCombineV3中的tpSendCounts）。</td>
     <td>-</td>
     <td>INT32</td>
     <td>-</td>
@@ -413,7 +420,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>expandScalesOut</td>
     <td>输出</td>
-    <td>本卡输出token的权重（aclnnMoeDistributeCombineV3中的expertScalesOptional）。</td>
+    <td>本卡输出token的权重（对应aclnnMoeDistributeCombineV3中的expertScalesOptional）。</td>
     <td>-</td>
     <td>FLOAT32</td>
     <td>-</td>
@@ -448,7 +455,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         - commAlg为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0时，scalesOptional 需传nullptr。
         - xActiveMaskOptional 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(Bs, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
         - expertScalesOptional 要求为2D Tensor，shape为(Bs, K)。
-        - epWorldSize 依commAlg取值，"fullmesh"支持16、32、64、128、192、256；"hierarchy"支持16、32、64。
+        - epWorldSize 依commAlg取值，"fullmesh"支持16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
         - moeExpertNum 取值范围(0, 512]，还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
         - groupTp 当前版本不支持，传空字符即可。
         - tpWorldSize、tpRankId、expertShardType、sharedExpertNum、sharedExpertRankNum 当前版本不支持，传0即可。
@@ -462,7 +469,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         - constExpertNum 当前版本不支持，传0即可。
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - commAlg 当前版本不支持，传空指针即可。
+        - commAlg 支持""、"fullmesh_v1"、"fullmesh_v2"三种输入方式。""：默认值，使能fullmesh_v1模板；"fullmesh_v1"：使能fullmesh_v1模板；"fullmesh_v2"：使能fullmesh_v2模板，其中commAlg仅支持tpWorldSize为1场景。
         - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(Bs, )，2D时shape为(Bs, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
         - expertScalesOptional 当前版本不支持，传空指针即可。
         - epWorldSize 取值范围[2, 768]。
@@ -474,7 +481,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         - sharedExpertNum 当前取值范围[0, 4]。
         - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
         - epRecvCountsOut 的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
-        - 有TP域通信时tpRecvCountsOut为1D Tensor，shape为(tpWorldSize,)。
+        - 有TP域通信时tpRecvCountsOut为1D shape Tensor，shape为(tpWorldSize,)。
         - expandScalesOut 当前版本不支持该输出。
         - quantMode 支持0（非量化）、2（动态量化）。
         - elasticInfoOptional 可选择传入有效数据或填空指针，传入空指针时表示不使能动态缩容功能；当传入有效数据时，要求是一个1D的Tensor，shape为 <code>(4 + 2 * epWorldSize, )</code>。Tensor中的前四个数字分别表示是否缩容，缩容后实际rank数，缩容后共享专家使用的rank数，缩容后moe专家的个数，后2 * epWorldSize表示2个rank映射表，缩容后本卡中因部分rank异常而从EP通信域中剔除，第一个Table的映射关系为Table1[epRankId]=localEpRankId或-1，localEpRankId表示新EP通信域中的rank Index，-1表示epRankId这张卡从通信域中被剔除，第二个Table映射关系为Table2[localEpRankId] = epRankId。
@@ -482,17 +489,17 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         - copyExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum)</code>。
         - constExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum + copyExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum)</code>。
 
+
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。  
 
-    第一段接口会完成入参校验，出现以下场景时报错：
+    第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1576px">
-    <colgroup>
-    <col style="width: 170px">
-    <col style="width: 170px">
-    <col style="width: 400px">
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
     </colgroup>
     <thead>
     <tr>
@@ -527,44 +534,37 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1576px">
-    <colgroup>
-    <col style="width: 170px">
-    <col style="width: 170px">
-    <col style="width: 800px">
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     </colgroup>
     <thead>
     <tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    </tr>
-    </thead>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+    </tr></thead>
     <tbody>
     <tr>
-    <td>workspace</td>
-    <td>输入</td>
-    <td>在Device侧申请的workspace内存地址。</td>
-    <td>void*</td>
+        <td>workspace</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace内存地址。</td>
     </tr>
     <tr>
-    <td>workspaceSize</td>
-    <td>输入</td>
-    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeDistributeDispatchV3GetWorkspaceSize</code>获取。</td>
-    <td>uint64_t</td>
+        <td>workspaceSize</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeDistributeDispatchV3GetWorkspaceSize获取。</td>
     </tr>
     <tr>
-    <td>executor</td>
-    <td>输入</td>
-    <td>op执行器，包含了算子计算流程。</td>
-    <td>aclOpExecutor*</td>
+        <td>executor</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
     </tr>
     <tr>
-    <td>stream</td>
-    <td>输入</td>
-    <td>指定执行任务的Stream。</td>
-    <td>aclrtStream</td>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的Stream。</td>
     </tr>
     </tbody>
     </table>
@@ -590,14 +590,13 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
   - 动态缩容功能不支持在TP并行场景下使能。
 
 - **Shape变量约束**：
-
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
   | A            | 表示本卡需要分发的最大token数量，取值范围如下：<ul> <li>不使能动态缩容场景时：<ul> <li>对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li> <li>对于MoE专家，当globalBs为0时，要满足A >= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。</li> </ul> </li> <li>使能动态缩容场景时：<ul><li>当globalBs为0时，A >= max(Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum, Bs * epWorldSize * min(localExpertNum, K))；</li> <li>当globalBs非0时，A >= max(Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum, globalBS * min(localExpertNum, K))；</li> </ul> </li> </ul> |
   | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围[1024, 8192]。</li></ul> |
   | Bs           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：0 < Bs ≤256；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：0 < Bs ≤512，且当commAlg为"fullmesh_v2"时，需满足0 <Bs ≤256。 </li></ul> |
   | topK    | 表示选取topK个专家，取值范围为0 < K ≤16，且<code>0 < K ≤ moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum</code>。<br> <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当commAlg为"fullmesh_v2"时，取值范围为0 < K ≤ 12。|
-  | serverNum    | 表示服务器节点数，仅支持2、4、8。<br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅该场景的shape使用了该变量。                                                  |
+  | serverNum    | 表示服务器节点数，仅支持2、4、8。<br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅该场景的shape使用了该变量。                                                  |
   | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：应满足 0 < localExpertNum * epWorldSize ≤ 2048。|
 
 - **环境变量约束**：
@@ -631,7 +630,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
 ## 调用示例
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：请参考[aclnnMoeDistributeDispatchV2](../docs/aclnnMoeDistributeDispatchV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，其中V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：请参考[aclnnMoeDistributeDispatchV2](../docs/aclnnMoeDistributeDispatchV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
        
@@ -783,6 +782,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         aclTensor *residualX = nullptr;
         aclTensor *sharedExpertX = nullptr;
 
+
         aclTensor *elasticInfo = nullptr;
         aclTensor *oriX = nullptr;
         aclTensor *constExpertAlpha1 = nullptr;
@@ -805,6 +805,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE};
         std::vector<int64_t> expandScalesShape{A};
         std::vector<int64_t> sharedExpertXShape{Bs, 1, H};
+
 
         std::vector<int64_t> elasticInfoShape{4 + EP_WORLD_SIZE * 2};
         std::vector<int64_t> oriXShape{Bs, H};
@@ -875,6 +876,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
         std::vector<int16_t> xOutHostData(xOutShapeSize, 0);
 
+
         ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expertIdsHostData, expertIdsShape, &expertIdsDeviceAddr, aclDataType::ACL_INT32, &expertIds);
@@ -913,6 +915,8 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+
 
         uint64_t dispatchWorkspaceSize = 0;
         aclOpExecutor *dispatchExecutor = nullptr;

@@ -26,6 +26,7 @@
 #include "ops_error.h"
 #include "mc2_gen_task_moe.h"
 #include "mc2_gen_task_utils.h"
+#include "mc2_a5_gen_task_utils.h"
 #include "register/op_ct_impl_registry.h"
 #include "register/op_ext_gentask_registry.h"
 #endif

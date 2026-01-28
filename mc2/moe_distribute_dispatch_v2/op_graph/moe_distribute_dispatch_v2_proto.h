@@ -48,8 +48,8 @@ namespace ge {
 
 * @par Outputs
 * Seven outputs, including:
-* @li expand_x: A tensor. Result of each expert after dispatching. Support dtype: float16,bfloat16,int8. Shape supports (A, H), support format: ND.
-* @li dynamic_scales: If quant is enabled, scale value of each token. A tensor. Support dtype: float32. Shape supports (A, ), support format: ND.
+* @li expand_x: A tensor. Result of each expert after dispatching. Support dtype: float16,bfloat16,int8,float8_e4m3,float8_e5m2，hifloat8. Shape supports (A, H), support format: ND.
+* @li dynamic_scales: If quant is enabled, scale value of each token. A tensor. Support dtype: float32,float8_e8m0. Shape supports (A, ), support format: ND.
 * @li assist_info_for_combine: A tensor. Support dtype: int32. Shape supports (A * 128), support format: ND.
 * @li expert_token_nums: A tensor. Tokens nums of expand_x. Support dtype: int64, support format: ND.
 * @li ep_recv_count: A tensor. Received token nums after dispatching. Support dtype: int32, support format: ND.
@@ -64,8 +64,8 @@ REG_OP(MoeDistributeDispatchV2)
     .OPTIONAL_INPUT(expert_scales, TensorType({DT_FLOAT}))
     .OPTIONAL_INPUT(elastic_info, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(performance_info, TensorType({DT_INT64}))
-    .OUTPUT(expand_x, TensorType({DT_BF16, DT_INT8, DT_FLOAT16}))
-    .OUTPUT(dynamic_scales, TensorType({DT_FLOAT}))
+    .OUTPUT(expand_x, TensorType({DT_BF16, DT_INT8, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8}))
+    .OUTPUT(dynamic_scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OUTPUT(assist_info_for_combine, TensorType({DT_INT32}))
     .OUTPUT(expert_token_nums, TensorType({DT_INT64}))
     .OUTPUT(ep_recv_count, TensorType({DT_INT32}))
@@ -88,6 +88,7 @@ REG_OP(MoeDistributeDispatchV2)
     .ATTR(zero_expert_num, Int, 0)
     .ATTR(copy_expert_num, Int, 0)
     .ATTR(const_expert_num, Int, 0)
+    .ATTR(y_dtype, Int, 28)
     .OP_END_FACTORY_REG(MoeDistributeDispatchV2)
 
 }  // namespace ge

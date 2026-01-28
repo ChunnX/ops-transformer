@@ -20,7 +20,6 @@
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
 #include "register/tilingdata_base.h"
-#include "mc2_log.h"
 #include "tiling_base/tiling_base.h"
 #include "tiling/mc2_opversion_manager.h"
 using namespace Ops::Transformer::OpTiling;
@@ -45,6 +44,8 @@ constexpr uint32_t ONE_DIM = 1U;
 class MoeDistributeCombineTilingHelper {
 public:
     static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *context, const char *nodeName);
+    static ge::graphStatus TilingCheckMoeDistributeCombineA5(gert::TilingContext *context, const char *nodeName,
+                                                             const bool isTokenMask);
 
 protected:
     static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName);

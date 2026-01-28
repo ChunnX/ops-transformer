@@ -65,7 +65,7 @@ TEST_F(MoeDistributeCombineTiling, moe_distribute_combine_test_tiling_0) {
         &compileInfo,
         "Ascend910_93", coreNum, ubSize);;
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 1000UL;
+    uint64_t expectTilingKey = 32UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -276,7 +276,7 @@ TEST_F(MoeDistributeCombineTiling, moe_distribute_combine_test_tiling_A2) {
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 2000UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -329,7 +329,7 @@ TEST_F(MoeDistributeCombineTiling, moe_distribute_combine_test_tiling_A2_layered
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 2000UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -382,7 +382,7 @@ TEST_F(MoeDistributeCombineTiling, moe_distribute_combine_test_tiling_A2_global_
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 2000UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 TEST_F(MoeDistributeCombineTiling, moe_distribute_combine_test_tiling_A2_shape) {
@@ -694,7 +694,7 @@ TEST_F(MoeDistributeCombineTiling, moe_distribute_combine_test_tiling_A2_int8_qu
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 2000UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 TEST_F(MoeDistributeCombineTiling, moe_distribute_combine_test_tiling_A2_invalid_comm_quant_mode) {

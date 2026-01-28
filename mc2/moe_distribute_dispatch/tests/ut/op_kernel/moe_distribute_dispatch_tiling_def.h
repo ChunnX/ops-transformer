@@ -11,7 +11,7 @@
 #define MOE_DISTRIBUTE_DISPATCH_TILING_DEF_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../op_kernel/moe_distribute_dispatch_tiling.h"
+#include "../../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
 
 inline void InitMoeDistributeDispatchTilingData(uint8_t* tiling, MoeDistributeDispatchA2TilingData* const_data)
 {

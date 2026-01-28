@@ -16,36 +16,30 @@
 #ifndef MOE_DISTRIBUTE_V2_BASE_H
 #define MOE_DISTRIBUTE_V2_BASE_H
 
-#if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
+#include "moe_distribute_v2_constant.h"
+
+#if __has_include("../common/inc/kernel/moe_distribute_base.h")
+#include "../common/inc/kernel/moe_distribute_base.h"
 #include "../common/inc/kernel/mc2_kernel_utils.h"
 #else
+#include "../../common/inc/kernel/moe_distribute_base.h"
 #include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
 
 namespace MoeDistributeV2Base {
-constexpr uint64_t OP_CNT_POSUL = 3UL;
-constexpr uint32_t ZERONE_STATE_POS = 0U;
-constexpr uint32_t OPOSITION_POS = 1U;
-constexpr uint32_t TILING_EPRANKID_POS = 2U;
-constexpr uint32_t MOE_NUM_POS = 3U;
-constexpr uint32_t TILING_WORLDSIZE_POS = 4U;
-constexpr uint32_t GLOBALBS_POS = 5U;
-constexpr uint32_t HCCL_DFX_POS = 8U;
-constexpr uint32_t HCCL_DFX_NUM = 2U;
-constexpr uint32_t HCCL_EPRANKId_POS = 0U;
-constexpr uint32_t HCCL_WORLDSIZE_POS = 1U;
-constexpr uint32_t UB_ALIGN = 32U;
 
 using namespace AscendC;
-__aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMTensor, __gm__ HcclOpResParam * winContext, uint32_t epRankIdOriginal,
+using namespace Mc2Kernel;
+
+__aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMTensor, __gm__ Mc2Kernel::HcclOpParam * winContext, uint32_t epRankIdOriginal,
                                            uint32_t moeExpertNum, uint32_t epWorldSizeOriginal, uint32_t globalBS, TBuf<> dataStateBuf)
 {
     LocalTensor<uint64_t> dataStateLocalTensor64 = dataStateBuf.Get<uint64_t>();
     LocalTensor<uint32_t> dataStateLocalTensor = dataStateBuf.Get<uint32_t>();
     DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    uint32_t epRankIdHccl = winContext->localUsrRankId;
-    uint32_t epWorldSizeHccl = winContext->rankSize;
+    uint32_t epRankIdHccl = Mc2Kernel::GetRankId(winContext);
+    uint32_t epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext);
     uint32_t dataState = dataStateLocalTensor.GetValue(ZERONE_STATE_POS);
     dataStateLocalTensor.SetValue(ZERONE_STATE_POS, dataState == 0 ? 1 : 0);
     dataStateLocalTensor.SetValue(OPOSITION_POS, 1);

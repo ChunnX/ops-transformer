@@ -13,7 +13,7 @@
  */
 #ifndef MOE_DISTRIBUTE_COMBINE_A2_LAYERED_H
 #define MOE_DISTRIBUTE_COMBINE_A2_LAYERED_H
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_combine_tiling.h"
 #if __has_include("../common/inc/kernel/moe_distribute_base.h")

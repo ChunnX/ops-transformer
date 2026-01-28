@@ -16,18 +16,8 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_distribute_dispatch_v2_tiling_def.h"
-
-extern "C" __global__ __aicore__ void moe_distribute_dispatch_v2(
-    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR assistInfoForCombine,
-    GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM);
-
-
-struct HcclCombinOpParam {
-    uint64_t WorkSpace;
-    uint64_t WorkSpaceSize;
-    uint32_t rankId;
-    uint32_t rankDim;
-};
+#include "../../../op_kernel/moe_distribute_dispatch_v2.cpp"
+#include "../../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
 
 class moe_distribute_dispatch_v2_test : public testing::Test {
 protected:
@@ -74,9 +64,26 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_1000) {
     uint8_t *expertTokenNumsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *epSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *tpSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *elasticInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *performanceInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *assistInfoOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expandScalesOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *xActiveMask = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expertScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(1000);
-    ICPU_RUN_KF(moe_distribute_dispatch_v2, 48, x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspace, tiling);
+    auto moe_distribute_dispatch_v2_warrper = [] (
+        GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
+        GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
+        GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut, 
+        GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+            moe_distribute_dispatch_v2<false, TILINGKEY_NO_QUANT, false, TILINGKEY_NO_FULLMESH, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(
+                x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut, 
+                dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, 
+                expandScalesOut, workspaceGM, tilingGM);
+        };
+    ICPU_RUN_KF(moe_distribute_dispatch_v2_warrper, 40, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, 
+                performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut,
+                tpSendCountsOut, expandScalesOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -89,6 +96,12 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_1000) {
     AscendC::GmFree((void*)expertTokenNumsOut);
     AscendC::GmFree((void*)epSendCountsOut);
     AscendC::GmFree((void*)tpSendCountsOut);
+    AscendC::GmFree((void*)elasticInfo);
+    AscendC::GmFree((void*)performanceInfo);
+    AscendC::GmFree((void*)assistInfoOut);
+    AscendC::GmFree((void*)expandScalesOut);
+    AscendC::GmFree((void*)xActiveMask);
+    AscendC::GmFree((void*)expertScales);
 }
 
 //MoeDistributeDispatchA2 test do dispatch unquant kernel
@@ -127,9 +140,26 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_20000010
     uint8_t *expertTokenNumsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *epSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *tpSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *elasticInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *performanceInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *assistInfoOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expandScalesOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *xActiveMask = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expertScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(2000001000);
-    ICPU_RUN_KF(moe_distribute_dispatch_v2, 40, x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspace, tiling);
+    auto moe_distribute_dispatch_v2_warrper = [] (
+        GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
+        GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
+        GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut, 
+        GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+            moe_distribute_dispatch_v2<false, TILINGKEY_NO_QUANT, false, TILINGKEY_NO_FULLMESH, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(
+                x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut, 
+                dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, 
+                expandScalesOut, workspaceGM, tilingGM);
+        };
+    ICPU_RUN_KF(moe_distribute_dispatch_v2_warrper, 40, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, 
+                performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut,
+                tpSendCountsOut, expandScalesOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -142,6 +172,12 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_20000010
     AscendC::GmFree((void*)expertTokenNumsOut);
     AscendC::GmFree((void*)epSendCountsOut);
     AscendC::GmFree((void*)tpSendCountsOut);
+    AscendC::GmFree((void*)elasticInfo);
+    AscendC::GmFree((void*)performanceInfo);
+    AscendC::GmFree((void*)assistInfoOut);
+    AscendC::GmFree((void*)expandScalesOut);
+    AscendC::GmFree((void*)xActiveMask);
+    AscendC::GmFree((void*)expertScales);
 }
 
 //MoeDistributeDispatchA2 test do dispatch int8 quant kernel
@@ -180,9 +216,26 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_20000010
     uint8_t *expertTokenNumsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *epSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *tpSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *elasticInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *performanceInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *assistInfoOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expandScalesOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *xActiveMask = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expertScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(2000001002);
-    ICPU_RUN_KF(moe_distribute_dispatch_v2, 40, x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspace, tiling);
+    auto moe_distribute_dispatch_v2_warrper = [] (
+        GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
+        GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
+        GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut, 
+        GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+            moe_distribute_dispatch_v2<false, TILINGKEY_PERTOKEN_QUANT, false, TILINGKEY_NO_FULLMESH, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(
+                x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut, 
+                dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, 
+                expandScalesOut, workspaceGM, tilingGM);
+        };
+    ICPU_RUN_KF(moe_distribute_dispatch_v2_warrper, 40, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, 
+                performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut,
+                tpSendCountsOut, expandScalesOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -195,6 +248,12 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_20000010
     AscendC::GmFree((void*)expertTokenNumsOut);
     AscendC::GmFree((void*)epSendCountsOut);
     AscendC::GmFree((void*)tpSendCountsOut);
+    AscendC::GmFree((void*)elasticInfo);
+    AscendC::GmFree((void*)performanceInfo);
+    AscendC::GmFree((void*)assistInfoOut);
+    AscendC::GmFree((void*)expandScalesOut);
+    AscendC::GmFree((void*)xActiveMask);
+    AscendC::GmFree((void*)expertScales);
 }
 
 //MoeDistributeDispatchA2 test do dispatch int8 quant kernel with smooth scale
@@ -233,9 +292,26 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_20000010
     uint8_t *expertTokenNumsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *epSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *tpSendCountsOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *elasticInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *performanceInfo = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *assistInfoOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expandScalesOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *xActiveMask = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *expertScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    ICPU_SET_TILING_KEY(2000001012);
-    ICPU_RUN_KF(moe_distribute_dispatch_v2, 40, x, expertIds, scales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspace, tiling);
+    auto moe_distribute_dispatch_v2_warrper = [] (
+        GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
+        GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
+        GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut, 
+        GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+            moe_distribute_dispatch_v2<false, TILINGKEY_PERTOKEN_QUANT, true, TILINGKEY_NO_FULLMESH, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(
+                x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut, 
+                dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, 
+                expandScalesOut, workspaceGM, tilingGM);
+        };
+    ICPU_RUN_KF(moe_distribute_dispatch_v2_warrper, 40, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, 
+                performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut,
+                tpSendCountsOut, expandScalesOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -248,4 +324,10 @@ TEST_F(moe_distribute_dispatch_v2_test, moe_distribute_dispatch_v2_test_20000010
     AscendC::GmFree((void*)expertTokenNumsOut);
     AscendC::GmFree((void*)epSendCountsOut);
     AscendC::GmFree((void*)tpSendCountsOut);
+    AscendC::GmFree((void*)elasticInfo);
+    AscendC::GmFree((void*)performanceInfo);
+    AscendC::GmFree((void*)assistInfoOut);
+    AscendC::GmFree((void*)expandScalesOut);
+    AscendC::GmFree((void*)xActiveMask);
+    AscendC::GmFree((void*)expertScales);
 }

@@ -91,9 +91,7 @@ public:
         .FormatList({ge::FORMAT_ND});
     this->Output("expand_scales")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
-        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
-        ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+        .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND});
         
     this->Attr("group_ep").AttrType(REQUIRED).String();
@@ -113,6 +111,7 @@ public:
     this->Attr("zero_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
     this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
+    this->Attr("y_dtype").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
 
     OpAICoreConfig aicore_config_A2;
     aicore_config_A2.DynamicCompileStaticFlag(true)
@@ -138,6 +137,7 @@ public:
         .ExtendCfgInfo("jitCompile.flag", "static_true")
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
+    this->AICore().AddConfig("ascend910_95", aicore_config);
     this->AICore().AddConfig("ascend910_93", aicore_config);
     this->AICore().AddConfig("ascend910b", aicore_config_A2);
     this->MC2().HcclGroup({"group_ep", "group_tp"});

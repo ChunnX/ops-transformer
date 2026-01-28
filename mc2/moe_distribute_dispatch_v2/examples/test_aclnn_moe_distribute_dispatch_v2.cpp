@@ -9,9 +9,9 @@
  */
 
 /*!
- * \file test_aclnn_moe_distribute_dispatch_v2.cpp
- * \brief
- */
+* \file test_aclnn_moe_distribute_dispatch_v2.cpp
+* \brief
+*/
 
 #include <thread>
 #include <iostream>
@@ -51,10 +51,11 @@ struct Args {
 const uint32_t MACHINE_NUM = 1;
 const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
 const char* first_rank_id = std::getenv("FIRST_RANK_ID");
+const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-const uint32_t EP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 8 : 16;
-const uint32_t TP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 2 : 0;
-const uint32_t DEV_NUM = (!rank_table_file && !first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
+const uint32_t EP_WORLD_SIZE = (!first_rank_id) ? 2 : 16;
+const uint32_t TP_WORLD_SIZE = (!first_rank_id) ? 1 : 0;
+const uint32_t DEV_NUM = (!first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -106,7 +107,7 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
     // 设置场景
     int64_t BS = 8;
     int64_t H = 7168;
-    int64_t K = 3;
+    int64_t K = 1;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
@@ -410,7 +411,7 @@ int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST
         return ret;
     }
     std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
-              << ", hcclComm:" << hcclComm << std::endl;
+            << ", hcclComm:" << hcclComm << std::endl;
 
     args.rankId = rankId;
     args.epRankId = rankId;
@@ -424,7 +425,7 @@ int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST
     return 0;
 }
 
-int run_example_on_A3()
+int run_example_on_A3A5()
 {
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
@@ -504,9 +505,22 @@ int run_example_on_A3()
 int main(int argc, char *argv[])
 {
     const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
+    if (!env_dev_num) {
+        LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
+        return 0;
+    }
+    int actual_env_dev_num = std::stoi(std::string(env_dev_num));
+    if (actual_env_dev_num < DEV_NUM) {
+        LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
+        return 0;
+    }
     if (!rank_table_file && !first_rank_id) {
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
-        int ret = run_example_on_A3();   
+        int ret = run_example_on_A3A5();
+    }
+    else if (rank_table_file && !first_rank_id) {
+        LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
+        int ret = run_example_on_A3A5();
     }
     else if (rank_table_file && first_rank_id) {
         LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
@@ -515,7 +529,7 @@ int main(int argc, char *argv[])
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
         for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-            threads[rankId] = std::make_unique<std::thread>([rankId]()
+            threads[rankId] = std::make_unique<std::thread>([rankId,&ret]()
             {
                 int ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
             });

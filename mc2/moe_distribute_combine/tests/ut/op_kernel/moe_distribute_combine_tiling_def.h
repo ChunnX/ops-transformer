@@ -11,7 +11,7 @@
 #define MOE_DISTRIBUTE_COMBINE_TILING_DEF_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../op_kernel/moe_distribute_combine_tiling.h"
+#include "../../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 
 inline void InitMoeDistributeCombineTilingData(uint8_t* tiling, MoeDistributeCombineTilingData* const_data)
 {

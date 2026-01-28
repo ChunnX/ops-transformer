@@ -1,15 +1,21 @@
 # aclnnMoeDistributeDispatch
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/moe_distribute_dispatch)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-接口功能：对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
 
 >注意该接口必须与aclnnMoeDistributeCombine配套使用。
 
@@ -88,7 +94,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>输入</td>
     <td>本卡发送的token数据。</td>
     <td>要求为2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
+    <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>(Bs, H)（Bs为batch size，H为隐藏层大小）</td>
     <td>-</td>
@@ -108,7 +114,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>输入</td>
     <td>每个专家的平滑权重、融合量化平滑权重的量化系数或量化系数。</td>
     <td>要求为1D或2D Tensor。</td>
-    <td>FLOAT32、FLOAT8_E8M0</td>
+    <td>FLOAT32</td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -237,7 +243,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>quantMode</td>
     <td>输入</td>
     <td>表示量化模式。</td>
-    <td>支持0：非量化，1：静态量化，2：pertoken动态量化，3：pergroup动态量化，4：mx量化。</td>
+    <td>支持0：非量化，2：pertoken动态量化。</td>
     <td>INT64</td>
     <td>ND</td>
     <td>-</td>
@@ -268,7 +274,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>输出</td>
     <td>根据expertIds进行扩展过的token特征。</td>
     <td>要求为2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+    <td>FLOAT16、BFLOAT16、INT8</td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -278,7 +284,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>输出</td>
     <td>Device侧的aclTensor。</td>
     <td>要求为1D或2D Tensor。</td>
-    <td>FLOAT32、FLOAT32_E8M0</td>
+    <td>FLOAT32</td>
     <td>ND</td>
     <td>-</td>
     <td>√</td>
@@ -356,26 +362,27 @@ aclnnStatus aclnnMoeDistributeDispatch(
     </table>
 
     * <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT32_E8M0`数据类型。
-        * `quantMode`属性仅支持0和2。
         * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
         * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。
         * 仅设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，`expandScales`内容有效。
 
     * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT32_E8M0`数据类型。
-        * `quantMode`属性仅支持0和2。
         * 不支持`expandScales`。
+
+    * <term>Ascend 950PR/Ascend 950DT</term>：
+        * 不支持`expandScales`。
+        * 当前不支持TP域通信，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpSendCounts`为无效内容。
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-        
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。  
+
     第一段接口完成入参校验，出现以下场景时报错：
-    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 800px">
+
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
     </colgroup>
     <thead>
     <tr>
@@ -411,10 +418,10 @@ aclnnStatus aclnnMoeDistributeDispatch(
 
 -   **参数说明：**
     
-    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 800px">
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     </colgroup>
     <thead>
     <tr>
@@ -447,9 +454,6 @@ aclnnStatus aclnnMoeDistributeDispatch(
     </tbody>
     </table>
 
-- **返回值**
-
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -476,6 +480,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
+
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数说明里shape格式说明：
@@ -507,6 +512,21 @@ aclnnStatus aclnnMoeDistributeDispatch(
             - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
             - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
 
+- <term>Ascend 950PR/Ascend 950DT</term>：
+    - 参数说明里shape格式说明：
+        - `H`：表示hidden size隐藏层大小，取值为7168。
+        - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
+        - `K`：表示选取topK个专家，取值范围为[1, 8]，且需要满足0 < `K` ≤ moeExpertNum。
+    - `epWorldSize`：取值支持2、4、8、16、32、64、128、144、256、288。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
+    - `quantMode`相关约束：
+        - `quantMode`取值为0时，表示非量化场景，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
+            - `expandX`的数据类型为`FLOAT16`、`BFLOAT16`时，输入`scales`必须传入空指针。
+        - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
+            - 输入`scales`可传入空指针。
+            - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
+            - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+
 ## 调用示例
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -530,11 +550,13 @@ aclnnStatus aclnnMoeDistributeDispatch(
     - 环境变量配置：
 
         ```bash
-        # 运行前需设置两个环境变量
+        # 运行前需设置三个环境变量
         ## FIRST_RANK_ID说明：以两机16卡为例，其中一机器设置为0，另一机器设置为8
         ## 如export FIRST_RANK_ID=0
         export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
         export FIRST_RANK_ID=<设备的起始rank_id>
+        ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
+        export ENV_DEV_NUM=16
         ```
     
     - 机器数量设置：
@@ -546,11 +568,17 @@ aclnnStatus aclnnMoeDistributeDispatch(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+    - 环境变量配置：
+
+        ```bash
+        # 运行前需设置一个环境变量ENV_DEV_NUM，无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+        ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以单机16卡为例，将两台机器设置为16
+        export ENV_DEV_NUM=16
+        ```
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -588,10 +616,11 @@ aclnnStatus aclnnMoeDistributeDispatch(
     const uint32_t MACHINE_NUM = 1;
     const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
     const char* first_rank_id = std::getenv("FIRST_RANK_ID");
+    const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-    const uint32_t EP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 8 : 16;
-    const uint32_t TP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 2 : 0;
-    const uint32_t DEV_NUM = (!rank_table_file && !first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
+    uint32_t EP_WORLD_SIZE = 0;
+    uint32_t TP_WORLD_SIZE = 0;
+    uint32_t DEV_NUM = 0;
 
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
@@ -643,13 +672,17 @@ aclnnStatus aclnnMoeDistributeDispatch(
         // 设置场景
         int64_t BS = 8;
         int64_t H = 7168;
-        int64_t K = 3;
+        int64_t K = 1;
         int64_t expertShardType = 0;
         int64_t sharedExpertNum = 0;
         int64_t sharedExpertRankNum = 0;
         if (!rank_table_file && !first_rank_id) {
             sharedExpertNum = 1;
             sharedExpertRankNum = 1;
+        } 
+        if (rank_table_file && !first_rank_id) {
+            sharedExpertNum = 1;
+            sharedExpertRankNum = 0;
         } 
         int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
         int64_t quantMode = 0;
@@ -959,7 +992,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         return 0;
     }
 
-    int run_example_on_A3()
+    int run_example_on_A3A5()
     {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
@@ -1035,21 +1068,44 @@ aclnnStatus aclnnMoeDistributeDispatch(
         return 0;
     }
 
+
     int main(int argc, char *argv[])
     {
         const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
+        if (!env_dev_num) {
+            LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
+            return 0;
+        }
+        int actual_env_dev_num = std::stoi(std::string(env_dev_num));
+        if (actual_env_dev_num < DEV_NUM) {
+            LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
+            return 0;
+        }
         if (!rank_table_file && !first_rank_id) {
             LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
-            int ret = run_example_on_A3();   
+            EP_WORLD_SIZE = 8;
+            TP_WORLD_SIZE = 2;
+            DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
+            int ret = run_example_on_A3A5();
+        }
+        else if (rank_table_file && !first_rank_id) {
+            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
+            EP_WORLD_SIZE = 2;
+            TP_WORLD_SIZE = 1;
+            DEV_NUM = 2;
+            int ret = run_example_on_A3A5();
         }
         else if (rank_table_file && first_rank_id) {
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
+            EP_WORLD_SIZE = 16;
+            TP_WORLD_SIZE = 0;
+            DEV_NUM = EP_WORLD_SIZE;
             uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
             std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
             int ret = aclInit(nullptr);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
             for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-                threads[rankId] = std::make_unique<std::thread>([rankId]()
+                threads[rankId] = std::make_unique<std::thread>([rankId,&ret]()
                 {
                     int ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
                 });
@@ -1063,7 +1119,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         else {
             LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
         }
-    
+
         return 0;
     }
     ```

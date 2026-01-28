@@ -21,8 +21,8 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
-#include "mc2_log.h"
 #include "tiling_base/tiling_base.h"
+#include "tiling/mc2_opversion_manager.h"
 
 namespace optiling {
 constexpr uint32_t X_INDEX = 0U;
@@ -95,7 +95,7 @@ public:
     static ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode);
     static ge::graphStatus TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context,
-        const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask, const uint32_t opVersion);
+        const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask);
 protected:
     static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode, const uint32_t opVersion);
@@ -118,7 +118,7 @@ private:
     inline static bool CheckTensorDataTypeMxfp8(const gert::TilingContext *context, const char *nodeName);
     inline static bool CheckDistinctTensorDataType(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode);
-    inline static bool CheckTokenMask(gert::TilingContext *context, const char *nodeName);
+    inline static bool CheckTokenMask(const gert::TilingContext *context, const char *nodeName);
 };
 } // namespace optiling
 #endif // MOE_DISTRIBUTE_DISPATCH_TILING_HELPER_H

@@ -20,13 +20,13 @@
 #if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h")
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h"
 #include "../3rd/rms_norm/op_kernel/rms_norm_base.h"
-#include "../moe_distribute_dispatch/check_winsize.h"
+#include "../moe_distribute_dispatch_v2/check_winsize.h"
 #include "../common/inc/kernel/moe_distribute_base.h"
 #include "../common/inc/kernel/mc2_kernel_utils.h"
 #else
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "../../3rd/rms_norm/op_kernel/rms_norm_base.h"
-#include "../../moe_distribute_dispatch/op_kernel/check_winsize.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../common/inc/kernel/moe_distribute_base.h"
 #include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif

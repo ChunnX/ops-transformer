@@ -15,6 +15,7 @@
 
 #include "moe_distribute_dispatch_tiling_helper.h"
 #include "tiling/mc2_tiling_utils.h"
+#include "mc2_log.h"
 
 using namespace ge;
 
@@ -448,23 +449,24 @@ ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispa
 }
 
 ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context,
-    const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask, const uint32_t opVersion)
+    const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask)
 {
     // nodeName已在调用处判空
     const char *nodeName = context->GetNodeName();
+    auto opVersion = OpVersionManager::GetInstance().GetVersion();
     OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, quantMode, opVersion),
         OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorDataTypeA5(context, nodeName, isScales, quantMode),
         OP_LOGE(nodeName, "params dataType is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, isScales, quantMode),
         OP_LOGE(nodeName, "params format is invalid."), return ge::GRAPH_FAILED);
-    if ((opVersion != OP_VERSION_1) && (isTokenMask != 0)) {
+    if ((opVersion != OP_VERSION_1) && isTokenMask) {
         OP_TILING_CHECK(!CheckTokenMask(context, nodeName), OP_LOGE(nodeName, "xActiveMask is invalid."), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-bool MoeDistributeDispatchTilingHelper::CheckTokenMask(gert::TilingContext *context, const char *nodeName)
+bool MoeDistributeDispatchTilingHelper::CheckTokenMask(const gert::TilingContext *context, const char *nodeName)
 {
     // Check Dim/DType/Format
     const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);

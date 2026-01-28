@@ -12,39 +12,56 @@
  * \file moe_distribute_combine.cpp
  * \brief
  */
-#include "kernel_operator.h"
+#include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
-#include "moe_distribute_combine.h"
-#include "moe_distribute_combine_tiling.h"
-#include "moe_distribute_combine_a2.h"
-#include "moe_distribute_combine_a2_layered.h"
-#include "moe_distribute_combine_a2_layered_aicpu.h"
 #include "moe_distribute_combine_tiling_key.h"
 
+#include "moe_distribute_combine.h"
+#if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_tiling.h")
+#include "../moe_distribute_combine_v2/moe_distribute_combine_tiling.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_a2.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_a2_layered.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_a2_layered_aicpu.h"
+#else
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_a2.h"
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_a2_layered.h"
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_a2_layered_aicpu.h"
+#endif
 using namespace MoeDistributeCombineImpl;
 using namespace MoeDistributeCombineA2Impl;
+
 using namespace Mc2Tiling;
 using namespace AscendC;
 
 template<bool HasTp, uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
 __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-                                                  GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount,
-                                                  GM_ADDR xActiveMask, GM_ADDR activationScale,
-                                                  GM_ADDR weightScale, GM_ADDR groupList,
-                                                  GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM,
-                                                  GM_ADDR tilingGM)
+                                                GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount,
+                                                GM_ADDR xActiveMask, GM_ADDR activationScale,
+                                                GM_ADDR weightScale, GM_ADDR groupList,
+                                                GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM,
+                                                GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeCombineA2TilingData);
+    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeDistributeCombineTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A3", MoeDistributeCombineTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A2", MoeDistributeCombineA2TilingData);
-    TPipe pipe;
 
+    TPipe pipe;
+    
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
+#ifdef __DAV_C310__
+    if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+        GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingGM);
+        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT> op;
+        op.Init(expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
+        op.Process();
+    }
+#else
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingGM);
         MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT> op;
-        op.Init(expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, 
-                XOut, workspaceGM, &pipe, &tilingData);
+        op.Init(expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 
@@ -85,5 +102,6 @@ __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR exper
                 op.Process();
             }
     }
+#endif
 #endif
 }

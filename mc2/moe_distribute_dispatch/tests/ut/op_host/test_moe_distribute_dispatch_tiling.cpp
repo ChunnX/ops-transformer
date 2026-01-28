@@ -298,7 +298,7 @@ TEST_F(MoeDistributeDispatchTiling, moe_distribute_dispatch_test_tiling_6) {
         &compileInfo,
         "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 1000UL;
+    uint64_t expectTilingKey = 1024UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -496,7 +496,7 @@ TEST_F(MoeDistributeDispatchTiling, moe_distribute_dispatch_test_tiling_A2_quant
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 2000001000UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 TEST_F(MoeDistributeDispatchTiling, moe_distribute_dispatch_test_tiling_A2_quant0) {
@@ -534,7 +534,7 @@ TEST_F(MoeDistributeDispatchTiling, moe_distribute_dispatch_test_tiling_A2_quant
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 2000001000UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // A2 test
@@ -575,7 +575,7 @@ TEST_F(MoeDistributeDispatchTiling, moe_distribute_dispatch_test_tiling_A2_globa
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 2000001002UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 // 背景：4机 每机器8卡  每卡8个专家  由于deepseek 总共256 专家

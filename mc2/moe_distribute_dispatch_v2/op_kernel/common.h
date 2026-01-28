@@ -16,12 +16,6 @@
 #ifndef MC2_MOE_DISPATCH_COMM_H
 #define MC2_MOE_DISPATCH_COMM_H
 
-#if __has_include("../common/inc/kernel/mc2_kernel_utils.h")
-#include "../common/inc/kernel/mc2_kernel_utils.h"
-#else
-#include "../../common/inc/kernel/mc2_kernel_utils.h"
-#endif
-
 constexpr uint32_t NEED_ONE_HUNDRED_AND_TWENTY_SEVEN = 127;
 constexpr uint32_t RIGHT_SHIFT_BIT_SEVEN = 7;
 constexpr uint32_t NEED_THIRTY_FIRST = 31;
