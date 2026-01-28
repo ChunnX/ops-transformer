@@ -20,6 +20,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
+namespace SASKernel{
 using namespace AscendC;
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
 constexpr SoftmaxConfig SAS_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
@@ -313,5 +314,5 @@ struct MSplitInfo {
     uint32_t vecStartM = 0U;
     uint32_t vecDealM = 0U;
 };
-
+}
 #endif // SPARSE_ATTN_SHAREDKV_COMMON_H

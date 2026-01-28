@@ -17,7 +17,7 @@
 #define VF_ROPE_H
 
 #include "kernel_operator.h"
-#include "op_kernel/math_util.h"
+#include "../../compressor_comm.h"
 
 using namespace AscendC;
 
@@ -126,8 +126,10 @@ __aicore__ inline void HalfAlignVF(
     __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
     __local_mem__ T* outUb = (__local_mem__ T*)outTensor.GetPhyAddr();
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
-    uint32_t halfDAlign = Ops::Base::CeilAlign(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
-    uint16_t repeatTimes = Ops::Base::CeilDiv(halfD, VL_FLOAT32_SIZE);
+
+
+    uint32_t halfDAlign = Compressor::Align(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
+    uint16_t repeatTimes = Compressor::CeilDivT(halfD, VL_FLOAT32_SIZE);
     __local_mem__ T* currInUb;
     __local_mem__ T* currOutUb;
     __local_mem__ T* currSinUb;
@@ -187,7 +189,7 @@ __aicore__ inline void InterleaveModeVF(
     __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
     __local_mem__ ROPET* outUb = (__local_mem__ ROPET*)outTensor.GetPhyAddr();
     uint16_t repeatTimes = dLen / VL_FLOAT32_SIZE;//(每个寄存器256字节，最多存放数据256/4=64element，因此需要使用寄存器的数量)
-    uint32_t dAlignLen = Ops::Base::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
+    uint32_t dAlignLen = Compressor::Align(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     //Dlen(8对齐、32/4)RD=64
     uint16_t loopNum = repeatTimes / 2;//(开两个寄存器)
     uint32_t tailNum = dLen - loopNum * 2 * VL_FLOAT32_SIZE;//(尾块数据数)
@@ -200,9 +202,7 @@ __aicore__ inline void InterleaveModeVF(
     __local_mem__ ROPET* currCosUb;
     __local_mem__ ROPET* tailSinUb;
     __local_mem__ ROPET* tailCosUb;
-    // printf("interleavemode\n");
-    // printf("dLen:[%u]----currSNum:[%u]--currDNum:[%u]--loopNum[%u]---tailNum[%u]--tailTwoVL[%u]--tailOneVL[%u]--tailLen[%u]",
-    // dLen,currSNum,currDNum,loopNum,tailNum,tailTwoVL,tailOneVL,tailLen);
+
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<float> vregFormerCos;

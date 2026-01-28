@@ -644,24 +644,22 @@ def test_sas_quant_process(test_data, device_id=0):
     torch_npu.npu.set_device(device_id)
 
     print("npu_kv_quant_sparse_attn_sharedkv_metadata...")
-    # 手动构造metadata
-    # metadata = torch.zeros((2048), dtype=torch.int32)
-    # metadata[:3] = torch.tensor([1, 64, 128], dtype=torch.int32)  # 3个数：usedCoreNum, mBaseSize, s2BaseSize
-    # metadata[3:35] = torch.tensor([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 bN2End
-    # metadata[35:67] = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 mEnd
-    # metadata[67:99] = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 s2End
 
-    # metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
     metadata = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv_metadata(
+                                                        q=input['q'].npu() if input['q'] is not None else None,
                                                         num_heads_q = metadata_input['num_heads_q'],
                                                         num_heads_kv = metadata_input['num_heads_kv'],
                                                         head_dim = metadata_input['head_dim'],
-                                                        cu_seqlens_q = metadata_input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None, 
-                                                        seqused_kv = metadata_input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,    
+                                                        kv_quant_mode = 1,
+                                                        cu_seqlens_q=metadata_input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None,
+                                                        cu_seqlens_ori_kv = torch.tensor([]).npu(),
+                                                        cu_seqlens_cmp_kv = torch.tensor([]).npu(),
+                                                        seqused_q = torch.tensor([]).npu(),
+                                                        seqused_kv = metadata_input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,
                                                         batch_size = metadata_input['batch_size'],
                                                         max_seqlen_q = metadata_input['max_seqlen_q'],
                                                         max_seqlen_kv = metadata_input['max_seqlen_kv'],
-                                                        topk = metadata_input['topk'],
+                                                        cmp_topk = metadata_input['topk'],
                                                         cmp_ratio = metadata_input['cmp_ratio'],
                                                         ori_mask_mode = metadata_input['ori_mask_mode'],
                                                         cmp_mask_mode = metadata_input['cmp_mask_mode'],

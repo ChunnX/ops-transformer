@@ -22,6 +22,7 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "../sparse_attn_sharedkv_common.h"
 
+namespace SASKernel{
 template <typename SAST> class SASCubeBlock {
 public:
     // 中间计算数据类型为float, 高精度模式
@@ -79,7 +80,7 @@ private:
     static constexpr uint32_t L0AB_EVENT0 = EVENT_ID3;
     static constexpr uint32_t L0AB_EVENT1 = EVENT_ID4;
 
-    static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};                    // isSetFMatrix isSetPadding;
+    static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};                    // isSetFMatrix isSetPadding
     static constexpr uint32_t mte21QPIds[4] = {L1_EVENT0, L1_EVENT1, L1_EVENT2, L1_EVENT3}; // mte12复用
     static constexpr uint32_t mte21KVIds[3] = {L1_EVENT4, L1_EVENT5, L1_EVENT6};
 
@@ -320,7 +321,6 @@ __aicore__ inline void SASCubeBlock<SAST>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1
 template <typename SAST>
 __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const MSplitInfo mSplitInfo)
 {
-
     uint32_t mSize = mSplitInfo.nBufferDealM;
     uint32_t mL1Size = M_SPLIT_SIZE;
     uint32_t mL1SizeAlign = SASAlign(M_SPLIT_SIZE, 16);
@@ -350,10 +350,7 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
             nL1Size = nSize - (nL1Loops - 1) * N_SPLIT_SIZE;
             nL1SizeAlign = SASAlign(nL1Size, 16);
         }
-        // curTopKIdxTmp = curTopKIdx;
-        // curOffsetInSparseBlockTmp = curOffsetInSparseBlock;
         copyRowCntTmp = copyRowCnt;
-        // idInTopKTmp = idInTopK;
 
         for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) {
             kvL1BufIter++;
@@ -367,7 +364,8 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
             if (info.isOri) {
                 uint32_t curS2Offset = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
                 while (copyFinishRowCnt < nL1Size) {
-                    copyRowCnt = constInfo.paOriBlockSize - curS2Offset % constInfo.paOriBlockSize; // 由于ori_left的存在， 即使第一块搬运也可能并非是pa_block的零点位
+                    // 由于ori_left的存在， 即使第一块搬运也可能并非是pa_block的零点位
+                    copyRowCnt = constInfo.paOriBlockSize - curS2Offset % constInfo.paOriBlockSize;
                     if (copyFinishRowCnt + copyRowCnt > nL1Size) {
                         copyRowCnt = nL1Size - copyFinishRowCnt;
                     }
@@ -502,7 +500,7 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
 
                     Fixpipe(mm1ResGm[(info.loop % (constInfo.preLoadNum)) * constInfo.mmResUbSize + nL1 * N_SPLIT_SIZE +
                                      (mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE) *
-                                         info.actualSingleProcessSInnerSizeAlign],
+                                      info.actualSingleProcessSInnerSizeAlign],
                             cL0Tensor, fixParams);
                 }
                 if (mL1Loops == 2) {
@@ -764,5 +762,5 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
     }
     qpL1BufIter += mL1Loops;
 }
-
+}
 #endif // SPARSE_ATTN_SHAREDKV_SCFA_BLOCK_CUBE_H

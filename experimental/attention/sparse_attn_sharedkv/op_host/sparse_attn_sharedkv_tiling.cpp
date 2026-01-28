@@ -189,9 +189,10 @@ ge::graphStatus SASInfoParser::GetInOutDataType()
 ge::graphStatus SASInfoParser::GetSASTemplateMode(SASTilingInfo &sasInfo)
 {
     if (opParamInfo_.oriKv.desc != nullptr) {
-        if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor != nullptr) {
+        if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor != nullptr &&
+            opParamInfo_.cmpBlockTable.desc != nullptr) {
             sasInfo.perfMode = SASTemplateMode::SCFA_TEMPLATE_MODE;
-        } else if (opParamInfo_.cmpKv.desc != nullptr) {
+        } else if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpBlockTable.desc != nullptr) {
             sasInfo.perfMode = SASTemplateMode::CFA_TEMPLATE_MODE;
         } else {
             sasInfo.perfMode = SASTemplateMode::SWA_TEMPLATE_MODE;
@@ -537,7 +538,6 @@ void SASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
 
 ge::graphStatus SASInfoParser::Parse(SASTilingInfo &sasInfo)
 {
-
     if (context_ == nullptr) {
         OP_LOGE("SparseFlashAttention", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
@@ -582,13 +582,6 @@ ge::graphStatus SASInfoParser::Parse(SASTilingInfo &sasInfo)
 
 ge::graphStatus SASTilingCheck::Process()
 {
-    // Init();
-    // if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
-    //     CheckParaExistence() != ge::GRAPH_SUCCESS ||
-    //     CheckFeature() != ge::GRAPH_SUCCESS ||
-    //     CheckMultiParaConsistency() != ge::GRAPH_SUCCESS) {
-    //     return ge::GRAPH_FAILED;
-    // }
     return ge::GRAPH_SUCCESS;
 }
 

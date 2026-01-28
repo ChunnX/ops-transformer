@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file compressor_kernel.h
@@ -19,7 +19,6 @@
 #include "compressor_comm.h"
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
-#include "compressor_comm.h"
 #if (__CCE_AICORE__ == 220)
 #include "arch32/compressor_block_cube.h"
 #include "arch32/compressor_block_vec.h"
@@ -160,10 +159,6 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         __gm__ uint8_t *startPos,
         __gm__ uint8_t *cmpKvOut,
         __gm__ uint8_t *workspace) {
-    // printf("[VERSION] 20260110-001\n");
-    // printf("CompressorKernel::Init!!!!!\n");
-
-    // TODO CV非1:2需处理 
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;
     } else {
@@ -204,7 +199,6 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         curActSeqLength = cuSeqlensGm_.GetValue(1);
         accSeqLength = curActSeqLength;
         lastActSeqLength = cuSeqlensGm_.GetValue(constInfo.batchSize) - cuSeqlensGm_.GetValue(constInfo.batchSize - 1);
-        // printf("[Init] curActSeqLength:%u\n", curActSeqLength);
     } else {
         lastActSeqLength = constInfo.sSize;
     }
@@ -231,7 +225,6 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     if (constInfo.curGroupIdx > constInfo.tailGroupIdx) {
         constInfo.realDealBasicBlockNum = 0;
     }
-    // printf("[BASEINFO] tcSize:%u tcBaseSize:%u tcBasicBlockNum:%u dBasicBlockNum:%u coreGroupNum:%u singleCoreDealTcBasicNum:%u\n", constInfo.tcSize, constInfo.tcBaseSize, constInfo.tcBasicBlockNum, constInfo.dBasicBlockNum, constInfo.coreGroupNum, constInfo.singleCoreDealTcBasicNum);
     InitWorkspace(workspace);
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo);
@@ -277,7 +270,6 @@ __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.curMm1ResSize = tilingData_->workspaceParams.curMm1ResSize;
     constInfo.nSize =  tilingData_->baseParams.nSize;
     constInfo.vec1ResSize = tilingData_->workspaceParams.vec1ResSize;
-    // printf("[TILINGDATA] cmpRatio:%u batchSize:%u mBaseSize:%u dBaseSize:%u\n", constInfo.cmpRatio, constInfo.batchSize, constInfo.mBaseSize, constInfo.dBaseSize);
 }
 
 template <typename COMP>
@@ -315,8 +307,6 @@ __aicore__ inline uint32_t CompressorKernel<COMP>::CalcTcSize() {
         GetStartPos(bIdx);
         GetSeqLength(bIdx);
         totalBasicNum += GetBasicNum();
-
-        // printf("[CalcTcSize] curActSeqLength:%u totalBasicNum:%d\n", curActSeqLength, totalBasicNum);
     }
     
     return totalBasicNum;
@@ -324,7 +314,6 @@ __aicore__ inline uint32_t CompressorKernel<COMP>::CalcTcSize() {
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::GetSeqLength(uint32_t bIdx) {
-    // printf("[GetSeqLength] preActSeqIdx:%u bIdx:%u\n", preActSeqIdx, bIdx);
     if (preActSeqIdx != bIdx) {
         preActSeqIdx = bIdx;
         if (isExistSeqUsed) {
@@ -349,7 +338,6 @@ __aicore__ inline void CompressorKernel<COMP>::GetSeqLength(uint32_t bIdx) {
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::GetStartPos(uint32_t bIdx) {
-    // printf("[GetStartPos] preStartPosIdx:%u index:%u\n", preStartPosIdx, bIdx);
     if (!isExistStartPos) {
         curStartPos = 0;
     } else if (preStartPosIdx != bIdx) {
@@ -372,11 +360,8 @@ __aicore__ inline void CompressorKernel<COMP>::GetCurCoreStartIdx() {
         curBEnd = constInfo.batchSize;
         return;
     }
-    // printf("[tcStart] aiCoreIdx:%u tcStart:%u\n", constInfo.aiCoreIdx, tcStart);
     for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
-        // TODO 考虑是否有其他情况
         if (totalBasicNum == tcStart) {
-            // printf("[PRINT] b:%u tcStart:%u\n", bIdx, tcStart);
             curBEnd = bIdx;
             curSEnd = 0;
             curScEnd = 0;
@@ -391,7 +376,6 @@ __aicore__ inline void CompressorKernel<COMP>::GetCurCoreStartIdx() {
         curBasicNum = headSize > 0 ? curBasicNum + 1 : curBasicNum;
         // 加上中间整块及尾块
         curBasicNum += (curActSeqLength - headSize + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
-        // printf("[PRINT] b:%u tcStart:%u headSize:%u curBasicNum:%u  curStartPos:%u, curActSeqLength:%u\n", bIdx, tcStart, headSize, curBasicNum, curStartPos, curActSeqLength);
         if (totalBasicNum + curBasicNum > tcStart) {
             uint32_t curBasicNumStart = tcStart - totalBasicNum;
             if (curBasicNumStart > 0 && headSize > 0) {
@@ -461,7 +445,8 @@ __aicore__ inline void CompressorKernel<COMP>::CalcParams(RunInfo &info) {
 
     // sEnd到了seq末尾，切换到下一个batch
     GetSeqLength(curBStart);
-    if (curSStart == curActSeqLength) {
+    // 跳batch处理，batch=0且seq=0时不跳
+    if (curSStart == curActSeqLength && (curBStart != 0 || curActSeqLength != 0)) {
         curBStart++;
         curSStart = 0;
         info.scStart = 0;
@@ -528,8 +513,6 @@ __aicore__ inline void CompressorKernel<COMP>::CalcParams(RunInfo &info) {
                 curSEnd = curActSeqLength;
             }
         }
-        // printf("[CalcParams] dealTcNum:%u headSize:%u curBatchTcNum:%u curDealTcNum:%u curDealTcNum:%u tcNumCount:%u\n", dealTcNum, headSize, curBatchTcNum, curDealTcNum, tcNumCount);
-        // printf("[CalcParams] sStart:%u sEnd:%u scStart:%u scEnd:%u\n", info.sStart, info.sEnd, info.scStart, info.scEnd);
         info.sEnd = curSEnd;
         curScEnd = info.scEnd;
 
@@ -553,7 +536,6 @@ __aicore__ inline bool CompressorKernel<COMP>::IsNeedExcute(uint32_t curBasicBlo
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeMm1(const RunInfo &info) {
-    // printf("[COMPUTE] MM1 bStart:%u bEnd:%u sStart:%d sEnd:%u dealTcNum:%u\n", info.bStart, info.bEnd, info.sStart, info.sEnd, info.dealTcNum);
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
     blockCube_.ComputeMm1(info);
     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
@@ -561,7 +543,6 @@ __aicore__ inline void CompressorKernel<COMP>::ComputeMm1(const RunInfo &info) {
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeVec1(const RunInfo &info) {
-    // printf("[COMPUTE] VEC1 bStart:%u bEnd:%u sStart:%d sEnd:%u dealTcNum:%u\n", info.bStart, info.bEnd, info.sStart, info.sEnd, info.dealTcNum);
 #if (__CCE_AICORE__ == 220)
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG);
 #else
@@ -577,7 +558,6 @@ __aicore__ inline void CompressorKernel<COMP>::ComputeVec1(const RunInfo &info) 
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeVec2(const RunInfo &info) {
-    // printf("[COMPUTE] VEC2 bStart:%u bEnd:%u sStart:%d sEnd:%u dealTcNum:%u\n", info.bStart, info.bEnd, info.sStart, info.sEnd, info.dealTcNum);
     blockVec_.ComputeVec2(info);
 }
 
@@ -607,7 +587,6 @@ __aicore__ inline void CompressorKernel<COMP>::FreeEventID() {
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::Process() {
-    // printf("CompressorKernel::Process!!!!!\n");
     AllocEventID();
 
     RunInfo extraInfo[1];
@@ -651,6 +630,7 @@ __aicore__ inline void CompressorKernel<COMP>::Process() {
                         ComputeVec2(vec2Info);
                     }
                 }
+                SyncAll();
             }
         }
     }

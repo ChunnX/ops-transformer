@@ -284,8 +284,12 @@ private:
   CpuKernelContext *context_ = nullptr;
 
   // input
+  Tensor *q_ = nullptr;
   Tensor *actSeqLenQ_ = nullptr;
-  Tensor *actSeqLenKV_ = nullptr;
+  Tensor *actSeqLenOriKV_ = nullptr;
+  Tensor *actSeqLenCmpKV_ = nullptr;
+  Tensor *SeqUsedQ_ = nullptr;
+  Tensor *SeqUsedKV_ = nullptr;
 
   // output
   Tensor *metaData_ = nullptr;
@@ -297,11 +301,12 @@ private:
   uint32_t kvSeqSize_ = 0;
   uint32_t kvHeadNum_ = 0;
   uint32_t headDim_ = 0;
-  uint32_t topK_ = 0;
-  uint32_t cmpRatio_ = 1;
+  uint32_t oriTopK_ = 0;
+  uint32_t cmpTopK_ = 0;
+  uint32_t cmpRatio_ = -1;
   uint32_t winMaskMode_ = 4;
   uint32_t cmpMaskMode_ = 3;
-  int64_t winLeft_ = 128;
+  int64_t winLeft_ = 127;
   int64_t winRight_ = 0;
   std::string layoutQuery_ = "BSND";
   std::string layoutKV_ = "PA_ND";
@@ -330,8 +335,12 @@ private:
 private:
   enum class ParamId : uint32_t {
     // input
-    actSeqLenQ = 0,
-    actSeqLenKV = 1,
+    q = 0,
+    actSeqLenQ = 1,
+    actSeqLenOriKV = 2,
+    actSeqLenCmpKV = 3,
+    SeqUsedQ = 4,
+    SeqUsedKV = 5,
     // output
     metaData = 0,
   };

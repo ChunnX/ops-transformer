@@ -85,7 +85,7 @@ bool QuantLightningIndexerMetadataCpuKernel::ParamsInit() {
         attentionMode_ = 1;
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
-    if (actSeqLenQ_ != nullptr) {
+    if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
         auto shape = actSeqLenQ_->GetTensorShape();
         const int32_t *s1Ptr = (int32_t*)actSeqLenQ_->GetData();
         if (s1Ptr[0] == 0 && layoutQuery_ == "TND") {
@@ -111,7 +111,7 @@ bool QuantLightningIndexerMetadataCpuKernel::ParamsInit() {
 
 uint32_t QuantLightningIndexerMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
-    if (actSeqLenQ_ == nullptr) {
+    if (actSeqLenQ_ == nullptr || actSeqLenQ_->GetData() == nullptr) {
         return maxSeqlenQ_;
     }
     const int32_t *s1Ptr = (int32_t*)actSeqLenQ_->GetData();
@@ -130,7 +130,7 @@ uint32_t QuantLightningIndexerMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 uint32_t QuantLightningIndexerMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
     uint32_t s2Size = 0;
-    if (actSeqLenKV_ == nullptr) {
+    if (actSeqLenKV_ == nullptr || actSeqLenKV_->GetData() == nullptr) {
         s2Size = maxSeqlenK_ * cmpRatio_;
     } else {
         const int32_t *s2Ptr = (int32_t*)actSeqLenKV_->GetData();

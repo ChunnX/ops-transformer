@@ -6,16 +6,15 @@
 |<term>Atlas A5 推理系列产品</term>   | √  |
 
 ## 功能说明
-- API功能：kv_quant_sparse_attn_sharedkv 是针对大序列长度推理场景的高效注意力计算模块，该模块包含slide_window_attention、compress_flash_attention和sparse_compress_flash_attention，同时兼顾局部和全局注意力。
+- API功能：KVQuantSparseAttentionSharedKV 算子旨在完成以下形式的Attention计算，支持Sliding Window Attention、Compressed Flash Attention及两者混合：
 
 - 计算公式：
 
     $$
-    \text{softmax}(\frac{Q@\tilde{K}^T}{\sqrt{d_k}})@\tilde{V}
+    O = \text{softmax}(Q@\tilde{K}^T \cdot \text{softmax\_scale})@\tilde{V}
     $$
 
-    其中$\tilde{K},\tilde{V}$为基于ori_kv、cmp_kv以及cmp_kv入参控制的实际参与计算Key和Value，$d_k$为$Q,\tilde{K}$每一个头的维度。
-    本次公布的`kv_quant_sparse_attn_sharedkv`是面向Sparse Attention的全新算子，针对离散访存进行了指令缩减及搬运聚合的细致优化。
+    其中$\tilde{K}=\tilde{V}$为基于入参控制的实际参与计算的$KV$。
 
 ## 函数原型
 
@@ -181,3 +180,126 @@ softmax_scale=0, cmp_ratio=0, ori_mask_mode=4, cmp_mask_mode=3, ori_win_left=128
                                                 layout_q=layout_q,
                                                 layout_kv=layout_kv)
     ``` 
+
+-   图模式调用
+    ```python
+    import torch
+    import torch_npu
+    import numpy as np
+    import random
+    import math
+    import custom_ops
+    import torchair
+    from torchair.configs.compiler_config import CompilerConfig
+
+    class Network(torch.nn.Module):
+        def __init__(self):
+            super(Network, self).__init__()
+
+        def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
+            cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, tile_size, rope_head_dim, 
+            softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
+            return torch_npu.npu_kv_quant_sparse_attn_sharedkv(
+                                                q=q,
+                                                ori_kv=ori_kv,
+                                                cmp_kv=cmp_kv,
+                                                cmp_sparse_indices=cmp_sparse_indices,
+                                                ori_block_table=ori_block_table,
+                                                cmp_block_table=cmp_block_table,
+                                                cu_seqlens_q=cu_seqlens_q,
+                                                seqused_kv=seqused_kv,
+                                                sinks=sinks,
+                                                metadata=metadata,
+                                                kv_quant_mode=kv_quant_mode,
+                                                tile_size=tile_size,
+                                                rope_head_dim=rope_head_dim,
+                                                softmax_scale=softmax_scale,
+                                                cmp_ratio=cmp_ratio,
+                                                ori_mask_mode=ori_mask_mode,
+                                                cmp_mask_mode=cmp_mask_mode,
+                                                ori_win_left=ori_win_left,
+                                                ori_win_right=ori_win_right,
+                                                layout_q=layout_q,
+                                                layout_kv=layout_kv)
+
+    layout_q="TND"
+    layout_kv="PA_ND"
+    q_type=torch.bfloat16
+    ori_kv_type=torch.float8_e4m3fn
+    cmp_kv_type=torch.float8_e4m3fn
+    B = 1
+    S1 = 1
+    T1 = 1
+    S2 = 8193
+    actS2 = 8193
+    N1 = 64
+    N2 = 1
+    D = 512
+    K = 512
+    block_size1 = 128
+    block_size2 = 128
+    softmax_scale = 0.04419417
+    cmp_ratio = 4
+    ori_mask_mode = 4
+    cmp_mask_mode = 3
+    ori_win_left = 127
+    ori_win_right = 0
+    kv_quant_mode = 1
+    tile_size = 64
+    rope_head_dim = 64
+
+    q = torch.tensor(np.random.uniform(-10, 10, (B*S1, N1, D))).to(q_type).npu()
+        
+    cu_seqlens_q = torch.arange(0, (B + 1) * S1, step=S1).to(torch.int32).npu()
+    seqused_kv = torch.tensor([S2]*B).to(torch.int32).npu()
+
+    cmp_kv_len = actS2 // cmp_ratio
+    idxs = random.sample(range(cmp_kv_len - S1 + 1),  K)
+    cmp_sparse_indices = torch.tensor([idxs for _ in range(B * S1 * N2)]).reshape(B, S1, N2, K).to(torch.int32).npu()
+        
+    block_num1 =  math.ceil(actS2/block_size1) * B
+    block_table1 = torch.tensor(np.random.permutation(range(block_num1))).to(torch.int32).reshape(B, -1).npu()
+    ori_kv = torch.tensor(np.random.uniform(-5, 10, (block_num1, block_size1, N2, D))).to(ori_kv_type).npu()
+
+    block_num2 =  math.ceil(cmp_kv_len/block_size2) * B
+    block_table2 = torch.tensor(np.random.permutation(range(block_num2))).to(torch.int32).reshape(B, -1).npu()
+    cmp_kv = torch.tensor(np.random.uniform(-5, 10, (block_num2, block_size2, N2, D))).to(cmp_kv_type).npu()
+    sinks = torch.rand(N1).to(torch.float32).npu()
+
+    metadata = torch.zeros((2048), dtype=torch.int32)
+    metadata[:3] = torch.tensor([1, 64, 128], dtype=torch.int32)  # 3个数：usedCoreNum, mBaseSize, s2BaseSize
+    metadata[3:35] = torch.tensor([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 bN2End
+    metadata[35:67] = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 mEnd
+    metadata[67:99] = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # 32个数 s2End
+    metadata = metadata.npu()
+
+    npu_mode = Network().npu()
+    config = CompilerConfig()
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+    torch._dynamo.reset()
+    config.mode = "reduce-overhead"
+    npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=True)
+
+    attn_out = npu_mode(q,
+                ori_kv=ori_kv,
+                cmp_kv=cmp_kv,
+                cmp_sparse_indices=cmp_sparse_indices,
+                ori_block_table=block_table1,
+                cmp_block_table=block_table2,
+                cu_seqlens_q=cu_seqlens_q,
+                seqused_kv=seqused_kv,
+                sinks=sinks,
+                metadata=metadata,
+                kv_quant_mode=kv_quant_mode,
+                tile_size=tile_size,
+                rope_head_dim=rope_head_dim,
+                softmax_scale=softmax_scale,
+                cmp_ratio=cmp_ratio,
+                ori_mask_mode=ori_mask_mode,
+                cmp_mask_mode=cmp_mask_mode,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
+                layout_q=layout_q,
+                layout_kv=layout_kv)
+    print(attn_out)
+    ```

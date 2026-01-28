@@ -22,6 +22,7 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "../sparse_attn_sharedkv_common.h"
 
+namespace SASKernel{
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
@@ -44,8 +45,7 @@ public:
                                       const SparseAttnSharedkvTilingData *__restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
-                                                GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> lseMaxFdGm,
-                                                GlobalTensor<T> lseSumFdGm, GlobalTensor<T> sinksGm);
+                                                GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> sinksGm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void AllocEventID();
@@ -132,8 +132,6 @@ private:
 
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<KV_T> vec1ResGm;
-    GlobalTensor<T> lseSumFdGm;
-    GlobalTensor<T> lseMaxFdGm;
     GlobalTensor<T> softmaxMaxGm;
     GlobalTensor<T> softmaxSumGm;
     GlobalTensor<T> sinksGm;
@@ -201,8 +199,8 @@ __aicore__ inline void SWAVectorBlock<SAST>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(softmaxSumDefaultBuff, ConstInfo::BUFFER_SIZE_BYTE_1K);
 
     pipe->InitBuffer(sinksBuff, MAX_N1_SIZE * sizeof(SINKS_T));
-    // pipe->InitBuffer(sinksBrcbBuff, MAX_N1_SIZE * sizeof(SINKS_T) * BLOCK_ELEMENT_NUM);
-    pipe->InitBuffer(sinksBrcbBuff, MAX_N1_SIZE * sizeof(SINKS_T) * BLOCK_ELEMENT_NUM * 3U);  // 分配256+N1大小内存，其中256是m轴VEC最大切块
+    // 分配256+N1大小内存，其中256是m轴VEC最大切块
+    pipe->InitBuffer(sinksBrcbBuff, MAX_N1_SIZE * sizeof(SINKS_T) * BLOCK_ELEMENT_NUM * 3U);
 
     softmaxMaxUb = softmaxMaxBuff.Get<T>();
     softmaxSumUb = softmaxSumBuff.Get<T>();
@@ -211,7 +209,6 @@ __aicore__ inline void SWAVectorBlock<SAST>::InitBuffers(TPipe *pipe)
     softmaxMaxDefaultUb = softmaxMaxDefaultBuff.Get<T>();
     softmaxSumDefaultUb = softmaxSumDefaultBuff.Get<T>();
 
-    // v0ValidSizeUb_ = v0ValidSizeBuff.Get<int32_t>();
     sinksUb = sinksBuff.Get<SINKS_T>();
     sinksBrcbUb = sinksBrcbBuff.Get<SINKS_T>();
 }
@@ -229,15 +226,12 @@ SWAVectorBlock<SAST>::InitParams(const struct ConstInfo &constInfo,
 template <typename SAST>
 __aicore__ inline void SWAVectorBlock<SAST>::InitVec1GlobalTensor(
     GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
-    GlobalTensor<int32_t> actualSeqLengthsQGm, GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> lseMaxFdGm,
-    GlobalTensor<T> lseSumFdGm, GlobalTensor<SINKS_T> sinksGm)
+    GlobalTensor<int32_t> actualSeqLengthsQGm, GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<SINKS_T> sinksGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
     this->actualSeqLengthsQGm = actualSeqLengthsQGm;
     this->actualSeqLengthsKVGm = actualSeqLengthsKVGm;
-    this->lseMaxFdGm = lseMaxFdGm;
-    this->lseSumFdGm = lseSumFdGm;
     this->sinksGm = sinksGm;
 }
 
@@ -301,7 +295,8 @@ template <typename SAST> __aicore__ inline void SWAVectorBlock<SAST>::CopySinksI
 
 template <typename SAST> __aicore__ inline void SWAVectorBlock<SAST>::SliceAndContactSinksValue(uint32_t nIdx, uint32_t dealRowCount)
 {
-    uint32_t repeatTimesOnce = 128;  //由于WholeReduceMax接口中repeatTimes支持范围（0,255），因此需要分多次调用WholeReduceMax，这里就使用每次repeatTime=128
+    // 由于WholeReduceMax接口中repeatTimes支持范围（0,255），因此需要分多次调用WholeReduceMax，这里就使用每次repeatTime=128
+    uint32_t repeatTimesOnce = 128;
     uint32_t loopTimes = (dealRowCount + repeatTimesOnce - 1) / repeatTimesOnce;
     uint32_t repeatTimes = repeatTimesOnce;
 
@@ -376,11 +371,6 @@ __aicore__ inline void SWAVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
 
     DataCopy(mmResUb, mm1ResGm[inOutGmOffset], computeSize);
-    // if (!info.isOri) {
-    //     if (loopId == 0) {
-    //         WaitFlag<HardEvent::MTE2_S>(0);
-    //     }
-    // }
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 
@@ -657,7 +647,8 @@ SWAVectorBlock<SAST>::DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo
 
         uint32_t idx = info.loop % (constInfo.preLoadNum);
         LocalTensor<T> expUb = v0ValidSizeBuff.Get<T>()[384]; // sumUb用临时内存 16 * 32B  = 512B
-        Brcb(expUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8, {1, 8});
+        Brcb(expUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset],
+            (dealRowCount + 7) / 8, {1, 8});
         PipeBarrier<PIPE_V>();
 
         RowMuls(bmm2ResPreUb, bmm2ResPreUb, expUb, dealRowCount, columnCount, actualColumnCount);
@@ -672,7 +663,8 @@ SWAVectorBlock<SAST>::DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo
     if (info.isLastS2Loop) {
         uint32_t idx = info.loop % (constInfo.preLoadNum);
         LocalTensor<T> tmpSumUb = v0ValidSizeBuff.Get<T>()[384]; // sumUb用临时内存 16 * 32B  = 512B
-        Brcb(tmpSumUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8, {1, 8});
+        Brcb(tmpSumUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset],
+            (dealRowCount + 7) / 8, {1, 8});
         PipeBarrier<PIPE_V>();
         RowDivs(bmm2ResUb, bmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
         PipeBarrier<PIPE_V>();
@@ -817,5 +809,5 @@ SWAVectorBlock<SAST>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Local
         }
     }
 }
-
+}
 #endif

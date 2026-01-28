@@ -17,9 +17,7 @@
 #define VF_MUL_H
 #include "kernel_operator.h"
 using namespace AscendC;
-// constexpr uint32_t FLOAT_REP_SIZE = 64;
-// constexpr uint32_t BTYEALIGNSIZE = 32;
-// constexpr uint32_t REGSIZE = 256;
+
 constexpr uint32_t FLOATBYTE = 4;
 constexpr uint32_t baseD32 = 32;
 constexpr uint32_t baseD64 = 64;

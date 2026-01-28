@@ -20,7 +20,11 @@ extern "C" {
 
 __attribute__((visibility("default"))) aclnnStatus
 aclnnKVQuantSparseAttnSharedkvMetadataGetWorkspaceSize(
+    const aclTensor* q,
     const aclTensor* cuSeqLensQOptional,
+    const aclTensor* cuSeqLensOriKvOptional,
+    const aclTensor* cuSeqLensCmpKvOptional,
+    const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKvOptional,
     int64_t numHeadsQ,
     int64_t numHeadsKv,
@@ -28,7 +32,11 @@ aclnnKVQuantSparseAttnSharedkvMetadataGetWorkspaceSize(
     int64_t batchSizeOptional,
     int64_t maxSeqlenQOptional,
     int64_t maxSeqlenKvOptional,
-    int64_t topKOptional,
+    int64_t oriTopKOptional,
+    int64_t cmpTopKOptional,
+    int64_t kvQuantMode,
+    int64_t tileSizeOptional,
+    int64_t ropeHeadDimOptional,
     int64_t cmpRatioOptional,
     int64_t oriMaskModeOptional,
     int64_t cmpMaskModeOptional,

@@ -112,13 +112,6 @@ class GeneralizedQLI:
             if curr_actualSeq_q != 0:
                 actual_selected_count = min(curr_actualSeq_k, self.sparse_count)
                 z1,z2 = self.cal_atten_per_batch(b_idx)
-                # print("cal_atten_per_batch z1 :", z1.shape)
-                # print("cal_atten_per_batch z2 :", z2.shape)
-                # print("curr_actualSeq_q:", curr_actualSeq_q)
-                # print("actual_selected_count:", actual_selected_count)
-                # print("curr_actualSeq_k:", curr_actualSeq_k )
-                # print("y shape:", y.shape) 
-                # print("y_value shape:", y_value.shape) 
                 y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
                                                                                     :curr_actualSeq_q,
                                                                                     :curr_actualSeq_k] = self.cal_atten_per_batch(b_idx)
@@ -602,14 +595,25 @@ def qli_output_single(params):
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
 
     #关于metadata的设置
-    metadata = torch.zeros((2048), dtype = torch.int32)
-    usedCoreNum = 24 
-    mBaseSize = 256
-    s2BaseSize = 2048
-    metadata[:3] = torch.tensor([usedCoreNum, mBaseSize, s2BaseSize], dtype=torch.int32)
-    metadata[3:27] = torch.zeros((usedCoreNum), dtype = torch.int32) #bN2End 每个核处理数据的BN2结束点
-    metadata[27:51] = torch.zeros((usedCoreNum), dtype = torch.int32) #mEnd 每个核处理数据的M结束点
-    metadata[51:75] = torch.zeros((usedCoreNum), dtype = torch.int32) #s2End 每个核处理数据的S2结束点
+    metadata = torch_npu.npu_quant_lightning_indexer_metadata(
+                                    query = query,
+                                    num_heads_q=q_head_num,
+                                    num_heads_k=k_head_num,
+                                    head_dim = head_dim,
+                                    query_quant_mode=query_quant_mode, 
+                                    key_quant_mode=key_quant_mode,
+                                    actual_seq_lengths_query=actual_seq_lengths_query, 
+                                    actual_seq_lengths_key=actual_seq_lengths_key,
+                                    batch_size=batch_size, 
+                                    max_seqlen_q=q_seq,
+                                    max_seqlen_k=k_seq,  
+                                    layout_query=layout_query, 
+                                    layout_key=layout_key,
+                                    sparse_count=sparse_count, 
+                                    sparse_mode=sparse_mode, 
+                                    pre_tokens=(1<<63)-1, 
+                                    next_tokens=(1<<63)-1, 
+                                    cmp_ratio=cmp_ratio)
     metadata = metadata.npu()
     
 

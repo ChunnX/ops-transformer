@@ -14,7 +14,7 @@ import itertools
 import torch
 import torch_npu
 from testcases_qli import ENABLED_PARAMS
-import check_result
+import check_result_a5
 import qli_single
 import pytest
 
@@ -29,7 +29,8 @@ for _, params in enumerate(ENABLED_PARAMS):
     param_names = [
         "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim", 
         "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "act_seq_q","act_seq_k",
-        "query_quant_mode", "key_quant_mode", "layout_query","layout_key", "sparse_count", "sparse_mode", "cmp_ratio"
+        "query_quant_mode", "key_quant_mode", "layout_query","layout_key", "sparse_count", "sparse_mode", 
+        "query_datarange","key_datarange","weights_datarange","q_scale_datarange","k_scale_datarange","cmp_ratio"
     ]
 
     param_values = [
@@ -54,6 +55,11 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_layout_key"],
         locals()["param_sparse_count"],
         locals()["param_sparse_mode"],
+        locals()["param_query_datarange"],
+        locals()["param_key_datarange"],
+        locals()["param_weights_datarange"],
+        locals()["param_q_scale_datarange"],
+        locals()["param_k_scale_datarange"],
         locals()["param_cmp_ratio"]
     ]
 
@@ -66,7 +72,7 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     @pytest.mark.ci
     @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
-    def test_sparse_flash_attention(param_combinations):   # 初始化参数和tensor
+    def test_qli(param_combinations):   # 初始化参数和tensor
         batch_size = param_combinations['batch_size']
         q_seq = param_combinations['q_seq']
         k_seq = param_combinations['k_seq']
@@ -88,6 +94,11 @@ for _, params in enumerate(ENABLED_PARAMS):
         layout_key = param_combinations['layout_key']
         sparse_count = param_combinations['sparse_count']
         sparse_mode = param_combinations['sparse_mode']
+        query_datarange = param_combinations['query_datarange']
+        key_datarange = param_combinations['key_datarange']
+        weights_datarange = param_combinations['weights_datarange']
+        q_scale_datarange = param_combinations['q_scale_datarange']
+        k_scale_datarange = param_combinations['k_scale_datarange']
         cmp_ratio = param_combinations['cmp_ratio']
 
 
@@ -95,24 +106,21 @@ for _, params in enumerate(ENABLED_PARAMS):
 
 
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
-                    qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,\
-                    key_quant_mode, layout_query, layout_key, sparse_count, sparse_mode, cmp_ratio
+                    qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, layout_query,\
+                    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
+                    k_scale_datarange, cmp_ratio
         
 
-        print("test_data:", test_data)
-
-        # 输入参数的合法性校验
-        # try:
-        #     check_valid_param.check_valid_param(test_data)
-        # except ValueError as e:
-        #     pytest.skip(f"输入参数校验失败:{e}")
+        # print("test_data:", test_data)
 
         # 获得cpu结果(真值)和算子结果（测试值）
-        cpu_result, npu_result = qli_single.qli_output_single(test_data)
+        cpu_result, npu_result, topk_value = qli_single.qli_output_single(test_data)
 
         
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
 
         # 结果精度对比
-        check_result.check_result(cpu_result, npu_result)
+        result, fulfill_percent = check_result_a5._compare_res(cpu_result, npu_result)
+        print("result", result)
+        print("result", fulfill_percent)
