@@ -20,7 +20,7 @@
 #endif
 
 #if defined(__DAV_C310__)
-#include "arch35/grouped_matmul_add_basic_act.h"
+#include "arch35/grouped_matmul_add_basic_cgmct.h"
 #else
 #include "grouped_matmul_add.h"
 #endif

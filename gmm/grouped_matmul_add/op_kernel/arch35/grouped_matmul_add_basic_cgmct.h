@@ -9,25 +9,25 @@
  */
 
 /*!
- * \file grouped_matmul_add_basic_act.h.h
+ * \file grouped_matmul_add_basic_cgmct.h
  * \brief
  */
 
-#ifndef __GROUPED_MATMUL_ADD_NO_QUANT_KERNEL_ACT
-#define __GROUPED_MATMUL_ADD_NO_QUANT_KERNEL_ACT
+#ifndef __GROUPED_MATMUL_ADD_NO_QUANT_KERNEL_CGMCT
+#define __GROUPED_MATMUL_ADD_NO_QUANT_KERNEL_CGMCT
 
-#include "../../../common/cgmct/kernel/kernel_grouped_matmul_add.h"
-#include "../../../common/cgmct/block/block_scheduler_grouped_matmul_aswt.h"
+#include "cgmct/kernel/kernel_grouped_matmul_add.h"
+#include "cgmct/block/block_scheduler_grouped_matmul_aswt.h"
 #include "../grouped_matmul_add.h"
 #include "grouped_matmul_add_tiling_data.h"
 
-using namespace Act::Gemm;
-using namespace Act::Gemm::Kernel;
+using namespace Cgmct::Gemm;
+using namespace Cgmct::Gemm::Kernel;
 
 namespace GroupedMatmulAdd {
 
 template <typename layoutA, typename layoutB>
-__aicore__ inline void GmmAddAct(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
+__aicore__ inline void GmmAddCgmct(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GmmAddTilingDataParams, gmmAddParams, gmmBaseParams_, tiling);
     GET_TILING_DATA_MEMBER(GmmAddTilingDataParams, mmTilingData, mmTilingData_, tiling);

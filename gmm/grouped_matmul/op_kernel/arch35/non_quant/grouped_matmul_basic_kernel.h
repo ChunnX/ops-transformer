@@ -16,13 +16,13 @@
 #ifndef NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
 #define NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
 
-#include "../../../../common/cgmct/kernel/kernel_grouped_matmul.h"
-#include "../../../../common/cgmct/block/block_scheduler_grouped_matmul_aswt.h"
+#include "cgmct/kernel/kernel_grouped_matmul.h"
+#include "cgmct/block/block_scheduler_grouped_matmul_aswt.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "../../grouped_matmul_utils.h"
 
-using namespace Act::Gemm;
-using namespace Act::Gemm::Kernel;
+using namespace Cgmct::Gemm;
+using namespace Cgmct::Gemm::Kernel;
 using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 
 namespace GROUPED_MATMUL {
