@@ -1296,7 +1296,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIGradK
     PipeBarrier<PIPE_V>();
 
     if ((runInfo.s1Idx + 1) < constInfo.cmp_ratio) {
-        Duplicate(dwOutTensor, (CV_T)0.0, gSizePerVec);
+        Duplicate(dwOutTensor, (KV_T)0.0, gSizePerVec);
     } else {
         Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
     }
@@ -1433,7 +1433,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIG
     if (kLoopIdx == runInfo.kLoopTimes - 1) {
         PipeBarrier<PIPE_V>();
         if ((runInfo.s1Idx + 1) < constInfo.cmp_ratio) {
-            Duplicate(dwOutTensor, (CV_T)0.0, gSizePerVec);
+            Duplicate(dwOutTensor, (KV_T)0.0, gSizePerVec);
         } else {
             Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
         }
