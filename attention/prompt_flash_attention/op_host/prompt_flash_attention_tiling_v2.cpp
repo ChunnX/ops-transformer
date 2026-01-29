@@ -884,6 +884,10 @@ bool PromptFlashAttentionTilingV2::CheckPerTensorQuantParams(const ContextParams
             "inputParamsType must be INT8 in per-tensor quant scenario, now is %s", 
             GetPfaDataTypeStr(contextKeyParams.inputDataType).c_str()),
         return false);
+    OP_CHECK_IF((inputLayout == InputLayout::TND),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "TND is not supported in per-tensor quant scenario."),
+        return false);
     OP_CHECK_IF((deqScale1Shape == nullptr) || (quantScale1Shape == nullptr) || (deqScale2Shape == nullptr),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "deqScale1, quantScale1 or deqScale2 is nullptr in per-tensor quant scenario."),
