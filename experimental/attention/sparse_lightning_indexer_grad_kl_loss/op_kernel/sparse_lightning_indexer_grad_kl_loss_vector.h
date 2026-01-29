@@ -695,8 +695,8 @@ __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetS2SparseLen(int32_t s
     int32_t actualSeqLensQ, int32_t actualSeqLensK, int64_t cmpRatio, SLISparseMode sparseMode)
 {
     if (sparseMode == SLISparseMode::RightDown) {
-        if (cmpRatio == 0) {
-            return s1Idx / cmpRatio;
+        if (cmpRatio == 4) { 
+            return (s1Idx + 1) / cmpRatio;
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
@@ -1294,7 +1294,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIGradK
 
     // 只有一轮计算，计算完直接可以拷贝到GM输出
     PipeBarrier<PIPE_V>();
-    Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
+
+    if ((runInfo.s1Idx + 1) < constInfo.cmp_ratio) {
+        Duplicate(dwOutTensor, (CV_T)0.0, gSizePerVec);
+    } else {
+        Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
+    }
     SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
 
@@ -1427,7 +1432,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIG
 
     if (kLoopIdx == runInfo.kLoopTimes - 1) {
         PipeBarrier<PIPE_V>();
-        Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
+        if ((runInfo.s1Idx + 1) < constInfo.cmp_ratio) {
+            Duplicate(dwOutTensor, (CV_T)0.0, gSizePerVec);
+        } else {
+            Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
+        }
+
         SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
         WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
 
@@ -1446,10 +1456,12 @@ template <typename SLIT>
 template <uint32_t range>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDk(SLIGradKLLossRunInfo &runInfo, int32_t kLoopIdx)
 {
-    if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K){
-        VectorDwDqDkLess2k(runInfo);
-    } else {
-        VectorDwDqDkMoreThan2k(runInfo, kLoopIdx);
+    if ((runInfo.s1Idx + 1) >= constInfo.cmp_ratio) {
+        if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K){
+            VectorDwDqDkLess2k(runInfo);
+        } else {
+            VectorDwDqDkMoreThan2k(runInfo, kLoopIdx);
+        }
     }
 }
 

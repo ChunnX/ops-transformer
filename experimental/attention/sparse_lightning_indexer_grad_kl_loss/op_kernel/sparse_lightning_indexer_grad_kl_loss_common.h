@@ -135,6 +135,7 @@ struct SLIGradKLLossConstInfo {
     uint32_t kSize;
     SLISparseMode sparseMode; // 0或者3
     float scaleValue;
+    int64_t cmp_ratio;
     SoftMaxTiling tilingInfo;
     SoftMaxTiling simpleSoftMaxTilingInfo;
 
