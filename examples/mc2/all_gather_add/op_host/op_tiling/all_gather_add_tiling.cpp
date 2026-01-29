@@ -26,7 +26,8 @@ using namespace ge;
 
 namespace {
     constexpr uint32_t TILE_NUM = 1;
-    constexpr uint32_t COMM_TURN = 1;
+    constexpr uint32_t COMM_TURN = 2;
+    const uint32_t WS_SYS_SIZE = 16U * 1024U * 1024U;
 }
 namespace optiling {
 
@@ -59,49 +60,44 @@ static void InitHcclParam(AllGatherAddTilingData* tilingData, const char* group)
     mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
 }
 
+ge::graphStatus GetWorkspaceSize(gert::TilingContext* context)
+{
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context, currentWorkspace);
+    currentWorkspace[0] = WS_SYS_SIZE;
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus AllGatherAddTilingFunc(gert::TilingContext *context) {
-    // 对参数进行校验
+    // 1.对参数进行校验
     OP_CHECK_IF(AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "param is invalid"), return ge::GRAPH_FAILED);
     
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     context->SetBlockDim(ascendcPlatform.GetCoreNumAiv());
 
-    // 设置TilingData
+    // 2.获取WorkspaceSize信息
+    OP_CHECK_IF(GetWorkspaceSize(context) != ge::GRAPH_SUCCESS, 
+                OP_LOGE(context, "GetWorkspaceSize error"), return ge::GRAPH_FAILED);
+    
+    // 3.设置TilingData
     AllGatherAddTilingData* tilingData = context->GetTilingData<AllGatherAddTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tilingData);
 
-    tilingData->commTurn = COMM_TURN;
+    tilingData->commTurn = COMM_TURN; // 通信轮次为1时通算串行，大于1时开启通算掩盖
     tilingData->tileNum = TILE_NUM;
     tilingData->totalElemNum = context->GetInputTensor(1)->GetShapeSize();
-    tilingData->blockElemNum = tilingData->totalElemNum / context->GetBlockDim();
+    tilingData->blockElemNum = tilingData->totalElemNum / tilingData->commTurn / context->GetBlockDim(); // 每次Add计算只处理前一次通信结果长度的数据
     tilingData->addTileElemNum = tilingData->blockElemNum / tilingData->tileNum;
     uint32_t rankSize = *context->GetAttrs()->GetAttrPointer<uint32_t>(static_cast<int>(1));
-    tilingData->gatherTileElemNum = tilingData->totalElemNum / rankSize;
-    
-    // 设置workspaceSize gather out需要额外的临时内存，大小与b输入一致
-    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    OP_CHECK_NULL_WITH_CONTEXT(context,currentWorkspace);
-    // 如需使用系统workspace需要调用GetLibApiWorkSpaceSize获取系统workspace大小
-    uint32_t sysWorkSpaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    // 预留18M + gather_out
-    auto dataType = context->GetInputTensor(0)->GetDataType();
-    currentWorkspace[0] = sysWorkSpaceSize + tilingData->totalElemNum * sizeof(dataType);
+    tilingData->addCoresPerRank = context->GetBlockDim() / rankSize; // 进行Add计算之前需要根据每个rank分到的核数来判断当前核的计算地址偏移
+    tilingData->gatherTileElemNum = tilingData->totalElemNum / rankSize / tilingData->commTurn; // 每轮通信的数据长度
 
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     InitHcclParam(tilingData, group);
     return ge::GRAPH_SUCCESS;
 }
 
-struct AllGatherAddCompileInfo {};
-
-static ge::graphStatus TilingParseForAllGatherAdd([[maybe_unused]] gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
 IMPL_OP_OPTILING(AllGatherAdd)
-    .Tiling(AllGatherAddTilingFunc)
-    .TilingParse<AllGatherAddCompileInfo>(TilingParseForAllGatherAdd);
+    .Tiling(AllGatherAddTilingFunc);
 }  // namespace optiling
