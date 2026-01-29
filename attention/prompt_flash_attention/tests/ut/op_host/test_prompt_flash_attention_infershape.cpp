@@ -531,3 +531,91 @@ TEST_F(PromptFlashAttentionProto, infer_dtype_0)
 
     }
 }
+
+// TND_NTD success
+TEST_F(PromptFlashAttentionProto, prompt_flash_attention_infershape_11)
+{
+    int64_t actual_seq_qlist[] = {409, 818, 1227, 1636, 2045, 2454, 2863, 3272, 3681, 4090, 4499, 4908, 5317, 5726, 6135, 6544, 6953, 7362, 7771, 8180, 8589,
+                8998, 9407, 9816, 10225, 10634, 11043, 11452, 11861, 12270, 12679, 13088, 13497, 13906, 14315, 14724, 15133, 15542, 15951, 16384};
+    int64_t actual_seq_kvlist[] = {409, 818, 1227, 1636, 2045, 2454, 2863, 3272, 3681, 4090, 4499, 4908, 5317, 5726, 6135, 6544, 6953, 7362, 7771, 8180, 8589,
+                8998, 9407, 9816, 10225, 10634, 11043, 11452, 11861, 12270, 12679, 13088, 13497, 13906, 14315, 14724, 15133, 15542, 15951, 16384};
+    gert::InfershapeContextPara infershapeContextPara(
+        "PromptFlashAttention",
+        // 输入Tensor
+        {
+            {{{16384, 64, 192}, {16384, 64, 192}}, ge::DT_BF16, ge::FORMAT_ND},  // query input0
+            {{{16384, 64, 192}, {16384, 64, 192}}, ge::DT_BF16, ge::FORMAT_ND},  // key input1
+            {{{16384, 64, 192}, {16384, 64, 192}}, ge::DT_BF16, ge::FORMAT_ND},  // value input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},    // pse_shift input3
+            {{{1, 2048, 2048}, {1, 2048, 2048}}, ge::DT_BOOL, ge::FORMAT_ND},    // atten_mask input4
+            {{{40}, {40}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},    // actual_seq_lengths_q
+            {{{40}, {40}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},    // actual_seq_lengths_kv 
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},    // deq_scale1 input5
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},    // quant_scale1 input6
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},    // deq_scale2 input7
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},    // quant_scale2 input8
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}    // quant_offset2 input9
+        },
+        {// 输出Tensor
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {// 属性
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.07216878364870323f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16384)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16384)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND_NTD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
+        });
+
+    std::vector<std::vector<int64_t>> expectOutputShape = { // 预期输出
+        {64, 16384, 192}
+    };
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);   // 比对成功返回SUCCESS
+}
+
+// TND_NTD failed
+TEST_F(PromptFlashAttentionProto, prompt_flash_attention_infershape_12)
+{
+    int64_t actual_seq_qlist[] = {409, 818, 1227, 1636, 2045, 2454, 2863, 3272, 3681, 4090, 4499, 4908, 5317, 5726, 6135, 6544, 6953, 7362, 7771, 8180, 8589,
+                8998, 9407, 9816, 10225, 10634, 11043, 11452, 11861, 12270, 12679, 13088, 13497, 13906, 14315, 14724, 15133, 15542, 15951, 16384};
+    int64_t actual_seq_kvlist[] = {409, 818, 1227, 1636, 2045, 2454, 2863, 3272, 3681, 4090, 4499, 4908, 5317, 5726, 6135, 6544, 6953, 7362, 7771, 8180, 8589,
+                8998, 9407, 9816, 10225, 10634, 11043, 11452, 11861, 12270, 12679, 13088, 13497, 13906, 14315, 14724, 15133, 15542, 15951, 16384};
+    gert::InfershapeContextPara infershapeContextPara(
+        "PromptFlashAttention",
+        // 输入Tensor
+        {
+            {{{16384, 64, 192, 1}, {16384, 64, 192, 1}}, ge::DT_BF16, ge::FORMAT_ND},  // query input0
+            {{{16384, 64, 192, 1}, {16384, 64, 192, 1}}, ge::DT_BF16, ge::FORMAT_ND},  // key input1
+            {{{16384, 64, 192, 1}, {16384, 64, 192, 1}}, ge::DT_BF16, ge::FORMAT_ND},  // value input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},    // pse_shift input3
+            {{{1, 2048, 2048}, {1, 2048, 2048}}, ge::DT_BOOL, ge::FORMAT_ND},    // atten_mask input4
+            {{{40}, {40}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},    // actual_seq_lengths_q
+            {{{40}, {40}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},    // actual_seq_lengths_kv 
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},    // deq_scale1 input5
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},    // quant_scale1 input6
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},    // deq_scale2 input7
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},    // quant_scale2 input8
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}    // quant_offset2 input9
+        },
+        {// 输出Tensor
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {// 属性
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.07216878364870323f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16384)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16384)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND_NTD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
+        });
+
+    std::vector<std::vector<int64_t>> expectOutputShape = { // 预期输出
+        {64, 16384, 192}
+    };
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);   // 比对成功返回SUCCESS
+}

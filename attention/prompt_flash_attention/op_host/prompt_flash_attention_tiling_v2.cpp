@@ -347,7 +347,7 @@ bool PromptFlashAttentionTilingV2::SetInputLayout(const char* layout) {
     std::string layoutStr(layout);
     if (layoutStr == "" || layoutStr == "BSH") {
         inputLayout = InputLayout::BSH;
-    } else if (layoutStr == "TND") {
+    } else if (layoutStr == "TND" || layoutStr == "TND_NTD") {
         inputLayout = InputLayout::TND;
     } else if (layoutStr == "NTD" || layoutStr == "NTD_TND") {
         inputLayout = InputLayout::NTD;
@@ -449,7 +449,7 @@ bool PromptFlashAttentionTilingV2::SetShape(ContextParamsForPFATiling& contextKe
         }
         if (isMaxWorkspace) {
             b = 1;
-            s = shape->GetStorageShape().GetDim(0);
+            s = inputLayout == InputLayout::TND ? shape->GetStorageShape().GetDim(0) : shape->GetStorageShape().GetDim(1);
         } else {
             b = static_cast<int64_t>(contextKeyParams.actualSequenceLengthQ->GetShapeSize());
             s = (inputName == "query") ? GetMaxSeq(contextKeyParams.actualSequenceLengthQ) : GetMaxSeq(contextKeyParams.actualSequenceLengthKV);
@@ -609,14 +609,14 @@ bool PromptFlashAttentionTilingV2::CheckQueryOutParamsConsistency(const ContextP
                 tmpqueryDim = queryShape->GetStorageShape().GetDim(i);
                 outDim = outShape->GetStorageShape().GetDim(i - 1);
             }
-        } else if (layoutStr == "NTD_TND") {
-            if (i == 0) { // query:N, output:S
-                tmpqueryDim = queryShape->GetStorageShape().GetDim(i);
-                outDim = outShape->GetStorageShape().GetDim(i + 1);
-            } else if (i == 1) { // 1 for current queryDimNum; Q:S, Output:N
-                tmpqueryDim = queryShape->GetStorageShape().GetDim(i);
-                outDim = outShape->GetStorageShape().GetDim(i - 1);
-            }
+        } else if (layoutStr == "NTD_TND" || layoutStr == "TND_NTD") {
+ 	        if (i == 0) { // query:N/T, output:T/N
+ 	  	        tmpqueryDim = queryShape->GetStorageShape().GetDim(i);
+ 	  	        outDim = outShape->GetStorageShape().GetDim(i + 1);
+ 	  	    } else if (i == 1) { // 2 for current queryDimNum; Q:T/N, Output:N/T
+ 	  	        tmpqueryDim = queryShape->GetStorageShape().GetDim(i);
+ 	  	        outDim = outShape->GetStorageShape().GetDim(i - 1);
+ 	  	    }
         } else {
             tmpqueryDim = queryShape->GetStorageShape().GetDim(i);
             outDim = outShape->GetStorageShape().GetDim(i);
@@ -1569,7 +1569,7 @@ bool PromptFlashAttentionTilingV2::CheckPFAMerge(ContextParamsForPFATiling& cont
 
     // 隔离高阶特性
     std::string layoutStr(contextKeyParams.layout);
-    bool isTransposeLayout = layoutStr == "BNSD_BSND" || layoutStr == "NTD" || layoutStr == "NTD_TND";
+    bool isTransposeLayout = layoutStr == "BNSD_BSND" || layoutStr == "NTD" || layoutStr == "NTD_TND" || layoutStr == "TND_NTD";
     bool hasCrossoverAttr = enableMask || enablePseShift || enablePA || enableAlibiPse || enablePFARope ||
         enablePerblockQuant || enablePertensorQuant || enablePostQuant || enableLeftPadding || enableTensorList ||
         enableIFAMLAFullQuant || contextKeyParams.isSoftMaxLseEnable || isTransposeLayout;
@@ -2544,6 +2544,13 @@ bool PromptFlashAttentionTilingV2::CheckTNDLayoutCrossover(ContextParamsForPFATi
         return true;
     }
 
+    std::string layoutStr(contextKeyParams.layout);
+    if (enableIFAMLA && layoutStr == "TND_NTD") { // Decode MLA
+        OP_CHECK_IF(enablePostQuant,
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In Decode MLA scenario, when layout is TND_NTD, post quant is not supported!"),
+            return false);
+    }
+
     OP_CHECK_IF(enableLeftPadding,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "When layout is TND, left padding is not supported!"),
         return false);
@@ -2559,15 +2566,21 @@ bool PromptFlashAttentionTilingV2::CheckTNDLayoutCrossover(ContextParamsForPFATi
     return true;
 }
 
-bool PromptFlashAttentionTilingV2::CheckNTDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams) {
+bool PromptFlashAttentionTilingV2::CheckNTDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo) {
     if (inputLayout != InputLayout::NTD) {
         return true;
     }
 
-    if (enablePFAMLA || enablePFARope) {
-        OP_CHECK_IF(enablePerblockQuant || enablePertensorQuant,
-            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In prefill MLA scenario, when layout is NTD, full quant is not supported!"),
-            return false);
+    if (enablePFAMLA || enablePFARope) { // Prefill MLA
+ 	    OP_CHECK_IF(enablePerblockQuant || enablePertensorQuant,
+ 	        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In prefill MLA scenario, when layout is NTD, full quant is not supported!"),
+ 	        return false);
+ 	}
+
+    if (!enablePFAMLA && !enablePFARope && !enableIFAMLA) { // GQA
+        OP_CHECK_IF((queryShapeInfo.d != 64 && queryShapeInfo.d != 128),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In GQA scenario, when layout is NTD, d size of query must be 64 or 128, but got d = %d.",
+            queryShapeInfo.d), return false);
     }
 
     OP_CHECK_IF(enableLeftPadding,
@@ -2808,6 +2821,7 @@ void PromptFlashAttentionTilingV2::SetTilingDataAttribute(ContextParamsForPFATil
     tilingData.promptAttentionBaseParams.set_fromFused((contextKeyParams.fromFused == FROM_FUSED_FLAG) ? 1 : 0);
     tilingData.promptAttentionBaseParams.set_isBSNDOut(contextKeyParams.isBSNDOut);
     tilingData.promptAttentionBaseParams.set_isTNDOut(contextKeyParams.isTNDOut);
+    tilingData.promptAttentionBaseParams.set_isNTDOut(contextKeyParams.isNTDOut);
     tilingData.promptAttentionBaseParams.set_isSoftMaxLseEnable(contextKeyParams.isSoftMaxLseEnable);
 
     uint32_t originHeadSize = enableIFAMLA ? tilingData.promptAttentionBaseParams.get_headSize() :
@@ -4168,7 +4182,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::CheckCrossoverAttribute(ContextPar
         return ge::GRAPH_FAILED;
     }
 
-    if (!CheckNTDLayoutCrossover(contextKeyParams)) {
+    if (!CheckNTDLayoutCrossover(contextKeyParams, queryShapeInfo)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -4424,6 +4438,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::ConvertContextToPFAParams(ContextP
     contextKeyParams.workspaceSize = context_->GetWorkspaceSizes(1);
     contextKeyParams.compileInfoPtr = reinterpret_cast<const PromptFlashAttentionCompileInfo *>(context_->GetCompileInfo());
     contextKeyParams.isBSNDOut = (string(contextKeyParams.layout) == "BNSD_BSND") ? 1U : 0U;
+    contextKeyParams.isTNDOut = (string(contextKeyParams.layout) == "NTD_TND") ? 1U : 0U;
+ 	contextKeyParams.isNTDOut = (string(contextKeyParams.layout) == "TND_NTD") ? 1U : 0U;
     contextKeyParams.fromFused = NUM_0;
 
     contextKeyParams.deqScaleType = (context_->GetOptionalInputDesc(DEQ_SCALE1_INDEX) != nullptr) ?
@@ -4520,6 +4536,7 @@ void PromptFlashAttentionTilingV2::PFATilingDataconvert(PromptFlashAttentionTili
     inputParams.set_fromFused(tilingData.promptAttentionBaseParams.get_fromFused());
     inputParams.set_isBSNDOut(tilingData.promptAttentionBaseParams.get_isBSNDOut());
     inputParams.set_isTNDOut(tilingData.promptAttentionBaseParams.get_isTNDOut());
+    inputParams.set_isNTDOut(tilingData.promptAttentionBaseParams.get_isNTDOut());
     inputParams.set_isGqa(tilingData.promptAttentionBaseParams.get_isIFA() || enablePFAMerge);
     inputParams.set_isSoftMaxLseEnable(tilingData.promptAttentionBaseParams.get_isSoftMaxLseEnable());
     inputParams.set_isActualSharedPrefixLenNull(tilingData.promptAttentionBaseParams.get_isActualSharedPrefixLenNull());

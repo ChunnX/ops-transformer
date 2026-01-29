@@ -173,6 +173,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     }
     sharedParams.isBSNDOut = inputParamsRegbase.isBSNDOut;
     sharedParams.isTNDOut = inputParamsRegbase.isTNDOut;
+    sharedParams.isNTDOut = inputParamsRegbase.isNTDOut;
     sharedParams.fromFused = inputParamsRegbase.fromFused;
     sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
     sharedParams.headNumRatio = inputParamsRegbase.headNumRatio;

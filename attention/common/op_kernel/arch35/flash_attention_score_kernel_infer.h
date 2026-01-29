@@ -73,6 +73,7 @@ FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockType>::InitUniqueConstInfo
 
     this->constInfo.isBSNDOut = this->sharedParams.isBSNDOut;
     this->constInfo.isTNDOut = this->sharedParams.isTNDOut;
+    this->constInfo.isNTDOut = this->sharedParams.isNTDOut;
     if (this->constInfo.isBSNDOut == 1 || this->constInfo.isTNDOut == 1) {
         this->constInfo.attentionOutStride =
             (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);

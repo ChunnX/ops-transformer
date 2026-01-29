@@ -185,6 +185,8 @@ private:
     __aicore__ inline void MlaBoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcTensor,
         int64_t srcOffset, uint32_t s1Size, uint32_t s2Size, int64_t totalS2Size, int64_t s2BaseSize,
         ConstInfo<isInfer, hasRope> &constInfo, RunInfo<isInfer> &runInfo);
+     __aicore__ inline void MlaTransposeDataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+ 	    LocalTensor<OUTPUT_T> &attenOut);
 };
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
@@ -1195,6 +1197,62 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(LocalTenso
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::MlaTransposeDataCopyOut(
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut)
+{
+    int64_t s1DealSize = runInfo.vec2S1RealSize;
+    int64_t headSize = 0;
+    int64_t attenOutOffset = constInfo.dSizeV;
+    int64_t headUbOffset = 0, headGmOffset = 0;
+    int64_t curGIdx = runInfo.goIdx, curS1Idx = runInfo.s1oIdx;
+
+    if (constInfo.gSize == 128) { // G为128时，基本块位于同一S1行
+        curGIdx = (curS1Idx % 2 == 0) ? curGIdx : 64; // 64 s1Base基本块
+        curS1Idx /= 2;
+    } else if (constInfo.gSize <= 32) { // G<=32时，每64/G行为一个基本块
+        curS1Idx *= (64 / constInfo.gSize); // 64 s1Base基本块
+    }
+
+    if (constInfo.subBlockIdx == 1) {
+        int64_t firstCurGIdx = curGIdx;
+        curGIdx = (firstCurGIdx + s1DealSize) % constInfo.gSize;
+        curS1Idx += (firstCurGIdx + s1DealSize) / constInfo.gSize;
+    }
+
+    DataCopyExtParams dataCopyParams;
+    if (curGIdx != 0 && constInfo.gSize != 1) { // 首块
+        headSize = curGIdx + s1DealSize < constInfo.gSize ? s1DealSize : constInfo.gSize - curGIdx;
+        headUbOffset = headSize * constInfo.dSizeV;
+        headGmOffset = runInfo.s1SizeAcc * constInfo.dSizeV + (curS1Idx + 1) * constInfo.dSizeV;
+        
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = (constInfo.t1Size * constInfo.dSizeV - constInfo.dSizeV) * sizeof(OUTPUT_T);
+        dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+        dataCopyParams.blockCount = headSize;
+
+        DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset], attenOut, dataCopyParams);
+    }
+
+    s1DealSize -= headSize; // 中间块 & 尾块
+    int64_t blocks = CeilDiv(s1DealSize, constInfo.gSize);
+    bool hasTail = s1DealSize % constInfo.gSize != 0;
+    for (int64_t i = 0; i < blocks; i++) {
+        attenOutOffset = i * constInfo.dSizeV;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = (constInfo.t1Size * constInfo.dSizeV - constInfo.dSizeV) * sizeof(OUTPUT_T);
+        dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+        if (i == blocks - 1 && hasTail) {
+            dataCopyParams.blockCount = s1DealSize % constInfo.gSize;
+        } else {
+            dataCopyParams.blockCount = constInfo.gSize;
+        }
+
+        DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + headGmOffset + attenOutOffset],
+            attenOut[headUbOffset + i * constInfo.gSize * constInfo.dSizeV], dataCopyParams);
+    }
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOut(
     RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
@@ -1287,6 +1345,13 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOut(
                 DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + attenOutOffset],
                     attenOut[i * constInfo.gSize * dSizeAligned64], dataCopyParams);
             }
+        } else {
+            DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
+                attenOut, dataCopyParams);
+        }
+    } else if constexpr (isInfer) {
+        if (isMlaNoQuant && constInfo.isNTDOut == 1) {
+            MlaTransposeDataCopyOut(runInfo, constInfo, attenOut);
         } else {
             DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
                 attenOut, dataCopyParams);

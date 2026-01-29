@@ -181,7 +181,7 @@ protected:
     bool CheckMaskCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
         PromptFlashAttentionTilingData& tilingData);
     bool CheckTNDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams);
-    bool CheckNTDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams);
+    bool CheckNTDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
     bool ParseActualSeqLengths(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV);
     bool CheckMultiFeatureCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 

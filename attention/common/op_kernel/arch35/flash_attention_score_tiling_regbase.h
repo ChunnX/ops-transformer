@@ -114,6 +114,7 @@ public:
     uint8_t fromFused;
     uint8_t isBSNDOut;
     uint8_t isTNDOut;
+    uint8_t isNTDOut;
     uint8_t isGqa;
     uint8_t isSoftMaxLseEnable;
     uint8_t isActualSharedPrefixLenNull;
@@ -241,6 +242,8 @@ public:
     void set_isBSNDOut(uint8_t isBSNDOutParam) {this->isBSNDOut = isBSNDOutParam;}
     uint8_t get_isTNDOut() const {return isTNDOut;}
     void set_isTNDOut(uint8_t isTNDOutParam) {this->isTNDOut = isTNDOutParam;}
+    uint8_t get_isNTDOut() const {return isNTDOut;}
+ 	void set_isNTDOut(uint8_t isNTDOutParam) {this->isNTDOut = isNTDOutParam;}
     uint8_t get_isGqa() const {return isGqa;}
     void set_isGqa(uint8_t isGqaParam) {this->isGqa = isGqaParam;}
     uint8_t get_isSoftMaxLseEnable() const {return isSoftMaxLseEnable;}

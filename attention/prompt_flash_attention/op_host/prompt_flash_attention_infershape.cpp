@@ -132,6 +132,15 @@ static ge::graphStatus InferShapePromptFlashAttention(gert::InferShapeContext *c
         (*attentionOutShape)[PFA_LAYOUT_DIM0] = (*queryShape)[PFA_LAYOUT_DIM1];
         (*attentionOutShape)[PFA_LAYOUT_DIM1] = (*queryShape)[PFA_LAYOUT_DIM0];
         (*attentionOutShape)[PFA_LAYOUT_DIM2] = (*valueShape)[PFA_LAYOUT_DIM2];
+    } else if (strcmp(inputLayoutPtr, "TND_NTD") == 0) {
+ 	    if (queryShape->GetDimNum() != PFA_LAYOUT_TND_DIMS || valueShape->GetDimNum() != PFA_LAYOUT_TND_DIMS) {
+ 	        OP_LOGE(context->GetNodeName(), "Layout TND_NTD, queryDims(%zu) valueDims(%zu) must be 3!",
+ 	            queryShape->GetDimNum(), valueShape->GetDimNum());
+ 	        return ge::GRAPH_FAILED;
+ 	    }
+ 	    (*attentionOutShape)[PFA_LAYOUT_DIM0] = (*queryShape)[PFA_LAYOUT_DIM1];
+ 	    (*attentionOutShape)[PFA_LAYOUT_DIM1] = (*queryShape)[PFA_LAYOUT_DIM0];
+ 	    (*attentionOutShape)[PFA_LAYOUT_DIM2] = (*valueShape)[PFA_LAYOUT_DIM2];
     } else if (strcmp(inputLayoutPtr, "SH") == 0) {
         if (queryShape->GetDimNum() != PFA_LAYOUT_SH_DIMS) {
             OP_LOGE(context->GetNodeName(), "Layout SH, queryDims(%zu) must be 2!", queryShape->GetDimNum());

@@ -420,6 +420,27 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                 runParam.sOuterOffset * constInfo.dSizeV;
             runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
                 runParam.cubeSOuterOffset * constInfo.dSize;
+            if (constInfo.isNTDOut == 1) { // IFA MLA, TND_NTD
+                attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
+                int64_t curGIdx = runParam.goIdx, curS1Idx = runParam.cubeSOuterOffset / (uint32_t)s1TemplateType; // 64
+                
+                if (constInfo.gSize == 128) { // G为128时，基本块位于同一S1行
+                    curGIdx = (curS1Idx % 2 == 0) ? curGIdx : (uint32_t)s1TemplateType;
+                    curS1Idx /= 2;
+                } else if (constInfo.gSize <= 32) { // G<=32时，每64/G行为一个基本块
+                    curS1Idx *= ((uint32_t)s1TemplateType / constInfo.gSize);
+                }
+
+                if (constInfo.subBlockIdx == 1) {
+                    int64_t firstCurGIdx = curGIdx;
+                    curGIdx = (firstCurGIdx + runParam.halfS1RealSize) % constInfo.gSize;
+                    curS1Idx += (firstCurGIdx + runParam.halfS1RealSize) / constInfo.gSize;
+                }
+
+                runParam.attentionOutOffset = attentionOutSeqOffset + // b
+                    curGIdx * constInfo.t1Size * constInfo.dSizeV + // g
+                    curS1Idx * constInfo.dSizeV; // s1
+            }
         } else {
             if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {

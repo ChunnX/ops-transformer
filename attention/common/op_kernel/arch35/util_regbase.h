@@ -335,6 +335,7 @@ struct RunInfo<false> {
     /* LAYOUT是否为BNSD_BSND */ \
     uint32_t isBSNDOut; \
     uint32_t isTNDOut; \
+    uint32_t isNTDOut; \
     /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */ \
     /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */ \
     uint32_t headNumRatio; \
@@ -454,6 +455,7 @@ struct CVSharedParams<true, false> {
     uint32_t isKVHasLeftPadding : 1;
     uint32_t isBSNDOut : 1;
     uint32_t isTNDOut : 1;
+    uint32_t isNTDOut : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
@@ -488,6 +490,7 @@ struct CVSharedParams<true, true> {
     uint32_t isKVHasLeftPadding : 1;
     uint32_t isBSNDOut : 1;
     uint32_t isTNDOut : 1;
+    uint32_t isNTDOut : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;

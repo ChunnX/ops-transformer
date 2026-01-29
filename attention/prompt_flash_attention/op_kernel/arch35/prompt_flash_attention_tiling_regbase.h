@@ -491,6 +491,10 @@ public:
     int64_t get_t2Size() const { return this->t2Size; }
     void set_t2Size(int64_t t2SizeParam) { this->t2Size = t2SizeParam; }
 
+ 	uint32_t isNTDOut = 0;
+ 	uint32_t get_isNTDOut() const { return this->isNTDOut; }
+ 	void set_isNTDOut(uint32_t isNTDOutParam) { this->isNTDOut = isNTDOutParam; }
+
     uint32_t isIFA = 0;
     uint32_t get_isIFA() const { return this->isIFA; }
     void set_isIFA(uint32_t isIFAParam) { this->isIFA = isIFAParam; }
