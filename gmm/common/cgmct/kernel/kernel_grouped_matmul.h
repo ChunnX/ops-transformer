@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ constexpr uint64_t NUM_ONE = 1UL;
 constexpr uint64_t NUM_TWO = 2UL;
 constexpr uint64_t NUM_THREE = 3UL;
 constexpr uint64_t NUM_FOUR = 4UL;
+constexpr uint64_t DIM_NUM = 2UL;
 
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_,
           typename Enable_ = void>
@@ -112,20 +113,15 @@ public:
     TupleShape problemShape_{};
     BlockOffset baseOffset_{0, 0, 0, 0, 0};
     int64_t preOffset_{0};
-    TILING_TYPE *mListGm_;
-    TILING_TYPE *kListGm_;
-    TILING_TYPE *nListGm_;
     bool weightNzFlag_{false};
     bool tailSplit_{true};
     int64_t blockNum_{0};
+    uint64_t buf_[NUM_THREE] = {0UL};
 
     struct GMMTiling {
         uint32_t groupNum;
         int32_t groupType;
         uint32_t groupListType;
-        int32_t baseM;
-        int32_t baseN;
-        int32_t baseK;
         uint64_t singleX;
         uint64_t singleWeight;
         uint64_t singleY;
@@ -133,17 +129,17 @@ public:
         uint32_t hasBias;
         uint64_t mTailCnt;
         uint64_t nTailCnt;
+        uint32_t weightNoL2Cache;
         const TCubeTiling *__restrict matmulTiling;
-        TILING_TYPE *gmmArrayAddrIn;
         __aicore__ GMMTiling()
         {
         }
-        __aicore__ GMMTiling(uint32_t groupNum_, int32_t groupType_, uint32_t groupListType_, int32_t baseM_,
-                             int32_t baseN_, int32_t baseK_, uint64_t singleX_, uint64_t singleWeight_,
-                             uint64_t singleY_, uint32_t hasBias_ = 0, uint64_t mTailCnt_ = 1, uint64_t nTailCnt_ = 1)
-            : groupNum(groupNum_), groupType(groupType_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_),
-              baseK(baseK_), singleX(singleX_), singleWeight(singleWeight_), singleY(singleY_), hasBias(hasBias_),
-              mTailCnt(mTailCnt_), nTailCnt(nTailCnt_)
+        __aicore__ GMMTiling(uint32_t groupNum_, int32_t groupType_, uint32_t groupListType_, uint64_t singleX_,
+                             uint64_t singleWeight_, uint64_t singleY_, uint32_t hasBias_ = 0, uint64_t mTailCnt_ = 1,
+                             uint64_t nTailCnt_ = 1, uint32_t weightNoL2Cache_ = 0)
+            : groupNum(groupNum_), groupType(groupType_), groupListType(groupListType_), singleX(singleX_),
+              singleWeight(singleWeight_), singleY(singleY_), hasBias(hasBias_), mTailCnt(mTailCnt_),
+              nTailCnt(nTailCnt_), weightNoL2Cache(weightNoL2Cache_)
         {
             singleTensor = singleX == 1 && singleWeight == 1 && singleY == 1;
         }
@@ -187,27 +183,36 @@ public:
         return listTensorDesc.GetDataPtr<T>(groupIdx);
     }
 
+    __aicore__ inline void GetTensorShape(uint64_t groupIdx, GM_ADDR tensorPtr, uint64_t *shape)
+    {
+        AscendC::ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void *>(tensorPtr));
+        AscendC::TensorDesc<int32_t> desc;
+        desc.SetShapeAddr(buf_);
+        listTensorDesc.GetDesc(desc, groupIdx);
+        uint64_t dim = desc.GetDim();
+        for (uint64_t index = 0, count = 0; index < dim; index++) {
+            if (dim - index > NUM_TWO) {
+                continue;
+            }
+            shape[count++] = desc.GetShape(index);
+        }
+    }
+
     __aicore__ inline void SetMKN(Params const &params, const int32_t splitValue, const uint32_t groupIdx)
     {
-        uint32_t valueIdx = params.gmmParams.singleTensor ? 0 : groupIdx;
+        uint64_t xShape[DIM_NUM] = {0UL};
+        uint64_t wShape[DIM_NUM] = {0UL};
+        GetTensorShape(params.gmmParams.singleX == 0 ? groupIdx : 0, params.mmadParams.aGmAddr, xShape);
+        GetTensorShape(params.gmmParams.singleWeight == 0 ? groupIdx : 0, params.mmadParams.bGmAddr, wShape);
+        Get<M_VALUE>(problemShape_) = transA ? xShape[DIM_NUM - 1] : xShape[DIM_NUM - 2];
+        Get<K_VALUE>(problemShape_) = transA ? xShape[DIM_NUM - 2] : xShape[DIM_NUM - 1];
+        Get<N_VALUE>(problemShape_) = transB ? wShape[DIM_NUM - 2] : wShape[DIM_NUM - 1];
         if (params.gmmParams.groupType == SPLIT_M) {
             Get<M_VALUE>(problemShape_) = splitValue;
-            Get<N_VALUE>(problemShape_) = nListGm_[valueIdx];
-            Get<K_VALUE>(problemShape_) = kListGm_[valueIdx];
-            return;
         }
-
         if (params.gmmParams.groupType == SPLIT_K) {
-            Get<M_VALUE>(problemShape_) = mListGm_[valueIdx];
-            Get<N_VALUE>(problemShape_) = nListGm_[valueIdx];
             Get<K_VALUE>(problemShape_) = splitValue;
-            return;
         }
-
-        Get<M_VALUE>(problemShape_) = mListGm_[groupIdx];
-        Get<N_VALUE>(problemShape_) = nListGm_[groupIdx];
-        Get<K_VALUE>(problemShape_) = kListGm_[groupIdx];
-        return;
     }
 
     __aicore__ inline void InitGlobalBuffer(Params const &params, uint64_t groupIdx)
@@ -287,13 +292,6 @@ public:
         }
         InitGlobalBuffer(params, groupIdx);
         return true;
-    }
-
-    __aicore__ inline void setMKNGm(Params const &params)
-    {
-        mListGm_ = params.gmmParams.gmmArrayAddrIn;
-        kListGm_ = params.gmmParams.gmmArrayAddrIn + MKN_LIST_LEN;
-        nListGm_ = params.gmmParams.gmmArrayAddrIn + MKN_LIST_LEN * NUM_TWO;
     }
 
     __host_aicore__ static Status CheckShape(ProblemShape const &shape)
@@ -376,9 +374,17 @@ public:
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
-        CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
-        BlockSchedulerOp bs(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK,
-                            curBlockIdx, blockNum_, params.gmmParams.mTailCnt, params.gmmParams.nTailCnt, tailSplit_);
+        int32_t baseM = params.gmmParams.matmulTiling->baseM;
+        int32_t baseN = params.gmmParams.matmulTiling->baseN;
+        int32_t baseK = params.gmmParams.matmulTiling->baseK;
+        if (params.gmmParams.weightNoL2Cache == NUM_ONE && baseM > m) {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        }
+        CoordClass coord(m, n, k, baseM, baseN, baseK);
+        BlockSchedulerOp bs(m, n, k, baseM, baseN, baseK, curBlockIdx, blockNum_, params.gmmParams.mTailCnt,
+                            params.gmmParams.nTailCnt, tailSplit_);
         blockMmadOp.SetOrgShape(m, n, k);
         uint64_t curCount = count + bs.GetTileNum();
         uint64_t curBlock = curBlockIdx >= count ? curBlockIdx : curBlockIdx + blockNum_;
@@ -422,7 +428,6 @@ public:
         if (params.mmadParams.groupListGmAddr != nullptr) {
             groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(params.mmadParams.groupListGmAddr));
         }
-        setMKNGm(params);
         blockMmadOp.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
         for (uint64_t groupIdx = 0, count = 0; groupIdx < params.gmmParams.groupNum; groupIdx++) {
             if (!Init(params, groupIdx)) {

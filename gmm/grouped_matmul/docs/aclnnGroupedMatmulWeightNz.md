@@ -176,7 +176,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>x</td>
     <td>输入</td>
     <td>公式中的输入<code>x</code>。</td>
-    <td>最大支持128个。</td>
+    <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
     <td>FLOAT16、BFLOAT16、INT8、INT4<sup>1</sup>、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup></td>
     <td>ND</td>
     <td>-</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>weight</td>
     <td>输入</td>
     <td>公式中的<code>weight</code>。</td>
-    <td>最大支持128个。支持昇腾亲和数据排布格式(nz)。</td>
+    <td>tensorList长度支持[1, 128]或者[1, 1024]。支持昇腾亲和数据排布格式(nz)。</td>
     <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1<sup>2</sup></td>
     <td>FRACTAL_NZ</td>
     <td>-</td>
@@ -362,7 +362,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>out</td>
     <td>输出</td>
     <td>公式中的输出<code>y</code>。</td>
-    <td>最大支持128个。</td>
+    <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
     <td>FLOAT16、BFLOAT16、INT8、FLOAT32、INT32</td>
     <td>ND</td>
     <td>-</td>
@@ -414,6 +414,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - 上表数据类型列中的角标“1”代表该系列支持的数据类型，角标“2”代表该系列不支持的数据类型。
         - `weight`可使用`aclnnCalculateMatmulWeightSizeV2`及`aclnnTransMatmulWeight`完成ND到NZ转换。当传入INT32时，接口内部将每个INT32识别成8个INT4。
+        - 输入参数`x`、`weight`，输出参数`out`支持最多128个tensor。
     - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
         - 上表数据类型列中的角标“2”代表该系列支持的数据类型。
         - `x`支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、INT8。
@@ -422,6 +423,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - `groupType`支持m轴分组，仅非量化支持不分组。
         - `quantGroupSize`暂不支持。
         - `actType`只支持0。
+        - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化和全量化场景支持最多128个tensor。
 
   - **返回值：**
 
@@ -453,24 +455,27 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>4.传入参数x的元素不为空指针，且传出参数out的元素为空指针。</td>
     </tr>
     <tr>
-    <td rowspan="6"> ACLNN_ERR_PARAM_INVALID </td>
-    <td rowspan="6"> 161002 </td>
+    <td rowspan="7"> ACLNN_ERR_PARAM_INVALID </td>
+    <td rowspan="7"> 161002 </td>
     <td>1.x、weight、biasOptional、scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、groupListOptional、out的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-    <td>2.weight的长度大于128；若bias不为空，bias的长度不等于weight的长度。</td>
+    <td>2.weight的长度不在支持范围内。</td>
     </tr>
     <tr>
-    <td>3.groupListOptional维度为1。</td>
+    <td>3.若bias不为空，bias的长度不等于weight的长度。</td>
     </tr>
     <tr>
-    <td>4.splitItem为2、3的场景，out长度不等于1。</td>
+    <td>4.groupListOptional维度为1。</td>
     </tr>
     <tr>
-    <td>5.splitItem为0、1的场景，out长度不等于weight的长度，groupListOptional长度不等于weight的长度。</td>
+    <td>5.splitItem为2、3的场景，out长度不等于1。</td>
     </tr>
     <tr>
-    <td>6.传入参数tuningConfigOptional的元素为负数，或者大于x的行数m。</td>
+    <td>6.splitItem为0、1的场景，out长度不等于weight的长度，groupListOptional长度不等于weight的长度。</td>
+    </tr>
+    <tr>
+    <td>7.传入参数tuningConfigOptional的元素为负数，或者大于x的行数m。</td>
     </tr>
     </tbody>
     </table>
@@ -638,8 +643,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:---------:|:-------:| :------ |
       | -1 | 多多多 |1）仅支持splitItem为0/1<br>2）x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3） groupListOptional必须传空<br>4）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>5）x不支持转置<br>6）仅支持非量化|
       | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（E, N, K）或（E, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（E, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持|
-      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总与x中tensor的第一维相等，长度最大为 128<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
-      | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为128<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
+      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总与x中tensor的第一维相等，长度最大为1024<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
+      | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
 
 </details>
 
@@ -1252,7 +1257,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         x, weight, bias, scale, offset, antiquantScale, antiquantOffset, nullptr, groupedList, activationInput,
         activationQuantScale, activationQuantOffset, splitItem, groupType, groupListType, actType, nullptr, 0, out,
         activationFeatureOut, dynQuantScaleOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5GetWorkspaceSize failed. ERROR: %d\n", ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
@@ -1262,7 +1267,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     }
     // 调用aclnnGroupedMatmulWeightNz第二段接口
     ret = aclnnGroupedMatmulWeightNz(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5 failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNz failed. ERROR: %d\n", ret); return ret);
 
     // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
@@ -1289,7 +1294,7 @@ int main()
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = aclnnGourpedMatmulTest(deviceId, stream);
-    CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulTest failed. ERROR: %d\n", ret); return ret);
+    CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNz test failed. ERROR: %d\n", ret); return ret);
 
     Finalize(deviceId, stream);
     return 0;

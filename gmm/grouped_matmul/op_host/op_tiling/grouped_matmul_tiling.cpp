@@ -172,6 +172,17 @@ void GMMTiling::SetTilingDataIsSingleTensor() {
   tilingData.gmmBaseParams.set_singleY(static_cast<uint32_t>(isSingleY_));
 }
 
+bool GMMTiling::CheckTensorListLength(const gert::TilingContext *context)
+{
+  auto xTensor = context->GetDynamicInputTensor(X_INDEX, MAX_TENSOR_CONT);
+  auto wTensor = context->GetDynamicInputTensor(WEIGHT_INDEX, MAX_TENSOR_CONT);
+  OP_CHECK_IF(xTensor != nullptr || wTensor != nullptr,
+              OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM tensorList length should between [1, %d]",
+                                          MAX_TENSOR_CONT),
+              return false);
+  return true;
+}
+
 ge::graphStatus GMMTiling::PrepareTilingData(const gert::TilingContext* context) {
   // get transpose and groupType
   OP_CHECK_IF(GMMGetAttrs(context) != ge::GRAPH_SUCCESS,
@@ -411,6 +422,9 @@ ge::graphStatus GMMTiling::SplitKSingleXSeparatedWeight(const gert::TilingContex
 }
 
 ge::graphStatus GMMTiling::Init(const gert::TilingContext* context) {
+  OP_CHECK_IF(!CheckTensorListLength(context),
+             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Check tensorList length failed."),
+             return ge::GRAPH_FAILED);
   OP_CHECK_IF(PrepareTilingData(context) != ge::GRAPH_SUCCESS,
              OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM PrepareTilingData failed."),
              return ge::GRAPH_FAILED);
@@ -1160,7 +1174,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
       OP_CHECK_NULL_WITH_CONTEXT(context, scale0Desc);
       scaleDtype_ = scale0Desc->GetDataType();
   }
-  
+
   auto wFormat0 = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
   wFormat_ = wFormat0 == ge::FORMAT_FRACTAL_NZ ? matmul_tiling::CubeFormat::NZ : matmul_tiling::CubeFormat::ND;
   tuningConfig_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
@@ -1852,7 +1866,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         int64_t tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX) ?
                     (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_TOKEN_PER_EXPECT_INDEX] : 0;
 
-        const int is_in_a8w4_white_list = ((tuningConfig !=0 &&tuningConfig <= 64) || (A8W4_PRETILING_WHITE_LIST.count(mKNList))) 
+        const int is_in_a8w4_white_list = ((tuningConfig !=0 &&tuningConfig <= 64) || (A8W4_PRETILING_WHITE_LIST.count(mKNList)))
               && quantGroupNum != 0 && k / quantGroupNum == 256 && k % quantGroupNum == 0
               && withOffset == 0 && k%64==0 && n%64==0; // 256: 新方案只支持256 pergroup
 
@@ -1889,7 +1903,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         matmul_tiling::PlatformInfo platformInfo;
         InitPlatformInfo(compileInfoPtr, platformInfo);
         matmul_tiling::MultiCoreMatmulTiling mm(platformInfo);
-        
+
         uint32_t calc_m = 1U;
         if (groupNum != 0U) {
           calc_m = m / groupNum;
@@ -1965,7 +1979,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           if (mm.GetTiling(tilingDataA8W4.mmTilingData) == -1){
             return ge::GRAPH_FAILED;
           }
-          
+
           if (is_in_a8w4_white_list) {
             tilingDataA8W4.mmTilingData.set_dbL0A(ONE);  // disable double buffer for LOA
             tilingDataA8W4.mmTilingData.set_dbL0B(ONE);  // disable double buffer for LOB

@@ -301,7 +301,7 @@ aclnnStatus aclnnGroupedMatmul(
       <td>x、weight、biasOptional、scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、groupListOptional、splitItem、y的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>weight的长度大于128。</td>
+      <td>weight的长度不在支持范围。</td>
     </tr>
     <tr>
       <td>若bias不为空，bias的长度不等于weight的长度。</td>
@@ -367,6 +367,7 @@ aclnnStatus aclnnGroupedMatmul(
       <a id="非量化场景约束"></a>
 
   - 非量化场景支持的数据类型为：
+    - 如果传入groupListOptional，groupListOptional必须为非负递增数列，groupListOptional长度不能为1
     - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional
     - 不为空的参数支持的数据类型组合要满足下表：
       | x       | weight  | biasOptional | y     |

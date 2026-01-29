@@ -38,7 +38,7 @@ constexpr uint64_t DATA_SIZE_FP32 = 4UL;
 constexpr uint32_t INDEX_X = 0U;
 constexpr uint32_t INDEX_WEIGHT = 1U;
 constexpr uint32_t INDEX_BIAS = 2U;
-constexpr uint32_t MAX_TENSOR = 128U;
+constexpr uint32_t MAX_TENSOR = 1024U;
 constexpr uint32_t INDEX_GROUPLIST = 7U;
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -55,6 +55,7 @@ constexpr int32_t SPLIT_M = 0;
 constexpr int32_t SPLIT_K = 2;
 constexpr uint64_t BLOCK_SIZE = 32UL;
 constexpr uint64_t ALIGN_DOWN_16 = 15UL;
+constexpr uint64_t ALIGN_128 = 128UL;
 constexpr uint64_t PARTA_L1_SIZE = 256UL * 1024UL;
 
 enum class GMMTrans : std::uint8_t {
@@ -94,7 +95,7 @@ protected:
     bool SetCustomParam(gert::TilingContext *context);
     bool GetAttrs(const gert::TilingContext* context);
     bool CalMatMulTiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr);
-    bool SetGMMTiling();
+    void SetGMMTiling();
     void SetMatMulTiling();
     void SetTilingKey(gert::TilingContext *context);
     bool GMMGetTensorShapeSplitM(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
@@ -104,13 +105,10 @@ protected:
     bool SeparatedXSeparatedWeight(const gert::TilingContext* context);
     bool SeparatedXSingleWeight(const gert::TilingContext* context, const gert::Shape wShape);
     bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
-    bool CheckWeightNzShape(const gert::TilingContext* context, int64_t c0);
     void PrintTilingResult(const gert::TilingContext *context);
+    void SetDisableL2Cache(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
 
 private:
-    int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
-    int32_t kList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
-    int32_t nList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
 
     bool transposeX_ = false;
     bool transposeWeight_ = false;
@@ -119,6 +117,7 @@ private:
     bool isSingleY_ = true;
     bool hasBias_ = false;
     bool weightNzFlag_ = false;
+    bool weightNoL2Cache_ = false;
 
     uint64_t m_ = 0;
     uint64_t k_ = 0;

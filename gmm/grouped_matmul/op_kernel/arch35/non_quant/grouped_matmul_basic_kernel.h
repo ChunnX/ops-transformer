@@ -27,12 +27,14 @@ using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 
 namespace GROUPED_MATMUL {
 
+constexpr uint64_t DIM_NUM = 2UL;
+constexpr uint64_t BUF_SIZE = 3UL;
+
 template<typename layoutA, typename layoutB>
 __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams_, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData_, tiling);
-    GET_TILING_DATA_MEMBER_ADDR(GMMNoQuantTilingData, gmmArray, gmmArrayAddr_, tiling);
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
@@ -60,11 +62,9 @@ __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, G
     using Params = typename GroupedMatmulKernel::Params;
     using GMMTiling = typename GroupedMatmulKernel::GMMTiling;
     GMMTiling gmmParams {gmmBaseParams_.groupNum, gmmBaseParams_.groupType, gmmBaseParams_.groupListType,
-        mmTilingData_.baseM, mmTilingData_.baseN, mmTilingData_.baseK,
         gmmBaseParams_.singleX, gmmBaseParams_.singleWeight, gmmBaseParams_.singleY, gmmBaseParams_.hasBias,
-        gmmBaseParams_.mTailCnt, gmmBaseParams_.nTailCnt};
+        gmmBaseParams_.mTailCnt, gmmBaseParams_.nTailCnt, gmmBaseParams_.weightNoL2Cache};
     gmmParams.matmulTiling = &mmTilingData_;
-    gmmParams.gmmArrayAddrIn = gmmArrayAddr_;
     Params params = {
         // template shape, gmm shape can not get now
         {1, 1, 1, 1},
@@ -95,12 +95,27 @@ __aicore__ inline int32_t GetSplitValue(uint32_t groupIdx, int32_t &preOffset,
     return splitValue;
 }
 
+__aicore__ inline void GetTensorShape(uint32_t groupIdx, GM_ADDR tensorPtr, uint32_t *shape)
+{
+    AscendC::ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void *>(tensorPtr));
+    AscendC::TensorDesc<int32_t> desc;
+    uint64_t buf[BUF_SIZE] = {0UL};
+    desc.SetShapeAddr(buf);
+    listTensorDesc.GetDesc(desc, groupIdx);
+    uint64_t dim = desc.GetDim();
+    for (uint64_t index = 0, count = 0; index < dim; index++) {
+        if (dim - index > DIM_NUM) {
+            continue;
+        }
+        shape[count++] = desc.GetShape(index);
+    }
+}
+
 template <typename T>
-__aicore__ inline void EmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tiling) {
+__aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tiling) {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
-    GET_TILING_DATA_MEMBER_ADDR(GMMNoQuantTilingData, gmmArray, gmmArrayAddr, tiling);
-    // In the V2 interface, grouptype is -1 after host is grouped. Thus, grouptype can be either -1 or 2.
-    if (groupListPtr == nullptr || gmmBaseParams.groupType == 0) {
+    // grouptype can only be 2, else return.
+    if (groupListPtr == nullptr || gmmBaseParams.groupType != 2) {
         return;
     }
 
@@ -112,14 +127,6 @@ __aicore__ inline void EmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tili
     }
     uint64_t yBaseOffset = 0;
     int32_t preOffset = 0;
-    uint32_t singleWeight = gmmBaseParams.singleWeight;
-    uint32_t singleX = gmmBaseParams.singleX;
-    uint32_t singleY = gmmBaseParams.singleY;
-    bool isAllSingleTensor = singleWeight == 1 && singleX == 1 && singleY == 1;
-
-    TILING_TYPE *ubM = gmmArrayAddr;
-    TILING_TYPE *ubK = gmmArrayAddr + MKN_LIST_LEN;
-    TILING_TYPE *ubN = gmmArrayAddr + MKN_LIST_LEN * 2;
     uint64_t coreIdx = GetBlockIdx();
     uint64_t coreRation = GetTaskRation();
     if (coreRation > 1) {
@@ -129,10 +136,13 @@ __aicore__ inline void EmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tili
     for (uint32_t groupIdx = 0; groupIdx < gmmBaseParams.groupNum; ++groupIdx) {
         int32_t splitValue = GetSplitValue(groupIdx, preOffset, gmmBaseParams.groupType,
             gmmBaseParams.groupListType, groupListGm);
-        uint32_t m = isAllSingleTensor && gmmBaseParams.groupType == 2 ? *ubM : *(ubM + groupIdx); // 2: split K
-        uint32_t k = *ubK < 0 && gmmBaseParams.groupType == 2 ? splitValue : *(ubK + groupIdx);
-        uint32_t n = isAllSingleTensor ? *ubN : *(ubN + groupIdx);
-
+        uint32_t xShape[DIM_NUM] = {0UL};
+        uint32_t wShape[DIM_NUM] = {0UL};
+        GetTensorShape(gmmBaseParams.singleX == 0 ? groupIdx : 0, x, xShape);
+        GetTensorShape(gmmBaseParams.singleWeight == 0 ? groupIdx : 0, weight, wShape);
+        uint32_t m = xShape[DIM_NUM - 1];
+        uint32_t k = splitValue;
+        uint32_t n = wShape[DIM_NUM - 1];
         if (k == 0) {
             uint32_t singleM = Ceil(m, gmmBaseParams.coreNum);
             singleM = AlignUp<HALF_UB_BLOCK_UNIT_SIZE>(singleM);

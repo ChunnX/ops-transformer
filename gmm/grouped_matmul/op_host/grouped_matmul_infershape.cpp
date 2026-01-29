@@ -400,7 +400,8 @@ static ge::graphStatus CheckNonQuant(gert::InferShapeContext* context) {
 
 static ge::graphStatus GetGroupSize(const gert::InferShapeContext* context, GMMParamsInfo& paramsInfo) {
     size_t groupNum = 1;
-    size_t maxGroupNum = GMM_MAX_GROUP_LIST_SIZE_ARRAY;  // init max value
+    // all case allows 1024 in infershape, specific check in tiling
+    size_t maxGroupNum = GMM_MAX_GROUP_LIST_SIZE_TENSOR;
     if (paramsInfo.numX > 1UL) {
         groupNum = paramsInfo.numX;
     } else if (paramsInfo.numWeight > 1UL) {
@@ -409,7 +410,6 @@ static ge::graphStatus GetGroupSize(const gert::InferShapeContext* context, GMMP
         groupNum = paramsInfo.numY;
     } else if (paramsInfo.lenGroupList > 0) {
         groupNum = static_cast<size_t>(paramsInfo.lenGroupList);
-        maxGroupNum = static_cast<size_t>(GMM_MAX_GROUP_LIST_SIZE_TENSOR);  // only this case allows GMM_MAX_GROUP_LIST_SIZE_TENSOR size
     }
     OP_CHECK_IF(groupNum > maxGroupNum,
               OP_LOGE(context->GetNodeName(), "groupNum[%zu] is larger than %zu.",

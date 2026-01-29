@@ -167,6 +167,7 @@ protected:
     ge::graphStatus CheckA16W4MsdEnable(uint64_t mSize, uint64_t antiquantGroupNum, const gert::TilingContext *context,
                                         const GMMCompileInfo *compileInfoPtr);
     uint64_t GetWithOffset(const gert::TilingContext *context);
+    bool CheckTensorListLength(const gert::TilingContext *context);
 
 private:
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};

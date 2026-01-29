@@ -98,7 +98,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>x</td>
           <td>输入</td>
           <td>公式中的输入<code>x</code>。</td>
-          <td>最多支持128个tensor。</td>
+          <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
           <td>FLOAT<sup>1</sup>、FLOAT16、INT16<sup>1</sup>、INT8、INT4<sup>1</sup>、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup></td>
           <td>ND</td>
           <td>2-6</td>
@@ -108,7 +108,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>weight</td>
           <td>输入</td>
           <td>公式中的<code>weight</code>。</td>
-          <td>最多支持128个tensor。</td>
+          <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
           <td>FLOAT<sup>1</sup>、FLOAT16、INT16<sup>1</sup>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup></td>
           <td>ND</td>
           <td>2-3</td>
@@ -275,7 +275,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>out</td>
           <td>输出</td>
           <td>公式中的输出<code>y</code>。</td>
-          <td>最多支持128个tensor。</td>
+          <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
           <td>FLOAT、FLOAT16、INT32<sup>1</sup>、INT8<sup>1</sup>、BFLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -330,6 +330,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - 上表数据类型列中的角标“1”代表该系列不支持的数据类型。
     - 输入参数x、weight均不支持INT16类型，且x不支持int4类型；
     - 输出参数out不支持INT32、INT8类型。
+    - 输入参数x、weight，输出参数out在非量化场景支持最多1024个tensor，在伪量化和全量化场景支持最多128个tensor。
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
@@ -337,6 +338,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型。
     - 输入参数biasOptional不支持BFLOAT16；
     - 输入参数scaleOptional不支持INT64类型。
+    - 输入参数x、weight，输出参数out支持最多128个tensor。
 
 
 - **返回值：**
@@ -369,12 +371,15 @@ aclnnStatus aclnnGroupedMatmulV5(
         <td>传入参数x的元素不为空指针，且传出参数out的元素为空指针。</td>
       </tr>
       <tr>
-        <td rowspan="6"> ACLNN_ERR_PARAM_INVALID </td>
-        <td rowspan="6"> 161002 </td>
+        <td rowspan="7"> ACLNN_ERR_PARAM_INVALID </td>
+        <td rowspan="7"> 161002 </td>
         <td>x、weight、biasOptional、scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、groupListOptional、out的数据类型和数据格式不在支持的范围内。</td>
       </tr>
       <tr>
-        <td>weight的长度大于128；若bias不为空，bias的长度不等于weight的长度。</td>
+        <td>weight的长度不在支持范围。</td>
+      </tr>
+      <tr>
+        <td>若bias不为空，bias的长度不等于weight的长度。</td>
       </tr>
       <tr>
         <td>groupListOptional维度为1。</td>
@@ -808,8 +813,8 @@ aclnnStatus aclnnGroupedMatmulV5(
       |:---------:|:-------:|:-------:|:-------:| :------ |
       | -1 | 多个 | 多个|多个 |1）仅支持splitItem为0/1<br>2）非量化x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3） groupListOptional必须传空<br>4）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>5）x不支持转置<br>6）仅支持ND进ND出|
       | 0 | 单个|单个|单个 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（E, N, K）或（E, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（E, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持<br>6）仅支持ND进ND出|
-      | 0 | 单个|多个|单个 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总与x中tensor的第一维相等，长度最大为 128<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出 |
-      | 0 | 多个|多个|单个 |1）仅支持splitItem为2<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为128<br>5）支weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出 |
+      | 0 | 单个|多个|单个 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总与x中tensor的第一维相等，长度最大为1024<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出 |
+      | 0 | 多个|多个|单个 |1）仅支持splitItem为2<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化<br>8）仅支持ND进ND出 |
       | 2 | 单个|单个|单个 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；out中tensor需为3维, shape为（E, M, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）仅支持x转置且weight不转置<br>6）仅支持非量化<br>7）仅支持ND进ND出|
 
 </details>

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -22,14 +22,6 @@
 namespace Cgmct {
 namespace Gemm {
 namespace Block {
-
-#ifndef TILING_TYPE
-#if defined(CONST_TILING)
-#define TILING_TYPE const int32_t
-#else
-#define TILING_TYPE __gm__ int32_t
-#endif
-#endif // TILING_TYPE
 
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_>
 class BlockSchedulerGroupedMatmulAswt {
@@ -160,7 +152,6 @@ public:
     {
         return DoGetBlockNum(l1M, l1N, shape);
     }
-
 };
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
 struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_, Cgmct::Gemm::GroupedMatmulAswtScheduler, TransA_,

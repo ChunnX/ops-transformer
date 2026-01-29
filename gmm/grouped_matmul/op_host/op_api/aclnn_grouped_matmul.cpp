@@ -1093,9 +1093,9 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
     } else if (IsWeightQuant(gmmParams.xDtype, weightDtype)) {
       return gmm::AclnnGroupedMatmulWeightQuant91095Checker(gmmParams).CheckGroupedMatmulWeightQuant91095();
     } else {
-      CHECK_RET(gmm::AclnnGroupedMatmulNoQuant950Checker(gmmParams).CheckGroupedMatmulNoQuant950() ==
-                    ACLNN_SUCCESS,
-                ACLNN_ERR_PARAM_INVALID);
+      CHECK_RET(
+          gmm::AclnnGroupedMatmulNoQuantDAV3510Checker(gmmParams).CheckGroupedMatmulFunctionParamsNoQuantDAV3510() ==
+              ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
   }
   if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
@@ -1515,6 +1515,13 @@ static aclnnStatus CheckTensorListLength(const aclTensorList *tensorList) {
 static aclnnStatus CheckGroupSize(const gmm::GroupedMatmulParams &gmmParams) {
   // Only groupSizes of necessary inputs will be checked here.
   // The groupSizes of optional inputs and output will be checked in subsequent steps.
+  if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    // only no quant support group size upper 128 on 950PR/DT
+    if ((gmmParams.xDtype == DataType::DT_BF16 || gmmParams.xDtype == DataType::DT_FLOAT16 ||
+       gmmParams.xDtype == DataType::DT_FLOAT) && gmmParams.xDtype == (*gmmParams.weight)[0]->GetDataType()) {
+      return gmm::AclnnGroupedMatmulNoQuantDAV3510Checker(gmmParams).CheckGroupedMatmulGroupSizeNoQuantDAV3510();
+    }
+  }
   CHECK_COND(CheckTensorListLength(gmmParams.x) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
              "Invalid length of tensorList x.");
   CHECK_COND(CheckTensorListLength(gmmParams.weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,

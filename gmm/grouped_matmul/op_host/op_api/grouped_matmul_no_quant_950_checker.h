@@ -8,21 +8,24 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_GROUPED_MATMUL_NO_QUANT_950_CHECKER_H
-#define OP_API_INC_GROUPED_MATMUL_NO_QUANT_950_CHECKER_H
+#ifndef OP_API_INC_GROUPED_MATMUL_NO_QUANT_910_95_CHECKER_H
+#define OP_API_INC_GROUPED_MATMUL_NO_QUANT_910_95_CHECKER_H
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_grouped_matmul_util.h"
 
 namespace gmm {
-class AclnnGroupedMatmulNoQuant950Checker {
+class AclnnGroupedMatmulNoQuantDAV3510Checker {
 public:
-    explicit AclnnGroupedMatmulNoQuant950Checker(const GroupedMatmulParams &gmmParams) : gmmParams_(gmmParams){};
-    ~AclnnGroupedMatmulNoQuant950Checker(){};
-    aclnnStatus CheckGroupedMatmulNoQuant950() const;
+    explicit AclnnGroupedMatmulNoQuantDAV3510Checker(const GroupedMatmulParams &gmmParams) : gmmParams_(gmmParams){};
+    ~AclnnGroupedMatmulNoQuantDAV3510Checker(){};
+    aclnnStatus CheckGroupedMatmulFunctionParamsNoQuantDAV3510() const;
+    aclnnStatus CheckGroupedMatmulGroupSizeNoQuantDAV3510();
+
 
 private:
     aclnnStatus CheckEmptyTensor() const;
+    aclnnStatus CheckTensorListLength(const aclTensorList *tensorList) const;
 private:
     GroupedMatmulParams gmmParams_;
 };

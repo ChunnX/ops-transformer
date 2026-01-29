@@ -12,7 +12,7 @@
  * \file grouped_matmul_apt.cpp
  * \brief
  */
- 
+
 #include "grouped_matmul_utils.h"
 #include "arch35/grouped_matmul_tiling_data_apt.h"
 using GMMWeightQuantTilingData = GroupedMatmulTilingData::GMMWeightQuantTilingData;
@@ -362,7 +362,7 @@ REGISTER_TILING_DEFAULT(GMMQuantTilingData);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) {    // x transposed
         if ASCEND_IS_AIV {
-            EmptyTensor<DTYPE_Y>(groupList, y, tiling);
+            EmptyTensor<DTYPE_Y>(x, weight, groupList, y, tiling);
         }
         if ASCEND_IS_AIC {
             if constexpr (wFormat == CubeFormat::NZ) {
