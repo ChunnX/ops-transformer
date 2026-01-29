@@ -23,6 +23,7 @@
 #include "vf/vf_post_quant.h"
 #include "flash_attention_score_antiquant_processor.h"
 #include "flash_attention_score_tiling_regbase.h"
+#include "util_regbase.h"
 using namespace optiling;
 using namespace FaVectorApi;
 namespace BaseApi {
@@ -1161,8 +1162,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(
             if constexpr (!POST_QUANT) {
                 RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, runInfo.vec2S1RealSize, constInfo.dSizeV, dSizeAligned64);
             } else {
-                uint32_t dStride = CeilDivision(static_cast<uint32_t>(dSizeAligned64), sizeof(float));
-                uint16_t dSize = CeilDivision(constInfo.dSizeV, sizeof(float)); // w8后量化的处理长度
+                uint32_t dStride = CeilDiv(static_cast<uint32_t>(dSizeAligned64), sizeof(float));
+                uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化的处理长度
                 RowInvalidUpdateVF<float>(*((LocalTensor<float>*)&vec2ResUb), maxTensor, runInfo.vec2S1RealSize, dSize, dStride);
             }
         }
@@ -1409,7 +1410,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CombineSpli
     } else {
         gSplitSize = (gSplitSize > constInfo.gSize) ? constInfo.gSize : gSplitSize;
     }
-    uint32_t loopCount = CeilDivision(constInfo.gSize, gSplitSize);
+    uint32_t loopCount = CeilDiv(constInfo.gSize, gSplitSize);
     uint32_t tailSplitSize = constInfo.gSize - (loopCount - 1) * gSplitSize;
     uint64_t lseOffset = 0;
 

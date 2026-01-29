@@ -526,7 +526,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::CombineSplitKVRes(
     } else {
         gSplitSize = (gSplitSize > constInfo.gSize) ? constInfo.gSize : gSplitSize;
     }
-    uint32_t loopCount = CeilDivision(constInfo.gSize, gSplitSize);
+    uint32_t loopCount = CeilDiv(constInfo.gSize, gSplitSize);
     uint32_t tailSplitSize = constInfo.gSize - (loopCount - 1) * gSplitSize;
     uint64_t lseOffset = 0;
 

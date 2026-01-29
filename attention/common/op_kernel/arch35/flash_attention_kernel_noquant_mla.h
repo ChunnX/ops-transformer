@@ -234,8 +234,8 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
     constInfo.s2Size = inputParamsRegbase.s2Size;
     if constexpr (isFd) {
         constInfo.splitKVNum = this->sharedParams.splitKVNum;
-        constInfo.sInnerLoopSize = CeilDivision(inputParamsRegbase.s2Size, constInfo.splitKVNum);
-        constInfo.actualCombineLoopSize = CeilDivision(constInfo.s2Size, constInfo.sInnerLoopSize);
+        constInfo.sInnerLoopSize = CeilDiv(inputParamsRegbase.s2Size, constInfo.splitKVNum);
+        constInfo.actualCombineLoopSize = CeilDiv(constInfo.s2Size, constInfo.sInnerLoopSize);
     }
     constInfo.dSize = inputParamsRegbase.dSize;
     constInfo.dSizeV = inputParamsRegbase.dSizeV;

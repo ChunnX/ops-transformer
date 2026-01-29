@@ -278,8 +278,8 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
             runInfo.deScaleKvOffset = runInfo.n2oIdx * s2BlockCnt +
                                     (runInfo.s2SizeAcc >> 8) + runInfo.s2LoopCount; // 8 ：按照256分块计算deScaleKv偏移
         } else {
-            int64_t s1BlockCnt = CeilDivision(constInfo.s1Size, FP8_QUANT_BLOCK_SIZE); // Q的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S1, 128), 1]
-            int64_t s2BlockCnt = CeilDivision(constInfo.s2Size, FP8_QUANT_KV_BLOCK_SIZE); // KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S2, 256), 1]
+            int64_t s1BlockCnt = CeilDiv(constInfo.s1Size, FP8_QUANT_BLOCK_SIZE); // Q的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S1, 128), 1]
+            int64_t s2BlockCnt = CeilDiv(constInfo.s2Size, FP8_QUANT_KV_BLOCK_SIZE); // KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S2, 256), 1]
             deScaleQOffset = runInfo.boIdx * constInfo.n2G * s1BlockCnt +
                                     runInfo.n2oIdx * constInfo.gSize * s1BlockCnt +
                                     runInfo.goIdx * s1BlockCnt + runInfo.s1oIdx;
@@ -580,8 +580,8 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             pScaleUb = this->pScaleBuf[runInfo.taskIdMod3].template Get<T>();
         } else {
             // 训练模板：128*128 推理模板：128*256
-            int64_t s1BlockCnt = CeilDivision(constInfo.s1Size, FP8_QUANT_BLOCK_SIZE);
-            int64_t s2BlockCnt = CeilDivision(constInfo.s2Size, FP8_QUANT_KV_BLOCK_SIZE);
+            int64_t s1BlockCnt = CeilDiv(constInfo.s1Size, FP8_QUANT_BLOCK_SIZE);
+            int64_t s2BlockCnt = CeilDiv(constInfo.s2Size, FP8_QUANT_KV_BLOCK_SIZE);
             /* Q的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S1, 128), 1] */
             deScaleQOffset = runInfo.boIdx * constInfo.n2G * s1BlockCnt +
                                     runInfo.n2oIdx * constInfo.gSize * s1BlockCnt +
@@ -1188,8 +1188,8 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(LocalTenso
             if constexpr (!POST_QUANT) {
                 RowInvalidUpdateVF<float>(vec2ResUb, maxTensor,  runInfo.vec2S1RealSize, constInfo.dSizeV, static_cast<uint32_t>(dSizeAligned64));
             } else {
-                uint32_t dStride = CeilDivision(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
-                uint16_t dSize = CeilDivision(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
+                uint32_t dStride = CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
+                uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
                 RowInvalidUpdateVF<float>(*((LocalTensor<float>*)&vec2ResUb), maxTensor, runInfo.vec2S1RealSize, dSize, dStride);
             }
         }
