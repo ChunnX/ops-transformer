@@ -80,7 +80,6 @@ const std::map<ge::DataType, uint64_t> D_TYPE_SIZE_MAP = {
     {ge::DT_FLOAT8_E4M3FN, 1},
     {ge::DT_FLOAT8_E5M2, 1},
     {ge::DT_INT4, ge::GetSizeByDataType(ge::DT_INT4)},
-    {ge::DT_FLOAT4_E1M2, ge::GetSizeByDataType(ge::DT_FLOAT4_E1M2)},
     {ge::DT_FLOAT4_E2M1, ge::GetSizeByDataType(ge::DT_FLOAT4_E2M1)},
 };
 
@@ -96,7 +95,6 @@ const std::map<matmul_tiling::DataType, uint64_t> D_MTYPE_SIZE_MAP = {
     // DT_INT4的key值代码里面保证有效
     {matmul_tiling::DataType::DT_INT4, D_TYPE_SIZE_MAP.at(ge::DT_INT4)},
     {matmul_tiling::DataType::DT_FLOAT4_E2M1, D_TYPE_SIZE_MAP.at(ge::DT_FLOAT4_E2M1)},
-    {matmul_tiling::DataType::DT_FLOAT4_E1M2, D_TYPE_SIZE_MAP.at(ge::DT_FLOAT4_E1M2)},
 };
 
 enum class AllReduceScenario

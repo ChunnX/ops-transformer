@@ -326,14 +326,14 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::PostTiling()
         errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
             reinterpret_cast<void *>(&weightQuantMatmulAllReduceA5Fp8TilingData_), dataSize);
         if (ret != EOK) {
-            OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+            OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d", ret);
             return ge::GRAPH_FAILED;
         }
     } else {
         errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
             reinterpret_cast<void *>(&weightQuantMatmulAllReduceA5TilingData_), dataSize);
         if (ret != EOK) {
-            OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+            OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d", ret);
             return ge::GRAPH_FAILED;
         }
     }
@@ -350,7 +350,7 @@ void WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
         VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+            opName_, "Cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
         return );
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
         weightQuantMatmulAllReduceA5Fp8TilingData_.hcommCfg.opType = (
@@ -455,25 +455,14 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckBiasInput()
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     if (mmrCtxInfo_.bias_shape != nullptr) {
         const auto biasType = mmrCtxInfo_.bias->GetDataType();
-        if (isWeightFp8Hif8_ && x1Type == ge::DT_BF16) {
-            OP_TILING_CHECK(
-                (x1Type != biasType) && (biasType != ge::DT_FLOAT),
-                VECTOR_INNER_ERR_REPORT_TILING(
-                    context_->GetNodeName(),
-                    "In the fp8/hif8 antiquant scenario, "
-                    "type of bias should be bf16 or fp32 when x1 is bf16 but bias's type=%d.",
-                    static_cast<int32_t>(biasType)),
-                return ge::GRAPH_FAILED);
-        } else {
-            OP_TILING_CHECK(
-                x1Type != biasType,
-                VECTOR_INNER_ERR_REPORT_TILING(
-                    context_->GetNodeName(),
-                    "In the antiquant scenario, "
-                    "type of x1 and bias should be same but x1's type=%d, bias's type=%d.",
-                    static_cast<int32_t>(x1Type), static_cast<int32_t>(biasType)),
-                return ge::GRAPH_FAILED);
-        }
+        OP_TILING_CHECK(
+            x1Type != biasType,
+            VECTOR_INNER_ERR_REPORT_TILING(
+                context_->GetNodeName(),
+                "In the antiquant scenario, "
+                "type of x1 and bias should be same but x1's type=%d, bias's type=%d.",
+                static_cast<int32_t>(x1Type), static_cast<int32_t>(biasType)),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -483,9 +472,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
     GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
     const size_t x2DimNum =
         (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
-                 ge::Format::FORMAT_FRACTAL_NZ ?
-             4 :
-             2);
+                 ge::Format::FORMAT_FRACTAL_NZ ? 4 : 2);
     const size_t actualX2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(
         x2DimNum != actualX2DimNum,
@@ -507,21 +494,21 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(
         !((x2Type == ge::DT_INT8) || (x2Type == ge::DT_INT4) || (x2Type == ge::DT_FLOAT8_E4M3FN) ||
-          (x2Type == ge::DT_FLOAT8_E5M2) || (x2Type == ge::DT_HIFLOAT8)),
+          (x2Type == ge::DT_HIFLOAT8)),
         VECTOR_INNER_ERR_REPORT_TILING(
             context_->GetNodeName(),
             "In the antiquant scenario, "
-            "type of x2 should be int8, int4, fp8_e5m3, fp8_e4m3 or hif8 bu get type of x2=%d.",
+            "type of x2 should be int8, int4, fp8_e4m3 or hif8 bu get type of x2=%d.",
             static_cast<int32_t>(x2Type)),
         return ge::GRAPH_FAILED);
 
-    if ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_FLOAT8_E5M2) || (x2Type == ge::DT_HIFLOAT8)) {
+    if ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)) {
         isWeightFp8Hif8_ = true;
         OP_TILING_CHECK(
             mmrCtxInfo_.antiquant_offset != nullptr,
             VECTOR_INNER_ERR_REPORT_TILING(
                 context_->GetNodeName(),
-                "AntiquantOffset is not supported when dataType of x1 is fp8e4m3/fp8e5m2/hif8."),
+                "AntiquantOffset is not supported when dataType of x1 is fp8e4m3/hif8."),
             return ge::GRAPH_FAILED);
     }
     OP_TILING_CHECK(
@@ -560,7 +547,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
               (groupSize > std::min(static_cast<int32_t>(kValue - 1), INT32_MAX)))),
             VECTOR_INNER_ERR_REPORT_TILING(
                 context_->GetNodeName(),
-                "In the per-group scenario,"
+                "In the per-group scenario, "
                 "antiquantGroupSize should be in range=[32, min(%lu, INT_MAX)], Actual=%ld.",
                 (kValue - 1), groupSize),
             return ge::GRAPH_FAILED);
@@ -568,20 +555,20 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
     // pergroup场景下不支持fp8和hif8,增加校验
     OP_TILING_CHECK(
         (antiQuantType_ == AntiQuantType::PER_GROUP) &&
-        ((x2Type == ge::DT_FLOAT8_E5M2) || (x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
+        ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-        "x2 data type %s is not supported in per-group scenario, "
-        "unsupported types include DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, and DT_HIFLOAT8.",
+        "X2 dtype %s is not supported in per-group scenario, "
+        "unsupported types include DT_FLOAT8_E4M3FN, and DT_HIFLOAT8.",
         ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()),
         return ge::GRAPH_FAILED);
 
     // pertensor场景下不支持fp8和hif8,增加校验
     OP_TILING_CHECK(
         (antiQuantType_ == AntiQuantType::PER_TENSOR) &&
-        ((x2Type == ge::DT_FLOAT8_E5M2) || (x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
+        ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-        "x2 data type %s is not supported in per-tensor scenario, "
-        "unsupported types include DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, and DT_HIFLOAT8.",
+        "X2 dtype %s is not supported in per-tensor scenario, "
+        "unsupported types include DT_FLOAT8_E4M3FN, and DT_HIFLOAT8.",
         ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()),
         return ge::GRAPH_FAILED);
 

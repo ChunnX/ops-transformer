@@ -80,11 +80,10 @@ static bool CheckDtypeValid(
         (npuArch == NpuArch::DAV_2002) ? DTYPE_SUPPORT_LIST_310P : DTYPE_SUPPORT_LIST;
 
     const std::initializer_list<op::DataType> dtypeSupportListQuantA5 = {
-        DataType::DT_INT8, DataType::DT_INT4, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2,
-        DataType::DT_HIFLOAT8};
+        DataType::DT_INT8, DataType::DT_INT4, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
 
     const std::initializer_list<op::DataType> dtypeSupportListBiasA5 = {
-        DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
+        DataType::DT_FLOAT16, DataType::DT_BF16};
 
     const auto x2DtypeSupportList =
         (npuArch == NpuArch::DAV_3510) ? dtypeSupportListQuantA5 : DTYPE_SUPPORT_LIST_QUANT;
@@ -106,22 +105,9 @@ static bool CheckDtypeValid(
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, biasDtypeSupportList, return false);
         const auto x1Dtype = x1->GetDataType();
-        const auto x2Dtype = x2->GetDataType();
         const auto biasDtype = bias->GetDataType();
-        if ((x1Dtype == DataType::DT_BF16) &&
-            ((x2Dtype == DataType::DT_FLOAT8_E4M3FN) || (x2Dtype == DataType::DT_FLOAT8_E5M2) ||
-             (x2Dtype == DataType::DT_HIFLOAT8))) {
-            if ((biasDtype != DataType::DT_BF16) && (biasDtype != DataType::DT_FLOAT)) {
-                OP_LOGE(
-                    ACLNN_ERR_PARAM_INVALID,
-                    "Bias should be fp32 or bf16 when x2 is bf16 in fp8/hif8 weight quant scenario. bias type is %s",
-                    op::ToString(biasDtype).GetString());
-                return false;
-            };
-        } else {
             // 检查x1和bias的数据类型是否相同
-            OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
-        }
+        OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
     }
     if (offset != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(offset, dtypeSupportList, return false);

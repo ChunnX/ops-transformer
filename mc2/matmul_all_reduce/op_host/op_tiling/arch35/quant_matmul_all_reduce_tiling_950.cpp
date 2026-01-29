@@ -61,7 +61,7 @@ void QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
         VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+            opName_, "Cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
         return );
     quantMatmulAllReduceTilingData_.version = mc2tiling::COMM_VERSION3; // 新版本
     if (MutableRCSTilingData().isInputCommQuantScale == 1) {
@@ -187,7 +187,7 @@ uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
         commDtype,                                  \
         scenarioIsMXFP8,                            \
         SET_NOT_USE_WEIGHT_QUANT_MM_TILING);
-    OP_LOGD(opName_, "transB, kernelType,"                              \
+    OP_LOGD(opName_, "TransB, kernelType,"                              \
             "commDtype, scenarioIsMXFP8 is:[%d,%u,%u,%d].",             \
             quantTPlparam_.transB, quantTPlparam_.kernelType,           \
             commDtype, scenarioIsMXFP8);
@@ -313,7 +313,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::PostTiling()
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), sizeof(QuantMatmulAllReduceTilingDataA5));
     if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d.", ret);
         return ge::GRAPH_FAILED;
     }
 
@@ -349,13 +349,13 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoQuantTiling()
         OP_LOGD(opName_, "Enable SplitK Tiling.");
         GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
         quantTPlparam_ = mmTile.GetQuantMMAllReduceTPLParam(mmTile.GetKernelType());
-        OP_LOGD(opName_, "quantmmAllReduce get kernelType: %d", mmTile.GetKernelType());
+        OP_LOGD(opName_, "QuantmmAllReduce get kernelType: %d.", mmTile.GetKernelType());
         return ge::GRAPH_SUCCESS;
     } else {
         GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());;
         if (MutableRCSTilingData().tailCnt == 0) {
             quantTPlparam_ = mmTile.GetQuantMMAllReduceTPLParam(mmTile.GetKernelType());
-            OP_LOGD(opName_, "quantmmAllReduce get kernelType: %d", mmTile.GetKernelType());
+            OP_LOGD(opName_, "QuantmmAllReduce get kernelType: %d.", mmTile.GetKernelType());
             return ge::GRAPH_SUCCESS;
         }
         args_.mValue = tailMValue_;
@@ -363,7 +363,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoQuantTiling()
         GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
 
         quantTPlparam_ = mmTail.GetQuantMMAllReduceTPLParam(mmTail.GetKernelType());
-        OP_LOGD(opName_, "quantmmAllReduce get kernelType: %d", mmTail.GetKernelType());
+        OP_LOGD(opName_, "QuantmmAllReduce get kernelType: %d.", mmTail.GetKernelType());
         return ge::GRAPH_SUCCESS;
     }
 }
@@ -573,7 +573,7 @@ bool CheckGroupSizeVaild(
 ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
 {
     OP_TILING_CHECK(
-        mmrCtxInfo_.groupSizePtr == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "the groupSize is nullptr"),
+        mmrCtxInfo_.groupSizePtr == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "The groupSize is nullptr."),
         return false);
     auto groupSizePtr = mmrCtxInfo_.groupSizePtr;
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
@@ -585,8 +585,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
             !(CheckGroupSizeVaild(groupSizeMNK, PERBLOCK_GROUPSIZE_SUPPORT_LIST)),
             CUBE_INNER_ERR_REPORT(
                 opName_,
-                "groupSizeM, groupSizeN and groupSizeK should be 128 in perblock scene,"
-                " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu]",
+                "GroupSizeM, groupSizeN and groupSizeK should be 128 in perblock scene,"
+                " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu].",
                 groupSizeM, groupSizeN, groupSizeK),
             return ge::GRAPH_FAILED);
     } else if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
@@ -594,8 +594,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
             !(CheckGroupSizeVaild(groupSizeMNK, MXFP_GROUPSIZE_SUPPORT_LIST)),
             CUBE_INNER_ERR_REPORT(
                 opName_,
-                "groupSizeM, groupSizeN and groupSizeK should be surported in mxfp scene,"
-                " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu]",
+                "GroupSizeM, groupSizeN and groupSizeK should be surported in mxfp scene,"
+                " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu].",
                 groupSizeM, groupSizeN, groupSizeK),
             return ge::GRAPH_FAILED);
     }

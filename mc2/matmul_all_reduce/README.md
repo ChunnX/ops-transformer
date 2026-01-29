@@ -4,8 +4,12 @@
 
 | 产品 | 是否支持 |
 | ---- | :----: |
+| <term>Ascend 950PR/Ascend 950DT</term> | √ |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | x |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
+| <term>Atlas 200I/500 A2 推理产品</term> | x |
+| <term>Atlas 推理系列产品</term>  | x |
+| <term>Atlas 训练系列产品</term> | x |
 
 ## 功能说明
 
@@ -15,31 +19,22 @@
 
   非量化场景：
   - 情形1：
-
     $$
     y_i=x_i\times weight_i + bias_i
     $$
-
   - 情形2：
-
     $$
     output = AllReduce(x1 @ x2 + bias + x3)
     $$
-
   - 情形3：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。
-
     $$
     output= AllReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
     $$
-
   - 情形4：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant和pertoken计算，接着与x3进行Add操作，最后做AllReduce计算。
-
     $$
     output= AllReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
     $$
-
   - 情形5：对量化后的入参x1、x2进行MatMul、Dequant和pertoken计算，接着与x3进行Add操作，再对输出进行perchannel量化，然后进行AllToAll通信，对第一次通讯结果进行reduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行Dequant，得到最终输出。
-
     $$
     matmulAddOutput = (dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
     $$
@@ -55,7 +50,6 @@
     $$
     outPut = (AllGather(reduceSumOutPut_{int8}) * commQuantScale2Optional);
     $$
-
   - 情形6：
     - commQuantScale1Optional, commQuantScale2Optional不为空时:
 
@@ -74,45 +68,37 @@
       $$
       output = (AllGather(reduceSumOutput_{int8}) * commQuantScale2Optional);
       $$
-
     - x1，x2为INT8，无x1ScaleOptional，x2Scale为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
       $$
       output = AllReduce((x1@x2 + biasOptional) * x2Scale + x3Optional)
       $$
-
     - x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
 
       $$
       output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
       $$
-
-    - x1，x2为FLOAT4_E2M1/FLOAT4_E1M2/FLOAT8_E4M3FN/FLOAT8_E5M2，x1ScaleOptional为FLOAT8_E8M0，x2Scale为FLOAT8_E8M0，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
+    - x1，x2为FLOAT4_E2M1/FLOAT8_E4M3FN/FLOAT8_E5M2，x1ScaleOptional为FLOAT8_E8M0，x2Scale为FLOAT8_E8M0，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
       $$
       output = AllReduce((x1* x1ScaleOptional)@(x2* x2Scale) + biasOptional + x3Optional)
       $$
-
     - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
       $$
       output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
       $$
-
-    - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时，x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))，x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
+    - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
 
       $$
       output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
       $$
-
   - 情形7：
-
     $$
-    output = AllReduce(x1 @ ((x2 + antiquantOffset) *antiquantScale) + bias+ x3) 
+    output = Allreduce(x1 @ ((x2 + antiquantOffset) *antiquantScale) + bias+ x3) 
     $$
 
 ## 参数说明
-
 
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
   <col style="width: 170px">
@@ -134,14 +120,14 @@
       <td>x1</td>
       <td>输入</td>
       <td>MatMul左矩阵，即公式中的输入x1。</td>
-      <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
+      <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>x2</td>
       <td>输入</td>
       <td>MatMul右矩阵，即公式中的输入x2。</td>
-      <td>FLOAT16、BFLOAT16、INT8、INT4、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
+      <td>FLOAT16、BFLOAT16、INT8、INT4、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
       <td>ND、FRACTAL_NZ</td>
     </tr>
     <tr>
@@ -162,14 +148,14 @@
       <td>antiquantScale</td>
       <td>可选输入</td>
       <td>公式中的输入antiquantScale。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>antiquantOffset</td>
       <td>可选输入</td>
       <td>公式中的输入antiquantOffset。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -271,7 +257,8 @@
 * 输入x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。
 * 输入x2的数据格式：
     * <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。
-    * 当x2的数据格式为FRACTAL_NZ时，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`到数据格式NZ的转换，非连续Tensor仅支持transpose场景。当x2的数据格式为ND时，当前版本仅支持二维输入。
+    * <term>Ascend 950PR/Ascend 950DT</term>：支持ND格式。
+    * 当x2的数据格式为FRACTAL_NZ时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight到数据格式NZ的转换，非连续Tensor仅支持transpose场景。当x2的数据格式为ND时，当前版本仅支持二维输入。
 * 传入的x1、x2、antiquantScale或者output不为空指针。
 * 当输入x1的shape为(b, s, k)时，x3（非空场景）与输出output的shape为(b, s, n)，pertoken_scale的shape为(b*s)；当输入x1的shape为(m, k)时，x3（非空场景）与输出output的shape为(m, n)，pertoken_scale的shape为(m)。
 * 输入comm_quant_scale_1和comm_quant_scale_2可选，可为空，当x2为(k, n)时, shape可为(n)或者(1,n)。
@@ -286,6 +273,7 @@
 * 在长序列场景，随着b/s或者m的增大，可能出现OOM或者计算超时。
 * 仅支持hccs链路all mesh组网。
     * <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    * <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 * <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 

@@ -30,7 +30,7 @@ void MatmulAllReduceTilingA5::SetMc2Hcomm()
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
         VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+            opName_, "Cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
         return );
     matmulAllReduce910TilingData_.hcommCfg.opType = (
         static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLREDUCE));
@@ -141,7 +141,7 @@ ge::graphStatus MatmulAllReduceTilingA5::PostTiling()
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&matmulAllReduce910TilingData_), sizeof(MatmulAllReduce910TilingDataA5));
     if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d.", ret);
         return ge::GRAPH_FAILED;
     }
 
@@ -157,16 +157,16 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
     OP_LOGD(opName_, "Start to excute DoMatmulV3Tiling!");
     // 获取芯片平台信息
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "get platform info failed"),
+    OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "Get platform info failed."),
                     return ge::GRAPH_FAILED);
     // 获取compileInfo
     OP_TILING_CHECK(mc2_matmul_v3_advanced::InitCompileInfo(platformInfo, &compileInfo_) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "init compile info failed"), return ge::GRAPH_FAILED);
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "Init compile info failed."), return ge::GRAPH_FAILED);
 
     // 根据芯片型号获取策略模板
     std::vector<int32_t> priorities;
     OP_TILING_CHECK(mc2tiling::NewGetMatmulV3PriorityPolicy(socVersion_, priorities, opName_) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "get mmv3 priority policy failed"),
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "Get mmv3 priority policy failed."),
                     return ge::GRAPH_FAILED);
     Mc2MMRegisterCfg registerCfg {"Mc2MatMulV3", socVersion_, priorities};
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);

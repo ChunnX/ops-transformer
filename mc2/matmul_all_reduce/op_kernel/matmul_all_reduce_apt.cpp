@@ -44,8 +44,7 @@ namespace{
     (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||          \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&   \
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))) || \
-    (((ORIG_DTYPE_X1 == DT_FLOAT4_E1M2) || (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)) &&      \
-     ((ORIG_DTYPE_X2 == DT_FLOAT4_E1M2) || (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
+    ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
 #include "arch35/matmul_all_reduce_quant_pertoken.h"
 #include "arch35/matmul_all_reduce_quant_pertoken_comm_int8.h"
 #include "arch35/matmul_all_reduce_quant.h"
@@ -126,9 +125,7 @@ __global__ __aicore__ void quant_matmul_all_reduce(
             Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2CoreType::ON_CUBE_AND_VECTOR, \
             DTYPE_Y, false, TPL_TRANS_B);
     }
-#elif (                                                                         \
-    ((ORIG_DTYPE_X1 == DT_FLOAT4_E1M2) || (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)) && \
-    ((ORIG_DTYPE_X2 == DT_FLOAT4_E1M2) || (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
+#elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
 // fp8,hif8和mixfp的场景，bias都是float
 #undef DTYPE_BIAS
 #define DTYPE_BIAS float

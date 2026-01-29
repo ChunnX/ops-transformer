@@ -60,7 +60,7 @@ public:
         const uint64_t mVal = isOneTileFlag_ ? ((uint64_t)paramInTiling_->rankM) : (uint64_t)tileInfo_.mmTiling->M;
 
         tileInfo_.aOffset = mVal * (uint64_t)tileInfo_.mmTiling->Ka;
-        if (AscendC::IsSameType<XType, fp4x2_e2m1_t>::value || AscendC::IsSameType<XType, fp4x2_e1m2_t>::value) {
+        if (AscendC::IsSameType<XType, fp4x2_e2m1_t>::value) {
             // In 4-bits scenario, the data length is 0.5, the size of Xtype is 1, it should be divided by 2.
             tileInfo_.aAddrOffset = tileInfo_.aOffset * sizeof(XType) / 2;
         } else {

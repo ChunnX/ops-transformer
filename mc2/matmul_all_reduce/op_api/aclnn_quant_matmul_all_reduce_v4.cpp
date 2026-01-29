@@ -63,10 +63,10 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_BIAS = {
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT = {
     op::DataType::DT_INT8,     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
-    op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E1M2,   op::DataType::DT_FLOAT4_E2M1};
+    op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT_FP4 = {
-    op::DataType::DT_FLOAT4_E1M2, op::DataType::DT_FLOAT4_E2M1};
+    op::DataType::DT_FLOAT4_E2M1};
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT_FP8 = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8};

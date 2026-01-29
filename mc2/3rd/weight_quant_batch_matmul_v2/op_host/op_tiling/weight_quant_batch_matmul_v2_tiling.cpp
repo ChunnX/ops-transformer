@@ -240,7 +240,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2Tiling::GetPlatformInfo()
     OP_TILING_CHECK(
         compileInfoPtr->aivNum == 0 || compileInfoPtr->aicNum == 0,
         OP_LOGE(
-            opName_, "aivNum and aicNum >= 0 but they are %u and %u", compileInfoPtr->aivNum, compileInfoPtr->aicNum),
+            opName_, "aivNum and aicNum > 0 but they are %u and %u", compileInfoPtr->aivNum, compileInfoPtr->aicNum),
         return ge::GRAPH_FAILED);
 
     OP_LOGI(
