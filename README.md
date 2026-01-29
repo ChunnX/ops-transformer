@@ -51,7 +51,7 @@ NPUKernelBench 是一个专为 NPU（Neural-network Processing Unit）设计的�
 
 1. **克隆项目**
    ```bash
-   git clone https://openi.pcl.ac.cn/stepbystepbin/NPUKernelBench.git
+   git clone https://gitcode.com/ascend-ruxiz/NPUKernelBench.git
    cd NPUKernelBench
    ```
 
