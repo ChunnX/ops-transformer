@@ -315,6 +315,9 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
         // TND、NTD场景,S1和actualSeq相等,不需要初始化
         if (IsInitAttentionOutGm()) {
             uint64_t totalOutputSize = tSize * constInfo.qHeadNum * constInfo.headDim;
+            if constexpr (IsSameType<OUT_T, int8_t>::value) {
+                totalOutputSize /= 2;
+            }
             uint64_t singleCoreSize = (totalOutputSize + (2 * usedCoreNum) - 1) / (2 * usedCoreNum); // 2 means c:v = 1:2
             uint64_t tailSize = totalOutputSize - tmpBlockIdx * singleCoreSize;
             uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
@@ -323,7 +326,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
                 if constexpr (IsSameType<OUT_T, int8_t>::value) {
                     GlobalTensor<half> attentionOutTmpGm;
                     attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
-                    matmul::InitOutput<half>(attentionOutTmpGm[tmpBlockIdx * singleCoreSize / 2], singleInitOutputSize / 2, 0);
+                    matmul::InitOutput<half>(attentionOutTmpGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
                 } else {
                     matmul::InitOutput<OUT_T>(attentionOutGm[tmpBlockIdx * singleCoreSize], singleInitOutputSize, 0);
                 }
