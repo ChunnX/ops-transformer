@@ -12,78 +12,41 @@
  * \file platform.h
  * \brief platform apator
  */
-#ifndef OPS_BUILT_IN_OP_ASCENDC_PLATFORM_INFO_H_
-#define OPS_BUILT_IN_OP_ASCENDC_PLATFORM_INFO_H_
-
 #include "kernel_operator.h"
-#include "kernel_tiling/kernel_tiling.h"
-#include "kernel_utils.h"
 
-#ifndef KERNEL_API
-#define KERNEL_API extern "C" __global__ __aicore__
-#endif
+namespace ops {
 
-namespace platform {
-
-#define MID_THREAD_NUM 1024
-
-__aicore__ inline constexpr bool IsDataCopyPadSupport()
+__aicore__ inline int64_t CeilDiv(int64_t x, int64_t y)
 {
-#if __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
-    return true;
-#else
-    return false;
-#endif
+    if (y == 0) {
+        return 0;
+    }
+    return (x + y - 1) / y;
 }
 
-/**
- * Get the block size of unified buffer in bytes
- */
+__aicore__ inline int64_t FloorDiv(int64_t x, int64_t y)
+{
+    if (y == 0) {
+        return 0; 
+    }
+    return x / y;
+}
+
+__aicore__ inline int64_t Aligned(int64_t x, int64_t y)
+{
+    if (y == 0) {
+        return 0;
+    }
+    return (x + y - 1) / y * y;
+}
+
+}  // namespace ops
+
+namespace platform 
+{
 __aicore__ inline constexpr uint32_t GetUbBlockSize()
 {
-    return 32U;
+   return 32U;
 }
 
-/**
- * Get the size of vector registers in bytes
- */
-__aicore__ inline constexpr uint32_t GetVRegSize()
-{
-#if __CCE_AICORE__ == 310
-    return AscendC::VECTOR_REG_WIDTH;
-#else
-    return 256U;
-#endif
-}
-
-/**
- * Check whether the type is supported by atomic add for simd
- */
-template<typename T>
-__aicore__ inline constexpr bool IsSupportAtomicAddTypeSIMD()
-{
-#if __CCE_AICORE__ == 310
-    return ops::IsSame<T, float>::value || ops::IsSame<T, half>::value || ops::IsSame<T, int16_t>::value ||
-        ops::IsSame<T, int32_t>::value || ops::IsSame<T, int8_t>::value || ops::IsSame<T, bfloat16_t>::value;
-#else
-    return false;
-#endif
-}
-
-} // namespace platform
-
-namespace PlatformSocInfo {
-__aicore__ inline constexpr bool IsDataCopyPadSupport()
-{
-    return platform::IsDataCopyPadSupport();
-}
-
-}
-
-namespace AscendC {
-namespace MicroAPI {
-
-}
-}
-
-#endif  // OPS_BUILT_IN_OP_ASCENDC_PLATFORM_INFO_H_
+}  // namespace platform

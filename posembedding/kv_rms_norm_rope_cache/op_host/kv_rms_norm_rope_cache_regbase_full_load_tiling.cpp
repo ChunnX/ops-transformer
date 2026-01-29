@@ -34,9 +34,9 @@ constexpr static int64_t CONST_SEVEN = 7;
 constexpr static int64_t CONST_EIGHT = 8;
 constexpr static int64_t CONST_SIXTY_THREE = 63;
 
-constexpr static int64_t CONST_BRCFLAG_ZERO = 1;
+constexpr static int64_t CONST_BRCFLAG_ZERO = 0;
 constexpr static int64_t CONST_BRCFLAG_ONE = 1;
-constexpr static int64_t CONST_BRCFLAG_TWO = 1;
+constexpr static int64_t CONST_BRCFLAG_TWO = 2;
 
 using namespace Ops::Base;
 
