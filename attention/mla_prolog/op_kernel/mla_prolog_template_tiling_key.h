@@ -54,8 +54,9 @@ ASCENDC_TPL_ARGS_DECL(mla_prolog,  // 算子唯一标识，与opType保持一致
     // bit:6-9 量化场景：0-非量化 1-MMQcQr量化 2-MMQcQr量化+KVcache量化 3-MMcqCkvKr量化+MMQcQr量化
     // 4-MMCqCkvkr量化+MMQcQr量化+KVcache量化 5-MMQcQr量化+KVcache pertile量化
     // 6-MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化
-    // 7-Mxfp8量化+MMQcQr量化 8-Mxfp8量化+MMQcQr量化+KVcache量化
-    ASCENDC_TPL_UINT_DECL(QUANT_MODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4, 5, 6, 7, 8),
+    // 7-Mxfp8量化+MMCqCkvkr量化+MMQcQr量化 8-Mxfp8量化+MMCqCkvkr量化+MMQcQr量化+KVcache量化
+    // 9-Mxfp8量化+MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化
+    ASCENDC_TPL_UINT_DECL(QUANT_MODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
     // bit:10 反量化使能：0-关闭 1-开启
     ASCENDC_TPL_BOOL_DECL(ENABLE_DEQUANT_OPTIONAL, 0, 1),
     // bit:11 量化算力分组：0-关闭 1-开启
@@ -352,6 +353,21 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::MlaPrologTilingData)),
 #endif
 
+// -------------------------- Mxfp8全量化kv非量化 --------------------------
+#if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
+    (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
+        ORIG_DTYPE_KV_CACHE == DT_BF16)
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
+        ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
+        ASCENDC_TPL_UINT_SEL(QUANT_MODE, ASCENDC_TPL_UI_LIST, 7), ASCENDC_TPL_BOOL_SEL(ENABLE_DEQUANT_OPTIONAL, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(ENABLE_GROUP_COMPUTE_OPTIONAL, 0),
+        ASCENDC_TPL_UINT_SEL(EMPTY_TENSOR_MODE, ASCENDC_TPL_UI_LIST, 0, 1),
+        ASCENDC_TPL_UINT_SEL(ACTUAL_SEQ_LEN_MODE, ASCENDC_TPL_UI_LIST, 0, 1),
+        ASCENDC_TPL_UINT_SEL(SPLIT_M_MODE, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_SHARED_KERNEL_TYPE_SEL(CV_MODE, ASCENDC_TPL_MIX_AIC_1_2),
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::MlaPrologTilingData)),
+#endif
+
 // -------------------------- Mxfp8全量化kv量化 --------------------------
 #if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
     ORIG_DTYPE_KR_CACHE == -1 ||                                                              \
@@ -368,13 +384,13 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::MlaPrologTilingData)),
 #endif
 
-// -------------------------- Mxfp8全量化kv非量化 --------------------------
+// -------------------------- Mxfp8全量化kv pertile量化 --------------------------
 #if ORIG_DTYPE_TOKEN_X == -1 || ORIG_DTYPE_WEIGHT_UQ_QR == -1 || ORIG_DTYPE_KV_CACHE == -1 || \
     (ORIG_DTYPE_TOKEN_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT_UQ_QR == DT_FLOAT8_E4M3FN && \
-        ORIG_DTYPE_KV_CACHE == DT_BF16)
-    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
+        ORIG_DTYPE_KV_CACHE == DT_FLOAT8_E4M3FN)
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1),
         ASCENDC_TPL_UINT_SEL(SCENARIO, ASCENDC_TPL_UI_LIST, 2),
-        ASCENDC_TPL_UINT_SEL(QUANT_MODE, ASCENDC_TPL_UI_LIST, 7), ASCENDC_TPL_BOOL_SEL(ENABLE_DEQUANT_OPTIONAL, 0, 1),
+        ASCENDC_TPL_UINT_SEL(QUANT_MODE, ASCENDC_TPL_UI_LIST, 9), ASCENDC_TPL_BOOL_SEL(ENABLE_DEQUANT_OPTIONAL, 0, 1),
         ASCENDC_TPL_BOOL_SEL(ENABLE_GROUP_COMPUTE_OPTIONAL, 0),
         ASCENDC_TPL_UINT_SEL(EMPTY_TENSOR_MODE, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(ACTUAL_SEQ_LEN_MODE, ASCENDC_TPL_UI_LIST, 0, 1),

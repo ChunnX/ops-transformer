@@ -31,63 +31,81 @@ constexpr uint16_t SPECIAL_EXP_THRESHOLD = 0x0040;
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr int64_t DIGIT_TWO = 2;
 constexpr int16_t SHR_NUM_FOR_BF16 = 7;
+constexpr uint8_t PER_TILE_QUANT_MODE = 1;
 #ifndef INFINITY
 #define INFINITY (__builtin_inff())
 #endif
 constexpr float NEG_INFINITY = -INFINITY;
 constexpr uint16_t REDUCE_SIZE = 8;
 
-template<typename T, typename C, typename O>
+template<typename T, typename C, typename O, uint8_t M = 0> // M=0为fp8全量化pertensor量化；M=1为fp8全量化pertile量化
 __simd_vf__ void ComputeVFImpl(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ float* scaleAddr,
-    uint32_t rowIndex, uint32_t rowCount, uint32_t dtypeSize, uint16_t VL, uint16_t vfLoop, const float maxValue)
+    uint32_t rowIndex, uint32_t rowCount, uint32_t dtypeSize, uint16_t VL, uint16_t vfLoop, const float alphaValue)
 {
-    constexpr static AscendC::MicroAPI::CastTrait castTraitB16ToB32 = {
+    constexpr static AscendC::MicroAPI::CastTrait castTraitB16ToF32 = {
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
         AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
     constexpr static AscendC::MicroAPI::CastTrait castTraitF32Tofp8 = {
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
         AscendC::MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr AscendC::MicroAPI::DivSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING, true};
-    AscendC::MicroAPI::RegTensor<T> vreg1; // 搬入的x
-    AscendC::MicroAPI::RegTensor<float> vreg2; // cast成float之后的x
-    AscendC::MicroAPI::RegTensor<float> vreg3; // x的绝对值absvalue
-    AscendC::MicroAPI::RegTensor<float> vreg4; // x的abs与-inf比较的结果，可以认为是x的absvalue的一些最大值
-    AscendC::MicroAPI::RegTensor<float> vreg5; // reduceMax
-    AscendC::MicroAPI::RegTensor<float> vreg6; // scale
-    AscendC::MicroAPI::RegTensor<float> vreg7; // Duplicate之后的scale，为了和input一起得到y
-    AscendC::MicroAPI::RegTensor<float> vreg8; // input/scale
-    AscendC::MicroAPI::RegTensor<O> vreg9; // 最终y
+    AscendC::MicroAPI::RegTensor<T> xInput; // 搬入的x
+    AscendC::MicroAPI::RegTensor<float> xFp32; // cast成float之后的x
+    AscendC::MicroAPI::RegTensor<float> xFp32Abs; // x的绝对值absvalue
+    AscendC::MicroAPI::RegTensor<float> xMaxAbs; // x的abs与-inf比较的结果，可以认为是x的absvalue的一些最大值
+    AscendC::MicroAPI::RegTensor<float> xReduceMax; // reduceMax
+    AscendC::MicroAPI::RegTensor<float> xScale; // scale
+    AscendC::MicroAPI::RegTensor<float> xScaleDup; // Duplicate之后的scale，为了和input一起得到y
+    AscendC::MicroAPI::RegTensor<float> xNorm; // input/scale
+    AscendC::MicroAPI::RegTensor<O> yFp8; // 最终y
 
-    AscendC::MicroAPI::MaskReg preg0;
-    AscendC::MicroAPI::MaskReg preg1 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg preg2;
+    AscendC::MicroAPI::MaskReg validMask0; // 有效掩码
+    AscendC::MicroAPI::MaskReg fullMask1 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>(); // 启用所有通道，全掩码
+    AscendC::MicroAPI::MaskReg validMask2;
 
     AscendC::MicroAPI::UnalignRegForStore ureg0;
-    AscendC::MicroAPI::Duplicate(vreg4, NEG_INFINITY, preg1);
+    AscendC::MicroAPI::Duplicate(xMaxAbs, NEG_INFINITY, fullMask1);
     uint32_t sreg0 = rowCount;
 
+    // 计算量化参数
     for (uint16_t j = 0; j < vfLoop; j++) {
-        preg0 = AscendC::MicroAPI::UpdateMask<float>(sreg0);
-        AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(vreg1, xAddr + rowIndex * rowCount + j * VL);
-        AscendC::MicroAPI::Cast<float, T, castTraitB16ToB32>(vreg2, vreg1, preg0);
-        AscendC::MicroAPI::Abs(vreg3, vreg2, preg0);
-        AscendC::MicroAPI::Max(vreg4, vreg3, vreg4, preg1);
+        validMask0 = AscendC::MicroAPI::UpdateMask<float>(sreg0); // 有效元素
+        if constexpr (!std::is_same<T, float>::value) {
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xInput, xAddr + rowIndex * rowCount + j * VL);
+            AscendC::MicroAPI::Cast<float, T, castTraitB16ToF32>(xFp32, xInput, validMask0);
+        } else {
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_NORM>(xInput, xAddr + rowIndex * rowCount + j * VL);
+            xFp32 = xInput;
+        }
+        AscendC::MicroAPI::Abs(xFp32Abs, xFp32, validMask0);
+        AscendC::MicroAPI::Max(xMaxAbs, xFp32Abs, xMaxAbs, fullMask1);
     }
     AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-                            vreg5, vreg4, preg1);
-    AscendC::MicroAPI::Muls(vreg6, vreg5, maxValue, preg1);
-    AscendC::MicroAPI::Duplicate(vreg7, vreg6, preg1);
-    AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(scaleAddr, vreg6, ureg0, 1);
+                            xReduceMax, xMaxAbs, fullMask1);
+    if constexpr (M == PER_TILE_QUANT_MODE) {
+        constexpr float epsilonValue = 1e-4f;
+        AscendC::MicroAPI::RegTensor<float> epsilonReg;
+        AscendC::MicroAPI::Duplicate(epsilonReg, epsilonValue, fullMask1);
+        AscendC::MicroAPI::Max(xReduceMax, xReduceMax, epsilonReg, fullMask1); // regtensor类型
+    }
+    AscendC::MicroAPI::Muls(xScale, xReduceMax, alphaValue, fullMask1);
+    AscendC::MicroAPI::Duplicate(xScaleDup, xScale, fullMask1);
+    AscendC::MicroAPI::StoreUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(scaleAddr, xScale, ureg0, 1);
 
     uint32_t sreg1 = rowCount;
     for (uint16_t j = 0; j < vfLoop; j++) {
         auto addr = yAddr + rowIndex * rowCount + j * VL;
-        preg2 = AscendC::MicroAPI::UpdateMask<float>(sreg1);
-        AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(vreg1, xAddr + rowIndex * rowCount + j * VL);
-        AscendC::MicroAPI::Cast<float, T, castTraitB16ToB32>(vreg2, vreg1, preg2);
-        AscendC::MicroAPI::Div(vreg8, vreg2, vreg7, preg2);
-        AscendC::MicroAPI::Cast<O, float, castTraitF32Tofp8>(vreg9, vreg8, preg2);
-        AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(addr, vreg9, preg2);
+        validMask2 = AscendC::MicroAPI::UpdateMask<float>(sreg1);
+        if constexpr (!std::is_same<T, float>::value) {
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xInput, xAddr + rowIndex * rowCount + j * VL);
+            AscendC::MicroAPI::Cast<float, T, castTraitB16ToF32>(xFp32, xInput, validMask2);
+        } else {
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_NORM>(xInput, xAddr + rowIndex * rowCount + j * VL);
+            xFp32 = xInput;
+        }
+        AscendC::MicroAPI::Div(xNorm, xFp32, xScaleDup, validMask2);
+        AscendC::MicroAPI::Cast<O, float, castTraitF32Tofp8>(yFp8, xNorm, validMask2);
+        AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(addr, yFp8, validMask2);
     }
     AscendC::MicroAPI::StoreUnAlignPost(scaleAddr, ureg0, 0);
 }
@@ -100,9 +118,9 @@ __aicore__ inline void ComputeVF(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ 
     uint16_t VL = AscendC::VECTOR_REG_WIDTH / dtypeSize;
     uint32_t rowCount = col;
     uint16_t vfLoop = (rowCount + VL - 1) / VL;
-    const float maxValue = static_cast<float>(1.0) / FP8_E4M3FN_MAX_VALUE;
+    const float alphaValue = static_cast<float>(1.0) / FP8_E4M3FN_MAX_VALUE;
 
-    ComputeVFImpl<T, C, O>(xAddr, yAddr, scaleAddr, rowIndex, rowCount, dtypeSize, VL, vfLoop, maxValue);
+    ComputeVFImpl<T, C, O>(xAddr, yAddr, scaleAddr, rowIndex, rowCount, dtypeSize, VL, vfLoop, alphaValue);
 }
 
 /**
@@ -369,6 +387,34 @@ __aicore__ inline void DynamicQuantCqVf(const LocalTensor<int8_t>& outputLocal, 
 
     uint32_t totalCountInUB2 = totalCountInUB * DIGIT_TWO;
     ComputeDataVF<T, U>(srcAddr, halfScaleLocalAddr, outLocalAddr, totalCountInUB, totalCountInUB2, loopNum, vecLen);
+}
+
+/**
+* @brief QuantPerTileVF 计算一行中每个tile的最大值，并计算量化参数和量化后的激活
+* @param outputLocal 输出tensor [row * col]，row为rmsnorm输出的结果，均为1
+* @param inputLocal 输入tensor [row * col]
+* @param quantScaleLocal 量化参数tensor [row, col / tileSize]
+* @param row 处理数据的行数，默认为1 后续可拓展
+* @param col 处理数据的列数
+* @param tileSize tile的大小 当前只支持128，且col可被tileSize整除
+*/
+template<typename T, typename C, typename O>
+__aicore__ inline void QuantPerTileVF(const LocalTensor<O>& outputLocal, const LocalTensor<T>& inputLocal,
+    const LocalTensor<T>& quantScaleLocal, const uint32_t row, const uint32_t col, const uint32_t tileSize)
+{   
+    uint32_t cnt = row * col;
+    __ubuf__ T * inputBuf = (__ubuf__ T *)inputLocal.GetPhyAddr();
+    __ubuf__ T * quantScaleBuf = (__ubuf__ T *)quantScaleLocal.GetPhyAddr();
+    __ubuf__ O * outputBuf = (__ubuf__ O *)outputLocal.GetPhyAddr();
+    uint32_t dtypeSize = sizeof(float);
+    uint16_t VL = AscendC::VECTOR_REG_WIDTH / dtypeSize;
+    uint16_t vfLoop = (tileSize + VL - 1) / VL;
+    const float alphaValue = static_cast<float>(1.0) / FP8_E4M3FN_MAX_VALUE;
+    uint32_t loopCount = cnt / tileSize;
+    for (uint32_t rowIndex = 0; rowIndex < loopCount; rowIndex++) {
+        ComputeVFImpl<T, C, O, PER_TILE_QUANT_MODE>(inputBuf, outputBuf, quantScaleBuf + rowIndex,
+            rowIndex, tileSize, dtypeSize, VL, vfLoop, alphaValue);
+    }
 }
 
 }

@@ -1434,7 +1434,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
     // MatmulCkvKr ──> RmsNorm(Ckv) ──> Scatter(Ckv)
     LocalTensor<kvCacheType> outputLocal = shareTmpUb.ReinterpretCast<kvCacheType>();
     uint32_t outputLocalSize = vectorRow_ * baseParams_->headSizeCkv * sizeof(kvCacheType);
-    if (isPertile) {    // pertile量化场景，按照concat的最长长度申请内存
+    if constexpr (isPertile) {    // pertile量化场景，按照concat的最长长度申请内存
         uint32_t tileNum = baseParams_->headSizeCkv / baseParams_->tileSize;
         outputLocalSize = vectorRow_ * (baseParams_->headSizeCkv * sizeof(kvCacheType) + tileNum * sizeof(float));
         outputLocalSize = Align(outputLocalSize, static_cast<uint32_t>(BYTE_BLOCK));
@@ -1452,18 +1452,18 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
 
     if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value) {
         // row = vectorRow_ = 1     col = baseParams_->headSizeCkv
-        LocalTensor<float> tmpOut = rmsNormShareTmpUb.ReinterpretCast<float>();
-        LocalTensor<uint8_t> sharedBuf = tmpOut[vectorRow_ *
+        LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
+        LocalTensor<uint8_t> sharedBuf = inputLocal[vectorRow_ *
             baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
         RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float>(
-            tmpOut, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
+            inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
             dequantScaleXLocal, sharedBuf, rmsNormParams);
         
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
         float kNopeClipAlpha = kNopeClipAlphaGm_.GetValue(0);
 
-        if (isPertile) {
+        if constexpr (isPertile) {
             PerTileQuantParams perTileQuantParams = {
                 static_cast<uint32_t>(baseParams_->tileSize),                                // baseParams_->tileSize
                 static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize),     // tileNum
@@ -1471,14 +1471,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
                 static_cast<uint32_t>(vectorRow_),   // row
                 baseParams_->headSizeCkv             // col
             };
-            QuantPerTile(outputLocal, tmpOut, sharedBuf, perTileQuantParams);
+            QuantPerTile(outputLocal, inputLocal, sharedBuf, perTileQuantParams);
         } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value) {
             Rectangle rectangleParams {
                 (uint32_t)vectorRow_,    // row
                 (uint32_t)baseParams_->headSizeCkv,// col
                 (uint32_t)baseParams_->headSizeCkv // columnStride
             }; 
-            QuantPerTensor(outputLocal, tmpOut, quantScaleCkvLocal_, sharedBuf, rectangleParams);
+            QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
             AscendC::PipeBarrier<PIPE_V>();
         } else {
             Rectangle rectangleParams {
@@ -1486,27 +1486,37 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
                 (uint32_t)baseParams_->headSizeCkv, // col
                 (uint32_t)baseParams_->headSizeCkv // columnStride
             };
-            QuantPerChannel(outputLocal, tmpOut, quantScaleCkvLocal_, sharedBuf, rectangleParams);            
+            QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);            
         }
     } else if constexpr (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value) {
         // row = vectorRow_ = 1     col = baseParams_->headSizeCkv
-        LocalTensor<float> tmpOut = rmsNormShareTmpUb.ReinterpretCast<float>();
-        LocalTensor<uint8_t> sharedBuf = tmpOut[vectorRow_ *
+        LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
+        LocalTensor<uint8_t> sharedBuf = inputLocal[vectorRow_ *
             baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
         RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float>(
-            tmpOut, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
+            inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
             dequantScaleXLocal, sharedBuf, rmsNormParams);
         
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
 
-        if constexpr (std::is_same<mmCkvKrOutputType, float>::value) {
+        if constexpr (isPertile) {
+            float defaultAlpha = 1.0f;
+            PerTileQuantParams perTileQuantParams = {
+                static_cast<uint32_t>(baseParams_->tileSize),                                // baseParams_->tileSize
+                static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize),     // tileNum
+                defaultAlpha,         // alpha，fp8不需要传入knopeclipalpha
+                static_cast<uint32_t>(vectorRow_),   // row
+                baseParams_->headSizeCkv             // col
+            };
+            QuantPerTileToFp8e4m3(outputLocal, inputLocal, perTileQuantParams);
+        } else if constexpr (std::is_same<mmCkvKrOutputType, float>::value) {
             Rectangle rectangleParams {
                     (uint32_t)vectorRow_,    // row
                     (uint32_t)baseParams_->headSizeCkv, // col
                     (uint32_t)baseParams_->headSizeCkv // columnStride
                 };
-            QuantPerTensorToFP8e4m3(outputLocal, tmpOut, quantScaleCkvLocal_, rectangleParams);
+            QuantPerTensorToFP8e4m3(outputLocal, inputLocal, quantScaleCkvLocal_, rectangleParams);
             AscendC::PipeBarrier<PIPE_V>();
         }
     } else {
@@ -1594,12 +1604,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(
             sharedBuf, ropeParams,
             dequantScaleWDkvKrLocal_[baseParams_->headSizeCkv], dequantScaleXLocal);
     } else if constexpr (std::is_same<krCacheType, int8_t>::value) {
-        LocalTensor<ropeSinCosType> tmpOut = ropeShareTmpUb.ReinterpretCast<ropeSinCosType>();
+        LocalTensor<ropeSinCosType> inputLocal = ropeShareTmpUb.ReinterpretCast<ropeSinCosType>();
         LocalTensor<uint8_t> sharedBuf = ropeShareTmpUb.ReinterpretCast<uint8_t>()[baseParams_->dimHeadRope * sizeof(ropeSinCosType)];
         RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, ropeSinCosType>(
-            tmpOut, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, 
+            inputLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, 
             sharedBuf, ropeParams);
-        RopePostQuantPerChannel(outputKrLocal, tmpOut, quantScaleCkrLocal_, sharedBuf, vectorRow_ * baseParams_->dimHeadRope);
+        RopePostQuantPerChannel(outputKrLocal, inputLocal, quantScaleCkrLocal_, sharedBuf, vectorRow_ * baseParams_->dimHeadRope);
     } else {
         RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, krCacheType>(outputKrLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset],
             cosLocal, sinLocal, ropeShareTmpUb, ropeParams);
