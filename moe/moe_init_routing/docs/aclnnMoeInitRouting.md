@@ -274,6 +274,7 @@ aclnnStatus aclnnMoeInitRouting(
 
 - 确定性计算：
   - aclnnMoeInitRouting默认确定性实现。
+- expertIdx内的元素的值需要大于-2\*\*24，不超过2\*\*24，否则可能会存在精度问题
 
 ## 调用示例
 

@@ -8,16 +8,28 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
        moe_init_routing_quant_v2_def.cpp
     )
-    add_ops_compile_options(
-        OP_NAME MoeInitRoutingQuantV2
-        OPTIONS --cce-auto-sync=on
+    if(CONDITION_UNIT STREQUAL "ascend910_95")
+        add_ops_compile_options(
+                OP_NAME MoeInitRoutingQuantV2
+                OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
-    )
+                -mllvm
+                -cce-aicore-dcci-before-kernel-end=false
+        )
+    else()
+        add_ops_compile_options(
+                OP_NAME MoeInitRoutingQuantV2
+                OPTIONS --cce-auto-sync=on
+                -Wno-deprecated-declarations
+                -Werror
+        )
+    endif()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

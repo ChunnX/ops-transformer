@@ -180,6 +180,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDroppad<T>::Compute(LocalTensor<fl
     float maxValue = dynamicQuantLocal.GetValue(0) / 127.0f;
     Duplicate<float>(dynamicQuantLocal, maxValue, 8);
     Duplicate<float>(tempLocal, maxValue, cols_);
+    AscendC::PipeBarrier<PIPE_V>();
     Div(tempLocal, inLocal, tempLocal, cols_);
     Cast(tempLocal.ReinterpretCast<half>(), tempLocal, RoundMode::CAST_TRUNC, cols_);
     Cast(outLocal, tempLocal.ReinterpretCast<half>(), RoundMode::CAST_ROUND, cols_);

@@ -425,7 +425,7 @@ void InnerMoeInitRoutingV2TilingBase::Tiling4VBSOneCoreCompute(InnerMoeV2VBSComp
 void InnerMoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(InnerMoeV2VBSComputeTilingData* tilingData)
 {
     int64_t needCoreNum = Ops::Base::CeilDiv(totalLength, sortLoopMaxElement); // 向上取整
-    needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));               // 用到多核时，核数最多是4^x
+    needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));  // 用到多核时，核数最多是4^x
     needCoreNum = std::min(needCoreNum, aivNum);                    // 不能超过物理核数
     if (needCoreNum == 0) {
         return;
