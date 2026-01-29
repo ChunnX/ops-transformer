@@ -53,6 +53,7 @@ constexpr uint64_t MXFP_BASEK_FACTOR = 64;
 constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
 constexpr size_t MXFP_TYPE_M_SCALE_DIM_NUM = 4;
 constexpr size_t MXFP_PER_TOKEN_SCALE_DIM_NUM = 3;
+constexpr uint32_t RESERVED_LENGTH = 1024;
 
 constexpr size_t WEIGHTNZ_DIM_NUM = 5;
 constexpr size_t WEIGHTNZ_FIRST_DIM = 0;
@@ -65,7 +66,11 @@ constexpr uint32_t WEIGHTNZ_K0_16 = 16;
 constexpr uint32_t WEIGHTNZ_N0_16 = 16;
 constexpr uint32_t WEIGHTNZ_K0_32 = 32;
 constexpr uint32_t WEIGHTNZ_N0_32 = 32;
-
+constexpr uint8_t BF16_VALUE = 27;
+constexpr uint32_t BF16_WORKSIZE = 2;
+constexpr uint32_t FP32_WORKSIZE = 4;
+constexpr uint64_t DB_REQUIRED_BYTES_SIZE = 14;
+constexpr uint32_t SYS_WORKSPACE_SIZES = 16 * 1024 * 1024;
 } // namespace GmmConstant
 
 enum class QuantMode : uint32_t {

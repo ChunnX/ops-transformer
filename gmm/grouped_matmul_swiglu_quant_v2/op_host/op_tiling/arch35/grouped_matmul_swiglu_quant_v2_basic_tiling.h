@@ -51,13 +51,15 @@ protected:
     // 4、保存Tiling数据
     ge::graphStatus PostTiling() override;
     void Reset() override;
+    void SetKernelType();
+    ge::graphStatus GetWorkspaceSize() override;
 
 private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
     void PrintQuantParams() override;
-    bool SetQuantModeForGMMSwigluQuant();
+    bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
     bool CheckDims() const;
@@ -65,6 +67,13 @@ private:
     bool IsFp8(ge::DataType dtype) const;
     bool IsFp4Input() const;
     bool IsFp8Input();
+    // add for pertoken quant mode
+    bool AnalyzeAttrsPertoken();
+    bool IsB8(ge::DataType dtype);
+    bool CheckDtypePertoken();
+    bool AnalyzeInputsPertoken();
+    ge::graphStatus DoOpTilingPertoken();
+    void PrintPertokenQuantParams();
     GMMSwigluQuantTilingDataParams tilingData_;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,

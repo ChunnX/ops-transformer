@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_v2_host_utils.h
@@ -33,8 +33,10 @@ constexpr uint64_t ATTR_INDEX_QUANT_MODE = 2UL;
 constexpr uint32_t ATTR_INDEX_QUANT_DTYPE = 3UL;
 constexpr uint64_t ATTR_INDEX_TRANS_W = 4UL;
 constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 5UL;
+constexpr size_t PRECHANNEL_WEIGHT_SCALE_DIM = 2UL;
+constexpr size_t PERTOKEN_X_SCALE_DIM = 1UL;
 constexpr size_t MX_WEIGHT_SCALE_DIM = 4UL;
-constexpr size_t MX_X_SCALE_DIM =3UL;
+constexpr size_t MX_X_SCALE_DIM = 3UL;
 constexpr size_t MXQuantMode = 2UL;
 constexpr uint64_t B4_DATACOPY_MIN_NUM = 2;
 constexpr int32_t SPLIT_M = 0;

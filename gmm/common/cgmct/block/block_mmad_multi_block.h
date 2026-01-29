@@ -62,7 +62,7 @@ public:
     static_assert(IsF16F16F16<AType, BType, CType>() || IsF16F16F32<AType, BType, CType>() ||
                       IsBf16Bf16Bf16<AType, BType, CType>() || IsBf16Bf16F32<AType, BType, CType>() ||
                       IsI8I8I32<AType, BType, CType>() || IsF32F32F32<AType, BType, CType>() ||
-                      IsHIF8HIF8F32<AType, BType, CType>(),
+                      IsHIF8HIF8F32<AType, BType, CType>() || IsFp8Fp8F32<AType, BType, CType>(),
                   "Unsupported dtype");
     static_assert(IsND<AType>() && IsND<CType>(), "Only support ND format");
     static_assert(IsTileShapeValid<AType, BType, L1Shape, L0Shape>(), "L1Shape or L0Shape is invalid");
@@ -87,18 +87,6 @@ public:
     struct MatmulPolicyCustom
         : public AscendC::Impl::Detail::MatmulPolicy<MM_CFG, Impl, InputAType, InputBType, OutputCType, InputBiasType> {
     public:
-        template <class InputType, const auto& COPY_CFG>
-        using AdaptedCubeInA = typename TileCopy::template CopyGmToA1<InputType, COPY_CFG>;
-        using CopyCubeInA =
-            AscendC::Impl::Detail::CopyCubeIn<Impl, AscendC::MatmulInputAType<InputAType, typename InputAType::T>,
-                                              MM_CFG, void, AdaptedCubeInA>;
-
-        template <class InputType, const auto& COPY_CFG>
-        using AdaptedCubeInB = typename TileCopy::template CopyGmToB1<InputType, COPY_CFG>;
-        using CopyCubeInB =
-            AscendC::Impl::Detail::CopyCubeIn<Impl, AscendC::MatmulInputBType<InputBType, typename InputAType::T>,
-                                              MM_CFG, void, AdaptedCubeInB>;
-
         template <class InputType, class OutputType, typename T = void>
         using AdaptedCubeOut = typename TileCopy::template CopyCo1ToOut<InputType, OutputType>;
         using CopyCubeOut =

@@ -76,6 +76,9 @@ TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint8_t, groupListType);
 TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
 TILING_DATA_FIELD_DEF(uint8_t, reserved1);
+TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
+TILING_DATA_FIELD_DEF(uint32_t, rowLen);
+TILING_DATA_FIELD_DEF(uint32_t, ubAvail);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantParamsOp, GMMSwigluQuantParams)
 
