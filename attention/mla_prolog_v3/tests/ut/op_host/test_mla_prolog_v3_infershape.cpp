@@ -193,6 +193,116 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_infershape_2)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+// Mxfp8 full quant, kv quant, qnorm_flag == true 正常case
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_infershape_3)
+{
+    gert::InfershapeContextPara infershapeContextPara("MlaPrologV3",
+    {
+        {{{1, 1 ,7168}, {1, 1 ,7168}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},//token_x 0
+        {{{7168, 1536}, {7168, 1536}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},//weight_dq 1
+        {{{1536, 12288}, {1536, 12288}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},//weight_uq_qr 2
+        {{{64, 128, 512}, {64, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},//weight_uk 3
+        {{{7168, 512 + 64}, {7168, 512 + 64}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},//weight_dkv_kr 4
+        {{{1536}, {1536}}, ge::DT_BF16, ge::FORMAT_ND},//rmsnorm_gamma_cq 5
+        {{{512}, {512}}, ge::DT_BF16, ge::FORMAT_ND},//rmsnorm_gamma_ckv 6
+        {{{1, 1, 64}, {1, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},//rope_sin 7
+        {{{1, 1, 64}, {1, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},//rope_cos 8
+        {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},//kv_cache 9
+        {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},//kr_cache 10
+        {{{1, 1}, {1, 1}}, ge::DT_INT64, ge::FORMAT_ND},//cache_index 11
+        {{{1, 224}, {1, 224}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},//dequant_scale_x 12
+        {{{1536, 224}, {1536, 224}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},//dequant_scale_w_dq 13
+        {{{12288, 48}, {12288, 48}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},//dequant_scale_w_uq_qr 14
+        {{{576, 224}, {576, 224}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},//dequant_scale_w_dkv_kr 15
+        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},//quant_scale_ckv 16
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//quant_scale_ckr 17
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//smooth_scales_cq 18
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},//actual_seq_len 19
+        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},//k_nope_clip_alpha 20
+    },
+    {
+        {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},//query
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},//query_rope
+        {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},//kv_cache
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},//kr_cache
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//dequant_scale_q_nope
+        {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},//query_norm
+        {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND}//dequant_scale_q_norm
+    },
+    {
+        {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(0.000651222723526155)},
+        {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(0.00268072038395418)},
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+        {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+        {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+        {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+    }
+    );
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1, 1, 64, 512}, {1, 1, 64, 64}, {1, 128, 1, 512}, {1, 128, 1, 64}, {1, 64, 1}, {1, 1, 1536}, {1, 48}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 非量化 qnorm_flag==true
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_infershape_4)
+{
+    gert::InfershapeContextPara infershapeContextPara("MlaPrologV3",
+    {
+        {{{512,7168}, {512,7168}}, ge::DT_BF16, ge::FORMAT_ND},//token_x 0
+        {{{7168, 1536}, {7168, 1536}}, ge::DT_BF16, ge::FORMAT_FRACTAL_NZ},//weight_dq 1
+        {{{1536, 24576}, {1536, 24576}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},//weight_uq_qr 2
+        {{{128, 128, 512}, {128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},//weight_uk 3
+        {{{7168, 512 + 64}, {7168, 512 + 64}}, ge::DT_BF16, ge::FORMAT_FRACTAL_NZ},//weight_dkv_kr 4
+        {{{1536}, {1536}}, ge::DT_BF16, ge::FORMAT_ND},//rmsnorm_gamma_cq 5
+        {{{512}, {512}}, ge::DT_BF16, ge::FORMAT_ND},//rmsnorm_gamma_ckv 6
+        {{{512,64}, {512,64}}, ge::DT_BF16, ge::FORMAT_ND},//rope_sin 7
+        {{{512,64}, {512,64}}, ge::DT_BF16, ge::FORMAT_ND},//rope_cos 8
+        {{{512,1,656}, {512,1,656}}, ge::DT_INT8, ge::FORMAT_ND},//kv_cache 9
+        {{{1}, {1}}, ge::DT_BF16, ge::FORMAT_ND},//kr_cache 10
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},//cache_index 11
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//dequant_scale_x 12
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//dequant_scale_w_dq 13
+        {{{1,24576}, {1,24576}}, ge::DT_FLOAT, ge::FORMAT_ND},//dequant_scale_w_uq_qr 14
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//dequant_scale_w_dkv_kr 15
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//quant_scale_ckv 16
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//quant_scale_ckr 17
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//smooth_scales_cq 18
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},//actual_seq_len 19
+        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},//k_nope_clip_alpha 20
+    },
+    {
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},//query
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},//query_rope
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},//kv_cache
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},//kr_cache
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},//dequant_scale_q_nope
+        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},//query_norm
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}//dequant_scale_q_norm
+    },
+    {
+        {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(0.000651222723526155)},
+        {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(0.00268072038395418)},
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+        {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+        {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+    }
+    );
+    std::vector<std::vector<int64_t>> expectOutputShape = {{512,128,512}, {512,128,64}, {512,1,656}, {1}, {0}, {512,1536}, {0}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
 // infer dataType
 TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_1)
 {

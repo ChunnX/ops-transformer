@@ -341,7 +341,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     }
     if (baseParams_->queryNormFlag == 1U) {
         rmsNormCqResGm_.SetGlobalBuffer((__gm__ mmQcQrInputType *)queryNormOut);
-        if constexpr (std::is_same<mmQcQrInputType, int8_t>::value) {
+        if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value) {
             dequantScaleQNormGm_.SetGlobalBuffer((__gm__ dequantScaleQNormType *)dequantScaleQNormOut);
         }
     }
@@ -1356,6 +1356,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormCq(int64_t tokenIndex,
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value) {
             DataCopyPad(dequantScaleQNormGm_[stepTokenIndex], dequantScaleQcQr,
             {static_cast<uint16_t>(curVecToken), sizeof(dequantScaleQNormType), 0, 0});
+        } else if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value) {
+            DataCopyPad(dequantScaleQNormGm_[stepTokenIndex * static_cast<uint16_t>((baseParams_->headSizeCq / FP8_E4M3_BLOCK_SIZE))], dequantScaleQcQr, 
+            {static_cast<uint16_t>(curVecToken), static_cast<uint16_t>(sizeof(dequantScaleQNormType) * (baseParams_->headSizeCq / FP8_E4M3_BLOCK_SIZE)), 0, 0});
         }
     }
 }

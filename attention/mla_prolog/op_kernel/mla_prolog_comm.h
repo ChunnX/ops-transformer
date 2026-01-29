@@ -192,8 +192,8 @@ constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
   queryOutputType                   bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t                bfloat16_t                  bfloat16_t               bfloat16_t              fp8_e4m3fn_t
   ropeOutputType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t               bfloat16_t               bfloat16_t
   dequantScaleQNopeType                 /                     /                     /                     /                  float                     /                           /                       /                       float
-  queryNormType(复用mmQcQrInputType)bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t                    /                         /
-  dequantScaleQNormType                 /                   float                 float                 float                float                   float                       float                     /                         /
+  queryNormType(复用mmQcQrInputType)bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t                fp8_e4m3fn_t             fp8_e4m3fn_t
+  dequantScaleQNormType                 /                   float                 float                 float                float                   float                       float                  fp8_e8m0_t               fp8_e8m0_t
   mmInputType                       bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t                fp8_e4m3fn_t             fp8_e4m3fn_t   
   mmCqOutputType                    bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t                  float                    float
   mmCkvKrInputType(复用mmInputType) bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t                fp8_e4m3fn_t              fp8_e4m3fn_t
@@ -265,8 +265,8 @@ struct MLAPType<FP8E4M3, FP8E4M3, C_T, C_M, ENABLE_DEQUANT_OPT,
     using kvCacheType = C_T;           // kvcache的类型
     using krCacheType = bfloat16_t;        // krcache的类型
     using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
-    using dequantScaleQNormType = float;      // dequantScaleQNope的类型
-    using dequantScaleType = fp8_e8m0_t;
+    using dequantScaleQNormType = AscendC::fp8_e8m0_t;      // dequantScaleQNormType的类型
+    using dequantScaleType = AscendC::fp8_e8m0_t;
 
     static constexpr CACHE_MODE cacheMode = C_M;
     static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;

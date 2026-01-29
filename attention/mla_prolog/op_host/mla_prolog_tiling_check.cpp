@@ -355,48 +355,67 @@ void MlaPrologTilingCheck::FillRequiredParamShapeWithDims()
 void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDims()
 {
     if (std::strncmp(context_.opType, V2_OP_NAME, OP_NAME_LEN) == 0) {
-        if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR) {
-            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.nSize, 1});
-            expectedParamInfo_[DEQUANT_SCALE_Q_NOPE_NAME].dtype = ge::DT_FLOAT;
-        } else {
-            // 仅校验dequantScaleQNope有传入
-            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, context_.dequantScaleQNope);
-        }
+        FillOptionalOutputParamShapeWithDimsV2();
     }
 
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
-            scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
-            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.nSize, 1});
-        } else {
-            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{0});
-        }
-        expectedParamInfo_[DEQUANT_SCALE_Q_NOPE_NAME].dtype = ge::DT_FLOAT;
+        FillOptionalOutputParamShapeWithDimsV3();
+    }
+}
 
-        if (GetCurNpuArch() != NpuArch::DAV_3510 && *(context_.queryNormFlag)) {
-            if (scenarioInfo_.batchSeqFusedFlag_) {
-                expectedParamInfo_.emplace(QUERY_NORM_NAME,
-                    std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.hcqSize});
-            } else {
-                expectedParamInfo_.emplace(QUERY_NORM_NAME,
-                    std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size, baseShapeInfo_.hcqSize});
-            }
-            if (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT) {
-                expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_BF16;
-                expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{0});
-            } else {
-                expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_INT8;
-                expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, 1});
-            }
-            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
+void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDimsV2()
+{
+    if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR) {
+        expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.nSize, 1});
+        expectedParamInfo_[DEQUANT_SCALE_Q_NOPE_NAME].dtype = ge::DT_FLOAT;
+    } else {
+        // 仅校验dequantScaleQNope有传入
+        expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, context_.dequantScaleQNope);
+    }    
+}
+
+void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDimsV3()
+{
+    if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
+        expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.nSize, 1});
+    } else {
+        expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, std::vector<uint32_t>{0});
+    }
+    expectedParamInfo_[DEQUANT_SCALE_Q_NOPE_NAME].dtype = ge::DT_FLOAT;
+
+    if (*(context_.queryNormFlag)) {
+        if (scenarioInfo_.batchSeqFusedFlag_) {
+            expectedParamInfo_.emplace(QUERY_NORM_NAME,
+                std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.hcqSize});
         } else {
-            expectedParamInfo_.emplace(QUERY_NORM_NAME, std::vector<uint32_t>{0});
+            expectedParamInfo_.emplace(QUERY_NORM_NAME,
+                std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size, baseShapeInfo_.hcqSize});
+        }
+        if (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_BF16;
             expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{0});
-            if (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT) {
-                expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_BF16;
-            } else {
-                expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_INT8;
-            }
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.hcqSize / MXFP8_BLOCK_SIZE});
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT8_E8M0;
+        } else {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_INT8;
+            expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, 1});
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
+        }
+    } else {
+        expectedParamInfo_.emplace(QUERY_NORM_NAME, std::vector<uint32_t>{0});
+        expectedParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, std::vector<uint32_t>{0});
+        if (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_BF16;
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
+        } else if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
+            expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT8_E8M0;
+        } else {
+            expectedParamInfo_[QUERY_NORM_NAME].dtype = ge::DT_INT8;
             expectedParamInfo_[DEQUANT_SCALE_Q_NORM_NAME].dtype = ge::DT_FLOAT;
         }
     }
@@ -615,10 +634,6 @@ void MlaPrologTilingCheck::GenActualParamInfo()
         *(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
         actualParamInfo_.erase(KR_CACHE_NAME);
         actualParamInfo_.erase(KR_CACHE_OUT_NAME);
-    }
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        actualParamInfo_.erase(QUERY_NORM_NAME);
-        actualParamInfo_.erase(DEQUANT_SCALE_Q_NORM_NAME);
     }
 }
 

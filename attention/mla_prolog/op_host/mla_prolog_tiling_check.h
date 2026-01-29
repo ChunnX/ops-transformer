@@ -169,6 +169,8 @@ private:
     void FillCommonParamInfo();
     void FillRequiredParamShapeWithDims();
     void FillOptionalOutputParamShapeWithDims();
+    void FillOptionalOutputParamShapeWithDimsV2();
+ 	void FillOptionalOutputParamShapeWithDimsV3();
     void FillScenarioParamInfo();
     void FillNonQuantParamInfo();
     void FillPartialQuantParamInfo();

@@ -87,7 +87,7 @@
 | rmsnorm_gamma_ckv            | 输入      | 计算$c^{KV}$的RmsNorm公式中$\gamma$参数 | FLOAT16, BF16       | ND         |
 | rope_sin                    | 输入      | 旋转位置编码的正弦参数矩阵 | FLOAT16, BF16       | ND         |
 | rope_cos                    | 输入      | 旋转位置编码的余弦参数矩阵 | FLOAT16, BF16       | ND         |
-| kv_cache                 | 输入/ 输出| cache索引的aclTensor，计算结果原地更新（对应$k^C$）| FLOAT16, BF16, NT8 | ND         |
+| kv_cache                 | 输入/ 输出| cache索引的aclTensor，计算结果原地更新（对应$k^C$）| FLOAT16, BF16, INT8 | ND         |
 | kr_cache                 | 输入/ 输出| key位置编码的cache，计算结果原地更新（对应$k^R$） | FLOAT16, BF16, INT8 | ND         |
 | cache_index                 | 输入      | 存储kvCache和krCache的索引 | INT64          | ND         |
 | dequant_scale_x      | 输入      | token_x的反量化参数  | FLOAT          | ND         |

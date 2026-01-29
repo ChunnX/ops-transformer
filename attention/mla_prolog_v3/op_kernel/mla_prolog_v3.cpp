@@ -157,7 +157,7 @@ __global__ __aicore__ void mla_prolog_v3(
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                 ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
                 dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, nullptr, nullptr,
-                queryOut, queryRopeOut, dequantScaleQNopeOut, nullptr, nullptr, workspace);
+                queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
@@ -167,7 +167,7 @@ __global__ __aicore__ void mla_prolog_v3(
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                 ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
                 dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, nullptr, nullptr,
-                queryOut, queryRopeOut, dequantScaleQNopeOut, nullptr, nullptr, workspace);
+                queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
     }
 }
