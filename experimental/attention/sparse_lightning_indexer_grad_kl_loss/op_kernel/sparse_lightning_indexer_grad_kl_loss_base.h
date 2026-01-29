@@ -533,7 +533,7 @@ __aicore__ inline int32_t SparseLightningIndexerGradKLLossBase<SLIT>::GetS2Spars
     int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode)
 {
     if (sparseMode == SLISparseMode::RightDown) {
-        if (cmpRatio == 4) { 
+        if (constInfo.cmpRatio == 4) { 
             return (s1Idx + 1) / constInfo.cmpRatio;
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
