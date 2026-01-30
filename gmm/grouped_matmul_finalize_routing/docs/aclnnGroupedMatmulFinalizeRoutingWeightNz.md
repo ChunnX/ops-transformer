@@ -1,15 +1,21 @@
 # aclnnGroupedMatmulFinalizeRoutingWeightNz
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul_finalize_routing)
+
 ## 产品支持情况
 
-| 产品                                                                | 是否支持 |
-|:------------------------------------------------------------------|:----:|
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                      |  √   |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |  √   |
+| 产品                                                             | 是否支持 |
+| :--------------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                  |    ×    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
+| <term>Atlas 推理系列产品</term>                          |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
-- 接口功能：GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持w为AI处理器亲和数据排布格式(NZ)
+GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作，支持w为AI处理器亲和数据排布格式(NZ)。
 
 ## 函数原型
 
@@ -47,7 +53,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 ## aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
+
   <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
@@ -73,92 +80,92 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
     <tr>
       <td>x1</td>
       <td>输入</td>
-      <td>输入x(左矩阵)。</td>
-      <td>无</td>
+      <td>输入x（左矩阵）。</td>
+      <td>-</td>
       <td>INT8</td>
       <td>ND</td>
       <td>shape支持2维，维度为(m, k)， 数据类型支持INT8，维度m的取值范围为[1,16\*1024\*8]；k支持256、512、1024、1408、2048。</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>x2</td>
       <td>输入</td>
-      <td>输入weight(右矩阵)</td>
-      <td>无</td>
+      <td>输入weight（右矩阵）。</td>
+      <td>-</td>
       <td>INT8</td>
       <td>NZ</td>
       <td>shape支持5维。维度为(e, n1, k1, k0, n0)，其中k0 = 16，n0 = 32， x shape中的k和w shape中的k1需要满足以下关系：ceilDiv（k,16） = k1。可使用aclnnCalculateMatmulWeightSizeV2接口以及aclnnTransMatmulWeight接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。e取值范围[1,256]。</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>scale</td>
       <td>输入</td>
-      <td>量化参数中的缩放因子，perchannel量化参数</td>
-      <td>无</td>
+      <td>量化参数中的缩放因子，perchannel量化参数。</td>
+      <td>-</td>
       <td>INT64</td>
       <td>ND</td>
       <td>shape是2维(e, n)，n = n1 \* n0，e和w的e一致，n支持2048、7168、7680。</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>bias</td>
       <td>输入</td>
       <td>矩阵的偏移。当前为预留参数，暂不生效，传入空指针即可。</td>
-      <td>无</td>
+      <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td></td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>pertokenScaleOptional</td>
       <td>输入</td>
-      <td>矩阵计算的反量化参数</td>
+      <td>矩阵计算的反量化参数。</td>
       <td></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)，m和x的m一致</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>groupList</td>
       <td>输入</td>
-      <td>输入和输出分组轴方向的matmul大小分布</td>
+      <td>输入和输出分组轴方向的matmul大小分布。</td>
       <td></td>
       <td>INT64</td>
       <td>ND</td>
       <td>shape支持一维，维度为(e)，e和w的e一致</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>sharedInput</td>
       <td>输入</td>
-      <td>moe计算中共享专家的输出，需要与moe专家的输出进行combine操作</td>
+      <td>moe计算中共享专家的输出，需要与moe专家的输出进行combine操作。</td>
       <td></td>
       <td>BF16</td>
       <td>ND</td>
       <td>shape支持一维，维度为(e)，e和w的e一致</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>logit</td>
       <td>输入</td>
-      <td>moe专家对各个token的logit大小</td>
+      <td>moe专家对各个token的logit大小。</td>
       <td></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)，m和x的m一致</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>rowIndex</td>
       <td>输入</td>
-      <td>moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引</td>
+      <td>moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引。</td>
       <td></td>
       <td>INT32、INT64</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)，m和x的m一致</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>dtype</td>
@@ -168,7 +175,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>INT64</td>
       <td></td>
       <td></td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>sharedInputWeight</td>
@@ -178,7 +185,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>FLOAT32</td>
       <td></td>
       <td></td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>sharedInputOffset</td>
@@ -188,7 +195,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>INT64</td>
       <td></td>
       <td></td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>transposeX1</td>
@@ -198,7 +205,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>BOOL</td>
       <td></td>
       <td></td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>transposeX2</td>
@@ -208,7 +215,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>BOOL</td>
       <td></td>
       <td></td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>groupListType</td>
@@ -218,7 +225,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>INT64</td>
       <td></td>
       <td></td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>out</td>
@@ -228,7 +235,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>FLOAT32</td>
       <td>ND</td>
       <td>0-8</td>
-      <td>×</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -252,12 +259,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
     </tr>
   </tbody>
   </table>
-
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
+
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
@@ -294,7 +301,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 ## aclnnGroupedMatmulFinalizeRoutingWeightNz
 
-- **参数说明：**
+- **参数说明**
+
   <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
     <col style="width: 173px">
     <col style="width: 112px">
@@ -329,26 +337,27 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       </tr>
     </tbody>
     </table>
-
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
+
   - aclnnGroupedMatmulFinalizeRoutingWeightNz默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+- 输入和输出支持以下数据类型组合：
 
-输入和输出支持以下数据类型组合：
-
-| x1   | x2   | scale   | bias | pertokenScaleOptional | groupList | sharedInput | logit   | rowIndex | out   |
-|------|------|---------|------|-----------------------|-----------|-------------|---------|----------|-------|
-| INT8 | INT8 | FLOAT32 | null | FLOAT32               | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |
-| INT8 | INT8 | FLOAT32 | null | FLOAT32               | INT64     | null        | null    | INT64    | FLOAT |
+  | x1   | x2   | scale   | bias | pertokenScaleOptional | groupList | sharedInput | logit   | rowIndex | out   |
+  | ---- | ---- | ------- | ---- | --------------------- | --------- | ----------- | ------- | -------- | ----- |
+  | INT8 | INT8 | FLOAT32 | null | FLOAT32               | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |
+  | INT8 | INT8 | FLOAT32 | null | FLOAT32               | INT64     | null        | null    | INT64    | FLOAT |
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-  ```Cpp
+```Cpp
   #include <iostream>
   #include <memory>
   #include <vector>
@@ -476,7 +485,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
-      
+    
       std::vector<int64_t> xShape = {m, k};
       std::vector<int64_t> wShape = {e, k, n};
       std::vector<int64_t> scaleShape = {e, n};
@@ -537,7 +546,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       // 创建scale aclTensor
       ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT, &scale);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> scaleTensorPtr(scale, aclDestroyTensor);
-      std::unique_ptr<void, aclError (*)(void *)> scaleDeviceAddrPtr(scaleDeviceAddr, aclrtFree);      
+      std::unique_ptr<void, aclError (*)(void *)> scaleDeviceAddrPtr(scaleDeviceAddr, aclrtFree);    
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建pertokenScale aclTensor
       ret = CreateAclTensor(pertokenScaleHostData, pertokenScaleShape, &pertokenScaleDeviceAddr, aclDataType::ACL_FLOAT, &pertokenScale);
@@ -650,4 +659,4 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       aclFinalize();
       return 0;
   }
-  ```
+```
