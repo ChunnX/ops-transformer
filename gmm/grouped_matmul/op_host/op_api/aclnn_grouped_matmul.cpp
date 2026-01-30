@@ -1190,13 +1190,12 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
     gmmParams, weightDtype, isNoActivation) == ACLNN_SUCCESS,
     ACLNN_ERR_PARAM_INVALID, "Check310PlatformForFunction failed.");
   if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950) {
-    CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID,
-               "ActType[%ld] is not supported on this platform.", gmmParams.activeType);
     if (IsQuant(gmmParams.xDtype, weightDtype)) {
       bool allowActOnDavid = CheckIsEnabledActive(gmmParams);
       CHECK_COND(allowActOnDavid || isNoActivation, ACLNN_ERR_PARAM_INVALID, "On this platform, activation is supported only when the input is INT8"
                  " and the quant mode is either pertoken-perchannel or pertensor-perchannel; "
-                 " activation is not supported in other scenarios.");
+                 " activation is not supported in other scenarios;"
+                 " activeType[%ld] is not supported.", gmmParams.activeType);
       return gmm::AclnnGroupedMatmul91095Checker<aclTensorList>(gmmParams).CheckGroupedMatmul91095();
     } else if (IsWeightQuant(gmmParams.xDtype, weightDtype)) {
       CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID, "Activation is not supported in weight quant mode now."
@@ -1204,7 +1203,7 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
       return gmm::AclnnGroupedMatmulWeightQuant91095Checker(gmmParams).CheckGroupedMatmulWeightQuant91095();
     } else {
       CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID, "When input is No-Quant, activation is not supported on this platforms."
- 	                  " activeType[%ld] is not supported.", gmmParams.activeType);     
+ 	                " activeType[%ld] is not supported.", gmmParams.activeType);
       CHECK_RET(
           gmm::AclnnGroupedMatmulNoQuantDAV3510Checker(gmmParams).CheckGroupedMatmulFunctionParamsNoQuantDAV3510() ==
               ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
