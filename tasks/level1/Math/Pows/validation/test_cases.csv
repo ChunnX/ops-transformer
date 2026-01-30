@@ -1,0 +1,7 @@
+case_id;shape;dtype;exponent
+0;[32, 32];bfloat16;-1
+1;[16, 256];bfloat16;-2
+2;[32, 128];float32;0.5
+3;[64, 128, 256];float32;2
+4;[1024, 256];float16;3
+5;[128, 512];float16;-0.5
