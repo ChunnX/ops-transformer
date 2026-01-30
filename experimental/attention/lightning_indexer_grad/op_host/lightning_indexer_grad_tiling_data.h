@@ -61,6 +61,7 @@ struct LigParaInfo {
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
     bool determinstic = false;
+    int64_t compressedRatio = 1;
 };
 
 // ------------------算子原型索引常量定义----------------
@@ -85,6 +86,7 @@ constexpr uint32_t ATTR_SPARSEMODE_INDEX = 2;
 constexpr uint32_t ATTR_PRETOKENS_INDEX = 3;
 constexpr uint32_t ATTR_NEXTTOKENS_INDEX = 4;
 constexpr uint32_t ATTR_DETERMINSTIC_INDEX = 5;
+constexpr uint32_t ATTR_COMPRESSED_RATIO_INDEX = 6;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 0;
@@ -127,6 +129,7 @@ public:
     int64_t reluGradWorkspaceOffset = 0;
     int64_t scatterAddWorkspaceOffset = 0;
     uint64_t sparseMode;
+    uint64_t compressedRatio;
     ge::DataType queryDataType = ge::DT_FLOAT16;
 
 private:

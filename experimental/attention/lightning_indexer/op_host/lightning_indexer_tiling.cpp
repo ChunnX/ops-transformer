@@ -147,6 +147,8 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.preTokens = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKENS_INDEX);
     opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKENS_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
+    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_COMPRESSED_RATIO_INDEX);
+
     if (opParamInfo_.layOut != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOut);
     }
@@ -167,6 +169,9 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "return value is:%d", *opParamInfo_.returnValue);
+    }
+    if (opParamInfo_.cmpRatio != nullptr) {
+        OP_LOGI(context_->GetNodeName(), "Compress Ratio is:%d", *opParamInfo_.cmpRatio);
     }
     OP_LOGI(context_->GetNodeName(), "GetAndCheckAttrParaInfo end");
     OP_CHECK_IF(
@@ -192,7 +197,11 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
                OP_LOGE(opName_, "input attr nextTokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.returnValue && std::string(opParamInfo_.layOutKey) == "PA_BSND",
                OP_LOGE(opName_, "when return_value is true, key layout do not support PA_BSND."), return ge::GRAPH_FAILED);
-
+    OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) 
+                || ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
+                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, but now cmpRatio is %ld.",
+                *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -585,6 +594,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
         queryWeightsN1Dim = DIM_IDX_TWO;
         outN2Dim = DIM_IDX_TWO;
     }
+
     // -----------------------check N1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim) != n1Size_),
                OP_LOGE(opName_, "input query, weight shape dim N1 must be same."), return ge::GRAPH_FAILED);
@@ -632,9 +642,12 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     liInfo.preTokens = *opParamInfo_.preTokens;
     liInfo.nextTokens = *opParamInfo_.nextTokens;
     liInfo.returnValue = *opParamInfo_.returnValue;
-
+    liInfo.cmpRatio = *opParamInfo_.cmpRatio;
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
+    if (liInfo.cmpRatio != 1) {
+        liInfo.sparseCount = s2Size_ > liInfo.sparseCount ? liInfo.sparseCount : s2Size_;
+    }
 }
 
 ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
@@ -719,6 +732,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     tilingData_.set_preTokens(tilingInfo->preTokens);
     tilingData_.set_nextTokens(tilingInfo->nextTokens);
     tilingData_.set_returnValue(tilingInfo->returnValue);
+    tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

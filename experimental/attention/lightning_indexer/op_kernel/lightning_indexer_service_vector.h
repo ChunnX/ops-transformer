@@ -119,7 +119,7 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
     uint32_t reduceCacheSize = REDUCE_BANK_CONFLICT_OFFSETS + groupInner_ * s2BaseSize_ * sizeof(float);
     outNeedBufSize = reduceCacheSize > outNeedBufSize ? reduceCacheSize : outNeedBufSize;
     virTopK = constInfo_.isSparseCountOver2K ? constInfo_.sparseCount : BASE_TOPK;
-
+    virTopK = constInfo_.sparseCount > constInfo_.kSeqSize ? constInfo_.kSeqSize : constInfo_.sparseCount;
     pipe->InitBuffer(outQueue_, 1, outNeedBufSize);                                            // 32KB  extract
     pipe->InitBuffer(tmpBuf_, (groupInner_ * s2BaseSize_ + s2BaseSize_) * 2 * sizeof(float));  // 68KB 在搬运cube核计算得到的结果和weight时，分成两块34KB，用于db；在mrgsort时，用作临时UB
     pipe->InitBuffer(sortOutBuf_, CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float));    // 64KB
@@ -218,6 +218,7 @@ template <typename LIT>
 __aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset)
 {
     // init -1 and copy to output
+
     LocalTensor<float> valueULocal = outQueue_.AllocTensor<float>();
     LocalTensor<int32_t> idxULocal1 = valueULocal.template ReinterpretCast<int32_t>();
     Duplicate(idxULocal1, constInfo_.INVALID_IDX, constInfo_.sparseCount);
@@ -283,17 +284,23 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
     }
     // cuRealAcSeq: 当前基本块S1对应的AcSeq
     int32_t cuRealAcSeq = info.actS2Size;
+    int32_t cuRealAcSeqCount = 0;
+
     if (constInfo_.attenMaskFlag) {
         // attenMask true场景
-        cuRealAcSeq = info.actS2Size - (info.actS1Size - cuS1BeginIdxPerAiv);
+        cuRealAcSeq = info.actS2SizeOrig - info.actS1Size + cuS1BeginIdxPerAiv;
     }
     LocalTensor<float> reduceOutBuff = reduceOutBuf_.Get<float>();
     LocalTensor<float> brcBuf = brcBuf_.Get<float>();
+
+    int32_t cuRealAcSeqIni = cuRealAcSeq;
     // LD输出S1方向偏移，保证2个Vector输出的内容连续
     uint32_t ldS1Offset = (blockId_ % 2 == 0) ? s1BaseSize_ / 2 - cuS1ProcNumPerAiv : 0;
+
     for (int innerS1Idx = 0; innerS1Idx < cuS1ProcNumPerAiv; innerS1Idx++) {
         if (constInfo_.attenMaskFlag) {
-            cuRealAcSeq += 1;
+            cuRealAcSeq = (cuRealAcSeqCount + cuRealAcSeqIni) / static_cast<int32_t>(constInfo_.cmpRatio);
+            cuRealAcSeqCount += 1;
         }
         int32_t cuS2Len = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq ? cuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
         int32_t cuS1Idx = cuS1BeginIdxPerAiv + innerS1Idx;
@@ -335,6 +342,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
 
             int32_t gRedCnt = groupInner_ > gSize_ ? gSize_ : groupInner_;
             bool isS2End = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq;
+
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
 
@@ -349,11 +357,10 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
             // 无效数据索引填充为-1
             if (cuS2LenVecAlign != cuS2Len) {
                 Duplicate(sortIndiceUbInt, -1, cuS2LenVecAlign);
+                PipeBarrier<PIPE_V>();
             }
-            PipeBarrier<PIPE_V>();
             Adds(sortIndiceUbInt, globalTopkIndice_, static_cast<int32_t>(cuBaseS2Idx), cuS2Len);
             PipeBarrier<PIPE_V>();
-
             LocalTensor<float> tmpSortBuf = outQueue_.AllocTensor<float>();
             if (info.actS1Size > 4 || constInfo_.isSparseCountOver2K) {
                 // info.actS1Size > 4 则单个vector核内处理的 s1>2，缓存方案无法处理
@@ -365,6 +372,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                                         cuS2LenVecAlign, UbTmpSort);
             } else {
                 int64_t globalTopkUbCacheIdx = (info.s2Idx - blockS2StartIdx_) % 4;
+
                 Sort<float, true>(
                     SortedBasicBlock_[innerS1Idx * BASE_TOPK * 2 + globalTopkUbCacheIdx * s2BaseSize_ * 2],
                     reduceOutBuff, sortIndiceUbInt.template ReinterpretCast<uint32_t>(), tmpSortBuf,
@@ -372,6 +380,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 // 缓存4块512或者S2结束, 需要进行精排
                 if (globalTopkUbCacheIdx == 3 || isS2End || info.isAllLoopEnd) {
                     LocalTensor<float> tt = SortedBasicBlock_[innerS1Idx * BASE_TOPK * 2];
+
                     // 前4块直接精排覆盖到globalTopkUb_
                     if (info.s2Idx - blockS2StartIdx_ < 4) {
                         MrgBasicBlock(globalTopkUb_[innerS1Idx * BASE_TOPK * 2], tt,

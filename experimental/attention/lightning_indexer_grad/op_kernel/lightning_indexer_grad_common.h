@@ -53,6 +53,7 @@ struct ConstInfo {
     int64_t reluGradWorkspaceOffset;
     int64_t scatterAddWorkspaceOffset;
     uint64_t sparseMode;
+    uint64_t compressedRatio;
 };
 
 template <typename TYPE, LIG_LAYOUT LAYOUT_T = LIG_LAYOUT::BSND, typename... Args>

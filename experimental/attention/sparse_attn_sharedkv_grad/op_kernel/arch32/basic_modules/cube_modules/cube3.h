@@ -73,8 +73,4 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
         }
         UpdatePingPongFlag(ping_pong_flag_l0c_);
     }
-
-    // uint32_t array[] = {static_cast<uint32_t>(dimG), static_cast<uint32_t>(512)};
-    // AscendC::ShapeInfo shapeInfo(2, array);
-    // AscendC::DumpTensor(dqWorkspaceGm[outGmOffset], 2, dimG * 512, shapeInfo);
 }
