@@ -507,6 +507,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         *context_->GetAttrs()->GetAttrPointer<float>(static_cast<size_t>(AttrIndex::SCALE_VALUE)));
     tilingData.opInfo.set_selectedBlockCount(selected_block_count);
     tilingData.opInfo.set_selectedBlockSize(selected_block_size);
+    bool deterministic =  *context_->GetAttrs()->GetAttrPointer<bool>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
+    tilingData.opInfo.set_deterministic(deterministic);
 
     tmpData.d = tilingData.opInfo.get_D();
     tmpData.d2 = tilingData.opInfo.get_D2();
@@ -515,6 +517,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         static_cast<uint32_t>(context_->GetInputDesc(static_cast<size_t>(InputIndex::QUERY))->GetDataType());
     tmpData.selected_block_count = selected_block_count;
     tmpData.selected_block_size = selected_block_size;
+    tmpData.deterministic = deterministic;
 
     auto ret = CheckDtypeValid(context_);
 

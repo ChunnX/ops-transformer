@@ -44,6 +44,7 @@ struct TempParams {
     uint32_t singleN;
     int64_t ropeDim;
     bool ropeEnable = false;
+    bool deterministic = false;
 };
 
 struct AiCoreParams {

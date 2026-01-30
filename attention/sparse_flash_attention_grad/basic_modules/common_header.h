@@ -63,12 +63,15 @@ struct RunInfo {
     int64_t actualSelCntOffset;
     int64_t scatterTaskId;
     int64_t s1Index;
+    int64_t s1Begin;
+    int64_t s1End;
     int64_t actualSelectedBlockCount;
     int64_t changeS1 = false;
     int64_t selectedKGmOffset;
     int64_t selectedVGmOffset;
     int64_t lastBlockSize;
     bool isLastBasicBlock;
+    bool valid = false;
 };
 
 /////////////////////////////////////////////////////
