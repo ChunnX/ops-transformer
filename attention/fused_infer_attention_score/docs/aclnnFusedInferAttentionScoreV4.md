@@ -204,7 +204,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <ul>
                 <li>sparseMode = 0、1时
                     <ul>
-                        <li>支持shape传入(1,Q_S,KV_S)、(B,1,Q_S,KV_S)、(1,1,Q_S,KV_S)。</li>
+                        <li>支持shape传入(B,Q_S,KV_S)、(1,Q_S,KV_S)、(B,1,Q_S,KV_S)、(1,1,Q_S,KV_S)。</li>
                         <li>另外输入Layout为BSH、BSND、BNSD、BNSD_BSND时，且query与key的D等于value的D，并且不传query_rope和key_rope时，Q_S=1可支持传入(B,KV_S)，Q_S>1时可支持传入(Q_S,KV_S)。</li>
                     </ul>
                 </li>
