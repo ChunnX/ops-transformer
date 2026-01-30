@@ -20,6 +20,7 @@
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_type.h"
 #include "../../../op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
+#include "../../op_api/aclnn_grouped_matmul_v4.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
@@ -479,6 +480,79 @@ bool GroupedQbmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
     return true;
 }
 
+bool GroupedQbmmTiling::CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const
+{
+    OP_CHECK_IF((inputParams_.aDtype != ge::DT_INT8) || (inputParams_.bDtype != ge::DT_INT8),
+                OP_LOGE(context_->GetNodeName(),
+                "When the activation function is enabled, the dtype of x and weight should be DT_INT8, "
+                "actual is %s and %s.", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()), return false);
+    if (inputParams_.cDtype == ge::DT_BF16) {
+        OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_BF16 && inputParams_.scaleDtype != ge::DT_FLOAT,
+                    OP_LOGE(inputParams_.opName,
+                    "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
+                    "scale should be DT_BF16 or DT_FLOAT, actual is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()), return false);
+        OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT && xScaleStorageShape != nullptr,
+                    OP_LOGE(inputParams_.opName,
+                    "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
+                    "perTokenScale should be DT_FLOAT, actual is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()), return false);
+    } else if (inputParams_.cDtype == ge::DT_FLOAT16) {
+        OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT,
+                    OP_LOGE(inputParams_.opName,
+                    "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
+                    "scale should be DT_FLOAT, actual is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()), return false);
+        OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT && xScaleStorageShape != nullptr,
+                    OP_LOGE(inputParams_.opName,
+                    "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
+                    "perTokenScale should be DT_FLOAT, actual is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()), return false);
+    } else {
+        OP_LOGE(inputParams_.opName, "When the activation function is enabled, the dtype of output should be DT_BF16 or DT_FLOAT16, "
+        "actual is %s.", ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype).c_str()); 
+        return false;
+    }
+    return true;
+}
+
+bool GroupedQbmmTiling::CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape) const
+{
+    OP_CHECK_IF(inputParams_.actType == GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC,
+                OP_LOGE(context_->GetNodeName(), "Activation function does not support GELU_ERR_FUNC now."), return false);
+    OP_CHECK_IF(inputParams_.actType > GMMActType::GMM_ACT_TYPE_SILU || inputParams_.actType < GMMActType::GMM_ACT_TYPE_NONE,
+                OP_LOGE(context_->GetNodeName(), "Activation function only supports RELU/GELU_TANH/FASTGELU/SILU."),
+                return false);
+    OP_CHECK_IF(!CheckActiveModeDtype(xScaleStorageShape), OP_LOGE(context_->GetNodeName(), "CheckActiveModeDtype failed."), return false);
+    auto wScaleDims = wScaleShape.GetDimNum();
+    if (xScaleStorageShape != nullptr) {
+        auto &xScaleShape = xScaleStorageShape->GetStorageShape();
+        auto xScaleDims = xScaleShape.GetDimNum();
+        OP_CHECK_IF(xScaleDims != 1, OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，perTorkenScale应该为1维
+                    "When the activation function is enabled, the dim of perTokenScale should be 1 or nullptr, "
+                    "actual is %d.", xScaleDims), return false);
+        OP_CHECK_IF(static_cast<uint64_t>(xScaleShape[0]) != inputParams_.mSize, OP_LOGE(context_->GetNodeName(),
+                    "When the activation function is enabled and the dim of perTokenScale is 1, "
+                    "the shape of perTokenScale should be (%d,), "
+                    "actual is (%d,).", inputParams_.mSize, static_cast<uint64_t>(xScaleShape[0])), return false);
+    }
+    
+    if (!(wScaleDims == 2 && wScaleShape[wScaleDims - 1] == 1 && inputParams_.nSize == 1)) { // scale为2维且shape为(g,1)时，不做拦截
+        OP_CHECK_IF(wScaleDims != 2, OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，Scale应该为2维
+                    "When the activation function is enabled, the dim of Scale should be 2, "
+                    "actual is %d.", wScaleDims), return false);
+        OP_CHECK_IF(static_cast<uint64_t>(wScaleShape[0]) != inputParams_.groupNum ||
+                    static_cast<uint64_t>(wScaleShape[1]) != inputParams_.nSize,
+                    OP_LOGE(context_->GetNodeName(),
+                    "When the activation function is enabled, the shape of Scale should be (%d, %d), "
+                    "actual is (%d, %d).", inputParams_.groupNum, inputParams_.nSize,
+                    static_cast<uint64_t>(wScaleShape[0]), static_cast<uint64_t>(wScaleShape[1])),
+                    return false);
+    }
+    return true;
+}
+
 bool GroupedQbmmTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetDynamicInputShape(X_INDEX, 0);
@@ -515,6 +589,10 @@ bool GroupedQbmmTiling::AnalyzeInputs()
         OP_CHECK_IF(!CheckShapeForWeightNz(weightNzStorageShape), OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed."),
                     return false);
     }
+    if (inputParams_.actType != GMMActType::GMM_ACT_TYPE_NONE) {
+        OP_CHECK_IF(!CheckActiveMode(wScaleShape, xScaleStorageShape), OP_LOGE(context_->GetNodeName(), "CheckActiveMode failed."),
+                    return false);
+    }   
     if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) {
         OP_CHECK_IF(!CheckFp4Shape(), OP_LOGE(inputParams_.opName, "CheckFp4Shape failed."), return false);
         if (inputParams_.hasBias) {

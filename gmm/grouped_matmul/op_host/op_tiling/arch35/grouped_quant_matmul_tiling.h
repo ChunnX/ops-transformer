@@ -207,6 +207,8 @@ private:
     bool IsBiasInL1() const;
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
     bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
+    bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
+ 	bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape) const;
 
     GroupedMatmulTilingData::GMMQuantTilingData tilingData_;
     bool isWeightNz_ = false;
