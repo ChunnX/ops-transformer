@@ -1,0 +1,10 @@
+case_id;input_shape;dtype;tol
+0;[16, 1024];float32;1e-4
+1;[4, 8];float16;1e-4
+1;[1, 1];float16;1e-4
+3;[32, 4096];float32;1e-4
+4;[1, 1024];float16;1e-4
+5;[64, 512];bfloat16;1e-4
+6;[128, 2048];float32;1e-4
+7;[1, 1];float16;1e-4
+8;[256, 4096];bfloat16;1e-4
