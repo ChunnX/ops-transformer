@@ -89,4 +89,4 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 
 - **问题反馈**：通过GitCode[【Issues】](https://gitcode.com/cann/ops-transformer/issues)提交问题
 - **社区互动**：通过GitCode[【讨论】](https://gitcode.com/cann/ops-transformer/discussions)参与交流
-- **技术专栏**：通过GitCode[【Wiki】](https://gitcode.com/cann/ops-transformer/wiki)获取技术文章，如系列化教程、优秀实践等
+- **技术专栏**：通过GitCode[【Wiki】](https://gitcode.com/cann/ops-transformer/wiki)获取技术文章，如系列化教程、优秀实践等。
