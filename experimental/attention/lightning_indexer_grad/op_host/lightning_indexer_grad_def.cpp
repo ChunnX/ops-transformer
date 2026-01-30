@@ -64,6 +64,7 @@ public:
         this->Attr("preTokens").AttrType(OPTIONAL).Int(65536);
         this->Attr("nextTokens").AttrType(OPTIONAL).Int(65536);
         this->Attr("determinstic").AttrType(OPTIONAL).Bool(false);
+        this->Attr("compressedRatio").AttrType(OPTIONAL).Int(1);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

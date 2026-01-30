@@ -32,6 +32,7 @@ constexpr uint32_t ATTR_SPARSE_MODE_INDEX = 2;
 constexpr uint32_t ATTR_PRETOKENS_INDEX = 3;
 constexpr uint32_t ATTR_NEXTTOKENS_INDEX = 4;
 constexpr uint32_t ATTR_DETERMINSTIC_INDEX = 5;
++constexpr uint32_t ATTR_COMPRESSED_RATIO_INDEX = 6;
 
 static ge::graphStatus InferShapeLightningIndexerGrad(gert::InferShapeContext *context)
 {
