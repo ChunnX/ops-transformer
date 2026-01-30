@@ -662,6 +662,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::SendToMoeEx
         topKIndex = expertIdx % axisK_;
         dstExpertId = expertIdsTensor_(index);
         if ((tokenIndex > 0) && (index > 0)) {
+            SyncFunc<AscendC::HardEvent::S_V>();
             CalTokenSendExpertCnt(dstExpertId, index, curExpertCnt);
         }
         int32_t toRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
