@@ -86,28 +86,16 @@ private:
     uint64_t scaleAFactor_ = 1;
     uint64_t scaleBFactor_ = 1;
     bool isBias_;
-    LocalTensor<L0DataType> l0a_;
-    LocalTensor<L0DataType> l0b_;
-    LocalTensor<float> l0c_;
-    LocalTensor<float> biasTable_;
+    LocalTensor<L0DataType> l0a_{TPosition::A2, 0, 64 * GetKBUnit<int8_t>() / sizeof(L0DataType)};
+    LocalTensor<L0DataType> l0b_{TPosition::B2, 0, 64 * GetKBUnit<int8_t>() / sizeof(L0DataType)};
+    LocalTensor<float> l0c_{TPosition::CO1, 0, 256 * GetKBUnit<int8_t>() / sizeof(float)};
+    LocalTensor<float> biasTable_{TPosition::C2, 0, 4 * GetKBUnit<int8_t>() / sizeof(float)};
 };
 
 WQBMM_BASIC_API_V1_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::Init(const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe)
 {
     isBias_ = matmulTiling->isBias;
-    TBuf<TPosition::A2> l0aTbuf;
-    TBuf<TPosition::B2> l0bTbuf;
-    TBuf<TPosition::C2> biasTbuf;
-    TBuf<TPosition::CO1> l0cTbuf;
-    tPipe->InitBuffer(l0aTbuf, 64 * GetKBUnit<int8_t>());
-    tPipe->InitBuffer(l0bTbuf, 64 * GetKBUnit<int8_t>());
-    tPipe->InitBuffer(biasTbuf, 4 * GetKBUnit<int8_t>());
-    tPipe->InitBuffer(l0cTbuf, 256 * GetKBUnit<int8_t>());
-    biasTable_ = biasTbuf.Get<float>();
-    l0a_ = l0aTbuf.Get<L0DataType>();
-    l0b_ = l0bTbuf.Get<L0DataType>();
-    l0c_ = l0cTbuf.Get<float>();
 
     scaleAFactor_ = 1; // matmulTiling_->mxTypePara & 0xff;
     scaleBFactor_ = 1; // (matmulTiling_->mxTypePara >> 8) & 0xff;

@@ -45,7 +45,8 @@ constexpr MicroAPI::CastTrait ctHalf2Fp32One = {MicroAPI::RegLayout::ONE, MicroA
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 class GQmmMixRegbaseKernel {
 public:
-    __aicore__ inline GQmmMixRegbaseKernel() {}
+    __aicore__ inline GQmmMixRegbaseKernel();
+    __aicore__ inline ~GQmmMixRegbaseKernel();
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                 GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
                                 const GMMQuantParams *__restrict gmmBaseParamsIn,
@@ -108,7 +109,7 @@ protected:
     __aicore__ inline void CopyX2ScaleFromGm2Ub(LocalTensor<scaleType> &dst);
     __aicore__ inline void CopyBiasFromGm2Ub(LocalTensor<biasType> &dst);
     __aicore__ inline void CopyDequantResFromUb2Gm(uint64_t blockCount, uint64_t offset, LocalTensor<yType> &src);
-    __aicore__ inline void FreeUbTensor();
+    __aicore__ inline void UbSetFlag();
 
 protected:
     uint32_t blockIdx_;
@@ -119,8 +120,14 @@ protected:
     uint32_t groupNum_;
     int8_t groupType_;
     uint8_t groupListType_;
+    uint32_t dequantOutInUBPingPongID_ = 0;
     bool isVecSetSyncCom_ = false;
     bool isBiasEpilogue_;
+    constexpr static uint16_t INPUT_BUFFER_FLAG_0 = 0;
+    constexpr static uint16_t INPUT_BUFFER_FLAG_1 = 1;
+    constexpr static uint16_t INPUT_BUFFER_FLAG_2 = 2;
+    constexpr static uint16_t OUTPUT_BUFFER_FLAG_0 = 0;
+    constexpr static uint16_t OUTPUT_BUFFER_FLAG_1 = 1;
     GroupedMatmul::QuantASWBlockSch block_;
 
     const TCubeTiling *__restrict mmTilingData_;
@@ -152,14 +159,29 @@ protected:
     LocalTensor<ptScaleType> ptScaleUb_;
     LocalTensor<biasType> biasUb_;
     LocalTensor<yType> initLocal_;
-
-    TQue<QuePosition::VECIN, 1> vecQueMMRes_;
-    TQue<QuePosition::VECIN, 1> vecQueScale_;
-    TQue<QuePosition::VECIN, 1> vecQuePertokenScale_;
-    TQue<QuePosition::VECIN, 1> vecQueBias_;
-    TQue<QuePosition::VECOUT, 1> vecQueOut_;
-    TBuf<TPosition::VECCALC> initBuff_;
+    LocalTensor<yType> dequantOutInUBPing_;
+    LocalTensor<yType> dequantOutInUBPong_;
 };
+
+LOCAL_TEMPLATE_CLASS_MIX_PARAMS
+__aicore__ inline GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::GQmmMixRegbaseKernel()
+{
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_0);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_1); 
+}
+
+LOCAL_TEMPLATE_CLASS_MIX_PARAMS
+__aicore__ inline GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::~GQmmMixRegbaseKernel()
+{
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_1);
+}
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Init(
@@ -179,30 +201,33 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Ini
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
 
     uint32_t mForSingleVec = QuantUtils::CeilDiv(mmTilingData_->baseM, GetTaskRation());
-    pipe->InitBuffer(vecQueMMRes_, 1, mForSingleVec * mmTilingData_->baseN * sizeof(float)); // int32/fp32
+    uint64_t offset = 0;
+    l0cOutUb_ = LocalTensor<l0cType>(TPosition::VECIN, offset, mForSingleVec * mmTilingData_->baseN * sizeof(float) / sizeof(l0cType)); 
+    offset += mForSingleVec * mmTilingData_->baseN * sizeof(float);
     if (gmmQuantParams_->bQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERCHANNEL_MODE)) {
-        pipe->InitBuffer(vecQueScale_, 1, mmTilingData_->baseN * sizeof(scaleType));
+        scaleUb_ = LocalTensor<scaleType>(TPosition::VECIN, offset, mmTilingData_->baseN);
+        offset += mmTilingData_->baseN * sizeof(scaleType);
     }
     if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTOKEN_MODE)) {
-        pipe->InitBuffer(vecQuePertokenScale_, 1,
-                          QuantUtils::Align(mForSingleVec * sizeof(ptScaleType), QuantUtils::UB_ALIGN_SIZE));
+        ptScaleUb_ = LocalTensor<ptScaleType>(TPosition::VECIN, offset, QuantUtils::Align(mForSingleVec * sizeof(ptScaleType), QuantUtils::UB_ALIGN_SIZE) / sizeof(ptScaleType));
+        offset += QuantUtils::Align(mForSingleVec * sizeof(ptScaleType), QuantUtils::UB_ALIGN_SIZE);
     }
     isBiasEpilogue_ = QuantUtils::IsBiasEpilogue<xType, biasType>() && gmmQuantParams_->hasBias == 1;
     if (isBiasEpilogue_) {
-        pipe->InitBuffer(vecQueBias_, 1, mmTilingData_->baseN * sizeof(biasType));
+        biasUb_ = LocalTensor<biasType>(TPosition::VECIN, offset, mmTilingData_->baseN);
+        offset += mmTilingData_->baseN * sizeof(biasType);
     }
 
     // fp16/bf16分两次输出，fp32分四次输出
-    pipe->InitBuffer(vecQueOut_, QuantUtils::BUFFER_SWITCH,
-                      QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN *
-                          sizeof(yType));
-    l0cOutUb_ = vecQueMMRes_.AllocTensor<l0cType>();
+    dequantOutInUBPing_ = LocalTensor<yType>(TPosition::VECIN, offset, QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN);
+    offset += QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN * sizeof(yType);
+    dequantOutInUBPong_ = LocalTensor<yType>(TPosition::VECIN, offset, QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN);
+    offset += QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN * sizeof(yType);
 
     // k = 0, init out
     if ASCEND_IS_AIV {
         if (subBlockIdx_ == 0) {
-            pipe->InitBuffer(initBuff_, QuantUtils::MAX_REPEAT_TIMES * QuantUtils::UB_ALIGN_SIZE);
-            initLocal_ = initBuff_.Get<yType>();
+            initLocal_ = LocalTensor<yType>(TPosition::VECCALC, offset, QuantUtils::MAX_REPEAT_TIMES * QuantUtils::UB_ALIGN_SIZE / sizeof(yType));
         }
     }
 }
@@ -451,7 +476,8 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Deq
             break;
         }
         auto mSize = singleMInVec - i * mSizeForOnce >= mSizeForOnce ? mSizeForOnce : singleMInVec - i * mSizeForOnce;
-        LocalTensor<yType> dequantOutInUB = vecQueOut_.AllocTensor<yType>();
+        LocalTensor<yType>& dequantOutInUB = (dequantOutInUBPingPongID_ == 0) ? dequantOutInUBPing_ : dequantOutInUBPong_;
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(dequantOutInUBPingPongID_);
 
         __ubuf__ yType *dequantOutInUbAddr = (__ubuf__ yType *)dequantOutInUB.GetPhyAddr();
         __ubuf__ l0cType *l0cOutUbAddr = (__ubuf__ l0cType *)l0cOutUb_.GetPhyAddr();
@@ -474,13 +500,14 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Deq
                     VFDoDequantWithoutAScale(dequantOutInUbAddr, l0cOutUbAddr, mSize);
                 }
         }
-        vecQueOut_.EnQue<yType>(dequantOutInUB);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(dequantOutInUBPingPongID_);
         // mmDequant result: UB -> GM
-        dequantOutInUB = vecQueOut_.DeQue<yType>();
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(dequantOutInUBPingPongID_);
         CopyDequantResFromUb2Gm(mSize, (mOffset + i * mSizeForOnce) * mmTilingData_->N, dequantOutInUB);
-        vecQueOut_.FreeTensor(dequantOutInUB);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(dequantOutInUBPingPongID_);
+        dequantOutInUBPingPongID_ = dequantOutInUBPingPongID_ ^ 1;
     }
-    FreeUbTensor();
+    UbSetFlag();
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
@@ -490,26 +517,26 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Cop
     auto singleMInVec = subBlockIdx_ == 1 ? block_.params_.singleCoreM - halfSingleM : halfSingleM;
     // scale: GM -> UB
     if (gmmQuantParams_->bQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERCHANNEL_MODE)) {
-        scaleUb_ = vecQueScale_.AllocTensor<scaleType>();
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
         CopyX2ScaleFromGm2Ub(scaleUb_);
-        vecQueScale_.EnQue<scaleType>(scaleUb_);
-        scaleUb_ = vecQueScale_.DeQue<scaleType>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_0);
     }
 
     uint64_t mOffset = subBlockIdx_ * halfSingleM;
     // perTokenScale: GM -> UB
     if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTOKEN_MODE)) {
-        ptScaleUb_ = vecQuePertokenScale_.AllocTensor<ptScaleType>();
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
         CopyX1ScaleFromGm2Ub(ptScaleUb_, singleMInVec * sizeof(ptScaleType),
                              block_.offset_.offsetPerTokenScale + mOffset);
-        vecQuePertokenScale_.EnQue<ptScaleType>(ptScaleUb_);
-        ptScaleUb_ = vecQuePertokenScale_.DeQue<ptScaleType>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_1);
     }
     if (isBiasEpilogue_) {
-        biasUb_ = vecQueBias_.AllocTensor<biasType>();
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
         CopyBiasFromGm2Ub(biasUb_);
-        vecQueBias_.EnQue<biasType>(biasUb_);
-        biasUb_ = vecQueBias_.DeQue<biasType>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_2);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_2);
     }
 }
 
@@ -557,18 +584,18 @@ GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyDequantResFromUb2Gm(ui
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::FreeUbTensor()
+__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::UbSetFlag()
 {
     if (gmmQuantParams_->bQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERCHANNEL_MODE)) {
-        vecQueScale_.FreeTensor(scaleUb_);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
     }
 
     if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTOKEN_MODE)) {
-        vecQuePertokenScale_.FreeTensor(ptScaleUb_);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
     }
 
     if (isBiasEpilogue_) {
-        vecQueBias_.FreeTensor(biasUb_);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
     }
 }
 

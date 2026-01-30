@@ -62,7 +62,7 @@ public:
                                             __gm__ float *perChannelScale, __gm__ biasType *bias,
                                             const bool weightL2Cacheable);
     __aicore__ inline void Init(TPipe *tPipe, bool hasBias);
-    __aicore__ inline void InitKCG(uint32_t antiQuantGroupSize, bool hasBias, TBuf<> ubBuffer,
+    __aicore__ inline void InitKCG(uint32_t antiQuantGroupSize, bool hasBias,
                                    const LocalTensor<xType> &ubHighBitTotalBuffer, uint64_t highBitUbOffset);
     __aicore__ inline void WaitVToMTE2();
     __aicore__ inline void SetVToMTE2();
@@ -85,7 +85,7 @@ public:
     __aicore__ inline void End();
 
 private:
-    __aicore__ inline void InitMx(TBuf<> &ubBuffer);
+    __aicore__ inline void InitMx();
     __aicore__ inline void CopyWeightGmToUb(uint64_t ubMte2NSize, uint64_t ubMte2KSize, uint64_t ubMte2NOffset,
                                             uint64_t ubMte2KOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyAntiQuantParamsGmToUb(uint64_t ubMte2NSize, uint64_t ubMte2KSize, uint64_t ubMte2NOffset,
@@ -223,30 +223,20 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::UpdateGlo
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Init(TPipe *tPipe, bool hasBias)
 {
-    TBuf<> ubBuffer;
-    tPipe->InitBuffer(ubBuffer, UB_AVAILABLE_SIZE);
     hasBias_ = hasBias;
     if constexpr (wqmmConfig.antiQuantType == QuantType::MX) {
-        InitMx(ubBuffer);
+        InitMx();
     } else {
         if constexpr (wqmmConfig.weightFormat != CubeFormat::NZ) {
-            ubWeightInputLowBitTotalBuffer_ =
-                ubBuffer.template GetWithOffset<int8_t>(UB_BUFFER_INFO.weightInputLowbitUbTotalSize, 0);  // 174KB
-            ubHighBitTotalBuffer_ = ubBuffer.template GetWithOffset<xType>(UB_BUFFER_INFO.highBitDataUbTotalSize,
-                                                                           174 * GetKBUnit<int8_t>());  // 33KB*2
-            ubAntiQuantScaleTotalBuffer_ = ubBuffer.template GetWithOffset<antiQuantScaleType>(
-                UB_BUFFER_INFO.antiQuantScaleUbTotalSize, 240 * GetKBUnit<int8_t>());  // 4KB
-            ubAntiQuantOffsetTotalBuffer_ = ubBuffer.template GetWithOffset<xType>(
-                UB_BUFFER_INFO.antiQuantOffsetUbTotalSize, 244 * GetKBUnit<int8_t>());  // 4KB
+            ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);  // 174KB
+            ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 174 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 33KB*2
+            ubAntiQuantScaleTotalBuffer_ = LocalTensor<antiQuantScaleType>(TPosition::LCM, 240 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleUbTotalSize);  // 4KB
+            ubAntiQuantOffsetTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 244 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantOffsetUbTotalSize);  // 4KB
         } else {
-            ubWeightInputLowBitTotalBuffer_ =
-                ubBuffer.template GetWithOffset<int8_t>(UB_BUFFER_INFO.weightInputLowbitUbTotalSize, 0);  // 112KB
-            ubHighBitTotalBuffer_ = ubBuffer.template GetWithOffset<xType>(UB_BUFFER_INFO.highBitDataUbTotalSize,
-                                                                           112 * GetKBUnit<int8_t>());  // 32KB*4
-            ubAntiQuantScaleTotalBuffer_ = ubBuffer.template GetWithOffset<antiQuantScaleType>(
-                UB_BUFFER_INFO.antiQuantScaleUbTotalSize, 240 * GetKBUnit<int8_t>());  // 4KB
-            ubAntiQuantOffsetTotalBuffer_ = ubBuffer.template GetWithOffset<xType>(
-                UB_BUFFER_INFO.antiQuantOffsetUbTotalSize, 244 * GetKBUnit<int8_t>());  // 4KB
+            ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);  // 112KB
+            ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 112 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 32KB*4
+            ubAntiQuantScaleTotalBuffer_ = LocalTensor<antiQuantScaleType>(TPosition::LCM, 240 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleUbTotalSize);  // 4KB
+            ubAntiQuantOffsetTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 244 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantOffsetUbTotalSize);  // 4KB
         }
     }
 
@@ -263,44 +253,26 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Init(TPip
  * 初始化mx场景buffer 封装防止Init超长
  */
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx(TBuf<> &ubBuffer)
+__aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx()
 {
     if constexpr (wqmmConfig.weightFormat != CubeFormat::NZ) {
-        ubWeightInputLowBitTotalBuffer_ =
-            ubBuffer.template GetWithOffset<int8_t>(UB_BUFFER_INFO.weightInputLowbitUbTotalSize, 0);  // 64KB*2 = 128KB
-        ubHighBitTotalBuffer_ = ubBuffer.template GetWithOffset<xType>(UB_BUFFER_INFO.highBitDataUbTotalSize,
-                                                                       128 * GetKBUnit<int8_t>());  // 33KB*2 = 66KB
-        ubAntiQuantScaleTotalBuffer_ =
-            ubBuffer.template GetWithOffset<antiQuantScaleType>(UB_BUFFER_INFO.antiQuantScaleUbTotalSize,
-                                                                194 * GetKBUnit<int8_t>());  // 8KB
-
-        ubAntiQuantScaleAfterCastTotalBuffer_ =
-            ubBuffer.template GetWithOffset<xType>(UB_BUFFER_INFO.antiQuantScaleAfterCastUbTotalSize,
-                                                   202 * GetKBUnit<int8_t>());  // 32KB
+        ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);  // 64KB*2 = 128KB
+        ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 128 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 33KB*2 = 66KB
+        ubAntiQuantScaleTotalBuffer_ = LocalTensor<antiQuantScaleType>(TPosition::LCM, 194 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleUbTotalSize);  // 8KB
+        ubAntiQuantScaleAfterCastTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 202 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleAfterCastUbTotalSize);  // 32KB
     } else if constexpr (IsSameType<xType, fp8_e4m3fn_t>::value) {
         // MxA8W4
-        ubWeightInputLowBitTotalBuffer_ =
-            ubBuffer.template GetWithOffset<int8_t>(UB_BUFFER_INFO.weightInputLowbitUbTotalSize, 0); // 16KB * 4 = 64KB
-        ubHighBitTotalBuffer_ = ubBuffer.template GetWithOffset<xType>(UB_BUFFER_INFO.highBitDataUbTotalSize,
-                                                                       64 * GetKBUnit<int8_t>()); // 32KB * 4 = 128KB
+        ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize); // 16KB * 4 = 64KB
+        ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 64 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 32KB * 4 = 128KB
         if (hasBias_) {
-            ubBiasTotalBuffer_ = ubBuffer.template GetWithOffset<biasType>(UB_BUFFER_INFO.biasUbTotalSize,
-                                                                           192 * GetKBUnit<int8_t>()); // 2KB
-            ubBiasOutTotalBuffer_ = ubBuffer.template GetWithOffset<biasType>(UB_BUFFER_INFO.biasReducedUbTotalSize,
-                                                                              194 * GetKBUnit<int8_t>()); // 2KB
+            ubBiasTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 192 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasUbTotalSize);  // 2KB
+            ubBiasOutTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 194 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize); // 2KB
         }
     } else {
-        ubWeightInputLowBitTotalBuffer_ =
-            ubBuffer.template GetWithOffset<int8_t>(UB_BUFFER_INFO.weightInputLowbitUbTotalSize, 0);  // 16KB * 4 = 64KB
-        ubHighBitTotalBuffer_ = ubBuffer.template GetWithOffset<xType>(UB_BUFFER_INFO.highBitDataUbTotalSize,
-                                                                       64 * GetKBUnit<int8_t>());  // 128KB
-        ubAntiQuantScaleTotalBuffer_ =
-            ubBuffer.template GetWithOffset<antiQuantScaleType>(UB_BUFFER_INFO.antiQuantScaleUbTotalSize,
-                                                                192 * GetKBUnit<int8_t>());  // 8KB
-
-        ubAntiQuantScaleAfterCastTotalBuffer_ =
-            ubBuffer.template GetWithOffset<xType>(UB_BUFFER_INFO.antiQuantScaleAfterCastUbTotalSize,
-                                                   200 * GetKBUnit<int8_t>());  // 16KB
+        ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);  // 16KB * 4 = 64KB
+        ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 64 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 128KB
+        ubAntiQuantScaleTotalBuffer_ = LocalTensor<antiQuantScaleType>(TPosition::LCM, 192 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleUbTotalSize);  // 8KB
+        ubAntiQuantScaleAfterCastTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 200 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleAfterCastUbTotalSize);  // 16KB
     }
 }
 
@@ -308,13 +280,12 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx(TB
  * @brief KCG 初始化buffer和同步所需的EventID
  * @param antiQuantgroupSize per_group伪量化的groupSize
  * @param hasBias Y反量化是否存在bias
- * @param ubBuffer 用于分配buffer的TBuf对象
  * @param ubHighBitTotalBuffer weightS8/cS32/cF16 复用的UB
  * @param highBitUbOffset weightS8/cS32/cF16 复用UB的偏移长度
  */
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void
-GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitKCG(uint32_t antiQuantGroupSize, bool hasBias, TBuf<> ubBuffer,
+GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitKCG(uint32_t antiQuantGroupSize, bool hasBias,
                                                         const LocalTensor<xType> &ubHighBitTotalBuffer,
                                                         uint64_t highBitUbOffset)
 {
@@ -322,23 +293,12 @@ GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitKCG(uint32_t antiQuantGroupS
     hasBias_ = hasBias;
 
     ubHighBitTotalBuffer_ = ubHighBitTotalBuffer;
-    ubWeightInputLowBitTotalBuffer_ =
-        ubBuffer.template GetWithOffset<int8_t>(UB_BUFFER_INFO.weightInputLowbitUbTotalSize,
-                                                highBitUbOffset);  // 32 * 3KB = 96KB
-    ubAntiQuantScaleTotalBuffer_ = ubBuffer.template GetWithOffset<antiQuantScaleType>(
-        UB_BUFFER_INFO.antiQuantScaleUbTotalSize,
-        highBitUbOffset + 96 * GetKBUnit<int8_t>());  // 4 * 3 = 12KB
-    ubAntiQuantYPerTokenScaleTotalBuffer_ =
-        ubBuffer.template GetWithOffset<float>(ANTI_QUANT_Y_PER_TOKEN_SCALE_TOTAL_BUFFER_SIZE,
-                                               highBitUbOffset + 108 * GetKBUnit<int8_t>());  // 1 * 2 = 2KB
-    ubAntiQuantYPerChannelScaleTotalBuffer_ =
-        ubBuffer.template GetWithOffset<float>(ANTI_QUANT_Y_PER_CHANNEL_SCALE_TOTAL_BUFFER_SIZE,
-                                               highBitUbOffset + 110 * GetKBUnit<int8_t>());  // 1 * 2 = 2KB
-    ubAntiQuantYBiasTotalBuffer_ =
-        ubBuffer.template GetWithOffset<float>(ANTI_QUANT_Y_BIAS_TOTAL_BUFFER_SIZE,
-                                               highBitUbOffset + 112 * GetKBUnit<int8_t>());  // 1 * 2 = 2KB
-    ubAntiQuantScaleMaskBuffer_ = ubBuffer.template GetWithOffset<uint64_t>(
-        UB_BUFFER_INFO.antiQuantScaleMaskBufferSize, highBitUbOffset + 114 * GetKBUnit<int8_t>());
+    ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, highBitUbOffset, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);  // 32 * 3KB = 96KB
+    ubAntiQuantScaleTotalBuffer_ = LocalTensor<antiQuantScaleType>(TPosition::LCM, highBitUbOffset + 96 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleUbTotalSize);  // 4 * 3 = 12KB
+    ubAntiQuantYPerTokenScaleTotalBuffer_ = LocalTensor<float>(TPosition::LCM, highBitUbOffset + 108 * GetKBUnit<int8_t>(), ANTI_QUANT_Y_PER_TOKEN_SCALE_TOTAL_BUFFER_SIZE);  // 1 * 2 = 2KB
+    ubAntiQuantYPerChannelScaleTotalBuffer_ = LocalTensor<float>(TPosition::LCM, highBitUbOffset + 110 * GetKBUnit<int8_t>(), ANTI_QUANT_Y_PER_CHANNEL_SCALE_TOTAL_BUFFER_SIZE);  // 1 * 2 = 2KB
+    ubAntiQuantYBiasTotalBuffer_ = LocalTensor<float>(TPosition::LCM, highBitUbOffset + 112 * GetKBUnit<int8_t>(), ANTI_QUANT_Y_BIAS_TOTAL_BUFFER_SIZE);  // 1 * 2 = 2KB
+    ubAntiQuantScaleMaskBuffer_ = LocalTensor<uint64_t>(TPosition::LCM, highBitUbOffset + 114 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.antiQuantScaleMaskBufferSize);
     ubAntiQuantScaleMaskBuffer_.SetValue(0, 0x00000000ffffffff);
     ubAntiQuantScaleMaskBuffer_.SetValue(1, 0x00000000ffffffff);
     ubAntiQuantScaleMaskBuffer_.SetValue(2, 0x00000000ffffffff);

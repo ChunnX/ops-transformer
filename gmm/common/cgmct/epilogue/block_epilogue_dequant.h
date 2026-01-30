@@ -82,7 +82,8 @@ constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32One = {
 QMM_BLOCK_EPILOGUE_DEQUANT_CLASS_LOCAL_PARAMS
 class BlockEpilogueDequant {
 public:
-    __aicore__ inline BlockEpilogueDequant() {}
+    __aicore__ inline BlockEpilogueDequant();
+    __aicore__ inline ~BlockEpilogueDequant();
 
     struct Arguments {
         GM_ADDR yGmAddr{nullptr};
@@ -135,7 +136,7 @@ private:
     __aicore__ inline void CopyBiasFromGm2Ub(AscendC::LocalTensor<BiasDtype>& dst);
     __aicore__ inline void CopyDequantResFromUb2Gm(uint64_t blockCount, uint64_t offset,
                                                    AscendC::LocalTensor<DataTypeOut>& src);
-    __aicore__ inline void FreeUbTensor();
+    __aicore__ inline void UbSetFlag();
     __aicore__ inline void VFDoDequantWithX1Pertoken(__ubuf__ DataTypeOut* dequantOutInUbAddr,
                                                      __ubuf__ DataTypeIn* l0cOutUbAddr, uint64_t offsetPtScale,
                                                      uint16_t mSize);
@@ -160,14 +161,10 @@ private:
     AscendC::LocalTensor<DataTypeX1Scale> x1ScaleUb_;
     AscendC::LocalTensor<bfloat16_t> biasUbB16_;
     AscendC::LocalTensor<float> biasUbFloat_;
+    AscendC::LocalTensor<DataTypeOut> dequantOutInUBPing_;
+    AscendC::LocalTensor<DataTypeOut> dequantOutInUBPong_;
     float x2ScaleScalar_;
     float x1ScaleScalar_;
-    // define the que
-    TQue<QuePosition::VECIN, 1> vecQueMMRes_;
-    TQue<QuePosition::VECIN, 1> vecQueX2Scale_;
-    TQue<QuePosition::VECIN, 1> vecQueX1Scale_;
-    TQue<QuePosition::VECIN, 1> vecQueBias_;
-    TQue<QuePosition::VECOUT, 1> vecQueOut_;
     const Qmm::DequantTiling* dequantTiling_;
     ProblemShape problemShape_;
     uint32_t biasDtype_ = DT_FLOAT;
@@ -175,10 +172,42 @@ private:
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
     uint32_t singleM_; // cur singleShapeM
     uint32_t singleN_;
+    uint32_t dequantOutInUBPingPongID_ = 0;
     bool isBiasEpilogue_ = false;
+    constexpr static uint16_t INPUT_BUFFER_FLAG_0 = 0;
+    constexpr static uint16_t INPUT_BUFFER_FLAG_1 = 1;
+    constexpr static uint16_t INPUT_BUFFER_FLAG_2 = 2;
+    constexpr static uint16_t OUTPUT_BUFFER_FLAG_0 = 0;
+    constexpr static uint16_t OUTPUT_BUFFER_FLAG_1 = 1;
     BaseOffset baseOffset_{0, 0, 0, 0}; // order in Params and for groupedMM or BatchMM
     BlockCoord blockCoord_{0, 0, 0, 0}; // order in Params
 };
+
+QMM_BLOCK_EPILOGUE_DEQUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline
+BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::BlockEpilogueDequant()
+{
+    if ASCEND_IS_AIV {
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_1);
+    }
+}
+
+QMM_BLOCK_EPILOGUE_DEQUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline
+BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::~BlockEpilogueDequant()
+{
+    if ASCEND_IS_AIV {
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_1);
+    }
+}
 
 QMM_BLOCK_EPILOGUE_DEQUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
@@ -259,30 +288,33 @@ BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params 
 {
     dequantTiling_ = &params.dequantTiling;
     uint64_t mForSingleVec = CeilDiv(dequantTiling_->baseM, AscendC::GetTaskRation());
-    GetTPipePtr()->InitBuffer(vecQueMMRes_, 1, mForSingleVec * dequantTiling_->baseN * sizeof(DataTypeIn));
-    l0cOutUb_ = vecQueMMRes_.AllocTensor<DataTypeIn>();
+    uint64_t offset = 0;
+    l0cOutUb_ = AscendC::LocalTensor<DataTypeIn>(AscendC::TPosition::VECIN, offset, mForSingleVec * dequantTiling_->baseN);
+    offset += mForSingleVec * dequantTiling_->baseN * sizeof(DataTypeIn);
     if ASCEND_IS_AIV {
         UpdateGlobalBuffer(params);
         isBiasEpilogue_ = dequantTiling_->isBiasEpilogue && params.biasGmAddr != nullptr;
         biasDtype_ = dequantTiling_->biasDtype;
         if (dequantTiling_->x2QuantMode == Qmm::QuantMode::PERCHANNEL_MODE) {
-            GetTPipePtr()->InitBuffer(vecQueX2Scale_, 1, dequantTiling_->baseN * sizeof(DataTypeX2Scale));
+            x2ScaleUb_ = AscendC::LocalTensor<DataTypeX2Scale>(AscendC::TPosition::VECIN, offset, dequantTiling_->baseN);
+            offset += dequantTiling_->baseN * sizeof(DataTypeX2Scale);
         }
         if (dequantTiling_->x1QuantMode == Qmm::QuantMode::PERTOKEN_MODE) {
-            GetTPipePtr()->InitBuffer(
-                vecQueX1Scale_, 1,
-                Align(mForSingleVec * sizeof(DataTypeX1Scale), static_cast<uint64_t>(UB_ALIGN_SIZE)));
+            x1ScaleUb_ = AscendC::LocalTensor<DataTypeX1Scale>(AscendC::TPosition::VECIN, offset, Align(mForSingleVec * sizeof(DataTypeX1Scale), static_cast<uint64_t>(UB_ALIGN_SIZE)) / sizeof(DataTypeX1Scale));
+            offset += Align(mForSingleVec * sizeof(DataTypeX1Scale), static_cast<uint64_t>(UB_ALIGN_SIZE));
         }
         if (isBiasEpilogue_) {
             if (biasDtype_ == DT_FLOAT) {
-                GetTPipePtr()->InitBuffer(vecQueBias_, 1, dequantTiling_->baseN * sizeof(float));
+                biasUbFloat_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, offset, dequantTiling_->baseN);
+                offset += dequantTiling_->baseN * sizeof(float);
             } else {
-                GetTPipePtr()->InitBuffer(vecQueBias_, 1, dequantTiling_->baseN * sizeof(bfloat16_t));
+                biasUbB16_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECIN, offset, dequantTiling_->baseN);
+                offset += dequantTiling_->baseN * sizeof(bfloat16_t);
             }
         }
-        GetTPipePtr()->InitBuffer(vecQueOut_, DOUBLE_BUFFER_COUNT,
-                                  CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) * dequantTiling_->baseN *
-                                      sizeof(DataTypeOut));
+        dequantOutInUBPing_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECIN, offset, CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) * dequantTiling_->baseN);
+        offset += CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) * dequantTiling_->baseN * sizeof(DataTypeOut);
+        dequantOutInUBPong_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECIN, offset, CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) * dequantTiling_->baseN);
     }
     problemShape_ = problemShape;
 }
@@ -310,32 +342,31 @@ __aicore__ inline void BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCA
     auto singleMInVec = subBlockIdx_ == 1 ? singleM_ - halfSingleM : halfSingleM;
     // scale2: GM -> UB
     if (dequantTiling_->x2QuantMode == Qmm::QuantMode::PERCHANNEL_MODE) {
-        x2ScaleUb_ = vecQueX2Scale_.AllocTensor<DataTypeX2Scale>();
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
         CopyX2ScaleFromGm2Ub(x2ScaleUb_);
-        vecQueX2Scale_.EnQue<DataTypeX2Scale>(x2ScaleUb_);
-        x2ScaleUb_ = vecQueX2Scale_.DeQue<DataTypeX2Scale>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_0);
     }
-
     uint64_t mOffset = subBlockIdx_ * halfSingleM;
     // x1Scale: GM -> UB
     if (dequantTiling_->x1QuantMode == Qmm::QuantMode::PERTOKEN_MODE) {
-        x1ScaleUb_ = vecQueX1Scale_.AllocTensor<DataTypeX1Scale>();
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
         CopyX1ScaleFromGm2Ub(x1ScaleUb_, singleMInVec * sizeof(DataTypeX1Scale),
                              Get<X1SCALE_IDX>(blockCoord_) + mOffset);
-        vecQueX1Scale_.EnQue<DataTypeX1Scale>(x1ScaleUb_);
-        x1ScaleUb_ = vecQueX1Scale_.DeQue<DataTypeX1Scale>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_1);
     }
     if (isBiasEpilogue_) {
         if (biasDtype_ == DT_FLOAT) {
-            biasUbFloat_ = vecQueBias_.AllocTensor<float>();
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
             CopyBiasFromGm2Ub<float>(biasUbFloat_);
-            vecQueBias_.EnQue<float>(biasUbFloat_);
-            biasUbFloat_ = vecQueBias_.DeQue<float>();
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_2);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_2);
         } else {
-            biasUbB16_ = vecQueBias_.AllocTensor<bfloat16_t>();
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
             CopyBiasFromGm2Ub<bfloat16_t>(biasUbB16_);
-            vecQueBias_.EnQue<bfloat16_t>(biasUbB16_);
-            biasUbB16_ = vecQueBias_.DeQue<bfloat16_t>();
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_2);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(INPUT_BUFFER_FLAG_2);
         }
     }
 }
@@ -388,21 +419,21 @@ __aicore__ inline void BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCA
 }
 
 QMM_BLOCK_EPILOGUE_DEQUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::FreeUbTensor()
+__aicore__ inline void BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UbSetFlag()
 {
     if (dequantTiling_->x2QuantMode == Qmm::QuantMode::PERCHANNEL_MODE) {
-        vecQueX2Scale_.FreeTensor(x2ScaleUb_);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_0);
     }
 
     if (dequantTiling_->x1QuantMode == Qmm::QuantMode::PERTOKEN_MODE) {
-        vecQueX1Scale_.FreeTensor(x1ScaleUb_);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
     }
 
     if (isBiasEpilogue_) {
         if (biasDtype_ == DT_FLOAT) {
-            vecQueBias_.FreeTensor(biasUbFloat_);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
         } else {
-            vecQueBias_.FreeTensor(biasUbB16_);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
         }
     }
 }
@@ -618,7 +649,8 @@ __aicore__ inline void BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCA
             break;
         }
         auto mSize = singleMInVec - i * mSizeForOnce >= mSizeForOnce ? mSizeForOnce : singleMInVec - i * mSizeForOnce;
-        AscendC::LocalTensor<DataTypeOut> dequantOutInUB = vecQueOut_.AllocTensor<DataTypeOut>();
+        AscendC::LocalTensor<DataTypeOut>& dequantOutInUB = (dequantOutInUBPingPongID_ == 0) ? dequantOutInUBPing_ : dequantOutInUBPong_;
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(dequantOutInUBPingPongID_);
 
         __ubuf__ DataTypeOut* dequantOutInUbAddr = (__ubuf__ DataTypeOut*)dequantOutInUB.GetPhyAddr();
         __ubuf__ DataTypeIn* l0cOutUbAddr = (__ubuf__ DataTypeIn*)l0cOutUb_.GetPhyAddr();
@@ -638,13 +670,14 @@ __aicore__ inline void BlockEpilogueDequant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCA
                 VFDoDequantWithoutX1Scale(dequantOutInUbAddr, l0cOutUbAddr, mSize);
             }
         }
-        vecQueOut_.EnQue<DataTypeOut>(dequantOutInUB);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(dequantOutInUBPingPongID_);
         // mmDequant result: UB -> GM
-        dequantOutInUB = vecQueOut_.DeQue<DataTypeOut>();
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(dequantOutInUBPingPongID_);
         CopyDequantResFromUb2Gm(mSize, (mOffset + i * mSizeForOnce) * Get<N_IDX>(problemShape_), dequantOutInUB);
-        vecQueOut_.FreeTensor(dequantOutInUB);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(dequantOutInUBPingPongID_);
+        dequantOutInUBPingPongID_ ^= 1;
     }
-    FreeUbTensor();
+    UbSetFlag();
 }
 
 QMM_BLOCK_EPILOGUE_DEQUANT_CLASS_LOCAL_PARAMS

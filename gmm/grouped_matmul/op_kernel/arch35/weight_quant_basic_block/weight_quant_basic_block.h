@@ -106,7 +106,6 @@ GMM_WQ_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t antiQuantGroupSize, uint64_t aPrefetchSize,
                                                       const TCubeTiling *__restrict matmulTiling, TPipe *tPipe)
 {
-    TBuf<TPosition::TSCM> l1Tbuf;
     hasBias_ = hasBias;
     biasL1DbOffset_ = 0;
     uint64_t weightL1Space;
@@ -115,23 +114,24 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
     } else {
         weightL1Space = matmulTiling->baseN * matmulTiling->stepKb * matmulTiling->baseK;  // weight单块大小
     }
+    uint64_t totalSize = 0;
     if constexpr (IsSameType<yType, int8_t>::value) {
-        tPipe->InitBuffer(l1Tbuf, L1_SIZE_WITH_QUANTSCALE_BYTE);  // 除去quantScale, 共使用504KB
+        totalSize = L1_SIZE_WITH_QUANTSCALE_BYTE;  // 除去quantScale, 共使用504KB
         weightL1DbOffset_ = L1_SIZE_WITH_QUANTSCALE * GetKBUnit<half>() - weightL1Space;
     } else if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        tPipe->InitBuffer(l1Tbuf, L1_SIZE_BYTE);
+        totalSize = L1_SIZE_BYTE;
         weightL1DbOffset_ = L1_SIZE * GetKBUnit<int8_t>() - weightL1Space;
         if (hasBias_) {
-            biasL1_ = l1Tbuf.Get<biasType>()[(weightL1Space >> 1)];
+            biasL1_ = LocalTensor<biasType>(TPosition::TSCM, (weightL1Space >> 1) * sizeof(biasType), totalSize / sizeof(biasType) - (weightL1Space >> 1));
             biasL1DbOffset_ = (L1_SIZE - BIAS_L1_SIZE) * GetKBUnit<biasType>() - weightL1Space;
         }
     } else {
-        tPipe->InitBuffer(l1Tbuf, L1_SIZE_BYTE);
+        totalSize = L1_SIZE_BYTE;
         weightL1DbOffset_ = L1_SIZE * GetKBUnit<half>() - weightL1Space;
     }
-    weightL1_ = l1Tbuf.Get<xType>();
+    weightL1_ = LocalTensor<xType>(TPosition::TSCM, 0, totalSize / sizeof(xType));
     if ASCEND_IS_AIC {
-        cubeCompute_.Init(l1Tbuf, weightL1Space, aPrefetchSize, matmulTiling, tPipe, biasL1DbOffset_);
+        cubeCompute_.Init(totalSize, weightL1Space, aPrefetchSize, matmulTiling, tPipe, biasL1DbOffset_);
     } else {
         vectorCompute_.Init(tPipe, hasBias_);
     }

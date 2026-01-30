@@ -36,8 +36,6 @@ public:
     __aicore__ inline void Init(bool isL0Db = true)
     {
         useL0PingPong_ = static_cast<uint16_t>(isL0Db);
-        GetTPipePtr()->InitBuffer(l0aBuf_, L0A_SIZE);
-        GetTPipePtr()->InitBuffer(l0bBuf_, L0B_SIZE);
     }
 
     /**
@@ -71,12 +69,12 @@ public:
     {
         AscendC::LocalTensor<typename T::LiteType> tempTensor;
         if constexpr (Pos == AscendC::TPosition::A2) {
-            tempTensor = l0aBuf_.Get<typename T::LiteType>();
+            tempTensor = AscendC::LocalTensor<typename T::LiteType>(AscendC::TPosition::A2, 0, L0A_SIZE / sizeof(typename T::LiteType));
             if (l0PingPongFlag_ != 0) {
                 tempTensor = tempTensor[L0A_SIZE / DOUBLE_BUFFER_COUNT / sizeof(typename T::LiteType)];
             }
         } else {
-            tempTensor = l0bBuf_.Get<typename T::LiteType>();
+            tempTensor = AscendC::LocalTensor<typename T::LiteType>(AscendC::TPosition::B2, 0, L0B_SIZE / sizeof(typename T::LiteType));
             if (l0PingPongFlag_ != 0) {
                 tempTensor = tempTensor[L0B_SIZE / DOUBLE_BUFFER_COUNT / sizeof(typename T::LiteType)];
             }
@@ -129,8 +127,6 @@ public:
     }
 
 private:
-    AscendC::TBuf<AscendC::TPosition::A2> l0aBuf_;
-    AscendC::TBuf<AscendC::TPosition::B2> l0bBuf_;
     uint16_t l0PingPongFlag_{0};
     uint16_t useL0PingPong_{1};
 };
