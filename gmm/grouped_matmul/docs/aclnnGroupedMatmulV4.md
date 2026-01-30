@@ -363,7 +363,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     - scaleOptional支持UINT64、INT64、BFLOAT16、FLOAT32、FLOAT8_E8M0
     - perTokenScaleOptional支持FLOAT32、FLOAT8_E8M0
     - groupListType不支持取2
-    - actType只支持传入0
+    - actType支持传入0、1、2、4、5
     - out支持BFLOAT16、FLOAT16、FLOAT32
     - 不支持offsetOptional
     - groupType支持m轴分组，仅非量化和量化支持k轴分组，仅非量化和伪量化支持不分组
@@ -536,7 +536,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <a id="公共约束："></a>
 
   - groupListType：支持取值0、1。当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列。
-  - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型。取值范围为0-5，当前只支持传入0，枚举值如下：
+  - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型。取值范围为0-5，当前支持传入0、1、2、4、5。当x和weight为INT8，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，支持激活函数。枚举值如下：
     * 0：GMMActType::GMM_ACT_TYPE_NONE；
     * 1：GMMActType::GMM_ACT_TYPE_RELU；
     * 2：GMMActType::GMM_ACT_TYPE_GELU_TANH；

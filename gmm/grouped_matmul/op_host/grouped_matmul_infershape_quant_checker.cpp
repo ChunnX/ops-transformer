@@ -183,10 +183,6 @@ tensor of tensor list weight is not empty."),
                 OP_LOGE(context->GetNodeName(), "Invalid groupType, which can only be one of 0/2, but it is [%ld].",
                         gmmAttrs.groupType),
                 return ge::GRAPH_FAILED);
-    // check activation is null
-    OP_CHECK_IF(gmmAttrs.activeType != static_cast<int64_t>(GMMActType::GMM_ACT_TYPE_NONE),
-                OP_LOGE(context->GetNodeName(), "Activation function is not supported in quant mode now."),
-                return ge::GRAPH_FAILED);
     // non split axis cannot be empty tensor
     OP_CHECK_IF(CheckNotZeroValueForNoneSplitAxis(context, gmmAttrs) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "CheckNotZeroValueForNoneSplitAxis Failed."), return ge::GRAPH_FAILED);

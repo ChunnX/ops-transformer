@@ -422,7 +422,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - `scaleOptional`支持UINT64/INT64/BFLOAT16/FLOAT32。`offsetOptional`、`antiquantOffsetOptional`暂不支持。
         - `groupType`支持m轴分组，仅非量化支持不分组。
         - `quantGroupSize`暂不支持。
-        - `actType`只支持0。
+        - `actType`支持0、1、2、4、5。
         - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化和全量化场景支持最多128个tensor。
 
   - **返回值：**
@@ -502,7 +502,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 - **公共约束**
   - 如果传入groupListOptional，当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列，且长度不能为1；groupListType为2时，groupListOptional的第二列数据必须为非负数列，且长度不能为1。
   - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
-  - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型。取值范围为0-5，当前只支持传入0，枚举值如下：
+  - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型。取值范围为0-5，当前支持传入0、1、2、4、5。当x和weight为INT8，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，支持激活函数。枚举值如下：
  	  * 0：GMMActType::GMM_ACT_TYPE_NONE；
  	  * 1：GMMActType::GMM_ACT_TYPE_RELU；
  	  * 2：GMMActType::GMM_ACT_TYPE_GELU_TANH；
