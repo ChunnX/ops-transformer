@@ -571,7 +571,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::GetRunInfo(in
 
     runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.sparseMode);
     runInfo.s2RealSize = Min(topKSize, runInfo.s2SparseLen);
-    runInfo.s2RealSize = Max(1, runInfo.s2RealSize);
+    if (constInfo.cmpRatio != 0){
+        runInfo.s2RealSize = Max(1, runInfo.s2RealSize);
+    }
 
     runInfo.kRealSize = runInfo.s2RealSize;
     runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
