@@ -44,9 +44,9 @@ namespace ge {
       Shape supports (E). Format supports ND.
 * @par Attributes:
 * @li expert_token_num_type: Optional integer, represents the cumsum or count mode. Type is Int. Default: 1. Value
-      supports 0-cumsum or 1-count.
+      supports 0-cumsum or 1-count, currently only supports "1".
 * @li idx_type: Optional integer, represents the gather or scatter index. Type is Int. Default: 0. Value
-      supports 0-gather idx or 1-scatter idx.
+      supports 0-gather idx or 1-scatter idx. Ascend 950PR/Ascend 950DT supports "0" or "1". The others only support "0".
 */
 REG_OP(MoeReRouting)
     .INPUT(tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}))

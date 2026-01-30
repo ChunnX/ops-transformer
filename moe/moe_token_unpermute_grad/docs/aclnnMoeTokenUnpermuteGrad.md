@@ -76,177 +76,179 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 
 ## aclnnMoeTokenUnpermuteGradGetWorkspaceSize
 
--   **参数说明**
+- **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1389px"><colgroup>
-    <col style="width: 220px">
-    <col style="width: 121px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>permutedTokens</td>
-        <td>输入</td>
-        <td>表示输入token。</td>
-        <td>-</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>(tokens_num * topK_num, hidden_size)</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>unpermutedTokensGrad</td>
-        <td>输入</td>
-        <td>unpermutedTokens的梯度。</td>
-        <td>-</td>
-        <td>与permutedTokens一致。</td>
-        <td>ND</td>
-        <td>(tokens_num, hidden_size)</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>sortedIndices</td>
-        <td>输入</td>
-        <td>表示输入输出梯度的映射关系。</td>
-        <td>取值范围是[0, tokens_num * topK_num - 1]，且没有重复索引。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(tokens_num * topK_num)</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>probsOptional</td>
-        <td>输入</td>
-        <td>表示token选择指定专家的权重。</td>
-        <td>当probsOptional不为空时，topK_num等于probsOptional第2维；当probsOptional为空时，topK_num=1。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>(tokens_num, topK_num)</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>paddedMode</td>
-        <td>输入</td>
-        <td>true表示开启paddedMode，false表示关闭paddedMode。</td>
-        <td>目前仅支持false。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>restoreShapeOptional</td>
-        <td>输入</td>
-        <td>当paddedMode为true后生效，否则不会对其进行操作。当paddedMode为true以后，此为unpermutedTokens的shape。</td>
-        <td>当前仅支持nullptr。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>permutedTokensGradOut</td>
-        <td>输出</td>
-        <td>permutedTokens的梯度。</td>
-        <td>-</td>
-        <td>与permutedTokens一致。</td>
-        <td>ND</td>
-        <td>(tokens_num * topK_num, hidden_size)</td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>probsGradOut</td>
-        <td>输出</td>
-        <td>probs的梯度。</td>
-        <td>-</td>
-        <td>与probsOptional一致。</td>
-        <td>ND</td>
-        <td>(tokens_num, topK_num)</td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1389px"><colgroup>
+  <col style="width: 220px">
+  <col style="width: 121px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>permutedTokens</td>
+      <td>输入</td>
+      <td>表示输入token。</td>
+      <td>-</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>(tokens_num * topK_num, hidden_size)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>unpermutedTokensGrad</td>
+      <td>输入</td>
+      <td>unpermutedTokens的梯度。</td>
+      <td>-</td>
+      <td>与permutedTokens一致。</td>
+      <td>ND</td>
+      <td>(tokens_num, hidden_size)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>sortedIndices</td>
+      <td>输入</td>
+      <td>表示输入输出梯度的映射关系。</td>
+      <td>取值范围是[0, tokens_num * topK_num - 1]，且没有重复索引。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(tokens_num * topK_num)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>probsOptional</td>
+      <td>输入</td>
+      <td>表示token选择指定专家的权重。</td>
+      <td>当probsOptional不为空时，topK_num等于probsOptional第2维；当probsOptional为空时，topK_num=1。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>(tokens_num, topK_num)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>paddedMode</td>
+      <td>输入</td>
+      <td>true表示开启paddedMode，false表示关闭paddedMode。</td>
+      <td>目前仅支持false。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>restoreShapeOptional</td>
+      <td>输入</td>
+      <td>当paddedMode为true后生效，否则不会对其进行操作。当paddedMode为true以后，此为unpermutedTokens的shape。</td>
+      <td>当前仅支持nullptr。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>permutedTokensGradOut</td>
+      <td>输出</td>
+      <td>permutedTokens的梯度。</td>
+      <td>-</td>
+      <td>与permutedTokens一致。</td>
+      <td>ND</td>
+      <td>(tokens_num * topK_num, hidden_size)</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>probsGradOut</td>
+      <td>输出</td>
+      <td>probs的梯度。</td>
+      <td>-</td>
+      <td>与probsOptional一致。</td>
+      <td>ND</td>
+      <td>(tokens_num, topK_num)</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+  </table>
 
--   **返回值**
+- **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
     
-    第一段接口完成入参校验，出现以下场景时报错：
-    
-    <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-    <col style="width: 253px">
-    <col style="width: 140px">
-    <col style="width: 850px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td> ACLNN_ERR_PARAM_NULLPTR </td>
-        <td> 161001 </td>
-        <td>输入或输出的Tensor是空指针。</td>
-      </tr>
-      <tr>
-        <td> ACLNN_ERR_PARAM_INVALID </td>
-        <td> 161002 </td>
-        <td>输入和输出的数据类型不在支持的范围内。</td>
-      </tr>
-    </tbody></table>
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 253px">
+  <col style="width: 140px">
+  <col style="width: 850px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td> ACLNN_ERR_PARAM_NULLPTR </td>
+      <td> 161001 </td>
+      <td>输入或输出的Tensor是空指针。</td>
+    </tr>
+    <tr>
+      <td> ACLNN_ERR_PARAM_INVALID </td>
+      <td> 161002 </td>
+      <td>输入和输出的数据类型不在支持的范围内。</td>
+    </tr>
+  </tbody>
+  </table>
 
 ## aclnnMoeTokenUnpermuteGrad
 - **参数说明**
   
-    <table>
-          <thead>
-              <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
-          </thead>
-          <tbody>
-              <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-              <tr><td>workspaceSize </td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenUnpermuteGradGetWorkspaceSize获取。</td></tr>
-              <tr><td>executor</td><td>输入</td><td> op执行器，包含了算子计算流程。 </td></tr>
-              <tr><td>stream </td><td>输入</td><td> 指定执行任务的Stream。 </td></tr>
-          </tbody>
-      </table>
+  <table>
+    <thead>
+      <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
+      <tr><td>workspaceSize </td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenUnpermuteGradGetWorkspaceSize获取。</td></tr>
+      <tr><td>executor</td><td>输入</td><td> op执行器，包含了算子计算流程。 </td></tr>
+      <tr><td>stream </td><td>输入</td><td> 指定执行任务的Stream。 </td></tr>
+    </tbody>
+  </table>
 
 - **返回值**
 

@@ -15,24 +15,24 @@
 
 ## 功能说明
 
--   接口功能：MoE计算中，对x的输出做Softmax计算，取topK操作。其中yOut为softmax的topK结果；expertIdxOut为topK的值的索引结果，即对应的专家序号；rowIdxOut为与expertIdxOut相同shape的列取值结果，指示每个位置对应的原始行位置。如果expertIdxOut中对应的行的finished为True，则直接填num\_expert值（即x的最后一个轴大小）。
--   计算公式：
+- 接口功能：MoE计算中，对x的输出做Softmax计算，取topK操作。其中yOut为softmax的topK结果；expertIdxOut为topK的值的索引结果，即对应的专家序号；rowIdxOut为与expertIdxOut相同shape的列取值结果，指示每个位置对应的原始行位置。如果expertIdxOut中对应的行的finished为True，则直接填num\_expert值（即x的最后一个轴大小）。
+- 计算公式：
 
-    $$
-    softmaxOut=softmax(x,axis=-1)
-    $$
+  $$
+  softmaxOut=softmax(x,axis=-1)
+  $$
 
-    $$
-    yOut,expertIdxOut=topK(softmaxOut,k=k)
-    $$
+  $$
+  yOut,expertIdxOut=topK(softmaxOut,k=k)
+  $$
 
-    $$
-    rowIdxRange=arange(expertIdxOut.shape[0]*expertIdxOut.shape[1])
-    $$
+  $$
+  rowIdxRange=arange(expertIdxOut.shape[0]*expertIdxOut.shape[1])
+  $$
 
-    $$
-    rowIdxOut=rowIdxRange.reshape([expertIdxOut.shape[1],expertIdxOut.shape[0]]).transpose(1,0)
-    $$
+  $$
+  rowIdxOut=rowIdxRange.reshape([expertIdxOut.shape[1],expertIdxOut.shape[0]]).transpose(1,0)
+  $$
 
 ## 函数原型
 
@@ -60,171 +60,195 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
 
 ## aclnnMoeGatingTopKSoftmaxGetWorkspaceSize
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 187px">
-    <col style="width: 121px">
-    <col style="width: 287px">
-    <col style="width: 387px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>x</td>
-        <td>输入</td>
-        <td>公式中的x，待计算的输入。</td>
-        <td>要求是一个2D/3D的Tensor，每一维大小应不大于int32的最大值2147483647。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2-3</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>finishedOptional</td>
-        <td>输入</td>
-        <td>公式中的finished，表示该行是否参与运算。</td>
-        <td>shape为x_shape[:-1]。</td>
-        <td>BOOL</td>
-        <td>ND</td>
-        <td>1-2</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>k</td>
-        <td>输入</td>
-        <td>topK的k值，专家数。</td>
-        <td>0 <= k <= x的-1轴大小，且k不大于1024。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>yOut</td>
-        <td>输出</td>
-        <td>对x做softmax后取的topK值。</td>
-        <td>其shape的非-1轴要求与x的对应轴大小一致，其-1轴要求其大小同k值</td>
-        <td>要求与输入x一致。</td>
-        <td>ND</td>
-        <td>2-3</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>expertIdxOut</td>
-        <td>输出</td>
-        <td>对x做softmax后取topK值的索引，即专家的序号。</td>
-        <td>shape要求与yOut一致</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>2-3</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>rowIdxOut</td>
-        <td>输出</td>
-        <td>公式中的scales。</td>
-        <td>hape要求与yOut一致。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>2-3</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 187px">
+  <col style="width: 121px">
+  <col style="width: 287px">
+  <col style="width: 387px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>使用说明</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    <th>维度(shape)</th>
+    <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+    <td>x</td>
+    <td>输入</td>
+    <td>公式中的x，待计算的输入。</td>
+    <td>要求是一个2D/3D的Tensor，每一维大小应不大于int32的最大值2147483647。</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>2-3</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>finishedOptional</td>
+    <td>输入</td>
+    <td>公式中的finished，表示该行是否参与运算。</td>
+    <td>shape为x_shape[:-1]。</td>
+    <td>BOOL</td>
+    <td>ND</td>
+    <td>1-2</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>k</td>
+    <td>输入</td>
+    <td>topK的k值，专家数。</td>
+    <td>0 <= k <= x的-1轴大小，且k不大于1024。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>yOut</td>
+    <td>输出</td>
+    <td>对x做softmax后取的topK值。</td>
+    <td>其shape的非-1轴要求与x的对应轴大小一致，其-1轴要求其大小同k值</td>
+    <td>要求与输入x一致。</td>
+    <td>ND</td>
+    <td>2-3</td>
+    <td>x</td>
+  </tr>
+  <tr>
+    <td>expertIdxOut</td>
+    <td>输出</td>
+    <td>对x做softmax后取topK值的索引，即专家的序号。</td>
+    <td>shape要求与yOut一致</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>2-3</td>
+    <td>x</td>
+  </tr>
+  <tr>
+    <td>rowIdxOut</td>
+    <td>输出</td>
+    <td>公式中的scales。</td>
+    <td>hape要求与yOut一致。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>2-3</td>
+    <td>x</td>
+  </tr>
+  <tr>
+    <td>workspaceSize</td>
+    <td>输出</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>executor</td>
+    <td>输出</td>
+    <td>返回op执行器，包含了算子计算流程。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-    <col style="width: 253px">
-    <col style="width: 140px">
-    <col style="width: 762px">
-    </colgroup>
-    <thead>
-        <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-        <td> ACLNN_ERR_PARAM_NULLPTR </td>
-        <td> 161001 </td>
-        <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
-        </tr>
-        <tr>
-        <td> ACLNN_ERR_PARAM_INVALID </td>
-        <td> 161002 </td>
-        <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
-        </tr>
-        <tr>
-        <td rowspan="4"> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td rowspan="4"> 561002 </td>
-        <td>多个输入tensor之间的shape信息不匹配。</td>
-        </tr>
-        <tr>
-        <td>输入属性和输入tensor之间的shape信息不匹配。</td>
-        </tr>
-        <tr>
-        <td>k的值小于0或大于x-1的轴的大小。</td>
-        </tr>
-        <tr>
-        <td>k的值大于1024。</td>
-        </tr>
-    </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 253px">
+  <col style="width: 140px">
+  <col style="width: 762px">
+  </colgroup>
+  <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+    <td> ACLNN_ERR_PARAM_NULLPTR </td>
+    <td> 161001 </td>
+    <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+    </tr>
+    <tr>
+    <td> ACLNN_ERR_PARAM_INVALID </td>
+    <td> 161002 </td>
+    <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+    </tr>
+    <tr>
+    <td rowspan="4"> ACLNN_ERR_INNER_TILING_ERROR </td>
+    <td rowspan="4"> 561002 </td>
+    <td>多个输入tensor之间的shape信息不匹配。</td>
+    </tr>
+    <tr>
+    <td>输入属性和输入tensor之间的shape信息不匹配。</td>
+    </tr>
+    <tr>
+    <td>k的值小于0或大于x-1的轴的大小。</td>
+    </tr>
+    <tr>
+    <td>k的值大于1024。</td>
+    </tr>
+  </tbody></table>
 
 ## aclnnMoeGatingTopKSoftmax
 
--   **参数说明：**
-    <table>
-            <thead>
-                <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
-            </thead>
-            <tbody>
-                <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-                <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnInplaceAddGetWorkspaceSize获取。</td></tr>
-                <tr><td>executor</td><td>输入</td><td> op执行器，包含了算子计算流程。 </td></tr>
-                <tr><td>stream</td><td>输入</td><td> 指定执行任务的Stream。 </td></tr>
-            </tbody>
-        </table>
+- **参数说明：**
+  <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 134px">
+  <col style="width: 844px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnInplaceAddGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
 - **返回值**
   

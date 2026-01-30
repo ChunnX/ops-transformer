@@ -9,16 +9,16 @@
 
 ## 功能说明
 
--   接口功能：MoE计算中，最后处理合并MoE FFN的输出结果。
--   计算公式：
+- 接口功能：MoE计算中，最后处理合并MoE FFN的输出结果。
+- 计算公式：
 
-    $$
-    expertid=expandedExpertIdx[i,k]
-    $$
+  $$
+  expertid=expandedExpertIdx[i,k]
+  $$
     
-    $$
-    out(i,j)=x1_{i,j}+x2Optional_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num_rows},j}+bias_{expertid,j}))
-    $$
+  $$
+  out(i,j)=x1_{i,j}+x2Optional_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num_rows},j}+bias_{expertid,j}))
+  $$
 
 ## 函数原型
 
@@ -48,131 +48,131 @@ aclnnStatus aclnnMoeFinalizeRouting(
 
 ## aclnnMoeFinalizeRoutingGetWorkspaceSize
 
--   **参数说明：**
-    <table style="undefined;table-layout: fixed; width: 1546px"><colgroup>
-    <col style="width: 179px">
-    <col style="width: 122px">
-    <col style="width: 271px">
-    <col style="width: 250px">
-    <col style="width: 207px">
-    <col style="width: 123px">
-    <col style="width: 241px">
-    <col style="width: 153px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>expandedX</td>
-        <td>输入</td>
-        <td>公式中的expandedX ，MoE的FFN输出。</td>
-        <td>要求是一个2D的Tensor。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>(NUM_ROWS * K, H)<br>NUM_ROWS为行数<br>K为从总的专家E中选出K个专家<br>H为列数</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>x1</td>
-        <td>输入</td>
-        <td>公式中的x1。</td>
-        <td>要求是一个2D的Tensor。</td>
-        <td>与expandedX一致</td>
-        <td>-</td>
-        <td>与out一致</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>x2Optional</td>
-        <td>输入</td>
-        <td>公式中的x2Optional。</td>
-        <td>要求是一个2D的Tensor。</td>
-        <td>与expandedX一致</td>
-        <td>-</td>
-        <td>与out一致</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>bias</td>
-        <td>输入</td>
-        <td>公式中的bias。</td>
-        <td>要求是一个2D的Tensor。</td>
-        <td>与expandedX一致</td>
-        <td>-</td>
-        <td>(E，H)<br>E为总的专家个数，H为列数</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>scales</td>
-        <td>输入</td>
-        <td>公式中的scales.</td>
-        <td>要求是一个2D的Tensor。</td>
-        <td>与expandedX一致</td>
-        <td>-</td>
-        <td>(NUM_ROWS，K)</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expandedRowIdx</td>
-        <td>输入</td>
-        <td>公式中的expandedRowIdx.</td>
-        <td>要求是一个1D的Tensor。<br>Tensor中的值取值范围是[0,NUM_ROWS * K-1]。</td>
-        <td>INT32</td>
-        <td>-</td>
-        <td>(NUM_ROWS * K)</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expandedExpertIdx</td>
-        <td>输入</td>
-        <td>公式中的expandedExpertIdx。</td>
-        <td>要求是一个2D的Tensor。<br>Tensor中的值取值范围是[0, E-1]，E为总的专家个数</td>
-        <td>INT32</td>
-        <td>-</td>
-        <td>(NUM_ROWS，K)</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>out</td>
-        <td>输出</td>
-        <td>公式中的输出。</td>
-        <td>要求是一个2D的Tensor。</td>
-        <td>与expandedX一致</td>
-        <td></td>
-        <td>(NUM_ROWS，H)</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody>
-    </table>
+- **参数说明：**
+  <table style="undefined;table-layout: fixed; width: 1546px"><colgroup>
+  <col style="width: 179px">
+  <col style="width: 122px">
+  <col style="width: 271px">
+  <col style="width: 250px">
+  <col style="width: 207px">
+  <col style="width: 123px">
+  <col style="width: 241px">
+  <col style="width: 153px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>expandedX</td>
+      <td>输入</td>
+      <td>公式中的expandedX ，MoE的FFN输出。</td>
+      <td>要求是一个2D的Tensor。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>(NUM_ROWS * K, H)<br>NUM_ROWS为行数<br>K为从总的专家E中选出K个专家<br>H为列数</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>x1</td>
+      <td>输入</td>
+      <td>公式中的x1。</td>
+      <td>要求是一个2D的Tensor。</td>
+      <td>与expandedX一致</td>
+      <td>-</td>
+      <td>与out一致</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>x2Optional</td>
+      <td>输入</td>
+      <td>公式中的x2Optional。</td>
+      <td>要求是一个2D的Tensor。</td>
+      <td>与expandedX一致</td>
+      <td>-</td>
+      <td>与out一致</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>bias</td>
+      <td>输入</td>
+      <td>公式中的bias。</td>
+      <td>要求是一个2D的Tensor。</td>
+      <td>与expandedX一致</td>
+      <td>-</td>
+      <td>(E，H)<br>E为总的专家个数，H为列数</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>scales</td>
+      <td>输入</td>
+      <td>公式中的scales.</td>
+      <td>要求是一个2D的Tensor。</td>
+      <td>与expandedX一致</td>
+      <td>-</td>
+      <td>(NUM_ROWS，K)</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expandedRowIdx</td>
+      <td>输入</td>
+      <td>公式中的expandedRowIdx.</td>
+      <td>要求是一个1D的Tensor。<br>Tensor中的值取值范围是[0,NUM_ROWS * K-1]。</td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>(NUM_ROWS * K)</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expandedExpertIdx</td>
+      <td>输入</td>
+      <td>公式中的expandedExpertIdx。</td>
+      <td>要求是一个2D的Tensor。<br>Tensor中的值取值范围是[0, E-1]，E为总的专家个数</td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>(NUM_ROWS，K)</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>out</td>
+      <td>输出</td>
+      <td>公式中的输出。</td>
+      <td>要求是一个2D的Tensor。</td>
+      <td>与expandedX一致</td>
+      <td></td>
+      <td>(NUM_ROWS，H)</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+  </table>
 
 - **返回值：**
 
@@ -244,11 +244,11 @@ aclnnStatus aclnnMoeFinalizeRouting(
       <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
-  </table>```
+  </table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 
 ## 约束说明

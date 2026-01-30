@@ -16,157 +16,157 @@
 - 算子功能：MoE计算中，对输入x做Sigmoid或者SoftMax计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
 - 计算公式：
 
-    对输入做Sigmoid或者SoftMax：
+  对输入做Sigmoid或者SoftMax：
 
-    $$
-    if normType==1:
-        normOut=Sigmoid(x)
-    else:
-        normOut=SoftMax(x)
-    $$
+  $$
+  if normType==1:
+      normOut=Sigmoid(x)
+  else:
+      normOut=SoftMax(x)
+  $$
 
-    如果bias不为空：
+  如果bias不为空：
 
-    $$
-    normOut = normOut + bias
-    $$
+  $$
+  normOut = normOut + bias
+  $$
 
-    对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
+  对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
 
-    $$
-    groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
-    $$
+  $$
+  groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
+  $$
 
-    根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
+  根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
 
-    $$
-    y,expertIdxOut=TopK(normOut[groupId, :],k=k)
-    $$
+  $$
+  y,expertIdxOut=TopK(normOut[groupId, :],k=k)
+  $$
 
-    对y按照输入的routedScalingFactor和eps参数进行计算，得到yOut的结果：
+  对y按照输入的routedScalingFactor和eps参数进行计算，得到yOut的结果：
 
-    $$
-    yOut = y / (ReduceSum(y, dim=-1)+eps)*routedScalingFactor
-    $$
+  $$
+  yOut = y / (ReduceSum(y, dim=-1)+eps)*routedScalingFactor
+  $$
     
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 312px">
-  <col style="width: 213px">
-  <col style="width: 100px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出/属性</th>
-      <th>描述</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>x</td>
-      <td>输入</td>
-      <td>待计算输入，对应公式中的`x`。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>biasOptional</td>
-      <td>可选属性</td>
-      <td>与输入x进行计算的bias值，对应公式中的`bias`。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>k</td>
-      <td>输入</td>
-      <td>topk的k值，对应公式中的`k`。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>kGroup</td>
-      <td>输入</td>
-      <td>分组排序后取的group个数，对应公式中的`kGroup`。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>groupCount</td>
-      <td>输入</td>
-      <td>分组的总个数，对应公式中的`groupCount`。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>routedScalingFactor</td>
-      <td>输入</td>
-      <td>计算yOut使用的routedScalingFactor系数，对应公式中的`routedScalingFactor`。</td>
-      <td>DOUBLE</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>eps</td>
-      <td>输入</td>
-      <td>用于计算yOut使用的eps系数，对应公式中的`eps`。</td>
-      <td>DOUBLE</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>yOut</td>
-      <td>输出</td>
-      <td>对x做norm、分组排序topk后计算的结果，对应公式中的`yOut`。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>expertIdxOut</td>
-      <td>输出</td>
-      <td>对x做norm、分组排序topk后的索引，对应公式中的`expertIdxOut`。</td>
-      <td>INT32</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>normOut</td>
-      <td>输出</td>
-      <td>norm计算的输出结果，对应公式中的`normOut`。</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>groupSelectMode</td>
-      <td>输入</td>
-      <td>分组排序方式。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>renorm</td>
-      <td>输入</td>
-      <td>renorm标记。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>normType</td>
-      <td>输入</td>
-      <td>norm函数类型。</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>outFlag</td>
-      <td>输入</td>
-      <td>表示是否输出norm操作结果。</td>
-      <td>BOOL</td>
-      <td>-</td>
-    </tr>
-    
-  </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+    <col style="width: 170px">
+    <col style="width: 170px">
+    <col style="width: 312px">
+    <col style="width: 213px">
+    <col style="width: 100px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出/属性</th>
+        <th>描述</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>x</td>
+        <td>输入</td>
+        <td>待计算输入，对应公式中的`x`。</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>biasOptional</td>
+        <td>可选属性</td>
+        <td>与输入x进行计算的bias值，对应公式中的`bias`。</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>k</td>
+        <td>输入</td>
+        <td>topk的k值，对应公式中的`k`。</td>
+        <td>INT64</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>kGroup</td>
+        <td>输入</td>
+        <td>分组排序后取的group个数，对应公式中的`kGroup`。</td>
+        <td>INT64</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>groupCount</td>
+        <td>输入</td>
+        <td>分组的总个数，对应公式中的`groupCount`。</td>
+        <td>INT64</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>routedScalingFactor</td>
+        <td>输入</td>
+        <td>计算yOut使用的routedScalingFactor系数，对应公式中的`routedScalingFactor`。</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>eps</td>
+        <td>输入</td>
+        <td>用于计算yOut使用的eps系数，对应公式中的`eps`。</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>yOut</td>
+        <td>输出</td>
+        <td>对x做norm、分组排序topk后计算的结果，对应公式中的`yOut`。</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>expertIdxOut</td>
+        <td>输出</td>
+        <td>对x做norm、分组排序topk后的索引，对应公式中的`expertIdxOut`。</td>
+        <td>INT32</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>normOut</td>
+        <td>输出</td>
+        <td>norm计算的输出结果，对应公式中的`normOut`。</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>groupSelectMode</td>
+        <td>输入</td>
+        <td>分组排序方式。</td>
+        <td>INT64</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>renorm</td>
+        <td>输入</td>
+        <td>renorm标记。</td>
+        <td>INT64</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>normType</td>
+        <td>输入</td>
+        <td>norm函数类型。</td>
+        <td>INT64</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>outFlag</td>
+        <td>输入</td>
+        <td>表示是否输出norm操作结果。</td>
+        <td>BOOL</td>
+        <td>-</td>
+      </tr>
+    </tbody>
+  </table>
 
 ## 约束说明
 

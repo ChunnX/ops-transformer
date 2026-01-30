@@ -73,190 +73,192 @@ aclnnStatus aclnnMoeTokenUnpermute(
 
 ## aclnnMoeTokenUnpermuteGetWorkspaceSize
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-      <col style="width: 170px">
-      <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 550px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
-      <col style="width: 190px">
-      <col style="width: 145px">
-      </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>permutedTokens</td>
-        <td>输入</td>
-        <td>输入Tokens,公式中的T。</td>
-        <td>shape为（tokens_num * topK_num，hidden_size），其中tokens_num表示输入token的个数，topK_num表示处理每个token的专家个数，hidden_size表示每个token的向量表示的长度。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>sortedIndices</td>
-        <td>输入</td>
-        <td>表示需要计算的数据在permutedTokens中的位置。</td>
-        <td><ul><li>shape为（tokens_num * topK_num）。</li><li>取值范围是[0, tokens_num * topK_num - 1]，且没有重复索引。</li></ul></td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>probsOptional</td>
-        <td>输入</td>
-        <td>公式中的P。</td>
-        <td><ul><li>当probs传时，topK_num等于probs的第二维；当probs不传时，topK_num=1。</li><li>当probs传时，topK_num等于probs的第二维；当probs不传时，topK_num=1。</li><li>shape为（tokens_num，topK_num）。</li></ul></td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>paddedMode</td>
-        <td>输入</td>
-        <td>表示是否开启paddedMode。</td>
-        <td><ul><li>paddedMode为true时，restoreShapeOptional生效，否则不会对其进行操作。</li><li>目前仅支持false。</li></ul></td>
-        <td>BOOL</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>restoreShapeOptional</td>
-        <td>输入</td>
-        <td>paddedMode为true时，输出结果的shape。</td>
-        <td><ul><li>paddedMode为true时，restoreShapeOptional生效，out的shape将表征为restoreShapeOptional。</li><li>目前仅支持nullptr。</li></ul></td>
-        <td>INT32</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>out</td>
-        <td>输出</td>
-        <td>输出结果。</td>
-        <td><ul><li>paddedMode=false时，shape为（tokens_num，hidden_size）；paddedMode=true时，shape与restoreShapeOptional保持一致。</li><li>数据类型同permutedTokens。</li></ul></td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回用户需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody></table>
-
--   **返回值：**
-
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
-    第一段接口完成入参校验，出现以下场景时报错：
-
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+    <col style="width: 170px">
+    <col style="width: 120px">
+    <col style="width: 300px">  
+    <col style="width: 550px">  
+    <col style="width: 212px">  
+    <col style="width: 100px"> 
+    <col style="width: 190px">
+    <col style="width: 145px">
     </colgroup>
-    <thead>
-        <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-        <td> ACLNN_ERR_PARAM_NULLPTR </td>
-        <td> 161001 </td>
-        <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
-        </tr>
-        <tr>
-        <td> ACLNN_ERR_PARAM_INVALID </td>
-        <td> 161002 </td>
-        <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
-        </tr>
-        <tr>
-        <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td rowspan="2"> 561002 </td>
-        <td>多个输入tensor之间的shape信息不匹配。</td>
-        </tr>
-        <tr>
-        <td>输入属性和输入tensor之间的shape信息不匹配。</td>
-        </tr>
-    </tbody></table>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>permutedTokens</td>
+      <td>输入</td>
+      <td>输入Tokens,公式中的T。</td>
+      <td>shape为（tokens_num * topK_num，hidden_size），其中tokens_num表示输入token的个数，topK_num表示处理每个token的专家个数，hidden_size表示每个token的向量表示的长度。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>sortedIndices</td>
+      <td>输入</td>
+      <td>表示需要计算的数据在permutedTokens中的位置。</td>
+      <td><ul><li>shape为（tokens_num * topK_num）。</li><li>取值范围是[0, tokens_num * topK_num - 1]，且没有重复索引。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>probsOptional</td>
+      <td>输入</td>
+      <td>公式中的P。</td>
+      <td><ul><li>当probs传时，topK_num等于probs的第二维；当probs不传时，topK_num=1。</li><li>当probs传时，topK_num等于probs的第二维；当probs不传时，topK_num=1。</li><li>shape为（tokens_num，topK_num）。</li></ul></td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>paddedMode</td>
+      <td>输入</td>
+      <td>表示是否开启paddedMode。</td>
+      <td><ul><li>paddedMode为true时，restoreShapeOptional生效，否则不会对其进行操作。</li><li>目前仅支持false。</li></ul></td>
+      <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>restoreShapeOptional</td>
+      <td>输入</td>
+      <td>paddedMode为true时，输出结果的shape。</td>
+      <td><ul><li>paddedMode为true时，restoreShapeOptional生效，out的shape将表征为restoreShapeOptional。</li><li>目前仅支持nullptr。</li></ul></td>
+      <td>INT32</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>out</td>
+      <td>输出</td>
+      <td>输出结果。</td>
+      <td><ul><li>paddedMode=false时，shape为（tokens_num，hidden_size）；paddedMode=true时，shape与restoreShapeOptional保持一致。</li><li>数据类型同permutedTokens。</li></ul></td>
+      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回用户需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody></table>
+
+- **返回值：**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+  <col style="width: 250px">
+  <col style="width: 130px">
+  <col style="width: 650px">
+  </colgroup>
+  <thead>
+      <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+      <td> ACLNN_ERR_PARAM_NULLPTR </td>
+      <td> 161001 </td>
+      <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+      </tr>
+      <tr>
+      <td> ACLNN_ERR_PARAM_INVALID </td>
+      <td> 161002 </td>
+      <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+      </tr>
+      <tr>
+      <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
+      <td rowspan="2"> 561002 </td>
+      <td>多个输入tensor之间的shape信息不匹配。</td>
+      </tr>
+      <tr>
+      <td>输入属性和输入tensor之间的shape信息不匹配。</td>
+      </tr>
+  </tbody>
+  </table>
 
 ## aclnnMoeTokenUnpermute
 
--   **参数说明：**
-    <table style="undefined;table-layout: fixed; width: 1030px"> <colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnRopeWithSinCosCacheGetWorkspaceSize</code>获取。</td>
-    </tr>
-    <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
-    </tr>
-    </tbody></table>
+- **参数说明：**
+  <table style="undefined;table-layout: fixed; width: 1030px"> <colgroup>
+  <col style="width: 250px">
+  <col style="width: 130px">
+  <col style="width: 650px">
+  <thead>
+  <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+  </tr>
+  <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnRopeWithSinCosCacheGetWorkspaceSize</code>获取。</td>
+  </tr>
+  <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+  </tr>
+  <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+  </tr>
+  </tbody>
+  </table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

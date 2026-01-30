@@ -16,21 +16,21 @@
 -   **算子功能**：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmax](../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)的计算结果做routing处理，并对结果进行量化。
 -   **计算公式**：
 
-$$
-expandedExpertIdx,sortedRowIdx=keyValueSort(expertIdx,rowIdx)
-$$
+  $$
+  expandedExpertIdx,sortedRowIdx=keyValueSort(expertIdx,rowIdx)
+  $$
 
-$$
-expandedRowIdx[sortedRowIdx[i]]=i
-$$
+  $$
+  expandedRowIdx[sortedRowIdx[i]]=i
+  $$
 
-$$
-expandedX[i]=quant[x[sortedRowIdx[i]\%numRows]]
-$$
+  $$
+  expandedX[i]=quant[x[sortedRowIdx[i]\%numRows]]
+  $$
 
 ## 参数说明
 
-<table style="table-layout: auto; width: 100%">
+  <table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
       <th style="white-space: nowrap">参数名</th>

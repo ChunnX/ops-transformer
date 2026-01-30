@@ -15,21 +15,21 @@
 
 ## 功能说明
 
--   **接口功能**：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)的计算结果做routing处理，并对结果进行量化。
--   **计算公式**：
-    将输入shape为[numRows, k]的expertIdx展平为一行做排序。
+- **接口功能**：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)的计算结果做routing处理，并对结果进行量化。
+- **计算公式**：
+  将输入shape为[numRows, k]的expertIdx展平为一行做排序。
 
-    $$
-    expandedExpertIdxOut,sortedRowIdx=keyValueSort(expertIdx,rowIdx)
-    $$
+  $$
+  expandedExpertIdxOut,sortedRowIdx=keyValueSort(expertIdx,rowIdx)
+  $$
 
-    $$
-    expandedRowIdxOut[sortedRowIdx[i]]=i
-    $$
+  $$
+  expandedRowIdxOut[sortedRowIdx[i]]=i
+  $$
 
-    $$
-    expandedXOut[i]=quant(x[sortedRowIdx[i]\%numRows)]
-    $$
+  $$
+  expandedXOut[i]=quant(x[sortedRowIdx[i]\%numRows)]
+  $$
 
 ## 函数原型
 
@@ -60,244 +60,244 @@ aclnnStatus aclnnMoeInitRoutingQuant(
 
 ## aclnnMoeInitRoutingQuantGetWorkspaceSize
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-      <col style="width: 170px">
-      <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 550px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
-      <col style="width: 190px">
-      <col style="width: 145px">
-      </colgroup>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+    <col style="width: 170px">
+    <col style="width: 120px">
+    <col style="width: 300px">  
+    <col style="width: 550px">  
+    <col style="width: 212px">  
+    <col style="width: 100px"> 
+    <col style="width: 190px">
+    <col style="width: 145px">
+    </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>x</td>
+      <td>输入</td>
+      <td>MOE的输入即token特征输入。</td>
+      <td><ul><li>支持空tensor。</li><li>要求为一个2D的Tensor，shape为(NUM_ROWS, H)。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>rowIdx</td>
+      <td>输入</td>
+      <td>指示每个位置对应的原始行位置。</td>
+      <td><ul><li>支持空tensor。</li><li>shape要求与expertIdx一致，数值从0开始，沿着1维递增。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>expertIdx</td>
+      <td>输入</td>
+      <td>每一行特征对应的K个处理专家。</td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个2D的shape为 (NUM_ROWS, K)。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>activeNum</td>
+      <td>输入</td>
+      <td>表示总的最大处理row数。</td>
+      <td>值范围大于等于0，expandedXOut只有这么多行是有效的。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>scale</td>
+      <td>输入</td>
+      <td>量化计算需要的缩放因子。</td>
+      <td>典型值为：$S=\frac{R_{\max }-R_{\min }}{Q_{\max }-Q_{\min }}$，其中$R_{max}$表示输入浮点数中的最大值，$R_{min}$表示输入浮点数中的最小值， $Q_{max}$表示最大定点值，$Q_{min}$表示最小定点值。</td>
+      <td>DOUBLE</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>offset</td>
+      <td>输入</td>
+      <td>量化计算需要的偏移量。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expandedXOut</td>
+      <td>输出</td>
+      <td>根据expertIdx进行扩展过的特征。</td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个2D的Tensor，shape为(min(NUM_ROWS, activeNum) * k, H)。</li></ul></td>
+      <td>INT8</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>expandedRowIdxOut</td>
+      <td>输出</td>
+      <td>expandedX和x的映射关系。</td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，Shape为(NUM_ROWS*K)。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>expandedExpertIdxOut</td>
+      <td>输出</td>
+      <td>输出expertIdx排序后的结果。</td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，Shape为(NUM_ROWS*K)。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody></table>
+
+- **返回值**
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+  <table style="undefined;table-layout: fixed; width: 1180px"> 
+    <colgroup>
+      <col style="width: 250px">
+      <col style="width: 130px">
+      <col style="width: 800px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>输入和输出的Tensor是空指针。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_PARAM_INVALID</td>
+        <td>161002</td>
+        <td>输入和输出的数据类型不在支持的范围内。</td>
+      </tr>
+      <tr>
+        <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
+        <td rowspan="8">561002</td>
+        <td>dropPadMode的属性值不是0和1。</td>
+      </tr>
+      <tr>
+        <td>topK小于等于0。</td>
+      </tr>
+      <tr>
+        <td>activeNum小于0。</td>
+      </tr>
+      <tr>
+        <td>gradExpandedX不是2D/3D，或者dropPadMode为1时，gradExpandedX不是3D。</td>
+      </tr>
+      <tr>
+        <td>dropPadMode和activeNum都为0时，gradExpandedX和expandedRowIdx的0轴大小不相等。</td>
+      </tr>
+      <tr>
+        <td>dropPadMode为0且activeNum大于0时，gradExpandedX的0轴与activeNum大小不相等。</td>
+      </tr>
+      <tr>
+        <td>out和gradExpandedX的尾轴大小不相等。</td>
+      </tr>
+      <tr>
+        <td>out的0轴不等于expandedRowIdx的0轴大小除以topK。</td>
+      </tr>
+    </tbody>
+  </table>
+
+## aclnnMoeInitRoutingQuant
+
+- **参数说明：**
+
+  <table style="undefined;table-layout: fixed; width: 1180px"> 
+    <colgroup>
+      <col style="width: 250px">
+      <col style="width: 130px">
+      <col style="width: 800px">
+    </colgroup>
     <thead>
       <tr>
         <th>参数名</th>
         <th>输入/输出</th>
         <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
+      </tr>
+    </thead>
     <tbody>
       <tr>
-        <td>x</td>
+        <td>workspace</td>
         <td>输入</td>
-        <td>MOE的输入即token特征输入。</td>
-        <td><ul><li>支持空tensor。</li><li>要求为一个2D的Tensor，shape为(NUM_ROWS, H)。</li></ul></td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>rowIdx</td>
-        <td>输入</td>
-        <td>指示每个位置对应的原始行位置。</td>
-        <td><ul><li>支持空tensor。</li><li>shape要求与expertIdx一致，数值从0开始，沿着1维递增。</li></ul></td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>expertIdx</td>
-        <td>输入</td>
-        <td>每一行特征对应的K个处理专家。</td>
-        <td><ul><li>支持空tensor。</li><li>要求是一个2D的shape为 (NUM_ROWS, K)。</li></ul></td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>activeNum</td>
-        <td>输入</td>
-        <td>表示总的最大处理row数。</td>
-        <td>值范围大于等于0，expandedXOut只有这么多行是有效的。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>scale</td>
-        <td>输入</td>
-        <td>量化计算需要的缩放因子。</td>
-        <td>典型值为：$S=\frac{R_{\max }-R_{\min }}{Q_{\max }-Q_{\min }}$，其中$R_{max}$表示输入浮点数中的最大值，$R_{min}$表示输入浮点数中的最小值， $Q_{max}$表示最大定点值，$Q_{min}$表示最小定点值。</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>offset</td>
-        <td>输入</td>
-        <td>量化计算需要的偏移量。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expandedXOut</td>
-        <td>输出</td>
-        <td>根据expertIdx进行扩展过的特征。</td>
-        <td><ul><li>支持空tensor。</li><li>要求是一个2D的Tensor，shape为(min(NUM_ROWS, activeNum) * k, H)。</li></ul></td>
-        <td>INT8</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>expandedRowIdxOut</td>
-        <td>输出</td>
-        <td>expandedX和x的映射关系。</td>
-        <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，Shape为(NUM_ROWS*K)。</li></ul></td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>expandedExpertIdxOut</td>
-        <td>输出</td>
-        <td>输出expertIdx排序后的结果。</td>
-        <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，Shape为(NUM_ROWS*K)。</li></ul></td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>×</td>
+        <td>在Device侧申请的workspace内存地址。</td>
       </tr>
       <tr>
         <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeInitRoutingQuantGetWorkspaceSize</code>获取。</td>
       </tr>
       <tr>
         <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
       </tr>
-    </tbody></table>
-
--   **返回值**
-
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
-    第一段接口完成入参校验，出现以下场景时报错：
-    <table style="undefined;table-layout: fixed; width: 1180px"> 
-      <colgroup>
-        <col style="width: 250px">
-        <col style="width: 130px">
-        <col style="width: 800px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>返回值</th>
-          <th>错误码</th>
-          <th>描述</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>ACLNN_ERR_PARAM_NULLPTR</td>
-          <td>161001</td>
-          <td>输入和输出的Tensor是空指针。</td>
-        </tr>
-        <tr>
-          <td>ACLNN_ERR_PARAM_INVALID</td>
-          <td>161002</td>
-          <td>输入和输出的数据类型不在支持的范围内。</td>
-        </tr>
-        <tr>
-          <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
-          <td rowspan="8">561002</td>
-          <td>dropPadMode的属性值不是0和1。</td>
-        </tr>
-        <tr>
-          <td>topK小于等于0。</td>
-        </tr>
-        <tr>
-          <td>activeNum小于0。</td>
-        </tr>
-        <tr>
-          <td>gradExpandedX不是2D/3D，或者dropPadMode为1时，gradExpandedX不是3D。</td>
-        </tr>
-        <tr>
-          <td>dropPadMode和activeNum都为0时，gradExpandedX和expandedRowIdx的0轴大小不相等。</td>
-        </tr>
-        <tr>
-          <td>dropPadMode为0且activeNum大于0时，gradExpandedX的0轴与activeNum大小不相等。</td>
-        </tr>
-        <tr>
-          <td>out和gradExpandedX的尾轴大小不相等。</td>
-        </tr>
-        <tr>
-          <td>out的0轴不等于expandedRowIdx的0轴大小除以topK。</td>
-        </tr>
-      </tbody>
-    </table>
-
-## aclnnMoeInitRoutingQuant
-
--   **参数说明：**
-
-    <table style="undefined;table-layout: fixed; width: 1180px"> 
-      <colgroup>
-        <col style="width: 250px">
-        <col style="width: 130px">
-        <col style="width: 800px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>参数名</th>
-          <th>输入/输出</th>
-          <th>描述</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>workspace</td>
-          <td>输入</td>
-          <td>在Device侧申请的workspace内存地址。</td>
-        </tr>
-        <tr>
-          <td>workspaceSize</td>
-          <td>输入</td>
-          <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeInitRoutingQuantGetWorkspaceSize</code>获取。</td>
-        </tr>
-        <tr>
-          <td>executor</td>
-          <td>输入</td>
-          <td>op执行器，包含了算子计算流程。</td>
-        </tr>
-        <tr>
-          <td>stream</td>
-          <td>输入</td>
-          <td>指定执行任务的Stream流。</td>
-        </tr>
-      </tbody>
-    </table>
+      <tr>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的Stream流。</td>
+      </tr>
+    </tbody>
+  </table>
     
--   **返回值：**
+- **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
     
 ## 约束说明
 

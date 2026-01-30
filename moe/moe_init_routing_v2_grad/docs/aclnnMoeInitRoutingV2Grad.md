@@ -49,222 +49,223 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
 
 ## aclnnMoeInitRoutingV2GradGetWorkspaceSize
 
--   **参数说明：**
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-      <col style="width: 170px">
-      <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 550px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
-      <col style="width: 190px">
-      <col style="width: 145px">
-      </colgroup>
+- **参数说明：**
+
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+    <col style="width: 170px">
+    <col style="width: 120px">
+    <col style="width: 300px">  
+    <col style="width: 550px">  
+    <col style="width: 212px">  
+    <col style="width: 100px"> 
+    <col style="width: 190px">
+    <col style="width: 145px">
+    </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>gradExpandedX</td>
+      <td>输入</td>
+      <td>表示Routing过后的目标张量。</td>
+      <td>要求为一个2D/3D的Tensor，2D shape为Dropless场景的[B*S*K, H]或者Active场景下的[A, H]，3D shape为Drop/Pad场景下的[E, C, H]。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2或3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>expandedRowIdx</td>
+      <td>输入</td>
+      <td>表示token按照专家序排序索引。</td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，shape为[B*S*K]。</li><li>元素值在Drop/Pad场景下范围为[-1, E*C)，其他场景范围为[0, B*S*K)，且值除-1外唯一不重复。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>topK</td>
+      <td>输入</td>
+      <td>topK值。</td>
+      <td>必须大于0，且能被expandedRowIdx的0轴大小整除。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>dropPadMode</td>
+      <td>输入</td>
+      <td>表示是否为Drop/Pad场景。</td>
+      <td>取值为0和1。<ul><li>0：表示Dropless场景。</li><li>1：表示Drop/Pad场景。</li></ul></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>activeNum</td>
+      <td>输入</td>
+      <td>表示场景是否为Active场景。</td>
+      <td>值范围大于等于0，当dropPadMode为0时生效，0表示非Active场景，大于0表示Active场景，Active场景下gradExpandedX的0轴大小必须等于activeNum值。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>out</td>
+      <td>输出</td>
+      <td>表示Routing反向输出。</td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个2D的Tensor，shape为[B*S, H]。</li><li>数据类型与输入gradExpandedX一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody></table>
+
+  shape符号说明：
+  - B: batch size
+  - S: tokens数量
+  - H: hidden size，即每个token序列长度
+  - K: 即topK，token被处理的专家数
+  - A: activeNum值
+  - E: expert num，即专家数
+  - C: expert capacity，表示专家处理token数量的能力阈值
+
+- **返回值**
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+  <table style="undefined;table-layout: fixed; width: 1180px"> 
+    <colgroup>
+      <col style="width: 250px">
+      <col style="width: 130px">
+      <col style="width: 800px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>输入和输出的Tensor是空指针。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_PARAM_INVALID</td>
+        <td>161002</td>
+        <td>输入和输出的数据类型不在支持的范围内。</td>
+      </tr>
+      <tr>
+        <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
+        <td rowspan="8">561002</td>
+        <td>dropPadMode的属性值不是0和1。</td>
+      </tr>
+      <tr>
+        <td>topK小于等于0。</td>
+      </tr>
+      <tr>
+        <td>activeNum小于0。</td>
+      </tr>
+      <tr>
+        <td>gradExpandedX不是2D/3D，或者dropPadMode为1时，gradExpandedX不是3D。</td>
+      </tr>
+      <tr>
+        <td>dropPadMode和activeNum都为0时，gradExpandedX和expandedRowIdx的0轴大小不相等。</td>
+      </tr>
+      <tr>
+        <td>dropPadMode为0且activeNum大于0时，gradExpandedX的0轴与activeNum大小不相等。</td>
+      </tr>
+      <tr>
+        <td>out和gradExpandedX的尾轴大小不相等。</td>
+      </tr>
+      <tr>
+        <td>out的0轴不等于expandedRowIdx的0轴大小除以topK。</td>
+      </tr>
+    </tbody>
+  </table>
+
+## aclnnMoeInitRoutingV2Grad
+
+- **参数说明：**
+
+  <table style="undefined;table-layout: fixed; width: 1180px"> 
+    <colgroup>
+      <col style="width: 250px">
+      <col style="width: 130px">
+      <col style="width: 800px">
+    </colgroup>
     <thead>
       <tr>
         <th>参数名</th>
         <th>输入/输出</th>
         <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
+      </tr>
+    </thead>
     <tbody>
       <tr>
-        <td>gradExpandedX</td>
+        <td>workspace</td>
         <td>输入</td>
-        <td>表示Routing过后的目标张量。</td>
-        <td>要求为一个2D/3D的Tensor，2D shape为Dropless场景的[B*S*K, H]或者Active场景下的[A, H]，3D shape为Drop/Pad场景下的[E, C, H]。</li></ul></td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2或3</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>expandedRowIdx</td>
-        <td>输入</td>
-        <td>表示token按照专家序排序索引。</td>
-        <td><ul><li>支持空tensor。</li><li>要求是一个1D的Tensor，shape为[B*S*K]。</li><li>元素值在Drop/Pad场景下范围为[-1, E*C)，其他场景范围为[0, B*S*K)，且值除-1外唯一不重复。</li></ul></td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>topK</td>
-        <td>输入</td>
-        <td>topK值。</td>
-        <td>必须大于0，且能被expandedRowIdx的0轴大小整除。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>dropPadMode</td>
-        <td>输入</td>
-        <td>表示是否为Drop/Pad场景。</td>
-        <td>取值为0和1。<ul><li>0：表示Dropless场景。</li><li>1：表示Drop/Pad场景。</li></ul></td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>activeNum</td>
-        <td>输入</td>
-        <td>表示场景是否为Active场景。</td>
-        <td>值范围大于等于0，当dropPadMode为0时生效，0表示非Active场景，大于0表示Active场景，Active场景下gradExpandedX的0轴大小必须等于activeNum值。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>out</td>
-        <td>输出</td>
-        <td>表示Routing反向输出。</td>
-        <td><ul><li>支持空tensor。</li><li>要求是一个2D的Tensor，shape为[B*S, H]。</li><li>数据类型与输入gradExpandedX一致。</li></ul></td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>×</td>
+        <td>在Device侧申请的workspace内存地址。</td>
       </tr>
       <tr>
         <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeInitRoutingV2GradGetWorkspaceSize</code>获取。</td>
       </tr>
       <tr>
         <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
       </tr>
-    </tbody></table>
+      <tr>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的Stream。</td>
+      </tr>
+    </tbody>
+  </table>
 
-    shape符号说明：
-    - B: batch size
-    - S: tokens数量
-    - H: hidden size，即每个token序列长度
-    - K: 即topK，token被处理的专家数
-    - A: activeNum值
-    - E: expert num，即专家数
-    - C: expert capacity，表示专家处理token数量的能力阈值
+- **返回值：**
 
--   **返回值**
-
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
-    第一段接口完成入参校验，出现以下场景时报错：
-    <table style="undefined;table-layout: fixed; width: 1180px"> 
-      <colgroup>
-        <col style="width: 250px">
-        <col style="width: 130px">
-        <col style="width: 800px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>返回值</th>
-          <th>错误码</th>
-          <th>描述</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>ACLNN_ERR_PARAM_NULLPTR</td>
-          <td>161001</td>
-          <td>输入和输出的Tensor是空指针。</td>
-        </tr>
-        <tr>
-          <td>ACLNN_ERR_PARAM_INVALID</td>
-          <td>161002</td>
-          <td>输入和输出的数据类型不在支持的范围内。</td>
-        </tr>
-        <tr>
-          <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
-          <td rowspan="8">561002</td>
-          <td>dropPadMode的属性值不是0和1。</td>
-        </tr>
-        <tr>
-          <td>topK小于等于0。</td>
-        </tr>
-        <tr>
-          <td>activeNum小于0。</td>
-        </tr>
-        <tr>
-          <td>gradExpandedX不是2D/3D，或者dropPadMode为1时，gradExpandedX不是3D。</td>
-        </tr>
-        <tr>
-          <td>dropPadMode和activeNum都为0时，gradExpandedX和expandedRowIdx的0轴大小不相等。</td>
-        </tr>
-        <tr>
-          <td>dropPadMode为0且activeNum大于0时，gradExpandedX的0轴与activeNum大小不相等。</td>
-        </tr>
-        <tr>
-          <td>out和gradExpandedX的尾轴大小不相等。</td>
-        </tr>
-        <tr>
-          <td>out的0轴不等于expandedRowIdx的0轴大小除以topK。</td>
-        </tr>
-      </tbody>
-    </table>
-
-## aclnnMoeInitRoutingV2Grad
-
--   **参数说明：**
-
-    <table style="undefined;table-layout: fixed; width: 1180px"> 
-      <colgroup>
-        <col style="width: 250px">
-        <col style="width: 130px">
-        <col style="width: 800px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>参数名</th>
-          <th>输入/输出</th>
-          <th>描述</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>workspace</td>
-          <td>输入</td>
-          <td>在Device侧申请的workspace内存地址。</td>
-        </tr>
-        <tr>
-          <td>workspaceSize</td>
-          <td>输入</td>
-          <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeInitRoutingV2GradGetWorkspaceSize</code>获取。</td>
-        </tr>
-        <tr>
-          <td>executor</td>
-          <td>输入</td>
-          <td>op执行器，包含了算子计算流程。</td>
-        </tr>
-        <tr>
-          <td>stream</td>
-          <td>输入</td>
-          <td>指定执行任务的Stream。</td>
-        </tr>
-      </tbody>
-    </table>
-
--   **返回值：**
-
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
     
 ## 约束说明
 

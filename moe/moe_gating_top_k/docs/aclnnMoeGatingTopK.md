@@ -16,40 +16,40 @@
 ## 功能说明
 
 - 算子功能：MoE计算中，对输入x做Sigmoid或者SoftMax计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
--   计算公式：
+- 计算公式：
 
-    对输入做Sigmoid或者SoftMax：
+  对输入做Sigmoid或者SoftMax：
 
-    $$
-    if normType==1:
-        normOut=Sigmoid(x)
-    else:
-        normOut=SoftMax(x)
-    $$
+  $$
+  if normType==1:
+      normOut=Sigmoid(x)
+  else:
+      normOut=SoftMax(x)
+  $$
 
-    如果bias不为空：
+  如果bias不为空：
 
-    $$
-    normOut = normOut + bias
-    $$
+  $$
+  normOut = normOut + bias
+  $$
 
-    对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
+  对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
 
-    $$
-    groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
-    $$
+  $$
+  groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
+  $$
 
-    根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
+  根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
 
-    $$
-    y,expertIdxOut=TopK(normOut[groupId, :],k=k)
-    $$
+  $$
+  y,expertIdxOut=TopK(normOut[groupId, :],k=k)
+  $$
 
-    对y按照输入的routedScalingFactor和eps参数进行计算，得到yOut的结果：
-    
-    $$
-    yOut = y / (ReduceSum(y, dim=-1)+eps)*routedScalingFactor
-    $$
+  对y按照输入的routedScalingFactor和eps参数进行计算，得到yOut的结果：
+  
+  $$
+  yOut = y / (ReduceSum(y, dim=-1)+eps)*routedScalingFactor
+  $$
 
 ## 函数原型
 
@@ -85,278 +85,278 @@ aclnnStatus aclnnMoeGatingTopK(
 
 ## aclnnMoeGatingTopKGetWorkspaceSize
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
-    <col style="width: 146px">
-    <col style="width: 110px">
-    <col style="width: 301px">
-    <col style="width: 219px">
-    <col style="width: 328px">
-    <col style="width: 101px">
-    <col style="width: 143px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>x</td>
-        <td>输入</td>
-        <td>待计算入参，对应公式中的x。</td>
-        <td>无</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>0-8</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>biasOptional</td>
-        <td>输入</td>
-        <td>与输入x进行计算的bias值，对应公式中的`bias`。</td>
-        <td>shape值与x最后一维相等。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>0-8</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>k</td>
-        <td>输入</td>
-        <td>topk的k值，对应公式中的`k`。</td>
-        <td>无</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>kGroup</td>
-        <td>输入</td>
-        <td>分组排序后取的group个数，对应公式中的`kGroup`。</td>
-        <td>无</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>groupCount</td>
-        <td>输入</td>
-        <td>分组的总个数，对应公式中的`groupCount`</td>
-        <td>无</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>groupSelectMode</td>
-        <td>输入</td>
-        <td>分组排序方式。</td>
-        <td>无</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>renorm</td>
-        <td>输入</td>
-        <td>renorm标记。</td>
-        <td>无</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>normType</td>
-        <td>输入</td>
-        <td>norm函数类型。</td>
-        <td>无</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>outFlag</td>
-        <td>输入</td>
-        <td>表示是否输出norm操作结果。</td>
-        <td>无</td>
-        <td>BOOL</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>routedScalingFactor</td>
-        <td>输入</td>
-        <td>计算yOut使用的routedScalingFactor系数，对应公式中的`routedScalingFactor`。</td>
-        <td>无</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>eps</td>
-        <td>输入</td>
-        <td>用于计算yOut使用的eps系数，对应公式中的`eps`。</td>
-        <td>无</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>yOut</td>
-        <td>输出</td>
-        <td>对x做norm、分组排序topk后计算的结果，对应公式中的`yOut`。</td>
-        <td>数据类型与x需要保持一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>0-8</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expertIdxOut</td>
-        <td>输出</td>
-        <td>对x做norm、分组排序topk后的索引，对应公式中的`expertIdxOut`。</td>
-        <td>shape要求与yOut一致。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>0-8</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>outOut</td>
-        <td>输出</td>
-        <td>norm计算的输出结果，对应公式中的`normOut`。</td>
-        <td>shape要求与x保持一致。</td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>0-8</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody>
-    </table>  
+  <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
+  <col style="width: 146px">
+  <col style="width: 110px">
+  <col style="width: 301px">
+  <col style="width: 219px">
+  <col style="width: 328px">
+  <col style="width: 101px">
+  <col style="width: 143px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>x</td>
+      <td>输入</td>
+      <td>待计算入参，对应公式中的x。</td>
+      <td>无</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>0-8</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>biasOptional</td>
+      <td>输入</td>
+      <td>与输入x进行计算的bias值，对应公式中的`bias`。</td>
+      <td>shape值与x最后一维相等。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>0-8</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>k</td>
+      <td>输入</td>
+      <td>topk的k值，对应公式中的`k`。</td>
+      <td>无</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>kGroup</td>
+      <td>输入</td>
+      <td>分组排序后取的group个数，对应公式中的`kGroup`。</td>
+      <td>无</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>groupCount</td>
+      <td>输入</td>
+      <td>分组的总个数，对应公式中的`groupCount`</td>
+      <td>无</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>groupSelectMode</td>
+      <td>输入</td>
+      <td>分组排序方式。</td>
+      <td>无</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>renorm</td>
+      <td>输入</td>
+      <td>renorm标记。</td>
+      <td>无</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>normType</td>
+      <td>输入</td>
+      <td>norm函数类型。</td>
+      <td>无</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>outFlag</td>
+      <td>输入</td>
+      <td>表示是否输出norm操作结果。</td>
+      <td>无</td>
+      <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>routedScalingFactor</td>
+      <td>输入</td>
+      <td>计算yOut使用的routedScalingFactor系数，对应公式中的`routedScalingFactor`。</td>
+      <td>无</td>
+      <td>DOUBLE</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>eps</td>
+      <td>输入</td>
+      <td>用于计算yOut使用的eps系数，对应公式中的`eps`。</td>
+      <td>无</td>
+      <td>DOUBLE</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>yOut</td>
+      <td>输出</td>
+      <td>对x做norm、分组排序topk后计算的结果，对应公式中的`yOut`。</td>
+      <td>数据类型与x需要保持一致。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>0-8</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expertIdxOut</td>
+      <td>输出</td>
+      <td>对x做norm、分组排序topk后的索引，对应公式中的`expertIdxOut`。</td>
+      <td>shape要求与yOut一致。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>0-8</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>outOut</td>
+      <td>输出</td>
+      <td>norm计算的输出结果，对应公式中的`normOut`。</td>
+      <td>shape要求与x保持一致。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>0-8</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+  </table>  
 
--   **返回值：**
+- **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-    <col style="width: 319px">
-    <col style="width: 144px">
-    <col style="width: 671px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr>
-    </thead>
-    
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>计算输入和计算输出是空指针。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161002</td>
-        <td>输入和输出的数据类型不在支持的范围内。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td>561002</td>
-        <td>
-        x的shape不满足要求。<br />
-        x和biasOptional的shape不匹配。<br />
-        k的大小不在1到x_shape[-1] / groupCount * kGroup之间。<br />
-        kGroup的大小不在1到groupCount之间。<br />
-        每个group的专家数按32对齐之后<br />
-        计算输入参数的值不满足要求。<br />
-        </td>
-      </tr>
-    </tbody></table>  
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>计算输入和计算输出是空指针。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161002</td>
+      <td>输入和输出的数据类型不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td>561002</td>
+      <td>
+      x的shape不满足要求。<br />
+      x和biasOptional的shape不匹配。<br />
+      k的大小不在1到x_shape[-1] / groupCount * kGroup之间。<br />
+      kGroup的大小不在1到groupCount之间。<br />
+      每个group的专家数按32对齐之后<br />
+      计算输入参数的值不满足要求。<br />
+      </td>
+    </tr>
+  </tbody></table>  
 
 ## aclnnMoeGatingTopK
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-    <col style="width: 173px">
-    <col style="width: 112px">
-    <col style="width: 668px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKGetWorkspaceSize获取。</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-      </tr>
-      <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
-      </tr>
-    </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
+  <col style="width: 173px">
+  <col style="width: 112px">
+  <col style="width: 668px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

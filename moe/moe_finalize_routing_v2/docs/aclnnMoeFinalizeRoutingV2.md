@@ -15,16 +15,16 @@
 
 ## 功能说明
 
--   **接口功能**：MoE计算中，最后处理合并MoE FFN的输出结果。
--   **计算公式**：
+- **接口功能**：MoE计算中，最后处理合并MoE FFN的输出结果。
+- **计算公式**：
 
-    $$
-    expertid=expertIdx[i,k]
-    $$
-    
-    $$
-    out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
-    $$
+  $$
+  expertid=expertIdx[i,k]
+  $$
+  
+  $$
+  out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
+  $$
 
 ## 函数原型
 
@@ -55,31 +55,31 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 
 ## aclnnMoeFinalizeRoutingV2GetWorkspaceSize
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1522px"><colgroup>
-    <col style="width: 170px">
-    <col style="width: 120px">
-    <col style="width: 315px">
-    <col style="width: 231px">
-    <col style="width: 210px">
-    <col style="width: 121px">
-    <col style="width: 210px">
-    <col style="width: 145px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-    </tr></thead>
-    <tbody>
-    <tr>
+  <table style="undefined;table-layout: fixed; width: 1522px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 120px">
+  <col style="width: 315px">
+  <col style="width: 231px">
+  <col style="width: 210px">
+  <col style="width: 121px">
+  <col style="width: 210px">
+  <col style="width: 145px">
+  </colgroup>
+  <thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>使用说明</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    <th>维度(shape)</th>
+    <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
         <td>expandedX</td>
         <td>输入</td>
         <td>公式中的expandedX ，MoE的FFN输出。</td>
@@ -88,197 +88,197 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
         <td>ND</td>
         <td>drop less场景：(NUM_ROWS * K, H)，<br>drop pad场景：(E, C, H)。</td>
         <td>√</td>
-    </tr>
-    <tr>
-        <td>expandedRowIdx</td>
-        <td>输入</td>
-        <td>公式中的expandedRowIdx。</td>
-        <td>-</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(NUM_ROWS * K)</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>x1Optional</td>
-        <td>输入</td>
-        <td>公式中的x1，表示第一个共享专家。</td>
-        <td>-</td>
-        <td>与expandedX一致。</td>
-        <td>ND</td>
-        <td>与out一致。</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>x2Optional</td>
-        <td>输入</td>
-        <td>公式中的x2，表示第二个共享专家。</td>
-        <td>-</td>
-        <td>与expandedX一致。</td>
-        <td>ND</td>
-        <td>与out一致。</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>biasOptional</td>
-        <td>输入</td>
-        <td>公式中的bias，表示偏置量。</td>
-        <td>-</td>
-        <td>与expandedX一致。</td>
-        <td>ND</td>
-        <td>(E, H)</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>scalesOptional</td>
-        <td>输入</td>
-        <td>公式中的scales。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>(NUM_ROWS, K)</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>expertIdxOptional</td>
-        <td>输入</td>
-        <td>公式中的expertIdx。</td>
-        <td>Tensor中的值取值范围是[0, E-1]。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(NUM_ROWS, K)</td>
-        <td>√</td>
-    </tr>
-    <tr>
-        <td>dropPadMode</td>
-        <td>输入</td>
-        <td>表示是否支持丢弃模式,expandedRowIdx的排列方式。</td>
-        <td>取值范围为[0, 3]。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>out</td>
-        <td>输出</td>
-        <td>公式中的输出。</td>
-        <td>-</td>
-        <td>与expandedX一致。</td>
-        <td>ND</td>
-        <td>(NUM_ROWS, H)</td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    </tbody></table>
+  </tr>
+  <tr>
+    <td>expandedRowIdx</td>
+    <td>输入</td>
+    <td>公式中的expandedRowIdx。</td>
+    <td>-</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS * K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>x1Optional</td>
+    <td>输入</td>
+    <td>公式中的x1，表示第一个共享专家。</td>
+    <td>-</td>
+    <td>与expandedX一致。</td>
+    <td>ND</td>
+    <td>与out一致。</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>x2Optional</td>
+    <td>输入</td>
+    <td>公式中的x2，表示第二个共享专家。</td>
+    <td>-</td>
+    <td>与expandedX一致。</td>
+    <td>ND</td>
+    <td>与out一致。</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>biasOptional</td>
+    <td>输入</td>
+    <td>公式中的bias，表示偏置量。</td>
+    <td>-</td>
+    <td>与expandedX一致。</td>
+    <td>ND</td>
+    <td>(E, H)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>scalesOptional</td>
+    <td>输入</td>
+    <td>公式中的scales。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>expertIdxOptional</td>
+    <td>输入</td>
+    <td>公式中的expertIdx。</td>
+    <td>Tensor中的值取值范围是[0, E-1]。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, K)</td>
+    <td>√</td>
+  </tr>
+  <tr>
+    <td>dropPadMode</td>
+    <td>输入</td>
+    <td>表示是否支持丢弃模式,expandedRowIdx的排列方式。</td>
+    <td>取值范围为[0, 3]。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>out</td>
+    <td>输出</td>
+    <td>公式中的输出。</td>
+    <td>-</td>
+    <td>与expandedX一致。</td>
+    <td>ND</td>
+    <td>(NUM_ROWS, H)</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>workspaceSize</td>
+    <td>输出</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>executor</td>
+    <td>输出</td>
+    <td>返回op执行器，包含了算子计算流程。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  </tbody></table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-      - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
-      - scalesOptional：混合精度模式下，支持 expandedX 为 BFLOAT16 时 scalesOptional 为 FLOAT32；非混合精度模式下，数据类型要求与expandedX一致。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-      - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
-      - scalesOptional数据类型可以与expandedX不一致。
-    - <term>Atlas 推理系列产品</term>：
-      - expandedX要求是一个2D的Tensor，数据类型支持FLOAT16、FLOAT32，shape要求尾轴H为32对齐。
-      - x1Optional、x2Optional、biasOptional、expertIdxOptional仅支持传入nullptr
-      - 仅支持dropPadMode传入2。
-      - scalesOptional数据类型支持FLOAT16、FLOAT32，且需要与expandedX一致。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
+    - scalesOptional：混合精度模式下，支持 expandedX 为 BFLOAT16 时 scalesOptional 为 FLOAT32；非混合精度模式下，数据类型要求与expandedX一致。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
+    - scalesOptional数据类型可以与expandedX不一致。
+  - <term>Atlas 推理系列产品</term>：
+    - expandedX要求是一个2D的Tensor，数据类型支持FLOAT16、FLOAT32，shape要求尾轴H为32对齐。
+    - x1Optional、x2Optional、biasOptional、expertIdxOptional仅支持传入nullptr
+    - 仅支持dropPadMode传入2。
+    - scalesOptional数据类型支持FLOAT16、FLOAT32，且需要与expandedX一致。
 
--   **返回值：**
+- **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-    <col style="width: 253px">
-    <col style="width: 140px">
-    <col style="width: 762px">
-    </colgroup>
-    <thead>
-        <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-        <td> ACLNN_ERR_PARAM_NULLPTR </td>
-        <td> 161001 </td>
-        <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
-        </tr>
-        <tr>
-        <td> ACLNN_ERR_PARAM_INVALID </td>
-        <td> 161002 </td>
-        <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
-        </tr>
-        <tr>
-        <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td rowspan="2"> 561002 </td>
-        <td>多个输入tensor之间的shape信息不匹配。</td>
-        </tr>
-        <tr>
-        <td>输入属性和输入tensor之间的shape信息不匹配。</td>
-        </tr>
-    </tbody></table>
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 253px">
+  <col style="width: 140px">
+  <col style="width: 762px">
+  </colgroup>
+  <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+    <td> ACLNN_ERR_PARAM_NULLPTR </td>
+    <td> 161001 </td>
+    <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+    </tr>
+    <tr>
+    <td> ACLNN_ERR_PARAM_INVALID </td>
+    <td> 161002 </td>
+    <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+    </tr>
+    <tr>
+    <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
+    <td rowspan="2"> 561002 </td>
+    <td>多个输入tensor之间的shape信息不匹配。</td>
+    </tr>
+    <tr>
+    <td>输入属性和输入tensor之间的shape信息不匹配。</td>
+    </tr>
+  </tbody></table>
 
 ## aclnnMoeFinalizeRoutingV2
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1179px"> <colgroup>
-    <col style="width: 169px">
-    <col style="width: 130px">
-    <col style="width: 880px">
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeFinalizeRoutingV2GetWorkspaceSize</code>获取。</td>
-    </tr>
-    <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
-    </tr>
-    </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed; width: 1179px"> <colgroup>
+  <col style="width: 169px">
+  <col style="width: 130px">
+  <col style="width: 880px">
+  <thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace内存地址。</td>
+  </tr>
+  <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeFinalizeRoutingV2GetWorkspaceSize</code>获取。</td>
+  </tr>
+  <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op执行器，包含了算子计算流程。</td>
+  </tr>
+  <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的Stream。</td>
+  </tr>
+  </tbody>
+  </table>
 
 - **返回值**
   
@@ -287,7 +287,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 ## 约束说明
 
 1. 确定性计算：
-     - aclnnMoeFinalizeRoutingV2默认确定性实现。
+  - aclnnMoeFinalizeRoutingV2默认确定性实现。
 
 2. NUM\_ROWS：表示行数；  
 K：表示从总的专家E中选出K个专家；  

@@ -188,39 +188,40 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-      <col style="width: 173px">
-      <col style="width: 133px">
-      <col style="width: 860px">
-      </colgroup>
-      <thead>
-          <tr>
-          <th>参数名</th>
-          <th>输入/输出</th>
-          <th>描述</th>
-          </tr>
-      </thead>
-      <tbody>
-          <tr>
-          <td>workspace</td>
-          <td>输入</td>
-          <td>在Device侧申请的workspace内存地址。</td>
-          </tr>
-          <tr>
-          <td>workspaceSize</td>
-          <td>输入</td>
-          <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteGradGetWorkspaceSize获取。</td>
-          </tr>
-          <tr>
-          <td>executor</td>
-          <td>输入</td><td> op执行器，包含了算子计算流程。</td>
-          </tr>
-          <tr>
-          <td>stream</td>
-          <td>输入</td>
-          <td> 指定执行任务的Stream。</td>
-          </tr>
-      </tbody>
+  <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 134px">
+  <col style="width: 844px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenPermuteGradGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
   </table>
     
 - **返回值：**

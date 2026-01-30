@@ -181,303 +181,303 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 ## aclnnMoeInitRoutingV3GetWorkspaceSize
 
--   **参数说明**：
+- **参数说明**：
 
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 158px">
-    <col style="width: 120px">
-    <col style="width: 333px">
-    <col style="width: 400px">
-    <col style="width: 212px">
-    <col style="width: 100px">
-    <col style="width: 107px">
-    <col style="width: 145px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>x</td>
-        <td>输入</td>
-        <td>MOE的输入，即token特征输入</td>
-        <td>shape为(NUM_ROWS, H)</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expertIdx</td>
-        <td>输入</td>
-        <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数</td>
-        <td>shape为(NUM_ROWS, K)</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>scaleOptional</td>
-        <td>输入</td>
-        <td>表示用于计算量化结果的参数</td>
-        <td><ul>
-          <li>如果不输入表示计算时不使用scale;</li>
-          <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,);</li>
-          <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
-          <li>动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；</li>
-          <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
-          </ul></td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>1-2</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>offsetOptional</td>
-        <td>输入</td>
-        <td>表示用于计算quant结果的偏移值</td>
-        <td><ul>
-          <li>在非量化场景下不输入;<li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
-          <li>动态量化、MXFP8量化场景下不输入。</li>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 158px">
+  <col style="width: 120px">
+  <col style="width: 333px">
+  <col style="width: 400px">
+  <col style="width: 212px">
+  <col style="width: 100px">
+  <col style="width: 107px">
+  <col style="width: 145px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>x</td>
+      <td>输入</td>
+      <td>MOE的输入，即token特征输入</td>
+      <td>shape为(NUM_ROWS, H)</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expertIdx</td>
+      <td>输入</td>
+      <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数</td>
+      <td>shape为(NUM_ROWS, K)</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>scaleOptional</td>
+      <td>输入</td>
+      <td>表示用于计算量化结果的参数</td>
+      <td><ul>
+        <li>如果不输入表示计算时不使用scale;</li>
+        <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,);</li>
+        <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
+        <li>动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；</li>
+        <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
         </ul></td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>activeNum</td>
-        <td>输入</td>
-        <td>表示总的最大处理row数，输出expandedXOut只有这么多行是有效的</td>
-        <td>入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expertCapacity</td>
-        <td>输入</td>
-        <td>表示每个专家能够处理的tokens数</td>
-        <td>入参校验大于0小于NUM_ROWS。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expertNum</td>
-        <td>输入</td>
-        <td>表示专家数</td>
-        <td>expertTokensNumType为key_value模式时，取值范围为[0, 5120]，其它模式取值范围[0, 10240]</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>dropPadMode</td>
-        <td>输入</td>
-        <td>表示是否为DropPad场景</td>
-        <td>取值为0和1
-          <br>0：表示Dropless场景，该场景下不校验expertCapacity；
-          <br>1：表示DropPad场景；
-        </td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expertTokensNumType</td>
-        <td>输入</td>
-        <td>表示直方图的不同模式</td>
-        <td>取值为0、1和2
-          <br>0：表示 comsum 模式；
-          <br>1：表示 count 模式；
-          <br>2：表示 key_value 模式；
-        </td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expertTokensNumFlag</td>
-        <td>输入</td>
-        <td>表示是否输出 expertTokensCountOrCumsumOut </td>
-        <td>取值为false和true</td>
-        <td>BOOL</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>quantMode</td>
-        <td>输入</td>
-        <td>表示不同量化场景</td>
-        <td>取值为0、1、-1、2、3（不同产品支持情况有差异，见表后描述）
-          <br>0：表示静态 quant 场景;
-          <br>1：表示动态 quant 场景;
-          <br>-1：表示不量化场景;
-          <br>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2;
-          <br>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN;
-        </td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>activeExpertRangeOptional</td>
-        <td>输入</td>
-        <td>表示活跃的expert范围</td>
-        <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum </td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>rowIdxType</td>
-        <td>输入</td>
-        <td>表示expandedRowIdxOut使用的索引类型</td>
-        <td>取值为0、1
-          <br>0：表示gather类型的索引
-          <br>1：表示scatter类型的索引</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expandedXOut</td>
-        <td>输出</td>
-        <td>根据expertIdx进行扩展过的特征</td>
-        <td><ul>
-          <li>Dropless场景shape为[NUM_ROWS * K, H]。</li>
-          <li>Active场景shape为[min(activeNum, NUM_ROWS * K), H]。</li>
-          <li>Drop/Pad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。</li>
-          <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
-        </ul></td>
-        <td>FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expandedRowIdxOut</td>
-        <td>输出</td>
-        <td>expandedXOut和x的索引映射关系</td>
-        <td>输出shape为(NUM_ROWS*K, )， 前availableIdxNum个元素为有效数据，其余无效数据由rowIdxType决定：
-          <ul><li>当rowIdxType为0时，无效数据由-1填充</li>
-          <li>当rowIdxType为1时，无效数据未初始化</li></ul>
-        </td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expertTokensCountOrCumsumOut</td>
-        <td>输出</td>
-        <td>输出每个专家处理的token数量的统计结果或累加值</td>
-        <td><ul>
-          <li>在expertTokensNumType为0时，表示activeExpertRangeOptional范围内expert在排序后处理token总数的前缀和。</li>
-          <li>在expertTokensNumType为1时，表示activeExpertRangeOptional范围内expert对应的处理token的总数。</li>
-          <li>在expertTokensNumType为2时，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。</li>
-        </ul></td>
-        <td>INT64</td>
-        <td>ND</td>
-        <td>1-2</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>expandedScaleOut</td>
-        <td>输出</td>
-        <td>输出不同量化过程中scaleOptional的中间值。</td>
-        <td> 输出shape为expandedXOut的shape去掉最后一维之后所有维度的乘积。
-          <ul style="list-style-type: circle;">
-          <li>非量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
-          <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
-          <li>静态量化场景下不输出。</li>
-          <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li></ul>
-        </td>
-        <td>FLOAT32、FLOAT8_E8M0</td>
-        <td>ND</td>
-        <td>1-2</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回用户需要在Device侧申请的workspace大小</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody></table>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>1-2</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>offsetOptional</td>
+      <td>输入</td>
+      <td>表示用于计算quant结果的偏移值</td>
+      <td><ul>
+        <li>在非量化场景下不输入;<li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
+        <li>动态量化、MXFP8量化场景下不输入。</li>
+      </ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>activeNum</td>
+      <td>输入</td>
+      <td>表示总的最大处理row数，输出expandedXOut只有这么多行是有效的</td>
+      <td>入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expertCapacity</td>
+      <td>输入</td>
+      <td>表示每个专家能够处理的tokens数</td>
+      <td>入参校验大于0小于NUM_ROWS。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expertNum</td>
+      <td>输入</td>
+      <td>表示专家数</td>
+      <td>expertTokensNumType为key_value模式时，取值范围为[0, 5120]，其它模式取值范围[0, 10240]</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>dropPadMode</td>
+      <td>输入</td>
+      <td>表示是否为DropPad场景</td>
+      <td>取值为0和1
+        <br>0：表示Dropless场景，该场景下不校验expertCapacity；
+        <br>1：表示DropPad场景；
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expertTokensNumType</td>
+      <td>输入</td>
+      <td>表示直方图的不同模式</td>
+      <td>取值为0、1和2
+        <br>0：表示 comsum 模式；
+        <br>1：表示 count 模式；
+        <br>2：表示 key_value 模式；
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expertTokensNumFlag</td>
+      <td>输入</td>
+      <td>表示是否输出 expertTokensCountOrCumsumOut </td>
+      <td>取值为false和true</td>
+      <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>quantMode</td>
+      <td>输入</td>
+      <td>表示不同量化场景</td>
+      <td>取值为0、1、-1、2、3（不同产品支持情况有差异，见表后描述）
+        <br>0：表示静态 quant 场景;
+        <br>1：表示动态 quant 场景;
+        <br>-1：表示不量化场景;
+        <br>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2;
+        <br>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN;
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>activeExpertRangeOptional</td>
+      <td>输入</td>
+      <td>表示活跃的expert范围</td>
+      <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>rowIdxType</td>
+      <td>输入</td>
+      <td>表示expandedRowIdxOut使用的索引类型</td>
+      <td>取值为0、1
+        <br>0：表示gather类型的索引
+        <br>1：表示scatter类型的索引</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expandedXOut</td>
+      <td>输出</td>
+      <td>根据expertIdx进行扩展过的特征</td>
+      <td><ul>
+        <li>Dropless场景shape为[NUM_ROWS * K, H]。</li>
+        <li>Active场景shape为[min(activeNum, NUM_ROWS * K), H]。</li>
+        <li>Drop/Pad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。</li>
+        <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
+      </ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expandedRowIdxOut</td>
+      <td>输出</td>
+      <td>expandedXOut和x的索引映射关系</td>
+      <td>输出shape为(NUM_ROWS*K, )， 前availableIdxNum个元素为有效数据，其余无效数据由rowIdxType决定：
+        <ul><li>当rowIdxType为0时，无效数据由-1填充</li>
+        <li>当rowIdxType为1时，无效数据未初始化</li></ul>
+      </td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expertTokensCountOrCumsumOut</td>
+      <td>输出</td>
+      <td>输出每个专家处理的token数量的统计结果或累加值</td>
+      <td><ul>
+        <li>在expertTokensNumType为0时，表示activeExpertRangeOptional范围内expert在排序后处理token总数的前缀和。</li>
+        <li>在expertTokensNumType为1时，表示activeExpertRangeOptional范围内expert对应的处理token的总数。</li>
+        <li>在expertTokensNumType为2时，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。</li>
+      </ul></td>
+      <td>INT64</td>
+      <td>ND</td>
+      <td>1-2</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>expandedScaleOut</td>
+      <td>输出</td>
+      <td>输出不同量化过程中scaleOptional的中间值。</td>
+      <td> 输出shape为expandedXOut的shape去掉最后一维之后所有维度的乘积。
+        <ul style="list-style-type: circle;">
+        <li>非量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
+        <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
+        <li>静态量化场景下不输出。</li>
+        <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li></ul>
+      </td>
+      <td>FLOAT32、FLOAT8_E8M0</td>
+      <td>ND</td>
+      <td>1-2</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回用户需要在Device侧申请的workspace大小</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody></table>
 
--   **返回值**
+- **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
     
-    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-    <col style="width: 319px">
-    <col style="width: 144px">
-    <col style="width: 671px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr>
-    </thead>
-    
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>计算输入和计算输出是空指针。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161002</td>
-        <td>输入和输出的数据类型不在支持的范围内。</td>
-      </tr>
-      <tr>
-        <td>ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td>561002</td>
-        <td>
-        输入、输出Tensor的shape不在支持的范围内。<br />
-        输入的属性不在支持的范围内。<br />
-        </td>
-      </tr>
-    </tbody></table>
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>计算输入和计算输出是空指针。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161002</td>
+      <td>输入和输出的数据类型不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td>561002</td>
+      <td>
+      输入、输出Tensor的shape不在支持的范围内。<br />
+      输入的属性不在支持的范围内。<br />
+      </td>
+    </tr>
+  </tbody></table>
 
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
@@ -492,45 +492,46 @@ aclnnStatus aclnnMoeInitRoutingV3(
     
 ## aclnnMoeInitRoutingV3
 
--   **参数说明：**
-    <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-    <col style="width: 173px">
-    <col style="width: 112px">
-    <col style="width: 668px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeInitRoutingV3GetWorkspaceSize获取。</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-      </tr>
-      <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
-      </tr>
-    </tbody>
-    </table>
+- **参数说明：**
 
--   **返回值：**
+  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
+  <col style="width: 173px">
+  <col style="width: 112px">
+  <col style="width: 668px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeInitRoutingV3GetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+- **返回值：**
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

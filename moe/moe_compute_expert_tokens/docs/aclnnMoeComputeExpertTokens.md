@@ -15,16 +15,16 @@
 
 ## 功能说明
 
--   接口功能：MoE计算中，通过二分查找的方式查找每个专家处理的最后一行的位置。
--   计算公式：
+- 接口功能：MoE计算中，通过二分查找的方式查找每个专家处理的最后一行的位置。
+- 计算公式：
 
-    $$
-    for\: i\: in\: range(numExperts)
-    $$
+  $$
+  for\: i\: in\: range(numExperts)
+  $$
 
-    $$
-    out_{i}=BinarySearch(sortedExperts, i)
-    $$
+  $$
+  out_{i}=BinarySearch(sortedExperts, i)
+  $$
 
 
 ## 函数原型
@@ -49,136 +49,160 @@ aclnnStatus aclnnMoeComputeExpertTokens(
 
 ## aclnnMoeComputeExpertTokensGetWorkspaceSize
 
--   **参数说明：**
+- **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 187px">
-    <col style="width: 121px">
-    <col style="width: 287px">
-    <col style="width: 387px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 187px">
+  <col style="width: 121px">
+  <col style="width: 287px">
+  <col style="width: 387px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+  <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>sortedExperts</td>
+      <td>输入</td>
+      <td>公式中的sortedExperts，排序后的专家数组。</td>
+      <td>Tensor中的值取值范围是[0, numExperts-1]，shape大小需要小于2**24。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>numExperts</td>
+      <td>输入</td>
+      <td>表示总专家数。</td>
+      <td>需要大于0，但不能超过2048。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>out</td>
+      <td>输出</td>
+      <td>公式中的输出。</td>
+      <td>Shape大小等于专家数。</td>
+      <td>与sortedExperts保持一致。</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  </tbody></table>
+
+- **返回值**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 330px">
+  <col style="width: 140px">
+  <col style="width: 762px">
+  </colgroup>
+  <thead>
     <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-    </tr></thead>
-    <tbody>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
     <tr>
-        <td>sortedExperts</td>
-        <td>输入</td>
-        <td>公式中的sortedExperts，排序后的专家数组。</td>
-        <td>Tensor中的值取值范围是[0, numExperts-1]，shape大小需要小于2**24。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>√</td>
+    <td> ACLNN_ERR_PARAM_NULLPTR </td>
+    <td> 161001 </td>
+    <td>传入的sortedExperts是空指针。</td>
     </tr>
     <tr>
-        <td>numExperts</td>
-        <td>输入</td>
-        <td>表示总专家数。</td>
-        <td>需要大于0，但不能超过2048。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+    <td rowspan="2"> ACLNN_ERR_PARAM_INVALID </td>
+    <td rowspan="2"> 161002 </td>
+    <td>sortedExperts的数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
-        <td>out</td>
-        <td>输出</td>
-        <td>公式中的输出。</td>
-        <td>Shape大小等于专家数。</td>
-        <td>与sortedExperts保持一致。</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>×</td>
+    <td>sortedExperts的format格式不在支持的范围之内。</td>
     </tr>
     <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+    <td> ACLNN_ERR_INNER_TILING_ERROR </td>
+    <td> 561002 </td>
+    <td>sortedExperts和out的shape不等于1D的tensor。</td>
     </tr>
-    <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    </tbody></table>
-
--   **返回值**
-
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
-    第一段接口完成入参校验，出现以下场景时报错：
-
-    <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-    <col style="width: 330px">
-    <col style="width: 140px">
-    <col style="width: 762px">
-    </colgroup>
-    <thead>
-        <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-        <td> ACLNN_ERR_PARAM_NULLPTR </td>
-        <td> 161001 </td>
-        <td>传入的sortedExperts是空指针。</td>
-        </tr>
-        <tr>
-        <td rowspan="2"> ACLNN_ERR_PARAM_INVALID </td>
-        <td rowspan="2"> 161002 </td>
-        <td>sortedExperts的数据类型不在支持的范围之内。</td>
-        </tr>
-        <tr>
-        <td>sortedExperts的format格式不在支持的范围之内。</td>
-        </tr>
-        <tr>
-        <td> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td> 561002 </td>
-        <td>sortedExperts和out的shape不等于1D的tensor。</td>
-        </tr>
-    </tbody></table>
+  </tbody></table>
 
 ## aclnnMoeComputeExpertTokens
 
--   **参数说明**
+- **参数说明**
 
-    <table>
-            <thead>
-                <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
-            </thead>
-            <tbody>
-                <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-                <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnMoeComputeExpertTokensGetWorkspaceSize获取。</td></tr>
-                <tr><td>executor</td><td>输入</td><td> op执行器，包含了算子计算流程。 </td></tr>
-                <tr><td>stream</td><td>输入</td><td> 指定执行任务的Stream。 </td></tr>
-            </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 134px">
+  <col style="width: 844px">
+  </colgroup>
+  <thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace内存地址。</td>
+  </tr>
+  <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeComputeExpertTokensGetWorkspaceSize获取。</td>
+  </tr>
+  <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op执行器，包含了算子计算流程。</td>
+  </tr>
+  <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的Stream。</td>
+  </tr>
+  </tbody>
+  </table>
 
 - **返回值**
   

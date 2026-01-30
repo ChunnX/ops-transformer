@@ -46,7 +46,7 @@ $$
 
 ## 参数说明
 
-<table style="table-layout: auto; width: 100%">
+  <table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
       <th style="white-space: nowrap">参数名</th>

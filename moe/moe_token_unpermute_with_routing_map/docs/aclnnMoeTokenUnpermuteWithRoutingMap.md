@@ -122,236 +122,236 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
   
 ## aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize
   
-  - **参数说明**
-        
-    <table style="undefined;table-layout: fixed; width: 1615px"><colgroup>
-    <col style="width: 221px">
-    <col style="width: 121px">
-    <col style="width: 281px">
-    <col style="width: 281px">
-    <col style="width: 188px">
-    <col style="width: 188px">
-    <col style="width: 188px">
-    <col style="width: 147px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>permutedTokens</td>
-        <td>输入</td>
-        <td>表示输入token。</td>
-        <td>Shape中的capacity表示每个专家能够处理的token个数。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT</td>
-        <td>ND</td>
-        <td>paddedMode为false：(tokens_num * topK_num,  hidden_size），<br>paddedMode为true：(experts_num* capacity,  hidden_size）。</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>sortedIndices</td>
-        <td>输入</td>
-        <td>表示输入输出梯度的映射关系。</td>
-        <td>非droppad模式要求索引取值范围[0，tokens_num * topK_num - 1]，<br>droppad模式索引取值范围[0，tokens_num - 1]。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>非droppad模式：(tokens_num * topK_num)，<br>droppad模式：(experts_num * capacity)。</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>routingMapOptional</td>
-        <td>输入</td>
-        <td>计算公式中的routingMapOptional，代表对应位置的Token是否被对应专家处理。</td>
-        <td>当输入probsOptional为空指针时不需要此输入，应该传入空指针。当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false。</td>
-        <td>INT8、BOOL</td>
-        <td>ND</td>
-        <td>(tokens_num, experts_num)</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>probsOptional</td>
-        <td>输入</td>
-        <td>计算公式中的probsOptional，代表对应位置的Token被对应专家处理后的结果在最终结果中的权重。</td>
-        <td>数据类型与permutedTokens相同或者当permutedTokens是BFLOAT16时probsOptional支持FLOAT。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT</td>
-        <td>ND</td>
-        <td>与routingMapOptional一致。</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>paddedMode</td>
-        <td>输入</td>
-        <td>表示填充模式是否开启。</td>
-        <td>true表示开启paddedMode，false表示关闭paddedMode。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>restoreShapeOptional</td>
-        <td>输入</td>
-        <td>表示unpermutedTokens的shape。</td>
-        <td>size大小为2。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>unpermutedTokens</td>
-        <td>输出</td>
-        <td>正向输出结果，计算公式中的unpermutedTokens。</td>
-        <td>-</td>
-        <td>BFLOAT16、FLOAT16、FLOAT</td>
-        <td>ND</td>
-        <td>(tokens_num, hidden_size)</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>outIndex</td>
-        <td>输出</td>
-        <td>表示输出的索引值，计算公式中的outIndex。</td>
-        <td>当paddedMode为false时，索引取值范围[0，tokens_num * topK_num - 1]。当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>paddedMode为false：(tokens_num * topK_num)，<br>paddedMode为true：(experts_num* capacity)。</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>permuteTokenId</td>
-        <td>输出</td>
-        <td>计算公式中的permuteTokenId。</td>
-        <td>索引取值范围[0，tokens_num - 1]。</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>paddedMode为false：(tokens_num * topK_num)，<br>paddedMode为true：(experts_num* capacity)。</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>permuteProbs</td>
-        <td>输出</td>
-        <td>计算公式中的permuteProbs，表示输出经过排序后的probs。</td>
-        <td>与probsOptional相同。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody></table>
+- **参数说明**
+      
+  <table style="undefined;table-layout: fixed; width: 1615px"><colgroup>
+  <col style="width: 221px">
+  <col style="width: 121px">
+  <col style="width: 281px">
+  <col style="width: 281px">
+  <col style="width: 188px">
+  <col style="width: 188px">
+  <col style="width: 188px">
+  <col style="width: 147px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>permutedTokens</td>
+      <td>输入</td>
+      <td>表示输入token。</td>
+      <td>Shape中的capacity表示每个专家能够处理的token个数。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>ND</td>
+      <td>paddedMode为false：(tokens_num * topK_num,  hidden_size），<br>paddedMode为true：(experts_num* capacity,  hidden_size）。</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>sortedIndices</td>
+      <td>输入</td>
+      <td>表示输入输出梯度的映射关系。</td>
+      <td>非droppad模式要求索引取值范围[0，tokens_num * topK_num - 1]，<br>droppad模式索引取值范围[0，tokens_num - 1]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>非droppad模式：(tokens_num * topK_num)，<br>droppad模式：(experts_num * capacity)。</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>routingMapOptional</td>
+      <td>输入</td>
+      <td>计算公式中的routingMapOptional，代表对应位置的Token是否被对应专家处理。</td>
+      <td>当输入probsOptional为空指针时不需要此输入，应该传入空指针。当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false。</td>
+      <td>INT8、BOOL</td>
+      <td>ND</td>
+      <td>(tokens_num, experts_num)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>probsOptional</td>
+      <td>输入</td>
+      <td>计算公式中的probsOptional，代表对应位置的Token被对应专家处理后的结果在最终结果中的权重。</td>
+      <td>数据类型与permutedTokens相同或者当permutedTokens是BFLOAT16时probsOptional支持FLOAT。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>ND</td>
+      <td>与routingMapOptional一致。</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>paddedMode</td>
+      <td>输入</td>
+      <td>表示填充模式是否开启。</td>
+      <td>true表示开启paddedMode，false表示关闭paddedMode。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>restoreShapeOptional</td>
+      <td>输入</td>
+      <td>表示unpermutedTokens的shape。</td>
+      <td>size大小为2。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>unpermutedTokens</td>
+      <td>输出</td>
+      <td>正向输出结果，计算公式中的unpermutedTokens。</td>
+      <td>-</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>ND</td>
+      <td>(tokens_num, hidden_size)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>outIndex</td>
+      <td>输出</td>
+      <td>表示输出的索引值，计算公式中的outIndex。</td>
+      <td>当paddedMode为false时，索引取值范围[0，tokens_num * topK_num - 1]。当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>paddedMode为false：(tokens_num * topK_num)，<br>paddedMode为true：(experts_num* capacity)。</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>permuteTokenId</td>
+      <td>输出</td>
+      <td>计算公式中的permuteTokenId。</td>
+      <td>索引取值范围[0，tokens_num - 1]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>paddedMode为false：(tokens_num * topK_num)，<br>paddedMode为true：(experts_num* capacity)。</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>permuteProbs</td>
+      <td>输出</td>
+      <td>计算公式中的permuteProbs，表示输出经过排序后的probs。</td>
+      <td>与probsOptional相同。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody></table>
 
-  - **返回值**
+- **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
-    第一段接口完成入参校验，出现以下场景时报错：
-    
-    <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-    <col style="width: 320px">
-    <col style="width: 140px">
-    <col style="width: 880px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td> ACLNN_ERR_PARAM_NULLPTR </td>
-        <td> 161001 </td>
-        <td>必选输入或必选输出的Tensor是空指针。</td>
-      </tr>
-      <tr>
-        <td> ACLNN_ERR_PARAM_INVALID </td>
-        <td> 161002 </td>
-        <td>输入或输出的数据类型不在支持的范围内。</td>
-      </tr>
-      <tr>
-        <td rowspan="4"> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td rowspan="4"> 561002 </td>
-        <td>topK_num > 512。</td>
-      </tr>
-      <tr>
-        <td>topK_num大于experts_num。</td>
-      </tr>
-      <tr>
-        <td>capacity大于tokens_num。</td>
-      </tr>
-      <tr>
-        <td>输入或输出的shape不符合要求。</td>
-      </tr>
-    </tbody></table>
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  
+  第一段接口完成入参校验，出现以下场景时报错：
+  
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 320px">
+  <col style="width: 140px">
+  <col style="width: 880px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td> ACLNN_ERR_PARAM_NULLPTR </td>
+      <td> 161001 </td>
+      <td>必选输入或必选输出的Tensor是空指针。</td>
+    </tr>
+    <tr>
+      <td> ACLNN_ERR_PARAM_INVALID </td>
+      <td> 161002 </td>
+      <td>输入或输出的数据类型不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td rowspan="4"> ACLNN_ERR_INNER_TILING_ERROR </td>
+      <td rowspan="4"> 561002 </td>
+      <td>topK_num > 512。</td>
+    </tr>
+    <tr>
+      <td>topK_num大于experts_num。</td>
+    </tr>
+    <tr>
+      <td>capacity大于tokens_num。</td>
+    </tr>
+    <tr>
+      <td>输入或输出的shape不符合要求。</td>
+    </tr>
+  </tbody></table>
 
 
 ## aclnnMoeTokenUnpermuteWithRoutingMap
 
 
 - **参数说明**
-    <table style="undefined;table-layout: fixed; width: 1244px"><colgroup>
-      <col style="width: 200px">
-      <col style="width: 162px">
-      <col style="width: 882px">
-      </colgroup>
-      <thead>
-      <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      </tr></thead>
-      <tbody>
-      <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-      </tr>
-      <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aaclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize获取。</td>
-      </tr>
-      <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-      </tr>
-      <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-      </tr>
-      </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed; width: 1244px"><colgroup>
+    <col style="width: 200px">
+    <col style="width: 162px">
+    <col style="width: 882px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace大小，由第一段接口aaclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的Stream。</td>
+    </tr>
+    </tbody>
+  </table>
 
 
 - **返回值**
