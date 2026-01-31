@@ -65,6 +65,24 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010201200, FAInfer
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110201200, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000010201203, FAInferTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5000000000110201203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000200100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000210100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000200103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010200100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010200103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000200200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000200203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010200200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010200203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000201100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000211100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000201103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010201100, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010201103, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000201200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000000201203, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010201200, FAInferTilingData)
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_5100000000010201203, FAInferTilingData)
 
 // Test purposes - using old key
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore, IncreFlashAttentionTilingDataV2)
@@ -1268,6 +1286,35 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.qSeqlenList = actualSeqQTnd;
         faInfo.kvSeqlenList = actualSeqKvTnd;
         faInfo.isTilingSink = false;
+        int64_t maxQSeqlen = 0;
+        int64_t minQSeqlen = INT64_MAX;
+        int64_t minKVSeqlen = INT64_MAX;
+        for (int32_t batchIdx = 0; batchIdx < batch; batchIdx++) {
+            int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
+            int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
+            if (faInfo.layout == "TND") {
+                if (batchIdx > 0) {
+                    int64_t prevQSeqlenSum = *(actualSeqQTnd + batchIdx - 1);
+                    qSeqlen = qSeqlen - prevQSeqlenSum;
+                    if (!faInfo.pagedCacheFlag) {
+                        int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
+                        kvSeqlen = kvSeqlen - prevKvSeqlenSum;
+                    }
+                }
+            }
+            if (qSeqlen > maxQSeqlen) {
+                maxQSeqlen = qSeqlen;
+            }
+            if (qSeqlen < minQSeqlen) {
+                minQSeqlen = qSeqlen;
+            }
+            if (kvSeqlen < minKVSeqlen) {
+                minKVSeqlen = kvSeqlen;
+            }
+        }
+        if ((faInfo.embeddingSize <= 128) && (faInfo.batch <= 8) && (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= 128) && (maxQSeqlen <= 16) && (minKVSeqlen >= 1024) && (minQSeqlen > 0)) {
+            faInfo.flashDecodeFlag = true; 
+        }
     } else {
         faInfo.isTilingSink = true;
     }
@@ -1350,8 +1397,17 @@ static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
     faiTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(faiTilingData.GetDataSize());
     faiContext.workspaces[0] = 16U * 1024U * 1024U +
-        static_cast<uint64_t>(fai_tiling.GetCoreNum()) * WORKSPACE_BLOCK_SIZE_DB * 4U * 3U * 4U;
-    context->SetBlockDim(fai_tiling.GetCoreNum());
+        static_cast<uint64_t>(fai_tiling.GetCoreNum()) * WORKSPACE_BLOCK_SIZE_DB * 4U * 3U * 4U + static_cast<uint64_t>(faiTilingData.get_splitLseTotalSize()) + static_cast<uint64_t>(faiTilingData.get_splitOTotalSize());
+    if (faiContext.flashDecodeFlag) {
+        auto needCoreNum = faiTilingData.get_needCoreNum();
+        if (needCoreNum == 0) {
+            context->SetBlockDim(fai_tiling.GetCoreNum());
+        } else {
+            context->SetBlockDim(needCoreNum);
+        }
+    } else {
+        context->SetBlockDim(fai_tiling.GetCoreNum());
+    }
     context->SetTilingKey(fai_tiling.GetTilingKey());
     return ge::GRAPH_SUCCESS;
 }
@@ -1719,10 +1775,10 @@ static ge::graphStatus GetQueryD(const gert::TilingContext *context, const strin
         inputLayoutStr == "NTD_TND") {
         queryD = tempQ->GetStorageShape().GetDim(DIM_2);
     } else if (inputLayoutStr == "BNSD_BSND" || 
-               inputLayoutStr == "BNSD_NBSD"  || 
-               inputLayoutStr == "BNSD"  || 
-               inputLayoutStr == "BSND_NBSD" || 
-               inputLayoutStr == "BSND") {
+            inputLayoutStr == "BNSD_NBSD"  || 
+            inputLayoutStr == "BNSD"  || 
+            inputLayoutStr == "BSND_NBSD" || 
+            inputLayoutStr == "BSND") {
         queryD = tempQ->GetStorageShape().GetDim(DIM_3);
     } else {
         int64_t queryH = tempQ->GetStorageShape().GetDim(DIM_2);
@@ -1958,7 +2014,7 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if ((ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510)) {
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         return TilingFusedInferAttentionScoreV2(context);
     } else {
         return TilingFusedInferAttentionScore(context);

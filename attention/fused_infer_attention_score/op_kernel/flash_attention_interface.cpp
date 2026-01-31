@@ -9,9 +9,10 @@
  */
 
 /*!
- * \file flash_attention_interface.cpp
- * \brief
- */
+* \file flash_attention_interface.cpp
+* \brief
+*/
+
 #include "flash_attention_regular.h"
 using namespace NpuArch;
 
@@ -21,6 +22,7 @@ namespace SplitFuse {
         typename InputDtypeKv = half,
         typename IntermCalcPrec = float,
         bool PagedCacheFlag = false,
+        bool IS_FD = false,
         FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
         FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
         Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
@@ -48,6 +50,8 @@ namespace SplitFuse {
         using LayoutV = layout::RowMajor;
         using ElementS = IntermCalcPrec;
         using LayoutS = layout::RowMajor;
+        using ElementSink = InputDtypeQ;
+        using LayoutSink = layout::RowMajor;
         using ElementP = InputDtypeQ;
         using LayoutP = layout::RowMajor;
         using ElementO = InputDtypeQ;
@@ -67,14 +71,15 @@ namespace SplitFuse {
         using QType = Gemm::GemmType<ElementQ, LayoutQ>;
         using KType = Gemm::GemmType<ElementK, LayoutK>;
         using SType = Gemm::GemmType<ElementS, LayoutS>;
+        using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
         using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                                   QType, KType, SType>;
+                                                QType, KType, SType>;
 
         using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
         using PType = Gemm::GemmType<ElementP, LayoutP>;
         using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
         using EpilogueOnlineSoftmax =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType>;
 
         using L1TileShapePV = GemmShape<128, 128, 256>;
         using L0TileShapePV = GemmShape<128, 128, 128>;
@@ -82,7 +87,7 @@ namespace SplitFuse {
         using VType = Gemm::GemmType<ElementV, LayoutV>;
         using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
         using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                                   PType, VType, OTmpType>;
+                                                PType, VType, OTmpType>;
 
         using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
         using OType = Gemm::GemmType<ElementO, LayoutO>;
@@ -97,11 +102,22 @@ namespace SplitFuse {
         using EpilogueInitOut =
             Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
 
-        using FAInferKernel = FAInferKernel<BlockMmadQK, BlockMmadPV,
+        if constexpr (IS_FD) {
+            using CombineScale = Epilogue::Block::CombineScale<OType, LseType>;
+            using FAInferKernel = FAInferKernel<BlockMmadQK, BlockMmadPV,
+                                                EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
+                                                PagedCacheFlag, maskCategory, inLayout, CombineScale, IS_FD>;
+    
+            FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
+            FAInferKernel flashAttnInfer;
+            flashAttnInfer(params);
+        } else {
+            using FAInferKernel = FAInferKernel<BlockMmadQK, BlockMmadPV,
                                             EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
                                             PagedCacheFlag, maskCategory, inLayout>;
-        FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
-        FAInferKernel flashAttnInfer;
-        flashAttnInfer(params);
+            FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
+            FAInferKernel flashAttnInfer;
+            flashAttnInfer(params);
+        }
     }
 }

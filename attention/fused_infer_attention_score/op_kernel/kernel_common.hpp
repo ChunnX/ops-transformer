@@ -9,9 +9,9 @@
  */
 
 /*!
- * \file kernel_common.hpp
- * \brief
- */
+* \file kernel_common.hpp
+* \brief
+*/
 
 #ifndef KERNEL_COMMON
 #define KERNEL_COMMON
@@ -124,6 +124,11 @@ namespace KernelCommon {
     {
         uint32_t qSBlockTile = Q_TILE_CEIL;
         return qSBlockTile;
+    }
+    __aicore__ inline uint32_t GetKSBlockTile(uint32_t kvSeqlen)
+    {
+        uint32_t kSBlockTile = MAX_KV_STACK_LEN;
+        return kSBlockTile;
     }
 }
 #endif

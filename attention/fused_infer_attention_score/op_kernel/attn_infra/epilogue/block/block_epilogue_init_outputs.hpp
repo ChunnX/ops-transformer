@@ -49,7 +49,10 @@ public:
     static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 16384;
 
     __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    BlockEpilogue() {}
+
+    __aicore__ inline
+    void init(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
         constexpr uint32_t ATTN_OUT_INIT_UB_TENSOR_OFFSET = 0;

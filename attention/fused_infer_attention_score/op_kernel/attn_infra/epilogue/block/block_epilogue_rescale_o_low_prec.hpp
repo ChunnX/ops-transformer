@@ -72,7 +72,10 @@ public:
     static constexpr uint32_t SIZE_OF_16BIT = 2;
 
     __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    BlockEpilogue() {}
+
+    __aicore__ inline
+    void init(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
         constexpr uint32_t LO_UB_TENSOR_OFFSET = 6 * UB_UINT8_BLOCK_SIZE;

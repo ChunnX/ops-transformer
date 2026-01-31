@@ -50,6 +50,7 @@ struct EpilogueAtlasA2InitOutWhenZero {
     static constexpr LseMode LSE_MODE = LSE_MODE_;
 };
 
+
 }  // namespace NpuArch::Epilogue
 
 #endif  // EPILOGUE_DISPATCH_POLICY_HPP
