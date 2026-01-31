@@ -2037,8 +2037,8 @@ bool PromptFlashAttentionTilingV2::CheckPrefix(ContextParamsForPFATiling& contex
         (inputLayout == InputLayout::TND || inputLayout == InputLayout::NTD),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "when TND/NTD is used, system prefix is not supported!"),
         return false);
-    OP_CHECK_IF(enableTensorList, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "when tensorlist is used, system prefix is not supported!"),
+    OP_CHECK_IF(enableTensorList && (queryShapeInfo.s > 1), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "when tensorlist is used and q_s is greater than 1, system prefix is not supported!"),
         return false);
     OP_CHECK_IF(enableIFAMLA || enablePFARope, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "when system prefix is used, rope is not supported!"),
@@ -2333,7 +2333,9 @@ bool PromptFlashAttentionTilingV2::CheckPseShiftTypeAndShape(ContextParamsForPFA
     OP_CHECK_IF(isQKVDDifferent,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Not support pse shift when query and key headdim is not equal to value headdim."),
         return false);    
-
+    OP_CHECK_IF(enableIFAMLA || enablePFAMLA,
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "mla do not suuport pseShift."),
+        return false);
     if (!CheckNonEmptyShapeExceptions(contextKeyParams, pseShiftShape, "pseShift")) {
         return false;
     }
@@ -4104,7 +4106,9 @@ bool PromptFlashAttentionTilingV2::CheckAlibiPseShiftTypeAndShape(ContextParamsF
     OP_CHECK_IF(isQKVDDifferent,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Not support alibi pse when query and key headdim is not equal to value headdim."),
         return false);
-
+    OP_CHECK_IF(enableIFAMLA || enablePFAMLA,
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "mla do not suuport pseShift."),
+        return false);
     if (!CheckNonEmptyShapeExceptions(contextKeyParams, pseShape, "pseShift")) {
         return false;
     }
