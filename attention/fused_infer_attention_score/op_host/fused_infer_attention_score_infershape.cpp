@@ -387,7 +387,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
             if (iter != TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.end()) {
                 outputType = iter->second;
             }else{
-                OP_LOGE("FusedInferAttentionScore", "fia graph mode do not support post quant output data type: %s.", TORCH_DTYPE_ENUM_VALUE_TO_STRING_MAP.at(*outTypePtr));
+                OP_LOGE("FusedInferAttentionScore", "fia graph mode do not support post quant output data type: %s.", TORCH_DTYPE_ENUM_VALUE_TO_STRING_MAP.at(*outTypePtr).c_str());
                 return ge::GRAPH_FAILED;
             }
         }
