@@ -35,8 +35,9 @@ private:
     __aicore__ inline void CopyOutToGm(uint64_t outOffset, uint64_t curBlockNum, uint64_t bshInLoopNum);
 
     __aicore__ inline void ComputeMaxVF(uint32_t curBlockNum);
+    template <bool hasTailRoll = false>
     __aicore__ inline void ComputeOutVF(uint32_t lseUbOffset, uint32_t bshNum, uint16_t bshInLoopNum,
-                                        uint32_t dAlignNum, uint32_t goAlignNum);
+                                        uint32_t dAlignNum, uint32_t goAlignNum, uint16_t unrollLoops);
 
     TPipe *pipe_ = nullptr;
     const AttentionUpdateTilingData *tilingData_;
@@ -101,6 +102,9 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::Process()
         return;
     }
 
+    bool hasTailRoll = tilingData_->sp % UNROLL_NUM;
+    uint16_t unrollLoops = tilingData_->sp / UNROLL_NUM;
+
     // 核内循环，整块数据量
     uint64_t perLoopCount = perCorePerLoopCount_;
     // 核内循环总数
@@ -132,7 +136,11 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::Process()
 
             uint64_t goAlignNum = bshInLoopNum * dAlignNum_;
             CopyGoToUb(goOffset, tilingData_->d, bshInLoopNum, goAlignNum);
-            ComputeOutVF(lseUbOffset, bshAlignNum, bshInLoopNum, dAlignNum_, goAlignNum);
+            if (hasTailRoll) {
+                ComputeOutVF<true>(lseUbOffset, bshAlignNum, bshInLoopNum, dAlignNum_, goAlignNum, unrollLoops);
+            } else {
+                ComputeOutVF<false>(lseUbOffset, bshAlignNum, bshInLoopNum, dAlignNum_, goAlignNum, unrollLoops);
+            }
             CopyOutToGm(goOffset, tilingData_->d, bshInLoopNum);
         }
     }
@@ -251,9 +259,10 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::CopyGoToUb(uint64_t goOff
 }
 
 template <typename goType>
+template <bool hasTailRoll>
 __aicore__ inline void AttentionUpdateWithLse<goType>::ComputeOutVF(uint32_t lseUbOffset, uint32_t bshNum,
                                                                     uint16_t bshInLoopNum, uint32_t dAlignNum,
-                                                                    uint32_t goAlignNum)
+                                                                    uint32_t goAlignNum, uint16_t unrollLoops)
 {
     LocalTensor<goType> sumTensor = outQueue_.template AllocTensor<goType>();
     LocalTensor<float> expTensor = ubTmpBuf_.Get<float>(tilingData_->sp * bshNum);
@@ -269,13 +278,13 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::ComputeOutVF(uint32_t lse
     uint32_t dtypeSize = sizeof(float);
     uint64_t VL = VREG_SIZE / dtypeSize;
     uint16_t vfLoop = Ops::Base::CeilDiv(tilingData_->d, VL);
+    uint16_t unrollTimes = UNROLL_NUM;
 
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<float> vreg1; // 搬入的lse
-        AscendC::MicroAPI::RegTensor<float> vreg2; // 搬入的go
-        AscendC::MicroAPI::RegTensor<float> vreg3; // lse * go的结果
-        AscendC::MicroAPI::RegTensor<float> vreg4; // 求和的结果
+        AscendC::MicroAPI::RegTensor<float> vreg0, vreg1; // 搬入的lse
+        AscendC::MicroAPI::RegTensor<float> vreg2, vreg3; // 搬入的go
+        AscendC::MicroAPI::RegTensor<float> vreg4;        // 求和的结果
 
         AscendC::MicroAPI::MaskReg preg1;
         for (uint16_t i = 0; i < bshInLoopNum; i++) {
@@ -283,12 +292,25 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::ComputeOutVF(uint32_t lse
             for (uint16_t j = 0; j < vfLoop; j++) {
                 preg1 = AscendC::MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(sreg);
                 AscendC::MicroAPI::Duplicate(vreg4, 0, preg1);
-                for (uint16_t k = 0; k < spSize; k++) {
+                for (uint16_t k = 0; k < unrollLoops; k++) {
                     AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
-                        vreg1, expAddr + (k * bshNum + lseUbOffset + i));
-                    ops::LoadOneTensorForDtypeT<goType>(goAddr, vreg2, preg1, k * goAlignNum + i * dAlignNum + j * VL);
-                    AscendC::MicroAPI::Mul(vreg3, vreg1, vreg2, preg1);
-                    AscendC::MicroAPI::Add(vreg4, vreg4, vreg3, preg1);
+                        vreg0, expAddr + (k * unrollTimes * bshNum + lseUbOffset + i));
+                    ops::LoadOneTensorForDtypeT<goType>(goAddr, vreg2, preg1,
+                                                        k * unrollTimes * goAlignNum + i * dAlignNum + j * VL);
+                    AscendC::MicroAPI::MulAddDst(vreg4, vreg0, vreg2, preg1);
+
+                    AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                        vreg1, expAddr + ((k * unrollTimes + 1) * bshNum + lseUbOffset + i));
+                    ops::LoadOneTensorForDtypeT<goType>(goAddr, vreg3, preg1,
+                                                        (k * unrollTimes + 1) * goAlignNum + i * dAlignNum + j * VL);
+                    AscendC::MicroAPI::MulAddDst(vreg4, vreg1, vreg3, preg1);
+                }
+                if constexpr (hasTailRoll) {
+                    AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                        vreg0, expAddr + ((spSize - 1) * bshNum + lseUbOffset + i));
+                    ops::LoadOneTensorForDtypeT<goType>(goAddr, vreg2, preg1,
+                                                        (spSize - 1) * goAlignNum + i * dAlignNum + j * VL);
+                    AscendC::MicroAPI::MulAddDst(vreg4, vreg0, vreg2, preg1);
                 }
                 ops::StoreOneTensorForDtypeT<goType>(sumAddr, vreg4, preg1, i * dAlignNum + j * VL);
             }

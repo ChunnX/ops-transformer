@@ -24,6 +24,7 @@
 namespace AttentionUpdateOpt {
 using namespace AscendC;
 
+static constexpr uint32_t UNROLL_NUM = 2;
 static constexpr uint32_t BUFFER_NUM = 2;
 static constexpr uint32_t UB_BLOCK_SIZE = Ops::Base::GetUbBlockSize();
 static constexpr uint32_t VREG_SIZE = Ops::Base::GetVRegSize();

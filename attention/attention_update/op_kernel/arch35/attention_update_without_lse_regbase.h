@@ -33,8 +33,9 @@ private:
     __aicore__ inline void CopyOut(uint64_t outOffset, uint64_t curBlockNum, uint64_t bshInLoopNum);
 
     __aicore__ inline void ComputeLseMVF(uint32_t curBlockNum);
+    template <bool hasTailRoll = false>
     __aicore__ inline void ComputeOutputVF(uint32_t lseUbOffset, uint32_t bshNum, uint16_t bshInLoopNum,
-                                           uint32_t dAlign, uint32_t goAlign);
+                                           uint32_t dAlign, uint32_t goAlign, uint16_t unrollLoops);
 
     TPipe *pipe_ = nullptr;
     const AttentionUpdateTilingData *tilingData_;
@@ -96,6 +97,9 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::Process()
         return;
     }
 
+    bool hasTailRoll = tilingData_->sp % UNROLL_NUM;
+    uint16_t unrollLoops = tilingData_->sp / UNROLL_NUM;
+
     uint64_t bshUbCount = perCorePerLoopCount_;
     uint64_t bshInUbLoops =
         (blockIdx_ == tilingData_->usedCoreNum - 1) ? tilingData_->lastCoreLoops : tilingData_->perCoreLoops;
@@ -124,7 +128,11 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::Process()
 
             uint64_t goAlign = bshInLoopNum * dAlign_;
             CopyInGo(goOffset, tilingData_->d, bshInLoopNum, goAlign);
-            ComputeOutputVF(lseUbOffset, bshUbAlignNum, bshInLoopNum, dAlign_, goAlign);
+            if (hasTailRoll) {
+                ComputeOutputVF<true>(lseUbOffset, bshUbAlignNum, bshInLoopNum, dAlign_, goAlign, unrollLoops);
+            } else {
+                ComputeOutputVF<false>(lseUbOffset, bshUbAlignNum, bshInLoopNum, dAlign_, goAlign, unrollLoops);
+            }
             CopyOut(goOffset, tilingData_->d, bshInLoopNum);
         }
     }
@@ -182,7 +190,7 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeLseMVF(uint32_t
         for (uint16_t i = 0; i < vfLoop; i++) {
             preg1 = AscendC::MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(sreg);
             AscendC::MicroAPI::DataCopy<float>(vregMax, lseUbAddr + i * VL);
-            for (uint16_t j = 0; j < spSize; j++) {
+            for (uint16_t j = 1; j < spSize; j++) {
                 AscendC::MicroAPI::DataCopy<float>(vregLse, lseUbAddr + i * VL + j * blockStride);
                 AscendC::MicroAPI::Max<float>(vregMax, vregMax, vregLse, preg1);
             }
@@ -229,9 +237,10 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::CopyInGo(uint64_t goOf
 }
 
 template <typename goType>
+template <bool hasTailRoll>
 __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeOutputVF(uint32_t lseUbOffset, uint32_t bshNum,
                                                                           uint16_t bshInLoopNum, uint32_t dAlign,
-                                                                          uint32_t goAlign)
+                                                                          uint32_t goAlign, uint16_t unrollLoops)
 {
     LocalTensor<goType> sumUbTensor = outQue_.template AllocTensor<goType>();
     LocalTensor<float> expUbTensor = ubTmpBuf_.Get<float>(tilingData_->sp * bshNum);
@@ -246,13 +255,13 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeOutputVF(uint32
 
     uint64_t VL = VREG_SIZE / sizeof(float);
     uint16_t vfLoop = Ops::Base::CeilDiv(tilingData_->d, VL);
+    uint16_t unrollTimes = UNROLL_NUM;
 
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<float> vregLse;    // 搬入的lse
-        AscendC::MicroAPI::RegTensor<float> vregGo;     // 搬入的go
-        AscendC::MicroAPI::RegTensor<float> vregMulRes; // lse * go的结果
-        AscendC::MicroAPI::RegTensor<float> vregSumRes; // 求和的结果
+        AscendC::MicroAPI::RegTensor<float> vregLse0, vregLse1; // 搬入的lse
+        AscendC::MicroAPI::RegTensor<float> vregGo0, vregGo1;   // 搬入的go
+        AscendC::MicroAPI::RegTensor<float> vregSumRes;         // 求和的结果
 
         AscendC::MicroAPI::MaskReg preg1;
         for (uint16_t i = 0; i < bshInLoopNum; i++) {
@@ -260,12 +269,25 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeOutputVF(uint32
             for (uint16_t j = 0; j < vfLoop; j++) {
                 preg1 = AscendC::MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(sreg);
                 AscendC::MicroAPI::Duplicate(vregSumRes, 0, preg1);
-                for (uint16_t k = 0; k < spSize; k++) {
+                for (uint16_t k = 0; k < unrollLoops; k++) {
                     AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
-                        vregLse, expUbAddr + (k * bshNum + lseUbOffset + i));
-                    ops::LoadOneTensorForDtypeT<goType>(goUbAddr, vregGo, preg1, k * goAlign + i * dAlign + j * VL);
-                    AscendC::MicroAPI::Mul(vregMulRes, vregLse, vregGo, preg1);
-                    AscendC::MicroAPI::Add(vregSumRes, vregSumRes, vregMulRes, preg1);
+                        vregLse0, expUbAddr + (k * unrollTimes * bshNum + lseUbOffset + i));
+                    ops::LoadOneTensorForDtypeT<goType>(goUbAddr, vregGo0, preg1,
+                                                        k * unrollTimes * goAlign + i * dAlign + j * VL);
+                    AscendC::MicroAPI::MulAddDst(vregSumRes, vregLse0, vregGo0, preg1);
+
+                    AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                        vregLse1, expUbAddr + ((k * unrollTimes + 1) * bshNum + lseUbOffset + i));
+                    ops::LoadOneTensorForDtypeT<goType>(goUbAddr, vregGo1, preg1,
+                                                        (k * unrollTimes + 1) * goAlign + i * dAlign + j * VL);
+                    AscendC::MicroAPI::MulAddDst(vregSumRes, vregLse1, vregGo1, preg1);
+                }
+                if constexpr (hasTailRoll) {
+                    AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                        vregLse0, expUbAddr + ((spSize - 1) * bshNum + lseUbOffset + i));
+                    ops::LoadOneTensorForDtypeT<goType>(goUbAddr, vregGo0, preg1,
+                                                        (spSize - 1) * goAlign + i * dAlign + j * VL);
+                    AscendC::MicroAPI::MulAddDst(vregSumRes, vregLse0, vregGo0, preg1);
                 }
                 ops::StoreOneTensorForDtypeT<goType>(sumUbAddr, vregSumRes, preg1, i * dAlign + j * VL);
             }
