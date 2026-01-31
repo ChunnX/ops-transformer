@@ -71,10 +71,8 @@ FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>::InitUni
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
     }
 
-    this->constInfo.isBSNDOut = this->sharedParams.isBSNDOut;
-    this->constInfo.isTNDOut = this->sharedParams.isTNDOut;
-    this->constInfo.isNTDOut = this->sharedParams.isNTDOut;
-    if (this->constInfo.isBSNDOut == 1) {
+    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
+    if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND)) {
         this->constInfo.attentionOutStride =
             (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
     }

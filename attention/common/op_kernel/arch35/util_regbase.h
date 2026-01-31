@@ -131,6 +131,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     // IFA_MLA
     int64_t actualSeqLengthOfMlaPerBatch = 0; // 在mla场景下Q的actualSeqLength
     int64_t nextTokensOfMlaPerBatch = 0;   // 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效
+    int64_t preTokensOfMlaPerBatch = 0;   // 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效
 
     // prefix
     int64_t prefixCoreOffset = 0;       // 保存当前循环，prefix在bn维度的地址偏移
@@ -176,6 +177,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t b1SSOffsetAlign; /* TND场景s2 16对齐之后，前面batch的s1*s2之和 */ \
     int64_t deScaleKvOffset; /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, 1, Ceil(S2, 128), 1] */ \
     int64_t nextTokensOfMlaPerBatch = 0; /* 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效 */ \
+    int64_t preTokensOfMlaPerBatch = 0; /* 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效 */ \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \
@@ -333,10 +335,7 @@ struct RunInfo<false> {
     uint32_t blockSize; \
     uint32_t paLayoutType; \
     uint32_t paBlockNumSum; \
-    /* LAYOUT是否为BNSD_BSND */ \
-    uint32_t isBSNDOut; \
-    uint32_t isTNDOut; \
-    uint32_t isNTDOut; \
+    uint32_t transposeLayout; \
     /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */ \
     /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */ \
     uint32_t headNumRatio; \
@@ -454,14 +453,12 @@ struct CVSharedParams<true, false> {
     uint32_t isActualSeqLengthsKVNull : 1;
     uint32_t isQHasLeftPadding : 1;
     uint32_t isKVHasLeftPadding : 1;
-    uint32_t isBSNDOut : 1;
-    uint32_t isTNDOut : 1;
-    uint32_t isNTDOut : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
     uint32_t headNumRatio : 20;
 
+    uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
     uint32_t actualSeqLengthsKVSize;
     uint32_t splitKVNum;
@@ -489,14 +486,12 @@ struct CVSharedParams<true, true> {
     uint32_t isActualSeqLengthsKVNull : 1;
     uint32_t isQHasLeftPadding : 1;
     uint32_t isKVHasLeftPadding : 1;
-    uint32_t isBSNDOut : 1;
-    uint32_t isTNDOut : 1;
-    uint32_t isNTDOut : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
     uint32_t headNumRatio : 20;
 
+    uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
     uint32_t actualSeqLengthsKVSize;
     uint32_t splitKVNum;

@@ -180,9 +180,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedParams(
         sharedParams.isPostQuantPerChnl = inputParamsRegbase.isPostQuantPerChnl;
         sharedParams.isPostQuantBF16 = inputParamsRegbase.isPostQuantBF16;
     }
-    sharedParams.isBSNDOut = inputParamsRegbase.isBSNDOut;
-    sharedParams.isTNDOut = inputParamsRegbase.isTNDOut;
-    sharedParams.isNTDOut = inputParamsRegbase.isNTDOut;
+    sharedParams.transposeLayout = inputParamsRegbase.transposeLayout;
     sharedParams.fromFused = inputParamsRegbase.fromFused;
     sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
     sharedParams.headNumRatio = inputParamsRegbase.headNumRatio;
@@ -537,7 +535,25 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
             intriParams1.dstStride = 0;
         }
     }
-    DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
+    if (isMlaNoQuant && layout == LayOutTypeEnum::LAYOUT_BSH && constInfo.gSize < 32) {
+        int64_t currRowOffset = runInfo.sOuterOffset % constInfo.n2G;
+        int64_t remainDataLen = runInfo.halfS1RealSize;
+        int64_t dealDataLen = 0;
+        int64_t ubLseOffset = 0;
+        int64_t tmpSoftmaxLseOffset = runInfo.softmaxLseOffset;
+        int64_t oSoftmaxLseOffset = tmpSoftmaxLseOffset - constInfo.s1Size * (runInfo.sOuterOffset % constInfo.gSize);
+        while (remainDataLen > 0) {
+            dealDataLen = currRowOffset + remainDataLen < constInfo.n2G ? remainDataLen : constInfo.n2G - currRowOffset;
+            intriParams1.blockCount = dealDataLen;
+            DataCopyPad(this->softmaxLseGm[tmpSoftmaxLseOffset], lseUb[ubLseOffset], intriParams1);
+            remainDataLen -= dealDataLen;
+            ubLseOffset += (dealDataLen * 8);
+            currRowOffset = (currRowOffset + dealDataLen) % constInfo.n2G;
+            tmpSoftmaxLseOffset = ++oSoftmaxLseOffset;
+        }
+    } else {
+        DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
+    }
     softmaxLseQueue.FreeTensor(lseUb);
 }
 

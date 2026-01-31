@@ -71,12 +71,14 @@ FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockType>::InitUniqueConstInfo
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
     }
 
-    this->constInfo.isBSNDOut = this->sharedParams.isBSNDOut;
-    this->constInfo.isTNDOut = this->sharedParams.isTNDOut;
-    this->constInfo.isNTDOut = this->sharedParams.isNTDOut;
-    if (this->constInfo.isBSNDOut == 1 || this->constInfo.isTNDOut == 1) {
+    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
+    if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
+        this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND)) {
         this->constInfo.attentionOutStride =
             (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
+    } else if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_BNSD) ||
+        this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD)) {
+        this->constInfo.attentionOutStride = 0;
     }
 
     // prefix

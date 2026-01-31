@@ -373,9 +373,8 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         this->constInfo.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
     }
 
-    this->constInfo.isBSNDOut = inputParamsRegbase.isBSNDOut;
-    this->constInfo.isTNDOut = inputParamsRegbase.isTNDOut;
-    if (this->constInfo.isBSNDOut == 1) {
+    this->constInfo.transposeLayout = inputParamsRegbase.transposeLayout;
+    if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND)) {
         this->constInfo.attentionOutStride =
             (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
     }

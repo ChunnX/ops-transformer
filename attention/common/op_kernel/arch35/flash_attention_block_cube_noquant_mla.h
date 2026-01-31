@@ -339,12 +339,6 @@ __aicore__ inline int64_t FABlockCubeNoquantMla<TEMPLATE_ARGS>::GetQueryRopeOffs
             s1OffsetRope = runInfo.s1oIdx * constInfo.s1BaseDR;
             n2OffsetRope = runInfo.n2oIdx * constInfo.gDR;
             gOffsetRope = runInfo.goIdx * constInfo.dSizeRope;
-        } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_SBH) {
-            // SBH / SBNGD
-            s1OffsetRope = runInfo.s1oIdx * constInfo.s1BaseBN2GDR;
-            bOffsetRope = runInfo.boIdx * constInfo.n2GDR;
-            n2OffsetRope = runInfo.n2oIdx * constInfo.gDR;
-            gOffsetRope = runInfo.goIdx * constInfo.dSizeRope;
         } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BNSD) {
             // bnsd
             bOffsetRope = runInfo.boIdx * constInfo.n2GS1DR;
@@ -371,25 +365,19 @@ __aicore__ inline int64_t FABlockCubeNoquantMla<TEMPLATE_ARGS>::GetKeyRopeOffset
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // (BS)ND
         bOffsetRope = runInfo.s2SizeAcc * constInfo.n2DR;
-        s2OffsetRope = runInfo.s2StartIdx * constInfo.n2DR + (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) * constInfo.s2BaseN2DR;
+        s2OffsetRope = runInfo.s2StartIdx * constInfo.n2DR + runInfo.s2LoopCount * constInfo.s2BaseN2DR;
         n2OffsetRope = runInfo.n2oIdx * constInfo.dSizeRope;
     } else {
         if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BSH) {
             // BSH/BSND
             bOffsetRope = runInfo.boIdx * constInfo.n2S2DR;
-            s2OffsetRope = runInfo.s2StartIdx * constInfo.n2DR + (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) * constInfo.s2BaseN2DR;
-            n2OffsetRope = runInfo.n2oIdx * constInfo.dSizeRope;
-        } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_SBH) {
-            // SBH / SBND
-            s2OffsetRope = runInfo.s2StartIdx * constInfo.bN2DR + (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) * constInfo.s2BaseBN2DR;
-            bOffsetRope = runInfo.boIdx * constInfo.n2DR;
+            s2OffsetRope = runInfo.s2StartIdx * constInfo.n2DR + runInfo.s2LoopCount * constInfo.s2BaseN2DR;
             n2OffsetRope = runInfo.n2oIdx * constInfo.dSizeRope;
         } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BNSD) {
             // BNSD
             bOffsetRope = runInfo.boIdx * constInfo.n2S2DR;
             n2OffsetRope = runInfo.n2oIdx * constInfo.s2DR;
-            s2OffsetRope = runInfo.s2StartIdx * constInfo.dSizeRope + 
-                (runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) * constInfo.s2BaseDR;
+            s2OffsetRope = runInfo.s2StartIdx * constInfo.dSizeRope + runInfo.s2LoopCount * constInfo.s2BaseDR;
         }
     }
     return bOffsetRope + n2OffsetRope + s2OffsetRope;
