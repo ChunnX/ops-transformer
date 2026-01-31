@@ -271,7 +271,7 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
             MatmulAllReduceElementWiseAddKernel<float, YType>(cGM_, addGM_, cOffset / sizeof(float),
                                                               tilingData_->param.addX3UbCnt, tPipe_);
             addGM_ += addOffset;
-            SyncAll();
+            SyncAll<false>();
         }
         quantOp.Init(cGM_, all2allInGM_, mmTiling->matmulTiling.M, mmTiling->matmulTiling.N, oneLineSCnt, coreNum_,
                      maxProcRowsQuant_, true, tPipe_);
@@ -283,6 +283,7 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
         }
         if (isSendTileFlag_) {
             StepOneTurn(mmOp, quantOp, mixedOp, mmTiling, curPadM, isTail, i == 0);
+            SyncAll<false>();
         }
         isSendTileFlag_ = true;
         aGM_ += aOffset;

@@ -272,7 +272,7 @@ __aicore__ inline void MatmulAllReduceQuantPertileCommFp8<XType, WType, YType, M
             MatmulAllReduceElementWiseAddKernel<float, YType>(cGM_, addGM_, cOffset / sizeof(float),
                                                               tilingData_->param.addX3UbCnt, tPipe_);
             addGM_ += addOffset;
-            SyncAll();
+            SyncAll<false>();
         }
         // matmul, add和quant独立进行，分别分核，在大shape场景性能可能更好。为适配其他场景可考虑将三者做一个mix版本
         quantOp.Init(cGM_, all2allInGM_, mmTiling->matmulTiling.M, mmTiling->matmulTiling.N, oneLineSCnt, coreNum_,
@@ -285,6 +285,7 @@ __aicore__ inline void MatmulAllReduceQuantPertileCommFp8<XType, WType, YType, M
         }
         if (isSendTileFlag_) {
             StepOneTurn(mmOp, quantOp, mmTiling, curPadM, isTail, i == 0);
+            SyncAll<false>();
         }
         isSendTileFlag_ = true;
         aGM_ += aOffset;
