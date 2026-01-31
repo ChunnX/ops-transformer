@@ -229,9 +229,21 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
                 isMixed = true;
             }
     }
-    // 空Tensor处理
-    if (permutedTokens->IsEmpty() || sortedIndices->IsEmpty() ) {
+     // 空Tensor处理
+    if (sortedIndices->IsEmpty() || (paddedMode == false && permutedTokens->IsEmpty())) {
         *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+        const aclTensor* unpermutedTokensZero = l0op::ZerosLike(unpermutedTokens, uniqueExecutor.get());
+        auto unpermutedTokensResult = l0op::ViewCopy(unpermutedTokensZero, unpermutedTokens, uniqueExecutor.get());
+        CHECK_RET(unpermutedTokensResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        const aclTensor* outIndexZero = l0op::ZerosLike(outIndex, uniqueExecutor.get());
+        auto outIndexResult = l0op::ViewCopy(outIndexZero, outIndex, uniqueExecutor.get());
+        CHECK_RET(outIndexResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        const aclTensor* permuteTokenIdZero = l0op::ZerosLike(permuteTokenId, uniqueExecutor.get());
+        auto permuteTokenIdResult = l0op::ViewCopy(permuteTokenIdZero, permuteTokenId, uniqueExecutor.get());
+        CHECK_RET(permuteTokenIdResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        const aclTensor* permuteProbsZero = l0op::ZerosLike(permuteProbs, uniqueExecutor.get());
+        auto permuteProbsResult = l0op::ViewCopy(permuteProbsZero, permuteProbs, uniqueExecutor.get());
+        CHECK_RET(permuteProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
     }
@@ -242,7 +254,6 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
     CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    //yqw
     const aclTensor *routingMapOptionalContiguous = nullptr;
     if (routingMapOptional != nullptr){
         routingMapOptionalContiguous = l0op::Contiguous(routingMapOptional, uniqueExecutor.get());
@@ -257,14 +268,16 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
         permuteprob = l0op::MoeTokenUnpermuteWithRoutingMap(permuteTokensContiguous, sortedIndicesContiguous, routingMapOptionalContiguous, probsOptionalContiguous, 
                                                             paddedMode, restoreShapeOptional, uniqueExecutor.get()); //传参
         if(paddedMode == true){
-            int64_t tensorSize = static_cast<int64_t>(permuteTokensContiguous->GetViewShape().GetDimNum());
-            std::vector<int64_t> tensorShape(2);
-            tensorShape[0] = (permuteTokensContiguous->GetViewShape())[0];
-            tensorShape[1] = 1;
-            auto outShape = uniqueExecutor->AllocIntArray(tensorShape.data(), tensorSize);
-            auto permuteprobReshape = l0op::Reshape(std::get<3>(permuteprob), outShape, uniqueExecutor.get());
-            CHECK_RET(permuteprobReshape != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            source = l0op::Mul(permuteTokensContiguous, permuteprobReshape, uniqueExecutor.get());
+            if(!permutedTokens->IsEmpty()){
+                int64_t tensorSize = static_cast<int64_t>(permuteTokensContiguous->GetViewShape().GetDimNum());
+                std::vector<int64_t> tensorShape(2);
+                tensorShape[0] = (permuteTokensContiguous->GetViewShape())[0];
+                tensorShape[1] = 1;
+                auto outShape = uniqueExecutor->AllocIntArray(tensorShape.data(), tensorSize);
+                auto permuteprobReshape = l0op::Reshape(std::get<3>(permuteprob), outShape, uniqueExecutor.get());
+                CHECK_RET(permuteprobReshape != nullptr, ACLNN_ERR_INNER_NULLPTR);
+                source = l0op::Mul(permuteTokensContiguous, permuteprobReshape, uniqueExecutor.get());
+            }
         }     
     } else {
         if (paddedMode == false){
@@ -302,32 +315,37 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
         auto sortValuesI32 = uniqueExecutor.get()->CreateView(sortValues, sortedIndicesContiguous->GetViewShape(),
                                                                 sortValues->GetViewOffset());
         ViewDataType(sortValuesI32, op::DataType::DT_INT32);
-        // 当设备类型为A2或A3且index为int32类型时，切为InplaceIndexAddWithSorted算子
-        bool useNewOp = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
-                         GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) &&
-                         unpermutedTokens->GetViewShape().GetDim(0) < MAX_SORT_SHAPE_DIM &&
-                        (unpermutedTokensOut->GetDataType() == op::DataType::DT_BF16 || unpermutedTokensOut->GetDataType() == op::DataType::DT_FLOAT16);
-        #ifdef BUILD_OPEN_PROJECT_API
-            if (useNewOp) {
-                indexAddRes =
-                    l0op::MoeInplaceIndexAddWithSorted(unpermutedTokensOut, 0, sortValuesI32, sortIndex,
+        if(!permutedTokens->IsEmpty()){
+            // 当设备类型为A2或A3且index为int32类型时，切为InplaceIndexAddWithSorted算子
+            bool useNewOp = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
+                            GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) &&
+                            unpermutedTokens->GetViewShape().GetDim(0) < MAX_SORT_SHAPE_DIM &&
+                            (unpermutedTokensOut->GetDataType() == op::DataType::DT_BF16 || unpermutedTokensOut->GetDataType() == op::DataType::DT_FLOAT16);
+            #ifdef BUILD_OPEN_PROJECT_API
+                if (useNewOp) {
+                    indexAddRes =
+                        l0op::MoeInplaceIndexAddWithSorted(unpermutedTokensOut, 0, sortValuesI32, sortIndex,
+                                                        source, nullptr, uniqueExecutor.get());
+                } else {
+                    indexAddRes =
+                        l0op::MoeInplaceIndexAddAiCore(unpermutedTokensOut, 0, sortedIndicesContiguous,
                                                     source, nullptr, uniqueExecutor.get());
-            } else {
-                indexAddRes =
-                    l0op::MoeInplaceIndexAddAiCore(unpermutedTokensOut, 0, sortedIndicesContiguous,
-                                                source, nullptr, uniqueExecutor.get());
-            }
-        #else
-            if (useNewOp) {
-                indexAddRes =
-                    l0op::InplaceIndexAddWithSorted(unpermutedTokensOut, 0, sortValuesI32, sortIndex,
+                }
+            #else
+                if (useNewOp) {
+                    indexAddRes =
+                        l0op::InplaceIndexAddWithSorted(unpermutedTokensOut, 0, sortValuesI32, sortIndex,
+                                                        source, nullptr, uniqueExecutor.get());
+                } else {
+                    indexAddRes =
+                        l0op::InplaceIndexAddAiCore(unpermutedTokensOut, 0, sortedIndicesContiguous,
                                                     source, nullptr, uniqueExecutor.get());
-            } else {
-                indexAddRes =
-                    l0op::InplaceIndexAddAiCore(unpermutedTokensOut, 0, sortedIndicesContiguous,
-                                                source, nullptr, uniqueExecutor.get());
-            }
-        #endif
+                }
+            #endif
+        } else {
+            indexAddRes = unpermutedTokensOut; // unpermutedTokensOut 已经是 zerosLike 得到的正确形状的空张量
+            OP_LOGD("Skipping InplaceIndexAdd due to empty tensor (hidden_size==0).\n");
+        }
 
         CHECK_RET(indexAddRes != nullptr, ACLNN_ERR_INNER_NULLPTR);
         // 固定写法，将计算结果拷贝到输出out上，out可能是非连续的tensor
