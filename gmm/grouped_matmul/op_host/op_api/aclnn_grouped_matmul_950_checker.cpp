@@ -444,13 +444,13 @@ aclnnStatus AclnnGroupedMatmul91095Checker<T>::CheckGroupedMatmulMxScaleTranspos
     bool transposePerTokenScale = IsTransposeForMxShape(GetInputTensor(gmmParams_.perTokenScaleOptional));
     if (!IsSpecialMXCase(gmmParams_.scaleOptional)) {
         CHECK_COND(transposeScale == gmmParams_.transposeWeight, ACLNN_ERR_PARAM_INVALID,
-                   "The transposition of %s/%s should be equal, but actual transpositions are %s/%s.",
+                   "The transposition of %s/%s should be equal, but actual transpositions are %s/%s in mx case.",
                    scaleName_.c_str(), weightName_.c_str(), transposeScale ? "true" : "false",
                    gmmParams_.transposeWeight ? "true" : "false");
     }
     if (!IsSpecialMXCase(gmmParams_.perTokenScaleOptional)) {
         CHECK_COND(transposePerTokenScale == gmmParams_.transposeX, ACLNN_ERR_PARAM_INVALID,
-                   "The transposition of %s/%s should be equal, but actual transpositions are %s/%s.",
+                   "The transposition of %s/%s should be equal, but actual transpositions are %s/%s in mx case.",
                    perTokenScaleName_.c_str(), xName_.c_str(), transposePerTokenScale ? "true" : "false",
                    gmmParams_.transposeX ? "true" : "false");
     }
@@ -468,12 +468,12 @@ aclnnStatus AclnnGroupedMatmul91095Checker<T>::CheckGroupedMatmulMxfp8() const
     if (gmmParams_.groupType == SPLIT_M) {
         CHECK_COND(!gmmParams_.transposeX, ACLNN_ERR_PARAM_INVALID,
                    "When groupType is 0 (split m), the transposition of X only support false, but actual \
-tranposition is %s.",
+tranposition is %s in mx case.",
                    gmmParams_.transposeX ? "true" : "false");
     } else if (gmmParams_.groupType == SPLIT_K) {
         CHECK_COND(!gmmParams_.transposeWeight && gmmParams_.transposeX, ACLNN_ERR_PARAM_INVALID,
                    "When groupType is 2 (split K), the transposition of %s/%s only support true/false, but actual \
-transpositions are %s/%s.",
+transpositions are %s/%s in mx case.",
                    xName_.c_str(), weightName_.c_str(), gmmParams_.transposeX ? "true" : "false",
                    gmmParams_.transposeWeight ? "true" : "false");
     }
@@ -495,7 +495,7 @@ aclnnStatus AclnnGroupedMatmul91095Checker<T>::CheckGroupedMatmulMxfp4() const
                "CheckGroupedMatmulMxDtype failed");
     CHECK_COND(!gmmParams_.transposeX, ACLNN_ERR_PARAM_INVALID,
                "When groupType is 0 (split m), the transposition of %s only support false, but actual \
-tranposition is %s.",
+tranposition is %s in mxfp4.",
                xName_.c_str(), gmmParams_.transposeX ? "true" : "false");
     CHECK_COND(CheckGroupedMatmulMxScaleTranspose() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "CheckGroupedMatmulMxScaleTranspose failed");
@@ -870,11 +870,11 @@ aclnnStatus AclnnGroupedMatmul91095Checker<T>::CheckFp8Hif8QuantParams() const
     DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
     if (scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_INT64) {
         CHECK_COND(gmmParams_.groupType == SPLIT_M, ACLNN_ERR_PARAM_INVALID,
-                   "In float8/hifloat8 case, when the %s dtype is uint64 or int64, only groupType 0 (split M) is supported.",
+                   "In float8/hifloat8 quant case, when the %s dtype is uint64 or int64, only groupType 0 (split M) is supported.",
                    scaleName_.c_str());
     } else {
         CHECK_COND(gmmParams_.groupType != SPLIT_N, ACLNN_ERR_PARAM_INVALID,
-                   "In float8/hifloat8 case, when the %s dtype is float32, only groupType 0 \
+                   "In float8/hifloat8 quant case, when the %s dtype is float32, only groupType 0 \
 (split M) and  groupType 2 (split K) are supported.",
                    scaleName_.c_str());
     }
@@ -882,11 +882,11 @@ aclnnStatus AclnnGroupedMatmul91095Checker<T>::CheckFp8Hif8QuantParams() const
     if (gmmParams_.perTokenScaleOptional != nullptr) {
         DataType perTokenScaleDtype = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetDataType();
         CHECK_COND(perTokenScaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-                   "The %s dtype should be float32 in float8/hifloat8 case, but actual dtype is %s",
+                   "The %s dtype should be float32 in float8/hifloat8 quant case, but actual dtype is %s",
                    perTokenScaleName_.c_str(), op::ToString(perTokenScaleDtype).GetString());
         CHECK_COND(scaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
                    "The %s dtype should be float32 when %s is not nullptr in \
-float8/hifloat8 case, but actual dtype is %s",
+float8/hifloat8 quant case, but actual dtype is %s",
                    scaleName_.c_str(), perTokenScaleName_.c_str(), op::ToString(scaleDtype).GetString());
     }
     DataType yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
@@ -962,14 +962,14 @@ aclnnStatus AclnnGroupedMatmul91095Checker<T>::CheckGroupedMatmul91095() const
         DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
         if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
             CHECK_COND(gmmParams_.groupType == SPLIT_M, ACLNN_ERR_PARAM_INVALID,
-                       "Int8 case only supports groupType 0 (split M), but actual groupType is %ld",
+                       "In int8 quant case only supports groupType 0 (split M), but actual groupType is %ld",
                        gmmParams_.groupType);
             return CheckInt8QuantParams();
         } else if (xDtype == DataType::DT_HIFLOAT8 && weightDtype == DataType::DT_HIFLOAT8) {
             CHECK_COND(scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_FLOAT ||
                            scaleDtype == DataType::DT_INT64,
                        ACLNN_ERR_PARAM_INVALID,
-                       "With hifloat8 inputs, scale dtype should be uint64, int64 or float32, but actual dtype is %s",
+                       "In hifloat8 quant case, scale dtype should be uint64, int64 or float32, but actual dtype is %s",
                        op::ToString(scaleDtype).GetString());
             return CheckFp8Hif8QuantParams();
         } else if ((xDtype == DataType::DT_FLOAT8_E4M3FN || xDtype == DataType::DT_FLOAT8_E5M2) &&
