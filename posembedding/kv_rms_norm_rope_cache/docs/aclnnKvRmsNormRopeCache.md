@@ -109,13 +109,13 @@ aclnnStatus aclnnKvRmsNormRopeCache(
   * gamma(aclTensor\*，计算输入)：必选参数，公式中用于rms_norm计算的输入数据。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为1维[Dv,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型与输入kv一致。
   * cos(aclTensor\*，计算输入)：必选参数，公式中用于RoPE计算的输入数据，对输入张量Dk进行余弦变换，Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型与输入kv一致。
   * sin(aclTensor\*，计算输入)：必选参数，公式中用于RoPE计算的输入数据，对输入张量Dk进行正弦变换。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，与cos的shape保持一致。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型与输入kv一致。
-  * index(aclTensor\*，计算输入)：必选参数，用于指定写入cache的具体索引位置，当index的value数值为-1时，代表跳过更新。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]；当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]；当cacheModeOptional为PA_BLK_BSND、PA_BLK_NZ时，shape为1维[Bkv\*ceil_div(Skv,BlockSize)]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持INT64。 
-  * kCacheRef(aclTensor\*，计算输入/输出)：必选参数，提前申请的cache，输入输出同地址复用。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]；当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型与输入kv一致或者INT8。
-  * ckvCacheRef(aclTensor\*，计算输入/输出)：必选参数，提前申请的cache，输入输出同地址复用。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]；当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型与输入kv一致或者INT8。
-  * kRopeScaleOptional(aclTensor\*，计算输入)：可选参数，当kCacheRef数据类型为INT8时需要此输入参数。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
-  * ckvScaleOptional(aclTensor\*，计算输入)：可选参数，当ckvCacheRef数据类型为INT8时需要此输入参数。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
-  * kRopeOffsetOptional(aclTensor\*，计算输入)：可选参数。当kCacheRef数据类型为INT8且对应的kRopeScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
-  * cKvOffsetOptional(aclTensor\*，计算输入)：可选参数，当ckvCacheRef数据类型为INT8且对应的ckvScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
+  * index(aclTensor\*，计算输入)：必选参数，用于指定写入cache的具体索引位置，当index的value数值为-1时，代表跳过更新。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]；当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]；当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv\*ceil_div(Skv,BlockSize)]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持INT64。 
+  * kCacheRef(aclTensor\*，计算输入/输出)：必选参数，提前申请的cache，输入输出同地址复用。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]；当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。非量化场景下，数据类型与输入kv一致，量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+  * ckvCacheRef(aclTensor\*，计算输入/输出)：必选参数，提前申请的cache，输入输出同地址复用。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]；当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。非量化场景下，数据类型与输入kv一致，量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+  * kRopeScaleOptional(aclTensor\*，计算输入)：可选参数，当kCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
+  * ckvScaleOptional(aclTensor\*，计算输入)：可选参数，当ckvCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
+  * kRopeOffsetOptional(aclTensor\*，计算输入)：可选参数。当kCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的kRopeScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
+  * cKvOffsetOptional(aclTensor\*，计算输入)：可选参数，当ckvCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的ckvScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。Device侧的aclTensor，支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)。shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。数据类型支持FLOAT32。
   * epsilon(double，输入)：必选参数，rms_norm计算防止除0。float类型浮点数。建议设为1e-5。
   * cacheModeOptional(char\*，输入)：必选参数，cache格式的选择标记。char\*类型。类型有Norm、PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ，建议设为Norm。
   * isOutputKv(bool，输入)：必选参数，kRopeOut和cKvOut输出控制标记。bool类型。当isOutputKv为true时，表示需输出kRopeOut和cKvOut。建议设为false。
@@ -219,13 +219,17 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
       * D为输入kv的head dim。rms_norm计算所需数据Dv和RoPE计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。若cacheModeOptional为NZ场景（cacheModeOptional为PA_NZ、PA_BLK_NZ），Dk、Dv需32B对齐。
       * 若cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），BlockSize需32B对齐。
-      * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为INT8，则需BlockSize%32=0；若cache的数据类型为float16，则需BlockSize%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，BlockSize需同时满足BlockSize%32=0和BlockSize%16=0。
+      * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，则需BlockSize%32=0；若cache的数据类型为float16，则需BlockSize%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，BlockSize需同时满足BlockSize%32=0和BlockSize%16=0。
       * Bcache为输入cache的batch size，Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。 
       * BlockNum为写入cache的内存块数，大小由用户输入场景决定，无明确限制。 
   * index相关约束：
       * 当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
       * 当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。
-      * 当cacheModeOptional为PA_BLK_BSND、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
+      * 当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
+  * 量化场景的相关约束：
+      * 量化场景支持的情况1：kCacheRef的数据类型为FLOAT16或BFLOAT16，ckvCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+      * 量化场景支持的情况2：ckvCacheRef的数据类型为FLOAT16或BFLOAT16，kCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+      * 量化场景支持的情况3：kCacheRef与ckvCacheRef的数据类型一致，为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
 
 ## 调用示例
 

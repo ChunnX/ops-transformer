@@ -12,6 +12,7 @@
  * \file kv_rms_norm_rope_cache_tiling.h
  * \brief
  */
+
 #ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_KV_RMS_NORM_ROPE_CACHE_H_
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_KV_RMS_NORM_ROPE_CACHE_H_
 
@@ -328,6 +329,7 @@ protected:
 protected:
     bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
     bool CheckInputDtype();
+    bool CheckCacheIsQuant(ge::DataType& cacheDtype);
 
 private:
     KvRmsNormRopeCacheRegbaseFullLoadTilingData tilingData_;
@@ -355,6 +357,7 @@ protected:
 protected:
     bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
     bool CheckInputDtype();
+    bool CheckCacheIsQuant(ge::DataType& cacheDtype);
     int64_t FindNearestPower2(const int64_t value);
 
 private:

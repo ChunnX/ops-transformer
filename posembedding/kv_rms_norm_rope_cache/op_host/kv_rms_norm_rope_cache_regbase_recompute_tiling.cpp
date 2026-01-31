@@ -12,6 +12,7 @@
  * \file kv_rms_norm_rope_cache_regbase_recompute_tiling.cpp
  * \brief
  */
+
 #include "kv_rms_norm_rope_cache_tiling.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -70,6 +71,18 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(
     return false;
 }
 
+bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckCacheIsQuant(ge::DataType& cacheDtype)
+{
+    std::vector<ge::DataType> cacheQuantDtypesList = {ge::DataType::DT_INT8, ge::DataType::DT_HIFLOAT8,
+                                                      ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2};
+    for (const auto& cacheQuantDtype : cacheQuantDtypesList) {
+        if (cacheQuantDtype == cacheDtype) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
 {
     // kv dtype
@@ -77,7 +90,7 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvDesc);
     ge::DataType kvDtype = kvDesc->GetDataType();
     OP_CHECK_IF(
-        (kvDtype != ge::DT_FLOAT && kvDtype != ge::DT_FLOAT16 && kvDtype != ge::DT_BF16), OP_LOGE(context_->GetNodeName(), "kv dtype is invalid."),
+        (kvDtype != ge::DT_FLOAT16 && kvDtype != ge::DT_BF16), OP_LOGE(context_->GetNodeName(), "kv dtype is invalid."),
         return false);
 
     // gamma dtype
@@ -108,10 +121,9 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
     auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
-    OP_CHECK_IF(
-        ((kcacheDtype != kvDtype) && (kcacheDtype != ge::DT_INT8)),
+    OP_CHECK_IF(((kcacheDtype != kvDtype) && (!CheckCacheIsQuant(kcacheDtype))),
         OP_LOGE(context_->GetNodeName(), "the dtype of k_cache is invalid."), return false);
-    if (kcacheDtype == ge::DT_INT8) {
+    if (CheckCacheIsQuant(kcacheDtype)) {
         // k_rope_scale
         auto kRopeScaleDesc = context_->GetOptionalInputDesc(K_ROPE_SCALE_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, kRopeScaleDesc);
@@ -133,10 +145,9 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
     auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
-    OP_CHECK_IF(
-        ((vcacheDtype != kvDtype) && (vcacheDtype != ge::DT_INT8)),
+    OP_CHECK_IF(((vcacheDtype != kvDtype) && (!CheckCacheIsQuant(vcacheDtype))),
         OP_LOGE(context_->GetNodeName(), "the dtype of ckv_cache is invalid."), return false);
-    if (vcacheDtype == ge::DT_INT8) {
+    if (CheckCacheIsQuant(vcacheDtype)) {
         // c_kv_scale
         auto ckvScaleDesc = context_->GetOptionalInputDesc(C_KV_SCALE_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, ckvScaleDesc);
@@ -240,7 +251,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
 
     OP_CHECK_IF(
         (ubFactor <= 0),
-        OP_LOGI(context_->GetNodeName(), "D full load template is not capable. dv is %ld, dk is %ld", dv_, dk_),
+        OP_LOGI(context_->GetNodeName(), "D recompute template is not capable. dv is %ld, dk is %ld", dv_, dk_),
         return ge::GRAPH_PARAM_INVALID);
 
     // 1. slice datas along with the A-axis for all vector cores
@@ -258,7 +269,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     int64_t ubFactorDkLoopCountCeil = CeilDiv(dk_, ubFactor);
     int64_t ubFactorDkLoopCountFloor = FloorDiv(dk_, ubFactor);
     int64_t ubFactorDkTail = dk_ - ubFactor * ubFactorDkLoopCountFloor;
-    
+
     tilingData_.set_blockFactor(blockFactor);
     tilingData_.set_ubFactor(ubFactor);
     tilingData_.set_ubFactorDvTail(ubFactorDvTail);
