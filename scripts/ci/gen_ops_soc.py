@@ -31,10 +31,9 @@ def should_skip_op(op_name):
     skip_ops = [
         "mla_prolog", "mla_prolog_v2", "mla_prolog_v3",
         "all_gather_matmul", "all_gather_matmul_v2", "allto_all_all_gather_batch_mat_mul", "allto_allv_grouped_mat_mul",
-        "batch_mat_mul_reduce_scatter_allto_all", "distribute_barrier", "elastic_receivable_info_collect",
-        "elastic_receivable_test", "grouped_mat_mul_all_reduce", "grouped_mat_mul_allto_allv",
+        "batch_mat_mul_reduce_scatter_allto_all", "distribute_barrier", "grouped_mat_mul_allto_allv",
         "inplace_matmul_all_reduce_add_rms_norm", "matmul_all_reduce", "matmul_all_reduce_add_rms_norm",
-        "matmul_reduce_scatter", "matmul_reduce_scatter_v2", "moe_distribute_buffer_reset", "moe_distribute_combine",
+        "matmul_reduce_scatter", "matmul_reduce_scatter_v2", "moe_distribute_combine",
         "moe_distribute_combine_add_rms_norm", "moe_distribute_combine_v2", "moe_distribute_dispatch",
         "moe_distribute_dispatch_v2", "moe_update_expert", "quant_all_reduce", "quant_reduce_scatter",
         "moe_finalize_routing_v2", "moe_finalize_routing_v2_grad", "moe_gating_top_k", "moe_gating_top_k_softmax",
