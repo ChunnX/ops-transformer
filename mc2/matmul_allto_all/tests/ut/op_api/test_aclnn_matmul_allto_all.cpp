@@ -67,7 +67,7 @@ struct MatmulAlltoAllAclnnTestParam {
 };
 
 static MatmulAlltoAllAclnnTestParam cases_params[] = {
-    // 正常用例 12条
+    // 正常用例 13条
     // caseid按照[算子名-x1x2output_dtype-bias_dtype-format-transpose-id]构成，按bias分组
     // ========================bfloat16 系列（6条）========================
     // 1. Bias=BF16 (2)
@@ -88,7 +88,7 @@ static MatmulAlltoAllAclnnTestParam cases_params[] = {
         ACL_BF16, ACL_BF16, ACL_FLOAT, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         {-1, -2}, "ut_test_matmul_allto_all", false, true, ACLNN_SUCCESS},
-    // 3. Bias=Null (2) 
+    // 3. Bias=Null (2)
     {"AclnnMatmulAlltoAll-bf16-biasnull-nd-notrans-05", 2, {256, 128}, {128, 256}, {}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_DT_UNDEFINED, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
@@ -116,7 +116,7 @@ static MatmulAlltoAllAclnnTestParam cases_params[] = {
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         {-1, -2}, "ut_test_matmul_allto_all", false, true, ACLNN_SUCCESS},
-    // 3. Bias=Null (2) 
+    // 3. Bias=Null (2)
     {"AclnnMatmulAlltoAll-fp16-biasnull-nd-notrans-11", 2, {256, 128}, {128, 256}, {}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
@@ -125,6 +125,11 @@ static MatmulAlltoAllAclnnTestParam cases_params[] = {
         ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         {-1, -2}, "ut_test_matmul_allto_all", false, true, ACLNN_SUCCESS},
+    // 空tensor场景 1条
+    {"AclnnMatmulAlltoAll-x1_empty_tensor", 2, {0, 128}, {128, 256}, {256}, {512, 128},
+        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_SUCCESS},
 
     // 异常用例 23条，caseid按照[error-算子名-异常原因-id]构成
     // 1. x1 dtype不合法(ACL_INT8)

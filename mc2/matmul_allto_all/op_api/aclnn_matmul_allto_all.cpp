@@ -59,10 +59,10 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
 
 // 检查是否有空tensor
 // 非量化场景支持x1的m轴为0，即token提示词为空
-static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2) {
+static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2, bool transposeX2) {
     auto kVal1 = x1->GetViewShape().GetDim(1);
-    auto kVal2 = x2->GetViewShape().GetDim(0);
-    auto nVal = x2->GetViewShape().GetDim(1);
+    auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
+    auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 == ZERO), {
       OP_LOGE(ACLNN_ERR_PARAM_INVALID,
       "X1 is empty tensor with zero dimK, which is unsupported.");
@@ -206,7 +206,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
     // 2. 检查空tensor
-    CHECK_RET(CheckNotEmptyTensor(x1, x2), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 3. 检查shape
     CHECK_RET(CheckShape(x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
     // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
@@ -228,6 +228,16 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     CHECK_RET(ReFormatNotND(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
     OP_LOGD("aclnnMatmulAlltoAll checkParams success");
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **executor) {
+    OP_LOGD("MatmulAlltoAll, dealing with empty tensor.");
+    // 固定写法，创建OpExecutor
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    *workspaceSize = 0;
+    uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
 } // namespace
@@ -285,6 +295,10 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
 {
     aclnnStatus retParam = CheckAndHandleParams(x1, x2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
+    // 处理空tensor，目前非量化matmulalltoall只支持x1第一维度bs为0，空tensor作异常处理
+    if (x1->GetViewShape().GetDim(0) == 0 && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        return DealWithEmptyTensor(workspaceSize, executor);
+    }
     aclnnStatus ret = InnerMatmulAlltoAllGetWorkspaceSize(
         x1, x2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output, workspaceSize, executor);
     OP_LOGD("MatmulAlltoAll, end ret %d", ret);

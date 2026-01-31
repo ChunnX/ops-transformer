@@ -70,7 +70,7 @@ struct AlltoAllMatmulAclnnTestParam {
 };
 
 static AlltoAllMatmulAclnnTestParam cases_params[] = {
-    // 正常用例 24条，caseid按照[算子名-x1x2output_dtype-alltoallout_dtype-bias_dtype-format-transpose-id]构成，按bias分组
+    // 正常用例 25条，caseid按照[算子名-x1x2output_dtype-alltoallout_dtype-bias_dtype-format-transpose-id]构成，按bias分组
     // ========================bfloat16 系列（12条）========================
     // 1. Bias=BF16 (4)
     {"AclnnAlltoAllMatmul-bf16-bf16-biasbf16-nd-notrans-01", 2, {256, 64}, {128, 256}, {256}, {128, 256}, {128, 128},
@@ -175,6 +175,11 @@ static AlltoAllMatmulAclnnTestParam cases_params[] = {
         ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED, ACL_FLOAT16, ACL_DT_UNDEFINED,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         {-2, -1}, "ut_test_allto_all_matmul", false, true, ACLNN_SUCCESS},
+	// 空tensor场景 1条
+    {"AclnnAlltoAllMatmul-x1_empty_tensor", 2, {0, 64}, {128, 256}, {256}, {128, 256}, {128, 128},
+        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        {-2, -1}, "ut_test_allto_all_matmul", false, false, ACLNN_SUCCESS},
 
     // 异常用例 23条，caseid按照[error-算子名-异常原因-id]构成
     // 1. x1 dtype不合法(ACL_INT8)
