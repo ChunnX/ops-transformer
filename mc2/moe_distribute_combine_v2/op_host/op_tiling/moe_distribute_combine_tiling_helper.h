@@ -41,6 +41,7 @@ constexpr uint32_t THREE_DIMS = 3U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr uint32_t ONE_DIM = 1U;
 
+ge::graphStatus MoeDistributeCombineV2TilingFunc(gert::TilingContext* context);
 class MoeDistributeCombineTilingHelper {
 public:
     static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *context, const char *nodeName);

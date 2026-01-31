@@ -14,19 +14,23 @@
  */
 #include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
-#include "moe_distribute_combine_add_rms_norm.h"
 #if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h")
+#include "../moe_distribute_combine_v2/moe_distribute_combine_v2.h"
 #include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling_key.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_tiling.h"
 #else
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2.h"
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling_key.h"
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 #endif
-#include "moe_distribute_combine_add_rms_norm_tiling_key.h"
 using namespace AscendC;
-using namespace MoeDistributeCombineAddRmsNormImpl;
+using namespace MoeDistributeCombineV2Impl;
 using namespace Mc2Tiling;
 
 namespace {
-template <TemplateMC2TypeClass>
+template <CombineMC2TypeClass>
 __aicore__ inline void ExecMoeDistributeCombineAddRmsNorm(
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount, GM_ADDR tpSendCount,
     GM_ADDR residualX, GM_ADDR gamma, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
@@ -34,10 +38,10 @@ __aicore__ inline void ExecMoeDistributeCombineAddRmsNorm(
     GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe* pipePtr)
 {
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-    MoeDistributeCombineAddRmsNorm<TemplateMC2TypeFunc> op;
+    MoeDistributeCombineV2<CombineMC2TypeFunc> op;
     op.Init(
         expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
-        sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut,
+        sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr, YOut, dynamicScaleOut,
         XOut, workspaceGM, pipePtr, &tilingData);
     op.Process();
     }
@@ -54,7 +58,7 @@ __aicore__ inline void ExecMoeDistributeCombineAddRmsNorm(
  * 第5位（万位）：无实际意义
  */
 
-template<bool HasTp, int QuantMode> __global__ __aicore__ void moe_distribute_combine_add_rms_norm(
+template<bool HasTp, uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag> __global__ __aicore__ void moe_distribute_combine_add_rms_norm(
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR residualX,
     GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
     GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, 
@@ -63,7 +67,7 @@ template<bool HasTp, int QuantMode> __global__ __aicore__ void moe_distribute_co
     REGISTER_TILING_DEFAULT(MoeDistributeCombineV2TilingData);
     TPipe pipe;
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
-        ExecMoeDistributeCombineAddRmsNorm<DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT>(
+        ExecMoeDistributeCombineAddRmsNorm<DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT, true>(
             expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
             sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM, &pipe);
 #endif

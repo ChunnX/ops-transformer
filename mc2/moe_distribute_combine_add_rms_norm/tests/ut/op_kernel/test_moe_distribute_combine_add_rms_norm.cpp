@@ -90,7 +90,7 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
            GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale, GM_ADDR groupList,
            GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
            GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine_add_rms_norm<true, false>(
+            moe_distribute_combine_add_rms_norm<true, false, 0, 1>(
                 expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX, gamma, tpSendCount,
                 xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo,
                 oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
@@ -188,7 +188,7 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
            GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale, GM_ADDR groupList,
            GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
            GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine_add_rms_norm<false, true>(
+            moe_distribute_combine_add_rms_norm<false, true, 0, 1>(
                 expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX, gamma, tpSendCount,
                 xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo,
                 oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
@@ -284,7 +284,7 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
         GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
         GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, 
         GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-        moe_distribute_combine_add_rms_norm<false, false>(expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
+        moe_distribute_combine_add_rms_norm<false, false, 0, 1>(expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
         gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, 
         constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
 
@@ -381,7 +381,7 @@ TEST_F(moe_distribute_combine_add_rms_norm_test, moe_distribute_combine_add_rms_
         GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
         GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1, 
         GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR YOut, GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-        moe_distribute_combine_add_rms_norm<true, true>(expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
+        moe_distribute_combine_add_rms_norm<true, true, 0, 1>(expandX, expertIds, assistInfoForCombine, epSendCount, scales, residualX,
         gamma, tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, 
         constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM);
 

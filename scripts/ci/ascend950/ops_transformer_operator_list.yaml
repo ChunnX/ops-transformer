@@ -71,6 +71,7 @@ operator_group_10:
   - matmul_all_reduce
   - moe_distribute_combine
   - moe_distribute_combine_v2
+  - moe_distribute_combine_add_rms_norm
   - moe_distribute_dispatch
   - moe_distribute_dispatch_v2
   - quant_all_reduce
