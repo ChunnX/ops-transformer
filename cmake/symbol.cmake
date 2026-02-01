@@ -36,6 +36,7 @@ function(gen_ophost_symbol)
             rt2_registry_static
             -Wl,--no-whole-archive
             tiling_api
+            acl_rt
             -Wl,-Bsymbolic
     )
 

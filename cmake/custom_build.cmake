@@ -175,6 +175,7 @@ if (BUILD_OPEN_PROJECT)
             -Wl,--whole-archive
             tiling_api
             -Wl,--no-whole-archive
+            acl_rt
             c_sec
     )
     set_target_properties(cust_opmaster PROPERTIES OUTPUT_NAME

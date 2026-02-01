@@ -16,6 +16,9 @@
 #include <cstdlib>
 #include "securec.h"
 #include "acl/acl.h"
+#include "acl/acl_base.h"
+#include "acl/acl_rt.h"
+#include "acl/acl_dump.h"
 #include "tests/utils/log.h"
 
 extern "C" {
@@ -51,5 +54,4 @@ aclError aclrtMemcpy(void *dst, size_t destMax, const void *src, size_t count, a
     LOG_IF_EXPR(ret != EOK, LOG_ERR("memcpy_s failed, ERROR: %d", ret), return ACL_ERROR_FAILURE);
     return ACL_SUCCESS;
 }
-
 } // extern "C"

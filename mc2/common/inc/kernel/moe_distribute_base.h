@@ -18,6 +18,7 @@
 
 #include "basic_api/kernel_basic_intf.h"
 #include "adv_api/hccl/hccl.h"
+#include "moe_distribute_comm_ctx.h"
 
 constexpr uint32_t LOCAL_NOTIFY_MAX_NUM = 64;
 constexpr uint32_t CUR_LOCAL_STREAM_MAX_NUM = 40U;
@@ -27,7 +28,6 @@ constexpr uint32_t AICPU_MAX_RANK_NUM = 128 * 1024;
 constexpr uint32_t TIME_CYCLE = 50; // 系统cycle数转换成时间的基准单位，固定为50
 
 namespace Mc2Kernel {
-constexpr uint32_t HCCL_MTE_MAX_RANK_NUM = 64;
 constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
 }
 
@@ -183,22 +183,6 @@ struct MemDetails1 {
     uint64_t size = 0;
     uint64_t addr = 0;
     uint32_t key = 0;
-};
-
-struct HcclCombinOpParam {
-    uint64_t workSpace; // client和server之间通信的地址
-    uint64_t workSpaceSize; // client和server之间通信的空间大小
-    uint32_t rankId; // 当前卡rankId
-    uint32_t rankDim; // 总卡数
-    uint64_t winSize; // ccu不使用
-    uint64_t windowsIn[Mc2Kernel::HCCL_MTE_MAX_RANK_NUM]; // ccu不使用, MTE 数据区
-    uint64_t windowsOut[Mc2Kernel::HCCL_MTE_MAX_RANK_NUM]; // ccu不使用，MTE 状态区
-
-    // for ccu
-    uint64_t xnAddr; // Xn寄存器起始地址
-    uint64_t ckeAddr; // CKE寄存器起始地址
-    uint64_t msAddr; // MS地址，预留
-    uint64_t msSize; // 可写的MS个数，预留
 };
 
 struct HcclOpResParam {

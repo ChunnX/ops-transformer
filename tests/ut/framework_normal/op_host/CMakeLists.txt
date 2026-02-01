@@ -39,6 +39,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       -Wl,--no-whole-archive
       tiling_api
       runtime
+      acl_rt
   )
 
   ## add ophost ut exe:  transformer_op_host_ut

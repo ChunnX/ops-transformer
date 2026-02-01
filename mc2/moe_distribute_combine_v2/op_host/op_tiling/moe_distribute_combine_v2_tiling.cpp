@@ -31,6 +31,7 @@
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
+#include "mc2_exception_dump.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "../../op_kernel/moe_distribute_combine_tiling.h"
@@ -40,6 +41,7 @@
 #include "mc2_hcom_topo_info.h"
 
 using namespace Mc2Tiling;
+using namespace Mc2Exception;
 using namespace AscendC;
 using namespace ge;
 
@@ -2005,4 +2007,13 @@ ge::graphStatus TilingParseForMoeDistributeCombineV2(gert::TilingParseContext *c
 IMPL_OP_OPTILING(MoeDistributeCombineV2)
     .Tiling(MoeDistributeCombineV2TilingFunc)
     .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
+
+// Register exception func
+inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
+}
+
+IMPL_OP(MoeDistributeCombineV2)
+    .ExceptionDumpParseFunc(MoeDistributeCombineV2ExceptionImplWrapper);
 } // namespace optiling
