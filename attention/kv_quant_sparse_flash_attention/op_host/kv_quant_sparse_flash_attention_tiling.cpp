@@ -188,6 +188,7 @@ ge::graphStatus QSFAMlaTiling::SetBlockDim(uint32_t blockDim) const
 ge::graphStatus QSFAMlaTiling::SetTilingKey(uint64_t tilingKey) const
 {
     context_->SetTilingKey(tilingKey);
+    context_->SetScheduleMode(1);     // 1: batchmode模式
     return ge::GRAPH_SUCCESS;
 }
 
