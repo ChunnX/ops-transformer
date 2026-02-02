@@ -475,7 +475,7 @@ extern "C" __global__ __aicore__ void nsa_compress_with_cache(GM_ADDR input, GM_
         INVOKE_NCWC_GENERAL_OP_IMPL(NsaCompressWithCacheBase::KernelNsaCompressWithCacheFullBroadcast, half);
     }
 #endif
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003) && (ORIG_DTYPE_INPUT == DT_BF16)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) && (ORIG_DTYPE_INPUT == DT_BF16)
     if (TILING_KEY_IS(0)) {
         INVOKE_NCWC_GENERAL_OP_IMPL(NsaCompressWithCacheBase::KernelNsaCompressWithCacheDoubleBroadcast, bfloat16_t);
     } else if (TILING_KEY_IS(1)) {

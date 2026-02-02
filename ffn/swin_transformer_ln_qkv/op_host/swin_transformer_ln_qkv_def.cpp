@@ -76,6 +76,7 @@ public:
             .Float(0.0000001f);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("kirinx90");
+        this->AICore().AddConfig("kirin9030");
     }
 };
 

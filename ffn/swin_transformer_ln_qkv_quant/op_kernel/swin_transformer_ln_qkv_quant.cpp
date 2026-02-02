@@ -174,7 +174,7 @@ public:
                 intriParams2L1.blockLen = mAlign16;
                 intriParams2L1.srcStride = 0;
                 intriParams2L1.dstStride = matmul::CeilDiv(actualMmBaseM, BLOCK_CUBE) * BLOCK_CUBE - mAlign16;
-#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200 || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
                 if (subMLoop == 1) {
                     DataCopy(aL1Buffer[subMLoopIdx * lnBaseK * actualLnBaseM], mmANz, mAlign16 * lnBaseK);
                 } else {
@@ -624,7 +624,7 @@ private:
                 mm.SetTensorB(weightGlobal[mmSizeK * mmSubNIdx], bTrans);
             }
         }
-#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200 || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         mm.SetTail(actualMmBaseM, -1, -1);
         mm.template IterateAll<true>(mmOutTmpFp16, false);
 #endif

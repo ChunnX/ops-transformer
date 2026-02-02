@@ -80,7 +80,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         RotateHalfBf16<half, float> rotateHalfOp;
         rotateHalfOp.Init(x, cos, sin, y, tilingData);
         rotateHalfOp.Process();
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
     } else if (TILING_KEY_IS(1013)) {
         RotateHalfBf16<bfloat16_t, float> rotateHalfOp;
         rotateHalfOp.Init(x, cos, sin, y, tilingData);
@@ -115,7 +115,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         interleavedSplitS.Init(x, cos, sin, y, tilingData, &pipe);
         interleavedSplitS.Process();
     } else if (TILING_KEY_IS(2010)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         TPipe pipe;
         InterleavedSplitS<bfloat16_t> interleavedSplitS;
         interleavedSplitS.Init(x, cos, sin, y, tilingData, &pipe);
@@ -132,7 +132,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         interleavedSplitBS.Init(x, cos, sin, y, tilingData, &pipe);
         interleavedSplitBS.Process();
     } else if (TILING_KEY_IS(2110)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         TPipe pipe;
         InterleavedSplitBS<bfloat16_t> interleavedSplitBS;
         interleavedSplitBS.Init(x, cos, sin, y, tilingData, &pipe);
@@ -149,7 +149,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         interleavedSplitBSN.Init(x, cos, sin, y, tilingData, &pipe);
         interleavedSplitBSN.Process();
     } else if (TILING_KEY_IS(2210)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         TPipe pipe;
         InterleavedSplitBSN<bfloat16_t> interleavedSplitBSN;
         interleavedSplitBSN.Init(x, cos, sin, y, tilingData, &pipe);
@@ -166,7 +166,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         interleavedSplitSPad.Init(x, cos, sin, y, tilingData, &pipe);
         interleavedSplitSPad.Process();
     } else if (TILING_KEY_IS(2011)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         TPipe pipe;
         InterleavedSplitSPad<bfloat16_t> interleavedSplitSPad;
         interleavedSplitSPad.Init(x, cos, sin, y, tilingData, &pipe);
@@ -183,7 +183,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         interleavedSplitBSPad.Init(x, cos, sin, y, tilingData, &pipe);
         interleavedSplitBSPad.Process();
     } else if (TILING_KEY_IS(2111)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         TPipe pipe;
         InterleavedSplitBSPad<bfloat16_t> interleavedSplitBSPad;
         interleavedSplitBSPad.Init(x, cos, sin, y, tilingData, &pipe);
@@ -200,7 +200,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         interleavedSplitBSNPad.Init(x, cos, sin, y, tilingData, &pipe);
         interleavedSplitBSNPad.Process();
     } else if (TILING_KEY_IS(2211)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         TPipe pipe;
         InterleavedSplitBSNPad<bfloat16_t> interleavedSplitBSNPad;
         interleavedSplitBSNPad.Init(x, cos, sin, y, tilingData, &pipe);

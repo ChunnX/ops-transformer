@@ -111,7 +111,8 @@ ge::AscendString ToString(SocVersion socVersion)
         {SocVersion::ASCEND910E, "Ascend910E"},     {SocVersion::ASCEND310, "Ascend310"},
         {SocVersion::ASCEND310P, "Ascend310P"},     {SocVersion::ASCEND310B, "Ascend310B"},
         {SocVersion::ASCEND310C, "Ascend310C"},     {SocVersion::ASCEND610LITE, "Ascend610LITE"},
-        {SocVersion::KIRINX90, "KirinX90"},         {SocVersion::RESERVED_VERSION, "UnknowSocVersion"},
+        {SocVersion::KIRINX90, "KirinX90"},         {SocVersion::KIRIN9030, "Kirin9030"},
+        {SocVersion::RESERVED_VERSION, "UnknowSocVersion"},
     };
     static const std::string reserved("UnknowSocVersion");
     const auto it = kSocVersionMap.find(socVersion);

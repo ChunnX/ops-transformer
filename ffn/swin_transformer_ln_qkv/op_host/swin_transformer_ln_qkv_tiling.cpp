@@ -147,8 +147,9 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVTilingMai
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRINX90) {
-        OP_LOGD(context->GetNodeName(), "Current soc version is KIRINX90.");
+    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRINX90 ||
+        ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRIN9030) {
+        OP_LOGD(context->GetNodeName(), "Current soc version is KIRIN.");
         const gert::StorageShape *qShape = context->GetOutputShape(0);
         OP_CHECK_IF(qShape == nullptr, OP_LOGE(context->GetNodeName(), "qShape is null"), return ge::GRAPH_FAILED);
         int32_t outSize = 1;

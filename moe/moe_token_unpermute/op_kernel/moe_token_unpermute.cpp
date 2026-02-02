@@ -48,7 +48,7 @@ extern "C" __global__ __aicore__ void moe_token_unpermute(
 #else
     //==================================BF16==================================
     if (TILING_KEY_IS(0)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         MOE_TOKEN_UNPERMUTE_IMPL(bfloat16_t, int32_t, bfloat16_t, false);
     } else if (TILING_KEY_IS(1)) {
         MOE_TOKEN_UNPERMUTE_IMPL(bfloat16_t, int32_t, bfloat16_t, true);

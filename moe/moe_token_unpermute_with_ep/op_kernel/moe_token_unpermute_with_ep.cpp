@@ -43,7 +43,7 @@ extern "C" __global__ __aicore__ void moe_token_unpermute_with_ep(
     } else if (TILING_KEY_IS(2)) {
         MOE_TOKEN_UNPERMUTE_WITH_EP_IMPL(DTYPE_PERMUTED_TOKENS, int32_t, half, true, true);
     } else if (TILING_KEY_IS(3)) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         MOE_TOKEN_UNPERMUTE_WITH_EP_IMPL(DTYPE_PERMUTED_TOKENS, int32_t, bfloat16_t, true, true);
 #endif
     }

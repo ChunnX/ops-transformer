@@ -106,6 +106,7 @@ public:
         aicore_config.ExtendCfgInfo("opFile.value", "apply_rotary_pos_emb");
         this->AICore().AddConfig("ascend310p", aicore_config);
         this->AICore().AddConfig("kirinx90", aicore_config);
+        this->AICore().AddConfig("kirin9030", aicore_config);
     }
 };
 

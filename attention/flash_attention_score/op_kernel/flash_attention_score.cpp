@@ -406,7 +406,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
             FlashAttentionScoreEmptyTensor<float> op;
             op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
             op.Process();
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         } else if (ORIG_DTYPE_QUERY == DT_BF16) {
             FlashAttentionScoreEmptyTensor<bfloat16_t> op;
             op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
@@ -430,7 +430,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                     half, float, CubeFormat::NZ, MmPolicyType::NORMAL, ImplModeEnum(ImplMode), HasRope);
             }
         } else if constexpr (DataType == 2) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (MatmulPolicyType == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN_SAMEAB(FlashAttentionVarLenScoreSameAB,
                     LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
@@ -462,7 +462,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                 LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
                 half, float, true, CubeFormat::NZ, HasRope);
         } else if constexpr (DataType == 2) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             INVOKE_FA_GENERAL_OP_IMPL_VAR_LEN(FlashAttentionVarLenScore, ImplModeEnum(ImplMode),
                 LayOutTypeEnum::LAYOUT_TND, HasPse, HasAttenMask, HasDropOut,
                 bfloat16_t, float, true, CubeFormat::NZ, HasRope);
@@ -492,7 +492,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                     half, float, CubeFormat::NZ, MmPolicyType::NORMAL, HasRope);
             }
         } else if (DataType == 2) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (MatmulPolicyType == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_WITH_MMPOLICY(FlashAttentionScoreS1s2Bn2gs1SameAB, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), HasPse, HasAttenMask, HasDropOut,
@@ -524,7 +524,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                     half, float, true, CubeFormat::NZ, bool(EnableL1Reuse));
             }
         } else if constexpr (DataType == 2) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (Bmm1Format == 0) {
                 INVOKE_FA_GENERAL_OP_IMPL(FlashAttentionScoreS1s2Bn2gs1, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),
@@ -578,7 +578,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                 }
             }
         } else if (DataType == 2) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (Bmm1Format == 0) {
                 if constexpr (Bmm2Source > 0) {
                     INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreS1Bn2gs1, ImplModeEnum(ImplMode),
@@ -655,7 +655,7 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                     STemplateType(S1TemplateType * 16), STemplateType(S2TemplateType * 16), DTemplateType(dTemplateSize * 16));
             }
         } else if (DataType == 2) {
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
             if constexpr (Layout == 1) {
                 INVOKE_FA_GENERAL_OP_IMPL_BMM2NZ(FlashAttentionScoreBn2gs1s2B, ImplModeEnum(ImplMode),
                     LayOutTypeEnum(Layout), bool(HasPse), bool(HasAttenMask), bool(HasDropOut),

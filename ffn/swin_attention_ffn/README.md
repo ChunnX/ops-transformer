@@ -36,6 +36,14 @@
     <td>Atlas 训练系列产品</td>
     <td style="text-align: center;">×</td>
   </tr>
+  <tr>
+    <td>Kirin X90 处理器系列产品</td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td>Kirin 9030 处理器系列产品</td>
+    <td style="text-align: center;">√</td>
+  </tr>
 </tbody>
 </table>
 

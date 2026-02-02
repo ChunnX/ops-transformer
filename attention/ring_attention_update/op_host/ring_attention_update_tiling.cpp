@@ -47,7 +47,7 @@ constexpr size_t SOFTMAX_TAIL = 8;
 
 constexpr uint64_t HEAD_DIM_ALIGN_TND = 64;
 constexpr uint64_t TND_BUFFER_NUM = 2;
-#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003)
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
 constexpr uint64_t MAX_UB_SIZE = 98304;
 #else
 constexpr uint64_t MAX_UB_SIZE = 196608;

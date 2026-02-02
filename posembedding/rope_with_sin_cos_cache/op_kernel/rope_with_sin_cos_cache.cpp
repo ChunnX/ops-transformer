@@ -27,7 +27,7 @@ extern "C" __global__ __aicore__ void rope_with_sin_cos_cache(
     GET_TILING_DATA(tilingData, tiling);
     GM_ADDR usrWorkspace = AscendC::GetUserWorkspace(workspace);
     TPipe pipe;
-#if !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003) && ORIG_DTYPE_QUERYIN == DT_BF16
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) && ORIG_DTYPE_QUERYIN == DT_BF16
     if (TILING_KEY_IS(20)) {
         TPipe* ptr = &pipe;
         if (ptr != nullptr) {

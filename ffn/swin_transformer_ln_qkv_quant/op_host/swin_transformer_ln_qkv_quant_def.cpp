@@ -105,6 +105,7 @@ public:
               .NeedCheckSupportFlag(false);
         this->AICore().AddConfig("ascend310p", config);
         this->AICore().AddConfig("kirinx90", config);
+        this->AICore().AddConfig("kirin9030", config);
     }
 };
 
