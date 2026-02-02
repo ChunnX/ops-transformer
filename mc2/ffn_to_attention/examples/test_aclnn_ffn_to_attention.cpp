@@ -119,7 +119,7 @@ int LaunchOneProcessFFN2Attention(Args &args)
     std::vector<int64_t> microBatchIdsShape{Y};
     std::vector<int64_t> tokenIdsShape{Y};
     std::vector<int64_t> expertOffsetsShape{Y};
-    std::vector<int64_t> actualTokenNumShape{Y};
+    std::vector<int64_t> actualTokenNumShape{1};
     std::vector<int64_t> attnRankTableShape{attention_worker_num};   // todo
 
 

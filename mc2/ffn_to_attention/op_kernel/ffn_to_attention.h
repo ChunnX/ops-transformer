@@ -21,8 +21,10 @@
 #include "ffn_to_attention_tiling.h"
 #if __has_include("../common/inc/kernel/moe_distribute_base.h")
 #include "../common/inc/kernel/moe_distribute_base.h"
+#include "../common/inc/kernel/mc2_kernel_utils.h"
 #else
 #include "../../common/inc/kernel/moe_distribute_base.h"
+#include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
 
 
@@ -202,10 +204,14 @@ __aicore__ inline void FFNToAttention<TemplateMC2TypeFunc>::Process()
             tokenDataGMTensor.SetGlobalBuffer((__gm__ xType*)(curRankWinAddr + winTokenInfoTableSize_ + tokenDataOffset));
             
             // 5. 复制数据到win区
+            if(tokenCnt == 0) {
+                SyncFunc<AscendC::HardEvent::S_MTE3>();
+            }
             xQueue_.EnQue(xTmpTensor_);
             xTmpTensor_ = xQueue_.DeQue<xType>();
             DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams); // 数据搬入token_data位置上
             xQueue_.FreeTensor<xType>(xTmpTensor_);
+            PipeBarrier<PIPE_MTE3>();
             DataCopyPad(tokenInfoTableGMTensor, statusTensor_, dataCopyParams); // 状态位
         }
     }
