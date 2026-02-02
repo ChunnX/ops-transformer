@@ -127,70 +127,70 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>kCacheRef</td>
+      <td>k_cache</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
+      <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>ckvCacheRef</td>
+      <td>ckv_cache</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
+      <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>kRopeScaleOptional</td>
+      <td>k_rope_scale</td>
       <td>可选属性</td>
-      <td>当kCacheRef数据类型为INT8时需要此输入参数。</td>
+      <td>当kCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>ckvScaleOptional</td>
+      <td>c_kv_scale</td>
       <td>可选属性</td>
-      <td>当ckvCacheRef数据类型为INT8时需要此输入参数。</td>
+      <td>当ckv_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>kRopeOffsetOptional</td>
+      <td>k_rope_offset</td>
       <td>可选属性</td>
-      <td>当kCacheRef数据类型为INT8且对应的kRopeScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。</td>
+      <td>当k_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的k_rope_scale输入存在并量化场景为非对称量化时，需要此参数输入。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>cKvOffsetOptional</td>
+      <td>c_kv_offset</td>
       <td>可选属性</td>
-      <td>当ckvCacheRef数据类型为INT8且对应的ckvScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。</td>
+      <td>当ckv_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的c_kv_scale输入存在并量化场景为非对称量化时，需要此参数输入。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>cacheModeOptional</td>
+      <td>cache_mode</td>
       <td>可选属性</td>
       <td>cache格式的选择标记。类型有Norm、PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ。</td>
       <td>CHAR*</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>isOutputKv</td>
+      <td>is_output_kv</td>
       <td>可选属性</td>
       <td>kRopeOut和cKvOut输出控制标记。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>kRopeOut</td>
+      <td>k_rope</td>
       <td>输出</td>
       <td>rope计算结果，对应interleaveRope计算公式中的`y`。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>cKvOut</td>
+      <td>c_kv</td>
       <td>输出</td>
       <td>rms_norm计算结果，对应rmsNorm计算公式中的`y`。</td>
       <td>FLOAT16、BFLOAT16</td>
@@ -205,11 +205,11 @@
       * kv为四维张量，shape为[Bkv,N,Skv,D]，Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。 
       * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
       * D为输入kv的head dim。rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。
-      * 若cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），其shape[BlockNum,BlockSize,N,Dk]中BlockSize需32B对齐。
+      * 若cache_mode为PA场景（cache_mode为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），其shape[BlockNum,BlockSize,N,Dk]中BlockSize需32B对齐。
   * 其他限制：
-      * 对于index，当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
-      * 当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。
-      * 当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
+      * 对于index，当cache_mode为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
+      * 当cache_mode为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。
+      * 当cache_mode为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
 
 ## 调用说明
 
