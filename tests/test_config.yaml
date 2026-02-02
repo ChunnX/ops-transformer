@@ -1147,7 +1147,9 @@ mc2:
         - mc2/distribute_barrier/docs
         - mc2/distribute_barrier/README.md
       ut_cov_exclude:
-        - mc2/distribute_barrier
+        - mc2/distribute_barrier/op_api
+        - mc2/distribute_barrier/op_graph
+        - mc2/distribute_barrier/op_kernel
       test:
         examples: False
       options:
