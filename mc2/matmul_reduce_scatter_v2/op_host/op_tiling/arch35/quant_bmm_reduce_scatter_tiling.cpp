@@ -418,6 +418,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
         OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
 
+    // 在perblock量化场景，orgMValue不满足PERBLOCK_SIZE * args_.rankDim整数倍时，不做公式化切分，走计算通信串行
     if ((quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ||
         (quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE) ||
         (quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE && CheckPerblockM())) {
@@ -659,7 +660,8 @@ void QuantBmmReduceScatterHelper::AnalyzeBatchInfo(const gert::Shape &oriShapeA,
 
 void QuantBmmReduceScatterHelper::SetBatch()
 {
-    if (inputParams_.isPerBlock) {
+    // perblock量化非串行场景将batch4_设置成卡数
+    if (inputParams_.isPerBlock && !isSerial_) {
         batch4_ = tilingArgs_.rankDim;
     }
 }
@@ -752,6 +754,8 @@ ge::graphStatus QuantBmmReduceScatterHelper::GetShapeAttrsInfo()
                                 (tilingProcesser_.GetQuantMode() == mc2tiling::Mc2QuantMode::MXFP_MODE));
     inputParams_.isPerBlock = (tilingProcesser_.GetQuantMode() == mc2tiling::Mc2QuantMode::PERBLOCK_MODE);
     inputParams_.isDoubleScale = true;
+    // 当orgMValue在perblock量化场景不满足PERBLOCK_SIZE * rankDim的整数倍，mValue不做切分，设置为计算和通信串行
+    isSerial_ = (tilingArgs_.mValue == tilingArgs_.orgMValue) && inputParams_.isPerBlock;
     if (inputParams_.isPerBlock) {
         inputParams_.groupSizeM = PERBLOCK_SIZE;
         inputParams_.groupSizeK = PERBLOCK_SIZE;

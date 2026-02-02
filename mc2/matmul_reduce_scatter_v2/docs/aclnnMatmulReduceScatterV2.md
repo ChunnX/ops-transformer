@@ -383,7 +383,6 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8时，不支持空tensor。
     - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8时，x1和x2的数据类型需要保持一致。
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2时，x1和x2的数据可以为其中一种。
-    - 在perblock场景下， x1的m轴为rank\_size * 128的整数倍。
     - 支持2、4、8、16、32、64卡。
 
 -   <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：

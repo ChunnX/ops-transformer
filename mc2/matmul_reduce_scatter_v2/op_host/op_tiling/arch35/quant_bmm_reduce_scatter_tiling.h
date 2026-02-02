@@ -122,6 +122,7 @@ private:
     uint32_t batch2_{1};
     uint32_t batch3_{1};
     uint32_t batch4_{1};
+    bool isSerial_{false};
 };
 } // namespace optiling
 

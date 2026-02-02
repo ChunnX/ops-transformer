@@ -127,6 +127,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Process()
     PostProcess();
 }
 
+// perblock量化场景当rankM不满足128*ranksize，走计算通信串行
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduceScatterSerial()
 {
