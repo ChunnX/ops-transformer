@@ -534,6 +534,9 @@ void FiaBlockVecFlashDecode<FIAT>::CopyFinalResOut(LocalTensor<T> &accumOutLocal
                                                        uint32_t dealRowCount,
                                                        uint32_t cntM)
 {
+    DealInvalidRows(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign);
+    DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign, cntM);
+    AscendC::PipeBarrier<PIPE_V>();
     if constexpr (POST_QUANT) {
         if (isQuant2PerChn) {
             DealPostQuantOutPerChn(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign, cntM);
@@ -543,11 +546,6 @@ void FiaBlockVecFlashDecode<FIAT>::CopyFinalResOut(LocalTensor<T> &accumOutLocal
             AscendC::PipeBarrier<PIPE_V>();
         }
     }
-
-    DealInvalidRows(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign);
-    DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, constInfo.headDimAlign, cntM);
-    AscendC::PipeBarrier<PIPE_V>();
-
     LocalTensor<OUT_T> tmpBmm2ResCastTensor = fdOutputBuf.Get<OUT_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
     if constexpr (POST_QUANT) {
