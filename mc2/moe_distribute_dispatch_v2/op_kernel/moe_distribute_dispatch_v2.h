@@ -56,7 +56,6 @@ private:
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void AlltoAllDispatch();
     __aicore__ inline void LocalWindowCopy();
-    __aicore__ inline void SetExpertTokenNums();
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
     __aicore__ inline void TimeOutDetection();
@@ -72,7 +71,7 @@ private:
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
     __aicore__ inline void AllGatherSetStatusAndWait();
     __aicore__ inline void AllgatherProcessOut();
-    __aicore__ inline void AllGatherSetExpertTokenNumsAndTpRecvCount();
+    __aicore__ inline void UpdateTokenNumsOut();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
     __aicore__ inline void FillTriple(LocalTensor<ExpandXOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k);
@@ -157,7 +156,6 @@ private:
     TBuf<> rowMaxBuf_;
     TBuf<> receiveDataCastFloatBuf_;
     TBuf<> smoothScalesBuf_;
-    TBuf<> tokenNumBuf_;
     TBuf<> dstExpBuf_;
     TBuf<> subExpBuf_;
     TBuf<> waitStatusBuf_;
@@ -616,7 +614,6 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::CalTokenSendExpertCnt(
     uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt)
 {
-    SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<int32_t>(dstExpIdTensor_, dstExpertId, calCnt);
     PipeBarrier<PIPE_V>();
     Sub(subExpIdTensor_, expertIdsTensor_, dstExpIdTensor_, calCnt);
@@ -1012,10 +1009,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::BufferInit(
         firstRecordTensor_ = firstRecordBuf_.Get<int32_t>();
         Duplicate<int32_t>(firstRecordTensor_, 0, firstRecordSizeAlign / sizeof(int32_t));
     }
-    tpipe_->InitBuffer(tokenNumBuf_, moeExpertNumPerRank_ * UB_ALIGN);  
-    uint32_t statusBufCntAlign = Ceil(Ceil(totalExpertNum_, aivNum_), 8) * 8;   // 8 = UB_ALIGN / sizeof(int32_t)
-    uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
-    tpipe_->InitBuffer(statusBuf_, statusBufSize);  
 }
 
 template <TemplateMC2TypeClass>
@@ -1250,7 +1243,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::LocalWindow
         totalCnt_ = beginIdx;
     }
     lastCore_ = MIN(rscvStatusNum_, aivNum_) - 1;
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
+
     if constexpr (IsNeedAllgather) {
         DataCopyPad(winTpEpCntGMTensor_[startExpertId_], outCountLocal, dataCopyOutParams);
     }
@@ -1258,7 +1251,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::LocalWindow
     GlobalTensor<int32_t> sendCountsGlobal;
     sendCountsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sendCountsOutGM_));
     DataCopyPad(sendCountsGlobal[startExpertId_], outCountLocal, dataCopyOutParams);
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    PipeBarrier<PIPE_MTE3>();
 }
 
 template <TemplateMC2TypeClass>
@@ -1347,70 +1340,62 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::AllgatherPr
 
 // 更新tokenNumsOut tensor
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::SetExpertTokenNums()
+__aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::UpdateTokenNumsOut()
 {
-    if (aivId_ != FIRST_CORE) {
-        return;
-    }
-
-    uint32_t localExpertNum;
-    if (isShareExpertRankFlag_) {
-        localExpertNum = 1U;
-    } else {
-        localExpertNum = moeExpertNumPerRank_;
-    }
-    uint16_t localStatusSectionNum = static_cast<uint16_t>(localExpertNum * epWorldSize_);
-    DataCopyParams allStatusCopyParams{localStatusSectionNum, 1,
-                                    static_cast<uint16_t>((stateOffset_ - UB_ALIGN) / UB_ALIGN), 0};
-    LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();
-    DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    int64_t expertTokenNumCumsum = 0;
-    LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
-    LocalTensor<float> expertTokenNumTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), 0);
-    LocalTensor<float> gatherMaskOutTensor = gatherMaskOutBuf_.Get<float>();
-
-    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
-        LocalTensor<float> expertStatusTensor = statusBuf_.GetWithOffset<float>(
-            epWorldSize_ * UB_ALIGN / static_cast<uint32_t>(sizeof(float)), localExpertIdx * epWorldSize_ * UB_ALIGN);
-        uint32_t mask = 2;
-        SyncFunc<AscendC::HardEvent::S_V>();
-        ReduceSum(expertTokenNumTensor, expertStatusTensor, gatherMaskOutTensor, mask, epWorldSize_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-
-        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumTensor.ReinterpretCast<int32_t>().GetValue(0));
-        expertTokenNumCumsum += expertTokenNum;
-        if(expertTokenNumsType_ == 0) {
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);
-        } else {
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNum);
+    // 最后一个核做更新，Moe专家只有最后一个核有计算出所有 sendCountsGlobal
+    if (!isShareExpertRankFlag_) {
+        if (moeExpertNumPerRank_ > 1) {
+            SyncAll<true>();
         }
     }
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
-                                                0U, 0U, 0U};
-    DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
-    
+
+    if (aivId_ == lastCore_) {
+        // Moe专家token总数在Cumsum内计算得出
+        uint32_t tokenNum = totalCnt_;
+        if constexpr (IsNeedAllgather) {
+            tokenNum += preCnt_;
+            tokenNum += gatherCount_;
+        }
+        expertTokenNumsOutGMTensor_.SetValue(0, tokenNum);
+        DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertTokenNumsOutGMTensor_);
+        // moe一卡多专家场景下更新moe专家卡对应expertTokenNums数据
+        if (moeExpertNumPerRank_ != 1) {
+            if (!isShareExpertRankFlag_) {
+                uint32_t tokenSums = 0;
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
+                GlobalTensor<int32_t> sendCountsGlobal;
+                sendCountsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sendCountsOutGM_));
+                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sendCountsGlobal[epWorldSize_ - 1]);
+
+                uint32_t firstMoeCnt = sendCountsGlobal.GetValue(epWorldSize_ - 1);
+                tokenSums = firstMoeCnt + gatherCount_;
+                expertTokenNumsOutGMTensor_.SetValue(0, tokenSums);
+                DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertTokenNumsOutGMTensor_[0]);
+                for (uint32_t localMoeIndex = 1; localMoeIndex < moeExpertNumPerRank_; ++localMoeIndex) {
+                    uint32_t preOffset = epWorldSize_ * (localMoeIndex - 1) + epWorldSize_ - 1;
+                    uint32_t curOffset = epWorldSize_ * localMoeIndex + epWorldSize_ - 1;
+                    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sendCountsGlobal[preOffset]);
+                    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sendCountsGlobal[curOffset]);
+                    uint32_t preMoeIndexCnt = sendCountsGlobal.GetValue(preOffset);
+                    uint32_t curMoeIndexCnt = sendCountsGlobal.GetValue(curOffset);
+                    tokenSums = ((expertTokenNumsType_ == 0) ? tokenSums : 0) + (curMoeIndexCnt - preMoeIndexCnt) + gatherCount_;
+                    expertTokenNumsOutGMTensor_.SetValue(localMoeIndex, tokenSums);
+                    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertTokenNumsOutGMTensor_[localMoeIndex]);
+                }
+            }
+        }
+
+        // token总数 = 其他专家搬进来的token数 + allgather拿到的另一张卡token数
+        if constexpr (IsNeedAllgather) {
+            GlobalTensor<int32_t> sendTpCountsGlobal;
+            sendTpCountsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sendTpCountOutGM_));
+            sendTpCountsGlobal.SetValue(tpRankId_, totalCnt_);
+            sendTpCountsGlobal.SetValue(tpGatherRankId_, gatherCount_ + preCnt_);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sendTpCountsGlobal);
+        }
+    }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::AllGatherSetExpertTokenNumsAndTpRecvCount()
-{
-    if (aivId_ != lastCore_) {
-        return;
-    }
-    
-    int64_t tokenNum = totalCnt_ + preCnt_ + gatherCount_;
-    expertTokenNumsOutGMTensor_.SetValue(0, tokenNum);
-    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertTokenNumsOutGMTensor_);
-    // token总数 = 其他专家搬进来的token数 + allgather拿到的另一张卡token数
-    
-    GlobalTensor<int32_t> sendTpCountsGlobal;
-    sendTpCountsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sendTpCountOutGM_));
-    sendTpCountsGlobal.SetValue(tpRankId_, totalCnt_);
-    sendTpCountsGlobal.SetValue(tpGatherRankId_, gatherCount_ + preCnt_);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sendTpCountsGlobal);
-}
 // 流水
 //          24 win->ub ub->gm
 // 48 alltoall                                 syncAll 48 AllgatherOut
@@ -1421,19 +1406,18 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::AllGatherSe
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Process()
 {
-     if ASCEND_IS_AIV { // 全aiv处理
+    if ASCEND_IS_AIV { // 全aiv处理
         AlltoAllDispatch();
         SetStatus();
         WaitDispatch();
         LocalWindowCopy();
-        if constexpr (!IsNeedAllgather) {
-            SetExpertTokenNums();
-        } else {
+        if constexpr (IsNeedAllgather) {
             AllGatherSetStatusAndWait();
             AllgatherProcessOut();
-            AllGatherSetExpertTokenNumsAndTpRecvCount();
         }
+        UpdateTokenNumsOut();
     }
 }
+
 } // MoeDistributeDispatchV2Impl
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_H
