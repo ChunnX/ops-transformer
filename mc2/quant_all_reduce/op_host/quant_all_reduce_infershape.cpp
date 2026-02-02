@@ -41,12 +41,12 @@ constexpr size_t AXIS_TWO = 2;
 const std::set<int> SUPPORT_RANK_SIZE = {2, 4, 8, 16, 32};
 
 struct QuantAllReduceShapeInfo {
-    uint64_t b;
-    uint64_t s;
-    uint64_t bs;
-    uint64_t hiddenSize;
+    int64_t b;
+    int64_t s;
+    int64_t bs;
+    int64_t hiddenSize;
     uint64_t xDim;
-    uint64_t rankNum;
+    int64_t rankNum;
 };
 
 /**
