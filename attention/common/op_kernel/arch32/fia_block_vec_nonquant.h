@@ -503,7 +503,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                 .s1LeftPaddingSize = info.qPaddingBeginOffset,
                 .s2LeftPaddingSize = info.kvPaddingBeginOffset
             };
-            copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord);
+            bool qsEqualOne = (constInfo.qSeqSize == 1);
+            copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
             inputQue2.EnQue(pseShiftB16);
             inputQue2.DeQue<PSE_T>();
             LocalTensor<T> pseShiftUbFP32 = tmpBuf.Get<T>();

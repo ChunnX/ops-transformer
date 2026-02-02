@@ -2396,7 +2396,7 @@ template <typename PSE_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
 class CopyPSEGmToUb {
 public:
     __aicore__ inline void operator()(FaUbTensor<PSE_T> &dstTensor, FaGmTensor<PSE_T, GM_FORMAT> &srcTensor,
-                                      GmPseCoord &gmPseCoord)
+                                      GmPseCoord &gmPseCoord, bool qsEqualOne = false) // qsEqualOne用于适配qs = 1时，pseshifts1 > qs的场景
     {
         if constexpr (UB_FORMAT == UbFormat::GS1) {
             // 连续，单次拷贝
@@ -2404,17 +2404,24 @@ public:
             uint64_t s1Size = 0;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmPseCoord.bIdx);
+            } else if (qsEqualOne) {
+                s1Size = 1U;
             } else {
                 s1Size = offsetCalculator.GetDimS1();
             }
             uint32_t gIdxStart = gmPseCoord.gS1Idx / s1Size;
             uint32_t s1IdxStart = gmPseCoord.gS1Idx % s1Size;
-            uint64_t offset =
+            uint64_t pseOffset =
                 offsetCalculator.GetOffset(gmPseCoord.bIdx, gmPseCoord.n2Idx, gIdxStart,
                     gmPseCoord.s1LeftPaddingSize + s1IdxStart, gmPseCoord.s2LeftPaddingSize + gmPseCoord.s2Idx);
             // 统一的接口
-            CopySingleMatrixNDToND<PSE_T>(dstTensor.tensor, srcTensor.gmTensor[offset], gmPseCoord.gS1DealSize, gmPseCoord.s2DealSize, 
+            if (qsEqualOne) {
+                CopySingleMatrixNDToND<PSE_T>(dstTensor.tensor, srcTensor.gmTensor[pseOffset], gmPseCoord.gS1DealSize, gmPseCoord.s2DealSize, 
+                                    offsetCalculator.GetStrideG(), dstTensor.colCount);
+            } else {
+                CopySingleMatrixNDToND<PSE_T>(dstTensor.tensor, srcTensor.gmTensor[pseOffset], gmPseCoord.gS1DealSize, gmPseCoord.s2DealSize, 
                                     offsetCalculator.GetStrideS1(), dstTensor.colCount);
+            }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
             // 不连续，需要分3次拷贝
             OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
