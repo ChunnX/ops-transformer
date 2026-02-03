@@ -1,0 +1,8 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        1,
+        2
+    ],
+    "DESCRIPTION": "该执行路径主要应用于half和bfloat16类型数据的mul_addn计算。"
+}

@@ -1,0 +1,9 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3
+    ],
+    "DESCRIPTION": "该执行路径主要应用于FatreluMulND类的计算场景，支持half、float、bfloat16数据类型。"
+}
