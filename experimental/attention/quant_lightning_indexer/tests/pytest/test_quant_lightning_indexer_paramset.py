@@ -78,4 +78,8 @@ TEST_PARAMS = {
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
-ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]] 
+properties = torch.npu.get_device_properties()
+if "Ascend910_93" in properties.name:
+    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a3"]]
+elif "Ascend910_95" in properties.name:
+    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]] 

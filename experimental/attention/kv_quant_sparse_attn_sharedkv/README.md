@@ -57,7 +57,7 @@ custom.npu_kv_quant_sparse_attn_sharedkv(q, kv_quant_mode, *, ori_kv=None, cmp_k
 
 -   **sinks**（`Tensor`）：可选参数，注意力下沉tensor，数据格式支持ND，数据类型支持`float32`，shape为[N1]。
 
--   **metadata**（`Tensor`）：可选参数，为aicpu算子（kv_quant_npu_sparse_attn_sharedkv_metadata）的分核结果，数据格式支持ND，数据类型支持`int32`，shape固定为[2048]。
+-   **metadata**（`Tensor`）：可选参数，为aicpu算子（kv_quant_npu_sparse_attn_sharedkv_metadata）的分核结果，数据格式支持ND，数据类型支持`int32`，shape固定为[1024]。
 
 -   **tile\_size**（`int`）：可选参数，表示量化粒度，必须能被rope_head_dim整除，默认值为None，当前仅支持64。
 

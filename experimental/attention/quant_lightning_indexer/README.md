@@ -70,7 +70,6 @@ custom.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key
 -   **return\_value**（`bool`）：可选参数，表示是否输出`sparse_values`。True表示输出，False表示不输出；仅支持默认值False。
 
 ## 返回值说明
-`Tensor`
 -   **sparse\_indices**（`Tensor`）：公式中的输出Out，数据类型支持`int32`,数据格式支持$ND$，当`layout_query`为"BSND"时输出shape为[B, S1, N2, sparse\_count]，当layout\_query为"TND"时输出shape为[T1, N2, sparse\_count]。
 
 -   **sparse\_values**（`Tensor`）：公式中的Indices输出对应的value值，数据类型支持`int32`,数据格式支持$ND$，输出shape与`sparse_indices`保持一致。**目前暂不支持返回sparse_values。**
@@ -144,7 +143,7 @@ custom.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key
                                     cmp_ratio = cmp_ratio,
                                     device = 'npu:0')
     
-    npu_out,_ = torch.ops.custom.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),
+    sparse_indices, sparse_values = torch.ops.custom.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),
                                                     key_dequant_scale.npu(),
                                                     actual_seq_lengths_query=actual_seq_lengths_query.npu(),
                                                     actual_seq_lengths_key=actual_seq_lengths_key.npu(),
@@ -235,7 +234,7 @@ custom.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key
                                     cmp_ratio = cmp_ratio,
                                     device = 'npu:0')
 
-            out, _ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
+            sparse_indices, sparse_values = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
                                                         q_scale, k_scale,
                                                         actual_seq_lengths_query=actual_seq_lengths_query,
                                                         actual_seq_lengths_key=actual_seq_lengths_key,
@@ -247,14 +246,14 @@ custom.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key
                                                         sparse_mode=sparse_mode,pre_tokens=pre_tokens,
                                                         next_tokens=next_tokens, cmp_ratio=cmp_ratio,
                                                         return_value=return_value)
-            return out
+            return sparse_indices
     
     
     config = CompilerConfig()
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
     npu_mode = torch.compile(QLINetwork().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
-    npu_out = npu_mode( query, key, weights, query_dequant_scale, key_dequant_scale,
+    sparse_indices = npu_mode( query, key, weights, query_dequant_scale, key_dequant_scale,
                         query_quant_mode, key_quant_mode, b, n1, n2, d,
                         actual_seq_lengths_query=actual_seq_lengths_query,
                         actual_seq_lengths_key=actual_seq_lengths_key,
@@ -329,7 +328,7 @@ custom.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key
                                     cmp_ratio = cmp_ratio,
                                     device = 'npu:0')
 
-    npu_out,_ = torch.ops.custom.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),
+    sparse_indices, sparse_values = torch.ops.custom.npu_quant_lightning_indexer(query.npu(), key.npu(), weights.npu(), query_dequant_scale.npu(),
                                                     key_dequant_scale.npu(),
                                                     actual_seq_lengths_query=actual_seq_lengths_query.npu(),
                                                     actual_seq_lengths_key=actual_seq_lengths_key.npu(),
@@ -418,7 +417,7 @@ custom.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key
                                     cmp_ratio = cmp_ratio,
                                     device = 'npu:0')
 
-            out, _ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
+            sparse_indices, _ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
                                                         q_scale, k_scale,
                                                         actual_seq_lengths_query=actual_seq_lengths_query,
                                                         actual_seq_lengths_key=actual_seq_lengths_key,
@@ -430,14 +429,14 @@ custom.npu_quant_lightning_indexer(query, key, weights, query_dequant_scale, key
                                                         sparse_mode=sparse_mode,pre_tokens=pre_tokens,
                                                         next_tokens=next_tokens, cmp_ratio=cmp_ratio,
                                                         return_value=return_value)
-            return out
+            return sparse_indices
     
     
     config = CompilerConfig()
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
     npu_mode = torch.compile(QLINetwork().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
-    npu_out = npu_mode( query, key, weights, query_dequant_scale, key_dequant_scale,
+    sparse_indices = npu_mode( query, key, weights, query_dequant_scale, key_dequant_scale,
                         query_quant_mode, key_quant_mode, b, n1, n2, d,
                         actual_seq_lengths_query=actual_seq_lengths_query,
                         actual_seq_lengths_key=actual_seq_lengths_key,

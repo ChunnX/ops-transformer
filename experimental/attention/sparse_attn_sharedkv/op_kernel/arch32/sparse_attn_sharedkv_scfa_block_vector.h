@@ -364,49 +364,6 @@ __aicore__ inline void SASVectorBlock<SAST>::ElewiseCompute(const RunInfo &info,
                                                             uint32_t dealRowCount, uint32_t columnCount)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.softmaxScale), dealRowCount * columnCount);
-
-    // if (!info.isOri) {
-    //     // v0的无效值判断
-    //     uint64_t s2ValidSizeFirstPart = v0ValidSizeUb_.GetValue(128 + info.cmpLoop % MERGE_CACHE_GM_BUF_NUM);
-    //     uint64_t s2ValidSizeSecondPart = v0ValidSizeUb_.GetValue(256 + info.cmpLoop % MERGE_CACHE_GM_BUF_NUM);
-
-    //     int64_t s2ProcessSize = info.actualSingleProcessSInnerSize;
-    //     int64_t s2Pair = CeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
-    //     int64_t s2Mid = CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
-    //     if (s2Mid > s2ProcessSize) {
-    //         s2Mid = s2ProcessSize;
-    //     }
-    //     if (unlikely(s2ValidSizeFirstPart < s2Mid)) {
-    //         int64_t s2StartCeilAlign = CeilAlign(s2ValidSizeFirstPart, 8);
-    //         int64_t s2MidFloorAlign = s2Mid / 8 * 8;
-    //         // 场景一 s2Mid > s2ValidSizeFirstPart + oneBlk
-    //         // 可以推导出s2StartCeilAlign < s2Mid   第一阶段取到s2StartCeilAlign
-    //         // s2StartCeilAlign <= s2MidFloorAlign 第二阶段取到s2MidFloorAlign
-    //         // 场景二 s2Mid <= s2ValidSizeFirstPart + oneBlk
-    //         // 可以推导出 s2StartCeilAlign >= s2Mid 第一阶段取到mid
-    //         // s2StartCeilAlign > s2MidFloorAlign 第二阶段取到s2StartCeilAlign
-    //         SetInfInBlk(mmResUb, dealRowCount, columnCount, s2ValidSizeFirstPart,
-    //                     s2StartCeilAlign >= s2Mid ? s2Mid : s2StartCeilAlign);
-    //         SetMidInf(mmResUb, dealRowCount, columnCount, s2StartCeilAlign, s2MidFloorAlign);
-    //         SetInfInBlk(mmResUb, dealRowCount, columnCount,
-    //                     s2StartCeilAlign <= s2MidFloorAlign ? s2MidFloorAlign : s2StartCeilAlign, s2Mid);
-    //     }
-    //     if (unlikely(s2ValidSizeSecondPart < s2ProcessSize - s2Mid)) {
-    //         // 场景一 s2Mid + s2ValidSizeSecondPart > s2ProcessSize + oneBlk
-    //         // 可以推导出 s2StartCeilAlign < s2ProcessSize 第一阶段取到s2StartCeilAlign
-    //         // s2StartCeilAlign <= s2EndFloorAlign 第二阶段取到s2EndFloorAlign
-    //         // 场景二 s2Mid + s2ValidSizeSecondPart <= s2ProcessSize + oneBlk
-    //         // 可以推导出 s2StartCeilAlign >= s2ProcessSize 第一阶段取到s2ProcessSize
-    //         // s2StartCeilAlign > s2EndFloorAlign 第二阶段取到s2StartCeilAlign
-    //         int64_t s2StartCeilAlign = CeilAlign(s2Mid + s2ValidSizeSecondPart, 8);
-    //         int64_t s2EndFloorAlign = s2ProcessSize / 8 * 8;
-    //         SetInfInBlk(mmResUb, dealRowCount, columnCount, s2Mid + s2ValidSizeSecondPart,
-    //                     s2StartCeilAlign >= s2ProcessSize ? s2ProcessSize : s2StartCeilAlign);
-    //         SetMidInf(mmResUb, dealRowCount, columnCount, s2StartCeilAlign, s2EndFloorAlign);
-    //         SetInfInBlk(mmResUb, dealRowCount, columnCount,
-    //                     s2StartCeilAlign <= s2EndFloorAlign ? s2EndFloorAlign : s2StartCeilAlign, s2ProcessSize);
-    //     }
-    // }
 }
 
 template <typename SAST>
@@ -496,11 +453,6 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
 
     DataCopy(mmResUb, mm1ResGm[inOutGmOffset], computeSize);
-    // if (!info.isOri) {
-    //     if (loopId == 0) {
-    //         WaitFlag<HardEvent::MTE2_S>(0);
-    //     }
-    // }
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 
@@ -548,23 +500,6 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1SingleBuf(const RunInfo 
 
     SliceAndContactSinksValue((mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) %
                                constInfo.qHeadNum, mSplitInfo.vecDealM);
-
-    // if (!info.isOri) {
-    //     DataCopyExtParams dataCopyParams;
-    //     dataCopyParams.blockCount = 1;
-    //     dataCopyParams.blockLen = 256 * sizeof(int32_t);
-    //     dataCopyParams.srcStride = 0;
-    //     dataCopyParams.dstStride = 0;
-    //     DataCopyPadExtParams<int32_t> padParams;
-    //     // 额外偏移128个元素，避免不同loop下v0和v1互相影响
-    //     DataCopyPad(v0ValidSizeUb_[128], kvValidSizeGm_[info.cmpLoop % MERGE_CACHE_GM_BUF_NUM * (128 * 2)],
-    //                 dataCopyParams, padParams);
-    //     SetFlag<HardEvent::MTE2_S>(0);
-    //     if (unlikely(loopCount == 0)) {
-    //         // scalar同步影响较大，挪到循环内部进行
-    //         WaitFlag<HardEvent::MTE2_S>(0);
-    //     }
-    // }
 
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
         if (i == (loopCount - 1)) {
@@ -741,41 +676,6 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
             needWaitMte3ToMte2 = true;
         }
     }
-    // 尾块处理
-    // if (unlikely(s2GmStartOffset + mte2Size < s2GmLimit)) {
-    //     SetFlag<AscendC::HardEvent::MTE3_V>(0);
-    //     WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-    //     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx & 1);
-    //     // 填充0
-    //     Duplicate(kvMergUb_, static_cast<KV_T>(0.0), constInfo.headDim);
-    //     SetFlag<AscendC::HardEvent::V_MTE3>(0);
-    //     WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-
-    //     DataCopyExtParams dataCopyParams;
-    //     dataCopyParams.blockCount = 1;
-    //     dataCopyParams.blockLen = constInfo.headDim * sizeof(KV_T);
-    //     dataCopyParams.srcStride = 0;
-    //     dataCopyParams.dstStride = 0;
-    //     for (int64_t s2GmOffset = s2GmStartOffset + mte2Size; s2GmOffset < s2GmLimit; s2GmOffset++) {
-    //         DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512 + s2GmOffset * constInfo.headDim],
-    //                     kvMergUb_, dataCopyParams);
-    //     }
-    //     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx & 1);
-    //     mergeMte3Idx++;
-    // }
- 
-    // v0ValidSizeUb_.SetValue(runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM, mte2Size);
-    // SetFlag<AscendC::HardEvent::S_MTE3>(1);
-    // WaitFlag<AscendC::HardEvent::S_MTE3>(1);
-    // DataCopyExtParams dataCopyParams;
-    // dataCopyParams.blockCount = 1;
-    // dataCopyParams.blockLen = 128 * sizeof(int32_t);
-    // dataCopyParams.srcStride = 0;
-    // dataCopyParams.dstStride = 0;
-    // DataCopyPad(kvValidSizeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * (128 * 2) + GetSubBlockIdx() * 128],
-    //             v0ValidSizeUb_, dataCopyParams);
-    // SetFlag<AscendC::HardEvent::MTE3_S>(SYNC_INPUT_V0BUF_FLAG);
-    // WaitFlag<AscendC::HardEvent::MTE3_S>(SYNC_INPUT_V0BUF_FLAG);                
     return;
 }
 
