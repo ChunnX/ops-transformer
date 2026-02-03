@@ -146,7 +146,8 @@ bool LightningIndexerGradCase::InitOpInfoCtx()
                                 {"sparseMode", mParam.sparseMode_},
                                 {"preTokens", mParam.preTokens_},
                                 {"nextTokens", mParam.nextTokens_},
-                                {"determinstic", mParam.determinstic_}});
+                                {"determinstic", mParam.determinstic_},
+                                {"compressedRatio", mParam.compressedRatio_}});
     rst = rst && mCtx.SetKernelRunTemplateCbf(RunLightningIndexerGrad);
     rst = rst && mCtx.SetKernelTemplateMainFunc(mLIGKernelFunc);
     rst = rst && mOpInfo.SetContext(&mCtx);

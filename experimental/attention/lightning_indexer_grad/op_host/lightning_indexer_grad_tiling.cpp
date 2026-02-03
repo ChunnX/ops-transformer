@@ -71,7 +71,8 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
     opParamInfo.preTokens = *attrs->GetInt(ATTR_PRETOKENS_INDEX);
     opParamInfo.nextTokens = *attrs->GetInt(ATTR_NEXTTOKENS_INDEX);
     opParamInfo.determinstic = *attrs->GetBool(ATTR_DETERMINSTIC_INDEX);
-    
+    opParamInfo.compressedRatio = *attrs->GetInt(ATTR_COMPRESSED_RATIO_INDEX);
+
     uint32_t dyShapeDim = opParamInfo.dy.shape->GetStorageShape().GetDimNum();
     uint32_t dataType = static_cast<uint32_t>(queryDataType);
     uint32_t inputLayout = -1;
@@ -126,6 +127,7 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
     tilingData_->set_usedCoreNum(blockDim * 2);
     tilingData_->set_dkSize(dkSize);
     tilingData_->set_sparseMode(static_cast<uint64_t>(opParamInfo.sparseMode));
+    tilingData_->set_compressedRatio(static_cast<uint64_t>(opParamInfo.compressedRatio));
 
     // set workspace 
     tilingData_->set_dkWorkSpaceOffset(workspaceOffset);

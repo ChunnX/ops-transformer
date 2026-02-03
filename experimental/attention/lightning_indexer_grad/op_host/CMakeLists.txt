@@ -10,7 +10,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnExc PRIVATE
+    target_sources(op_host_aclnn PRIVATE
         lightning_indexer_grad_def.cpp
      )
 endif()
@@ -25,5 +25,5 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE lightning_indexer_grad ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE lightning_indexer_grad ACLNNTYPE aclnn)
 endif()

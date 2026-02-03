@@ -85,7 +85,7 @@ protected:
     uint32_t headNumK = 0;
     uint32_t groupNum = 0;
     uint32_t headDim = 0;
-    
+
     // ================================Input GlobalTensor=================================
     GlobalTensor<D_T> queryGm;
     GlobalTensor<D_T> keyGm;
@@ -145,6 +145,7 @@ __aicore__ inline void LIGKernel<LIGT>::InitTilingData(const LIGTilingData *__re
     constInfo.reluGradWorkspaceOffset = tilingData->reluGradWorkspaceOffset;
     constInfo.scatterAddWorkspaceOffset = tilingData->scatterAddWorkspaceOffset;
     constInfo.sparseMode = tilingData->sparseMode;
+    constInfo.compressedRatio = tilingData->compressedRatio;
     usedCubeCoreNum = tilingData->usedCoreNum / 2;
     return;
 }
@@ -185,14 +186,15 @@ __aicore__ inline uint64_t LIGKernel<LIGT>::CalcRealTopk(LIGCommon::RunInfo &run
 {
     if (constInfo.sparseMode == 0) {
         return constInfo.topK;
-    } else {
-        int64_t s2RealSize = (runInfo.actualSeqK - runInfo.actualSeqQ) + runInfo.s1Idx + 1;
-        if (s2RealSize <= 0) {
-            return 0;
-        } else {
-            return s2RealSize >= constInfo.topK ? constInfo.topK : s2RealSize;
-        }
     }
+    int64_t originS2 = runInfo.actualSeqK * constInfo.compressedRatio;
+    int64_t maxS2 = (originS2 - runInfo.actualSeqQ + runInfo.s1Idx + 1) / constInfo.compressedRatio;
+    int64_t topKC = runInfo.actualSeqK > constInfo.topK ? constInfo.topK : runInfo.actualSeqK;
+    maxS2 = maxS2 >= topKC ? topKC : maxS2;
+    if (maxS2 < 0) {
+        return 0;
+    }
+    return maxS2 >= topKC ? topKC : maxS2;
 }
 
 template <typename LIGT>

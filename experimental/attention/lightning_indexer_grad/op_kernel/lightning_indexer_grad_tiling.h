@@ -36,6 +36,7 @@ public:
     int64_t reluGradWorkspaceOffset;
     int64_t scatterAddWorkspaceOffset;
     uint64_t sparseMode;
+    uint64_t compressedRatio;
     // ========================
     // Getter & Setter 方法
     // ========================
@@ -86,6 +87,9 @@ public:
 
     uint32_t get_sparseMode() const { return sparseMode; }
     void set_sparseMode(uint32_t sparseMode) { this->sparseMode = sparseMode; }
+
+    uint32_t get_compressedRatio() const { return compressedRatio; }
+    void set_compressedRatio(uint32_t compressedRatio) { this->compressedRatio = compressedRatio; }
 
     void reset()
     {
