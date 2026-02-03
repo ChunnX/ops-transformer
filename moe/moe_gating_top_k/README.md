@@ -28,16 +28,16 @@
   如果bias不为空：
 
   $$
-  normOut = normOut + bias
+  normValue = normOut + bias
   $$
 
   对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
 
   $$
-  groupOut, groupId = TopK(ReduceSum(TopK(Split(normOut, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
+  groupOut, groupId = TopK(ReduceSum(TopK(Split(normValue, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
   $$
 
-  根据上一步的groupId获取normOut中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
+  根据上一步的groupId获取normValue中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
 
   $$
   y,expertIdxOut=TopK(normOut[groupId, :],k=k)

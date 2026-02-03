@@ -454,7 +454,7 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_fail_10) {
                                                 {"k_group",Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
                                                 {"group_count",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
                                                 {"group_select_mode",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-                                                {"renorm",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                {"renorm",Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
                                                 {"norm_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                 {"out_flag",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                                                 {"routed_scaling_factor",Ops::Transformer::AnyValue::CreateFrom<float>(0)},
