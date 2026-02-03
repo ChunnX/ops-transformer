@@ -79,6 +79,8 @@ if (BUILD_OPEN_PROJECT)
       tiling_api
       dlog
     )
+
+    add_subdirectory(src/framework)
 else()
     add_library(${COMMON_NAME}_obj OBJECT)
 
@@ -103,7 +105,7 @@ else()
     )
 endif()
 
-if (NOT BUILD_OPS_RTY_KERNEL)
+if (ENABLE_TILING_SINK)
     if (BUILD_OPEN_PROJECT)
         ExternalProject_Add(tiling_sink_task
             SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_sink
@@ -125,7 +127,6 @@ if (NOT BUILD_OPS_RTY_KERNEL)
             BUILD_ALWAYS TRUE
             BUILD_BYPRODUCTS
         )
-        add_subdirectory(src/framework)
     else()
         add_subdirectory(src/tiling_sink)
     endif()

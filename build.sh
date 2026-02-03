@@ -1195,6 +1195,9 @@ fi
 
 if [ -n "${ascend_op_name}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
+    if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
+        CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
+    fi
 fi
 
 if [ -n "${op_build_tool}" ];then
