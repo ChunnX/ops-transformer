@@ -109,7 +109,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>x</td>
       <td>输入</td>
-      <td>Device侧的aclTensorList，公式中的输入x</td>
+      <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
@@ -119,7 +119,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>weight</td>
       <td>输入</td>
-      <td>Device侧的aclTensorList，公式中的weight</td>
+      <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
@@ -129,8 +129,8 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>biasOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensorList，公式中的bias</td>
-      <td>长度与weight相同</td>
+      <td>公式中的bias。</td>
+      <td>长度与weight相同。</td>
       <td>INT32、BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>-</td>
@@ -139,8 +139,8 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>scaleOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensorList，代表量化参数中的缩放因子</td>
-      <td>一般情况下，长度与weight相同</td>
+      <td>代表量化参数中的缩放因子。</td>
+      <td>一般情况下，长度与weight相同。</td>
       <td>UINT64</td>
       <td>ND</td>
       <td>-</td>
@@ -149,8 +149,8 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>offsetOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensorList，代表量化参数中的偏移量</td>
-      <td>长度与weight相同</td>
+      <td>代表量化参数中的偏移量。</td>
+      <td>长度与weight相同。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>-</td>
@@ -159,8 +159,8 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>antiquantScaleOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensorList，代表伪量化参数中的缩放因子</td>
-      <td>长度与weight相同</td>
+      <td>代表伪量化参数中的缩放因子。</td>
+      <td>长度与weight相同。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>-</td>
@@ -169,8 +169,8 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>antiquantOffsetOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensorList，代表伪量化参数中的偏移量</td>
-      <td>长度与weight相同</td>
+      <td>代表伪量化参数中的偏移量。</td>
+      <td>长度与weight相同。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>-</td>
@@ -179,7 +179,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>groupListOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor类型，代表输入和输出分组轴方向的matmul大小分布</td>
+      <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>
       当输出中TensorList的长度为1时，groupListOptional中的最后一个值约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新
       </td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>splitItem</td>
       <td>输入</td>
-      <td>整数型参数，代表输出是否要做tensor切分</td>
+      <td>整数型参数，代表输出是否要做tensor切分。</td>
       <td>
       0/1代表输出为多tensor，
       2/3代表输出为单tensor
@@ -204,8 +204,8 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>groupType</td>
       <td>输入</td>
-      <td>整数型参数，代表需要分组的轴</td>
-      <td>如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组</td>
+      <td>整数型参数，代表需要分组的轴。</td>
+      <td>如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -214,7 +214,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>y</td>
       <td>输出</td>
-      <td>Device侧的aclTensorList，公式中的输出y</td>
+      <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
       <td>FLOAT16、BFLOAT16、INT8、FLOAT32、INT32</td>
       <td>ND</td>
@@ -224,7 +224,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>workspaceSize</td>
       <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -234,7 +234,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     <tr>
       <td>executor</td>
       <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -431,7 +431,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（g, N, K）或（g, K, N）；x，y中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（g, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024， 即最多支持1024个group<br>5）仅支持ND进ND出<br>6）支持weight转置<br>7）x不支持转置|
       | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional且最后一个值与x中tensor的第一维相等，长度最大为1024<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）仅支持ND进ND出<br>6）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>7）x不支持转置 <br>8）仅支持非量化|
       | 0 | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional，groupListOptional的差值需与y中tensor的第一维一一对应，且长度最大为1024<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）仅支持ND进ND出<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
-      | 0 | 多多单 |1）仅支持splitItem为2<br>2）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为1024<br>4）仅支持ND进ND出<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
+      | 0 | 多多单 |1）仅支持splitItem为2<br>2）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）仅支持ND进ND出<br>6）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>7）x不支持转置<br>8）仅支持非量化|
       | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为3维, shape为（g, M, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024， 即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）仅支持非量化|
 
     </details>

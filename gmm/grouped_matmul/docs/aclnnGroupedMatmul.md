@@ -104,7 +104,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>x</td>
         <td>输入</td>
-        <td>Device侧的aclTensorList，公式中的输入x。</td>
+        <td>公式中的输入x。</td>
         <td>
           <ul>
             <li>支持的最大长度为128个。</li>
@@ -118,7 +118,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>weight</td>
         <td>输入</td>
-        <td>Device侧的aclTensorList，公式中的weight。</td>
+        <td>公式中的weight。</td>
         <td>
           <ul>
             <li>支持的最大长度为128个。</li>
@@ -132,7 +132,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>biasOptional</td>
         <td>可选输入</td>
-        <td>Device侧的aclTensorList，公式中的bias。</td>
+        <td>公式中的bias。</td>
         <td>
           <ul>
             <li>长度与weight相同。</li>
@@ -146,7 +146,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>scaleOptional</td>
         <td>可选输入</td>
-        <td>Device侧的aclTensorList，代表量化参数中的缩放因子。</td>
+        <td>代表量化参数中的缩放因子。</td>
         <td>
           <ul>
             <li>长度与weight相同。</li>
@@ -160,7 +160,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>offsetOptional</td>
         <td>可选输入</td>
-        <td>Device侧的aclTensorList，代表量化参数中的偏移量。</td>
+        <td>代表量化参数中的偏移量。</td>
         <td>
           <ul>
             <li>长度与weight相同。</li>
@@ -174,7 +174,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>antiquantScaleOptional</td>
         <td>可选输入</td>
-        <td>Device侧的aclTensorList，代表伪量化参数中的缩放因子。</td>
+        <td>代表伪量化参数中的缩放因子。</td>
         <td>
           <ul>
             <li>长度与weight相同。</li>
@@ -188,7 +188,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>antiquantOffsetOptional</td>
         <td>可选输入</td>
-        <td>Device侧的aclTensorList，代表伪量化参数中的偏移量。</td>
+        <td>代表伪量化参数中的偏移量。</td>
         <td>
           <ul>
             <li>长度与weight相同。</li>
@@ -202,7 +202,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>groupListOptional</td>
         <td>可选输入</td>
-        <td>Host侧的aclIntArray类型，代表输入和输出M方向的matmul索引情况。</td>
+        <td>代表输入和输出M方向的matmul索引情况。</td>
         <td>
           <ul>
             <li>长度与weight相同。</li>
@@ -231,7 +231,7 @@ aclnnStatus aclnnGroupedMatmul(
       <tr>
         <td>y</td>
         <td>输出</td>
-        <td>Device侧的aclTensorList，公式中的输出y。</td>
+        <td>公式中的输出y。</td>
         <td>
           <ul>
             <li>支持的最大长度为128个。</li>
