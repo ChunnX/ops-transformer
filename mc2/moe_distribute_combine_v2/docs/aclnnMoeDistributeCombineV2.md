@@ -392,8 +392,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
-    <td>UINT64</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -402,8 +402,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
     <td>-</td>
-    <td>aclOpExecutor*</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -446,21 +446,21 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         - commQuantMode 取值范围0或2（0表示不量化，2表示int8量化），取值为2仅当tpWorldSize < 2时可使能。
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        - commAlg 当前支持"mte"（UB-MEM通信方式）和"ccu"(CCU通信方式)，传空默认走UB-MEM通信方式。
+        - commAlg 当前版本不支持，传空指针即可。
         - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
-        - tpSendCountsOptional UB-MEM通信方式下为1D shape Tensor，shape为 (tpWorldSize, )；当前版本CCU通信方式不支持TP域通信。
-        - xActiveMaskOptional UB-MEM通信方式下要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；CCU通信方式下要求为1D Tensor，shape为(Bs, )；true需排在false前。
+        - tpSendCountsOptional 当前版本不支持，传空指针即可。
+        - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信。
         - exapndScalesOptional 预留参数，当前版本不支持，传空指针即可。
         - sharedExpertXOptional 要求为2D或3D Tensor（2D时shape为 (Bs, H)；3D时前两位乘积等于Bs、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
         - epWorldSize 取值支持[2, 768]。
         - moeExpertNum 取值范围(0, 1024]。
-        - groupTp UB-MEM通信方式下字符串长度范围为[1, 128)，不能和groupEp相同；当前版本CCU通信方式不支持TP域通信，传空字符即可。
-        - tpWorldSize UB-MEM通信方式下取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2；当前版本CCU通信方式不支持TP域通信，传1即可。
-        - tpRankId UB-MEM通信方式下取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可；当前版本CCU通信方式不支持TP域通信，传0即可。
+        - groupTp 当前版本不支持，传空字符即可。
+        - tpWorldSize 当前版本不支持，传0即可。
+        - tpRankId 当前版本不支持，传0即可。
         - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - sharedExpertNum 当前取值范围[0, 4]。
         - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - commQuantMode UB-MEM通信方式下取值范围0或2（0表示不量化，2表示int8量化），取值为2仅当tpWorldSize < 2时可使能；当前版本CCU通信方式不支持该参数，传0即可。
+        - commQuantMode 取值范围0或2（0表示不量化，2表示int8量化）。
 
 - **返回值**
 

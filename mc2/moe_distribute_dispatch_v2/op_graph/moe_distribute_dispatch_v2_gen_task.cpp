@@ -37,7 +37,7 @@ static const size_t ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2 = 13;
 ge::Status MoeDistributeDispatchV2CalcParamFunc(gert::ExeResGenerationContext *context)
 {
     if ((Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) &&
-        (Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2) != COMM_ALG_MTE)) {
+        (Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2) == COMM_ALG_CCU)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 ccu calc param.");
         return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
     }
@@ -56,7 +56,7 @@ ge::Status MoeDistributeDispatchV2GenTaskFunc(const gert::ExeResGenerationContex
     if (Mc2GenTaskOpsUtils::IsTargetPlatform(nodeName, NPUARCH_A5)) {
         const std::string commAlg =
             Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2);
-        if (commAlg == COMM_ALG_MTE) {
+        if ((commAlg == COMM_ALG_MTE) || (commAlg == COMM_ALG_FULLMESH_V1) || (commAlg == COMM_ALG_FULLMESH_V2)) {
             OPS_LOG_D(nodeName, "Do A5 mte gen task.");
             return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(context, tasks);
         }
@@ -79,7 +79,7 @@ IMPL_OP(MoeDistributeDispatchV2)
 ge::Status MoeDistributeDispatchV2CalcParamFunc(gert::ExeResGenerationContext *context)
 {
     if ((Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) &&
-        (Mc2A5GenTaskUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2) != COMM_ALG_MTE)) {
+        (Mc2A5GenTaskUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2) == COMM_ALG_CCU)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 ccu calc param.");
         return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
     }
@@ -97,7 +97,7 @@ ge::Status MoeDistributeDispatchV2GenTaskFunc(const gert::ExeResGenerationContex
         return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskMoe::Mc2MoeGenTaskCallback);
     } else if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
         const std::string commAlg = Mc2A5GenTaskUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2);
-        if (commAlg == COMM_ALG_MTE) {
+        if ((commAlg == COMM_ALG_MTE) || (commAlg == COMM_ALG_FULLMESH_V1) || (commAlg == COMM_ALG_FULLMESH_V2)) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 mte gen task.");
             return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskMoe::Mc2MoeGenTaskCallbackV2);
         } else if (commAlg == COMM_ALG_CCU) {

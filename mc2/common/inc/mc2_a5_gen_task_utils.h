@@ -29,6 +29,8 @@ const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> PLATFORM_A3 = {"Ascend910_93"};
 const std::set<std::string> NPUARCH_A5 = {"Ascend950"};
 
+const std::string COMM_ALG_FULLMESH_V1 = "fullmesh_v1";
+const std::string COMM_ALG_FULLMESH_V2 = "fullmesh_v2";
 const std::string COMM_ALG_MTE = "mte";
 const std::string COMM_ALG_CCU = "ccu";
 class Mc2A5GenTaskUtils {

@@ -20,6 +20,8 @@
 #include "graph/arg_desc_info.h"
 
 namespace ops {
+const std::string COMM_ALG_FULLMESH_V1 = "fullmesh_v1";
+const std::string COMM_ALG_FULLMESH_V2 = "fullmesh_v2";
 const std::string COMM_ALG_MTE = "mte";
 const std::string COMM_ALG_CCU = "ccu";
 class Mc2Arch35GenTaskOpsUtils {

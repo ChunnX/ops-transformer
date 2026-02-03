@@ -149,7 +149,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>xActiveMaskOptional</td>
     <td>输入</td>
     <td>表示token是否参与通信。</td>
-    <td>可传有效数据或空指针，默认所有token参与通信；各卡Bs不一致时所有token需有效。</td>
+    <td><ul><li>可传有效数据或空指针，默认所有token参与通信。</li><li>各卡BS不一致时所有token需有效。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
     <td>-</td>
@@ -269,6 +269,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>quantMode</td>
     <td>输入</td>
     <td>表示量化模式。</td>
+    <td>-</td>
     <td>INT64</td>
     <td>ND</td>
     <td>-</td>
@@ -278,7 +279,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>globalBs</td>
     <td>输入</td>
     <td>EP域全局的batch size大小。</td>
-    <td>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡/单rank BS最大值）。</td>
+    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
     <td>INT64</td>
     <td>ND</td>
     <td>-</td>
@@ -379,8 +380,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
-    <td>UINT64</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -389,8 +390,8 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
     <td>-</td>
-    <td>aclOpExecutor*</td>
-    <td>ND</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -429,19 +430,19 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - quantMode 支持0（非量化）、2（动态量化）。
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        - commAlg 当前支持"mte"（UB-MEM通信方式）和"ccu"(CCU通信方式)，传空默认走UB-MEM通信方式。
-        - xActiveMaskOptional UB-MEM通信方式下要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；CCU通信方式下要求为1D Tensor，shape为(Bs, )；true需排在false前。
+        - commAlg 当前版本不支持，传空指针即可。
+        - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信。
         - expertScalesOptional 当前版本不支持，传空指针即可。
         - epWorldSize 取值范围[2, 768]。
         - moeExpertNum 取值范围(0, 1024]。
-        - groupTp UB-MEM通信方式下字符串长度范围为[1, 128)，不能和groupEp相同；当前版本CCU通信方式不支持TP域通信，传空字符即可。
-        - tpWorldSize UB-MEM通信方式下取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2；当前版本CCU通信方式不支持TP域通信，传1即可。
-        - tpRankId UB-MEM通信方式下取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可；当前版本CCU通信方式不支持TP域通信，传0即可。
+        - groupTp 当前版本不支持，传空字符即可。
+        - tpWorldSize 当前版本不支持，传0即可。
+        - tpRankId 当前版本不支持，传0即可。
         - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - sharedExpertNum 当前取值范围[0, 4]。
         - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
         - epRecvCountsOut 的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
-        - tpRecvCountsOut UB-MEM通信方式下有TP域通信时为1D shape Tensor，shape为(tpWorldSize,)；当前版本CCU通信方式不支持TP域通信。
+        - tpRecvCountsOut 当前版本不支持该输出。
         - expandScalesOut 当前版本不支持该输出。
         - quantMode 支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mxfp8动态量化）。
 
