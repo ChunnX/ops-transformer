@@ -333,14 +333,17 @@ template <typename SAST>
 __aicore__ inline void SparseAttnSharedkvSwa<SAST>::GetSparseActualSeqLen()
 {
     // 行无效通过ori部分判断, ori部分如果有行无效那么ori和cmp都有
-    if (tempLoopInfo.oriMaskRight < 0 && tempLoopInfo.s1EndIdx < -tempLoopInfo.oriMaskRight) {
+    if (static_cast<int32_t>(tempLoopInfo.s1EndIdx) < -(tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size)) {
+        tempLoopInfo.actOriS2Size = 0;
         tempLoopInfo.actCmpS2Size = 0;
         return;
     }
 
     // 对于cmp部分还有top k, tempLoopInfo.actS2Size只针对cmp
-    int32_t thresHold = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
-    tempLoopInfo.actCmpS2Size = thresHold;
+    if (constInfo.templateMode == CFA_TEMPLATE) {
+        int32_t thresHold = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+        tempLoopInfo.actCmpS2Size = thresHold;
+    }
 }
 
 template <typename SAST> __aicore__ inline void SparseAttnSharedkvSwa<SAST>::UpdateInnerLoopCond()
@@ -418,7 +421,11 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::Init(
     tilingData = tiling;
 
     InitTilingData();
-    InitActualSeqLen(cuSeqlensQ, seqUsedKV);
+    if (LAYOUT_T == SAS_LAYOUT::TND) {
+        InitActualSeqLen(cuSeqlensQ, seqUsedKV);
+    } else {
+        InitActualSeqLen(seqUsedQ, seqUsedKV);
+    }
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
     InitCalcParamsEach();
 
@@ -628,7 +635,6 @@ template <typename SAST> __aicore__ inline void SparseAttnSharedkvSwa<SAST>::Pro
     } else {
         cubeBlock.FreeEventID();
     }
-
 }
 
 template <typename SAST>
@@ -677,13 +683,15 @@ template <typename SAST> __aicore__ inline void SparseAttnSharedkvSwa<SAST>::Pro
                                         static_cast<int32_t>(tempLoopInfo.s1EndIdx) - constInfo.oriWinLeft, 0);
             if (constInfo.templateMode == CFA_TEMPLATE) {
                 tempLoopInfo.cmpMaskRight = tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size;
-                GetSparseActualSeqLen();
             }
+            GetSparseActualSeqLen();
             UpdateInnerLoopCond();
             if (tempLoopInfo.curActSeqLenIsZero) {
                 if ASCEND_IS_AIV {
                     InitAllZeroOutput(tempLoopInfo.bIdx, tempLoopInfo.s1StartIdx, tempLoopInfo.n2Idx);
                 }
+                tempLoopInfo.actOriS2Size = GetActualSeqLenKV(tempLoopInfo.bIdx);
+                continue;
             }
             uint32_t oriSplitNum = CeilDiv(tempLoopInfo.oriMaskRight - tempLoopInfo.oriMaskLeft + 1, constInfo.s2BaseSize);
             uint32_t s2SplitNum = oriSplitNum;

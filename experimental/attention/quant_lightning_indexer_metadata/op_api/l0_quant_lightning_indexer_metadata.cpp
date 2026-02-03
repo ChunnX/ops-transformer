@@ -27,7 +27,6 @@ namespace l0op {
 OP_TYPE_REGISTER(QuantLightningIndexerMetadata);
 
 const aclTensor* QuantLightningIndexerMetadata(
-    const aclTensor* query,
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t aicCoreNum,
@@ -50,7 +49,7 @@ const aclTensor* QuantLightningIndexerMetadata(
     int64_t cmpRatioOptional,
     const aclTensor* metaData,
     aclOpExecutor* executor) {
-  L0_DFX(QuantLightningIndexerMetadata, query, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum, aivCoreNum, socVersion,
+  L0_DFX(QuantLightningIndexerMetadata, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum, aivCoreNum, socVersion,
                          numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode, batchSizeOptional, maxSeqlenQOptional,  
                          maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional, sparseCountOptional, sparseModeOptional,
                          preTokensOptional, nextTokensOptional, cmpRatioOptional, metaData);
@@ -62,7 +61,7 @@ const aclTensor* QuantLightningIndexerMetadata(
       OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", "query_quant_mode",
                      "key_quant_mode", "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_query", "layout_key", "sparse_count",
                      "sparse_mode", "pre_tokens", "next_tokens", "cmp_ratio"}),
-      OP_INPUT(query, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional), OP_OUTPUT(metaData),
+      OP_INPUT(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional), OP_OUTPUT(metaData),
       OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode,
               batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional, 
               sparseCountOptional, sparseModeOptional, preTokensOptional, nextTokensOptional, cmpRatioOptional));

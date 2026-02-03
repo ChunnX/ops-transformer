@@ -20,22 +20,19 @@ logger = logging.getLogger(__name__)
 
 
 def check_valid_param(params):
-    batch_size, q_t_size, k_t_size, block_size, q_seq, kv_seq, q_head_num, kv_head_num, head_dim, rope_dim, \
-    q_dtype, idx_dtype, sparse_block_size, sparse_block_count, kv_seq_act, layout_kv, layout_query, \
-    kv_quant_mode, tile_size, rope_head_dim, template_run_mode = params
+    Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
+    block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
+    cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode = params
     
     # 依次校验参数合法性
     
-    if q_dtype not in [torch.bfloat16, torch.float16]:
-        raise ValueError("q_dtype should be: float16/bfloat16")
+    if q_type not in [torch.bfloat16]:
+        raise ValueError("q_type should be: bfloat16")
 
-    if idx_dtype not in [torch.int32]:
-        raise ValueError("sparse idxtype should be: int32")
-
-    if layout_query not in ["BSND", "TND"]:
-        raise ValueError(f"不支持的Q shape: {layout_query}")
+    if layout_q not in ["BSND", "TND"]:
+        raise ValueError(f"不支持的Q shape: {layout_q}")
     
-    if layout_kv not in ["BSND","TND","PA_BSND"]:
+    if layout_kv not in ["PA_ND"]:
         raise ValueError(f"不支持的KV shape: {layout_kv}")
 
     if template_run_mode not in ["SCFA","CFA","SWA"]:

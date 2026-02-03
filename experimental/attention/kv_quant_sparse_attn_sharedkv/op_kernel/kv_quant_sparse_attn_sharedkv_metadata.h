@@ -21,33 +21,33 @@
 namespace optiling {
 
 // Constants
-static constexpr uint32_t AIC_CORE_NUM = 36;  // TODO 根据编译宏确定 aicpu与kernel的宏保持一致
-static constexpr uint32_t MAX_AIV_AIC_RATIO = 2;
+constexpr uint32_t AIC_CORE_NUM = 36;
+constexpr uint32_t MAX_AIV_AIC_RATIO = 2;
 constexpr uint32_t SCFA_META_SIZE = 2048;
 using SCFA_METADATA_T = int32_t;
 
-static constexpr uint32_t CORE_METADATA_SIZE = 32;
-static constexpr uint32_t FA_METADATA_SIZE = 16;
-static constexpr uint32_t FD_METADATA_SIZE = 8;
+constexpr uint32_t CORE_METADATA_SIZE = 32;
+constexpr uint32_t FA_METADATA_SIZE = 16;
+constexpr uint32_t FD_METADATA_SIZE = 8;
 
 // FA Metadata Index Definitions
-static constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
-static constexpr uint32_t FA_BN2_START_INDEX = 1;
-static constexpr uint32_t FA_M_START_INDEX = 2;
-static constexpr uint32_t FA_S2_START_INDEX = 3;
-static constexpr uint32_t FA_BN2_END_INDEX = 4;
-static constexpr uint32_t FA_M_END_INDEX = 5;
-static constexpr uint32_t FA_S2_END_INDEX = 6;
-static constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
-static constexpr uint32_t FA_FD_VECTOR_NUM_INDEX = 8;
+constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t FA_BN2_START_INDEX = 1;
+constexpr uint32_t FA_M_START_INDEX = 2;
+constexpr uint32_t FA_S2_START_INDEX = 3;
+constexpr uint32_t FA_BN2_END_INDEX = 4;
+constexpr uint32_t FA_M_END_INDEX = 5;
+constexpr uint32_t FA_S2_END_INDEX = 6;
+constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
+constexpr uint32_t FA_FD_VECTOR_NUM_INDEX = 8;
 
 // FD Metadata Index Definitions
-static constexpr uint32_t FD_BN2_IDX_INDEX = 0;
-static constexpr uint32_t FD_M_IDX_INDEX = 1;
-static constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 2;
-static constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3;
-static constexpr uint32_t FD_M_START_INDEX = 4;
-static constexpr uint32_t FD_M_NUM_INDEX = 5;
+constexpr uint32_t FD_BN2_IDX_INDEX = 0;
+constexpr uint32_t FD_M_IDX_INDEX = 1;
+constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 2;
+constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3;
+constexpr uint32_t FD_M_START_INDEX = 4;
+constexpr uint32_t FD_M_NUM_INDEX = 5;
 
 /**
  * @brief  获取属性的绝对索引
@@ -59,11 +59,13 @@ static constexpr uint32_t FD_M_NUM_INDEX = 5;
  *
  * @return 返回计算得到的属性绝对索引
  */
+#ifdef __CCE_AICORE__
 __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t aicIdx, uint32_t metaIdx, bool isFDMeta=false, uint32_t aivIdx=0)
 {
     uint32_t baseIndex = CORE_METADATA_SIZE * aicIdx + FD_METADATA_SIZE * aivIdx + metaIdx;
     return isFDMeta ? baseIndex + FA_METADATA_SIZE : baseIndex;
 }
+#endif
 
 namespace detail {
     struct CoreMetadata{

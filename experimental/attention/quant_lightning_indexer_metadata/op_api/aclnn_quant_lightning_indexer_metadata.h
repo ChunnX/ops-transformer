@@ -19,7 +19,6 @@ extern "C" {
 
 /* funtion: aclnnQuantLightningIndexerMetadataGetWorkspaceSize
  * parameters :
- * query : required
  * actualSeqLengthsQuery : optional
  * actualSeqLengthsKey : optional
  * numHeadsQ : required
@@ -43,7 +42,6 @@ extern "C" {
  */
 __attribute__((visibility("default"))) aclnnStatus
 aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
-    const aclTensor* query,
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t numHeadsQ,

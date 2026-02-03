@@ -16,7 +16,6 @@
 
 namespace l0op {
 const aclTensor* SparseAttnSharedkvMetadata(
-    const aclTensor* q,
     const aclTensor* cuSeqLensQOptional,
     const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor* cuSeqLensCmpKvOptional,
@@ -29,14 +28,14 @@ const aclTensor* SparseAttnSharedkvMetadata(
     int64_t maxSeqlenQOptional,
     int64_t maxSeqlenKvOptional,
     int64_t oriTopKOptional,
-    int64_t cmpToKOptional,
+    int64_t cmpTopKOptional,
     int64_t cmpRatioOptional,
     int64_t oriMaskModeOptional,
     int64_t cmpMaskModeOptional,
     int64_t oriWinLeftOptional,
     int64_t oriWinRightOptional,
-    char *layoutQOptional,
-    char *layoutKvOptional,
+    std::string layoutQOptional,
+    std::string layoutKvOptional,
     bool hasOriKvOptional,
     bool hasCmpKvOptional,
     const char *socVersion,

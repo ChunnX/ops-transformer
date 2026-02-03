@@ -12,24 +12,50 @@ Experimental 是一个轻量级，高性能的算子开发工程模板，它集�
 
 ⚡ 高性能 (High Performance): 基于AscendC编程模型，充分发挥昇腾NPU硬件能力。
 
-📦 一键部署 (One-Click Deployment): 集成setuptools构建系统，支持一键编译和安装。
+## 算子使用说明 | Operators Introduction
 
-🔌 PyTorch集成 (PyTorch Integration): 无缝集成PyTorch张量操作，支持自动微分和GPU/NPU统一接口。
+Experimental提供了一系列已完成开发和验证的自定义算子，支持直接编译和部署，详细使用流程与说明如下表：
 
-## 核心交付件 | Core Deliverables
+<table>
+    <thead>
+        <tr>
+            <th>算子分类</th>
+            <th>使用说明</th>
+            <th>说明</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>attention</td>
+            <td><a href="./attention/Attention融合算子Experimental使用说明.md">attention使用说明</a></td>
+            <td>Attention融合算子Experimental使用说明</td>
+        </tr>
+        <tr>
+            <td>mc2</td>
+            <td><a href="./mc2/通算融合算子Experimental使用说明.md">mc2使用说明</a></td>
+            <td>通算融合算子Experimental的使用说明</td>
+        </tr>
+    </tbody>
+<table>
+
+## 自定义算子开发 | Developing New Operators
+
+该节将详细介绍自定义算子的端到端开发流程，从零构建算子并完成功能实现、调用适配和验证。
+
+### 核心交付件 | Core Deliverables
 1. `experimental/xxx/算子目录/算子名_torch.cpp` 算子Kernel实现
 2. `experimental/xxx/算子目录/CMakeLists.txt` 算子cmake配置
 3. `experimental/npu_ops_transformer_ext/npu_ops_def.cpp` 注册算子接口
 - 其中xxx为attention/ffn/gmm/mc2/moe/posembedding
 
-## 环境要求 | Prerequisites
+### 环境要求 | Prerequisites
 *   Python: 3.8+
 *   CANN Ascend Toolkit
 *   PyTorch: 2.1.0+
 *   PyTorchAdapter
 *   gcc: 9.0.0+
 
-## 环境准备 | Preparation
+### 环境准备 | Preparation
 
 1. **安装社区版CANN toolkit包**
 
@@ -81,7 +107,7 @@ Experimental 是一个轻量级，高性能的算子开发工程模板，它集�
     
     注：目前torch_npu支持RunOpApiV2接口的版本包括2.1.0、2.4.0+。
 
-## 安装步骤 | Installation
+### 安装步骤 | Installation
 
 1. 进入目录，安装依赖
     ```sh
@@ -109,7 +135,7 @@ Experimental 是一个轻量级，高性能的算子开发工程模板，它集�
     python setup.py clean
     ```
 
-## 开发模式构建 | Developing Mode
+### 开发模式构建 | Developing Mode
 
 此命令实现即时生效的开发环境配置，执行后即可使源码修改生效，省略了构建完整whl包和安装的过程，适用于需要多次修改验证算子的场景：
   ```sh
@@ -117,7 +143,7 @@ Experimental 是一个轻量级，高性能的算子开发工程模板，它集�
   ```
 
 
-## 开发新算子 | Developing New Operators
+### 开发新算子 | Developing New Operators
 1. 编写算子调用文件，以在experimental/posembedding下添加算子my_ops为例
    
     在 `experimental/posembedding` 目录下添加新的算子目录 `my_ops`，在 `my_ops` 目录下添加新的算子调用文件 `my_ops_torch.cpp`

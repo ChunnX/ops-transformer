@@ -773,45 +773,45 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *x_softmax, __ubuf__ float *
             LoadAlign(vreg_x_f32_3_0, src_ub3_0 + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4);
             LoadAlign(vreg_x_f32_3_1, (src_ub3_0 + RowSize) + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4);
             
-            FusedExpSub(vreg_x_exp_0_0, vreg_x_f32_0_0, max0_0, preg_all);
-            FusedExpSub(vreg_x_exp_0_1, vreg_x_f32_0_1, max0_0, preg_all);
-            FusedExpSub(vreg_x_exp_1_0, vreg_x_f32_1_0, max1_0, preg_all);
-            FusedExpSub(vreg_x_exp_1_1, vreg_x_f32_1_1, max1_0, preg_all);
-            FusedExpSub(vreg_x_exp_2_0, vreg_x_f32_2_0, max2_0, preg_all);
-            FusedExpSub(vreg_x_exp_2_1, vreg_x_f32_2_1, max2_0, preg_all);
-            FusedExpSub(vreg_x_exp_3_0, vreg_x_f32_3_0, max3_0, preg_all);
-            FusedExpSub(vreg_x_exp_3_1, vreg_x_f32_3_1, max3_0, preg_all);
+            FusedExpSub(vreg_x_exp_0_0, vreg_x_f32_0_0, max0, preg_LHalf);
+            FusedExpSub(vreg_x_exp_0_1, vreg_x_f32_0_1, max0, preg_LHalf);
+            FusedExpSub(vreg_x_exp_1_0, vreg_x_f32_1_0, max1, preg_LHalf);
+            FusedExpSub(vreg_x_exp_1_1, vreg_x_f32_1_1, max1, preg_LHalf);
+            FusedExpSub(vreg_x_exp_2_0, vreg_x_f32_2_0, max2, preg_LHalf);
+            FusedExpSub(vreg_x_exp_2_1, vreg_x_f32_2_1, max2, preg_LHalf);
+            FusedExpSub(vreg_x_exp_3_0, vreg_x_f32_3_0, max3, preg_LHalf);
+            FusedExpSub(vreg_x_exp_3_1, vreg_x_f32_3_1, max3, preg_LHalf);
             
-            Add(vreg_x_sum_0_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_all);
-            Add(vreg_x_sum_0_1, vreg_x_exp_0_1, vreg_x_sum_0_1, preg_all);
-            Add(vreg_x_sum_1_0, vreg_x_exp_1_0, vreg_x_sum_1_0, preg_all);
-            Add(vreg_x_sum_1_1, vreg_x_exp_1_1, vreg_x_sum_1_1, preg_all);
-            Add(vreg_x_sum_2_0, vreg_x_exp_2_0, vreg_x_sum_2_0, preg_all);
-            Add(vreg_x_sum_2_1, vreg_x_exp_2_1, vreg_x_sum_2_1, preg_all);
-            Add(vreg_x_sum_3_0, vreg_x_exp_3_0, vreg_x_sum_3_0, preg_all);
-            Add(vreg_x_sum_3_1, vreg_x_exp_3_1, vreg_x_sum_3_1, preg_all);
+            Add(vreg_x_sum_0_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_LHalf);
+            Add(vreg_x_sum_0_1, vreg_x_exp_0_1, vreg_x_sum_0_1, preg_LHalf);
+            Add(vreg_x_sum_1_0, vreg_x_exp_1_0, vreg_x_sum_1_0, preg_LHalf);
+            Add(vreg_x_sum_1_1, vreg_x_exp_1_1, vreg_x_sum_1_1, preg_LHalf);
+            Add(vreg_x_sum_2_0, vreg_x_exp_2_0, vreg_x_sum_2_0, preg_LHalf);
+            Add(vreg_x_sum_2_1, vreg_x_exp_2_1, vreg_x_sum_2_1, preg_LHalf);
+            Add(vreg_x_sum_3_0, vreg_x_exp_3_0, vreg_x_sum_3_0, preg_LHalf);
+            Add(vreg_x_sum_3_1, vreg_x_exp_3_1, vreg_x_sum_3_1, preg_LHalf);
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub0_0 + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_0_0, preg_all);
+                vreg_x_exp_0_0, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub0_0 + RowSize + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_0_1, preg_all);
+                vreg_x_exp_0_1, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub1_0 + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_1_0, preg_all);
+                vreg_x_exp_1_0, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub1_0 + RowSize + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_1_1, preg_all);
+                vreg_x_exp_1_1, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub2_0 + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_2_0, preg_all);
+                vreg_x_exp_2_0, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub2_0 + RowSize + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_2_1, preg_all);
+                vreg_x_exp_2_1, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub3_0 + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_3_0, preg_all);
+                vreg_x_exp_3_0, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub3_0 + RowSize + iter_m * RowSize * 2 + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_exp_3_1, preg_all);
+                vreg_x_exp_3_1, preg_LHalf);
         }
-        Add(vreg_x_sum_0_0, vreg_x_sum_0_0, vreg_x_sum_0_1, preg_all);
-        Add(vreg_x_sum_1_0, vreg_x_sum_1_0, vreg_x_sum_1_1, preg_all);
-        Add(vreg_x_sum_2_0, vreg_x_sum_2_0, vreg_x_sum_2_1, preg_all);
-        Add(vreg_x_sum_3_0, vreg_x_sum_3_0, vreg_x_sum_3_1, preg_all);
+        Add(vreg_x_sum_0_0, vreg_x_sum_0_0, vreg_x_sum_0_1, preg_LHalf);
+        Add(vreg_x_sum_1_0, vreg_x_sum_1_0, vreg_x_sum_1_1, preg_LHalf);
+        Add(vreg_x_sum_2_0, vreg_x_sum_2_0, vreg_x_sum_2_1, preg_LHalf);
+        Add(vreg_x_sum_3_0, vreg_x_sum_3_0, vreg_x_sum_3_1, preg_LHalf);
 
         LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
         for (uint16_t iter_m = 0; iter_m < ReduceSize; ++iter_m) {
@@ -820,19 +820,19 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *x_softmax, __ubuf__ float *
             LoadAlign(vreg_x_exp_2_0, src_ub2_0 + iter_m * RowSize + ReduceSize * RowSize * iter_sc * 4);
             LoadAlign(vreg_x_exp_3_0, src_ub3_0 + iter_m * RowSize + ReduceSize * RowSize * iter_sc * 4);
 
-            Div(vreg_x_softmax_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_all);
-            Div(vreg_x_softmax_1, vreg_x_exp_1_0, vreg_x_sum_1_0, preg_all);
-            Div(vreg_x_softmax_2, vreg_x_exp_2_0, vreg_x_sum_2_0, preg_all);
-            Div(vreg_x_softmax_3, vreg_x_exp_3_0, vreg_x_sum_3_0, preg_all); 
+            Div(vreg_x_softmax_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_LHalf);
+            Div(vreg_x_softmax_1, vreg_x_exp_1_0, vreg_x_sum_1_0, preg_LHalf);
+            Div(vreg_x_softmax_2, vreg_x_exp_2_0, vreg_x_sum_2_0, preg_LHalf);
+            Div(vreg_x_softmax_3, vreg_x_exp_3_0, vreg_x_sum_3_0, preg_LHalf); 
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)x_softmax_0 + iter_m * RowSize + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_softmax_0, preg_all);
+                vreg_x_softmax_0, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)x_softmax_1 + iter_m * RowSize + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_softmax_1, preg_all);
+                vreg_x_softmax_1, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)x_softmax_2 + iter_m * RowSize + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_softmax_2, preg_all);
+                vreg_x_softmax_2, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)x_softmax_3 + iter_m * RowSize + ReduceSize * RowSize * iter_sc * 4),
-                vreg_x_softmax_3, preg_all);
+                vreg_x_softmax_3, preg_LHalf);
         }
     }
     // 尾块处理
@@ -860,24 +860,24 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *x_softmax, __ubuf__ float *
             LoadAlign(vreg_x_f32_0_0, src_ub0_0 + iter_m * RowSize * 2 + ReduceSize * RowSize * (iter_sc + vScRealSize / 4 * 4));
             LoadAlign(vreg_x_f32_0_1, (src_ub0_0 + RowSize) + iter_m * RowSize * 2 + ReduceSize * RowSize * (iter_sc + vScRealSize / 4 * 4));
             
-            FusedExpSub(vreg_x_exp_0_0, vreg_x_f32_0_0, max0_0, preg_all);
-            FusedExpSub(vreg_x_exp_0_1, vreg_x_f32_0_1, max0_0, preg_all);
+            FusedExpSub(vreg_x_exp_0_0, vreg_x_f32_0_0, max0, preg_LHalf);
+            FusedExpSub(vreg_x_exp_0_1, vreg_x_f32_0_1, max0, preg_LHalf);
             
-            Add(vreg_x_sum_0_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_all);
-            Add(vreg_x_sum_0_1, vreg_x_exp_0_1, vreg_x_sum_0_1, preg_all);
+            Add(vreg_x_sum_0_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_LHalf);
+            Add(vreg_x_sum_0_1, vreg_x_exp_0_1, vreg_x_sum_0_1, preg_LHalf);
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub0_0 + iter_m * RowSize * 2 + ReduceSize * RowSize * (iter_sc + vScRealSize / 4 * 4)),
-                vreg_x_exp_0_0, preg_all);
+                vreg_x_exp_0_0, preg_LHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)src_ub0_0 + RowSize + iter_m * RowSize * 2 + ReduceSize * RowSize * (iter_sc + vScRealSize / 4 * 4)),
-                vreg_x_exp_0_1, preg_all);
+                vreg_x_exp_0_1, preg_LHalf);
         }
-        Add(vreg_x_sum_0_0, vreg_x_sum_0_0, vreg_x_sum_0_1, preg_all);
+        Add(vreg_x_sum_0_0, vreg_x_sum_0_0, vreg_x_sum_0_1, preg_LHalf);
 
         LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
         for (uint16_t iter_m = 0; iter_m < ReduceSize; ++iter_m) {
             LoadAlign(vreg_x_exp_0_0, src_ub0_0 + iter_m * RowSize + ReduceSize * RowSize * (iter_sc + vScRealSize / 4 * 4));
 
-            Div(vreg_x_softmax_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_all);
+            Div(vreg_x_softmax_0, vreg_x_exp_0_0, vreg_x_sum_0_0, preg_LHalf);
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)x_softmax_0 + iter_m * RowSize + ReduceSize * RowSize * (iter_sc + vScRealSize / 4 * 4)),
                 vreg_x_softmax_0, preg_LHalf);

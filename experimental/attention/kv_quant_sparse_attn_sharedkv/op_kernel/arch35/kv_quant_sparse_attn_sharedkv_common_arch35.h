@@ -18,49 +18,19 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../kv_quant_sparse_attn_sharedkv_common.h"
 
-constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
-
 constexpr uint64_t BLOCK_BYTE = 32;
-constexpr int32_t SOFTMAX_M_ALIGNED_SIZE = 8;
-constexpr int32_t SOFTMAX_K_ALIGNED_SIZE = 64;
-constexpr uint64_t DATACOPYPAD_PADDING_VALUE_ZERO = 0;
 constexpr uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
-constexpr uint32_t NEGATIVE_MIN_VAULE_FP16 = 0xFBFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP32 = 0x7F7FFFFF;
-constexpr uint32_t POSITIVE_MAX_VALUE_FP16 = 0x7BFF;
-constexpr int64_t pse1NS1S2 = 2;
-constexpr int64_t FP8_QUANT_BLOCK_SIZE = 128;
-// 0级接口的block间隔范围需要满足32B对齐
-constexpr int64_t attenMaskBN2GS1S2 = 0;
-constexpr int64_t attenMaskBS1S2 = 1;
-constexpr int64_t attenMaskS1S2 = 2;
-constexpr int64_t attenMaskTT = 99;
-constexpr uint16_t PREFIX_N_MAX_B = 32;
-constexpr int32_t fp32BaseSize = 8;
 
-constexpr uint32_t attenMaskNoCompress = 0;
-constexpr uint32_t attenMaskLeftUpCausalCompress = 1;
-constexpr uint32_t attenMaskRightDownCausalCompress = 2;
-constexpr uint16_t SHIFT_NUM_2 = 2;
-constexpr uint16_t SHIFT_NUM_6 = 6;
-constexpr uint16_t ADD_NUM_63 = 63;
+constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536; // 65536表示64*1024
+constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
-constexpr uint32_t L0C_SHARED_SIZE_64K = 64 * 1024;
-constexpr uint32_t L0C_SHARED_SIZE_128K = 128 * 1024;
-#if (__NPU_ARCH__ == 5102)
-constexpr uint32_t CV_RATIO = 1;
-#else
+constexpr uint32_t BUFFER_SIZE_16K = 16384; // 16384表示16 * 1024
+constexpr uint32_t BUFFER_SIZE_32K = 32768; // 32768表示32 * 1024
+constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
+
 constexpr uint32_t CV_RATIO = 2;
-#endif
 constexpr uint64_t SYNC_MODE = 4;
-constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8}; // mm2ResIntraEvent
-constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; //mm1ResIntraEvent
-constexpr uint64_t KB_TO_BYTES = 1024;
-constexpr uint64_t L0C_SIZE = 256;
-constexpr uint64_t MLA_L0A_SIZE = 64;
-constexpr uint64_t MLA_L0B_SIZE = 64; 
-constexpr uint64_t BASE_SIZE_128 = 128;
-constexpr uint64_t FLOAT_BYTES = 4;
 
 namespace BaseApi {
 struct CubeCoordInfo {
@@ -69,10 +39,20 @@ struct CubeCoordInfo {
     uint32_t s2Coord;
 };
 
-static constexpr uint32_t FA_BYTE_BLOCK = 32;
+__aicore__ constexpr uint64_t Align2Func(uint64_t data) {
+    return (data + 1UL) >> 1UL << 1UL; // 向上2对齐, +1移位2
+}
 
-__aicore__ constexpr uint16_t Align64Func(uint16_t data) {
-    return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
+__aicore__ constexpr uint64_t Align8Func(uint64_t data) {
+    return (data + 7UL) >> 3UL << 3UL; // 向上8对齐, +7移位3
+}
+
+__aicore__ constexpr uint64_t Align16Func(uint64_t data) {
+    return (data + 15UL) >> 4UL << 4UL; // 向上16对齐, +15移位4
+}
+
+__aicore__ constexpr uint64_t Align64Func(uint64_t data) {
+    return (data + 63UL) >> 6UL << 6UL; // 向上64对齐, +63移位6
 }
 }
 

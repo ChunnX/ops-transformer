@@ -15,7 +15,6 @@
 
 namespace l0op {
 const aclTensor* QuantLightningIndexerMetadata(
-    const aclTensor* query,
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t aicCoreNum,

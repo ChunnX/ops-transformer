@@ -21,8 +21,7 @@
 
 namespace ge {
 
-REG_OP(KVQuantSparseAttnSharedkvMetadata)
-    .INPUT(q, TensorType({DT_BF16, DT_FLOAT16}))
+REG_OP(KvQuantSparseAttnSharedkvMetadata)
     .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_ori_kv, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_cmp_kv, TensorType({DT_INT32}))
@@ -52,7 +51,7 @@ REG_OP(KVQuantSparseAttnSharedkvMetadata)
     .REQUIRED_ATTR(soc_version, String)
     .REQUIRED_ATTR(aic_core_num, Int)
     .REQUIRED_ATTR(aiv_core_num, Int)
-    .OP_END_FACTORY_REG(KVQuantSparseAttnSharedkvMetadata)
+    .OP_END_FACTORY_REG(KvQuantSparseAttnSharedkvMetadata)
 } // namespace ge
 
 #endif // KV_QUANT_SPARSE_ATTN_SHAREDKV_METADATA_PROTO_H

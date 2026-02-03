@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include "kv_quant_sparse_attn_sharedkv_check.h"
 #include "kv_quant_sparse_attn_sharedkv_tiling.h"
 #include "../op_kernel/kv_quant_sparse_attn_sharedkv_template_tiling_key.h"
 
@@ -23,34 +24,14 @@ using std::string;
 using std::pair;
 namespace optiling {
 
-static const std::string ORI_BLOCK_TABLE_NAME = "ori_block_table";
-static const std::string CMP_BLOCK_TABLE_NAME = "cmp_block_table";
-static const std::string SINKS_NAME = "sinks";
-
-std::string KvQuantSASLayoutToSerialString(SASLayout layout)
-{
-    switch (layout) {
-        case SASLayout::BSND: return "BSND";
-        case SASLayout::TND: return "TND";
-        case SASLayout::PA_ND: return "PA_ND";
-        default: return "UNKNOWN";
-    }
-}
-
 struct SASCompileInfo {
     int64_t core_num;
 };
 
-static const std::map<SASLayout, std::vector<SASAxis>> SAS_LAYOUT_AXIS_MAP = {
+const std::map<SASLayout, std::vector<SASAxis>> SAS_LAYOUT_AXIS_MAP = {
     {SASLayout::BSND, {SASAxis::B, SASAxis::S, SASAxis::N, SASAxis::D}},
     {SASLayout::TND, {SASAxis::T, SASAxis::N, SASAxis::D}},
     {SASLayout::PA_ND, {SASAxis::Bn, SASAxis::Bs, SASAxis::N, SASAxis::D}},
-};
-
-static const std::map<SASLayout, size_t> SAS_LAYOUT_DIM_MAP = {
-    {SASLayout::BSND, DIM_NUM_FOUR},
-    {SASLayout::TND, DIM_NUM_THREE},
-    {SASLayout::PA_ND, DIM_NUM_FOUR},
 };
 
 // --------------------------KvQuantSASInfoParser类成员函数定义-------------------------------------
@@ -469,6 +450,7 @@ ge::graphStatus KvQuantSASInfoParser::GetSinks()
             return ge::GRAPH_FAILED;
         }
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
@@ -538,13 +520,13 @@ ge::graphStatus KvQuantSASInfoParser::Parse(KvQuantSASTilingInfo &sasInfo)
         ge::GRAPH_SUCCESS != GetNpuInfo() ||
         ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
-        //return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
 
     if (ge::GRAPH_SUCCESS != GetInOutDataType() ||
         ge::GRAPH_SUCCESS != GetQueryAndOutLayout() ||
         ge::GRAPH_SUCCESS != GetKvLayout()) {
-        //return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
 
     SetSASShape();
@@ -560,26 +542,14 @@ ge::graphStatus KvQuantSASInfoParser::Parse(KvQuantSASTilingInfo &sasInfo)
         ge::GRAPH_SUCCESS != GetSparseBlockCount() ||
         ge::GRAPH_SUCCESS != GetDSizeQ() ||
         ge::GRAPH_SUCCESS != GetDSizeKV()) {
-        //return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
 
     if (ge::GRAPH_SUCCESS != GetActualseqInfo()) {
-        //return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
 
     GenerateInfo(sasInfo);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus KvQuantSASTilingCheck::Process()
-{
-    // Init();
-    // if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
-    //     CheckParaExistence() != ge::GRAPH_SUCCESS ||
-    //     CheckFeature() != ge::GRAPH_SUCCESS ||
-    //     CheckMultiParaConsistency() != ge::GRAPH_SUCCESS) {
-    //     return ge::GRAPH_FAILED;
-    // }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -668,6 +638,7 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_));
     context_->SetTilingKey(tilingKey);
+    context_->SetScheduleMode(1);
     
     return ge::GRAPH_SUCCESS;
 }
@@ -680,12 +651,12 @@ ge::graphStatus TilingKvQuantSparseAttnSharedkv(gert::TilingContext *context)
     KvQuantSASTilingInfo sasInfo;
     KvQuantSASInfoParser sasInfoParser(context);
     if (sasInfoParser.Parse(sasInfo) != ge::GRAPH_SUCCESS) {
-        //return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
 
     KvQuantSASTilingCheck sasTilingChecker(sasInfo);
     if (sasTilingChecker.Process() != ge::GRAPH_SUCCESS) {
-        //return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
     KvQuantSparseAttnSharedkvTiling tiling(context);
     return tiling.DoOpTiling(&sasInfo);

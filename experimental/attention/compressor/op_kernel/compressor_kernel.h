@@ -200,6 +200,7 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         accSeqLength = curActSeqLength;
         lastActSeqLength = cuSeqlensGm_.GetValue(constInfo.batchSize) - cuSeqlensGm_.GetValue(constInfo.batchSize - 1);
     } else {
+        curActSeqLength = constInfo.sSize;
         lastActSeqLength = constInfo.sSize;
     }
 
@@ -333,7 +334,6 @@ __aicore__ inline void CompressorKernel<COMP>::GetSeqLength(uint32_t bIdx) {
             }
         }
     }
-
 }
 
 template <typename COMP>

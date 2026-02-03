@@ -13,11 +13,11 @@
  * \brief
  */
 
+#include <cstdio>
+#include <cmath>
 #include "sparse_attn_sharedkv_metadata_aicpu.h"
 #include "../../sparse_attn_sharedkv/op_kernel/sparse_attn_sharedkv_metadata.h"
 #include "../../common/aicpu/cpu_context_util.h"
-#include <cstdio>
-#include <math.h>
 
 using namespace optiling;
 
@@ -25,7 +25,9 @@ namespace aicpu {
 uint32_t
 SparseAttnSharedkvMetadataCpuKernel::Compute(CpuKernelContext &ctx) {
     bool success = Prepare(ctx);
-    if (!success) return KERNEL_STATUS_PARAM_INVALID;
+    if (!success) {
+        return KERNEL_STATUS_PARAM_INVALID;
+    }
     SplitResult splitRes {aicCoreNum_, aivCoreNum_};
     success = BalanceSchedule(splitRes) && GenMetaData(splitRes);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
@@ -33,9 +35,7 @@ SparseAttnSharedkvMetadataCpuKernel::Compute(CpuKernelContext &ctx) {
 
 bool SparseAttnSharedkvMetadataCpuKernel::Prepare(
     CpuKernelContext &ctx) {
-
   // input
-  q_ = ctx.Input(static_cast<uint32_t>(ParamId::q));
   actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
   actSeqLenOriKV_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenOriKV));
   actSeqLenCmpKV_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenCmpKV));
@@ -43,7 +43,6 @@ bool SparseAttnSharedkvMetadataCpuKernel::Prepare(
   SeqUsedKV_ = ctx.Input(static_cast<uint32_t>(ParamId::SeqUsedKV));
   // output
   metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
-
 
     bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", queryHeadNum_) &&
                         GetAttrValue(ctx, "num_heads_kv", kvHeadNum_) &&
@@ -72,13 +71,13 @@ bool SparseAttnSharedkvMetadataCpuKernel::Prepare(
   GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKV_);
 
   coreNum_ = aicCoreNum_;
-  sparseMode_ = 4;
+  sparseMode_ = static_cast<uint32_t>(SparseMode::BAND);
   preToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
   nextToken_ = 0;
   attentionMode_ = 1;
   isS1G_ = (layoutQuery_ == "BSND" || layoutQuery_ == "BSH" || layoutQuery_ == "TND");
 
-  return (ParamsCheck() && ParamsInit(cmpRatio_, cmpTopK_));
+  return (ParamsCheck() && ParamsInit());
 }
 
 bool SparseAttnSharedkvMetadataCpuKernel::ParamsCheck() {
@@ -95,7 +94,7 @@ ValidSocVersion SparseAttnSharedkvMetadataCpuKernel::ProcessSocVersion() {
     return ValidSocVersion::RESERVED_VERSION;
 }
 
-bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit(uint32_t cmpRatio_, uint32_t cmpTopK_) {
+bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit() {
     groupSize_ = queryHeadNum_ / kvHeadNum_;
     if (cmpRatio_ > 1) {
         if (cmpTopK_ > 0) {
@@ -115,7 +114,7 @@ bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit(uint32_t cmpRatio_, uint32_
         s2BaseSize_ = 512U;
         gS1BaseSizeOfFd_ = 8U;
     } else if (validSocVersion == ValidSocVersion::ASCEND910D){
-        mBaseSize_ = 64;
+        mBaseSize_ = 64U;
         s2BaseSize_ = 128U;
         gS1BaseSizeOfFd_ = 8U;
     }
@@ -226,23 +225,21 @@ int64_t SparseAttnSharedkvMetadataCpuKernel::CmpCalcCost(
     return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
-BlockCost<int64_t> SparseAttnSharedkvMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, 
+void SparseAttnSharedkvMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, 
     uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t winS2TailSize, uint32_t cmpS2TailSize)
 {
-    BlockCost<int64_t> typeCost {};
     // win部分cost
-    typeCost[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK] = WinCalcCost(s1NormalSize, s2NormalSize);
-    typeCost[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : WinCalcCost(s1GTailSize, s2NormalSize);
-    typeCost[WIN_NORMAL_BLOCK][WIN_TAIL_BLOCK] = (winS2TailSize == 0U) ? 0U : WinCalcCost(s1NormalSize, winS2TailSize);
-    typeCost[WIN_TAIL_BLOCK][WIN_TAIL_BLOCK] = (s1GTailSize == 0U || winS2TailSize == 0U) ? 0U : WinCalcCost(s1GTailSize, winS2TailSize);
+    typeCost_[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK] = WinCalcCost(s1NormalSize, s2NormalSize);
+    typeCost_[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : WinCalcCost(s1GTailSize, s2NormalSize);
+    typeCost_[WIN_NORMAL_BLOCK][WIN_TAIL_BLOCK] = (winS2TailSize == 0U) ? 0U : WinCalcCost(s1NormalSize, winS2TailSize);
+    typeCost_[WIN_TAIL_BLOCK][WIN_TAIL_BLOCK] = (s1GTailSize == 0U || winS2TailSize == 0U) ? 0U : WinCalcCost(s1GTailSize, winS2TailSize);
     // cmp部分cost
     if (isCFA || isSCFA) {
-        typeCost[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK] = CmpCalcCost(s1NormalSize, s2NormalSize);
-        typeCost[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CmpCalcCost(s1GTailSize, s2NormalSize);
-        typeCost[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] = (cmpS2TailSize == 0U) ? 0U : CmpCalcCost(s1NormalSize, cmpS2TailSize);
-        typeCost[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] = (s1GTailSize == 0U || cmpS2TailSize == 0U) ? 0U : CmpCalcCost(s1GTailSize, cmpS2TailSize);
+        typeCost_[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK] = CmpCalcCost(s1NormalSize, s2NormalSize);
+        typeCost_[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CmpCalcCost(s1GTailSize, s2NormalSize);
+        typeCost_[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] = (cmpS2TailSize == 0U) ? 0U : CmpCalcCost(s1NormalSize, cmpS2TailSize);
+        typeCost_[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] = (s1GTailSize == 0U || cmpS2TailSize == 0U) ? 0U : CmpCalcCost(s1GTailSize, cmpS2TailSize);
     }
-    return typeCost;
 }
 
 Range<int64_t> SparseAttnSharedkvMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache)
@@ -296,7 +293,7 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcBatchCache(
     batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
 }
 
-void SparseAttnSharedkvMetadataCpuKernel::CalcWinS1GCache(const BlockCost<int64_t> &typeCost, S1GCache &s1GCache, 
+void SparseAttnSharedkvMetadataCpuKernel::CalcWinS1GCache(S1GCache &s1GCache, 
                                                             const SplitInfo &splitInfo)
 {
     // 处理win部分block信息
@@ -306,7 +303,6 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcWinS1GCache(const BlockCost<int64_
         s1GCache.winS1GCost = 0;
         s1GCache.winS1GLastBlockCost = 0;
         s1GCache.winS1GNormalBlockCost = 0;
-        //return;
     } else {
         //计算 Win 方向 Block 数量及 Cost
         s1GCache.winS1GBlock = s1GCache.winS2End - s1GCache.winS2Start;
@@ -314,23 +310,23 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcWinS1GCache(const BlockCost<int64_
         uint32_t curWinTailS2Num = (s1GCache.winS2TailSize != 0U) ? 1U : 0U;// Updated check using local var
         uint32_t curWinNormalS2Num = s1GCache.winS1GBlock - curWinTailS2Num;
         if (s1GCache.s1GIdx == (splitInfo.s1GBaseNum[s1GCache.bIdx] - 1U) && splitInfo.s1GTailSize[s1GCache.bIdx] != 0U) {
-            s1GCache.winS1GCost = typeCost[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK] * curWinNormalS2Num +
-                typeCost[WIN_TAIL_BLOCK][WIN_TAIL_BLOCK] * curWinTailS2Num;
-            s1GCache.winS1GLastBlockCost = curWinTailS2Num > 0U ? typeCost[WIN_TAIL_BLOCK][WIN_TAIL_BLOCK] :
-                                            typeCost[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK];
-            s1GCache.winS1GNormalBlockCost = typeCost[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK];
+            s1GCache.winS1GCost = typeCost_[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK] * curWinNormalS2Num +
+                typeCost_[WIN_TAIL_BLOCK][WIN_TAIL_BLOCK] * curWinTailS2Num;
+            s1GCache.winS1GLastBlockCost = curWinTailS2Num > 0U ? typeCost_[WIN_TAIL_BLOCK][WIN_TAIL_BLOCK] :
+                                            typeCost_[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK];
+            s1GCache.winS1GNormalBlockCost = typeCost_[WIN_TAIL_BLOCK][WIN_NORMAL_BLOCK];
         }
         else {
-            s1GCache.winS1GCost = typeCost[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK] * curWinNormalS2Num +
-                typeCost[WIN_NORMAL_BLOCK][WIN_TAIL_BLOCK] * curWinTailS2Num;
-            s1GCache.winS1GLastBlockCost = curWinTailS2Num > 0U ? typeCost[WIN_NORMAL_BLOCK][WIN_TAIL_BLOCK] :
-                                            typeCost[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK];
-            s1GCache.winS1GNormalBlockCost = typeCost[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK];
+            s1GCache.winS1GCost = typeCost_[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK] * curWinNormalS2Num +
+                typeCost_[WIN_NORMAL_BLOCK][WIN_TAIL_BLOCK] * curWinTailS2Num;
+            s1GCache.winS1GLastBlockCost = curWinTailS2Num > 0U ? typeCost_[WIN_NORMAL_BLOCK][WIN_TAIL_BLOCK] :
+                                            typeCost_[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK];
+            s1GCache.winS1GNormalBlockCost = typeCost_[WIN_NORMAL_BLOCK][WIN_NORMAL_BLOCK];
         }
     }
 }
 
-void SparseAttnSharedkvMetadataCpuKernel::CalcCmpS1GCache(const BlockCost<int64_t> &typeCost, S1GCache &s1GCache, 
+void SparseAttnSharedkvMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCache, 
                                                             const SplitInfo &splitInfo)
 {
     // 处理cmp部分block信息
@@ -347,64 +343,46 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcCmpS1GCache(const BlockCost<int64_
         uint32_t curCmpTailS2Num = (s1GCache.cmpS2TailSize != 0U) ? 1U : 0U;// Updated check using local var
         uint32_t curCmpNormalS2Num = s1GCache.cmpS1GBlock - curCmpTailS2Num;
         if (s1GCache.s1GIdx == (splitInfo.s1GBaseNum[s1GCache.bIdx] - 1U) && splitInfo.s1GTailSize[s1GCache.bIdx] != 0U) {
-            s1GCache.cmpS1GCost = typeCost[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK] * curCmpNormalS2Num +
-                typeCost[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] * curCmpTailS2Num;
-            s1GCache.cmpS1GLastBlockCost = curCmpTailS2Num > 0U ? typeCost[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] :
-                                                typeCost[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK];
-            s1GCache.cmpS1GNormalBlockCost = typeCost[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK];
+            s1GCache.cmpS1GCost = typeCost_[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK] * curCmpNormalS2Num +
+                typeCost_[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] * curCmpTailS2Num;
+            s1GCache.cmpS1GLastBlockCost = curCmpTailS2Num > 0U ? typeCost_[CMP_TAIL_BLOCK][CMP_TAIL_BLOCK] :
+                                                typeCost_[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK];
+            s1GCache.cmpS1GNormalBlockCost = typeCost_[CMP_TAIL_BLOCK][CMP_NORMAL_BLOCK];
         } else {
-            s1GCache.cmpS1GCost = typeCost[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK] * curCmpNormalS2Num +
-                typeCost[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] * curCmpTailS2Num;
-            s1GCache.cmpS1GLastBlockCost = curCmpTailS2Num > 0U ? typeCost[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] :
-                                             typeCost[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK];
-            s1GCache.cmpS1GNormalBlockCost = typeCost[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK];
+            s1GCache.cmpS1GCost = typeCost_[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK] * curCmpNormalS2Num +
+                typeCost_[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] * curCmpTailS2Num;
+            s1GCache.cmpS1GLastBlockCost = curCmpTailS2Num > 0U ? typeCost_[CMP_NORMAL_BLOCK][CMP_TAIL_BLOCK] :
+                                             typeCost_[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK];
+            s1GCache.cmpS1GNormalBlockCost = typeCost_[CMP_NORMAL_BLOCK][CMP_NORMAL_BLOCK];
         }
-        
     }
 }
 
-void SparseAttnSharedkvMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
-    const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
+void SparseAttnSharedkvMetadataCpuKernel::CalcBlockRangeAndTailSize(Range<int64_t> &oriS2TokenRange, 
+                                                                            const BatchCache &batchCache, 
+                                                                            S1GCache &s1GCache)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-
-    //// 如果s1G是空行，则直接返回
-    if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0) {
-        s1GCache.s1GCost = 0;
-        s1GCache.s1GLastBlockCost = 0;
-        s1GCache.winS1GNormalBlockCost = 0;
-        s1GCache.cmpS1GNormalBlockCost = 0;
-        s1GCache.s1GBlock = 0;
-        s1GCache.s2Start = 0;
-        s1GCache.cmpS2Start = 0;
-        s1GCache.s2End = 0;
-        return;
-    }
-
-    s1GCache.bIdx = batchCache.bIdx;
-    s1GCache.s1GIdx = s1GIdx;
+    int64_t oriS2FirstToken = oriS2TokenRange.first;
+    int64_t oriS2LastToken = oriS2TokenRange.second;
     // win部分s2起止和tailSize
-    auto winS2TokenRange = CalcS2TokenRange(s1GIdx, batchCache);
-    int64_t winS2FirstToken = winS2TokenRange.first;
-    int64_t winS2LastToken = winS2TokenRange.second;
-    if (winS2FirstToken >= static_cast<int64_t>(batchCache.s2Size) || winS2LastToken < 0 || 
-            winS2LastToken < winS2FirstToken) {
-        winS2FirstToken = 0;
-        winS2LastToken = 0;
+    if (oriS2FirstToken >= static_cast<int64_t>(batchCache.s2Size) || oriS2LastToken < 0 || 
+            oriS2LastToken < oriS2FirstToken) {
+        oriS2FirstToken = 0;
+        oriS2LastToken = 0;
         s1GCache.winS2Start = 0;
         s1GCache.winS2End = 0;
         s1GCache.winS2TailSize = 0;
     } else {
-        winS2FirstToken = Clip(winS2FirstToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-        winS2LastToken = Clip(winS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
+        oriS2FirstToken = Clip(oriS2FirstToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
+        oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
         s1GCache.winS2Start = 0;
-        s1GCache.winS2End = (winS2LastToken - winS2FirstToken) / s2BaseSize_ + 1U;
-        s1GCache.winS2TailSize = (winS2LastToken - winS2FirstToken + 1) % s2BaseSize_;
+        s1GCache.winS2End = (oriS2LastToken - oriS2FirstToken) / s2BaseSize_ + 1U;
+        s1GCache.winS2TailSize = (oriS2LastToken - oriS2FirstToken + 1) % s2BaseSize_;
     }
     // cmp部分s2起止和tailSize
     s1GCache.cmpS2Start = s1GCache.winS2End;
     // 计算CmpS2LastToken的长度
-    uint32_t cmpS2LastTokenSize = (cmpRatio_ > 1) ? (winS2LastToken + 1) / cmpRatio_ : 0;
+    uint32_t cmpS2LastTokenSize = (cmpRatio_ > 1) ? (oriS2LastToken + 1) / cmpRatio_ : 0;
     uint32_t actCmpS2LastTokenSize = 0;
     if (isCFA) {
         actCmpS2LastTokenSize = cmpS2LastTokenSize;
@@ -413,19 +391,14 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
         actCmpS2LastTokenSize = std::min(cmpS2LastTokenSize, cmpTopK_);
     }
     // 将token长度转化为token索引，然后由token索引计算s2索引
-    s1GCache.cmpS2End = (actCmpS2LastTokenSize == 0) ? s1GCache.cmpS2Start : s1GCache.cmpS2Start + (actCmpS2LastTokenSize - 1) / s2BaseSize_ + 1U;
+    s1GCache.cmpS2End = (actCmpS2LastTokenSize == 0) ? s1GCache.cmpS2Start : s1GCache.cmpS2Start + 
+                        (actCmpS2LastTokenSize - 1) / s2BaseSize_ + 1U;
     // 由token长度计算cmpS2TailSize
     s1GCache.cmpS2TailSize = actCmpS2LastTokenSize % s2BaseSize_;
+}
 
-    // Calculate CostTable locally
-    BlockCost<int64_t> typeCost = CalcCostTable(mBaseSize_, s2BaseSize_, splitInfo.s1GTailSize[s1GCache.bIdx],
-                                                s1GCache.winS2TailSize, s1GCache.cmpS2TailSize);
-
-    // 计算win和cmp部分的cost, block信息
-    CalcWinS1GCache(typeCost, s1GCache, splitInfo);
-    CalcCmpS1GCache(typeCost, s1GCache, splitInfo);
-
-    // 汇总win和cmp部分的cost, block信息
+void SparseAttnSharedkvMetadataCpuKernel::GatherWinAndCmpCache(S1GCache &s1GCache)
+{
     s1GCache.s2Start = (s1GCache.winS1GBlock > 0) ? s1GCache.winS2Start : s1GCache.cmpS2Start;
     if (s1GCache.cmpS1GBlock > 0) {
         s1GCache.s1GLastBlockCost = s1GCache.cmpS1GLastBlockCost;
@@ -436,6 +409,40 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     }
     s1GCache.s1GBlock = s1GCache.winS1GBlock + s1GCache.cmpS1GBlock;
     s1GCache.s1GCost = s1GCache.winS1GCost + s1GCache.cmpS1GCost;
+}
+
+void SparseAttnSharedkvMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
+    const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
+{
+    const SplitInfo &splitInfo = splitContext.splitInfo;
+    // 如果s1G是空行，则直接返回
+    if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0) {
+        s1GCache.s1GCost = 0;
+        s1GCache.s1GLastBlockCost = 0;
+        s1GCache.winS1GNormalBlockCost = 0;
+        s1GCache.winS1GLastBlockCost = 0;
+        s1GCache.cmpS1GNormalBlockCost = 0;
+        s1GCache.cmpS1GLastBlockCost = 0;
+        s1GCache.s1GBlock = 0;
+        s1GCache.s2Start = 0;
+        s1GCache.cmpS2Start = 0;
+        s1GCache.s2End = 0;
+        return;
+    }
+    s1GCache.bIdx = batchCache.bIdx;
+    s1GCache.s1GIdx = s1GIdx;
+    // 计算ori_kv的token起止
+    auto oriS2TokenRange = CalcS2TokenRange(s1GIdx, batchCache);
+    // 计算win和cmp部分s2起止和tailSize
+    CalcBlockRangeAndTailSize(oriS2TokenRange, batchCache, s1GCache);
+    // Calculate CostTable locally
+    CalcCostTable(mBaseSize_, s2BaseSize_, splitInfo.s1GTailSize[s1GCache.bIdx],
+                                                s1GCache.winS2TailSize, s1GCache.cmpS2TailSize);
+    // 计算win和cmp部分的cost, block信息
+    CalcWinS1GCache(s1GCache, splitInfo);
+    CalcCmpS1GCache(s1GCache, splitInfo);
+    // 汇总win和cmp部分的cost, block信息
+    GatherWinAndCmpCache(s1GCache);
 }
 
 void SparseAttnSharedkvMetadataCpuKernel::CalcBatchCost(
@@ -695,12 +702,50 @@ void SparseAttnSharedkvMetadataCpuKernel::ForceAssign(const SplitContext &splitC
     UpdateCursor(splitContext, assignContext);
 }
 
-void SparseAttnSharedkvMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
-    int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
+void SparseAttnSharedkvMetadataCpuKernel::AssignBlocksToCore(const SplitContext &splitContext, 
+                                                                    AssignContext &assignContext, SplitResult &result)
+{
+    const CostInfo &costInfo = splitContext.costInfo;
+    
+    int64_t avgCost = assignContext.unassignedCost / (coreNum_ - assignContext.curCoreIdx);
+    assignContext.coreCache = {};
+    if (!supportFd) {
+        assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxS1GCost);
+    } else {
+        assignContext.coreCache.costLimit = avgCost;
+    }
+    // 1、按整batch分配
+    AssignByBatch(splitContext, assignContext);
+    // 2、按行分配
+    AssignByRow(splitContext, assignContext);
+    // 3、按块分配
+    AssignByBlock(splitContext, assignContext);
+    // 4、强制分配
+    if (assignContext.coreCache.block == 0 && supportFd) {
+        ForceAssign(splitContext, assignContext);
+    }
+    result.bN2End[assignContext.curCoreIdx] = assignContext.curBN2Idx;
+    result.gS1End[assignContext.curCoreIdx] = assignContext.curS1GIdx;
+    result.s2End[assignContext.curCoreIdx] = assignContext.curS2Idx;
+    result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
+    assignContext.unassignedCost -= assignContext.coreCache.cost;
+    // 对之前的归约信息进行记录并清理
+    if (IsNeedRecordFDInfo(assignContext, result)) {
+        RecordFDInfo(splitContext, assignContext, result);
+        assignContext.curKvSplitPart = 1U;
+    }
+    // 更新S2切分信息
+    if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
+        assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
+        assignContext.curKvSplitPart++;
+    }
+}
+
+void SparseAttnSharedkvMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
 
-    if (coreNum == 0U) {
+    if (coreNum_ == 0U) {
         return;
     }
     result.maxCost = 0U;
@@ -716,61 +761,16 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
     assignContext.curS2Idx = assignContext.s1GCache.s2Start;
 
-    for (uint32_t i = 0; i < coreNum; ++i) {
+    for (uint32_t i = 0; i < coreNum_; ++i) {
         if (result.maxCost > costLimit) {
             return;
         }
         if (assignContext.isFinished || assignContext.unassignedCost <= 0) {
             break;
         }
-
-        assignContext.curCoreIdx = i;
-        result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] = assignContext.curFdDataNum - 1U;
-        
-        int64_t avgCost = assignContext.unassignedCost / (coreNum - assignContext.curCoreIdx);
-        assignContext.coreCache = {};
-        if (!supportFd) {
-            assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxS1GCost);
-        } else {
-            assignContext.coreCache.costLimit = avgCost;
-        }
-        
-        // 1、按整batch分配
-        AssignByBatch(splitContext, assignContext);
-        
-        // 2、按行分配
-        AssignByRow(splitContext, assignContext);
-        
-        // 3、按块分配
-        AssignByBlock(splitContext, assignContext);
-        
-        // 4、强制分配
-        if (assignContext.coreCache.block == 0 && supportFd) {
-            ForceAssign(splitContext, assignContext);
-        }
-        
-        result.bN2End[i] = assignContext.curBN2Idx;
-        result.gS1End[i] = assignContext.curS1GIdx;
-        result.s2End[i] = assignContext.curS2Idx;
-        result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
-
-        assignContext.unassignedCost -= assignContext.coreCache.cost;
-
-        // 对之前的归约信息进行记录并清理
-        if (IsNeedRecordFDInfo(assignContext, result)) {
-            assignContext.curFdDataNum++;
-            RecordFDInfo(splitContext, assignContext, result);
-            assignContext.curKvSplitPart = 1U;
-        }
-
-        // 更新S2切分信息
-        if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
-            assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
-            assignContext.curKvSplitPart++;
-            assignContext.curFdDataNum++;
-        }
+        assignContext.curCoreIdx = i;        
+    AssignBlocksToCore(splitContext, assignContext, result);
     }
-
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
 
@@ -817,7 +817,7 @@ bool SparseAttnSharedkvMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
     splitRes.maxCost = INT64_MAX;
     splitRes.usedCoreNum = 1U;
     
-    CalcSplitPlan(aicCoreNum_, splitRes.maxCost, splitContext, splitRes);
+    CalcSplitPlan(splitRes.maxCost, splitContext, splitRes);
     // 3、存在FD任务，对FD进行负载均衡分配
     if (splitRes.numOfFdHead > 0U) {
         SplitFD(splitRes);

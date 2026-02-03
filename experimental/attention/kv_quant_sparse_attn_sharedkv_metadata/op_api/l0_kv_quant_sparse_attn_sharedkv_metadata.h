@@ -15,8 +15,7 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* KVQuantSparseAttnSharedkvMetadata(
-    const aclTensor* q,
+const aclTensor* KvQuantSparseAttnSharedkvMetadata(
     const aclTensor* cuSeqLensQOptional,
     const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor* cuSeqLensCmpKvOptional,
@@ -38,8 +37,8 @@ const aclTensor* KVQuantSparseAttnSharedkvMetadata(
     int64_t cmpMaskModeOptional,
     int64_t oriWinLeftOptional,
     int64_t oriWinRightOptional,
-    char *layoutQOptional,
-    char *layoutKvOptional,
+    std::string layoutQOptional,
+    std::string layoutKvOptional,
     bool hasOriKvOptional,
     bool hasCmpKvOptional,
     const char *socVersion,

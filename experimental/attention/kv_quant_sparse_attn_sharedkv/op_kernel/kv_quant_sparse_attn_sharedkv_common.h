@@ -60,18 +60,4 @@ struct SASType {
     static constexpr bool pageAttention = (KV_LAYOUT_T == SAS_KV_LAYOUT::PA_ND);
 };
 
-// ================================Util functions==================================
-template <typename T> __aicore__ inline T SASAlign(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
-}
-
-template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
-{
-    if constexpr (IsSameType<T, int4b_t>::value) {
-        return (s + 63) / 64 * 64;
-    }
-    size_t n = (32 / sizeof(T));
-    return (s + n - 1) / n * n;
-}
 #endif // KVQUANT_SPARSE_FLASH_ATTENTION_COMMON_H

@@ -16,7 +16,6 @@
 #ifndef COMPRESSOR_BLOCK_CUBE_H
 #define COMPRESSOR_BLOCK_CUBE_H
 
-#include "kernel_operator.h"
 #include "../compressor_comm.h"
 
 using namespace AscendC;
@@ -159,17 +158,16 @@ template <typename COMP> __aicore__ inline void CompressorBlockCube<COMP>::Init(
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
     wkvGm_.SetGlobalBuffer((__gm__ X_T *)wKv);
     wgateGm_.SetGlobalBuffer((__gm__ X_T *)wGate);
-    startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     isExistSeqUsed = (seqUsed != nullptr);
     isExistStartPos = (startPos != nullptr);
+    if (isExistStartPos) {
+        startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+    }
     if (isExistSeqUsed) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
     }
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
-    }
-    if (isExistStartPos) {
-        startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
 }
 
@@ -239,7 +237,6 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyWeightGmToL1(const RunInfo
     // hIdx: hidden_size轴的索引ID
     // kBase: hidden_size轴单次往L1搬运的长度, 128
     // nLoopIdx: D方向L1搬运的循环ID, 0/1
-    //      
     //      coff=1时, nLoopIdx=0, 搬运wkv nBase, nLoopIdx=1, 搬运wgate nBase
     if constexpr (COMP::coff == COFF::OVERLAP) {
         // coff=2时, constInfo_.dBaseSize = 64, wkv和wgate在D轴各占一半
@@ -282,7 +279,7 @@ template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockCube<COMP>::GetStartPos(uint32_t bIdx)
 {
     if (isExistStartPos) {
-        return startPosGm_.GetValue(bIdx);
+        return (uint32_t)startPosGm_.GetValue(bIdx);
     }
     return 0;
 }
@@ -371,6 +368,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
         ubOffset += constInfo_.cmpRatio * (32 / sizeof(X_T));
         mSizeFinish += constInfo_.cmpRatio;
     }
+    
     while (mSizeFinish < mDealSize) {
         if (curBIdx_ > info.bEnd) {
             break;

@@ -21,32 +21,32 @@
 namespace optiling {
 
 // Constants
-static constexpr uint32_t AIC_CORE_NUM = 36;
-static constexpr uint32_t AIV_CORE_NUM = 72;
+inline constexpr uint32_t AIC_CORE_NUM = 36;
+inline constexpr uint32_t AIV_CORE_NUM = 72;
 constexpr uint32_t SAS_META_SIZE = 1024;
 using SAS_METADATA_T = int32_t;
 
-static constexpr uint32_t FA_METADATA_SIZE = 8;
-static constexpr uint32_t FD_METADATA_SIZE = 8;
+inline constexpr uint32_t FA_METADATA_SIZE = 8;
+inline constexpr uint32_t FD_METADATA_SIZE = 8;
 
 // FA Metadata Index Definitions
-static constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
-static constexpr uint32_t FA_BN2_START_INDEX = 1;
-static constexpr uint32_t FA_M_START_INDEX = 2;
-static constexpr uint32_t FA_S2_START_INDEX = 3;
-static constexpr uint32_t FA_BN2_END_INDEX = 4;
-static constexpr uint32_t FA_M_END_INDEX = 5;
-static constexpr uint32_t FA_S2_END_INDEX = 6;
-static constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
+inline constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
+inline constexpr uint32_t FA_BN2_START_INDEX = 1;
+inline constexpr uint32_t FA_M_START_INDEX = 2;
+inline constexpr uint32_t FA_S2_START_INDEX = 3;
+inline constexpr uint32_t FA_BN2_END_INDEX = 4;
+inline constexpr uint32_t FA_M_END_INDEX = 5;
+inline constexpr uint32_t FA_S2_END_INDEX = 6;
+inline constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
 
 // FD Metadata Index Definitions
-static constexpr uint32_t FD_CORE_ENABLE_INDEX = 0;
-static constexpr uint32_t FD_BN2_IDX_INDEX = 1;
-static constexpr uint32_t FD_M_IDX_INDEX = 2;
-static constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 3;
-static constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 4;
-static constexpr uint32_t FD_M_START_INDEX = 5;
-static constexpr uint32_t FD_M_NUM_INDEX = 6;
+inline constexpr uint32_t FD_CORE_ENABLE_INDEX = 0;
+inline constexpr uint32_t FD_BN2_IDX_INDEX = 1;
+inline constexpr uint32_t FD_M_IDX_INDEX = 2;
+inline constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 3;
+inline constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 4;
+inline constexpr uint32_t FD_M_START_INDEX = 5;
+inline constexpr uint32_t FD_M_NUM_INDEX = 6;
 
 /**
  * @brief 获取属性的绝对索引

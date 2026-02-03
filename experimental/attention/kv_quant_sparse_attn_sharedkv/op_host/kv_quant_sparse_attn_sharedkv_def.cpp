@@ -99,13 +99,13 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("kv_quant_mode").AttrType(REQUIRED).Int(1);
-        this->Attr("tile_size").AttrType(OPTIONAL).Int(64);
-        this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64);
+        this->Attr("tile_size").AttrType(OPTIONAL).Int(64); // tile_size默认值64
+        this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64); // rope_head_dim默认值64
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(1);
-        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(3);
-        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3);
-        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(128);
+        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4); // ori_mask_mode默认值4
+        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3); // cmp_mask_mode默认值3
+        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127); // ori_win_left默认值127
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_ND");

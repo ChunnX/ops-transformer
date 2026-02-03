@@ -20,6 +20,12 @@
 using namespace AscendC;
 using AscendC::GlobalTensor;
 
+static constexpr uint32_t SHAPE_AXIS_DIM_0 = 0U;
+static constexpr uint32_t SHAPE_AXIS_DIM_1 = 1U;
+static constexpr uint32_t SHAPE_AXIS_DIM_2 = 2U;
+static constexpr uint32_t SHAPE_AXIS_DIM_3 = 3U;
+static constexpr uint32_t SHAPE_AXIS_DIM_4 = 4U;
+
 // ----------------------------------------------GmLayout--------------------------------
 enum class GmFormat
 {
@@ -468,53 +474,53 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD> {
     // Get Stride
     __aicore__ inline uint64_t GetStrideB()
     {
-        return AscendC::Std::get<0>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideN2()
     {
-        return AscendC::Std::get<1>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideG()
     {
-        return AscendC::Std::get<2>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideS1()
     {
-        return AscendC::Std::get<3>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideD()
     {
-        return AscendC::Std::get<4>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_4>(gmLayout.stride);
     }
 
     // Get Dim
     __aicore__ inline uint64_t GetDimB()
     {
-        return AscendC::Std::get<0>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimN2()
     {
-        return AscendC::Std::get<1>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimG()
     {
-        return AscendC::Std::get<2>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimS1()
     {
-        return AscendC::Std::get<3>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimD()
     {
-        return AscendC::Std::get<4>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_4>(gmLayout.shape);
     }
 };
 
@@ -542,22 +548,22 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND> {
     // Get Stride
     __aicore__ inline uint64_t GetStrideT()
     {
-        return AscendC::Std::get<0>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideN2()
     {
-        return AscendC::Std::get<1>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideG()
     {
-        return AscendC::Std::get<2>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideD()
     {
-        return AscendC::Std::get<3>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideS1()
@@ -568,22 +574,22 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND> {
     // Get Dim
     __aicore__ inline uint64_t GetDimT()
     {
-        return AscendC::Std::get<0>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimN2()
     {
-        return AscendC::Std::get<1>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimG()
     {
-        return AscendC::Std::get<2>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimD()
     {
-        return AscendC::Std::get<3>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.shape);
     }
 };
 
@@ -607,43 +613,43 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD> {
     // Get Stride
     __aicore__ inline uint64_t GetStrideB()
     {
-        return AscendC::Std::get<0>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideN2()
     {
-        return AscendC::Std::get<1>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideS2()
     {
-        return AscendC::Std::get<2>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideD()
     {
-        return AscendC::Std::get<3>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.stride);
     }
 
     // Get Dim
     __aicore__ inline uint64_t GetDimB()
     {
-        return AscendC::Std::get<0>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimN2()
     {
-        return AscendC::Std::get<1>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimS2()
     {
-        return AscendC::Std::get<2>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimD()
     {
-        return AscendC::Std::get<3>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.shape);
     }
 };
 
@@ -671,17 +677,17 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND> {
     // Get Stride
     __aicore__ inline uint64_t GetStrideT()
     {
-        return AscendC::Std::get<0>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideN2()
     {
-        return AscendC::Std::get<1>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideD()
     {
-        return AscendC::Std::get<2>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideS2()
@@ -692,17 +698,17 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND> {
     // Get Dim
     __aicore__ inline uint64_t GetDimT()
     {
-        return AscendC::Std::get<0>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimN2()
     {
-        return AscendC::Std::get<1>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetDimD()
     {
-        return AscendC::Std::get<2>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.shape);
     }
 };
 
@@ -733,38 +739,38 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD> {
     // Get Stride
     __aicore__ inline uint64_t GetStrideBlockNum()
     {
-        return AscendC::Std::get<0>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideN2()
     {
-        return AscendC::Std::get<1>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideBlockSize()
     {
-        return AscendC::Std::get<2>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideD()
     {
-        return AscendC::Std::get<3>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.stride);
     }
 
     // Get Dim
     __aicore__ inline uint64_t GetN2()
     {
-        return AscendC::Std::get<0>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetBlockSize()
     {
-        return AscendC::Std::get<1>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetD()
     {
-        return AscendC::Std::get<2>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.shape);
     }
 };
 
@@ -798,48 +804,48 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ> {
     // Get Stride
     __aicore__ inline uint64_t GetStrideBlockNum()
     {
-        return AscendC::Std::get<0>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideN2()
     {
-        return AscendC::Std::get<1>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideD1()
     {
-        return AscendC::Std::get<2>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideBlockSize()
     {
-        return AscendC::Std::get<3>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.stride);
     }
 
     __aicore__ inline uint64_t GetStrideD0()
     {
-        return AscendC::Std::get<4>(gmLayout.stride);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_4>(gmLayout.stride);
     }
 
     // Get Dim
     __aicore__ inline uint64_t GetN2()
     {
-        return AscendC::Std::get<0>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_0>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetD1()
     {
-        return AscendC::Std::get<1>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_1>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetBlockSize()
     {
-        return AscendC::Std::get<2>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_2>(gmLayout.shape);
     }
 
     __aicore__ inline uint64_t GetD0()
     {
-        return AscendC::Std::get<3>(gmLayout.shape);
+        return AscendC::Std::get<SHAPE_AXIS_DIM_3>(gmLayout.shape);
     }
 };
 

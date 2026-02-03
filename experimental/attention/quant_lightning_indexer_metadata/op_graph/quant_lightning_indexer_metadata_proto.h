@@ -24,7 +24,6 @@ namespace ge {
   * @brief Function QuantLightningIndexerMetadata.
 
   * @par Inputs:
-  * @li query: A tensor. The type support int8 and float8.
   * @li actual_seq_lengths_query: A matrix tensor. The type support int32.
   * Effective sequence length of q in different batches.
   * @li actual_seq_lengths_key: A matrix tensor. The type support int32.
@@ -55,7 +54,6 @@ namespace ge {
   * The output of attention structure.
   */
 REG_OP(QuantLightningIndexerMetadata)
-    .INPUT(query, TensorType({DT_INT8, DT_FLOAT8}))
     .OPTIONAL_INPUT(actual_seq_lengths_query, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(actual_seq_lengths_key, TensorType({DT_INT32}))
     .OUTPUT(metadata, TensorType({DT_INT32}))

@@ -44,7 +44,7 @@ public:
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
-    static constexpr uint32_t dVBaseSize = 512;
+    static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline SCFABlockCube() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr, __gm__ uint8_t *query);
@@ -122,19 +122,19 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer() {
-    constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T); // 64 * 512
-    constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(Q_T);// 512 * 128
+    constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
+    constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(Q_T);
     l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
     l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
 
     // L0A B C 当前写死，能否通过基础api获取
-    l0aBufferManager.Init(tPipe, 65536);  // 64 * 1024
-    l0bBufferManager.Init(tPipe, 65536);  // 64 * 1024
-    l0cBufferManager.Init(tPipe, 262144); // 256 * 1024
+    l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
+    l0bBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
+    l0cBufferManager.Init(tPipe, L0C_SHARED_SIZE_256K);
 
-    mmL0ABuffers.Init(l0aBufferManager, 16 * 1024);  // db类型，填入数值是总大小的一半
-    mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
-    mmL0CBuffers.Init(l0cBufferManager, 128 * 1024);
+    mmL0ABuffers.Init(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
+    mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
+    mmL0CBuffers.Init(l0cBufferManager, BUFFER_SIZE_128K);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
@@ -208,22 +208,18 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     }
 
     // 加载当前轮的右矩阵到L1
-    // mm1B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     inputRightBuf.WaitCrossCore();    // 核间同步，这里需要根据V0操作处理同步，确保取tensor时，数据已经准备好
-
-    // mm1B.Set<HardEvent::MTE2_MTE1>();  // 通知
-    // mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
 
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-    MMParam param = {(uint32_t)(runInfo.mRealSize),     // singleM
-                        (uint32_t)runInfo.s2RealSize,  // singleN
-                        (uint32_t)(constInfo.dSize),   // singleK
+    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
+                        static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
+                        static_cast<uint32_t>(constInfo.dSize),   // singleK
                         0,    // isLeftTranspose
                         1     // isRightTranspose
                     };
-    MatmulK<Q_T, Q_T, T, 64, 128, 128, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
+    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(),                // mm1B直接用tensor的数据
         mmL0ABuffers, mmL0BBuffers,
         mm1ResL0C.GetTensor<T>(),
@@ -232,17 +228,14 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
 
-    // bmm2再释放
-    // mm1B.Set<HardEvent::MTE1_MTE2>();  // 释放L1B
-
     mm1ResL0C.Set<HardEvent::M_FIX>();    // 通知
     mm1ResL0C.Wait<HardEvent::M_FIX>();   // 等待L0C
 
     outputBuf.WaitCrossCore();
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
-    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
-    fixpipeParams.mSize = (runInfo.mRealSize + 1) >> 1 << 1; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
+    fixpipeParams.nSize = Align8Func(runInfo.s2RealSize); // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
+    fixpipeParams.mSize = Align2Func(runInfo.mRealSize); // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
+    fixpipeParams.srcStride = Align16Func(fixpipeParams.mSize); // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
     fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
@@ -265,13 +258,13 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-    MMParam param = {(uint32_t)s1BaseSize,          // singleM 64
-                        (uint32_t)constInfo.dSizeV, // singleN 512
-                        (uint32_t)runInfo.s2RealSize, // singleK 128
-                        0,    // isLeftTranspose
-                        0     // isRightTranspose
-                    };
-    MatmulN<Q_T, Q_T, T, 64, 128, 128, ABLayout::MK, ABLayout::KN>(
+    MMParam param = {static_cast<uint32_t>(s1BaseSize),          // singleM 64
+                     static_cast<uint32_t>(constInfo.dSizeV), // singleN 512
+                     static_cast<uint32_t>(runInfo.s2RealSize), // singleK 128
+                     0,    // isLeftTranspose
+                     0     // isRightTranspose
+                     };
+    MatmulN<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         inputLeftBuf.GetTensor<Q_T>(),
         inputRightBuf.GetTensor<Q_T>(),
         mmL0ABuffers,
@@ -286,11 +279,11 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
     mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
     outputBuf.WaitCrossCore(); //占用
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;   // L0C→UB;FixpipeParamsM300:L0C→UB
-    fixpipeParams.nSize = ((uint32_t)constInfo.dSizeV + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
-    fixpipeParams.mSize = s1BaseSize;                        // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
-    fixpipeParams.srcStride = (s1BaseSize + 15) >> 4 << 4;   // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
-    fixpipeParams.dstStride = ((uint32_t)constInfo.dSizeV + 15) >> 4 << 4;
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
+    fixpipeParams.nSize = Align8Func(constInfo.dSizeV);    // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
+    fixpipeParams.mSize = s1BaseSize;                      // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
+    fixpipeParams.srcStride = Align16Func(s1BaseSize);     // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+    fixpipeParams.dstStride = Align16Func(constInfo.dSizeV);
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
@@ -328,7 +321,7 @@ struct CubeBlockTraits;  // 声明
     struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
         CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
-    };
+    }
 
 DEFINE_CUBE_BLOCK_TRAITS(SCFABlockCube);
 DEFINE_CUBE_BLOCK_TRAITS(SCFABlockCubeDummy);
@@ -337,7 +330,7 @@ DEFINE_CUBE_BLOCK_TRAITS(SCFABlockCubeDummy);
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
 #define ARGS_TRAITS \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)\
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
 }
 #endif // FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_

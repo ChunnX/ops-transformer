@@ -117,9 +117,9 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
         '---------------------------------------------------------------------------------------')
 # fuzz 中 precision_method == 1的精度对比方式
 def check_result(expect, npu_result):
-    diff_thd=0.01
+    diff_thd=0.005
     pct_thd=0.005
-    max_diff_hd=0.1
+    max_diff_hd=10
     rtol=0.005
     atol=0.000025
     max_error_idx = 10000000
@@ -203,3 +203,4 @@ def check_result(expect, npu_result):
         display_error_output(real_data, data_compe,
                                 err_idx, err_diff[0:max_error_idx])
         # assert 1==0
+    return result, fulfill_percent

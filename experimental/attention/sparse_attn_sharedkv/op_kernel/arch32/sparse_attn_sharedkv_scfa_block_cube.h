@@ -57,6 +57,8 @@ private:
 
     static constexpr uint32_t M_SPLIT_SIZE = 128;     // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;     // n方向切分
+    static constexpr uint32_t K_L0_SPLIT_SIZE = 128;     // k方向L0切分
+    static constexpr uint32_t K_L1_SPLIT_SIZE = 256;     // k方向L1切分
     static constexpr uint32_t N_WORKSPACE_SIZE = 512; // n方向切分
 
     static constexpr uint32_t L1_BLOCK_SIZE = (64 * 512 * sizeof(Q_T));

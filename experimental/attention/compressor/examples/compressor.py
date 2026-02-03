@@ -543,7 +543,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         if cu_seqlens is not None:
             print(f"Warning: layout of x is [B, S, hidden_size], but cu_seqlens is not None, it is modified to None!!!")
         cu_seqlens = None
+    exist_start_pos = True
     if start_pos is None:
+        exist_start_pos = False
         start_pos = [0] * B
     # ======================== set input params finish ========================
     # ======================== check input params start ========================
@@ -663,7 +665,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         seqused = torch.tensor(seqused).to(torch.int32).to("npu:%s" % DEVICE_ID)
     # ======================== execute npu finish ================================
     # start run custom ops
-    npu_out = (
+    npu_out, _, _, _, _ = (
         torch.ops.custom.compressor(
             x,
             wkv,
@@ -678,7 +680,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             score_block_table = block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
-            start_pos = start_pos,
+            start_pos = start_pos if exist_start_pos else None,
             rope_head_dim = rope_head_dim,
             cmp_ratio = cmp_ratio,
             coff = coff,

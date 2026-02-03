@@ -304,7 +304,6 @@ struct ConstInfo {
     // win
     int32_t oriWinRight = 0;
     int32_t oriWinLeft = 128;
-
 };
 
 struct MSplitInfo {

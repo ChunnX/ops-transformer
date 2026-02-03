@@ -33,7 +33,7 @@
 extern "C" {
 #endif
 
-static aclnnStatus ParamsCheck(const aclTensor* query,
+static aclnnStatus ParamsCheck(
                                const aclTensor* actualSeqLengthsQueryOptional,
                                const aclTensor* actualSeqLengthsKeyOptional,
                                int64_t numHeadsQ,
@@ -57,7 +57,6 @@ static aclnnStatus ParamsCheck(const aclTensor* query,
 
 __attribute__((visibility("default")))
 aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
-    const aclTensor* query,
     const aclTensor* actualSeqLengthsQueryOptional,
     const aclTensor* actualSeqLengthsKeyOptional,
     int64_t numHeadsQ,
@@ -80,7 +79,7 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
     aclOpExecutor** executor) {
   L2_DFX_PHASE_1(
       aclnnQuantLightningIndexerMetadata,
-      DFX_IN(query, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim, queryQuantMode,
+      DFX_IN(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim, queryQuantMode,
              keyQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional,
              sparseCountOptional, sparseModeOptional, preTokensOptional, nextTokensOptional, cmpRatioOptional),
       DFX_OUT(metaData));
@@ -88,7 +87,7 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
   auto uniqueExecutor = CREATE_EXECUTOR();
   CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-  auto ret = ParamsCheck(query, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim, queryQuantMode,
+  auto ret = ParamsCheck(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim, queryQuantMode,
              keyQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional,
              sparseCountOptional, sparseModeOptional, preTokensOptional, nextTokensOptional, cmpRatioOptional, metaData);
   CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -99,7 +98,7 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
   const char* socVersion = npuInfo.GetSocLongVersion().c_str();
 
   auto output = l0op::QuantLightningIndexerMetadata(
-                         query, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum, aivCoreNum, socVersion,
+                         actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum, aivCoreNum, socVersion,
                          numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode, batchSizeOptional, maxSeqlenQOptional,  
                          maxSeqlenKOptional, layoutQueryOptional, layoutKeyOptional, sparseCountOptional, sparseModeOptional,
                          preTokensOptional, nextTokensOptional, cmpRatioOptional, metaData, uniqueExecutor.get());

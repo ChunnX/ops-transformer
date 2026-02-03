@@ -15,7 +15,6 @@
 #ifndef FLASH_UPDATE_NEW_INTERFACE_SCFA_H
 #define FLASH_UPDATE_NEW_INTERFACE_SCFA_H
 
-// #include "kernel_tensor.h"
 #include "vf_basic_block_utils.h"
 #include "../util_regbase.h"
 #include "../kv_quant_sparse_attn_sharedkv_common_arch35.h"
@@ -29,7 +28,6 @@ template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16
 __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
     __ubuf__ float * expMaxUb, const uint16_t m)
 {
-    constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     AscendC::MicroAPI::RegTensor<float> vreg_exp_max;
     AscendC::MicroAPI::RegTensor<float> vreg_input_pre;
@@ -80,7 +78,6 @@ template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16
 __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
     __ubuf__ float * expMaxUb, __ubuf__ float * expSumUb, const uint16_t m)
 {
-    constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     AscendC::MicroAPI::RegTensor<float> vreg_exp_max;
     AscendC::MicroAPI::RegTensor<float> vreg_input_pre;
@@ -136,7 +133,6 @@ template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD>
 __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * expSumUb,
     const uint16_t m)
 {
-    constexpr uint16_t floatRepSize = 64;
     const uint16_t dLoops = srcD >> 6;
     AscendC::MicroAPI::RegTensor<float> vreg_input_cur;
     AscendC::MicroAPI::RegTensor<float> vreg_div;

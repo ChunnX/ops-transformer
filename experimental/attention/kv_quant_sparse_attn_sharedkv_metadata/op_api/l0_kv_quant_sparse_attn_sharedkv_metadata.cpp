@@ -27,10 +27,9 @@
 
 using namespace op;
 namespace l0op {
-OP_TYPE_REGISTER(KVQuantSparseAttnSharedkvMetadata);
+OP_TYPE_REGISTER(KvQuantSparseAttnSharedkvMetadata);
 
-const aclTensor* KVQuantSparseAttnSharedkvMetadata(
-    const aclTensor* q,
+const aclTensor* KvQuantSparseAttnSharedkvMetadata(
     const aclTensor* cuSeqLensQOptional,
     const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor* cuSeqLensCmpKvOptional,
@@ -52,8 +51,8 @@ const aclTensor* KVQuantSparseAttnSharedkvMetadata(
     int64_t cmpMaskModeOptional,
     int64_t oriWinLeftOptional,
     int64_t oriWinRightOptional,
-    char *layoutQOptional,
-    char *layoutKvOptional,
+    std::string layoutQOptional,
+    std::string layoutKvOptional,
     bool hasOriKvOptional,
     bool hasCmpKvOptional,
     const char *socVersion,
@@ -61,22 +60,22 @@ const aclTensor* KVQuantSparseAttnSharedkvMetadata(
     int64_t aivCoreNum,
     const aclTensor* metaData,
     aclOpExecutor* executor) {
-  L0_DFX(KVQuantSparseAttnSharedkvMetadata, q, cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, sequsedKvOptional, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
+  L0_DFX(KvQuantSparseAttnSharedkvMetadata, cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, sequsedKvOptional, numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
         maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, cmpTopKOptional, kvQuantMode, tileSizeOptional, ropeHeadDimOptional, cmpRatioOptional, oriMaskModeOptional, 
         cmpMaskModeOptional, oriWinLeftOptional, oriWinRightOptional, layoutQOptional, layoutKvOptional, 
         hasOriKvOptional, hasCmpKvOptional, socVersion, aicCoreNum, aivCoreNum, metaData);
 
   static internal::AicpuTaskSpace space(
-      "KVQuantSparseAttnSharedkvMetadata");
+      "KvQuantSparseAttnSharedkvMetadata");
 
   auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-      KVQuantSparseAttnSharedkvMetadata,
+      KvQuantSparseAttnSharedkvMetadata,
       OP_ATTR_NAMES({"num_heads_q", "num_heads_kv", "head_dim", "batch_size", "max_seqlen_q", "max_seqlen_kv", 
                      "ori_topk", "cmp_topk", "kv_quant_mode", "tile_size", "rope_head_dim", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode",
                      "ori_win_left", "ori_win_right", "layout_q", "layout_kv",
                      "has_ori_kv", "has_cmp_kv", "soc_version", "aic_core_num",
                      "aiv_core_num"}),
-      OP_INPUT(q, cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, sequsedKvOptional), OP_OUTPUT(metaData),
+      OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, sequsedKvOptional), OP_OUTPUT(metaData),
       OP_ATTR(numHeadsQ, numHeadsKv, headDim, batchSizeOptional, 
               maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, cmpTopKOptional, kvQuantMode, tileSizeOptional, ropeHeadDimOptional, cmpRatioOptional, oriMaskModeOptional, 
               cmpMaskModeOptional, oriWinLeftOptional, oriWinRightOptional, layoutQOptional, layoutKvOptional, 
@@ -84,7 +83,7 @@ const aclTensor* KVQuantSparseAttnSharedkvMetadata(
               aicCoreNum, aivCoreNum));
   OP_CHECK(ret == ACL_SUCCESS,
            OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                   "KVQuantSparseAttnSharedkvMetadata"
+                   "KvQuantSparseAttnSharedkvMetadata"
                    " ADD_TO_LAUNCHER_LIST_AICPU failed."),
            return nullptr);
   return metaData;

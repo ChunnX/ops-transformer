@@ -22,7 +22,6 @@
 namespace ge {
 
 REG_OP(SparseAttnSharedkvMetadata)
-    .INPUT(q, TensorType({DT_BF16, DT_FLOAT16}))
     .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_ori_kv, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_cmp_kv, TensorType({DT_INT32}))
