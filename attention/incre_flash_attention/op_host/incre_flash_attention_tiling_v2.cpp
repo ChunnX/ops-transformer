@@ -543,18 +543,14 @@ ge::graphStatus IFATilingV2::ProcessBaseTensors() {
 
   const uint32_t *innerPrecisePtr = ifaContext_->innerPrecise;
   innerPrecise_ = innerPrecisePtr ? *innerPrecisePtr : IFA_HIGH_PERFORMANCE; // 910B默认高性能
-  if (isPFAFlag_) {
-    OP_CHECK_IF(((innerPrecise_ != IFA_HIGH_PERFORMANCE) && (innerPrecise_ != IFA_HIGH_PRECISION) &&
-                (innerPrecise_ != HIGH_PERFORMANCE_ROW_INVALID) && (innerPrecise_ != HIGH_PRECISION_ROW_INVALID)),
-                OP_LOGE(ifaContext_->opName, "Precision mode[%u] should be 0 or 1 or 2 or 3.", innerPrecise_),
-                return ge::GRAPH_FAILED); // pfa支持0-3，第0位：0-高精度，1-高性能；第1位：0-不开启行无效修正，1-开启行无效修正
-    isRowInvalid_ = (innerPrecise_ >> 1) & 1;
-    innerPrecise_ &= NUM1;
-  } else {
-    OP_CHECK_IF(((innerPrecise_ != IFA_HIGH_PERFORMANCE) && (innerPrecise_ != IFA_HIGH_PRECISION)),
-                OP_LOGE(ifaContext_->opName, "Precision mode[%u] should be 0 or 1.", innerPrecise_),
-                return ge::GRAPH_FAILED); // 当前只支持高精度0和高性能1
-  }
+
+  OP_CHECK_IF(((innerPrecise_ != IFA_HIGH_PERFORMANCE) && (innerPrecise_ != IFA_HIGH_PRECISION) &&
+              (innerPrecise_ != HIGH_PERFORMANCE_ROW_INVALID) && (innerPrecise_ != HIGH_PRECISION_ROW_INVALID)),
+              OP_LOGE(ifaContext_->opName, "Precision mode[%u] should be 0 or 1 or 2 or 3.", innerPrecise_),
+              return ge::GRAPH_FAILED); // pfa支持0-3，第0位：0-高精度，1-高性能；第1位：0-不开启行无效修正，1-开启行无效修正
+  isRowInvalid_ = (innerPrecise_ >> 1) & 1;
+  innerPrecise_ &= NUM1;
+
   OP_LOGD(ifaContext_->opName, "InnerPrecise is %u", innerPrecise_);
 
   if (!pageAttentionFlag_ && CheckQKOutShape() != ge::GRAPH_SUCCESS) {
@@ -1165,7 +1161,6 @@ ge::graphStatus IFATilingV2::ProcessOptionalTensors() {
     }
     qPaddingSizeFlag_ = false;
     needInit_ = needInitfaRun_;
-    isRowInvalid_ = (innerPrecise_ >> 1) & 1;
   }
   return ge::GRAPH_SUCCESS;
 }
