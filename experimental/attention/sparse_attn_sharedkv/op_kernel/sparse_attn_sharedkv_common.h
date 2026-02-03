@@ -178,6 +178,7 @@ struct RunInfo {
     uint32_t gIdx = 0;
     uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
+    uint32_t n2IdxReal = 0;
     uint32_t relativeS2Idx = 0;
     uint32_t bn2IdxInCurCore = 0;
     uint32_t curSInnerLoopTimes = 0;
@@ -304,6 +305,9 @@ struct ConstInfo {
     // win
     int32_t oriWinRight = 0;
     int32_t oriWinLeft = 128;
+
+    // 是否返回SoftmaxLse
+    bool returnSoftmaxLse = false;
 };
 
 struct MSplitInfo {

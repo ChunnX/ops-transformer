@@ -252,6 +252,8 @@ ge::graphStatus SASInfoParser::GetAttrParaInfo()
     opParamInfo_.oriWinRight = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
+    opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE);
+
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
     return ge::GRAPH_SUCCESS;
 }
@@ -705,6 +707,7 @@ void SASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
     sasInfo.cmpSparseIndicesLayout = cmpSparseIndicesLayout_;
     sasInfo.kvLayout = kvLayout_;
     sasInfo.outLayout = outLayout_;
+    sasInfo.returnSoftmaxLse = *opParamInfo_.returnSoftmaxLse;
 }
 
 ge::graphStatus SASInfoParser::Parse(SASTilingInfo &sasInfo)
@@ -1435,6 +1438,7 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
     tilingData_.baseParams.set_oriWinLeft(tilingInfo->oriWinLeft);
     tilingData_.baseParams.set_oriWinRight(tilingInfo->oriWinRight);
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
+    tilingData_.baseParams.set_returnSoftmaxLse(tilingInfo->returnSoftmaxLse);
 
     tilingData_.cmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
     tilingData_.cmpParams.set_sparseBlockCount(tilingInfo->sparseBlockCount);
