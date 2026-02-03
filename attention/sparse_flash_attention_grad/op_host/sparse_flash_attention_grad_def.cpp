@@ -134,7 +134,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("scale_value").AttrType(REQUIRED).Float(1.0);
-        this->Attr("sparse_block_size").AttrType(REQUIRED).Int(1);
+        this->Attr("sparse_block_size").AttrType(OPTIONAL).Int(1);
         this->Attr("layout").AttrType(OPTIONAL).String("BSND");
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(2147483647);

@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|     √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -360,7 +360,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tbody>
     </table>
 
-- **返回值**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -397,7 +397,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 
 ## aclnnSparseLightningIndexerGradKLLoss
 
-- **参数说明**
+- **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
     <col style="width: 144px">
@@ -434,7 +434,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     </tbody>
     </table>
 
-- **返回值**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -524,7 +524,10 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>deterministic</td>
             <td>bool</td>
-            <td>支持确定性计算</td>
+            <td>
+            A2/A3支持确定性计算<br>
+            950不支持确定性计算
+            </td>
         </tr>
         <tr>
             <td>B</td>
@@ -538,12 +541,15 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>N1</td>
-            <td>8、16、32、64、128</td>
+            <td>64、128</td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
             <td>Nidx1</td>
-            <td>8、16、32、64</td>
+            <td>
+            A2/A3支持8、16、32、64<br>
+            950支持32、64
+            </td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
@@ -564,6 +570,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>Drope</td>
             <td>64</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>K</td>
+            <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
             <td>-</td>
         </tr>
         <tr>
@@ -591,19 +602,22 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>queryIndex</td>
-            <td>N1 = 64/32;  D = 128 ; S1 = 64k/128k</td>
+            <td>
+            A2/A3支持N1 = 64/32/16/8;  D = 128 ; S1 = 64k/128k<br>
+            950支持N1 = 64/32;  D = 128 ; S1 = 64k/128k
+            </td>
         </tr>
         <tr>
             <td>keyIndex</td>
-            <td>D = 128。</td>
+            <td>D = 128</td>
         </tr>
         <tr>
             <td>topk</td>
-            <td>当前topk = 2048。</td>
+            <td>topk = 1024/2048/3072/4096/5120/6144/7168/8192</td>
         </tr>
         <tr>
             <td>qRope</td>
-            <td>d= 64。</td>
+            <td>d= 64</td>
         </tr>
         </tbody>
     </table>
