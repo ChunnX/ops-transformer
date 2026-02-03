@@ -36,6 +36,8 @@ constexpr uint32_t MAX_SPLIT_RATIO = 2;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 constexpr uint32_t SEQ_LEN_MIN = 4096;
 constexpr uint32_t SEQ_LEN_MAX = 5120;
+constexpr uint32_t SEQ_LEN_MIN_V2 = 37000;
+constexpr uint32_t SEQ_LEN_MAX_V2 = 65536;
 constexpr uint32_t HEAD_DIM = 512;
 constexpr uint32_t HEAD_DIM_V = 512;
 constexpr uint32_t SPARSE_MODE = 3;
@@ -226,7 +228,7 @@ bool IFATiling::CheckActualSeqLengths(int64_t expectedActualSeqLength) const {
         int64_t s2 = (actualLenDims_ == 1U) ? actualSeqKv[0] : actualSeqKv[bIdx];
 
         if (expectedActualSeqLength >= 0) {
-            if (s2 != expectedActualSeqLength)
+            if (s2 < SEQ_LEN_MIN_V2 || s2 > SEQ_LEN_MAX_V2)
                 return false;
         } else {
             if (s2 < SEQ_LEN_MIN || s2 > SEQ_LEN_MAX)
@@ -274,7 +276,7 @@ bool IFATiling::IsValidFlag() {
         .headDim = HEAD_DIM,
         .headDimV = HEAD_DIM_V,
         .sparseMode = SPARSE_MODE,
-        .expectedActualSeqLength = 55002
+        .expectedActualSeqLength = 1 // 1表示整网场景下s2范围：[37000,65536]
     };
     return CheckCommonConditions(cfg);
 }
