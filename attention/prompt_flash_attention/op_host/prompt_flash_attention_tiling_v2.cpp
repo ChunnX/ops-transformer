@@ -3914,15 +3914,15 @@ size_t PromptFlashAttentionTilingV2::GetPFAWorkSpaceSize(PromptFlashAttentionTil
         size_t accumOutSize = 0;
         size_t logSumExpSize = 0;
         if (isMaxWorkspace) { // 计算maxWorkSpaceSize时默认开启FD且使用最大核数进行归约
-            auto vHeadSize = tilingData.promptAttentionBaseParams.get_vHeadSize();
-            accumOutSize = aicNum * vHeadSize * sizeof(float);
+            uint64_t headDimAlign = AlignUp(tilingData.promptAttentionBaseParams.get_vHeadSize(), BYTE_BLOCK);
+            accumOutSize = aicNum * headDimAlign * sizeof(float);
             logSumExpSize = aicNum * BYTE_BLOCK * 2;
         } else if (enableFlashDecode) {
             auto batchSize = tilingData.promptAttentionBaseParams.get_batchSize();
             auto headNumSize = tilingData.promptAttentionBaseParams.get_headNumSize();
-            auto vHeadSize = tilingData.promptAttentionBaseParams.get_vHeadSize();
+            uint64_t headDimAlign = AlignUp(tilingData.promptAttentionBaseParams.get_vHeadSize(), BYTE_BLOCK);
             uint32_t kvSplitPart = faTilingAdapter.inputParamsRegbase.get_kvSplitPart();
-            accumOutSize = batchSize * gSize * headNumSize * kvSplitPart * vHeadSize * sizeof(float);
+            accumOutSize = batchSize * gSize * headNumSize * kvSplitPart * headDimAlign * sizeof(float);
             logSumExpSize = batchSize * gSize * headNumSize * kvSplitPart * BYTE_BLOCK * 2;
         }
 
