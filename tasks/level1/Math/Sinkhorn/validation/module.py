@@ -63,6 +63,4 @@ class ModelNew(nn.Module):
             tol = torch.tensor(tol, dtype=torch.float32, device=cost.device)
 
         # 调用算子
-        print(f"***lyy-ModuleNew调用算子开始, cost is {cost}, tol is {tol}")
-        # p = kernel_gen_ops.sinkhorn(cost, tol)
         return kernel_gen_ops.sinkhorn(cost, tol)
