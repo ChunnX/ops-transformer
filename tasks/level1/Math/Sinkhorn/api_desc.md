@@ -1,9 +1,9 @@
-# aclnnSqrt
+# aclnnSinkhorn
 
 ## 功能描述
 计算Sinkhorn距离，可以用于MoE模型中的专家路由。
 ### 算子功能
-`aclnnSqrt` 实现了对输入数据逐元素开平方，返回开平方结果的功能。
+`aclnnsinkhorn` 实现了对输入成本张量数据，根据tol误差，返回最优传输张量的功能。
 
 ### 计算公式
 
@@ -14,10 +14,10 @@ $$
 ## 接口定义
 
 ### Python 接口
-该操作通过 PyBind11 封装 C++ 实现，在 Python 中以 `kernel_gen_ops.sqrt()` 函数形式提供：
+该操作通过 PyBind11 封装 C++ 实现，在 Python 中以 `kernel_gen_ops.sinkhorn()` 函数形式提供：
 
 ```python
-def sqrt(x):
+def sinkhorn(x):
     """
     实现自定义开平方操作。
     
@@ -41,8 +41,8 @@ import kernel_gen_ops
 cost = torch.rand(4, 8, device=device, dtype=dtype)
 tolf = 0.0001
 
-# 使用sqrt_custom执行计算
-result = kernel_gen_ops.sqrt(cost, tol)
+# 使用sinkhorn_custom执行计算
+result = kernel_gen_ops.sinkhorn(cost, tol)
 ```
 
 
