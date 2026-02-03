@@ -609,7 +609,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::Init(
                             TilingData->postTilingData.dsinksumDataSizeOffset / sizeof(uint32_t));
                             
     uint64_t pseAlibiAddr = (workspaceOffsets + cubeCoreNum * matmulWorkspaceSize * INPUT_NUMS *
-                             GM_DOUBLE_BUFFER + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+                                                    GM_DOUBLE_BUFFER + ADDR_ALIGN_SIZE + TilingData->postTilingData.sinkDataSize) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     this->pseAlibiGm.SetGlobalBuffer((__gm__ half*)(workspace + pseAlibiAddr + cBlockIdx * pseAlibiOffset));
 
     if constexpr (IS_DTM == ENABLE) {
