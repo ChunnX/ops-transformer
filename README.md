@@ -77,11 +77,12 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 └── requirements.txt               # 本项目需要的第三方依赖包
 ```
 
-## 📝相关信息
+## 💬相关信息
 
 - [贡献指南](CONTRIBUTING.md)
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)
+- [所属SIG](https://gitcode.com/cann/community/tree/master/CANN/sigs/ops-transformer)
 
 ## 🤝联系我们
 
