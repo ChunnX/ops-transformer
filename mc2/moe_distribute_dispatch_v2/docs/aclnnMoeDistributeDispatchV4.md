@@ -460,7 +460,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         - moeExpertNum 取值范围(0, 512]，还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
         - groupTp 当前版本不支持，传空字符即可。
         - tpWorldSize、tpRankId、expertShardType、sharedExpertNum、sharedExpertRankNum 当前版本不支持，传0即可。
-        - epRecvCountsOut 的shape为(moeExpertNum + 2globalBsK*serverNum,)（前moeExpertNum个为接收token数，剩余为通信前reduce相关信息）。
+        - epRecvCountsOut 的shape为(moeExpertNum + 2 * globalBs * K * serverNum,)（前moeExpertNum个为接收token数，剩余为通信前reduce相关信息）。
         - 当前不支持TP域通信。
         - expandScalesOut 要求为1D Tensor，shape为(A,)。
         - quantMode 支持0（非量化）、2（动态量化）。

@@ -513,7 +513,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
         - epSendCounts 的shape为 (moeExpertNum + 2 * globalBs * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBs * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，globalBs=0时按Bs * epWorldSize计算。
         - 当前不支持TP域通信。
         - xActiveMaskOptional 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(Bs, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
-        - exapndScalesOptional 要求为1D Tensor，shape为 (A, )。
+        - expandScalesOptional 要求为1D Tensor，shape为 (A, )。
         - sharedExpertXOptional 为预留参数，当前版本不支持，传空指针即可。
         - epWorldSize 依commAlg取值，"fullmesh"支持16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
         - moeExpertNum 取值范围(0, 512]，还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
@@ -540,7 +540,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
         - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
         - 有TP域通信时 tpSendCountsOptional 为1D Tensor，shape为 (tpWorldSize, )。
         - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
-        - exapndScalesOptional 预留参数，当前版本不支持，传空指针即可。
+        - expandScalesOptional 预留参数，当前版本不支持，传空指针即可。
         - sharedExpertXOptional 要求为2D或3D Tensor（2D时shape为 (Bs, H)；3D时前两位乘积等于Bs、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
         - epWorldSize 取值支持[2, 768]。
         - moeExpertNum 取值范围(0, 1024]。
