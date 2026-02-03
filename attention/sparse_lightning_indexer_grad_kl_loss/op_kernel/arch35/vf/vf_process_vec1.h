@@ -57,7 +57,7 @@ __simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
     MaskReg pregFullExeB16 = CreateMask<INPUT_T, MaskPattern::ALL>();
     MaskReg preg_all_b32 = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_relu;
-    
+
     Duplicate(vreg_output_x1, 0, preg_all_b32);
     Duplicate(vreg_output_x2, 0, preg_all_b32);
     Duplicate(vreg_output_x3, 0, preg_all_b32);

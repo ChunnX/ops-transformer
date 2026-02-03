@@ -36,7 +36,6 @@ constexpr uint32_t UB_MAX_SIZE = 128 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
 constexpr uint32_t MODE_NUM_2 = 2;
 constexpr uint32_t MODE_NUM_3 = 3;
-constexpr uint32_t MODE_NUM_4 = 4;
 constexpr uint32_t ALIGN_NUM_2 = 2;
 constexpr uint32_t BLOCK_SINGLE_LEN = 16;
 
@@ -85,6 +84,7 @@ struct SLIGradKLLossConstInfo {
     uint32_t dSizeQueryIndex; // 默认不带Rope，固定等于128
     uint32_t dSizeQueryRope = 64; // Rope，固定等于64
     uint32_t kSize; // 现阶段只支持2048
+    int64_t totalCost;
     SLISparseMode sparseMode; // 0或者3
     float scaleValue;
     float pScaler;
@@ -132,8 +132,7 @@ struct SLIGradKLLossRunInfo {
     int32_t s2BaseSize;
     int32_t s2LoopTimes;
     int32_t s2TailSize;
-    int32_t s2Idx;
-    int32_t s2CurSize = 0;
+    int32_t s2CurSize;
     int32_t nIndexSize;
     int32_t weightOffset;
     int32_t softmaxInputOffset;
@@ -144,7 +143,6 @@ struct SLIGradKLLossRunInfo {
     int64_t queryRopeTensorOffset = 0;
     int64_t queryIndexTensorOffset = 0;
     int64_t topkGmBaseOffset = 0;
-    bool isValid = false;
     bool isLastK = false;
 };
 
@@ -158,7 +156,6 @@ struct SLIGradKLLossKRunInfo {
     int32_t s2SingleIdx;
     int32_t s2SingleCurSize;
     bool isS2end;
-    bool syGmEn;
     bool isAlign64;
     int32_t dValue;
     int32_t dRopeValue;
@@ -175,9 +172,9 @@ struct SLIGradKLLossPRunInfo {
 /// @}
 
 constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
-constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {0, 1, 2};
-constexpr uint8_t SYNC_V6_TO_C3_FLAG = 3;
-constexpr uint8_t SYNC_C3_TO_V7_FLAG = 8;
+constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
+constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
+constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {2, 3};
 
 template <typename T>
 __aicore__ inline T SLIGAlign(T num, T rnd)

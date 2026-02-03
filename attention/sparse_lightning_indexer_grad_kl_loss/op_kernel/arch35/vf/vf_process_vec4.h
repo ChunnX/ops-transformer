@@ -20,7 +20,7 @@
 namespace AscendC {
 using namespace MicroAPI;
 
-template <typename T, bool isAlign>
+template <typename T>
 __simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcUb, __ubuf__ T * maxUb, __ubuf__ T * sumUb,
     float scaleValue, float pScaler, uint32_t m, const uint32_t nBaseSize)
 {
@@ -34,7 +34,7 @@ __simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
     RegTensor<float> vreg_tmp2;
 
     MaskReg preg_all_b32 = CreateMask<float, MaskPattern::ALL>();
-    
+
     Duplicate(vreg_output_x1, 0.0f, preg_all_b32);
     Duplicate(vreg_output_x2, 0.0f, preg_all_b32);
     for (uint16_t i = 0; i < m; ++i) {
@@ -57,7 +57,7 @@ __simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
     StoreAlign(((__ubuf__ T *&)dstUb + floatRepSize), vreg_output_x2, preg_all_b32);
 }
 
-template <typename T, bool isAlign>
+template <typename T>
 __aicore__ inline void ProcessVec4Vf(const LocalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& maxTensor,
     const LocalTensor<T>& sumTensor, const float scaleValue, const float pScaler, const uint32_t m, const uint32_t nBaseSize)
 {
@@ -66,7 +66,7 @@ __aicore__ inline void ProcessVec4Vf(const LocalTensor<T>& dstTensor, const Loca
     __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ T * sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
 
-    ProcessVec4BasicVF<T, isAlign>(dstUb, srcUb, maxUb, sumUb, scaleValue, pScaler, m, nBaseSize);
+    ProcessVec4BasicVF<T>(dstUb, srcUb, maxUb, sumUb, scaleValue, pScaler, m, nBaseSize);
 }
 } // namespace
 

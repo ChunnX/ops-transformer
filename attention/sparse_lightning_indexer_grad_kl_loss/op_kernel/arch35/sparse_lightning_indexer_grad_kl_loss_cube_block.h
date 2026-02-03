@@ -80,7 +80,7 @@ public:
                                     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, 
                                     SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo,
                                     SLIGradKLLossKRunInfo &syRunInfo);
-    __aicore__ inline void ComputeMm3(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3ResBuf,
+    __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
                                 Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
                                 SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo, 
                                 SLIGradKLLossKRunInfo &pRunInfo);
@@ -242,7 +242,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmP(Buffer<Buf
     mm1L0CBuffer.Set<HardEvent::M_FIX>();
     mm1L0CBuffer.Wait<HardEvent::M_FIX>();      
     // fix2ub
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[pRunInfo.kTaskId % 3]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[pRunInfo.kTaskIdMod2]);
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
     fixpipe2UbParams.nSize = (kSize + 7) >> 3 << 3;
     fixpipe2UbParams.mSize = (constInfo.gSizeQuery + 1 ) >> 1 << 1;
@@ -256,7 +256,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmP(Buffer<Buf
     fixpipe2UbParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm1L0CTensor, fixpipe2UbParams);
     mm1L0CBuffer.Set<HardEvent::FIX_M>();
-    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[pRunInfo.kTaskId % 3]);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[pRunInfo.kTaskIdMod2]);
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -305,7 +305,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(Buffer<Bu
     mm2L0CBuffer.Set<HardEvent::M_FIX>();
     mm2L0CBuffer.Wait<HardEvent::M_FIX>();      
     // fix2ub
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[syRunInfo.kTaskId % 3]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[syRunInfo.kTaskIdMod2]);
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
     fixpipe2UbParams.nSize = (kSize + 7) >> 3 << 3;
     fixpipe2UbParams.mSize = (constInfo.gSizeQueryIndex + 1) >> 1 << 1;
@@ -318,7 +318,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(Buffer<Bu
     fixpipe2UbParams.params.srcNdStride = 0;
     fixpipe2UbParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm2L0CTensor, fixpipe2UbParams);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[syRunInfo.kTaskId % 3]);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[syRunInfo.kTaskIdMod2]);
     //fix2gm
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
     fixpipe2GmParams.nSize = kSize;
@@ -335,7 +335,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(Buffer<Bu
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3ResBuf,
+__aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
                                 Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
                                 SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo, 
                                 SLIGradKLLossKRunInfo &pRunInfo)
@@ -343,8 +343,6 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(Buffer<Buf
     uint32_t kSize = pRunInfo.kProcessSize; // 2048 
     uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE); //循环次数，循环累计kSize行搬出UB
     uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_P_BASESIZE; //尾块大小
-
-    LocalTensor<T> outTensor = bmm3ResBuf.GetTensor<T>();    
     LocalTensor<INPUT_T> reluGradL1Tensor;    
     MMParam mmParam = {
         M_SPLIT_SIZE,
@@ -361,6 +359,8 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(Buffer<Buf
         if (kIdx == kLoopTimes - 1) {
             mmParam.singleM = tailLoopKSize;
         }
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3ResBuf = bmm3Buf.Get();
+        LocalTensor<T> outTensor = bmm3ResBuf.GetTensor<T>();
         reluGradL1Tensor = reluGradResL1Buf.GetTensor<INPUT_T>();
         int64_t reluGradOffset = kIdx * VEC_P_BASESIZE * AlignTo(constInfo.gSizeQueryIndex,  static_cast<uint32_t>(C0_SIZE));
         // 拷贝左矩阵
@@ -371,7 +371,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(Buffer<Buf
         mm3L0CBuffer.Set<HardEvent::M_FIX>();
         mm3L0CBuffer.Wait<HardEvent::M_FIX>();
         // fix2ub
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
         fixpipe2UbParams.nSize = (mmParam.singleN + 7) >> 3 << 3;
         fixpipe2UbParams.mSize = (mmParam.singleM + 1) >> 1 << 1;
@@ -385,7 +385,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(Buffer<Buf
         fixpipe2UbParams.params.dstNdStride = 0;
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm3L0CBuffer.GetTensor<T>(), fixpipe2UbParams);
         mm3L0CBuffer.Set<HardEvent::FIX_M>();
-        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
     }
     if (pRunInfo.kTaskId == runInfo.s2LoopTimes - 1) {
         sYQL1Buffer.Set<HardEvent::MTE1_MTE2>();
@@ -477,7 +477,7 @@ public:
                                     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, 
                                     SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo,
                                     SLIGradKLLossKRunInfo &syRunInfo){};
-    __aicore__ inline void ComputeMm3(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm3ResBuf,
+    __aicore__ inline void ComputeMm3(BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3Buf,
                                 Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &reluGradResL1Buf,
                                 SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo, 
                                 SLIGradKLLossKRunInfo &pRunInfo){};
