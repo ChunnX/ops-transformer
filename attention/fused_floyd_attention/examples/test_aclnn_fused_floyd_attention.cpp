@@ -46,6 +46,7 @@ void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                          *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
+  size = size > 1000 ? 1000 : size; // 打印数据个数小于等于1000
   for (int64_t i = 0; i < size; i++) {
     LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
   }
@@ -106,7 +107,6 @@ int main() {
   int64_t kv_size = B * H * N * K * D;
   int64_t k1v1_size = B * H * K * M * D;
   int64_t atten_mask_size = B * H * N * M * K;
-  int64_t softmax_size = B * N1 * S1 * 8;
 
   std::vector<int64_t> qShape = {B, H, N, M, D};
   std::vector<int64_t> kShape = {B, H, N, K, D};
@@ -158,9 +158,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(v1HostData, v1Shape, &v1DeviceAddr, aclDataType::ACL_FLOAT16, &v1);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
+  ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenMask);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionOutHostData, attentionOutShape , &attentionOutDeviceAddr, aclDataType::ACL_FLOAT, &attentionOut);
+  ret = CreateAclTensor(attentionOutHostData, attentionOutShape , &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -204,7 +204,7 @@ int main() {
   aclDestroyTensor(v);
   aclDestroyTensor(k1);
   aclDestroyTensor(v1);
-  aclDestroyTensor(attenmask);
+  aclDestroyTensor(attenMask);
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
