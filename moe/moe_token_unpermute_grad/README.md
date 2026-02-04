@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：aclnnMoeTokenUnpermuteGrad的反向传播。
+- 算子功能：aclnnMoeTokenUnpermute的反向传播。
 - 计算公式：
 
   - probs非None：

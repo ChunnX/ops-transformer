@@ -54,6 +54,12 @@ private:
     __aicore__ inline void CopyInX(int64_t loop, int64_t rowCount);
     __aicore__ inline void ComputeSoftmax(int64_t rowCount);
     __aicore__ inline void ComputeTopK(int64_t row);
+    __aicore__ inline void HandleOneRepeatSortNum(
+    int64_t rowCount, 
+    const LocalTensor<float>& softmaxTensor,
+    const LocalTensor<float>& sortedTensor,
+    LocalTensor<uint32_t>& expertIdxTensor
+    );
     __aicore__ inline void ComputeRowIdx(int64_t loop, int64_t rowCount);
     __aicore__ inline void CopyOutRowIdx(int64_t loop, int64_t rowCount);
     __aicore__ inline void CopyYExpertIdxOut(int64_t loop, int64_t rowCount);
@@ -172,10 +178,11 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
         AscendC::MicroAPI::MaskReg mask;
         for (uint16_t i = 0; i < expertCountloops; i++) {
             mask = AscendC::MicroAPI::UpdateMask<int32_t>(precessExpert);
-            AscendC::MicroAPI::Arange(vreg0, i * repeatCount);
+            uint16_t expertCountloopsOffset = i * repeatCount;
+            AscendC::MicroAPI::Arange(vreg0, expertCountloopsOffset);
             for (uint16_t j = 0; j < rowLoops; j++) {
                 AscendC::MicroAPI::DataCopy(
-                    expertIdxTensorAddr + (j * expertCountAlign_) + i * repeatCount, vreg0, mask);
+                    expertIdxTensorAddr + (j * expertCountAlign_) + expertCountloopsOffset, vreg0, mask);
             }
         }
     }
@@ -190,11 +197,12 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
         AscendC::MicroAPI::MaskReg mask;
         for (uint16_t i = 0; i < kLoops; i++) {
             mask = AscendC::MicroAPI::UpdateMask<int32_t>(precessK);
-            AscendC::MicroAPI::DataCopy(vreg0, rowIdxBaseTensorAddr + i * repeatCount);
+            uint16_t kLoopsOffset = i * repeatCount;
+            AscendC::MicroAPI::DataCopy(vreg0, rowIdxBaseTensorAddr + kLoopsOffset);
             for (uint16_t j = 1; j < rowLoops; j++) {
                 AscendC::MicroAPI::Adds(vreg1, vreg0, j, mask);
                 AscendC::MicroAPI::DataCopy(
-                    rowIdxBaseTensorAddr + (j * expertCountAlign_) + i * repeatCount, vreg1, mask);
+                    rowIdxBaseTensorAddr + (j * expertCountAlign_) + kLoopsOffset, vreg1, mask);
             }
         }
     }
@@ -249,11 +257,12 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
         for (uint16_t i = 0; i < rowLoops; i++) {
             uint32_t remain = expertCount_;
             mask = AscendC::MicroAPI::UpdateMask<int32_t>(remain);
-            uint32_t offset = i * expertCountAlign_;
+            uint16_t rowLoopsOffset = i * expertCountAlign_;
+            uint32_t offset = rowLoopsOffset;
             ops::LoadOneTensorForDtypeT<T>(xTensorAddr, reduceMidRreg, mask, offset);
             for (uint16_t j = 1; j < expertCountLoops; j++) {
                 mask = AscendC::MicroAPI::UpdateMask<int32_t>(remain);
-                offset = i * expertCountAlign_ + j * repeatCount;
+                offset = rowLoopsOffset + j * repeatCount;
                 ops::LoadOneTensorForDtypeT<T>(xTensorAddr, vreg0, mask, offset);
                 AscendC::MicroAPI::Max(reduceMidRreg, reduceMidRreg, vreg0, mask);
             }
@@ -262,7 +271,7 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
             AscendC::MicroAPI::ReduceMax(reduceVreg, reduceMidRreg, mask);
             AscendC::MicroAPI::Duplicate(dupVreg, reduceVreg, mask);
             for (uint16_t j = 0; j < expertCountLoops; j++) {
-                offset = i * expertCountAlign_ + j * repeatCount;
+                offset = rowLoopsOffset + j * repeatCount;
                 ops::LoadOneTensorForDtypeT<T>(xTensorAddr, vreg0, mask, offset);
                 AscendC::MicroAPI::Sub(vreg0, vreg0, dupVreg, mask);
                 AscendC::MicroAPI::Exp(vreg0, vreg0, mask);
@@ -300,15 +309,51 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
             mask = AscendC::MicroAPI::UpdateMask<int32_t>(precessExpert);
             AscendC::MicroAPI::DataCopy(sumVreg, sumTensorAddr + i * B32_BLOCK_COUNT);
             AscendC::MicroAPI::Duplicate(sumVreg, sumVreg, mask);
+
+            uint16_t rowLoopsOffset = i * expertCountAlign_;
             for (uint16_t j = 0; j < expertCountLoops; j++) {
-                AscendC::MicroAPI::DataCopy(vreg0, softmaxTensorAddr + i * expertCountAlign_ + j * repeatCount);
+                uint16_t expertCountLoopsOffset = j * repeatCount;
+                AscendC::MicroAPI::DataCopy(vreg0, softmaxTensorAddr + rowLoopsOffset + expertCountLoopsOffset);
                 AscendC::MicroAPI::Div(vreg0, vreg0, sumVreg, mask);
-                AscendC::MicroAPI::DataCopy(softmaxTensorAddr + i * expertCountAlign_ + j * repeatCount, vreg0, mask);
+                AscendC::MicroAPI::DataCopy(softmaxTensorAddr + rowLoopsOffset + expertCountLoopsOffset, vreg0, mask);
                 mask = AscendC::MicroAPI::UpdateMask<int32_t>(precessExpert);
             }
         }
     }
     xInQueue_.FreeTensor<T>(xTensor);
+}
+
+template <typename T, bool hasFinished, bool needPadNegInf>
+__aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, needPadNegInf>::HandleOneRepeatSortNum(
+    int64_t rowCount, 
+    const LocalTensor<float>& softmaxTensor,
+    const LocalTensor<float>& sortedTensor,
+    LocalTensor<uint32_t>& expertIdxTensor
+    )
+{
+    // 如果只选top1，无需排序，用max求最大值作为top1
+    if (k_ == 1 && expertCount_ <= B32_BLOCK_COUNT) {
+        __VEC_SCOPE__ {
+            __local_mem__ float *softmaxTensorAddr = (__local_mem__ float *)softmaxTensor.GetPhyAddr();
+            __local_mem__ float *sortedTensorAddr = (__local_mem__ float *)sortedTensor.GetPhyAddr();
+            AscendC::MicroAPI::RegTensor<float> valueAndIndexReg;
+            AscendC::MicroAPI::MaskReg maskForValueAndIndex = AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::VL2>();
+            AscendC::MicroAPI::MaskReg maskForExpertCount;
+            uint32_t uint32ExpertCount_ = static_cast<uint32_t>(expertCount_);
+            int64_t kvExpertCountAlign_ = expertCountAlign_ * KEY_VALUE_FACTOR;
+
+
+            for (uint16_t i = 0; i < static_cast<uint16_t>(rowCount); i++) {
+                AscendC::MicroAPI::DataCopy(valueAndIndexReg, softmaxTensorAddr + i * expertCountAlign_);
+                uint32_t expertCountForMask = uint32ExpertCount_;
+                maskForExpertCount = AscendC::MicroAPI::UpdateMask<uint32_t>(expertCountForMask);
+                AscendC::MicroAPI::ReduceMax(valueAndIndexReg, valueAndIndexReg, maskForExpertCount);
+                DataCopy(sortedTensorAddr + kvExpertCountAlign_ * i, valueAndIndexReg, maskForValueAndIndex);
+            }
+        }
+    } else {
+        Sort32(sortedTensor, softmaxTensor, expertIdxTensor, rowCount);
+    }
 }
 
 template <typename T, bool hasFinished, bool needPadNegInf>
@@ -324,12 +369,13 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
     LocalTensor<int32_t> expertIdxOutTensor = expertIdxOutQueue_.AllocTensor<int32_t>();
 
     if (expertCountAlign_ == ONE_REPEAT_SORT_NUM) {
-        Sort32(sortedTensor, softmaxTensor, expertIdxTensor, rowCount);
+        HandleOneRepeatSortNum(rowCount, softmaxTensor, sortedTensor, expertIdxTensor);
     } else {
         for (int i = 0; i < rowCount; i++) {
-            Sort<float, true>(sortedTensor[expertCountAlign_ * i * KEY_VALUE_FACTOR],
-                softmaxTensor[expertCountAlign_ * i],
-                expertIdxTensor[expertCountAlign_ * i],
+            int64_t rowCountOffset = expertCountAlign_ * i;
+            Sort<float, true>(sortedTensor[rowCountOffset * KEY_VALUE_FACTOR],
+                softmaxTensor[rowCountOffset],
+                expertIdxTensor[rowCountOffset],
                 sortTmpTensor,
                 sortRepeatTimes_);
         }
@@ -364,11 +410,12 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
                 AscendC::MicroAPI::Duplicate(finishedB32Vreg, finishedB32Vreg, mask);
                 AscendC::MicroAPI::Muls(finishedB32Vreg, finishedB32Vreg, static_cast<int32_t>(expertCount_), mask);
             }
+            uint16_t rowLoopsOffset = i * expertCountAlign_ * KEY_VALUE_FACTOR;
             for (uint16_t j = 0; j < loopEnd; j++) {
                 AscendC::MicroAPI::DataCopy<int32_t, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
                     (AscendC::MicroAPI::RegTensor<int32_t> &)valueVreg,
                     indexVreg,
-                    sortedTensorAddr + i * expertCountAlign_ * KEY_VALUE_FACTOR + j * repeatCount * KEY_VALUE_FACTOR);
+                    sortedTensorAddr + rowLoopsOffset + j * repeatCount * KEY_VALUE_FACTOR);
                 if constexpr (!IsSameType<T, float>::value) {
                     ops::StoreUnAlignOneTensor<T>(yOutTensorAddr, valueVreg, u0, mask, repeatCount);
                 } else {
@@ -385,7 +432,7 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
             AscendC::MicroAPI::DataCopy<int32_t, AscendC::MicroAPI::LoadDist::DIST_DINTLV_B32>(
                 (AscendC::MicroAPI::RegTensor<int32_t> &)valueVreg,
                 indexVreg,
-                sortedTensorAddr + i * expertCountAlign_ * KEY_VALUE_FACTOR +
+                sortedTensorAddr + rowLoopsOffset +
                     (loopEnd) * repeatCount * KEY_VALUE_FACTOR);
             if constexpr (!IsSameType<T, float>::value) {
                 ops::StoreUnAlignOneTensor<T>(yOutTensorAddr, valueVreg, u0, mask, lastLoopKCount);
@@ -428,10 +475,11 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
         AscendC::MicroAPI::MaskReg mask;
         for (uint16_t i = 0; i < loopK; i++) {
             mask = AscendC::MicroAPI::UpdateMask<int32_t>(precessK);
-            AscendC::MicroAPI::DataCopy(vreg0, rowIdxBaseTensorAddr + i * repeatCount);
+            uint16_t loopKOffset = i * repeatCount;
+            AscendC::MicroAPI::DataCopy(vreg0, rowIdxBaseTensorAddr + loopKOffset);
             for (uint16_t j = 0; j < rowLoops; j++) {
                 AscendC::MicroAPI::Adds(vreg1, vreg0, indexBase + j, mask);
-                AscendC::MicroAPI::DataCopy(rowIdxOutTensorAddr + (j * kAlign) + i * repeatCount, vreg1, mask);
+                AscendC::MicroAPI::DataCopy(rowIdxOutTensorAddr + (j * kAlign) + loopKOffset, vreg1, mask);
             }
         }
     }
