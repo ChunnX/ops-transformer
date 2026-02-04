@@ -779,7 +779,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - TND场景，数据类型仅支持FLOAT16、BFLOAT16；NTD_TND场景，数据类型仅支持BFLOAT16；
       - TND场景，当head配比为GQA/MQA时（即必须完整传入numHeads和numKeyValueHeads参数，且numHeads是numKeyValueHeads的整数倍，且二者不相等），有如下约束：
         - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且不传mask，或sparse=3且传入优化后的attentionMask：
- 	           - Q_D、K_D、V_D相等且小于等于256或Q_D、K_D等于192，V_D等于128/192场景下，支持sparse=4且传入优化后的attentionMask，要求preTokens>=-actualSeqLengths、nextTokens>=-actualSeqLengthsKv、preTokens+nextTokens>=0;
+             - Q_D、K_D、V_D相等且小于等于256或Q_D、K_D等于192，V_D等于128/192场景下，支持sparse=4且传入优化后的attentionMask，要求preTokens>=-actualSeqLengths、nextTokens>=-actualSeqLengthsKv、preTokens+nextTokens>=0;
         - 仅支持innerPrecise=0，即不带行无效的高精度模式；
         - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize仅支持128；
       - TND场景，当head配比为MHA时，有如下约束：
@@ -834,7 +834,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         - 不支持page attention、prefix、伪量化、全量化、后量化；
         - 当kv为tensorlist时，keyRope的shape中b需要与tensorlist长度保持一致，n、s需要与tensorlist中每个tensor的n、s相等，d为64。
 
-- numKeyValueHeads使用限制：需要满足numHeads整除numKeyValueHeads，numHeads与numKeyValueHeads的比值不能大于64。在BSND、BNSD、BNSD_BSND、TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。
+- numKeyValueHeads使用限制：需要满足numHeads整除numKeyValueHead。在BSND、BNSD、BNSD_BSND、TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 伪量化和全量化场景下numHeads与numKeyValueHeads的比值不能大于64; MLA decode场景下numHeads与numKeyValueHeads的比值不能大于128; 非量化和MLA prefill场景下当且仅当D轴等于64或者128时支持numHeads与numKeyValueHeads的比值大于64，其他D轴不支持。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - numHeads与numKeyValueHeads的比值不能大于64。
 
 - sparseMode使用限制如下：
 
@@ -1034,8 +1038,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - 如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
 
-    - 支持N轴小于等于256，支持D轴小于等于512。inputLayout为BSH或者BSND时，建议N*D小于65535。
-
+    - N轴限制
+      - <term>Ascend 950PR/Ascend 950DT</term>：
+        - GQA非量化场景支持N轴大于256，伪量化和全量化场景N轴小于等于256。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持N轴小于等于256。
+    
+    - 支持D轴小于等于512。inputLayout为BSH或者BSND时，建议N*D小于65535。
     - S支持小于等于20971520（20M）。部分长序列场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为:timeout or trap error），此场景下建议做S切分处理，注：这里计算量会受B、S、N、D等的影响，值越大计算量越大。典型的会超时的长序列（即B、S、N、D的乘积较大）场景包括但不限于：
 
       <div style="overflow-x: auto;">
@@ -1208,7 +1216,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 - **当Q_S等于1时**：
 
   - query，key，value输入，功能使用限制如下：
-    - 支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。
+    - 支持B轴小于等于65536，支持D轴小于等于512。
+    - N轴限制
+      - <term>Ascend 950PR/Ascend 950DT</term>：
+        - GQA非量化场景支持N轴大于256，伪量化和全量化场景N轴小于等于256。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持N轴小于等于256。
     - query、key、value输入类型均为INT8的场景暂不支持。
     - 在INT4（INT32）伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）。
     - 在INT4（INT32）伪量化场景下，若KV INT4拼接成INT32输入，那么KV的N、D或者H是实际值的八分之一（prefix同理）。
