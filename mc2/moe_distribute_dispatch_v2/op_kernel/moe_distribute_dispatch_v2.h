@@ -439,8 +439,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
     uint32_t hFp32Size = axisH_ * sizeof(float);
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
-    uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
-    uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+    uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
     expertIdsSize = Ceil(expertIdsSize, UB_ALIGN) * UB_ALIGN;
     maxSize_ = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;

@@ -382,10 +382,12 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::MaxSizeCal()
 {
     uint32_t hFp32Size = Ceil(axisH_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
+    uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     expertIdsSize_ = Ceil(expertIdsCnt_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
     maxSize_ = hFp32Size > expertIdsSize_ ? hFp32Size : expertIdsSize_;
     maxSize_ = maxSize_ > xActivateMaskSize ? maxSize_ : xActivateMaskSize;
+    maxSize_ = maxSize_ > bsKAlign256 ? maxSize_ : bsKAlign256;
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -687,7 +689,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         subExpBuf_ = smoothScalesBuf;         // 内存复用
     } else if (needMaskCalFlag) {
         tpipe_->InitBuffer(dstExpBuf_, maxSize_);
-        tpipe_->InitBuffer(subExpBuf_, expertIdsSize_);
+        tpipe_->InitBuffer(subExpBuf_, maxSize_);
     }
     quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf, dynamicScalesOutGMTensor_);
     ExpIdsCopyAndMaskCal();
@@ -904,7 +906,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     TBuf<> statusBuf;
     expertIdsBufSize_ = Ceil(expertIdsCnt_ * sizeof(int32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256; // 支持compareScalar
     tpipe_->InitBuffer(dstExpBuf_, maxSize_);           // BS * K * 4
-    tpipe_->InitBuffer(subExpBuf_, expertIdsSize_);           // BS * K * 4
+    tpipe_->InitBuffer(subExpBuf_, maxSize_);           // BS * K * 4
     tpipe_->InitBuffer(gatherMaskTBuf_, expertIdsBufSize_);      // BS * K * 4
     tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize_);
     tpipe_->InitBuffer(statusBuf, statusCntAlign_ * UB_ALIGN);
