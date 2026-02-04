@@ -274,8 +274,10 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
     GetCommonTilingInfo();
     // check whethere tail dim can fully load.
     int64_t compressSeqOffsetSize = inputKeyShape_.GetDim(DIM0) * inputKeyShape_.GetDim(DIM2);
-    int64_t numKHeadSize = seqLen_ * kHeadSize_;
-    int64_t numVHeadSize = seqLen_ * vHeadSize_;
+    int64_t alignKHead = RoundUp(kHeadSize_, dtypeByteSize_);
+    int64_t alignVHead = RoundUp(vHeadSize_, dtypeByteSize_);
+    int64_t numKHeadSize = seqLen_ * alignKHead;
+    int64_t numVHeadSize = seqLen_ * alignVHead;
     int64_t maxHandleNumPerLoop = ubSize_ / dtypeByteSize_;
     int64_t floatFactor = (INT32_DTYPE_SIZE / dtypeByteSize_);
     int64_t inOutModeDim = (inOutMode_ == SINGLE_IN_OUT) ? DIM1 : DIM2;
@@ -285,9 +287,9 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
         blockFactor_ * DIM1 +                                      // seqLens
         blockFactor_ * DIM1 +                                      // compressLen
         compressSeqOffsetSize * indexDtypeSize_ / dtypeByteSize_ + // compress_seq_offset size
-        std::max(kHeadSize_, vHeadSize_) * floatFactor * DIM1 +    // reduce Buf for inputKeyLocal or inputValueLocal
-        std::max(kHeadSize_, vHeadSize_) * floatFactor * DIM1 +    // divide Buf
-        std::max(kHeadSize_, vHeadSize_) * floatFactor * DIM1;     // cast Buf
+        std::max(alignKHead, alignVHead) * floatFactor * DIM1 +    // reduce Buf for inputKeyLocal or inputValueLocal
+        std::max(alignKHead, alignVHead) * floatFactor * DIM1 +    // divide Buf
+        std::max(alignKHead, alignVHead) * floatFactor * DIM1;     // cast Buf
     if (ubThreshold <= maxHandleNumPerLoop) {
         // tail dim can fully load
         isFullyLoad_ = FULLY_LOAD;
