@@ -1,30 +1,37 @@
 # aclnnGroupedMatMulAlltoAllv
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/grouped_mat_mul_allto_allv)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
 算子功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
 
-计算公式：
-- 路由专家：
+- 计算公式：
 
-  $$
-  gmmY = gmmX \times gmmWeight \\
-  unpermuteOut = Unpermute(gmmY) \\
-  y = AlltoAllv(unpermuteOut)
-  $$
+    - 路由专家：
 
-- 共享专家：
+    $$
+    gmmY = gmmX \times gmmWeight \\
+    unpermuteOut = Unpermute(gmmY) \\
+    y = AlltoAllv(unpermuteOut)
+    $$
 
-  $$
-  mmY = mmX \times mmWeight
-  $$
+    - 共享专家：
+
+    $$
+    mmY = mmX \times mmWeight
+    $$
 
 ## 函数原型
 
@@ -62,12 +69,12 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
-    <col style="width: 120px">
-    <col style="width: 120px">
+    <table style="undefined;table-layout: fixed; width: 1013px"><colgroup>
     <col style="width: 160px">
-    <col style="width: 150px">
-    <col style="width: 80px">
+    <col style="width: 111px">
+    <col style="width: 429px">
+    <col style="width: 188px">
+    <col style="width: 125px">
     </colgroup>
     <thead>
     <tr>
@@ -130,7 +137,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <tr>
     <td>epWorldSize</td>
     <td>输入</td>
-    <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；</td>
+    <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</td>
     <td>INT64</td>
     <td>ND</td>
     </tr>
@@ -193,13 +200,15 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     </tbody></table>
 
 - **返回值**
-    
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。第一阶段接口完成入参校验，出现以下场景报错：
 
-    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 800px">
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    第一阶段接口完成入参校验，出现以下场景报错：
+
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
     </colgroup>
     <thead>
     <tr>
@@ -225,10 +234,10 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 800px">
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     </colgroup>
     <thead>
     <tr>
@@ -266,7 +275,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 ## 约束说明
 
 - 确定性计算：
-  - `aclnnGroupedMatMulAlltoAllv`默认确定性实现。
+  - aclnnGroupedMatMulAlltoAllv默认确定性实现。
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
@@ -280,13 +289,16 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
   - A：本卡发送的token数，是sendCounts参数累加之和。
   - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>: 单卡通信量取值范围需大于等于2MB。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>: 单卡通信量在2MB以下可能存在性能劣化。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -350,7 +362,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     };
 
     // shape 基本信息
-    constexpr int64_t EP_WORLD_SIZE = 8;
+    constexpr int64_t EP_WORLD_SIZE = 2;
     constexpr int64_t BS = 4096;
     constexpr int64_t K = 2;
     constexpr int64_t H = 7168;
@@ -525,7 +537,6 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
     int main(int argc, char *argv[]) 
     {
-        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[EP_WORLD_SIZE];
