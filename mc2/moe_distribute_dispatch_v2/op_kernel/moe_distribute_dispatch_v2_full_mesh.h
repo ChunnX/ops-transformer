@@ -891,6 +891,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     for (uint32_t index = 0; index < aivNum_; ++index) { // 通过aivNum_次循环的方式，复制aivNum_份
         DataCopyPad(workspaceGlobal[index * rscvStatusNum_], cumSumResTensor, dataCopyOutParams);
     }
+    SyncFunc<AscendC::HardEvent::V_S>();
     UpdateTokenNumsOut(cumSumResTensor); // 计算各专家的recv_count
     PipeBarrier<PIPE_V>();
     Duplicate<float>(syncOnCoreTensor_, (float)1, aivNum_ * AIV_STATE_SIZE / sizeof(float));  // 8 = UB_ALIGN / sizeof(int32_t)
