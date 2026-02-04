@@ -153,6 +153,10 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
     runParam.actualS1Size = (runParam.nextTokensPerBatch >= 0) ? runParam.actualS1Size :
         (runParam.actualS1Size + runParam.nextTokensPerBatch);
 
+    if (runParam.actualS1Size < 0) { // 修正preToken/nextToken导致全无效场景的qs值
+        runParam.actualS1Size = 0;
+    }
+
     if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
         runParam.qBOffset = sIdx * constInfo.s1Size * constInfo.n2GD + runParam.queryLeftPaddingSize * constInfo.n2GD;
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
