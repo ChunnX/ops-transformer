@@ -276,6 +276,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/scatter_pa_cache/README.md">scatter_pa_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>更新KCache中指定位置的key。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/sparse_flash_attention/README.md">sparse_flash_attention</a></td>
     <td>✓</td>
     <td>✓</td>
