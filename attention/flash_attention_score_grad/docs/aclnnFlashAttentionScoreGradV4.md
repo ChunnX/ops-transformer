@@ -268,7 +268,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxMaxOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxSumOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -715,7 +715,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 - sparseModeOptional=7时，不支持可选输入realShiftOptional。
 - sparseModeOptional=8时，当每个sequence的q、kv等长时支持可选输入realShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
-- 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
+- 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[N, T, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
