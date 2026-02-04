@@ -20,16 +20,16 @@
   - k轴分组：$k_i$各不相同，但$m_i/n_i$每组相同，此时$x_i/weight_i$可以在$k_i$上拼接。
   - m轴分组：$k_i$各组相同，$weight_i/y_i$可以在$n_i$上拼接。
 
-相较于[GroupedMatmul](aclnnGroupedMatmul.md)接口，**此接口新增：**
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - 非量化场景，支持weight转置（转置指若shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景）。
-    - 支持m轴和k轴分组，由groupType表示。
-    - x、weight、y都为单tensor非量化场景支持x，weight输入都为float32类型。
-    - 量化、伪量化场景，支持weight转置，支持weight为单tensor。
-    - 对于[aclnnGroupedMatmulGetWorkspaceSize](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
-  - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
-    - 伪量化场景，支持weight转置，支持x，weight，y均为单tensor。
-    - 对于[aclnnGroupedMatmulGetWorkspaceSize](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
+  相较于[GroupedMatmul](aclnnGroupedMatmul.md)接口，**此接口新增：**
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+      - 非量化场景，支持weight转置（转置指若shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景）。
+      - 支持m轴和k轴分组，由groupType表示。
+      - x、weight、y都为单tensor非量化场景支持x，weight输入都为float32类型。
+      - 量化、伪量化场景，支持weight转置，支持weight为单tensor。
+      - 对于[aclnnGroupedMatmulGetWorkspaceSize](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
+    - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
+      - 伪量化场景，支持weight转置，支持x，weight，y均为单tensor。
+      - 对于[aclnnGroupedMatmulGetWorkspaceSize](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
 
 **说明：**
 
