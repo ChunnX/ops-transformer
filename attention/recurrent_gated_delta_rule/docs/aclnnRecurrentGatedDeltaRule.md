@@ -1,11 +1,17 @@
 # aclnnRecurrentGatedDeltaRule
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/recurrent_gated_delta_rule)
+
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -20,7 +26,6 @@
   $$
   S_t := S_{t-1}(\alpha_t(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1}k_t)k_t^T
   $$
-
 
   $$
   o := \frac{S_t q_t}{\sqrt{d_k}}
@@ -61,7 +66,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
 
 ## aclnnRecurrentGatedDeltaRuleGetWorkspaceSize
 
-- **参数说明**
+- 参数说明
 
   <table style="undefined; table-layout: fixed; width: 1450px"><colgroup>
   <col style="width: 170px">
@@ -221,16 +226,15 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   
   其中 $B$ 表示batch size，令 $L_i$ 表示第i个序列的长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。$N_k$ 表示key的头数，$N_v$ 表示value的头数，$D_k$ 表示key向量的维度，$D_v$ 表示value向量的维度。
 
-- **返回值**
+- 返回值
 
   aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
   第一段接口完成入参校验，出现以下场景时报错：
-
-  <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
-  <col style="width: 302px">
-  <col style="width: 119px">
-  <col style="width: 731px">
+  <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
+  <col style="width: 250px">
+  <col style="width: 130px">
+  <col style="width: 670px">
   </colgroup>
   <thead>
     <tr>
@@ -262,12 +266,11 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
 
 ## aclnnRecurrentGatedDeltaRule
 
-- **参数说明**
-
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
+- 参数说明
+  <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
+  <col style="width: 250px">
+  <col style="width: 130px">
+  <col style="width: 670px">
   </colgroup>
   <thead>
     <tr>
@@ -300,12 +303,11 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   </tbody>
   </table>
 
-- **返回值**
-
+- 返回值
   aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-## 约束说明
 
+## 约束说明
 - 确定性计算：
   - aclnnRecurrentGatedDeltaRule默认确定性实现。
 - 输入shape大小需满足约束：$L_i \le 8$，$N_k \le 256$，$N_v \le 256$，$D_k \le 256$，$D_v \le 256$。
@@ -345,18 +347,21 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
-    std::vector<int16_t> resultData(size, 0);
+    std::vector<aclFloat16> resultData(size, 0);
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
                            size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("mean result[%ld] is: %f\n", i, int16_tToFloat(resultData[i]));
+        if (i >= 5) { // print the first five data
+            break;
+        }
+        LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
     }
 }
 
 int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
 {
-    // 固定写法，AscendCL初始化
+    // AscendCL初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -391,7 +396,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 int main()
 {
-    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+    // 1.device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -457,10 +462,10 @@ int main()
         keyHostData[i] = 1;
     }
     for (int i = 0; i < valueHostData.size(); i++) {
-        valueHostData[i] = z;
+        valueHostData[i] = 0;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
-        betaHostData[i] = z;
+        betaHostData[i] = 0;
     }
     for (int i = 0; i < ssmStaIdHostData.size(); i++) {
         ssmStaIdHostData[i] = i;
@@ -495,8 +500,7 @@ int main()
     aclOpExecutor *executor;
     // 调用aclnnRecurrentGatedDeltaRuleGetWorkspaceSize第一段接口
     ret = aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(query, key, value, beta, stateRef, actSeqLen, ssmStaId, gama,
-                                                       gamak, numAccTok, scale, attnOut, &workspaceSize,
-                                                       &executor);
+                                                       gamak, numAccTok, scale, attnOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRecurrentGatedDeltaRuleGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -511,7 +515,7 @@ int main()
     ret = aclnnRecurrentGatedDeltaRule(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRecurrentGatedDeltaRule failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4. 同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
