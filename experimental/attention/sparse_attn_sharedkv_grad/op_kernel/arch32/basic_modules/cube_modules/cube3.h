@@ -19,7 +19,7 @@ template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void
 CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
                          const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx, 
-                         const int64_t lastBlockSize, const bool isLastBasicBlock)
+                         const int64_t lastBlockSize, const bool isLastBasicBlock, const RunInfo &runInfo)
 {
     uint32_t dLoopTimes = (dimDTotal + 127) / N_SPLIT_SIZE;
     uint32_t perLoopDSize = N_SPLIT_SIZE;
@@ -27,7 +27,7 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
     uint32_t blockOffset = K_SPLIT_SIZE / selectedBlockSize; // 128 / 1 = 128
 
     MMParam mmParam;
-    mmParam.singleM = dimG;
+    mmParam.singleM = runInfo.curS1g;
     mmParam.singleN = perLoopDSize;
     mmParam.singleK = selectedBlockSize * blockOffset;
     mmParam.isRightTranspose = true;
@@ -45,7 +45,7 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
         int64_t currentOutGmOffset = outGmOffset + dIdx * perLoopDSize;
         // selectedBlockSize较小时，nIdx需要+2或者更多
         for (int32_t nIdx = blkCntOffset; nIdx < blkCntOffset + selectedCntOffset; nIdx+=blockOffset) {
-            int32_t l1Offset = (nIdx - blkCntOffset) * selectedBlockSize * dimGAlign;
+            int32_t l1Offset = (nIdx - blkCntOffset) * selectedBlockSize * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
             bool isFirstLoop = (nIdx == blkCntOffset);
             bool isLastLoop = (nIdx + blockOffset >= blkCntOffset + selectedCntOffset);
 
@@ -60,7 +60,11 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
             int64_t currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSize * dimDTotal + dIdx * perLoopDSize;
             
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
-            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
+            if constexpr (MODE == SASG_SCFA_MODE) {
+                CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
+            } else {
+                CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
+            }
 
             mmParam.isOutKFisrt = isFirstLoop;
             mmParam.isFixOut = isLastLoop;

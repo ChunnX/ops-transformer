@@ -21,6 +21,11 @@
 
 namespace optiling {
 namespace sasg {
+
+#define SASG_SWA_MODE 0
+#define SASG_CFA_MODE 1
+#define SASG_SCFA_MODE 2
+
 struct TempParams {
     uint32_t dataTypeSize;
     uint32_t queryType;
@@ -37,7 +42,9 @@ struct TempParams {
     uint32_t layout;
     uint32_t singleM;
     uint32_t singleN;
+    uint32_t s1BasicSize;
     uint32_t selected_block_count;
+    uint32_t mode;
 };
 
 struct AiCoreParams {

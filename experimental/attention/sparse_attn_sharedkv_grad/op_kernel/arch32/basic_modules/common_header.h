@@ -22,6 +22,10 @@
 
 namespace SASG_BASIC {
 
+#define SASG_SWA_MODE 0
+#define SASG_CFA_MODE 1
+#define SASG_SCFA_MODE 2
+
 constexpr static uint64_t MAX_CORE_NUM = 24;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
@@ -32,16 +36,18 @@ constexpr static uint64_t MAX_CORE_NUM = 24;
 // common struct
 /////////////////////////////////////////////////////
 
-template <class TILING_CLASS, typename T1, const bool IS_BSND = false, typename... Args>
+template <class TILING_CLASS, typename T1, const bool IS_BSND = false, const uint32_t MODE = SASG_SCFA_MODE, typename... Args>
 struct SFAG_TYPE {
     using tiling_class = TILING_CLASS;
     using t1 = T1;
     static constexpr bool is_bsnd = IS_BSND;
+    static constexpr uint32_t mode = MODE;
 };
 
 struct RunInfo {
     int64_t task;
     int64_t curS1;
+    int64_t curS2;
     int64_t curS3;
     int64_t lseGmOffset;
     int64_t blkCntOffset;
@@ -63,7 +69,12 @@ struct RunInfo {
     int64_t lastBlockSize;
     int64_t oriWinStart;
     int64_t oriWinEnd;
+    int64_t oriWinS2Len;
+    int64_t curS1g;
+    int64_t curS1Basic;
+    int64_t oriWinDiagOffset;
     bool isLastBasicBlock;
+    bool isOri;
 };
 
 /////////////////////////////////////////////////////

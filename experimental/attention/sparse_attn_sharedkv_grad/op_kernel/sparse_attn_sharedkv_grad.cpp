@@ -17,6 +17,7 @@
 #include "lib/matmul_intf.h"
 #include "sparse_attn_sharedkv_grad_template_tiling_key.h"
 #include "arch32/sfag_basic.h"
+#include "arch32/sasg_basic.h"
 using namespace AscendC;
 
 #define INVOKE_SASG_BASIC_IMPL(templateClass, ...)                                                  \
@@ -43,17 +44,33 @@ sparse_attn_sharedkv_grad(__gm__ uint8_t *query, __gm__ uint8_t *ori_kv, __gm__ 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16) {
-        if (LAYOUT == SASG_LAYOUT_BSND) {
-            INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, half, true);
+        if (MODE == SASG_SCFA_MODE) {
+            if (LAYOUT == SASG_LAYOUT_BSND) {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, half, true);
+            } else {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, half, false);
+            }
         } else {
-            INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, half, false);
+            if (LAYOUT == SASG_LAYOUT_BSND) {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SparseAttnSharedkvGrad, half, true, MODE);
+            } else {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SparseAttnSharedkvGrad, half, false, MODE);
+            }
         }
     }
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16) {
-        if (LAYOUT == SASG_LAYOUT_BSND) {
-            INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, bfloat16_t, true);
+        if (MODE == SASG_SCFA_MODE) {
+            if (LAYOUT == SASG_LAYOUT_BSND) {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, bfloat16_t, true);
+            } else {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, bfloat16_t, false);
+            }
         } else {
-            INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SelectedAttentionGradBasic, bfloat16_t, false);
+            if (LAYOUT == SASG_LAYOUT_BSND) {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SparseAttnSharedkvGrad, bfloat16_t, true, MODE);
+            } else {
+                INVOKE_SASG_BASIC_IMPL(SASG_BASIC::SparseAttnSharedkvGrad, bfloat16_t, false, MODE);
+            }
         }
     }
 }

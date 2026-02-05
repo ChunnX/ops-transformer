@@ -27,13 +27,18 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
     MMParam mmParam;
     mmParam.singleM = selectedBlockSize * blockOffset;
     mmParam.singleN = perLoopDSize;
-    mmParam.singleK = dimG;
+    mmParam.singleK = runInfo.curS1g;
     mmParam.isFixOut = true;
     mmParam.isLeftTranspose = true;
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDv * dimN2;
 
-    int64_t mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * dimDv + cBlockIdx * (selectedBlockCount + oriWinLen) * dimDv;
+    int64_t mm5ResOutBaseOffset;
+    if constexpr (MODE == SASG_SCFA_MODE) {
+        mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * dimDv + cBlockIdx * (selectedBlockCount + oriWinLen) * dimDv;
+    } else {
+        mm5ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
+    }
 
     LocalTensor<T1> l1_dy_tensor = l1_dy_tensors[mmPingPongIdx];
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
@@ -44,15 +49,16 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
 
         int64_t mm5ResOutOffset = mm5ResOutBaseOffset + mIdx * selectedBlockSize * dimDv;
         WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
-        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, 512);
+        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], mmParam.singleK, mmParam.singleM, singleN);
+
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
-            current_l1_dy_tensor = l1_dy_tensor[dIdx * perLoopDSize * dimGAlign];
+            current_l1_dy_tensor = l1_dy_tensor[dIdx * perLoopDSize * AlignTo<int64_t>(mmParam.singleK, SIZE_16)];
             LocalTensor<float> l0cTensor = cL0TensorPingPong[ping_pong_flag_l0c_ & 1];
             
             int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+            MmadInnerWithSync<T1, MODE!=SASG_SCFA_MODE>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
             UpdatePingPongFlag(ping_pong_flag_l0c_);
