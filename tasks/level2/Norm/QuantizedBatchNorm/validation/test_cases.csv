@@ -1,0 +1,2 @@
+case_id;input_shape;num_features;dtype;epsilon;affine
+0;[1, 2, 4, 4];2;int8;1e-5;True
