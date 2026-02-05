@@ -124,7 +124,7 @@ public:
 
         this->Output("d_sinks")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 

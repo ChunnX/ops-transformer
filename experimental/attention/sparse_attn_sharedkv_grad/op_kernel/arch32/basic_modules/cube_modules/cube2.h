@@ -19,7 +19,7 @@
 template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void
 CubeOp<T1>::cube2Process(const int64_t dyGmOffset, const int64_t valueGmOffset,
-                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx)
+                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
 {
     uint32_t dLoopTimes = (dimDqk + 127) / K_SPLIT_SIZE;
     uint32_t perLoopDSize = K_SPLIT_SIZE;
@@ -27,14 +27,14 @@ CubeOp<T1>::cube2Process(const int64_t dyGmOffset, const int64_t valueGmOffset,
     uint32_t blockOffset = N_SPLIT_SIZE / selectedBlockSize; // 128 / 1 = 128
 
     MMParam mmParam;
-    mmParam.singleM = dimG;
-    mmParam.singleN = selectedBlockSize * blockOffset;
+    mmParam.singleM = runInfo.curS1g;
+    mmParam.singleN = MODE == SASG_SCFA_MODE ? selectedBlockSize * blockOffset : selectedCntOffset;
     mmParam.singleK = perLoopDSize;
     mmParam.isFixOut = false;
-    mmParam.dstStride = 512;
+    mmParam.dstStride = singleN;
 
     LocalTensor<T1> l1_dy_tensor = l1_dy_tensors[mmPingPongIdx];
-    CopyGmToL1(l1_dy_tensor, attentionGradGm[dyGmOffset], dimG, dimDv, dimDv);
+    CopyGmToL1(l1_dy_tensor, attentionGradGm[dyGmOffset], mmParam.singleM, dimDv, dimDv); // [Align(s1g, 16) * (dimDv, 16), 16]
     for (int32_t nIdx = blkCntOffset; nIdx < blkCntOffset + selectedCntOffset; nIdx+=blockOffset) {
         LocalTensor<float> l0cTensor = cL0TensorPingPong[ping_pong_flag_l0c_ & 1];
         int64_t mm2WorkspaceGmOffset =  outGmOffset + (nIdx - blkCntOffset) * selectedBlockSize;
@@ -48,11 +48,15 @@ CubeOp<T1>::cube2Process(const int64_t dyGmOffset, const int64_t valueGmOffset,
             mmParam.isFixOut = dIdx == dLoopTimes - 1;
             l1_v_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
             
-            currentDyOffset = dIdx * dimGAlign * K_SPLIT_SIZE;
+            currentDyOffset = dIdx * AlignTo<int64_t>(mmParam.singleM, SIZE_16) * K_SPLIT_SIZE;
             currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSize * dimDTotal + dIdx * K_SPLIT_SIZE;
             
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
-            CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            if constexpr (MODE == SASG_SCFA_MODE) {
+                CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            } else {
+                CopyGmToL1(l1_v_tensor, oriKvGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            }
             current_l1_dy_tensor = l1_dy_tensor[currentDyOffset];
 
             MmadInnerWithSync<T1>(l0cTensor, current_l1_dy_tensor, l1_v_tensor,

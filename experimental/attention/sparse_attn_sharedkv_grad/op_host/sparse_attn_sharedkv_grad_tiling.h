@@ -27,6 +27,7 @@ TILING_DATA_FIELD_DEF(uint32_t, singleM);
 TILING_DATA_FIELD_DEF(uint32_t, singleN);
 TILING_DATA_FIELD_DEF(uint32_t, sftBaseM);
 TILING_DATA_FIELD_DEF(uint32_t, sftBaseN);
+TILING_DATA_FIELD_DEF(int64_t, s1BasicSize);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseAttnSharedkvGradSplitCoreParamsOp, SparseAttnSharedkvGradSplitCoreParams)
 

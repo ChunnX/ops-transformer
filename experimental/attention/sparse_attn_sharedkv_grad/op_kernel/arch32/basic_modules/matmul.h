@@ -237,38 +237,4 @@ __aicore__ inline void MmadInnerWithSync(LocalTensor<float> &l0cTensor,
     l0bPingPongFlag = 1 - l0bPingPongFlag;
 }
 
-template <bool needAtomic = false>
-__aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, const GlobalTensor<int32_t> &topkIndicesGm, const LocalTensor<float> &l0cTensor, struct MMParam &mmParam, const int32_t selectedBlockSize, const int32_t blockOffset, const int32_t dimN2, const uint32_t eventId, const int64_t lastBlockSize, const bool isLast)
- {
-    SetFlag<HardEvent::M_FIX>(eventId);
-    WaitFlag<HardEvent::M_FIX>(eventId);
-    FixpipeParamsV220 fixpipeParams;
-    fixpipeParams.nSize = mmParam.singleN;
-    fixpipeParams.mSize = selectedBlockSize;
-    fixpipeParams.srcStride = ((mmParam.singleM + 15) / 16) * 16;
-    fixpipeParams.dstStride = mmParam.dstStride;
-    fixpipeParams.ndNum = 1;
-    fixpipeParams.srcNdStride = 0;
-    fixpipeParams.dstNdStride = 0;
-    if constexpr (needAtomic) {
-        AscendC::SetAtomicAdd<float>();
-    }
-    for(uint32_t mIdx = 0; mIdx < mmParam.singleM / selectedBlockSize; mIdx++) {
-        //获取s2Idx
-        int32_t topkIdx = topkIndicesGm.GetValue(mIdx);
-        if (topkIdx >= 0) {
-            int64_t l0cOffset = mIdx * selectedBlockSize * 16;
-            int64_t resOffset = topkIdx * selectedBlockSize * mmParam.dstStride;
-            if (isLast && mIdx == mmParam.singleM / selectedBlockSize - 1) {
-                fixpipeParams.mSize = lastBlockSize;
-            }
-            Fixpipe<float, float>(resGm[resOffset], l0cTensor[l0cOffset], fixpipeParams);
-        }
-    }
-    if constexpr (needAtomic) {
-        AscendC::SetAtomicNone();
-    }
-    SetFlag<HardEvent::FIX_M>(eventId);
-}
-
 } // namespace SASG_BASIC

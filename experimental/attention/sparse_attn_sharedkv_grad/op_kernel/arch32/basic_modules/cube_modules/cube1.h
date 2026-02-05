@@ -19,7 +19,7 @@
 template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void
 CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
-                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx)
+                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
 {
     uint32_t dLoopTimes = (dimDTotal + 127) / K_SPLIT_SIZE;
     uint32_t perLoopDSize = K_SPLIT_SIZE;
@@ -27,9 +27,9 @@ CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
     uint32_t blockOffset = N_SPLIT_SIZE / selectedBlockSize; // 128 / 1 = 128
 
     MMParam mmParam;
-    mmParam.singleM = dimG;
-    mmParam.singleN = selectedBlockSize * blockOffset;
-    mmParam.dstStride = 512;
+    mmParam.singleM = runInfo.curS1g;
+    mmParam.singleN = MODE == SASG_SCFA_MODE ? selectedBlockSize * blockOffset : selectedCntOffset;
+    mmParam.dstStride = singleN;
 
     for (int32_t nIdx = blkCntOffset; nIdx < blkCntOffset + selectedCntOffset; nIdx+=blockOffset) {
         LocalTensor<float> l0cTensor = cL0TensorPingPong[ping_pong_flag_l0c_ & 1];
@@ -50,8 +50,12 @@ CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
 
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_QUERY_EVENTS[ping_pong_flag_l1_query_]);
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
-            CopyGmToL1(l1_query_tensor, queryGm[currentQueryOffset], dimG, K_SPLIT_SIZE, dimDqk);
-            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            CopyGmToL1(l1_query_tensor, queryGm[currentQueryOffset], mmParam.singleM, K_SPLIT_SIZE, dimDqk);
+            if constexpr (MODE == SASG_SCFA_MODE) {
+                CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            } else {
+                CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            }
 
             MmadInnerWithSync<T1>(l0cTensor, l1_query_tensor, l1_key_tensor,
                         aL0TensorPingPong, bL0TensorPingPong,
@@ -77,8 +81,12 @@ CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
         WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_QUERY_EVENTS[ping_pong_flag_l1_query_]);
         WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
         int64_t srcDstride = dimDTotal;
-        CopyGmToL1(l1_query_tensor, srcGm, dimG, tailLoopDSize, srcDstride);
-        CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
+        CopyGmToL1(l1_query_tensor, srcGm, mmParam.singleM, tailLoopDSize, srcDstride);
+        if constexpr (MODE == SASG_SCFA_MODE) {
+            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
+        } else {
+            CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+        }
 
         MmadInnerWithSync<T1>(l0cTensor, l1_query_tensor, l1_key_tensor,
                 aL0TensorPingPong, bL0TensorPingPong,

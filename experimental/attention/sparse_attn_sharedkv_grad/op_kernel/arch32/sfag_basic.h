@@ -75,6 +75,7 @@ private:
     int64_t oriWinRight;
     int64_t oriWinStart{0};
     int64_t oriWinEnd{0};
+    int64_t s1BasicSize;
 
     // gmoffset
     uint64_t queryGmOffset;
@@ -173,11 +174,12 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::Init(const TILING_CLAS
 
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
     selectedKWspOffset = selectedKWorkspaceLen / sizeof(T1) / 4;
-    selectedCountOffset = 512;
-    if (oriWinLeft + oriWinRight + tilingData->opInfo.selectedBlockCount <= 512) {
+    selectedCountOffset = tilingData->splitCoreParams.singleN;
+    if (oriWinLeft + oriWinRight + tilingData->opInfo.selectedBlockCount <= tilingData->splitCoreParams.singleN) {
         selectedCountOffset = oriWinLeft + oriWinRight + tilingData->opInfo.selectedBlockCount;
     }
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
+    s1BasicSize = tilingData->splitCoreParams.s1BasicSize;
 }
 
 template <typename SASGT>
@@ -193,7 +195,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::Process(
     if ASCEND_IS_AIC {
         TPipe pipeCube;
         CubeOp<SASGT> cubeOp;
-        cubeOp.Init(query, attention_out_grad, topk_indices, workspace, tilingData, &pipeCube);
+        cubeOp.Init(query, ori_kv, cmp_kv, attention_out_grad, workspace, tilingData, &pipeCube);
         AllocEventID();
         int64_t task = 0;
         bool changeS1 = false;
@@ -276,7 +278,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::Process(
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0, false> opCast;
+        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0> opCast;
         opCast.Init(dq, d_ori_kv, d_cmp_kv, workspace, tilingData, &pipeCast);
         opCast.Process();
     }
@@ -388,6 +390,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::UpdateGmOffset(int64_t
     runInfo[mmPingPongIdx].selectedVGmOffset = selectedVGmOffset;
     runInfo[mmPingPongIdx].oriWinStart = oriWinStart;
     runInfo[mmPingPongIdx].oriWinEnd = oriWinEnd;
+    runInfo[mmPingPongIdx].curS1g = s1BasicSize * dimG;
+    runInfo[mmPingPongIdx].curS1Basic = s1BasicSize;
 }
 
 template <typename SASGT>
