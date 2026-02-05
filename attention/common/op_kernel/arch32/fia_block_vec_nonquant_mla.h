@@ -161,7 +161,7 @@ protected:
     static constexpr T LN2 = 0.6931471805599453094172;
     static constexpr T RECIP_OF_LN2 = 1 / LN2;
     AttentionCommon::ConstInfo constInfo = {};
-    uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
+    static constexpr uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
 
     T SOFTMAX_MIN_NUM = T(-1.0/0.0); // -inf
     static constexpr uint64_t headDim = 512ULL;
@@ -408,7 +408,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         maskInfo.maskValue = negativeIntScalar;
         if (constInfo.qSeqSize == 1) {
             maskInfo.layout = fa_base_vector::S1_EQUAL1;
-        } else if (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH) {
+        } else if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH) {
             maskInfo.layout = fa_base_vector::SG;
         } else {
             maskInfo.layout = fa_base_vector::GS;
@@ -672,7 +672,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessAmlaNupdate(const At
     constexpr uint32_t mSplitSize = 64U; // tmpQue size 32KB，一次只能处理64个N，最大保存的数据大小：64*128*sizeof(int32)
     constexpr uint32_t ONE_BLOCK_SIZE = 32U; // 32B
     uint32_t subMSize = Align(mSplitInfo.vecDealM, 16U);
-    uint16_t elementPerBlock = ONE_BLOCK_SIZE / sizeof(int32_t); // 单个datablock的元素数，int32_t类型的为32/4=8
+    constexpr uint16_t elementPerBlock = ONE_BLOCK_SIZE / sizeof(int32_t); // 单个datablock的元素数，int32_t类型的为32/4=8
     
     uint32_t loopCount = (subMSize + mSplitSize - 1) / mSplitSize;
     uint32_t tailSplitSize = subMSize - (loopCount - 1) * mSplitSize; // 尾块
@@ -752,12 +752,12 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
-    if (LAYOUT_T == FIA_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
         uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
         uint64_t bN2Offset =
             static_cast<uint64_t>(prefixBS1) * constInfo.qHeadNum + static_cast<uint64_t>(info.n2Idx) * constInfo.gSize;
         DataCopySoftmaxLseTND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
-    } else if (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
+    } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
         DataCopySoftmaxLseBSND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,

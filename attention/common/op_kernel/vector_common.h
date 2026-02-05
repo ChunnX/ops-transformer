@@ -672,7 +672,7 @@ __aicore__ inline void ComputeSoftMaxLse(LocalTensor<T> &softmaxlseUb, LocalTens
                                         uint32_t dealRowCount)
 {
     uint32_t blockNum = fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
-    if (std::is_same<T, half>::value) {
+    if constexpr (std::is_same<T, half>::value) {
         blockNum = fa_base_vector::FP32_BLOCK_ELEMENT_NUM * 2;
     }
     uint64_t dealRowCountAlign = dealRowCount * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;

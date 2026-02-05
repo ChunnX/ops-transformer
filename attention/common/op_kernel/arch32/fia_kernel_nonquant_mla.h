@@ -354,9 +354,9 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
 
     // init tiling data
     tilingData = tiling;
-    skipInitOutputFlag = !IsInitAttentionOutGm() && !tilingData->baseParams.softmaxLseFlag;
     if (aiCoreIdx >= tilingData->baseParams.usedCoreNum) {
         if ASCEND_IS_AIV {
+            skipInitOutputFlag = !IsInitAttentionOutGm() && !tilingData->baseParams.softmaxLseFlag;
             if (!skipInitOutputFlag){
                 // superkernel 场景，启动核数大于实际运行核数时，未启动的核仅需要保留 SyncAll
                 SyncAll();
@@ -408,16 +408,14 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
         (__gm__ T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T);
 
-    if constexpr (FLASH_DECODE) {
-        accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-        offset = offset + tilingData->workspaceParams.fdAccumOutSize * sizeof(float);
-        lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-        lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset) + tilingData->workspaceParams.fdLogSumExpSize / 2);
-        offset = offset + tilingData->workspaceParams.fdLogSumExpSize * sizeof(float);
-    }
-
     if ASCEND_IS_AIV {
         if constexpr (FLASH_DECODE) {
+            accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+            offset = offset + tilingData->workspaceParams.fdAccumOutSize * sizeof(float);
+            lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+            lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset) + tilingData->workspaceParams.fdLogSumExpSize / 2);
+            offset = offset + tilingData->workspaceParams.fdLogSumExpSize * sizeof(float);
+
             fdService.InitParams(constInfo);
             fdService.InitGlobalTensor(lseMaxFdGm, lseSumFdGm, accumOutGm, attentionOutGm,
                                        actualSeqLengthsGmQ, actualSeqLengthsGm, key, quantScale2, quantOffset2);
@@ -658,10 +656,9 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
                 gS1IdxEndOfFdHead, gS1IdxEndOfFdHeadSplit, tilingData->fdParams.usedVecNumOfFd,
                 tilingData->fdParams.gS1BaseSizeOfFd};
 
-        SyncAll();
-
         fdService.AllocEventID();
         fdService.InitDecodeParams();
+        SyncAll();
         fdService.FlashDecode(fdParams);
         fdService.FreeEventID();
     } else {
