@@ -1401,11 +1401,11 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         DataCopyPadExtParams<int32_t> expertIdsMaskCopyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(tmpExpertIdsTensor, expertIdsGMTensor_, expertIdsMaskParams, expertIdsMaskCopyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
+        PipeBarrier<PIPE_V>();
         LocalTensor<float> validExpertIdsFloat = validExpertIdsTensor_.ReinterpretCast<float>();
         Select(validExpertIdsFloat, gatherMaskTensorInt8, tmpExpertIdsTensorFloat, static_cast<float>(-1), SELMODE::VSEL_TENSOR_SCALAR_MODE, expertIdsCnt_);
         SyncFunc<AscendC::HardEvent::V_S>();
     } else {
-        SyncFunc<AscendC::HardEvent::V_MTE2>();
         uint32_t expertIdsMask = activeMaskBsCnt_ * axisK_;
         uint32_t expertIdsAlignCnt = Ceil(expertIdsMask, BITS_PER_BYTE) * BITS_PER_BYTE; // 8 = UB_ALIGN / sizeof(int32_t)
         uint32_t rightPadding = expertIdsAlignCnt - expertIdsMask;
