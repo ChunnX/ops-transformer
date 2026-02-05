@@ -15,6 +15,8 @@
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "platform/platform_info.h"
+#include "mc2_common_infershape.h"
+
 using namespace ge;
 namespace ops {
 
@@ -60,21 +62,6 @@ static constexpr size_t DISPATCH_INPUT_ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
 static constexpr size_t DISPATCH_INPUT_ATTR_QUANT_MODE_INDEX = 10;
 static constexpr size_t DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX = 11;
 static constexpr size_t DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX = 17;
-
-static bool IsPlatform(const gert::ExtendedKernelContext *context, const std::string platform)
-{
-    fe::PlatformInfo platform_info;
-    fe::OptionalInfo optional_info;
-    GE_ASSERT_SUCCESS(fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info));
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info)
-        != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Cannot get platform info!");
-        return false;
-    }
-    std::set<std::string> supported_soc = {platform};
-    OP_LOGD(context->GetNodeName(), "Get soc version: %s", optional_info.soc_version.c_str());
-    return supported_soc.count(platform_info.str_info.short_soc_version) > 0;
-}
 
 static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, int64_t quantMode, int64_t a, int64_t h)
 {
@@ -211,7 +198,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         localExpertNum = localMoeExpertNum;
         a = globalBsReal * std::min(localExpertNum, k);
     }
-    if (!IsPlatform(context, "Ascend910B") && elasticInfoShape != nullptr) {
+    if (!IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2) && elasticInfoShape != nullptr) {
         localExpertNum = std::max(static_cast<int64_t>(1), localMoeExpertNum);
         if ((isSharedDefault) || (isNoShared)) {
             a = globalBsReal * std::min(localExpertNum, k);
@@ -233,7 +220,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     OP_LOGD(context->GetNodeName(), "expandx shape is :%s after infershape.",
         Ops::Base::ToString(*expandXShape).c_str());
 
-    if (IsPlatform(context, "Ascend950")) {
+    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
         InferShapeDynamicScalesA5(dynamicScalesShape, *quantMode, a, h);
     } else {
         dynamicScalesShape->SetDimNum(DIM_ONE);
@@ -253,9 +240,9 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         Ops::Base::ToString(*expertTokenNumsShape).c_str());
 
     epRecvCountShape->SetDimNum(DIM_ONE);
-    if (IsPlatform(context, "Ascend910B")) {
+    if (IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2)) {
         if (expertScalesShape != nullptr) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * ((*epWorldSize) / RANK_NUM_PER_NODE)); // 2：globalbs * 2kn memory size, to support different bs in ranks
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * (*epWorldSize) / RANK_NUM_PER_NODE); // 2：globalbs * 2kn memory size, to support different bs in ranks
         } else {
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
@@ -320,7 +307,7 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     OPS_CHECK_NULL_WITH_CONTEXT(context, quantMode);
     const auto scalesType = context->GetOptionalInputDataType(DISPATCH_INPUT_SCALES_IDX_INDEX);
     const int64_t *yDtypePtr = nullptr;
-    if (IsPlatform(context, "Ascend950")) {
+    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
         yDtypePtr = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX);
     }
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;

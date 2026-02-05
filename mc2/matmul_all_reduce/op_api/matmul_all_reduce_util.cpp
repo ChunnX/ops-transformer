@@ -72,7 +72,7 @@ aclnnStatus MatmulAllReduceCheckParams(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const char* reduceOp,
     int64_t streamMode, const aclTensor* output)
 {
-    const static bool is310P = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P;
+    const static bool is310P = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002;
 
     // 1. 检查参数是否为空指针
     CHECK_RET(MatmulAllReduceCheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
@@ -223,11 +223,11 @@ bool QuantMatmulAllReduceCheckDtypeValid(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
 {
-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
+    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                           DTYPE_SUPPORT_LIST_DEQUANT_310P :
                                           DTYPE_SUPPORT_LIST_DEQUANT;
 
-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
+    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                       DTYPE_SUPPORT_LIST_310P :
                                       DTYPE_SUPPORT_LIST;
 
@@ -302,7 +302,7 @@ bool QuantMatmulAllReduceIsAclnnPreTransposed(const aclTensor* x2)
 {
     auto viewFormat = ge::GetPrimaryFormat(x2->GetViewFormat());
     auto storageFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P &&
+    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 &&
                                 viewFormat == Format::FORMAT_ND && storageFormat == Format::FORMAT_FRACTAL_NZ;
     OP_LOGD("MatmulAllReduce, IsAclnnPreTransposed is %d", isAclnnPreTransposed);
     return isAclnnPreTransposed;
@@ -493,7 +493,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     aclTensor* commQuantScale2Optional = nullptr;
     int64_t antiquantGroupSize = 0;
     auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetSocVersion() != op::SocVersion::ASCEND310P &&
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 &&
         QuantMatmulAllReduceIsWeightNZFormat(x2)) {
         if(x2->GetTensor() == nullptr){
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");

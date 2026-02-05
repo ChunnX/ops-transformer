@@ -37,7 +37,7 @@ namespace ops {
 
 static ge::Status QuantAllReduceCalcOpParam(gert::ExeResGenerationContext *context)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 MTE CalcParam in QuantAllReduce BUILD_OPEN_PROJECT");
         return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "mte server", "mte_stream");
     }
@@ -48,7 +48,7 @@ static ge::Status QuantAllReduceCalcOpParam(gert::ExeResGenerationContext *conte
 static ge::Status QuantAllReduceGenTask(const gert::ExeResGenerationContext *context,
                                         std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do MTE general GenTask in QuantAllReduce BUILD_OPEN_PROJECT");
         // 这里调用moe的接口
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(context, tasks);
@@ -65,7 +65,7 @@ IMPL_OP(QuantAllReduce)
 
 static ge::Status QuantAllReduceCalcOpParam(gert::ExeResGenerationContext *context)
 {
-    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 MTE CalcParam in QuantAllReduce");
         return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, "mte server", "mte_stream");
     }
@@ -77,7 +77,7 @@ static ge::Status QuantAllReduceCalcOpParam(gert::ExeResGenerationContext *conte
 static ge::Status QuantAllReduceGenTask(const gert::ExeResGenerationContext *context,
                                         std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do MTE general GenTask in QuantAllReduce");
         // 这里调用moe的接口
         return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskMoe::Mc2MoeGenTaskCallbackV2);

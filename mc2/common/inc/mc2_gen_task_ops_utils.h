@@ -19,19 +19,22 @@
 #include "exe_graph/runtime/exe_res_generation_context.h"
 #include "graph/kernel_launch_info.h"
 #include "graph/arg_desc_info.h"
+#include "platform/soc_spec.h"
+#include "platform/platform_ascendc.h"
 
 namespace ops {
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> PLATFORM_A3 = {"Ascend910_93"};
-const std::set<std::string> NPUARCH_A5 = {"Ascend950"};
+const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
 
 class Mc2GenTaskOpsUtils {
 public:
     static bool IsComputationOnly();
-    static bool IsTargetPlatform(const char *nodeName, const std::set<std::string> &targetPlatform);
+    static bool IsTargetPlatformSocVersion(const char *nodeName, const std::set<std::string> &targetPlatform);
+    static bool IsTargetPlatformNpuArch(const char *nodeName, const std::set<std::string> &targetPlatform);
     static int64_t GetAttachStreamIdByContext(const gert::ExeResGenerationContext *context, size_t idx = 0);
-    static ge::Status CommonKFCMc2CalcParamFunc(const gert::ExeResGenerationContext *context, const ge::AscendString &name,
-                                                const ge::AscendString &reuse_key);
+    static ge::Status CommonKFCMc2CalcParamFunc(const gert::ExeResGenerationContext *context, 
+                                                const ge::AscendString &name, const ge::AscendString &reuse_key);
     static ge::Status CommonKFCMc2GenTask(const gert::ExeResGenerationContext *context,
                                           std::vector<std::vector<uint8_t>> &tasks);
     static ge::Status InsertHiddenInputsForAicoreTask(const gert::ExeResGenerationContext *context,

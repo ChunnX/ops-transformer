@@ -183,7 +183,7 @@ void MatmulAllReduceTilingBase::DoAllReduceTiling(bool useHcclApi)
 void MatmulAllReduceTilingBase::setUseBufferType()
 {
     uint8_t buffer_type;
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND310P) {
+    if (npuArch_ == NpuArch::DAV_2002) {
         buffer_type = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
         OP_LOGI(opName_, "Set buffer type to output for non-910B soc.");
     } else if (MutableMc2MsgData().debugMode == MC2_DEBUG_ONLY_AICPU) {
@@ -269,15 +269,15 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
 
 void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion& inputSocVersion)
 {
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND310P) {
+    if (npuArch_ == NpuArch::DAV_2002) {
         inputSocVersion = SocVersion::SOC310_P;
         OP_LOGD(opName_, "TileCnt enter 310P branch.");
         return;
     }
     // __DAV_C310__
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         inputSocVersion = SocVersion::SOC950;
-        OP_LOGD(opName_, "TileCnt enter 950 branch.");
+        OP_LOGD(opName_, "TileCnt enter 3510 branch.");
         return;
     }
     // end __DAV_C310__
@@ -443,6 +443,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetPlatformInfo()
     supportL0c2Out_ = !val.empty();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
     OP_TILING_CHECK(
         CheckRanksizePlatformSupported() != ge::GRAPH_SUCCESS,
         VECTOR_INNER_ERR_REPORT_TILING(opName_, "Check Ranksize Platform Supported failed."),
@@ -482,7 +483,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
 
     // __DAV_C310__
     // 910D需要自己申请一块workSpace存放mm的输出
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         gmcFloat = static_cast<uint64_t>(MutableRCSTilingData().rankM) *
                    static_cast<uint64_t>(MutableRCSTilingData().rankN) *
                    static_cast<uint64_t>(args_.outputDtypeSize);
@@ -526,16 +527,16 @@ ge::graphStatus MatmulAllReduceTilingBase::PostTiling()
 
 ge::graphStatus MatmulAllReduceTilingBase::CheckRanksizePlatformSupported() const
 {
-    bool rankSizeSupported = mc2tiling::Mc2TilingUtils::CheckRankSize(socVersion_, rankSize_);
+    bool rankSizeSupported = mc2tiling::Mc2TilingUtils::CheckRankSize(npuArch_, rankSize_);
     OP_TILING_CHECK(
         !rankSizeSupported,
         VECTOR_INNER_ERR_REPORT_TILING(
             context_->GetNodeName(),
             "Rank size %u is not supported by socversion id:%d yet; "
             "A2 supports rank size 1,2,4,8, "
-            "A5 supports rank size 1,2,4,8,16,32,64, "
-            "Ascend 310P supports rank size 1,2,4.",
-            rankSize_, static_cast<int32_t>(socVersion_)),
+            "A5(NpuArch3510) supports rank size 1,2,4,8,16,32,64, "
+            "Ascend 310P(NpuArch2002) supports rank size 1,2,4.",
+            rankSize_, static_cast<int32_t>(npuArch_)),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -779,12 +780,12 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
             "antiquantScale, antiquantOffset should be null"),
         return ge::GRAPH_FAILED);
     if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) ||
-        (socVersion_ == platform_ascendc::SocVersion::ASCEND950)) {
+        (npuArch_ == NpuArch::DAV_3510)) {
         OP_TILING_CHECK(
             !CheckCommQuantScaleShape(nValue),
             VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "CommQuantScale shape is wrong"),
             return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND310P) {
+    } else if (npuArch_ == NpuArch::DAV_2002) {
         OP_TILING_CHECK(
             ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) || (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)),
             VECTOR_INNER_ERR_REPORT_TILING(
@@ -1534,7 +1535,7 @@ void MatmulAllReduceTilingBase::CalcUbTiling()
         isPertile = (*commQuantModePtr == 1);
     }
     uint32_t addX3UbBufFac =
-        ((args_.geCType == ge::DT_BF16) && (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) || isPertile ?
+        ((args_.geCType == ge::DT_BF16) && (npuArch_ != NpuArch::DAV_3510)) || isPertile ?
             ADD_X3_BF16_UB_BUF_FACTOR :
             ADD_X3_FP16_UB_BUF_FACTOR;
     addX3UbBufFac *= isPertile ? sizeof(float) : D_MTYPE_SIZE_MAP.at(args_.cType);

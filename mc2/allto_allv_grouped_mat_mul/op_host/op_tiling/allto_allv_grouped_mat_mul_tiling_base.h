@@ -31,13 +31,13 @@ public:
     explicit AlltoAllvGmmTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:
-    ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
+    ge::graphStatus GetPlatformInfo() override;
 
-    platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_;
 };
 } // namespace optiling
 

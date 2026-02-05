@@ -122,8 +122,8 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
 
     TilingRunInfo runInfo = {};
-    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckSocVersion(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "socVersion is invalid in quant_all_reduce."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
+ 	                OP_LOGE(nodeName, "NpuArch is invalid in quant_all_reduce."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);

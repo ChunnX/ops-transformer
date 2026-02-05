@@ -255,6 +255,7 @@ protected:
     uint32_t rankSize_{0U};
     uint32_t libApiWorkSpaceSize_{0U};
     platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_;
     bool supportL0c2Out_{false};
     mc2tiling::TilingArgs args_;
     bool isWeightNz_{false};

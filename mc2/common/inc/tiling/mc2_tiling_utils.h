@@ -121,8 +121,7 @@ bool CheckSuppportedFormat(ge::Format format);
 bool IsDeterministic();
 bool GetRankSize(const std::string &opName, const char *group,
                  int64_t &rankSize);
-bool CheckRankSize(const platform_ascendc::SocVersion socVersion,
-                   const uint32_t rankSize);
+bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize);
 uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
                        const gert::TilingContext *context);
 
@@ -131,9 +130,7 @@ bool CheckDataTypeVaild(ge::DataType type,
 
 void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args,
                         const mc2tiling::TilingArgs &args, const char *opName);
-ge::graphStatus GetMatmulV3PriorityPolicy(
-    const platform_ascendc::SocVersion socVersion,
-    std::vector<int32_t> &priorities, const char *opName);
+ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t> &priorities, const char *opName);
 
 inline std::string GetSocVersion(const gert::TilingContext *context)
 {
@@ -142,6 +139,13 @@ inline std::string GetSocVersion(const gert::TilingContext *context)
     std::string socVersion;
     (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
     return socVersion;
+}
+
+inline NpuArch GetNpuArch(const gert::TilingContext *context)
+{
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    return ascendcPlatform.GetCurNpuArch();
 }
 
 class Mc2TilingUtils {
@@ -153,8 +157,7 @@ class Mc2TilingUtils {
   static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
   static mc2tiling::HcclDataType GetDataType(ge::DataType type);
   static uint64_t GetMaxWindowSize();
-  static bool CheckRankSize(platform_ascendc::SocVersion socVersion,
-                            uint32_t rankSize);
+  static bool CheckRankSize(NpuArch npuArch, uint32_t rankSize);
   static HcclDataType ConvertGeTypeToHcclType(const std::string &opName,
                                               ge::DataType type);
 
@@ -200,11 +203,10 @@ const std::map<ge::DataType, mc2tiling::HcclDataType> HCCL_DATA_TYPE = {
     {ge::DataType::DT_BF16, mc2tiling::HcclDataType::HCCL_DATA_TYPE_BFP16},
 };
 
-const std::map<platform_ascendc::SocVersion, std::set<uint32_t>>
-    supportedRankSizeSet = {
-        {platform_ascendc::SocVersion::ASCEND310P, {1, 2, 4}},
-        {platform_ascendc::SocVersion::ASCEND910B, {1, 2, 4, 8}},
-        {platform_ascendc::SocVersion::ASCEND950, {1, 2, 4, 8, 16, 32, 64}},
+ const std::map<NpuArch, std::set<uint32_t>> supportedRankSizeSet = {
+    {NpuArch::DAV_2002, {1, 2, 4}},
+    {NpuArch::DAV_2201, {1, 2, 4, 8}},
+    {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
 };
 
 const std::set<ge::Format> SUPPORTED_FORMAT = {
@@ -232,7 +234,7 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     uint64_t &hcclBufferSizeEp, uint64_t &maxWindowSizeEp, uint32_t attrGroupEpIndex)
 {
     auto attrs = context->GetAttrs();
-    if (mc2tiling::GetSocVersion(context) == "Ascend950") {
+    if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
         hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
         // A5 上前 1MB 作为状态区，剩余空间用作数据区

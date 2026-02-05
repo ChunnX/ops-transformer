@@ -19,31 +19,41 @@
 #include "mc2_log.h"
 #include "register/op_impl_registry.h"
 #include "mc2_hcom_topo_info.h"
+#include "runtime/rt_external_base.h"
+#include "platform/soc_spec.h"
+
 namespace ops {
+    const size_t GROUP = 0;
+    const size_t AG_IS_TRANS_A = 1;
+    const size_t AG_IS_TRANS_B = 2;
+    const size_t RANK_SIZE = 5;
+    const size_t GATHER_OUT_V1 = 6;
+    const size_t GATHER_OUT_V2 = 8;
+    const size_t SUPPORT_DIM_SIZE = 2;
+    const size_t RS_IS_TRANS_A = 2;
+    const size_t RS_IS_TRANS_B = 3;
+    const size_t RS_IS_AMAX_OUT = 8;
+    const size_t AG_IS_AMAX_OUT = 9;
 
-const size_t GROUP = 0;
-const size_t AG_IS_TRANS_A = 1;
-const size_t AG_IS_TRANS_B = 2;
-const size_t RANK_SIZE = 5;
-const size_t GATHER_OUT_V1 = 6;
-const size_t GATHER_OUT_V2 = 8;
-const size_t SUPPORT_DIM_SIZE = 2;
-const size_t RS_IS_TRANS_A = 2;
-const size_t RS_IS_TRANS_B = 3;
-const size_t RS_IS_AMAX_OUT = 8;
-const size_t AG_IS_AMAX_OUT = 9;
+    static constexpr uint32_t VERSION_SIZE = 32;
+    const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
+    const std::set<std::string> PLATFORM_A3 = {"Ascend910_93"};
+    const std::set<std::string> NPUARCH_A2A3 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_2201))};
+    const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
 
-struct CommParas {
-    const gert::Shape* x1MatrixShape;
-    const gert::Shape* x2MatrixShape;
-    int64_t dimM;
-    int64_t dimKX1;
-    int64_t dimKX2;
-    int64_t dimN;
-    int64_t rankSize;
-};
+    struct CommParas {
+        const gert::Shape* x1MatrixShape;
+        const gert::Shape* x2MatrixShape;
+        int64_t dimM;
+        int64_t dimKX1;
+        int64_t dimKX2;
+        int64_t dimN;
+        int64_t rankSize;
+    };
 
-ge::graphStatus AllGatherMatmulCommonInferShape(gert::InferShapeContext* context, const size_t gatherIndex);
-ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context);
+    ge::graphStatus AllGatherMatmulCommonInferShape(gert::InferShapeContext* context, const size_t gatherIndex);
+    ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context);
+    bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform);
+    bool IsTargetNpuArchInfershape(const char *nodeName, const std::set<std::string> &targetPlatform);
 } // namespace ops
 #endif // MC2_COMMON_INFERSHAPE_H_

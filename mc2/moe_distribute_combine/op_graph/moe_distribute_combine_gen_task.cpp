@@ -42,7 +42,7 @@ ge::Status MoeDistributeCombineGenTaskFunc(const gert::ExeResGenerationContext *
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(nodeName, PLATFORM_A2)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformSocVersion(nodeName, PLATFORM_A2)) {
         OPS_LOG_D(context->GetNodeName(), "Do A2 gen task");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     }
@@ -66,7 +66,7 @@ ge::Status MoeDistributeCombineGenTaskFunc(const gert::ExeResGenerationContext *
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
-    if (Mc2A5GenTaskUtils::IsTargetPlatform(nodeName, PLATFORM_A2)) {
+    if (Mc2A5GenTaskUtils::IsTargetPlatformSocVersion(nodeName, PLATFORM_A2)) {
         return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskMoe::Mc2MoeGenTaskCallback);
     }
     OPS_LOG_D(context->GetNodeName(), "Do MTE gen task.");

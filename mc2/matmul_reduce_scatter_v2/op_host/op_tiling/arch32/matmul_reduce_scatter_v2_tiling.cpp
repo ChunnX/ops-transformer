@@ -40,7 +40,7 @@ constexpr uint32_t X2SCALE_INDEX = 4;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
-    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND950) &&
+    if ((npuArch_ == NpuArch::DAV_3510) &&
         ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
         OP_LOGI(opName_, "start with MatmulReduceScatterV2Tiling tiling.");
         return true;
@@ -130,7 +130,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoAllMatmulTiling()
 
     // 根据芯片型号获取策略模板
     std::vector<int32_t> priorities;
-    OP_TILING_CHECK(mc2tiling::NewGetMatmulV3PriorityPolicy(socVersion_, priorities, opName_) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch_, priorities, opName_) != ge::GRAPH_SUCCESS,
         VECTOR_INNER_ERR_REPORT_TILING(opName_, "get mmv3 priority policy failed"), return ge::GRAPH_FAILED);
     Mc2MMRegisterCfg registerCfg {"Mc2MatMulV3", socVersion_, priorities};
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
@@ -187,6 +187,6 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 }
 //注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulReduceScatterV2, MatmulReduceScatterV2Tiling, \
-                                    static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND950), 0);
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND950), 0);
 
 }

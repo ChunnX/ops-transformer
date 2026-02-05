@@ -40,7 +40,7 @@ bool Mc2GenTaskOpsUtils::IsComputationOnly()
     return (env != nullptr && std::atoi(env) == 1);
 }
 
-bool Mc2GenTaskOpsUtils::IsTargetPlatform(const char *nodeName, const std::set<std::string> &targetPlatform)
+bool Mc2GenTaskOpsUtils::IsTargetPlatformSocVersion(const char *nodeName, const std::set<std::string> &targetPlatform)
 {
     fe::PlatFormInfos platform_info;
     fe::OptionalInfos optional_info;
@@ -56,6 +56,21 @@ bool Mc2GenTaskOpsUtils::IsTargetPlatform(const char *nodeName, const std::set<s
     }
     OPS_LOG_D(nodeName, "Get soc version: %s", short_soc_version.c_str());
     return targetPlatform.count(short_soc_version) > 0;
+}
+
+bool Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(const char *nodeName, const std::set<std::string> &targetPlatform)
+{
+    fe::PlatFormInfos platform_info;
+    fe::OptionalInfos optional_info;
+    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info) !=
+        ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(nodeName, "Cannot get platform info in IsTargetPlatformNpuArch!");
+        return false;
+    }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(&platform_info);
+    std::string socNpuArch = std::to_string(static_cast<uint32_t>(ascendcPlatform.GetCurNpuArch()));
+    OPS_LOG_D(nodeName, "Current GenTask Platform (NpuArch) %s", socNpuArch.c_str());
+    return targetPlatform.count(socNpuArch) > 0;
 }
 
 int64_t Mc2GenTaskOpsUtils::GetAttachStreamIdByContext(const gert::ExeResGenerationContext *context, size_t idx)

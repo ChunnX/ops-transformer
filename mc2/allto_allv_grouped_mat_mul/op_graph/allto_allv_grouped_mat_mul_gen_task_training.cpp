@@ -31,7 +31,7 @@ namespace ops {
 #ifdef BUILD_OPEN_PROJECT
 ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcParamFunc");
         return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
     }
@@ -42,7 +42,7 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
 ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask GenTaskFunc");
         return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     }
@@ -57,7 +57,7 @@ IMPL_OP(AlltoAllvGroupedMatMul)
 #else // mc2 gen task utils
 ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
     }
     const ge::AscendString name = "aicpu kfc server";
@@ -68,7 +68,7 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
 ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2A5GenTaskUtils::Mc2GenTaskCallBack910A5);
     }
     return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskTraining::Mc2TrainingGenTaskCallback);

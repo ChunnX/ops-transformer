@@ -165,7 +165,7 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
 
     // 根据芯片型号获取策略模板
     std::vector<int32_t> priorities;
-    OP_TILING_CHECK(mc2tiling::NewGetMatmulV3PriorityPolicy(socVersion_, priorities, opName_) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch_, priorities, opName_) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "Get mmv3 priority policy failed."),
                     return ge::GRAPH_FAILED);
     Mc2MMRegisterCfg registerCfg {"Mc2MatMulV3", socVersion_, priorities};

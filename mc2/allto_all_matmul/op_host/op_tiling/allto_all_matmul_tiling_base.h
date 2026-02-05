@@ -53,7 +53,7 @@ protected:
     ge::graphStatus CheckKcQuantTensorDataType(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
 
-    platform_ascendc::SocVersion socVersion_;
+    NpuArch npuArch_;
     const char *opName_{nullptr};
     uint32_t libApiWorkSpaceSize_{0};
     TilingContextInfo contextInfo;

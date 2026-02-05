@@ -31,7 +31,7 @@ ge::Status MatmulAlltoAllGenTaskCallback(const gert::ExeResGenerationContext *co
 #ifdef BUILD_OPEN_PROJECT
 static ge::Status MatmulAlltoAllCalcOpParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
         return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
     }
@@ -41,7 +41,7 @@ static ge::Status MatmulAlltoAllCalcOpParamFunc(gert::ExeResGenerationContext *c
 static ge::Status MatmulAlltoAllGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
         return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     }

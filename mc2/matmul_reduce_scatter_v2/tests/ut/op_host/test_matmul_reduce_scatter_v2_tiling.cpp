@@ -59,7 +59,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e4m3fn_e4m3fn_fp32_rank8_
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
 
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -99,7 +99,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e4m3fn_e5m2_fp32_rank8_re
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -139,7 +139,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e5m2_e5m2_fp32_rank8_redu
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -179,7 +179,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_hif8_hif8_fp32_rank8_redu
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -219,7 +219,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e4m3fn_e4m3fn_fp16_rank8_
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -259,7 +259,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e4m3fn_e5m2_fp16_rank8_re
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -299,7 +299,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e5m2_e5m2_fp16_rank8_redu
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -339,7 +339,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_hif8_hif8_fp16_rank8_redu
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -379,7 +379,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e4m3fn_e4m3fn_bf16_rank8_
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -419,7 +419,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e4m3fn_e5m2_bf16_rank8_re
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -459,7 +459,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_e5m2_e5m2_bf16_rank8_redu
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -498,7 +498,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_hif8_hif8_bf16_rank8_redu
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -537,7 +537,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e4m3fn_fp32_rank8_reducesc
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -576,7 +576,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e5m2_e4m3fn_fp32_rank8_red
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -615,7 +615,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e5m2_e5m2_fp32_rank8_reduc
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -654,7 +654,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_hif8_hif8_fp32_rank8_reduc
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -693,7 +693,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e4m3fn_e4m3fn_fp16_rank8_r
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -732,7 +732,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e5m2_e4m3fn_fp32_rank8_red
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -771,7 +771,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e5m2_e5m2_fp16_rank8_reduc
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -810,7 +810,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120__hif8_hif8_fp16_rank8_redu
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -849,7 +849,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e4m3fn_e4m3fn_bf16_rank8_r
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -888,7 +888,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e5m2_e4m3fn_bf16_rank8_red
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -927,7 +927,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e5m2_e5m2_bf16_rank8_reduc
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -966,7 +966,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_hif8_hif8_bf16_rank8_reduc
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1002,7 +1002,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_fp16_fp16_rank8_reducescat
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1038,7 +1038,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_bf16_bf16_rank8_reducescat
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1074,7 +1074,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_1024_8192_fp16_fp16_rank8_reducesca
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1110,7 +1110,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, 4096_640_5120_e5m2_e4m3fn_bf16_rank8_red
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 32
+        &compileInfo, "3510", 32
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1149,7 +1149,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFloat16Test
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1188,7 +1188,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFloat16Test
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1227,7 +1227,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFloat16Test
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1266,7 +1266,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFloat16Test
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1305,7 +1305,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFloat16Test
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 24
+        &compileInfo, "3510", 24
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1344,7 +1344,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingBfloat16)
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1383,7 +1383,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingDoubleRing)
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1422,7 +1422,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTiling2pFullmesh)
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 2}
@@ -1461,7 +1461,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFp8e4m3Fp8e
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1500,7 +1500,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFp8e4m3Fp8e
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1539,7 +1539,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFpe4m3Fpe5m
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1578,7 +1578,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFpe4m3Fpe5m
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1617,7 +1617,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingHif8Hif8YFl
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1656,7 +1656,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingHif8Hif8YFl
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1695,7 +1695,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingHif8Hif8YFl
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1733,7 +1733,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingHif8Hif8YFl
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1772,7 +1772,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingFp8e4m3Fp8e
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1807,7 +1807,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingTestTilingC
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}
@@ -1846,7 +1846,7 @@ TEST_F(MatmulReduceScatterV2TilingTest, MatmulReduceScatterTestTilingHif8Hif8YFl
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
         },
-        &compileInfo, "Ascend950", 20
+        &compileInfo, "3510", 20
     );
     Mc2Hcom::MockValues hcomTopologyMockValues{
         {"rankNum", 8}

@@ -487,8 +487,7 @@ void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg)
             tailMValue_ = tileTail;
         }
     } else {
-        SocVersion inputSocVersion =
-            (socVersion_ == platform_ascendc::SocVersion::ASCEND950) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
         OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
         AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, inputSocVersion);
         tileFormulate.GetTiling();
@@ -572,7 +571,7 @@ ge::graphStatus AllGatherMatmulTilingBase::GetPlatformInfo()
     OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
                     return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     args_.aicCoreNum = ascendcPlatform.GetCoreNumAic();
     // 未来可以在此处校验平台是否支持当前输入

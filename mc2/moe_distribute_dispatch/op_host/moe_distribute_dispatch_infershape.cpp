@@ -15,6 +15,8 @@
 #include "runtime_util.h"
 #include "mc2_log.h"
 #include "platform/platform_info.h"
+#include "mc2_common_infershape.h"
+
 using namespace ge;
 namespace ops {
 static constexpr size_t DIM_ONE = 1UL;
@@ -42,21 +44,6 @@ static constexpr size_t DISPATCH_INPUT_ATTR_EXPERT_SHARD_TYPE_INDEX = 7;
 static constexpr size_t DISPATCH_INPUT_ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
 static constexpr size_t DISPATCH_INPUT_ATTR_QUANT_MODE_INDEX = 10;
 static constexpr size_t DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX = 11;
-
-
-static bool IsPlatform910B(const gert::InferShapeContext *context) {
-    fe::PlatformInfo platform_info;
-    fe::OptionalInfo optional_info;
-    GE_ASSERT_SUCCESS(fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info));
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info)
-        != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Cannot get platform info!");
-        return false;
-    }
-    static std::set<std::string> supported_soc = {"Ascend910B"};
-    OP_LOGD(context->GetNodeName(), "Get soc version: %s", optional_info.soc_version.c_str());
-    return supported_soc.count(platform_info.str_info.short_soc_version) > 0;
-}
 
 static ge::graphStatus InferShapeMoeDistributeDispatch(gert::InferShapeContext *context)
 {
@@ -183,7 +170,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatch(gert::InferShapeContext *
         Ops::Base::ToString(*expertTokenNumsShape).c_str());
 
     epRecvCountShape->SetDimNum(DIM_ONE);
-    if (IsPlatform910B(context)) {
+    if (IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2)) {
         epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * (*epWorldSize) / RANK_NUM_PER_NODE); // 2：globalbs * 2kn memory size, to support different bs in ranks
     } else {
         if (*tpWorldSize == DIM_TWO)  {

@@ -27,7 +27,7 @@ bool WeightQuantMatmulAllReduceTiling310P::IsCapable()
         weightTensor == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
         return false);
     auto format = weightTensor->GetStorageFormat();
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND310P || format == ge::Format::FORMAT_ND) {
+    if (npuArch_ != NpuArch::DAV_2002 || format == ge::Format::FORMAT_ND) {
         OP_LOGI(opName_, "skip weight quant tiling when is not 310p or is not weight nz[%d].", format);
         return false;
     }

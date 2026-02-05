@@ -29,7 +29,7 @@ namespace ops {
 #ifdef BUILD_OPEN_PROJECT
 static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
         return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
     }
@@ -40,7 +40,7 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
 static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationContext *context,
                                            std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
         return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     }
@@ -52,7 +52,7 @@ IMPL_OP(MatmulReduceScatterV2).CalcOpParam(MatmulReduceScatterV2CalcOpParam).Gen
 #else // mc2 gen task utils
 static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
-    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParam");
         return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
     }
@@ -63,7 +63,7 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
 static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2A5GenTaskUtils::IsTargetPlatform(context->GetNodeName(), NPUARCH_A5)) {
+    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask");
         return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2A5GenTaskUtils::Mc2GenTaskCallBack910A5);
     }

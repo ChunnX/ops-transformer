@@ -150,6 +150,9 @@ function(add_opmaster_ct_gentask_modules)
         error_manager
         ops_utils_tiling
       -Wl,--as-needed
+      -Wl,--whole-archive
+        tiling_api
+      -Wl,--no-whole-archive
         c_sec
         json
         platform

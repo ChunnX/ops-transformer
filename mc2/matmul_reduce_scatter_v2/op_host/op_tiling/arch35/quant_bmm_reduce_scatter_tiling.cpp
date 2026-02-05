@@ -73,8 +73,8 @@ constexpr uint32_t TRANSPOSEB_INDEX = 3;
 
 bool QuantBmmReduceScatterTiling::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGI(opName_, "skip quantbmm reducescatter tiling when version is not 950.");
+    if (npuArch_ != NpuArch::DAV_3510) {
+        OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510.");
         return false;
     }
     // geAType 和 geBType 为fp8e4m3/fp8e5m2/hif8时, 走该tiling流程
