@@ -18,10 +18,10 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
+if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
     add_ops_compile_options(
         OP_NAME FusedInferAttentionScore
-        COMPUTE_UNIT Ascend950PR_9599
+        COMPUTE_UNIT ascend910_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
                 --cce-auto-sync=off
                 -Wno-deprecated-declarations
@@ -55,11 +55,6 @@ if(NOT BUILD_OPS_RTY_KERNEL) #
     ../../common/op_host/arch32/fia_tiling_nonquant.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
     ../op_host/arch32/fused_infer_attention_score_tiling_info_parser.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
     fallback_fused_infer_attention_score.cpp
     )
 endif()

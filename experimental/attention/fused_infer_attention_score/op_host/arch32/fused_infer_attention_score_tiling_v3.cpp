@@ -14,7 +14,6 @@
  */
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_v3.h"
-#include "fused_infer_attention_score_tiling_check.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
 #include "../../../common/op_host/arch32/fia_tiling_nonquant_mla.h"
 #include "../../../common/op_host/arch32/fia_tiling_nonquant.h"
@@ -30,9 +29,6 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000000122220, FusedInf
 // MLA NoPA bf16 kv_BSH_BSND
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000010022221, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000010122221, FusedInferAttentionScoreTilingData)
-// MLA NoPA bf16 kv_TND
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000030022222, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000030122222, FusedInferAttentionScoreTilingData)
 
 // MLA dtype: Q=FP16 KV=FP16 OUT=FP16
 // MLA NoPA fp16 kv_BNSD
@@ -41,9 +37,6 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000000100000, FusedInf
 // MLA NoPA fp16 kv_BSH_BSND
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000010000001, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000010100001, FusedInferAttentionScoreTilingData)
-// MLA NoPA fp16 kv_TND
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000030000002, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000030100002, FusedInferAttentionScoreTilingData)
 
 // 以下是CV1:1场景,目前仅mla模板支持
 // MLA dtype: Q=BF16 KV=BF16 OUT=BF16
@@ -53,9 +46,6 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000100122220, FusedInf
 // MLA NoPA bf16 kv_BSH_BSND
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000110022221, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000110122221, FusedInferAttentionScoreTilingData)
-// MLA NoPA bf16 kv_TND
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000130022222, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000130122222, FusedInferAttentionScoreTilingData)
 
 // MLA dtype: Q=FP16 KV=FP16 OUT=FP16
 // MLA NoPA fp16 kv_BNSD
@@ -64,64 +54,32 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000100100000, FusedInf
 // MLA NoPA fp16 kv_BSH_BSND
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000110000001, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000110100001, FusedInferAttentionScoreTilingData)
-// MLA NoPA fp16 kv_TND
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000130000002, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_105000000130100002, FusedInferAttentionScoreTilingData)
 
 
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000000000, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010000001, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030000003, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050000005, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000100000, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010100001, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030100003, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050100005, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000400000, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010400001, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030400003, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050400005, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000500000, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010500001, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030500003, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050500005, FusedInferAttentionScoreTilingData)
 
 
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000022220, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010022221, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030022223, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050022225, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000122220, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010122221, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030122223, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050122225, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000422220, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010422221, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030422223, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050422225, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000522220, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000010522221, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000030522223, FusedInferAttentionScoreTilingData)
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000050522225, FusedInferAttentionScoreTilingData)
-
-
-constexpr size_t DIM_NZ = 5;
-constexpr uint32_t NZ_D1_IDX = 2;
-constexpr uint32_t NZ_D0_IDX = 4;
-constexpr uint32_t TND_NTD_D_IDX = 2;
-constexpr int64_t HEAD_DIM_192 = 192;
-
 
 FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContext *context)
 {
     FiaTilingInfo fiaInfo;
     FiaInfoParser fiaInfoParser(context);
     if (fiaInfoParser.Parse(fiaInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
-    // Check函数只做校验，不能修改fiaInfo中的信息
-    if (TilingCheck::Check(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 

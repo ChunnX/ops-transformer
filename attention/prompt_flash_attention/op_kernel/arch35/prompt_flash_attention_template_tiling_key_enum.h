@@ -179,10 +179,10 @@ static constexpr ConfigParams ConfigValue[] ={
 #define Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128 20
 #define Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256 21
 #define Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512 22
-#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64 23 //qkvd不相等
-#define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128 24 //qkvd不相等
-#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64 25  //qkvd不相等
-#define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128 26  //qkvd不相等
+#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64 23
+#define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128 24
+#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64 25
+#define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128 26
 
 
 //PseMode

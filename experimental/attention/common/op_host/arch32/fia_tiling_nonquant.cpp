@@ -34,7 +34,6 @@ constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr uint64_t FIA_TILINGKEYOFFSET = uint64_t(100000000000000000UL);          
 constexpr uint64_t FIA_PERF_MODE_TILINGKEYOFFSET = uint64_t(1000000000000000UL); 
 
-constexpr uint32_t G_SIZE_128 = 128;
 constexpr uint32_t S1_SIZE_16 = 16;
 
 constexpr uint32_t QK_HEAD_DIM_64 = 64;
@@ -48,7 +47,6 @@ constexpr uint32_t V_HEAD_DIM_64 = 64;
 constexpr uint32_t V_HEAD_DIM_128 = 128;
 
 constexpr uint32_t S_INNER_SIZE_512 = 512;
-constexpr uint32_t S_INNER_SIZE_1024 = 1024;
 
 constexpr uint32_t S_INNER_SIZE_ALIGN_512 = 512;
 constexpr uint32_t S_INNER_SIZE_ALIGN_1024 = 1024;
@@ -148,15 +146,15 @@ void FiaTilingNonQuant::GenTilingKey()
     uint8_t kvLayoutVal = 0;
     
     const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U}, {TilingKeyLayout::TND, 3U}, {TilingKeyLayout::NTD, 5U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, 
     };
 
     const std::map<TilingKeyLayout, uint8_t> qLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::TND, 3U}, {TilingKeyLayout::NTD, 5U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U},
     };
 
     const std::map<ge::DataType, uint8_t> typeMap = {
-        {ge::DT_FLOAT16, 0U}, {ge::DT_BF16, 2U}, {ge::DT_INT8, 3U}, {ge::DT_INT4, 4U},
+        {ge::DT_FLOAT16, 0U}, {ge::DT_BF16, 2U}, 
     };
 
     if (kvLayoutMap.find(fiaInfo_->inputKvLayout) != kvLayoutMap.end()) {
@@ -192,15 +190,7 @@ bool FiaTilingNonQuant::IsFlashDecode()
 
 bool FiaTilingNonQuant::DealSameSeqEachBatch() const
 {
-    if (!fiaInfo_->batchContinuousFlag){
-        if (fiaInfo_->actualSeqLenFlag){
-            return fiaInfo_->isSameActualseq;
-        } else {
-            return fiaInfo_->isSameSeqAllKVTensor;
-        }
-    } else {
-        return fiaInfo_->isSameActualseq;
-    }
+    return fiaInfo_->isSameActualseq;
 }
 
 
@@ -230,29 +220,26 @@ void FiaTilingNonQuant::InitParams()
 
 void FiaTilingNonQuant::CalcInnerSize(uint32_t s2Size)
 {
-    if (fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::NTD) {
-        sInnerSize_ = S_INNER_SIZE_512;
-    } else {
-        if (fiaInfo_->s1Size <= S1_SIZE_16) {
-            /**
-            * V1阶段分配用于存放mm1结果的UB大小为32K, 当计算的数据类型为float时，其可以存放8192个元素.
-            * 另外, 需要保证单次计算不会切分S2, 那么S2的内切大小最大为8192, 所以将默认值设置为8192
-            */
-            sInnerSize_ = MAX_SPLIT_SIZE; // 8192
+    if (fiaInfo_->s1Size <= S1_SIZE_16) {
+        /**
+        * V1阶段分配用于存放mm1结果的UB大小为32K, 当计算的数据类型为float时，其可以存放8192个元素.
+        * 另外, 需要保证单次计算不会切分S2, 那么S2的内切大小最大为8192, 所以将默认值设置为8192
+        */
+        sInnerSize_ = MAX_SPLIT_SIZE; // 8192
 
-            /** 当前版本限制workspace大小不超过32MB，否则会影响网络中前后算子性能，
-            *  GQA场景下 nNumOfQInOneGroup和sInnerSize_切分大小直接影响workspace大小,
-            *  具体计算参考CalcWorkSpace函数，这里根据nNumOfQInOneGroup将sInnerSize_
-            *  分为8192，4096，2048三档，nNumOfQInOneGroup增大时减小sInnerSize_，
-            *   保证最终workspace大小不超过32MB。
-            */
-            uint32_t sInnerSize[3U] = {8192U, 4096U, 2048U};
-            uint32_t idx = std::min(fiaInfo_->gSize / 5U, 2U);
-            sInnerSize_ = sInnerSize[idx];
-        } else {
-            sInnerSize_ = S_INNER_SIZE_512;
-        }
+        /** 当前版本限制workspace大小不超过32MB，否则会影响网络中前后算子性能，
+        *  GQA场景下 nNumOfQInOneGroup和sInnerSize_切分大小直接影响workspace大小,
+        *  具体计算参考CalcWorkSpace函数，这里根据nNumOfQInOneGroup将sInnerSize_
+        *  分为8192，4096，2048三档，nNumOfQInOneGroup增大时减小sInnerSize_，
+        *   保证最终workspace大小不超过32MB。
+        */
+        uint32_t sInnerSize[3U] = {8192U, 4096U, 2048U};
+        uint32_t idx = std::min(fiaInfo_->gSize / 5U, 2U);
+        sInnerSize_ = sInnerSize[idx];
+    } else {
+        sInnerSize_ = S_INNER_SIZE_512;
     }
+
     sInnerLoopTimes_ = (s2Size + sInnerSize_ - static_cast<uint32_t>(1)) / sInnerSize_;
     sInnerSizeTail_ = s2Size - (sInnerLoopTimes_ - static_cast<uint32_t>(1)) * sInnerSize_;
     // tiling下沉 && flash decoder场景时，sInnerSize_基块大小不按照真实值修改
@@ -266,25 +253,22 @@ void FiaTilingNonQuant::CalcInnerSize(uint32_t s2Size)
 
 void FiaTilingNonQuant::CalcMBaseSize()
 {
-    if (fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::NTD) {
-        mBaseSize_ = M_BASE_SIZE_512;
-    } else {
-        if (fiaInfo_->s1Size <= S1_SIZE_16) {
-            if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_512) {
-                mBaseSize_ = M_BASE_SIZE_512;
-            } else if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_1024) {
-                mBaseSize_ = M_BASE_SIZE_256;
-            } else if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_2048) {
-                mBaseSize_ = M_BASE_SIZE_128;
-            } else if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_4096) {
-                mBaseSize_ = M_BASE_SIZE_64;
-            } else { // sInnerSizeAlign_最大值为8192
-                mBaseSize_ = M_BASE_SIZE_32;
-            }
-        } else {
+    if (fiaInfo_->s1Size <= S1_SIZE_16) {
+        if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_512) {
             mBaseSize_ = M_BASE_SIZE_512;
+        } else if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_1024) {
+            mBaseSize_ = M_BASE_SIZE_256;
+        } else if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_2048) {
+            mBaseSize_ = M_BASE_SIZE_128;
+        } else if (sInnerSizeAlign_ <= S_INNER_SIZE_ALIGN_4096) {
+            mBaseSize_ = M_BASE_SIZE_64;
+        } else { // sInnerSizeAlign_最大值为8192
+            mBaseSize_ = M_BASE_SIZE_32;
         }
+    } else {
+        mBaseSize_ = M_BASE_SIZE_512;
     }
+
     softmaxWithBrcbFlag_ = (mBaseSize_ <= M_BASE_SIZE_128);
 
     OP_LOGI(fiaInfo_->opName, "FIA sInnerSize_:%u sInnerSizeAlign_:%u mBaseSize_:%u softmaxWithBrcbFlag_:%u.",
@@ -301,23 +285,8 @@ void FiaTilingNonQuant::CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitPa
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
-    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
+    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
 
-    if (fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor != nullptr) {
-        baseInfo.isAccumSeqS1 = fiaInfo_->isAccumQSeq;
-        baseInfo.actualSeqS1Size.reserve(fiaInfo_->bSize);
-        const int64_t *s1Ptr = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
-        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
-            baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
-        }
-    }
-    if (fiaInfo_->opParamInfo.actualSeqLengths.tensor != nullptr) {
-        baseInfo.isAccumSeqS2 = fiaInfo_->isAccumKVSeq;
-        const int64_t *s2Ptr = fiaInfo_->opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
-        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
-            baseInfo.actualSeqS2Size.emplace_back(s2Ptr[i]);
-        }
-    }
 
     splitParam.mBaseSize = mBaseSize_;
     splitParam.s2BaseSize = sInnerSize_;
@@ -402,7 +371,7 @@ uint32_t FiaTilingNonQuant::GetL2CacheOffFlag()
     if ((fiaInfo_->ropeMode == RopeMode::NO_ROPE) && (fiaInfo_->s1Size == 1) && (fiaInfo_->gSize <= 64)) {  // 1:qs=1 64:g<=64 IFA的GQA场景 
         // 1. 连续访存时, 即KV的layout为BNSD或者BnNBsD, 不涉及数据预取, 可以直接关闭L2Cache
         // 2. 考虑K和V数据的总大小超过一定值后, 关闭L2Cache, 当前系数确定为1.2
-        if (fiaInfo_->kvLayout == FiaLayout::BNSD || fiaInfo_->kvLayout == FiaLayout::BnNBsD) {
+        if (fiaInfo_->kvLayout == FiaLayout::BNSD) {
             l2CacheOffFlag_ = 1U;
         } else if (static_cast<double>(kvSize) * kvTypeSize * 2.0f >= l2CacheSize * 1.2) { // 2:K和V数据的总大小    1.2:阈值系数
             l2CacheOffFlag_ = 1U;
@@ -429,15 +398,10 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     tilingData_.baseParams.set_scaleValue(fiaInfo_->scaleValue);
     tilingData_.baseParams.set_gSize(fiaInfo_->n1Size / fiaInfo_->n2Size);
     tilingData_.baseParams.set_batchContinuous((fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) ? 0 : 1);
-    tilingData_.baseParams.set_actualSeqS1Dims(fiaInfo_->actualLenQDims);
-    tilingData_.baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenDims);
-    tilingData_.baseParams.set_accumQSeqFlag(fiaInfo_->isAccumQSeq ? 1 : 0);
-    tilingData_.baseParams.set_accumKVSeqFlag(fiaInfo_->isAccumKVSeq ? 1 : 0);
     tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(fiaInfo_->outputLayout));
     tilingData_.baseParams.set_usedCoreNum(usedCoreNum_);
     l2CacheOffFlag_ = GetL2CacheOffFlag();
     tilingData_.baseParams.set_l2CacheOffFlag(l2CacheOffFlag_);
-    tilingData_.baseParams.set_isLegacyIfa(fiaInfo_->isLegacyIfa);
 }
 
 // for flash decode

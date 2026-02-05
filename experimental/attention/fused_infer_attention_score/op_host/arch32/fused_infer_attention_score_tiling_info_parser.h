@@ -24,13 +24,6 @@ public:
     explicit FiaInfoParser(const gert::TilingContext *context) : context_(context) {}
     ~FiaInfoParser() = default;
 
-    ge::graphStatus CheckRequiredInOutExistence() const;
-    ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
-
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        const FiaLayout &layout, const std::string &actualSeqLenName, const std::string &attrName);
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
 
@@ -46,17 +39,11 @@ public:
 
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetBatchSize();
-    ge::graphStatus GetQTSize();
-    ge::graphStatus GetKTSize();
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetKvStorageMode();
     ge::graphStatus GetKvLayout();
     void SetFiaShape();
-    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor,
-        FiaLayout layout, int64_t &maxActualSeqLen);
-    ge::graphStatus GetS2SizeFromActualSeqLens();
-    ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetS2Size();
     ge::graphStatus GetValueHeadDim();
     ge::graphStatus GetRopeMode();
@@ -65,16 +52,12 @@ public:
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();
-    ge::graphStatus GetUpdateInfo();
-    ge::graphStatus GetActualSeqInfo();
     TilingKeyLayout MapStringToLayout(FiaLayout &layoutString) const;
     void GenerateAxisInfo(FiaTilingInfo &fiaInfo);
     void GenerateDtypeInfo(FiaTilingInfo &fiaInfo);
-    void GenerateFeatureInfo(FiaTilingInfo &fiaInfo);
     void GenerateLayoutInfo(FiaTilingInfo &fiaInfo);
     void GenerateInfo(FiaTilingInfo &fiaInfo);
     ge::graphStatus ParseAxisInfo();
-    ge::graphStatus ParseFeatureInfo();
     ge::graphStatus Parse(FiaTilingInfo &fiaInfo);
 
 public:
@@ -94,8 +77,6 @@ public:
     uint32_t qkHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
-    uint32_t qTSize_ = 0; // 仅TND/NTD时生效
-    uint32_t kTSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
 
@@ -117,20 +98,12 @@ public:
     std::vector<gert::StorageShape *> kCache_ = {};
     std::vector<gert::StorageShape *> vCache_ = {};
 
-    bool emptyTensorFlag_ = false;
-    bool isSameSeqAllKVTensor_ = true;
-    bool isSameActualseq_ = true;
     bool needInit_ = false;
-
-    int64_t maxActualseq_ = 0;
 
     bool isLegacyIfa_ = false;      
 
-    bool isAccumQSeq_ = false;
-    bool isAccumKVSeq_ = false;
     uint32_t actualLenQDims_ = 0;
     uint32_t actualLenDims_ = 0;
-    std::vector<int64_t> kvListSeqLens_ {};
 
     std::shared_ptr<FiaTilingShape> queryShape_ = nullptr;
     std::shared_ptr<FiaTilingShape> keyShape_ = nullptr;

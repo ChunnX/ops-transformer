@@ -53,8 +53,6 @@ private:
     void CalcMaxMmResSize();
 
     void FillTilingBaseParams();
-    void FillTilingPageAttenParams();
-    void FillTilingMaskParams();
     void FillTilingWorkspaceParams();
 
     void FillTiling();

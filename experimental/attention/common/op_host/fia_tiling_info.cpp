@@ -21,25 +21,8 @@ namespace optiling {
 std::string LayoutToSerialString(FiaLayout layout)
 {
     const std::map<FiaLayout, std::string> layout2Str = {
-        { FiaLayout::BSH, "BSH" },
         { FiaLayout::BSND, "BSND" },
         { FiaLayout::BNSD, "BNSD" },
-        { FiaLayout::NZ, "NZ" },
-        { FiaLayout::TND, "TND" },
-        { FiaLayout::NBSD, "NBSD" },
-        { FiaLayout::NTD, "NTD" },
-        { FiaLayout::S1S2, "S1S2" },
-        { FiaLayout::BS2, "BS2" },
-        { FiaLayout::BnBsH, "BnBsH" },
-        { FiaLayout::BnNBsD, "BnNBsD" },
-        { FiaLayout::BNS1S2, "BNS1S2" },
-        { FiaLayout::INS1S2, "1NS1S2" },
-        { FiaLayout::BNS11, "BNS11" },
-        { FiaLayout::TN1, "TN1" },
-        { FiaLayout::BS1S2, "BS1S2" },
-        { FiaLayout::B1S1S2, "B1S1S2" },
-        { FiaLayout::IS1S2, "1S1S2" },
-        { FiaLayout::I1S1S2, "11S1S2" }
     };
 
     if (layout2Str.find(layout) != layout2Str.end()) {
@@ -59,38 +42,6 @@ std::string AxisToSerialString(FiaAxis axis)
             return "N";
         case FiaAxis::D:
             return "D";
-        case FiaAxis::H:
-            return "H";
-        case FiaAxis::T:
-            return "T";
-        case FiaAxis::D1:
-            return "D1";
-        case FiaAxis::D0:
-            return "D0";
-        case FiaAxis::S1:
-            return "S1";
-        case FiaAxis::S2:
-            return "S2";
-        case FiaAxis::Bn:
-            return "Bn";
-        case FiaAxis::Bs:
-            return "Bs";
-        case FiaAxis::CONST:
-            return "CONST";
-        default:
-            return "UNKNOWN";
-    }
-}
-
-std::string QuantModeToSerialString(FiaQuantMode fiaQuantMode)
-{
-    switch (fiaQuantMode) {
-        case FiaQuantMode::NO_QUANT:
-            return "NO_QUANT";
-        case FiaQuantMode::ANTI_QUANT:
-            return "ANTI_QUANT";
-        case FiaQuantMode::FULL_QUANT:
-            return "FULL_QUANT";
         default:
             return "UNKNOWN";
     }

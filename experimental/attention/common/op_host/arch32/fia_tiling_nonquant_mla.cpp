@@ -116,7 +116,7 @@ bool FiaTilingNonQuantMla::IsCapable()
     // 支持的input_layout范围
     std::string layout = fiaInfo_->opParamInfo.layOut;
     const std::vector<std::string> layoutSupportList = {
-        "BSH", "BSND", "BNSD", "TND", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD"
+        "BSND", "BNSD", 
     };
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
         return false;
@@ -146,15 +146,15 @@ void FiaTilingNonQuantMla::GenTilingKey()
     uint8_t cvRatioVal = (cvRatio_ == 1) ? 1 : 0; // CV1:1场景为1，其他场景为0
 
     const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U}, {TilingKeyLayout::TND, 3U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, 
     };
 
     const std::map<TilingKeyLayout, uint8_t> qLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::TND, 2U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U},
     };
 
     const std::map<ge::DataType, uint8_t> typeMap = {
-        {ge::DT_FLOAT16, 0U}, {ge::DT_BF16, 2U}, {ge::DT_INT8, 3U}, {ge::DT_INT4, 4U},
+        {ge::DT_FLOAT16, 0U}, {ge::DT_BF16, 2U}, 
     };
 
     if (kvLayoutMap.find(fiaInfo_->inputKvLayout) != kvLayoutMap.end()) {
@@ -190,15 +190,7 @@ bool FiaTilingNonQuantMla::IsFlashDecode()
 
 bool FiaTilingNonQuantMla::DealSameSeqEachBatch() const
 {
-    if (!fiaInfo_->batchContinuousFlag) {
-        if (fiaInfo_->actualSeqLenFlag) {
-            return fiaInfo_->isSameActualseq;
-        } else {
-            return fiaInfo_->isSameSeqAllKVTensor;
-        }
-    } else {
-        return fiaInfo_->isSameActualseq;
-    }
+    return fiaInfo_->isSameActualseq;
 }
 
 void FiaTilingNonQuantMla::InitParams()
@@ -214,7 +206,7 @@ void FiaTilingNonQuantMla::CalcInnerSize(uint32_t seqSize)
 {
     sInnerSize_ = 512U;
     // FlashDecode时，如果S2的计算量>=256(确保切分后不小于128)但又不足以分2次计算时，则修改sInnerSize_，均分为2份进行计算，确保Nbuffer=2
-    if (splitKVFlag_ && fiaInfo_->inputLayout != TilingKeyLayout::TND) {
+    if (splitKVFlag_) {
         if (seqSize == 256U) {
             sInnerSize_ = 128U;
         } else if (seqSize > 256U && seqSize <= sInnerSize_) {
@@ -284,24 +276,8 @@ void FiaTilingNonQuantMla::CreateSplitInput(BaseInfo &baseInfo, SplitParam &spli
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
-    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
+    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
 
-    if (fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor != nullptr) {
-        baseInfo.isAccumSeqS1 = fiaInfo_->isAccumQSeq;
-        baseInfo.actualSeqS1Size.reserve(fiaInfo_->bSize);
-        const int64_t *s1Ptr = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
-        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
-            baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
-        }
-    }
-    if (fiaInfo_->opParamInfo.actualSeqLengths.tensor != nullptr) {
-        baseInfo.isAccumSeqS2 = fiaInfo_->isAccumKVSeq;
-        baseInfo.actualSeqS2Size.reserve(fiaInfo_->bSize);
-        const int64_t *s2Ptr = fiaInfo_->opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
-        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
-            baseInfo.actualSeqS2Size.emplace_back(s2Ptr[i]);
-        }
-    }
     splitParam.mBaseSize = mBaseSize_;
     splitParam.s2BaseSize = sInnerSize_;
     splitParam.gS1BaseSizeOfFd = mFdBaseSize_;

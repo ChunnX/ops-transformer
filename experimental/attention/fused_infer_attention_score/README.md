@@ -5,7 +5,8 @@
 ##  支持的AI处理器
 | 产品 | 是否支持 |
 | ---- | :----:|
-|Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件|√|
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 目录结构介绍
 ```
@@ -48,44 +49,29 @@
   </table>
 
 不支持任何高阶特性（mask、pse、pa、fd、actual_seq等）不支持入图。本工程支持的case情况如下：
-1、qk headdim = 128， rope = 0， v headdim = 128.
-2、qk headdim = 64 rope = 0， v headdim = 64.
-3、qk headdim = 128， rope = 64， v headdim = 128.
-4、qk headdim = 512， rope = 64， kvn = 1, g = 1, 2, 4, 8, 16, 32, 64, 128.
+1. qk headdim = 128， rope = 0， v headdim = 128.
+2. qk headdim = 64 rope = 0， v headdim = 64.
+3. qk headdim = 128， rope = 64， v headdim = 128.
+4. qk headdim = 512， rope = 64， kvn = 1, g = 1, 2, 4, 8, 16, 32, 64, 128.
 
-## 编译运行 
-- 配置环境变量  
-以命令行方式下载样例代码，master分支为例 
+## 环境变量配置 
+
+根据当前环境，安装对应的CANN开发开发套件包（toolkit包+ops包）。
+1. torch_npu安装包下载路径：[torch_npu安装教程](https://gitcode.com/Ascend/pytorch)
+2. CANN包可从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=cann)获取,具体下载安装见昇腾社区[文档](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=netconda&OS=Ubuntu)。
+
+按需选择合适的命令使环境变量生效。
 ```bash
-cd ${git_clone_path}/experimental/attention/fused_infer_attention_score
-cd ${git_clone_path}/experimental/attention/common
+# 默认路径安装，以root用户为例（非root用户，将/usr/local替换为${HOME}）
+source /usr/local/Ascend/cann/set_env.sh
+# 指定路径安装
+# source ${install_path}/cann/set_env.sh
 ```
-根据当前环境上CANN开发套件包（toolkit包+ops包）的安装方式，选择对应配置环境变量的命令。  
-  - 默认路径，root用户安装CANN软件包
-    ```bash
-    export ASCEND_INSTALL_PATH=/usr/local/Ascend/cann
-    ```
-  - 默认路径，非root用户安装CANN软件包
-    ```bash
-    export ASCEND_INSTALL_PATH=$HOME/Ascend/cann
-    ```
-  - 指定路径install_path，安装CANN软件包
-    ```bash
-    export ASCEND_INSTALL_PATH=${install_path}/cann
-    ```
+## 编译运行
+**注意：首先确认自己的机器是哪种npu型号, 工程默认使用910b(A2)机器，如果是910c(A3)的机器,则需要修改编译命令，将编译命令中的-soc=ascend910b改成-soc=ascend910_93**
 
-
-- 编译与安装自定义算子包
-```bash
-# 切换到工程根目录
-cd ${git_clone_path}  
-# 编译样例算子run包
-bash build.sh --pkg  --experimental --soc=ascend910b --ops=fused_infer_attention_score  
-#安装自定义算子run包
-./build_out/cann-ops-transformer-${vendor_name}-${arch}_linux.run
-```
-
-- 编译+执行aclnn接口样例，采集样例性能：
+提供两种方式运行本Demo
+- 一键式安装运行(run.sh脚本默认使用A2命令编译，若在A3上运行需要自行修改脚本内的编译命令)
 ```bash
 # 切换到fused_infer_attention_score目录
 cd ${git_clone_path}/experimental/attention/fused_infer_attention_score/
@@ -94,6 +80,36 @@ bash run.sh
 # 切换aclnn用例性能数据目录(在/experimental/attention/fused_infer_attention_score目录下会生成output目录，里面存放了性能数据)
 cd ${git_clone_path}/experimental/attention/fused_infer_attention_score/output
 ```
+
+- 分离式安装运行
+
+1、编译与安装自定义算子包
+```bash
+# 切换到工程根目录(ops-transformer目录)
+cd ${git_clone_path}  
+# 编译样例算子run包
+bash build.sh --pkg  --experimental --soc=ascend910b --ops=fused_infer_attention_score  
+#安装自定义算子run包
+./build_out/cann-ops-transformer-${vendor_name}-${arch}_linux.run --instal-path=${install_path} # install_path为CANN包安装路径
+# source custom包
+source ${install_path}/vendors/custom_transformer/bin/set_env.bash
+```
+2、pytest测试精度
+```bash
+# 切换到pytest目录
+cd ${git_clone_path}/experimental/attention/fused_infer_attention_score/tests/pytest
+# 执行pytest
+python3 -m pytest -rA -s test.py -v -m ci
+```
+3、pytest测试性能
+```bash
+# 切换到pytest目录
+cd ${git_clone_path}/experimental/attention/fused_infer_attention_score/tests/pytest
+# 使用msprof测试性能
+msprof_path=${install_path}/cann/tools/msopt/bin/msopprof # install_path为CANN包安装路径
+$msprof_path --output=output --aic-metrics=Roofline,Occupancy,Default python3 -m pytest -rA -s ./tests/pytest/test.py -v -m ci
+```
+
 注意:
 pytest使用详见[pytest框架使用说明](./tests/pytest/README.md)
 run.sh中提供的性能收集命令只支持pytest框架单次使用单个用例测试，因此，在使用run.sh脚本时确保testcases.py文件中只有一个测试case被选中，算子执行时间会在屏幕上打印出来（Task Duration）。
