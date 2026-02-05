@@ -4170,8 +4170,6 @@ ge::graphStatus IFATiling::DoOpTiling()
         OP_LOGE(context_->GetNodeName(), "Error occurred while converting tilingContext to ifa context");
         return ge::GRAPH_FAILED;
     }
-    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
-    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return DoSubOpTiling(ifaContext);
 }
 
@@ -4183,6 +4181,8 @@ ge::graphStatus IFATiling::DoSubOpTiling(IncreFlashAttentionContext& ifaContext)
         IncreFlashAttentionSetTilingData(*context_, ifaTilingData);
         return ge::GRAPH_SUCCESS;
     }
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ge::GRAPH_FAILED;
 }
 

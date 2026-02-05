@@ -4910,6 +4910,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::DoSubOpTiling(PromptFlashAttention
             *tiling = tilingData;
         }
     }
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ret;
 }
 
@@ -4921,8 +4923,6 @@ ge::graphStatus PromptFlashAttentionTilingV2::DoOpTiling()
     OP_CHECK_IF(ret == ge::GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),return ge::GRAPH_FAILED);
     ret = DoSubOpTiling(tilingData, contextParamsForPFATiling);
     SetTilingKey(contextParamsForPFATiling);
-    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
-    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     OP_LOGI(contextParamsForPFATiling.opName, "All the PFATiling work is done.");
     return ret;
 }

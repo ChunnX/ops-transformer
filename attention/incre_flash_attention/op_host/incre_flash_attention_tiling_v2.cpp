@@ -4309,13 +4309,13 @@ ge::graphStatus IFATilingV2::DoOpTiling()
             static_cast<uint64_t>(inOutLayoutType), static_cast<uint64_t>(config),
             static_cast<uint64_t>(pseMode), static_cast<uint64_t>(quantMode), hasAttenMask, hasRope, isPa, isFd, emptyTensor, 
             static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), enableKVPrefix);
-    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
-    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ret;
 }
 
 ge::graphStatus IFATilingV2::DoSubOpTiling(IncreFlashAttentionContext& ifaContext)
 {
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     if (ifaContext.key.desc->GetDataType() == ge::DT_FLOAT16 || ifaContext.key.desc->GetDataType() == ge::DT_BF16) {
         auto platformInfoPtr = context_->GetPlatformInfo();
         OP_CHECK_IF(platformInfoPtr == nullptr,

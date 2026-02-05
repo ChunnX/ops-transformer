@@ -114,6 +114,8 @@ constexpr int64_t PSE_TYPE_3_TILING_V2 = 3;
 constexpr uint32_t QUERY_SHAPE_DIM_D_128_TILING_V2 = 128;
 constexpr int32_t ROPE_DIMENSION_SIZE_TILING_V2 = 64; 
 
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+
 template <typename T>
 static auto AlignUp(T num1, T num2) -> T
 {
@@ -4080,6 +4082,8 @@ ge::graphStatus PromptFlashAttentionTilingArch38::DoSubOpTiling(PromptFlashAtten
     context_->SetTilingKey(tilingKey);
     context_->SetBlockDim(blockDimToBeSet);
     PromptFlashAttentionSetTilingData(context_, tilingData);
+    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return ret;
 }
 
