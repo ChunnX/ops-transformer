@@ -111,22 +111,30 @@ public:
         OpAICoreConfig aicore_config_910b;
         aicore_config_910b.Input("x1")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,
+                       ge::DT_BF16,     ge::DT_INT4,  ge::DT_INT4,     ge::DT_INT4,  ge::DT_INT4,
+                       ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,  ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_910b.Input("x2")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_INT8,  ge::DT_INT8,  ge::DT_INT8,
+                       ge::DT_INT8,     ge::DT_INT4,  ge::DT_INT4,  ge::DT_INT4,  ge::DT_INT4,
+                       ge::DT_INT4,     ge::DT_INT4,  ge::DT_INT4,  ge::DT_INT4})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_910b.Input("bias")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16,  ge::DT_FLOAT,    ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT,
+                       ge::DT_FLOAT,    ge::DT_FLOAT16,  ge::DT_FLOAT,    ge::DT_BF16,  ge::DT_FLOAT,
+                       ge::DT_FLOAT16,  ge::DT_BF16,     ge::DT_FLOAT,    ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_910b.Input("x1_scale")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT,    ge::DT_FLOAT, ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,
+                       ge::DT_BF16,     ge::DT_FLOAT, ge::DT_FLOAT,    ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,  ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_910b.Input("x2_scale")
@@ -151,11 +159,15 @@ public:
             .AutoContiguous();
         aicore_config_910b.Output("y")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_FLOAT16,  ge::DT_BF16,     ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,
+                       ge::DT_BF16,     ge::DT_FLOAT16,  ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         aicore_config_910b.Output("all2all_out")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4})
+            .DataType({ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,
+                       ge::DT_BF16,     ge::DT_INT4,  ge::DT_INT4,     ge::DT_INT4,     ge::DT_INT4,
+                       ge::DT_FLOAT16,  ge::DT_BF16,  ge::DT_FLOAT16,  ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
 
         aicore_config_910b.DynamicCompileStaticFlag(true)

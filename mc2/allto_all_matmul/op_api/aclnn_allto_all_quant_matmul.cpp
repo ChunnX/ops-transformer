@@ -303,12 +303,15 @@ static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16
 };
 
-// 校验所有输入的参数类型是否正确(A2)
-static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x1ScaleOptional,
-                                const aclTensor* x2Scale, const aclTensor* output, const aclTensor* alltoAllOutOptional) {
+// 校验所有输入的参数类型是否正确
+static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, int64_t x1QuantMode,
+    const aclTensor* x1ScaleOptional, const aclTensor* x2Scale, const aclTensor* output, const aclTensor* alltoAllOutOptional) {
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, X1_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, X2_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_SUPPORT_LIST, return false);
+    if (x1QuantMode == static_cast<int64_t>(QuantModeType::DYN_PERTOKEN_QUANT) && x1ScaleOptional != nullptr) {
+        OP_CHECK_DTYPE_NOT_SAME(x1ScaleOptional, x1, return false);
+    }
     OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
     if (x1ScaleOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x1ScaleOptional, SCALE_DTYPE_SUPPORT_LIST, return false);
@@ -393,7 +396,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 3. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据芯片型号和api定义校验
     if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-        CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
+            CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, x1QuantMode, x1ScaleOptional, x2Scale, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         CHECK_RET(CheckDtypesValid(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode,
             x1QuantDtype, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);

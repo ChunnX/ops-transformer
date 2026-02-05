@@ -26,12 +26,13 @@ struct AlltoAllMatmulInfo {
     uint32_t rankSize;
     uint32_t segmentsNum;  // 计算quant时，切分k的次数
     uint32_t copyTensorSize;  // 计算quant时，k较大的情况下，ub一次处理的size
-    uint64_t quantSize;
-    uint64_t dequantSize;
-    uint64_t quantScaleSize;
-    bool isSegmentK;
+    uint64_t quantSize; // 量化后左矩阵的大小
+    uint64_t dequantSize;  // 量化矩阵乘结果的大小
+    uint64_t quantScaleSize;  // 反量化参数的大小
+    bool isSegmentK; // 是否进行k轴切分
     bool hasBias;
     bool isAlltoallOut;  // 判断是否需要alltoallout
+    bool isSmoothQuant; // x1是否需要smoothQuant
 };
 
 struct CoCTiling {

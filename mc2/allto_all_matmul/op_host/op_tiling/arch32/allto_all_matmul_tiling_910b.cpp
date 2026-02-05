@@ -35,6 +35,7 @@ constexpr uint32_t INPUT_BIAS_INDEX = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
 constexpr uint32_t UB_OFFSET = 97440;
+constexpr uint32_t USED_UB_SIZE = 160 * 1024;
 constexpr uint32_t ELEMENT_SIZE = 2;
 constexpr uint32_t MAX_BLOCK_COUNT = 2;
 constexpr uint32_t BLOCK_ALIGN_BYTES = 32U;
@@ -86,7 +87,11 @@ const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITH_BIAS = {
     {ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT, ge::DT_BF16},
     {ge::DT_INT4, ge::DT_INT4, ge::DT_BF16, ge::DT_BF16},
     {ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT, ge::DT_FLOAT16},
-    {ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT16, ge::DT_FLOAT16}
+    {ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT16, ge::DT_FLOAT16},
+    {ge::DT_BF16, ge::DT_INT4, ge::DT_FLOAT, ge::DT_BF16},
+    {ge::DT_BF16, ge::DT_INT4, ge::DT_BF16, ge::DT_BF16},
+    {ge::DT_FLOAT16, ge::DT_INT4, ge::DT_FLOAT, ge::DT_FLOAT16},
+    {ge::DT_FLOAT16, ge::DT_INT4, ge::DT_FLOAT16, ge::DT_FLOAT16}
 };
 const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITHOUT_BIAS = {
     {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16},
@@ -369,6 +374,17 @@ bool AlltoAllMatmulTiling910b::IsCapable()
     return true;
 }
 
+enum class QuantModeType : int64_t {
+    NO_QUANT = 0,
+    PERTENSOR_QUANT = 1,
+    PERCHANNEL_QUANT = 2,
+    PERTOKEN_QUANT = 3,
+    PERGROUP_QUANT = 4,
+    PERBLOCK_QUANT = 5,
+    MX_QUANT = 6,
+    DYN_PERTOKEN_QUANT = 7
+};
+
 /**
  * @brief 校验attrs信息
  * @return ge::graphStatus
@@ -391,6 +407,17 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckAndSetAttrsInfo(AlltoAllMatmulInf
         SUPPORT_RANK_SIZE_910.find(info.rankSize) == SUPPORT_RANK_SIZE_910.end(),
         OP_LOGE(opName_, "World_size should be 2 or 4 or 8, but the actual value is %u.", info.rankSize),
         return ge::GRAPH_FAILED);
+
+    const int64_t *x1QuantMode = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX);
+    OP_TILING_CHECK(
+        x1QuantMode == nullptr,
+        OP_LOGE(opName_, "x1QuantMode is nullPtr."), return ge::GRAPH_FAILED);
+    
+    auto x1ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
+    info.isSmoothQuant = false;
+    if (*x1QuantMode == static_cast<int64_t>(QuantModeType::DYN_PERTOKEN_QUANT) && x1ScaleTensorDesc != nullptr) {
+        info.isSmoothQuant = true;
+    }
 
     const bool *isTransX1 = attrs->GetAttrPointer<bool>(ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX);
     bool x1TransposeFlag = (isTransX1 != nullptr) ? *isTransX1 : false;
@@ -445,16 +472,25 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
     auto x1ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     // 校验 scale 张量，量化模式
-    if (x2Dtype == ge::DT_INT8) {
+    if ((x1Dtype == ge::DT_FLOAT16 || x1Dtype == ge::DT_BF16) && x2Dtype == ge::DT_INT8) {
         OP_TILING_CHECK((x2ScaleTensorDesc == nullptr || biasTensorDesc == nullptr),
                         OP_LOGE(opName_, "x2Scale and bias tensors should not be null in quant mode."), return ge::GRAPH_FAILED);
         ge::DataType x2ScaleDtype = x2ScaleTensorDesc->GetDataType();
         OP_TILING_CHECK(x2ScaleDtype != ge::DT_FLOAT,
-                        OP_LOGE(opName_, "Scale tensors Dtype should be FLOAT, but x2Scale Dtype is %s.", Ops::Base::ToString(x2ScaleDtype).c_str()),
+                        OP_LOGE(opName_, "x2Scale tensors Dtype should be FLOAT, but x2Scale Dtype is %s.", Ops::Base::ToString(x2ScaleDtype).c_str()),
                         return ge::GRAPH_FAILED);
+        if (info.isSmoothQuant) {
+            OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
+                OP_LOGE(opName_, "x1Scale tensors should not be null in smoothQuant mode."), return ge::GRAPH_FAILED);
+            ge::DataType x1ScaleDtype = x1ScaleTensorDesc->GetDataType();
+            OP_TILING_CHECK(x1ScaleDtype != x1Dtype,
+                OP_LOGE(opName_, "x1Scale tensors Dtype should be same with x1 tensor in smoothQuant mode, but x1Scale Dtype is %s.", Ops::Base::ToString(x1ScaleDtype).c_str()),
+                return ge::GRAPH_FAILED);
+        }
         quantType = TILINGKEY_TPL_A16W8;
     }
-    if (x2Dtype == ge::DT_INT4) {  // A4W4检测
+
+    if (x1Dtype == ge::DT_INT4 && x2Dtype == ge::DT_INT4) {  // A4W4检测
         OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
                         OP_LOGE(opName_, "x1Scale should not be null in quant mode."), return ge::GRAPH_FAILED);
         ge::DataType x1ScaleDtype = x1ScaleTensorDesc->GetDataType();
@@ -469,6 +505,24 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
                         OP_LOGE(opName_, "Scale tensors Dtype should be FLOAT, but x2Scale Dtype is %s.", Ops::Base::ToString(x2ScaleDtype).c_str()),
                         return ge::GRAPH_FAILED);
         quantType = TILINGKEY_TPL_A4W4;
+    }
+    // A16W4检测
+    if ((x1Dtype == ge::DT_FLOAT16 || x1Dtype == ge::DT_BF16) && x2Dtype == ge::DT_INT4) {  
+        OP_TILING_CHECK((x2ScaleTensorDesc == nullptr || biasTensorDesc == nullptr),
+                        OP_LOGE(opName_, "x2Scale and bias tensors should not be null in quant mode."), return ge::GRAPH_FAILED);
+        ge::DataType x2ScaleDtype = x2ScaleTensorDesc->GetDataType();
+        OP_TILING_CHECK(x2ScaleDtype != ge::DT_FLOAT,
+                        OP_LOGE(opName_, "x2Scale tensors Dtype should be FLOAT, but x2Scale Dtype is %s.", Ops::Base::ToString(x2ScaleDtype).c_str()),
+                        return ge::GRAPH_FAILED);
+        if (info.isSmoothQuant) {
+            OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
+                OP_LOGE(opName_, "x1Scale tensors should not be null in smoothQuant mode."), return ge::GRAPH_FAILED);
+            ge::DataType x1ScaleDtype = x1ScaleTensorDesc->GetDataType();
+            OP_TILING_CHECK(x1ScaleDtype != x1Dtype,
+                OP_LOGE(opName_, "x1Scale tensors Dtype should be same with x1 tensor in smoothQuant mode, but x1Scale Dtype is %s.", Ops::Base::ToString(x1ScaleDtype).c_str()),
+                return ge::GRAPH_FAILED);
+        }
+        quantType = TILINGKEY_TPL_A16W4;
     }
 
     // 校验类型组合
@@ -559,20 +613,26 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
     // info.K * info.rankSize限制：A16W8时不超过6144，其余情况不超过35000；A16W8要为32倍数，A4W4要为偶数
     uint32_t tokenSize = info.K * info.rankSize;
     if (quantType == TILINGKEY_TPL_A16W8) {
-        OP_TILING_CHECK((tokenSize > 6144), 
-                    OP_LOGE(opName_, "%lu times of the second dim of x1 should be in range[1, 6144], but it is %lu.",
+        OP_TILING_CHECK((tokenSize % 16 != 0), 
+                    OP_LOGE(opName_, "RankSize (%lu) times of the second dim of x1 should be a multiple of 16, but it is %lu.",
                         info.rankSize, tokenSize),
                     return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((tokenSize % 32 != 0), 
-                    OP_LOGE(opName_, "%lu times of the second dim of x1 should be a multiple of 32, but it is %lu.",
+    } else if (quantType == TILINGKEY_TPL_A16W4) {
+        OP_TILING_CHECK((tokenSize % 16 != 0),
+                    OP_LOGE(opName_, "RankSize (%lu) times of the second dim of x1 should be a multiple of 16, but it is %lu.",
                         info.rankSize, tokenSize),
                     return ge::GRAPH_FAILED);
-    } else {
-        OP_TILING_CHECK((tokenSize > 35000), 
-                    OP_LOGE(opName_, "%lu times of the second dim of x1 should be in range[1, 35000], but it is %lu.",
-                        info.rankSize, tokenSize),
-                    return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((info.N % 2 == 1), 
+                        OP_LOGE(opName_, "The x2 %s dim should be an even number, but it is %lu.",
+                        x2Transpose ? "first" : "second",
+                        info.N),
+                        return ge::GRAPH_FAILED);
     }
+
+    OP_TILING_CHECK((tokenSize > 35000), 
+        OP_LOGE(opName_, "RankSize (%lu) times of the second dim of x1 should be in range[1, 35000], but it is %lu.",
+        info.rankSize, tokenSize),
+        return ge::GRAPH_FAILED);
 
     // INT4计算时，需要额外验证维度为偶数
     if (quantType == TILINGKEY_TPL_A4W4) {
@@ -590,7 +650,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
     orgM = info.M;
     orgN = info.N;
     orgK = info.K;
-    if (quantType == TILINGKEY_TPL_A16W8) {
+    if (quantType == TILINGKEY_TPL_A16W8 || quantType == TILINGKEY_TPL_A16W4) {
         const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
         uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
         uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0);
@@ -836,35 +896,41 @@ void AlltoAllMatmulTiling910b::CalcQuantTokenNumPerUb(const CoCTiling &cocTiling
     int32_t tokenSize = info.K * rankSize;  // 加上padding后，此处需要使用k_align
     int32_t tokenPerCore = (cocTilingData.m0 * cocTilingData.pValue) / (cocTilingData.allToAllSendCoreNum);  // 每个核需要处理的token数
     int32_t quantScaleSize = Block32B<float>::AlignUp(tokenPerCore);  // 用于存储quantScale
+    int32_t smoothScaleSize = info.isSmoothQuant ? Block32B<float>::AlignUp(tokenSize) : 0;  // 用于存储smoothScale
+    int32_t absTensorSize = Block32B<float>::AlignUp(tokenSize);
     int32_t reduceMaxSize = BLOCK_ALIGN_BYTES / sizeof(float);  // 用于存储reduceMax的结果，存放某个token的max的值
-    int32_t ubLeftForCopyAndAbs = UB_OFFSET / sizeof(float) - quantScaleSize - reduceMaxSize;  // 剩余用来存放absTensor和copyTensor的空间
-    int32_t copyTokenNum = ubLeftForCopyAndAbs / Block32B<float>::AlignUp(tokenSize) / 2;  // copyTensor和absTensor所用空间相同
-
+    int32_t doubleBufferSize = (USED_UB_SIZE / sizeof(float) - quantScaleSize - smoothScaleSize) / UB_PINGPONG_SIZE; //存放quantScale和smoothScale不使用doubleBuffer
+    int32_t ubLeftForCopyTensor = doubleBufferSize - reduceMaxSize - absTensorSize;  // 剩余用来存放copyTensor的空间
+    int32_t copyTokenNum = ubLeftForCopyTensor / Block32B<float>::AlignUp(tokenSize);
     int32_t copyTimes = 0;
     int32_t copyTensorSize = 0;
-    if (copyTokenNum == 0) {
+    info.isSegmentK = doubleBufferSize <= 0 || ubLeftForCopyTensor <= 0 || copyTokenNum == 0;
+    if (info.isSegmentK) {
         // tokenSize过大，需要切分token，进入大Token量化流程
-        int32_t quantScaleSize = Block32B<float>::AlignUp(tokenPerCore) * sizeof(float);
-        int32_t reduceMaxSize = 32;  // reduceMax只占用一个DataBlock即可
-        int32_t remainUbSize = (UB_OFFSET - quantScaleSize - reduceMaxSize) / sizeof(float);
-        copyTensorSize = Block32B<float>::AlignDown(remainUbSize / 2);  // copyTensor和absTensor的Tensor大小
+        quantScaleSize = Block32B<float>::AlignUp(tokenPerCore) * sizeof(float);
+        reduceMaxSize = BLOCK_ALIGN_BYTES;  // reduceMax只占用一个DataBlock即可
+        int32_t remainUbSize = (USED_UB_SIZE - quantScaleSize - reduceMaxSize) / sizeof(float);
+        int32_t doubleBufferSize = remainUbSize / UB_PINGPONG_SIZE;
+        //copyTensor、absTensor和smoothScale拷贝到UB的数据量一致。如果存在smoothQuant，则需要UB存储copyTensor、absTensor和smoothScale；否则只需要存储copyTensor、absTensor。
+        int32_t copyTensorSizeTimes = info.isSmoothQuant ? 3 : 2;
+        copyTensorSize = Block32B<float>::AlignDown(doubleBufferSize / copyTensorSizeTimes);  // copyTensor和absTensor的Tensor大小
         copyTimes = tokenSize / copyTensorSize;
         if (tokenSize % copyTensorSize != 0) {
             copyTimes += 1;
         }
     }
-    info.isSegmentK = (copyTokenNum == 0);
     info.segmentsNum = copyTimes;
     info.copyTensorSize = copyTensorSize;
 }
 
 void AlltoAllMatmulTiling910b::CalcQuantWorkspaceSize(const CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
     info.dequantSize = orgM * orgN * sizeof(int32_t);  // 量化则需要空间存放中间结果
-    if (quantType == TILINGKEY_TPL_A16W8) {
+    if (quantType == TILINGKEY_TPL_A16W8 || quantType == TILINGKEY_TPL_A16W4) {
         CalcQuantTokenNumPerUb(cocTilingData, info);
         uint32_t numPerRankM = cocTilingData.m0 * cocTilingData.pValue;
         uint32_t midOutputKSize = orgK * rankSize;
-        info.quantSize = numPerRankM * midOutputKSize * MAX_BLOCK_COUNT;  // int8类型的A需要占用的空间大小
+        uint32_t quantSize = numPerRankM * midOutputKSize * MAX_BLOCK_COUNT;
+        info.quantSize = quantType == TILINGKEY_TPL_A16W8 ? quantSize : (quantSize + 1) / 2; // int8类型每个元素占用1个字节，int4类型每两个元素占用1个字节
         info.quantScaleSize = Block32B<float>::AlignUp(orgM) * sizeof(float) / rankSize;  // A反量化参数所需要的空间大小
 
         quantWorkspaceSize = info.quantSize + info.quantScaleSize + info.dequantSize;

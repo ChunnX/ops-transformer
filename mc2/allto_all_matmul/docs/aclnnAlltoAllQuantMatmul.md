@@ -21,8 +21,8 @@
       $$
       commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
       permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
-      x1_{quant}, x1_{scale} = Quant(permutedOut) \\
-      output_{quant} = x1_{quant} @ x2 \\
+      permutedOut_{quant}, x1_{scale} = Quant(permutedOut * x1ScaleOptional) \\
+      output_{quant} = permutedOut_{quant} @ x2 \\
       output = output_{quant} \times x1_{scale} \times x2_{scale} \\
       output = output + bias
       $$
@@ -142,10 +142,10 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     <td>x1ScaleOptional</td>
     <td>输入</td>
     <td>可选输入，左矩阵的量化系数。</td>
-    <td>当前仅在全量化场景下需要配置。</td>
-    <td>FLOAT32</td>
+    <td>在全量化场景下需要配置，支持类型仅为FLOAT32。在动态量化场景且x1QuantMode为pertoken动态量化时，x1ScaleOptional可以作为smoothScale传入，此时类型需与x1一致。</td>
+    <td>FLOAT32、FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>1维，shape为(BS / rankSize)</td>
+    <td>1维。全量化场景时shape为(BS / rankSize)。动态量化场景时，shape为(H * rankSize)</td>
     <td>x</td>
     </tr>
     <tr>
@@ -432,6 +432,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     * 类型约束：
       * x1、alltoAllOutOptional的数据类型必须一致。
       * x1QuantDtype仅支持配置2（表示aclDataType.ACL_INT8）。
+      * A16W8和A16W4时，smoothQuant场景，x1ScaleOptional与x1的数据类型必须一致。
       * A16W8时，x1、x2、biasOptional和output支持的数据类型组合有：
         | x1 | x2 | biasOptional | output |
         | :------: | :------: | :------: | :------: |
@@ -439,6 +440,13 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
         | FLOAT16 | INT8 | FLOAT32 | FLOAT16 |
         | BFLOAT16 | INT8 | BFLOAT16 | BFLOAT16 |
         | BFLOAT16 | INT8 | FLOAT32 | BFLOAT16 |
+      * A16W4时，x1、x2、biasOptional和output支持的数据类型组合有：
+        | x1 | x2 | biasOptional | output |
+        | :------: | :------: | :------: | :------: |
+        | FLOAT16 | INT4 | FLOAT16 | FLOAT16 |
+        | FLOAT16 | INT4 | FLOAT32 | FLOAT16 |
+        | BFLOAT16 | INT4 | BFLOAT16 | BFLOAT16 |
+        | BFLOAT16 | INT4 | FLOAT32 | BFLOAT16 |
       * A4W4时，x1、x2、biasOptional和output支持的数据类型组合有：
         | x1 | x2 | biasOptional | output |
         | :------: | :------: | :------: | :------: |
@@ -447,7 +455,8 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
         | INT4 | INT4 | BFLOAT16 | BFLOAT16 |
         | INT4 | INT4 | FLOAT32 | BFLOAT16 |
     * 维度约束：
-      * A16W8时，rankSize * H必须整除32；rankSize * H取值范围：[1, 6144]。
+      * A16W8时，rankSize * H必须整除16；rankSize * H取值范围：[1, 35000]。
+      * A16W4时，rankSize * H必须整除16；N必须为偶数; rankSize * H取值范围：[1, 35000]。
       * A4W4时，H与N必须为偶数；rankSize * H取值范围：[1, 35000]。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     * 量化模式：
