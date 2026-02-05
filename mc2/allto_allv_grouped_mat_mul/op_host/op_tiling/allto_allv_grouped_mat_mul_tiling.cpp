@@ -460,18 +460,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
                 recvSum += recvCounts[j] * H1 * 2U;
                 sendSum += sendCounts[j] * H1 * 2U; // /sizeof(gmmX) = 2U
             }
-            OP_TILING_CHECK(recvSum < recvSendMin,
-                OP_LOGE(A_INNER_DEBUG,
-                    "rank %lu:sum(recvCounts[%lu, %lu]) * H1 * sizeof dtype(gmmx) should be greater than or equal to 2MB,"
-                    "but got %lu Byte!",
-                    i - 1U, (i - 1U) * eExpert, i * eExpert - 1U, recvSum),
-                return ge::GRAPH_FAILED);
-            OP_TILING_CHECK(sendSum < recvSendMin,
-                OP_LOGE(A_INNER_DEBUG,
-                    "rank %lu:sum(sendCounts[%lu, %lu]) * H1 * sizeof dtype(gmmx) should be greater than or equal to 2MB,"
-                    "but got %lu Byte!",
-                    i - 1U, (i - 1U) * eExpert, i * eExpert - 1U, sendSum),
-                return ge::GRAPH_FAILED);
         }
     }
 
@@ -1008,10 +996,11 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
         CalMMTiling(context, mmParams) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM CalMMTiling failed."),
         return ge::GRAPH_FAILED);
     SetMMTilingParams setMnParams = {dTypeForMM, maxM_, maxK_, maxN_, baseM_, baseN_, 0};
-    OP_TILING_CHECK(
-        SetMMTiling(context, setMnParams) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM SetMMTiling failed."),
-        return ge::GRAPH_FAILED);
-
+    if (maxM_ != 0) {
+        OP_TILING_CHECK(
+            SetMMTiling(context, setMnParams) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM SetMMTiling failed."),
+            return ge::GRAPH_FAILED);
+    }
     if (tilingData->commonTilingInfo.isNeedMM) {
         mmParams = {maxMForMM_, maxKForMM_, maxNForMM_, &baseMForMM_, &baseKForMM_, &baseNForMM_};
         OP_TILING_CHECK(
@@ -1068,7 +1057,7 @@ ge::graphStatus AlltoAllvGmmTiling::CalMMTiling(const gert::TilingContext* conte
     *params.curBaseM = std::min<uint32_t>(
         (PLATFORM_SIZE.l0ASize / DOUBLE_BUFFER_L0A_L0B) / (*params.curBaseK * mmDataTypeSize), maxBaseM);
     *params.curBaseM = static_cast<int32_t>(SixteenAlign(static_cast<uint32_t>(*params.curBaseM)));
-    if (*params.curBaseM > params.curMaxM) {
+    if (params.curMaxM != 0 && *params.curBaseM > params.curMaxM) {
         *params.curBaseM = static_cast<int32_t>(SixteenAlign(static_cast<uint32_t>(params.curMaxM), true));
     }
     OP_TILING_CHECK(

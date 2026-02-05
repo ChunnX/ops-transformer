@@ -280,13 +280,6 @@ static bool CheckRecvCnt(
                     return false);
                 recvSum += recvArray[j] * H;
             }
-            OP_TILING_CHECK(recvSum < RECV_SEND_MIN,
-                OP_LOGE(
-                    C_INNER_DEBUG,
-                    "rank %ld:sum(recvCounts[%ld, %ld]) * H1 * sizeof dtype(gmmx) should be greater than or equal to 2MB,"
-                    "but got %ld Byte!",
-                    i - 1, (i - 1) * eExpert, i * eExpert - 1, 2 * recvSum),
-                return false);
         }
     }
     return true;
@@ -328,13 +321,6 @@ static bool CheckSendCnt(
                     return false);
                 sendSum += sendArray[j] * H;
             }
-            OP_TILING_CHECK(sendSum < RECV_SEND_MIN,
-                OP_LOGE(
-                    C_INNER_DEBUG,
-                    "rank %ld:sum(sendCounts[%ld, %ld]) * H1 * sizeof dtype(gmmx) should be greater than or equal to 2MB,"
-                    "but got %ld Byte!",
-                    i - 1, (i - 1) * eExpert, i * eExpert - 1, 2 * sendSum),
-                return false);
         }
     }
     return true;
@@ -575,7 +561,6 @@ static bool CheckAndSetAttrs(const gert::TilingContext* context, GroupedMatMulAl
         OP_LOGE(C_INNER_DEBUG, "transMmWeightPtr should not be true when mmX is null!");
         return ge::GRAPH_FAILED;
     }
-
     tilingData->commonTilingInfo.epWorldSize = *epWorldSizePtr;
     tilingData->commonTilingInfo.isGmmWeightTrans = *transGmmWeightPtr;
     tilingData->commonTilingInfo.isMmWeightTrans = *transMmWeightPtr;
@@ -758,11 +743,10 @@ static ge::graphStatus ComputeBaseMNK(GroupedMatMulAlltoAllvTilingData* tilingDa
     uint32_t maxBaseM = PLATFORM_SIZE.l0CSize / (baseN_ * sizeof(float));
     baseM_ = std::min<uint32_t>((PLATFORM_SIZE.l0ASize / DOUBLE_BUFFER_L0A_L0B) / (baseK_ * FP16_DATASIZE), maxBaseM);
     baseM_ = SixteenAlign(baseM_);
-    if (baseM_ > maxM) {
+    if (maxM != 0 && baseM_ > maxM) {
         baseM_ = SixteenAlign(maxM, true);
     }
     OP_TILING_CHECK(baseM_ == 0, OP_LOGE(C_INNER_DEBUG, "baseM_ should not be 0."), return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -865,11 +849,11 @@ static ge::graphStatus SetMatmulTiling(
     OP_TILING_CHECK(
         ComputeBaseMNK(tilingData, PLATFORM_SIZE) != ge::GRAPH_SUCCESS,
         OP_LOGE(C_INNER_DEBUG, "GMM Tiling compute baseMNK failed."), return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        DoMatmulApiTiling(tilingData, PLATFORM_SIZE, mmDtype, context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(C_INNER_DEBUG, "GMM Tiling matmul api do tiling failed."), return ge::GRAPH_FAILED);
-
+    if (tilingData->commonTilingInfo.A != 0) {
+        OP_TILING_CHECK(
+            DoMatmulApiTiling(tilingData, PLATFORM_SIZE, mmDtype, context) != ge::GRAPH_SUCCESS,
+            OP_LOGE(C_INNER_DEBUG, "GMM Tiling matmul api do tiling failed."), return ge::GRAPH_FAILED);
+    }
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         OP_TILING_CHECK(
             ComputeSharedBaseMNK(tilingData, PLATFORM_SIZE) != ge::GRAPH_SUCCESS,
