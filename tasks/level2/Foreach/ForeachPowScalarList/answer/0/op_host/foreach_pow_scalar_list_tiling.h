@@ -24,5 +24,5 @@ BEGIN_TILING_DATA_DEF(ForeachCommonTilingData)
     TILING_DATA_FIELD_DEF_ARR(int64_t, MAX_CORE_CONT, tensorEndOffsetList);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(ForeachMaximumScalarList, ForeachCommonTilingData)
+REGISTER_TILING_DATA_CLASS(ForeachPowScalarList, ForeachCommonTilingData)
 }
