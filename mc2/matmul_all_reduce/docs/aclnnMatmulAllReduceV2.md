@@ -1,10 +1,17 @@
 # aclnnMatmulAllReduceV2
+
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如Bus Error等。
 
@@ -82,11 +89,11 @@ aclnnStatus aclnnMatmulAllReduceV2(
           <td>x2</td>
           <td>输入</td>
           <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><ul><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li><li>支持最后两轴转置情况下的非连续的tensor</li></ul></td>
+          <td><ul><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li><li>ND格式下支持最后两轴转置情况下的非连续的tensor，其他非连续tensor不支持</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>2</td>
-          <td>√</td>
+          <td>×</td>
         </tr>
         <tr>
           <td>x3</td>
@@ -187,10 +194,10 @@ aclnnStatus aclnnMatmulAllReduceV2(
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
     </colgroup>
     <thead>
     <tr>
@@ -221,10 +228,11 @@ aclnnStatus aclnnMatmulAllReduceV2(
 ## aclnnMatmulAllReduceV2
 
 - **参数说明**
-    <table style="undefined;table-layout: fixed; width: 1312px"><colgroup>
-    <col style="width: 158px">
-    <col style="width: 120px">
-    <col style="width: 750px">
+
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     <thead>
     <tr>
         <th>参数名</th>
@@ -261,8 +269,8 @@ aclnnStatus aclnnMatmulAllReduceV2(
 ## 约束说明
 
 - 确定性计算：
-  - `aclnnMatmulAllReduceV2`默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
-
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnMatmulAllReduceV2`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - Ascend 950PR/Ascend 950DT：`aclnnMatmulAllReduceV2`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，其shape为(n)。
 - b*s、m、k、n的值均不得超过2147483647(INT32_MAX)。
@@ -270,13 +278,19 @@ aclnnStatus aclnnMatmulAllReduceV2(
 - x1、x2、bias计算输入的数据类型要和output计算输出的数据类型一致，传入的x1、x2、x3或者output不为空指针。
 - 仅支持HCCS链路all mesh组网。
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- 空tensor支持度：
+  - 支持k为0的场景，输出为bias + x3。
+  - 支持bs/m/n为0，此时传入的输出也应该是空tensor，此场景不进入kernel计算，直接返回。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <iostream>
@@ -285,7 +299,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
     #include "hccl/hccl.h"
     #include "aclnnop/aclnn_matmul_all_reduce_v2.h"
 
-    int ndev = 8;
+    int ndev = 2;
 
     #define CHECK_RET(cond, return_expr) \
     do {                               \
@@ -389,7 +403,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口, x3位置传入out
-        ret = aclnnMatmulAllReduceV2GetWorkspaceSize(x1, x2, bias, x3, hcom_name, "sum", commTurn, streamMode, out, &   workspaceSize, &executor);
+        ret = aclnnMatmulAllReduceV2GetWorkspaceSize(x1, x2, bias, x3, hcom_name, "sum", commTurn, streamMode, out, &workspaceSize, &executor);
 
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("aclnnMatmulAllReduceV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -480,7 +494,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
             args[rankId].hcclComm = comms[rankId];
             args[rankId].stream = stream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAllReduce, std::ref(args  [rankId])));
+            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAllReduce, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < ndev; rankId++) {
             threads[rankId]->join();

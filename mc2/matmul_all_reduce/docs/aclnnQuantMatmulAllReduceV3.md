@@ -1,10 +1,17 @@
 # aclnnQuantMatmulAllReduceV3
+
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |     √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |     ×      |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -16,19 +23,19 @@
 
     为以下3种情形：
 
-    - 情形1：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant计算，接着与x3进行add操作，最后做AllReduce计算。
+    - 情形1：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant计算，接着与x3进行Add操作，最后做AllReduce计算。
 
   $$
   output= AllReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
   $$
 
-    - 情形2：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant和pertoken计算，接着与x3进行add操作，最后做AllReduce计算。
+    - 情形2：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant和pertoken计算，接着与x3进行Add操作，最后做AllReduce计算。
 
   $$
   output= AllReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
   $$
 
-    - 情形3：对量化后的入参x1、x2进行MatMul、dequant和pertoken计算，接着与x3进行add操作，再对输出进行perchannel量化，然后进行AllToAll通信，对第一次通讯结果进行ReduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行dequant，得到最终输出。
+    - 情形3：对量化后的入参x1、x2进行MatMul、dequant和pertoken计算，接着与x3进行Add操作，再对输出进行perchannel量化，然后进行AllToAll通信，对第一次通讯结果进行ReduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行dequant，得到最终输出。
 
   $$
   matmulAddOutPut = (dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
@@ -73,7 +80,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     void          *workspace,
     uint64_t       workspaceSize,
     aclOpExecutor *executor,
-    const aclrtStream  stream)
+    aclrtStream    stream)
 ```
 
 ## aclnnQuantMatmulAllReduceV3GetWorkspaceSize
@@ -115,11 +122,11 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
           <td>x2</td>
           <td>输入</td>
           <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li></ul></td>
+          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li><li>ND格式下支持最后两轴转置情况下的非连续的tensor，其他非连续tensor不支持</li></ul></td>
           <td>INT8</td>
           <td>ND、FRACTAL_NZ</td>
           <td>2</td>
-          <td>√</td>
+          <td>×</td>
         </tr>
         <tr>
           <td>biasOptional</td>
@@ -254,21 +261,26 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
       </tbody>
     </table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入x2的数据格式支持ND和FRACTAL_NZ格式。
-    输入的shape规则如下：
-        - 当x2的数据格式为FRACTAL_NZ时，当前版本仅支持四维输入，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`完成输入ND到NZ的转换，非连续的tensor仅支持transpose场景。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
+      - 输入x2的数据格式支持ND和`FRACTAL_NZ`格式。输入的shape规则如下：
+        - 当x2的数据格式为`FRACTAL_NZ`时，当前版本仅支持四维输入，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`完成输入ND到NZ的转换，非连续的tensor仅支持transpose场景。
         - 当x2的数据格式为ND时，当前版本仅支持二维输入。
 
--   **返回值：**
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+
+      - 输入x2的数据格式仅支持ND格式（当前版本仅支持二维输入）。
+
+-   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
     </colgroup>
     <thead>
     <tr>
@@ -299,10 +311,11 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 ## aclnnQuantMatmulAllReduceV3
 
 -   **参数说明**
-    <table style="undefined;table-layout: fixed; width: 1312px"><colgroup>
-    <col style="width: 158px">
-    <col style="width: 120px">
-    <col style="width: 750px">
+
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     <thead>
     <tr>
         <th>参数名</th>
@@ -339,8 +352,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 ## 约束说明
 
 - 确定性计算：
-  - `aclnnQuantMatmulAllReduceV3`默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
-
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnQuantMatmulAllReduceV3`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduceV3`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为2维或者3维，且不为空Tensor，其shape为(b, s, k)或者(m, k)。x2必须是2维，且不为空Tensor。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。
 - m大小不超过2147483647，x1与x2的最后一维大小不超过65535，x1的最后一维指k，x2的最后一维指转置时的k或非转置时的n。
@@ -351,15 +364,19 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 - x1的shape为(b, s, k)时，pertokenScaleOptional的shape为(b*s)；当x1的shape为(m, k)时，pertokenScaleOptional的shape为(m)。
 - 仅支持hccs链路all mesh组网。
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
-- 不支持空tensor。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 - int8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议使能int8低bit通信，即不建议输入commQuantScale1和commQuantScale2。
+- 空tensor支持度：
+  - 不支持空tensor。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <iostream>
@@ -369,7 +386,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     #include "aclnnop/aclnn_trans_matmul_weight.h"
     #include "aclnnop/aclnn_quant_matmul_all_reduce_v3.h"
 
-    int ndev = 8;
+    int ndev = 2;
 
     #define ACL_CHECK(ret)                                                                                     \
         do {                                                                                                   \

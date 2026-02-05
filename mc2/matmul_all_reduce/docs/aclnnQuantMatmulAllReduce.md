@@ -1,17 +1,23 @@
 # aclnnQuantMatmulAllReduce
+
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce)
+
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
 ## 功能说明
 
-- **接口功能**：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。
-    支持per tensor、per channel量化方式。
+- **接口功能**：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。支持pertensor、perchannel量化方式。
 - **计算公式**：
 
   $$
@@ -85,11 +91,11 @@ aclnnStatus aclnnQuantMatmulAllReduce(
           <td>x2</td>
           <td>输入</td>
           <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><ul><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li></ul></td>
+          <td><ul><li>当前版本仅支持两维输入。</li><li>支持转置/不转置场景。</li><li>ND格式下支持最后两轴转置情况下的非连续的tensor，其他非连续tensor不支持</li></ul></td>
           <td>INT8</td>
           <td>ND、FRACTAL_NZ</td>
           <td>2</td>
-          <td>√</td>
+          <td>×</td>
         </tr>
         <tr>
           <td>bias</td>
@@ -194,7 +200,13 @@ aclnnStatus aclnnQuantMatmulAllReduce(
       </tbody>
     </table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：x2输入的数据格式支持ND（当前版本仅支持二维输入）和FRACTAL_NZ格式（当前版本仅支持四维输入）。当x2的数据格式为FRACTAL_NZ时，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`完成数据格式ND到数据格式NZ的转换，非连续的tensor仅支持transpose场景。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
+        - x2输入的数据格式支持ND（当前版本仅支持二维输入）和`FRACTAL_NZ`格式（当前版本仅支持四维输入）。当x2的数据格式为`FRACTAL_NZ`时，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`完成数据格式ND到数据格式NZ的转换，非连续的tensor仅支持transpose场景。
+
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+
+        - x2输入的数据格式仅支持ND（当前版本仅支持二维输入）。
 
 - **返回值**
 
@@ -202,10 +214,10 @@ aclnnStatus aclnnQuantMatmulAllReduce(
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
-    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 650px">
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
     </colgroup>
     <thead>
     <tr>
@@ -236,10 +248,11 @@ aclnnStatus aclnnQuantMatmulAllReduce(
 ## aclnnQuantMatmulAllReduce
 
 - **参数说明**
-    <table style="undefined;table-layout: fixed; width: 1312px"><colgroup>
-    <col style="width: 158px">
-    <col style="width: 120px">
-    <col style="width: 750px">
+
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     <thead>
     <tr>
         <th>参数名</th>
@@ -268,7 +281,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
         <td>指定执行任务的stream。</td>
     </tr>
     </tbody></table>
-    
+
 -   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -276,10 +289,10 @@ aclnnStatus aclnnQuantMatmulAllReduce(
 ## 约束说明
 
 - 确定性计算：
-  - `aclnnQuantMatmulAllReduce`默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
-
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduce`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
-- 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。不支持x1、x2为空矩阵。
+- 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。
 - m大小不超过2147483647，x1与x2的最后一维大小不超过65535，x1的最后一维指k，x2的最后一维指转置时的k或非转置时的n。bias若非空，shape为(n)。x3若非空，shape与output相同。
 - 当输入x1的shape为(b, s, k)时，输出output的shape为(b, s, n)，当输入x1的shape为(m, k)时，输出output的shape为(m, n)。
 - 传入的x1、x2、dequantScale或者output不为空指针。
@@ -287,12 +300,17 @@ aclnnStatus aclnnQuantMatmulAllReduce(
 - 若输出output类型为FLOAT16，dequantScale的类型为INT64、UINT64；若输出output类型为BFLOAT16，dequantScale的类型为BFLOAT16，x3的类型为BFLOAT16。
 - 仅支持hccs链路all mesh组网。
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- 空tensor支持度：
+  - 不支持空tensor。
 
 ## 调用示例
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
     ```Cpp
     #include <iostream>
     #include <vector>
@@ -301,7 +319,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
     #include "aclnnop/aclnn_trans_matmul_weight.h"
     #include "aclnnop/aclnn_quant_matmul_all_reduce.h"
 
-    int ndev = 8;
+    int ndev = 2;
 
     #define ACL_CHECK(ret)                                                                                     \
         do {                                                                                                   \
@@ -468,7 +486,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
-        ret = aclnnQuantMatmulAllReduceGetWorkspaceSize(x1, x2, bias, x3, dequantScale, hcom_name, "sum", commTurn,     streamMode, out,
+        ret = aclnnQuantMatmulAllReduceGetWorkspaceSize(x1, x2, bias, x3, dequantScale, hcom_name, "sum", commTurn, streamMode, out,
                                             &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("aclnnQuantMatmulAllReduceGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);

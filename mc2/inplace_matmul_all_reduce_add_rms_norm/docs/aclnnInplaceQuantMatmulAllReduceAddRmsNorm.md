@@ -1,11 +1,17 @@
 # aclnnInplaceQuantMatmulAllReduceAddRmsNorm
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/inplace_matmul_all_reduce_add_rms_norm)
+
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -298,7 +304,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-    
+
 -   **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -306,7 +312,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnInplaceQuantMatmulAllReduceAddRmsNorm默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnInplaceQuantMatmulAllReduceAddRmsNorm默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
 
 - 使用场景同融合算子aclnnQuantMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，bias为一维，其shape为(n)。

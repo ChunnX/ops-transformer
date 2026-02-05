@@ -6,22 +6,24 @@
 
 | 产品                                                                                     | 是否支持 |
 | :--------------------------------------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT                                                                      |    √    |
+| <term>Ascend 950PR/Ascend 950DT</term>                                                                      |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品 </term>                        |    ×    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品 </term> |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品 </term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品 </term>                                         |    ×    |
 | <term>Atlas 推理系列产品</term>                                                 |    ×    |
 | <term>Atlas 训练系列产品 </term>                                                 |    ×    |
 
 ## 功能说明
 
-- **接口功能**：兼容`aclnnQuantMatmulAllReduce`、`aclnnQuantMatmulAllReduceV2`、`aclnnQuantMatmulAllReduceV3`支持的功能，在此基础上新增perblock,pertile,mxfp量化方式的支持。新增x1，x2输入支持dtype为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1。
+- **接口功能**：兼容`aclnnQuantMatmulAllReduce`、`aclnnQuantMatmulAllReduceV2`、`aclnnQuantMatmulAllReduceV3`支持的功能。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：无新增特性。
+  - <term>Ascend 950PR/Ascend 950DT</term>：新增perblock、pertile、mxfp量化方式。新增x1，x2输入支持dtype为`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、HIFLOAT8、`FLOAT4_E2M1`。
 - **计算公式**：
 
   - 公式1：commQuantScale1Optional, commQuantScale2Optional不为空时:
 
     $$
-    matmulAddOutput = (x2Scale * x1ScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
+    matmulAddOutput = (x2ScaleOptional * x1ScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
     $$
 
     $$
@@ -39,37 +41,37 @@
   - 公式2：x1，x2为INT8，无x1ScaleOptional，x2Scale为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
     $$
-    output = AllReduce((x1@x2 + biasOptional) * x2Scale + x3Optional)
+    output = AllReduce((x1@x2 + biasOptional) * x2ScaleOptional + x3Optional)
     $$
 
   - 公式3：x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
 
     $$
-    output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
+    output = AllReduce((x1@x2 + biasOptional) * x2ScaleOptional * x1ScaleOptional + x3Optional)
     $$
 
-  - 公式4：x1，x2为FLOAT4_E2M1/FLOAT8_E4M3FN/FLOAT8_E5M2，x1ScaleOptional为FLOAT8_E8M0，x2Scale为FLOAT8_E8M0，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
+  - 公式4：x1，x2为`FLOAT4_E2M1`/`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为`FLOAT8_E8M0`，x2Scale为`FLOAT8_E8M0`，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
-    output = AllReduce((x1* x1ScaleOptional)@(x2* x2Scale) + biasOptional + x3Optional)
+    output = AllReduce((x1* x1ScaleOptional)@(x2* x2ScaleOptional) + biasOptional + x3Optional)
     $$
 
-  - 公式5：x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
+  - 公式5：x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
-    output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
+    output = AllReduce((x1@x2 + biasOptional) * x2ScaleOptional * x1ScaleOptional + x3Optional)
     $$
 
-  - 公式6：x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
+  - 公式6：x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
 
     $$
     output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
     $$
-    
-   - 公式7：x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，当commQuantMode为1时，out为FLOAT16/BFLOAT16/FLOAT32:
+
+   - 公式7：x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，当commQuantMode为1时，out为FLOAT16/BFLOAT16/FLOAT32:
 
     $$
-    matmulAddOutput_{fp32} = (x2Scale * x1ScaleOptional * (x1_{fp8}@x2_{fp8} + biasOptional_{fp32}) + x3Optional);
+    matmulAddOutput_{fp32} = (x2ScaleOptional * x1ScaleOptional * (x1_{fp8}@x2_{fp8} + biasOptional_{fp32}) + x3Optional);
     $$
 
     $$
@@ -119,7 +121,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     const aclTensor *biasOptional,
     const aclTensor *x3Optional,
     const aclTensor *x1ScaleOptional,
-    const aclTensor *x2Scale,
+    const aclTensor *x2ScaleOptional,
     const aclTensor *commQuantScale1Optional,
     const aclTensor *commQuantScale2Optional,
     const char      *group,
@@ -216,7 +218,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>√</td>
         </tr>
         <tr>
-          <td>x2Scale</td>
+          <td>x2ScaleOptional</td>
           <td>输入</td>
           <td>MatMul计算后的去量化系数，即计算公式中的x2Scale。</td>
           <td><ul><li>shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。</li><li>输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。</li><li>输出为FLOAT16且输入为INT8时，x1ScaleOptional不为空，可直接将FLOAT32类型的x2Scale传入本接口，如果x1ScaleOptional为空，则需提前调用TransQuantParamV2算子的aclnn接口来将x2Scale转成INT64/UINT64数据类型。数据类型为FLOAT8_E8M0时，仅支持转置，shape为[n, ceilDiv(k, 64), 2], x2为FLOAT4_E2M1时，必须保证ceilDiv(k, 32)为偶数。perblock场景下，x2的shape为[ceilDiv(k, 128), ceilDiv(n, 128)]，x2转置时，x2Scale的shape为[ceilDiv(n, 128), ceilDiv(k, 128)]。</li></ul></td>
@@ -338,6 +340,21 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       </tbody>
     </table>
 
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - x1、x2支持INT8
+    - biasOptional支持INT32
+    - x3支持FLOAT16、BFLOAT16
+    - x1ScaleOptional支持INT64、UINT64、FLOAT32、BFLOAT16
+    - x2ScaleOptional支持FLOAT32
+    - output支持FLOAT16、BFLOAT16
+  - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
+    - x1、x2支持INT8、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、HIFLOAT8、`FLOAT4_E2M1`
+    - biasOptional支持INT32、FLOAT32
+    - x3支持FLOAT16、BFLOAT16、FLOAT32
+    - x1ScaleOptional支持FLOAT32、FLOAT8_E8M0
+    - x2ScaleOptional支持INT64、UINT64、FLOAT32、BFLOAT16、`FLOAT8_E8M0`
+    - output支持FLOAT16、BFLOAT16、FLOAT32
+
 
 - **返回值**
 
@@ -420,7 +437,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 ## 约束说明
 
 - 确定性计算：
-  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnQuantMatmulAllReduceV4`默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnQuantMatmulAllReduceV4`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduceV4`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为2维或者3维，其shape为(b, s, k)或者(m, k)。x2必须是2维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。
@@ -429,7 +446,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 - x1和x2、dequantScale、output、bias（非空场景）、x3（非空场景）的数据类型和数据格式需要在支持的范围之内。
 - 当x1,x2的输入类型为INT8时，若输出output类型为FLOAT16，当x1ScaleOptional为空时，x2Scale的类型为INT64、UINT64，当x1ScaleOptional不为空时，x2Scale的类型为FLOAT32；若输出output类型为BFLOAT16，x2Scale的类型为BFLOAT16，x3的类型为BFLOAT16。
 - 传入的commQuantScale1与commQuantScale2需要同时为空指针或同时不为空指针，若传入的commQuantScale1与commQuantScale2同时不为空指针，两个量化参数shape需保持一致，类型需与算子输出类型保持一致，且每张卡输入保持一致。
-- 支持1、2、4、8、16、32、64卡，并且仅支持HCCS链路all mesh组网。
+- 仅支持hccs链路all mesh组网。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - 一个模型中的通算融合MC2算子，仅支持相同通信域。
 - INT8和FP8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议使能INT8或FP8低bit通信，即不建议输入commQuantScale1和commQuantScale2，且commQuantMode输入0。
 - 空tensor支持度：
@@ -583,7 +602,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       aclTensor *x1 = nullptr;
       aclTensor *x2 = nullptr;
       aclTensor *bias = nullptr;
-      aclTensor *x2Scale = nullptr;
+      aclTensor *x2ScaleOptional = nullptr;
       aclTensor *x1Scale = nullptr;
       aclTensor *commQuantScale1 = nullptr;
       aclTensor *commQuantScale2 = nullptr;
@@ -627,7 +646,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       ret = CreateAclTensor(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_INT32, &bias);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(dequantScaleHostData, dequantScaleShape, &dequantScaleDeviceAddr,
-                            aclDataType::ACL_FLOAT, &x2Scale);
+                            aclDataType::ACL_FLOAT, &x2ScaleOptional);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr,
                             aclDataType::ACL_FLOAT, &x1Scale);
@@ -643,7 +662,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 调用第一段接口
-      ret = aclnnQuantMatmulAllReduceV4GetWorkspaceSize(x1, x2, bias, x3, x1Scale, x2Scale,
+      ret = aclnnQuantMatmulAllReduceV4GetWorkspaceSize(x1, x2, bias, x3, x1Scale, x2ScaleOptional,
                                                         commQuantScale1, commQuantScale2, hcom_name,
                                                         "sum", commTurn, streamMode, 0, 0, out,
                                                         &workspaceSize, &executor);
@@ -671,8 +690,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       if (bias != nullptr) {
           aclDestroyTensor(bias);
       }
-      if (x2Scale != nullptr) {
-          aclDestroyTensor(x2Scale);
+      if (x2ScaleOptional != nullptr) {
+          aclDestroyTensor(x2ScaleOptional);
       }
       if (x1Scale != nullptr) {
           aclDestroyTensor(x1Scale);
