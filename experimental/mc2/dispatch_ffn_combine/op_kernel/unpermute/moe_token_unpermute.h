@@ -23,7 +23,7 @@
 #define MOE_TOKEN_UNPERMUTE
 
 #include "kernel_operator.h"
-#include "unpermute/moe_token_unpermute_tiling.h"
+#include "moe_token_unpermute_tiling.h"
 using namespace AscendC;
 
 
