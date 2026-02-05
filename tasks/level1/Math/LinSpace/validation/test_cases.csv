@@ -1,0 +1,15 @@
+case_id;steps;dtype
+0;32;bfloat16
+1;16;bfloat16
+2;128;float32
+3;256;float32
+4;1024;float16
+5;512;float16
+6;1024;uint8
+7;512;uint8
+8;1024;int8
+9;512;int8
+10;1024;int16
+11;512;int16
+12;1024;int32
+13;512;int32
