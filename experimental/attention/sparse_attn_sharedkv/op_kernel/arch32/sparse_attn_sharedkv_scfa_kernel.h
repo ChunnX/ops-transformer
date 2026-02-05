@@ -489,6 +489,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::CalcParams(uint32_t loop, u
     info.n2IdxReal = tempLoopInfo.n2Idx;
 
     info.gS1Idx = tempLoopInfo.gS1Idx;
+    info.s1Idx = tempLoopInfo.gS1Idx / constInfo.gSize;
     info.s2Idx = s2LoopIdx;
     info.curSInnerLoopTimes = tempLoopInfo.s2LoopTimes;
     info.tndIsS2SplitCore = tempLoopInfo.tndIsS2SplitCore;

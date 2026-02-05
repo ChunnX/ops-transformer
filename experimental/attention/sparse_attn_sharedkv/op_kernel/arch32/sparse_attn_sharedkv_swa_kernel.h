@@ -525,6 +525,7 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::CalcParams(uint32_t loop, ui
     info.cmpLoop = cmpLoop;
     info.bIdx = tempLoopInfo.bIdx;
     info.gS1Idx = tempLoopInfo.gS1Idx;
+    info.s1Idx = tempLoopInfo.gS1Idx / constInfo.gSize;
     info.s2Idx = s2LoopIdx;
     info.n2IdxReal = tempLoopInfo.n2Idx;
 
