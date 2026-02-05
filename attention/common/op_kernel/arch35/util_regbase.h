@@ -165,6 +165,8 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t multiCoreInnerIdx = 0; \
     \
     int64_t attentionOutOffset; \
+    uint64_t s1ScaleNumAcc; \
+    uint64_t s2ScaleNumAcc; \
     int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
     int64_t s2SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
     int64_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \

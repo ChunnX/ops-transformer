@@ -127,6 +127,8 @@ public:
     uint64_t s1OuterSizeAcc;
     uint64_t s1SizeAcc;
     uint64_t s2SizeAcc;
+    uint64_t s1ScaleNumAcc;
+    uint64_t s2ScaleNumAcc;
 
     // prefix
     int64_t actualKVPrefixLen = 0;
@@ -609,6 +611,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     }
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
         runInfo.boIdx = runParam.boIdx;
+        runInfo.s1ScaleNumAcc = s1ScaleNumAcc;
+        runInfo.s2ScaleNumAcc = s2ScaleNumAcc;
         runInfo.s1SizeAcc = s1SizeAcc;
         runInfo.s2SizeAcc = s2SizeAcc;
     } else {

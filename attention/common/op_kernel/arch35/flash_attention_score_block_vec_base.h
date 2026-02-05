@@ -277,13 +277,13 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     float descaleQK = 1.0;
     if constexpr (isFp8) {
         int64_t deScaleQOffset = 0;
-        if (layout == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             int64_t s1BlockCnt = constInfo.t1Size / FP8_QUANT_BLOCK_SIZE + constInfo.bSize; // Q的反量化scale内容在Gm中的偏移 原始shape为 [N2, G,T // 128 + B, 1]
             int64_t s2BlockCnt = constInfo.t2Size / FP8_QUANT_KV_BLOCK_SIZE + constInfo.bSize; // KV的反量化scale内容在Gm中的偏移 原始shape为 [N2, G, T // 256 + B, 1]
             deScaleQOffset = runInfo.n2oIdx * constInfo.gSize * s1BlockCnt +
-                                    runInfo.goIdx * s1BlockCnt + (runInfo.s1SizeAcc >> 7) + runInfo.s1oIdx;
+                                    runInfo.goIdx * s1BlockCnt + runInfo.s1ScaleNumAcc + runInfo.s1oIdx;
             runInfo.deScaleKvOffset = runInfo.n2oIdx * s2BlockCnt +
-                                    (runInfo.s2SizeAcc >> 8) + runInfo.s2LoopCount; // 8 ：按照256分块计算deScaleKv偏移
+                                    runInfo.s2ScaleNumAcc + runInfo.s2LoopCount; // 8 ：按照256分块计算deScaleKv偏移
         } else {
             int64_t s1BlockCnt = CeilDiv(constInfo.s1Size, FP8_QUANT_BLOCK_SIZE); // Q的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S1, 128), 1]
             int64_t s2BlockCnt = CeilDiv(constInfo.s2Size, FP8_QUANT_KV_BLOCK_SIZE); // KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S2, 256), 1]
