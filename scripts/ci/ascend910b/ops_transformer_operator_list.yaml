@@ -55,12 +55,14 @@ operator_group_6:
   - moe_token_permute_with_routing_map
   - moe_token_permute_with_routing_map_grad
   - grouped_matmul_add
+  - attention_worker_combine
 operator_group_7:
   - incre_flash_attention
   - moe_token_unpermute_with_ep
   - moe_token_unpermute_with_ep_grad
   - moe_token_unpermute_with_routing_map
   - moe_token_unpermute_with_routing_map_grad
+  - ffn_worker_batching
 operator_group_8:
   - moe_token_permute
   - moe_init_routing_v2

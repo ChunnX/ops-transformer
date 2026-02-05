@@ -27,6 +27,7 @@ operator_group_2:
   - moe_init_routing_quant_v2
   - moe_init_routing_v3
   - moe_re_routing
+  - ffn_worker_batching
 operator_group_3:
   - fused_infer_attention_score
 operator_group_4:
@@ -112,3 +113,4 @@ operator_group_10:
   - moe_distribute_combine_v2
   - moe_distribute_dispatch
   - moe_distribute_dispatch_v2
+  - attention_worker_combine
