@@ -145,14 +145,14 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
     <tr>
     <td>sendCounts</td>
     <td>输入</td>
-    <td>表示发送给其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
+    <td>表示发送给其他卡的token数，数据类型支持INT64，list大小为e * epWorldSize，最大为256。输入类型需为list。</td>
     <td>aclIntArray*（元素类型INT64）</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>recvCounts</td>
     <td>输入</td>
-    <td>表示接收其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
+    <td>表示接收其他卡的token数，数据类型支持INT64，list大小为e * epWorldSize，最大为256。输入类型需为list。</td>
     <td>aclIntArray*（元素类型INT64）</td>
     <td>ND</td>
     </tr>
