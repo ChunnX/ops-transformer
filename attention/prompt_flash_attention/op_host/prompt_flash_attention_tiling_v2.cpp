@@ -2041,6 +2041,10 @@ bool PromptFlashAttentionTilingV2::CheckPrefix(ContextParamsForPFATiling& contex
         return true;
     }
     std::string layoutStr(contextKeyParams.layout);
+    OP_CHECK_IF(
+        (layoutStr == "BSND_BNSD" || layoutStr == "BSH_BNSD"),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "when %s is used, system prefix is not supported!",
+        layoutStr.c_str()), return false);
     // The prefix does not support TND, tensorlist, pfa mla, ifa mla, left padding and alibi
     OP_CHECK_IF(
         (inputLayout == InputLayout::TND || inputLayout == InputLayout::NTD),
@@ -2681,12 +2685,20 @@ bool PromptFlashAttentionTilingV2::CheckNTDLayoutCrossover(ContextParamsForPFATi
 bool PromptFlashAttentionTilingV2::CheckTransposeLayoutCrossover(ContextParamsForPFATiling& contextKeyParams,
     PFAShapeInfo& queryShapeInfo) {
     std::string layoutStr(contextKeyParams.layout);
-    if (layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD") {
-        if (enablePFAMLA || enablePFARope) { // Prefill MLA
+    if (layoutStr != "BSH_BNSD" && layoutStr != "BSND_BNSD" && layoutStr != "BNSD_BSND") {
+        return true;
+    }
+    if (enablePFAMLA || enablePFARope) { // Prefill MLA
         OP_CHECK_IF(enablePerblockQuant || enablePertensorQuant,
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In prefill MLA scenario, when layout is %s, full quant is not supported!",
-                layoutStr.c_str()), return false);
-        }
+            layoutStr.c_str()), return false);
+    }
+    if (!enablePFAMLA && !enablePFARope && !enableIFAMLA && !enablePertensorQuant && !enablePerblockQuant) { // GQA
+        OP_CHECK_IF((queryShapeInfo.d != 64 && queryShapeInfo.d !=128),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In GQA scenario, when layout is %s, d size of query must be 64 or 128, but got d = %d.",
+            layoutStr.c_str(), queryShapeInfo.d), return false);
+    }
+    if (layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD") {
         OP_CHECK_IF(enableLeftPadding,
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "When layout is %s, left padding is not supported!",
             layoutStr.c_str()), return false);
@@ -2698,12 +2710,6 @@ bool PromptFlashAttentionTilingV2::CheckTransposeLayoutCrossover(ContextParamsFo
         OP_CHECK_IF(enablePseShift,
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "When layout is %s, pse is not supported!",
             layoutStr.c_str()), return false);
-    } else if (layoutStr == "BNSD_BSND") {
-        if (enablePFAMLA || enablePFARope) { // Prefill MLA
-        OP_CHECK_IF(enablePerblockQuant || enablePertensorQuant,
-            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In prefill MLA scenario, when layout is %s, full quant is not supported!",
-                layoutStr.c_str()), return false);
-        }
     }
     return true;
 }
