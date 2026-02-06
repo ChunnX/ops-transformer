@@ -19,7 +19,7 @@ $$
 ```python
 def grouped_bias_add_grad(grad_y, grouped_idx):
     """
-    实现自定义开平方操作。
+    分组偏置加法（GroupedBiasAdd）的反向计算
     
     参数:
         grad_y（Tensor): 必选参数，反向传播梯度，公式中的gradY。有可选输入group_idx时，shape仅支持2维，无可选输入group_idx时，shape仅支持3维。
