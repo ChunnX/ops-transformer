@@ -18,7 +18,7 @@
 #include "opdev/op_log.h"
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/contiguous.h"
-#include "reduce_mean.h"
+#include "level0/reduce_mean.h"
 #include "aclnn_kernels/transpose.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_kernels/reshape.h"
