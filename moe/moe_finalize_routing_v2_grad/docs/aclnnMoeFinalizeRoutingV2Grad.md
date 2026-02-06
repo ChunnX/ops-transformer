@@ -123,7 +123,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
     <tr>
       <td>expandedRowIdx</td>
       <td>输入</td>
-      <td>表示token按照专家序排序索引。</td>
+      <td>表示token按照专家序排序的索引。</td>
       <td>当scalesOptional传入空指针的时候，K必须为1。当dropPadMode是0时，取值范围是[0, R * K - 1]，且没有重复索引；当dropPadMode是1时，取值范围是[-1, expertNum * expertCapacity - 1]，且除-1外，不允许有其它重复索引。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>expertIdxOptional</td>
       <td>输入</td>
       <td>表示每一个特征对应的处理专家索引。</td>
-      <td>当biasOptional非空指针时，其也不能是空指针，取值范围是[0, E - 1], E &gt;= 1, 允许有重复索引。</td>
+      <td>当biasOptional非空指针时，其也不能是空指针，取值范围是[0, E - 1], E &gt;= 1, 允许有重复索引。E代表专家数。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(R, K)</td>

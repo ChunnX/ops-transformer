@@ -45,7 +45,7 @@
   - probs为None：
 
     $$
-    permutedTokensGrad[sortedIndices[i]] = unpermutedOutputGrad[i]
+    permutedTokensGrad[sortedIndices[i]] = unpermutedTokensGrad[i]
     $$
 
 ## 函数原型
@@ -54,7 +54,7 @@
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
-  const aclTensor   *permuteTokens,
+  const aclTensor   *permutedTokens,
   const aclTensor   *unpermutedTokensGrad,
   const aclTensor   *sortedIndices,
   const aclTensor   *probsOptional,
@@ -153,7 +153,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
     <tr>
       <td>restoreShapeOptional</td>
       <td>输入</td>
-      <td>当paddedMode为true后生效，否则不会对其进行操作。当paddedMode为true以后，此为unpermutedTokens的shape。</td>
+      <td>当paddedMode为true后生效，否则不会对其进行操作。当paddedMode为true时，此为unpermutedTokens的shape。</td>
       <td>当前仅支持nullptr。</td>
       <td>-</td>
       <td>-</td>
@@ -259,7 +259,8 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 
 - 确定性计算：
   - aclnnMoeTokenUnpermuteGrad默认确定性实现。
-
+- tokens_num表示输入的token数量，hidden_size表示词向量维度。
+- 通过paddedMode区分以下两种模式：paddedMode等于true时，每个专家固定能够处理capacity个token。paddedMode等于false时，每个token固定被topK_num个专家处理。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
 - <term>Ascend 950PR/Ascend 950DT</term>：
   在调用本接口时，框架内部会转调用[aclnnMoeFinalizeRoutingV2Grad](../../moe_finalize_routing_v2_grad/docs/aclnnMoeFinalizeRoutingV2Grad.md)接口，如果出现参数错误提示，请参考以下参数映射关系：

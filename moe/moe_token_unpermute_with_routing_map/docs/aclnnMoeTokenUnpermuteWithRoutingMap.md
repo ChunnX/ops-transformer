@@ -16,7 +16,7 @@
 
 ## 功能说明
 
-- 接口功能：对经过aclnnMoeTokenpermuteWithRoutingMap处理的permutedTokens，累加回原unpermutedTokens。根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘，最后进行累加求和，并输出计算结果。
+- 接口功能：对经过aclnnMoeTokenPermuteWithRoutingMap处理的permutedTokens，累加回原unpermutedTokens。根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘，最后进行累加求和，并输出计算结果。
 - 计算公式：
   
   $$
@@ -160,10 +160,10 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>sortedIndices</td>
       <td>输入</td>
       <td>表示输入输出梯度的映射关系。</td>
-      <td>非droppad模式要求索引取值范围[0，tokens_num * topK_num - 1]，<br>droppad模式索引取值范围[0，tokens_num - 1]。</td>
+      <td>paddedMode为false时要求索引取值范围[0，tokens_num * topK_num - 1]，<br>paddedMode为true时索引取值范围[0，tokens_num - 1]。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>非droppad模式：(tokens_num * topK_num)，<br>droppad模式：(experts_num * capacity)。</td>
+      <td>paddedMode为false时：(tokens_num * topK_num)，<br>paddedMode为true时：(experts_num * capacity)。</td>
       <td>√</td>
     </tr>
     <tr>
@@ -338,7 +338,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     <tr>
     <td>workspaceSize</td>
     <td>输入</td>
-    <td>在Device侧申请的workspace大小，由第一段接口aaclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize获取。</td>
+    <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize获取。</td>
     </tr>
     <tr>
     <td>executor</td>
