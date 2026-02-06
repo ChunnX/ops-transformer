@@ -83,6 +83,15 @@ enum class QuantMode : uint32_t {
     PERBLOCK_MODE = 0x1U << 5,
 };
 
+typedef enum {
+    GMM_ACT_TYPE_NONE = 0L,
+    GMM_ACT_TYPE_RELU = 1L,
+    GMM_ACT_TYPE_GELU_TANH = 2L,
+    GMM_ACT_TYPE_GELU_ERR_FUNC = 3L,
+    GMM_ACT_TYPE_FAST_GELU = 4L,
+    GMM_ACT_TYPE_SILU = 5L,
+} GMMActType;
+
 struct GQmmBasicTiling {
     uint32_t usedCoreNum = 1;
     uint32_t tilingMode = 0;
@@ -208,7 +217,7 @@ private:
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
     bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
     bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
- 	bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape) const;
+ 	bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape);
 
     GroupedMatmulTilingData::GMMQuantTilingData tilingData_;
     bool isWeightNz_ = false;
