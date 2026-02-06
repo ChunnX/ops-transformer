@@ -46,4 +46,4 @@ result = kernel_gen_ops.adaptive_avg_pool3d(x, output_size)
 
 - 输出 out 的shape需要与x和output_size推导出的shape结果一致。
 - 输入 output_size 的数组长度为3。
-- 输出 out 的shape和输入 x 的数据类型一致。
+- 输出 out 的数据类型和输入 x 的数据类型一致。
