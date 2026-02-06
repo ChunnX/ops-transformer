@@ -978,5 +978,5 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceS
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(SparseLightningIndexerGradKLLoss, SparseLightningIndexerGradKLLossTilingBaseRegbase, (int32_t)platform_ascendc::SocVersion::ASCEND950, 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerGradKLLoss, SparseLightningIndexerGradKLLossTilingBaseRegbase, static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace optiling

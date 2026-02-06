@@ -989,5 +989,5 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(SparseLightningIndexerGradKLLoss, SparseLightningIndexerGradKLLossTilingBase, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 10);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerGradKLLoss, SparseLightningIndexerGradKLLossTilingBase, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 10);
 } // namespace optiling

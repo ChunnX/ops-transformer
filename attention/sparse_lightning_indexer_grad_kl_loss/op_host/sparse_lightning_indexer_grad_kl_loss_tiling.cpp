@@ -35,25 +35,16 @@ constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr int32_t SPARSE_MODE_BAND = 4;
 
-static const std::string QUERY_NAME = "query";
-static const std::string KEY_NAME = "key";
-static const std::string VALUE_NAME = "value";
-static const std::string BLOCK_TABLE_NAME = "block_table";
-static const std::string SPARSE_INDICES_NAME = "sparse_indices";
-static const std::string QUERY_ROPE_NAME = "query_rope";
-static const std::string KEY_ROPE_NAME = "key_rope";
-static const std::string ATTEN_OUT_NAME = "attention_out";
-
 ge::graphStatus TilingSparseLightningIndexerGradKLLoss(gert::TilingContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGW(context, "Current soc version is ASCEND950.");
+    auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    if (sligPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGW(context, "Current npu arch is dav-3510.");
     } else {
-        OP_LOGW(context, "Current soc version is not ASCEND950.");
+        OP_LOGW(context, "Current npu arch is not dav-3510.");
     }
-    return Ops::Transformer::OpTiling::TilingRegistryNew::GetInstance().DoTilingImpl(context);
+    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ge::graphStatus TilingPrepareForSparseLightningIndexerGradKLLoss(gert::TilingParseContext *context)

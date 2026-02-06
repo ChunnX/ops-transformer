@@ -538,8 +538,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(SparseFlashAttentionGrad, SparseFlashAttentionGradBasicTiling, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashAttentionGrad, SparseFlashAttentionGradBasicTiling, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 1);
 
 } // namespace sfag
 } // namespace optiling
