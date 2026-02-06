@@ -1,14 +1,9 @@
 
 file(GLOB_RECURSE ops_srcs "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
-
-set(DEF_CPP "")
-foreach(SOURCE_FILE IN LISTS ops_srcs)
-        get_filename_component(FILE_NAME ${SOURCE_FILE} NAME)
-        if(FILE_NAME MATCHES "def.cpp$")
-                list(APPEND DEF_CPP ${SOURCE_FILE})
-                message(STATUS "Found def file: ${SOURCE_FILE}")
-        endif()
-endforeach()
+file(GLOB_RECURSE DEF_CPP "${CMAKE_CURRENT_SOURCE_DIR}/*def.cpp")
+file(GLOB_RECURSE TILING_SRC "${CMAKE_CURRENT_SOURCE_DIR}/*tiling*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*tiling*.h")
+file(GLOB_RECURSE ACLNN_SRC "${CMAKE_CURRENT_SOURCE_DIR}/aclnn*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/aclnn*.h")
+file(GLOB_RECURSE INFERSHAPE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/*infershape.cpp" )
 
 opbuild(OPS_SRC ${DEF_CPP}
         OUT_DIR ${ASCEND_AUTOGEN_PATH}
@@ -18,11 +13,14 @@ file(GLOB group_proto_src ${ASCEND_AUTOGEN_PATH}/group_proto/*.cc)
  
 add_library(cust_op_proto SHARED
     $<$<TARGET_EXISTS:group_proto_src>:${group_proto_src}>
-    ${ops_srcs}
+    ${INFERSHAPE_SRC}
     ${ASCEND_AUTOGEN_PATH}/op_proto.cc
 )
 target_include_directories(cust_op_proto PRIVATE
+        ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+        ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common/op_host
         ${ASCEND_CANN_PACKAGE_PATH}/include
+        ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
         ${ASCEND_CANN_PACKAGE_PATH}/include/external
         ${ASCEND_CANN_PACKAGE_PATH}/include/experiment
         ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/platform
@@ -53,9 +51,12 @@ set_target_properties(cust_op_proto PROPERTIES OUTPUT_NAME
                       cust_opsproto_rt2.0
 )
 file(GLOB fallback_src ${ASCEND_AUTOGEN_PATH}/fallback_*.cpp)
-add_library(cust_optiling SHARED ${ops_srcs})
+add_library(cust_optiling SHARED ${TILING_SRC})
 target_include_directories(cust_optiling PRIVATE
+        ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+        ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
         ${ASCEND_CANN_PACKAGE_PATH}/include
+        ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
         ${ASCEND_CANN_PACKAGE_PATH}/include/external
         ${ASCEND_CANN_PACKAGE_PATH}/include/experiment
         ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/platform
@@ -82,6 +83,7 @@ target_link_libraries(cust_optiling PRIVATE
         exe_graph
         register
         tiling_api
+        ops_base
         -Wl,--whole-archive
         rt2_registry
         -Wl,--no-whole-archive
@@ -90,8 +92,16 @@ set_target_properties(cust_optiling PROPERTIES OUTPUT_NAME
                       cust_opmaster_rt2.0
 )
 
-file(GLOB aclnn_src ${ASCEND_AUTOGEN_PATH}/aclnn_*.cpp)
-file(GLOB aclnn_inc ${ASCEND_AUTOGEN_PATH}/aclnn_*.h)
+file(GLOB ACLNN_SRC ${CMAKE_CURRENT_SOURCE_DIR}/aclnn_*.cpp)
+file(GLOB ACLNN_INC ${CMAKE_CURRENT_SOURCE_DIR}/aclnn_*.h)
+if(ACLNN_SRC AND ACLNN_INC)
+    set(aclnn_src ${ACLNN_SRC})
+    set(aclnn_inc ${ACLNN_INC})
+else()
+    file(GLOB aclnn_src ${ASCEND_AUTOGEN_PATH}/aclnn_*.cpp)
+    file(GLOB aclnn_inc ${ASCEND_AUTOGEN_PATH}/aclnn_*.h)
+endif()
+
 if(NOT ASCEND_PACK_SHARED_LIBRARY)
     add_library(cust_opapi SHARED ${aclnn_src})
 else()
@@ -105,8 +115,16 @@ if(ENABLE_CROSS_COMPILE)
                             ${CMAKE_COMPILE_RUNTIME_LIBRARY}
     )
 endif()
+
+target_include_directories(cust_opapi PRIVATE
+        ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
+        ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn_kernels
+        ${ASCEND_CANN_PACKAGE_PATH}/include/aclnnop
+        ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+)
+
 if(NOT ASCEND_PACK_SHARED_LIBRARY)
-    target_link_libraries(cust_opapi PRIVATE intf_pub ascendcl nnopbase)
+    target_link_libraries(cust_opapi PRIVATE intf_pub ascendcl nnopbase opapi)
 else()
     add_library(cust_op_proto_obj OBJECT
                 $<$<TARGET_EXISTS:group_proto_src>:${group_proto_src}>
@@ -154,7 +172,7 @@ else()
     )
     target_compile_options(cust_opapi PRIVATE -DLOG_CPP)
     target_include_directories(cust_opapi INTERFACE ${CMAKE_SOURCE_DIR}/build_out/library/)
-    target_link_libraries(cust_opapi PRIVATE intf_pub ascendcl nnopbase cust_optiling_obj cust_op_proto_obj ascend_opregistry ascend_kernels)
+    target_link_libraries(cust_opapi PRIVATE intf_pub ascendcl nnopbase cust_optiling_obj cust_op_proto_obj ascend_opregistry ascend_kernels opapi)
     add_dependencies(cust_opapi ascend_opregistry)
 endif()
 
