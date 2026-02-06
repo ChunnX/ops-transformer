@@ -29,7 +29,12 @@ __aicore__ inline void InitQueryLeftPaddingSize(RunParamStr<isInfer>& runParam, 
     if (!constInfo.isQHasLeftPadding) {
         runParam.queryLeftPaddingSize = 0;
     } else {
-        int64_t qLeftPaddingSize = constInfo.s1Size - actualS1Size - constInfo.queryRightPaddingSize;
+        int64_t qLeftPaddingSize = 0;
+        if (constInfo.isGqa) {
+            qLeftPaddingSize = constInfo.s1Size - actualS1Size / constInfo.gSize - constInfo.queryRightPaddingSize;
+        } else {
+            qLeftPaddingSize = constInfo.s1Size - actualS1Size - constInfo.queryRightPaddingSize;
+        }
         runParam.queryLeftPaddingSize = qLeftPaddingSize > 0 ? qLeftPaddingSize : 0;
         if (qLeftPaddingSize < 0) {
             actualS1Size = 0;
