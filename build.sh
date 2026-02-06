@@ -991,7 +991,7 @@ while [[ $# -gt 0 ]]; do
     --PR_UT)
         PR_CHANGED_FILES="$2"
         ENABLE_TEST=TRUE
-        process_soc_input "ascend910b,ascend950"
+        process_soc_input "ascend310p,ascend910b,ascend950"
         shift 2
         ;;
     --PR_PKG)
