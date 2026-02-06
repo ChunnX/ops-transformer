@@ -52,6 +52,9 @@ static constexpr uint32_t FLOAT_REPEAT_NUM = 64;
 static constexpr uint32_t S2_BASE_STEP_MASK_V3V4  = 128;
 static constexpr uint32_t TEMP_VEC_SIZE_V3V4  = 24 * 1024;
 
+// deter
+static constexpr int64_t DETER_INVALID_RUNINFO_VALUE  = -1;
+
 enum class DLILayout
 {
     BSND = 0,
@@ -108,6 +111,7 @@ struct DLIType {
  */
 struct DLIGradKLLossConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_64 = 64;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_128 = 128;
     static constexpr uint32_t BUFFER_SIZE_BYTE_256 = 256;
     static constexpr uint32_t BUFFER_SIZE_BYTE_512 = 512;
     static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
@@ -125,6 +129,7 @@ struct DLIGradKLLossConstInfo {
     uint32_t aivIdx;
     uint32_t subBlockIdx;
     uint32_t aivNum;
+    uint32_t aicNum;
 
     /** \brief TilingData中的信息 */
 	uint32_t bSize;
@@ -160,6 +165,11 @@ struct DLIGradKLLossConstInfo {
 
     uint32_t dKeySingleCoreSize = 0;
     uint32_t dKeyGmOffset = 0;
+
+    // 确定性参数
+    uint32_t dKeyDeterGmOffset = 0;
+    uint32_t dKeyDeterGmLength = 0;
+    int64_t maxLoopSize = 0;
 };
 
 struct DLIGradKLLossRunInfo {

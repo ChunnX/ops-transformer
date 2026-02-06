@@ -43,6 +43,7 @@ public:
     using Q_ROPE_T = Q_T;
     using K_ROPE_T = KV_T;
     using MM12_OUT_T = T;
+    using INFO_INT_64_T = int64_t;
 
     static constexpr bool hasRope = DLIT::hasRope;
     static constexpr bool deterministic = DLIT::deterministic;
@@ -117,6 +118,9 @@ private:
     GlobalTensor<T> dWeightGmFloat;
     GlobalTensor<T> dKeyIndexGmFloat;
     GlobalTensor<T> dQueryIndexGmFloat;
+    GlobalTensor<T> dKeyIndexDeterGmFloat;
+    GlobalTensor<T> lossGmDeterFloat;
+    GlobalTensor<INFO_INT_64_T> deterCoreInfoGm;
 };
 
 template <typename DLIT>
@@ -151,6 +155,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitConstInfo(
     constInfo.scaleValue = baseInfo.scaleValue;
 
     constInfo.s2BaseSize = N_WORKSPACE_SIZE;
+    constInfo.aicNum = tilingData->multiCoreParams.coreNum;
 
     if constexpr(hasRope) {
         constInfo.dSizeActual = constInfo.dSizeQuery + constInfo.dSizeQueryRope;
@@ -172,6 +177,11 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitConstInfo(
     } else {
         constInfo.dKeySingleCoreSize = initOutputParams.singleCoreSize;
     }
+
+    // 确定性参数
+    constInfo.dKeyDeterGmLength = S2_BASE_STEP * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
+    constInfo.dKeyDeterGmOffset = constInfo.aicIdx * constInfo.dKeyDeterGmLength;
+    constInfo.maxLoopSize = baseInfo.maxLoopSize;
 }
 
 template <typename DLIT>
@@ -190,6 +200,17 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitWorkspace(
     uint64_t offset = 0;
 
     // 每个核共用同一块GM
+    if constexpr(deterministic) {
+        int64_t dKeyIndexDeterGmSize = constInfo.aicNum * S2_BASE_STEP * constInfo.n2IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
+        int64_t lossDeterGmSize = constInfo.aivNum * optiling::DETER_LOSS_TMP_GM_NUM * sizeof(float);
+        int64_t coreInfoDeterGmSize = constInfo.aicNum * optiling::DETER_CORE_INFO_TMP_GM_NUM * sizeof(int64_t);
+        dKeyIndexDeterGmFloat.SetGlobalBuffer((__gm__ T *)(workspace + offset));
+        offset += dKeyIndexDeterGmSize;
+        lossGmDeterFloat.SetGlobalBuffer((__gm__ T *)(workspace + offset));
+        offset += lossDeterGmSize;
+        deterCoreInfoGm.SetGlobalBuffer((__gm__ INFO_INT_64_T *)(workspace + offset));
+        offset += coreInfoDeterGmSize;
+    }
     dKeyIndexGmFloat.SetGlobalBuffer((__gm__ T *)(workspace + offset));
     offset += dKeyIndexFloatSzie;
 
@@ -224,6 +245,11 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitWorkspace(
         if (constInfo.dKeySingleCoreSize > 0) {
             AscendC::InitOutput(dKeyIndexGmFloat[constInfo.dKeyGmOffset],
                                 constInfo.dKeySingleCoreSize, static_cast<T>(0));
+        }
+        if constexpr(deterministic) {
+            AscendC::InitOutput(dKeyIndexDeterGmFloat[constInfo.dKeyDeterGmOffset],
+                        constInfo.dKeyDeterGmLength, static_cast<T>(0));
+            AscendC::InitOutput(lossGmDeterFloat[constInfo.aivIdx * optiling::DETER_LOSS_TMP_GM_NUM], optiling::DETER_LOSS_TMP_GM_NUM, static_cast<T>(0));
         }
     }
     SyncAll();
@@ -439,7 +465,9 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Init(
         vectorService.InitVector1GM(softmaxMaxGm, softmaxSumGm, softmaxMaxIndexGm, softmaxSumIndexGm,
                                     bmm1Res, bmm2Res, weightGm, pSyncGm, sySyncGm, lossGm, dWeightGmFloat, reluGm,
                                     reluGradRes, dWeightGm, dQueryIndexGmFloat, dQueryIndexGm);
-        
+        if constexpr (deterministic) {
+            vectorService.InitVector1DeterGM(deterCoreInfoGm, dKeyIndexDeterGmFloat, dKeyIndexGmFloat, lossGmDeterFloat);
+        }
     } else if ASCEND_IS_AIC {
         // initCubeOP
         matmulService.InitParams(constInfo);
@@ -448,6 +476,9 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Init(
         matmulService.InitMm2GlobalTensor(queryIndexGm, keyIndexGm, bmm2Res);
         matmulService.InitMm5GlobalTensor(reluGradRes, dKeyIndexGmFloat);
         matmulService.InitMm6GlobalTensor(dQueryIndexGmFloat);
+        if constexpr(deterministic) {
+            matmulService.InitMm5DeterGlobalTensor(dKeyIndexDeterGmFloat);
+        }
     }
 }
 
@@ -465,6 +496,14 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
 
     int64_t taskId = 0;
     uint32_t s2PreloadTail = 0;
+    if constexpr(deterministic) {
+        if ASCEND_IS_AIV {
+            if (constInfo.aivIdx % 2 == 0) {
+                vectorService.SaveDeterRunInfoInvalid();
+                PipeBarrier<PIPE_ALL>();
+            }
+        }
+    }
     for (int64_t bIdx = bStartIdx; bIdx <= bEndIdx; bIdx++) {
         bool lastB = (bIdx == bEndIdx);
         int64_t s1StartIdxThisBatch = 0;
@@ -542,13 +581,33 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                 if ASCEND_IS_AIC {
                     if (runInfoNeg1.isValid) {
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V1_TO_C2_DW_FLAG[runInfoNeg1.taskIdMod2]);
-                        matmulService.ComputeMm34(runInfoNeg1); // C2
+                        if constexpr(deterministic) {
+                            matmulService.ComputeMm34Deter(runInfoNeg1); // C2
+                        } else {
+                            matmulService.ComputeMm34(runInfoNeg1); // C2
+                        }
 
                         if (runInfoNeg1.lastS2) {
                             // send msg for cast
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_DW_FLAG[runInfoNeg1.taskIdMod2]);
                         }
                     }
+                }
+                if constexpr(deterministic) {
+                    if (constInfo.aivIdx % 2 == 0) {
+                        if ASCEND_IS_AIV {
+                            if (runInfoNeg1.isValid) {
+                                vectorService.SaveDeterRunInfo(runInfoNeg1);
+                            } else {
+                                vectorService.SaveDeterRunInfoInvalid();
+                            }
+                        }
+                    }
+                    SyncAll<false>();
+                    if ASCEND_IS_AIV {
+                        vectorService.DeterAddKIndexGrad(runInfoNeg1);
+                    }
+                    SyncAll<false>();
                 }
                 if ASCEND_IS_AIV {
                     if (runInfoNeg1.isValid && runInfoNeg1.lastS2) {
@@ -562,6 +621,21 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
         }
 
     }
+
+    if constexpr(deterministic) {
+        for(int i = taskId; i < constInfo.maxLoopSize; i++) {
+            if (constInfo.aivIdx % 2 == 0) {
+                if ASCEND_IS_AIV {
+                    vectorService.SaveDeterRunInfoInvalid();
+                }
+            }
+            SyncAll<false>();
+            if ASCEND_IS_AIV {
+                vectorService.DeterAddKIndexGrad(runInfos[(taskId + 2) % 3]);
+            }
+            SyncAll<false>();
+        }
+    }
     if ASCEND_IS_AIV {
         vectorService.FreeEventID();
     } else {
@@ -569,11 +643,18 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
     }
     if ASCEND_IS_AIV {
         vector2Service.InitParams(constInfo, tilingData);
+
         vector2Service.InitVector2GM(dKeyIndexGmFloat, dKeyIndexGm);
+        if constexpr(deterministic) {
+            vector2Service.InitVector2DeterGM(lossGm, lossGmDeterFloat);
+        }
         vector2Service.InitBuffers(pipe);
     }
     SyncAll<false>();
     if ASCEND_IS_AIV {
+        if constexpr(deterministic) {
+            vector2Service.DeterSumLoss();
+        }
         vector2Service.ProcessVectorDk();
     }
 }

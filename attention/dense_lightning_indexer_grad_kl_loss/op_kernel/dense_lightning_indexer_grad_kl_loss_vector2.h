@@ -46,17 +46,26 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T>& dKeyIndexGmIn,
                                          const GlobalTensor<OUT_T>& dKeyIndexGmOut);
+    __aicore__ inline void InitVector2DeterGM(const GlobalTensor<T>& lossGm, const GlobalTensor<T>& lossDeterGmFloat);
     __aicore__ inline void ProcessVectorDk();
+    __aicore__ inline void DeterSumLoss();
 
 private:
     TBuf<> uBuf_;
     GlobalTensor<MM3_OUT_T> dKeyIndexGmIn;
     GlobalTensor<OUT_T> dKeyIndexGmOut;
+    GlobalTensor<T> lossGm;
+    GlobalTensor<T> lossDeterGmFloat;
 
     LocalTensor<MM4_OUT_T> ubInFloatPing_;
     LocalTensor<OUT_T> ubOutHalfPing_;
     LocalTensor<MM4_OUT_T> ubInFloatPong_;
     LocalTensor<OUT_T> ubOutHalfPong_;
+
+    // deter 相关
+    LocalTensor<T> ubLossIn_;
+    LocalTensor<T> ubLossOut_;
+    LocalTensor<uint8_t> tmpUb_;
 
     event_t eventId = EVENT_ID0;
     int32_t pingPongFlag = 0;
@@ -79,6 +88,14 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2GM(const Global
 }
 
 template <typename DLIT>
+__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2DeterGM(const GlobalTensor<T>& lossGm,
+                                                                        const GlobalTensor<T>& lossDeterGmFloat)
+{
+    this->lossGm = lossGm;
+    this->lossDeterGmFloat = lossDeterGmFloat;
+}
+
+template <typename DLIT>
 __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitBuffers(TPipe *pipe)
 {
     pipe->Reset();
@@ -94,6 +111,11 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitBuffers(TPipe *pipe)
     ubOffset += DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K;
     ubOutHalfPong_ = uBuf_.GetWithOffset<OUT_T>(DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K, ubOffset);
     ubOffset += DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K;
+
+    // deter 相关
+    ubLossIn_ = ubInFloatPing_;
+    ubLossOut_ = ubInFloatPong_;
+    tmpUb_ =  ubOutHalfPong_.template ReinterpretCast<uint8_t>();
 }
 
 template <typename DLIT>
@@ -138,5 +160,45 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
+template <typename DLIT>
+__aicore__ inline void DLIKLLossVector2Service<DLIT>::DeterSumLoss()
+{
+    if (constInfo.aivIdx == 0) {
+        event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
+        event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
+
+        int64_t count = constInfo.aivNum;
+        int64_t countAlign = BlockAlign<T>(count);
+        SumParams sumParams;
+        sumParams.outter = 1;
+        sumParams.n = count;
+        sumParams.inner = countAlign;
+
+        DataCopyParams dataCopyParams;
+        DataCopyPadParams dataCopyPadParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.dstStride = 0;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.blockLen = count * sizeof(T);
+        dataCopyPadParams.rightPadding = countAlign - count;
+        dataCopyPadParams.paddingValue = 0;
+        DataCopyPad(ubLossIn_, lossDeterGmFloat, dataCopyParams, dataCopyPadParams);
+
+        SetFlag<HardEvent::MTE2_V>(mte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+
+        AscendC::Sum(ubLossOut_, ubLossIn_, tmpUb_, sumParams);
+
+        SetFlag<HardEvent::MTE2_V>(vToMte3);
+        WaitFlag<HardEvent::MTE2_V>(vToMte3);
+
+        AscendC::DataCopyPad(lossGm, ubLossOut_,
+            {static_cast<uint32_t>(1), static_cast<uint32_t>(sizeof(float)),
+            static_cast<uint32_t>(0), static_cast<uint32_t>(0)});
+        
+        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_V>(mte2ToV);
+        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
+    }
+}
 
 #endif // DENSE_LIGHTNING_INDEXER_GRAD_KL_LOSS_VECTOR2_H

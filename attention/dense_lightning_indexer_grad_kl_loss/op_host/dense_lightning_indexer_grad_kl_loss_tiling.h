@@ -113,6 +113,18 @@ protected:
     void SetSparseParamsRegbase(int64_t maxCoreNum);
     void InitOutputSplit();
 
+    // deter 相关
+    void CalcMaxLoop();
+    int32_t GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ,
+                            int32_t actualSeqLensK, int32_t sparseMode);
+    int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
+                                std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData,
+                                LayoutType layout, int64_t &accumLen);
+    int64_t FindBIndex(int64_t bIndex, int64_t curBs1Index, int64_t &accumulateLen);
+    void CalcMultiCoreOffset(int64_t &bStartIdx, int64_t &s1StartIdx, int64_t &bEndIdx, int64_t &s1EndIdx, int64_t &aicIdx);
+    int64_t GetEndS1Etx(int32_t bIdx, int32_t defaultLens, std::array<int64_t,
+                        MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData, LayoutType layout);
+
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
     inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
                               const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);

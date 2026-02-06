@@ -47,12 +47,14 @@ public:
                                                GlobalTensor<T> &mm2Res);
     __aicore__ inline void InitMm5GlobalTensor(GlobalTensor<Q_T> &reluGradRes,
                                                GlobalTensor<MM12_OUT_T> &bmm5Res);
+    __aicore__ inline void InitMm5DeterGlobalTensor(GlobalTensor<MM12_OUT_T> &dKeyIndexDeterGmFloat);
     __aicore__ inline void InitMm6GlobalTensor(GlobalTensor<T> &bmm6Res);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void ComputeMm1(const DLIGradKLLossRunInfo &info);
     __aicore__ inline void ComputeMm2(const DLIGradKLLossRunInfo &info);
     __aicore__ inline void ComputeMm34(const DLIGradKLLossRunInfo &info);
+    __aicore__ inline void ComputeMm34Deter(const DLIGradKLLossRunInfo &info);
     __aicore__ inline void ComputeMm4(const DLIGradKLLossRunInfo &info);
     __aicore__ inline void FreeEventID();
     
@@ -119,6 +121,8 @@ private:
     // mm5
     GlobalTensor<MM12_OUT_T> mm5ResGm;
     GlobalTensor<OUT_T> dKeyIndexGm;
+    // deter 相关
+    GlobalTensor<MM12_OUT_T> dKeyIndexDeterGmFloat;
     // mm6
     GlobalTensor<MM12_OUT_T> mm6ResGm;
     GlobalTensor<Q_T> reluGradRes[2];
@@ -183,6 +187,13 @@ DLITMatmulService<DLIT>::InitMm5GlobalTensor(GlobalTensor<Q_T> &reluGradRes, Glo
     this->reluGradRes[0] = reluGradRes;
     this->reluGradRes[1] = reluGradRes[constInfo.n1IndexSize * S1_BASE_STEP * S2_BASE_STEP];
     this->mm5ResGm = bmm5Res;
+}
+
+template <typename DLIT>
+__aicore__ inline void 
+DLITMatmulService<DLIT>::InitMm5DeterGlobalTensor(GlobalTensor<T> &dKeyIndexDeterGmFloat)
+{
+    this->dKeyIndexDeterGmFloat = dKeyIndexDeterGmFloat;
 }
 
 template <typename DLIT>
@@ -728,5 +739,99 @@ template <typename DLIT>
 __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm4(const DLIGradKLLossRunInfo &info)
 {}
 
+template <typename DLIT>
+__aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKLLossRunInfo &info)
+{
+    uint8_t l1PingPongFlag = 0;
+    uint8_t l0abPingPongFlag = 0;
+    uint8_t l0cPingPongFlag = 0;
+
+    MMParam mm3Params;
+    mm3Params.singleK = info.curS1Size;
+    mm3Params.singleN = constInfo.dSizeQueryIndex;
+    mm3Params.dstFixStride = constInfo.dSizeQueryIndex;
+    mm3Params.isFixOut = true;
+    mm3Params.isL0CInit = true;
+    mm3Params.isLeftTranspose = true;
+    mm3Params.isRightTranspose = true;      // NZ -> ZN
+
+    MMParam mm4Params;
+    mm4Params.singleM = info.curS1Size;
+    mm4Params.singleN = constInfo.dSizeQueryIndex;
+    mm4Params.dstFixStride = constInfo.dSizeQueryIndex;
+    mm4Params.isLeftTranspose = false;
+    mm4Params.isRightTranspose = true;
+    mm4Params.needAccumL0C = true;
+
+    for (uint32_t n1IndexId = 0; n1IndexId < this->constInfo.n1IndexSize; n1IndexId++) {
+        uint32_t n2IndexId = n1IndexId / constInfo.gSizeQueryIndex;
+        // 一个head拷贝一次, mm3和mm4复用
+        WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
+        CopyInReluGradToL1A(info, n1IndexId);
+        
+        // matmul 3
+        WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
+        CopyInMm2AToL1(info, n1IndexId, l1PingPongFlag);
+        SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
+        WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
+
+        // GM初始清零，不累加通过atomicFlag控制
+        mm3Params.atomicFlag = (n1IndexId != 0);
+        for (uint32_t s2InnerIdx = 0; s2InnerIdx < info.curS2LoopTimes; s2InnerIdx++) {
+            uint32_t curS2BlkSize = (s2InnerIdx == info.curS2LoopTimes - 1) ?
+                                    (info.curS2StepSize - s2InnerIdx * constInfo.s2BaseBlk) : constInfo.s2BaseBlk;
+            mm3Params.singleM = curS2BlkSize;
+            uint32_t l1ReluGradOffset = s2InnerIdx * constInfo.s2BaseBlk * info.curS1SizeAlign16;
+            auto l1aTensor = l1ReLuGradTensor[l1ReluGradOffset];
+            auto l1bTensor = l1QIndexTensor[l1PingPongFlag & 1];
+            LocalTensor<MM12_OUT_T> l0cTensor = cL0TensorPingPong[l0abPingPongFlag & 1];
+
+            uint32_t dKeyGmOffset = constInfo.dKeyDeterGmOffset +
+                                    s2InnerIdx * constInfo.s2BaseBlk * constInfo.n2IndexSize * constInfo.dSizeQueryIndex +
+                                    n2IndexId * constInfo.dSizeQueryIndex;
+            auto dstGm = dKeyIndexDeterGmFloat[dKeyGmOffset];
+            MmadInner(mm3Params, l1aTensor, l1bTensor, l0cTensor, l1PingPongFlag, l0abPingPongFlag, l0abPingPongFlag);
+            FixOutAtomicAdd(mm3Params, dstGm, l0cTensor, l0abPingPongFlag);
+            l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
+        }
+        SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
+        // 这个必须加, 因为mm3是L0B reuse，使用l1PingPongFlag去控制L0B的，而接下来的mm4是使用l0abPingPongFlag来控制的
+        l0abPingPongFlag = l1PingPongFlag;
+
+        // matmul 4
+        uint32_t dQueryGmOffset = n1IndexId * info.curS1Size * constInfo.dSizeQueryIndex;
+        LocalTensor<MM12_OUT_T> mm4L0cTensor = cL0TensorPingPong[l0cPingPongFlag & 1];
+
+        for (uint32_t s2InnerIdx = 0; s2InnerIdx < info.curS2LoopTimes; s2InnerIdx++) {
+            uint32_t curS2BlkSize = (s2InnerIdx == info.curS2LoopTimes - 1) ?
+                                    (info.curS2StepSize - s2InnerIdx * constInfo.s2BaseBlk) : constInfo.s2BaseBlk;
+            mm4Params.singleK = curS2BlkSize;
+            mm4Params.isFixOut = (s2InnerIdx == info.curS2LoopTimes - 1);
+            mm4Params.isL0CInit = (s2InnerIdx == 0);
+            WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l0abPingPongFlag & 1]);
+            CopyInMm2BToL1(info, n2IndexId, s2InnerIdx, curS2BlkSize, l0abPingPongFlag);
+            
+            SetFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0abPingPongFlag & 1]);
+            WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_KEY_INDEX[l0abPingPongFlag & 1]);
+
+            uint32_t l1ReluGradOffset = s2InnerIdx * constInfo.s2BaseBlk * info.curS1SizeAlign16;
+            auto l1aTensor = l1ReLuGradTensor[l1ReluGradOffset];
+            auto l1bTensor = l1KeyTensor[l0abPingPongFlag & 1];
+
+            auto dstGm = mm6ResGm[dQueryGmOffset];
+            MmadInner(mm4Params, l1aTensor, l1bTensor, mm4L0cTensor, l1PingPongFlag, l0abPingPongFlag, l0cPingPongFlag);
+            SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_KEY[l0abPingPongFlag & 1]);
+            mm4Params.atomicFlag = mm4Params.isFixOut && (info.s2Idx > 0);
+            FixOutAtomicAdd(mm4Params, dstGm, mm4L0cTensor, l0cPingPongFlag);
+
+            l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
+        }
+        SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_RELU_GRAD);
+        l0cPingPongFlag = (l0cPingPongFlag + 1) & 1;
+        // 和mm3结束赋值l0PingPongFlag的理由一样
+        l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
+        l1PingPongFlag = l0abPingPongFlag;
+    }
+}
 
 #endif // DENSE_LIGHTNING_INDEXER_GRAD_KL_LOSS_SERVICE_CUBE_H

@@ -65,6 +65,8 @@ constexpr uint32_t S1_VEC_SIZE_8 = 8;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t AIC_AIV_RATIO = 2;
 constexpr int64_t C0_SIZE = 16;
+constexpr int64_t DETER_CORE_INFO_TMP_GM_NUM = 16;
+constexpr int64_t DETER_LOSS_TMP_GM_NUM = 8;
 
 // ------------------公共定义--------------------------
 constexpr uint32_t MAX_CORE_NUM = 25; // 目前使用AIC核的最大值为25
@@ -95,6 +97,7 @@ public:
     int32_t sparseMode;
     int32_t rsvd;
     float scaleValue;
+    int64_t maxLoopSize;
 
     uint8_t layoutType;  // 0: BSND, 1: TND
 
@@ -139,6 +142,9 @@ public:
 
     uint8_t get_layoutType() const {return layoutType;}
     void set_layoutType(uint8_t layoutTypeParam) {this->layoutType = layoutTypeParam;}
+
+    int64_t get_maxLoopSize() const {return maxLoopSize;}
+    void set_maxLoopSize(int32_t maxLoopSizeParam) {this->maxLoopSize = maxLoopSizeParam;}
 };
 
 class DLIGradKLLossMultiCoreParams {

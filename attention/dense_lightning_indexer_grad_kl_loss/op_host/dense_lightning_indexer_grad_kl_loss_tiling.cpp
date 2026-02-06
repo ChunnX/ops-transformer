@@ -70,9 +70,9 @@ bool DenseLightningIndexerGradKLLossTilingBase::AnalyzeAttrs()
     scaleValue = *scaleValuePtr;
     inputLayout = inputLayoutPtr;
     sparseMode = *sparseModePtr;
-
-    OP_LOGD(context_->GetNodeName(), "attrs: scaleValue[%f] input_layout[%s] sparse_mode[%ld].",
-            scaleValue, inputLayout, sparseMode);
+    deterministic = (context_->GetDeterministic() == 1);
+    OP_LOGD(context_->GetNodeName(), "attrs: scaleValue[%f] input_layout[%s] sparse_mode[%ld] deterministic[%d].",
+            scaleValue, inputLayout, sparseMode, deterministic);
     return true;
 }
 
@@ -709,9 +709,145 @@ void DenseLightningIndexerGradKLLossTilingBase::InitOutputSplit()
         totalsize = static_cast<int64_t>(bSize) * totals2Size * dsizeDkeyindex;
     }
     // 单个核均分元素数量
-    singlecoresize = static_cast<uint32_t>(CeilDivision(totalsize, static_cast<int64_t>(aivNum))); // 输出k-index总大小TD或者BSD 除以 总的aiv核数 向上取整
+    singlecoresize = static_cast<uint32_t>(CeilDivision(totalsize, static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum() * AIC_AIV_RATIO))); // 输出k-index总大小TD或者BSD 除以 总的aiv核数 向上取整
     initoutput->set_singleCoreSize(singlecoresize);
     initoutput->set_totalOutputSize(totalsize);
+}
+
+int32_t DenseLightningIndexerGradKLLossTilingBase::GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ,
+                                                                int32_t actualSeqLensK, int32_t sparseMode)
+{
+    if (sparseMode == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
+        return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
+    } else {
+        return 0;
+    }
+}
+
+int64_t DenseLightningIndexerGradKLLossTilingBase::GetEndS1Etx(int32_t bIdx, int32_t defaultLens, std::array<int64_t,
+                                                            MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData, LayoutType layout)
+{
+    if (bSize <= 0 || bIdx >= bSize) {
+        return defaultLens;
+    }
+
+    if (layout == LayoutType::LAYOUT_TND) {
+        if (bIdx == 0) {
+            return actualSeqLenData[0];
+        } else {
+            return (actualSeqLenData[bIdx] - actualSeqLenData[bIdx- 1]);
+        }
+    } else {
+        return 0;
+    }
+}
+
+int32_t DenseLightningIndexerGradKLLossTilingBase::GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
+                                                            std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData,
+                                                            LayoutType layout, int64_t &accumLen)
+{
+    if (bSize <= 0 || bIdx >= bSize) {
+        accumLen = bIdx * defaultLens;
+        return defaultLens;
+    }
+
+    if (layout == LayoutType::LAYOUT_TND) {
+        if (bIdx == 0) {
+            accumLen = 0;
+            return actualSeqLenData[0];
+        } else {
+            accumLen = actualSeqLenData[bIdx - 1];
+            return (actualSeqLenData[bIdx] - accumLen);
+        }
+    } else {
+        accumLen = bIdx * defaultLens;
+        return defaultLens;
+    }
+}
+
+int64_t DenseLightningIndexerGradKLLossTilingBase::FindBIndex(int64_t bIndex, int64_t curBs1Index, int64_t &accumulateLen)
+{
+    for (int index = bIndex; index < bSize; index++) {
+        int64_t actualLen = actualSeqLenData[index];
+        if (curBs1Index < actualLen) {
+            return index;
+        }
+        accumulateLen = actualLen;
+    }
+    return dliGradkllossMultiCoreParams_->get_totalSize() >= curBs1Index ? bSize : -1;
+}
+
+void DenseLightningIndexerGradKLLossTilingBase::CalcMultiCoreOffset(int64_t &bStartIdx, int64_t &s1StartIdx,
+                                                                    int64_t &bEndIdx, int64_t &s1EndIdx, int64_t &aicIdx)
+{
+    int64_t actualSum = 0;
+
+    int64_t *sparseStartIdx = dliGradkllossMultiCoreParams_->get_bS1Ptr();
+    if (sparseStartIdx == nullptr || aicIdx >= optiling::MAX_CORE_NUM ) {
+        return;
+    }
+    int64_t bS1Index = sparseStartIdx[aicIdx];
+    int64_t bS1EndIndex = aicIdx + 1 < optiling::MAX_CORE_NUM ?
+            sparseStartIdx[aicIdx + 1] : dliGradkllossMultiCoreParams_->get_totalSize();
+    if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
+        bStartIdx = FindBIndex(0, bS1Index, actualSum);
+        s1StartIdx = bS1Index - actualSum;
+        bEndIdx = FindBIndex(bStartIdx, bS1EndIndex - 1, actualSum);
+        s1EndIdx = bS1EndIndex - actualSum;
+    } else {
+        bStartIdx = bS1Index / s1Size;
+        bEndIdx = (bS1EndIndex - 1) / s1Size;
+        s1StartIdx = bS1Index - bStartIdx * s1Size;
+        s1EndIdx = bS1EndIndex - bEndIdx * s1Size;
+    }
+}
+
+void DenseLightningIndexerGradKLLossTilingBase::CalcMaxLoop()
+{
+    if (!deterministic) {
+        return;
+    }
+    int64_t maxLoopSize = 0;
+    for(int64_t aicIdx = 0; aicIdx < dliGradkllossMultiCoreParams_->get_coreNum(); aicIdx++) {
+        int64_t bStartIdx;
+        int64_t bEndIdx;
+        int64_t s1StartIdx;
+        int64_t s1EndIdx;
+        CalcMultiCoreOffset(bStartIdx, s1StartIdx, bEndIdx, s1EndIdx, aicIdx);
+        int64_t taskId = 0;
+        uint32_t s2PreloadTail = 0;
+
+        for (int64_t bIdx = bStartIdx; bIdx <= bEndIdx; bIdx++) {
+            bool lastB = (bIdx == bEndIdx);
+            int64_t s1StartIdxThisBatch = 0;
+            int64_t s1EndIdxThisBatch = 0;
+            if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
+                s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
+                s1EndIdxThisBatch = (!lastB) ? GetEndS1Etx(bIdx, s1Size, actualSeqLenData, tilingKeyLayout) : s1EndIdx;
+            } else if (tilingKeyLayout == LayoutType::LAYOUT_BSND) {
+                s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
+                s1EndIdxThisBatch = (!lastB) ? s1Size : s1EndIdx;      
+            }
+
+            for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch; s1Idx += S1_BASE_STEP) {
+                bool lastS1 = ((s1Idx + S1_BASE_STEP) >= s1EndIdxThisBatch);
+                int64_t accumS1Idx, accumS2Idx;
+                uint32_t actualSeqLensQ = GetActualSeqLens(bIdx, s1Size, actualSeqLenData, tilingKeyLayout,
+                                                            accumS1Idx);
+                uint32_t actualSeqLensK = GetActualSeqLens(bIdx, s2Size, actualSeqLenKData, tilingKeyLayout,
+                                                            accumS2Idx);
+                int64_t s1EndIdxThisLoop = lastS1 ? s1EndIdxThisBatch : (s1Idx + S1_BASE_STEP);
+                int32_t s2EndIdx = GetS2SparseLen(s1EndIdxThisLoop, actualSeqLensQ, actualSeqLensK, sparseMode) - 1;
+                if (lastB && lastS1) {
+                    s2PreloadTail = S2_BASE_STEP * 1;
+                }
+                taskId += CeilDivision(s2EndIdx + s2PreloadTail, S2_BASE_STEP);
+            }
+        }
+        maxLoopSize = Max(maxLoopSize, taskId);
+    }
+    dliGradkllossBaseParams_->set_maxLoopSize(maxLoopSize);
+    OP_LOGD(context_->GetNodeName(), "CalcMaxLoop maxLoopSize = %d.", maxLoopSize);
 }
 
 ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetShapeAttrsInfo()
@@ -785,6 +921,8 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::DoOpTiling()
 
     SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
     InitOutputSplit(); // output分核
+    // 确定性场景需要计算最大轮次
+    CalcMaxLoop();
     OP_LOGD(opName, "ending template[%s]", templateName);
     return ge::GRAPH_SUCCESS;
 }
@@ -813,9 +951,19 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
         dKeyIndexGmSize = bSize * s2Size * n2IndexSize * dSizeQueryIndex * sizeof(float); //batch
     }
 
+    int dKeyIndexDeterGmSize = 0;
+    int lossDeterGmSize = 0;
+    int coreRuninfoDeterGmSize = 0;
+    if (deterministic) {
+        int64_t coreNum = static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum());
+        dKeyIndexDeterGmSize = coreNum * S2_BASE_STEP * n2IndexSize* dSizeQueryIndex * sizeof(float);
+        lossDeterGmSize = coreNum * AIC_AIV_RATIO * optiling::DETER_LOSS_TMP_GM_NUM * sizeof(float);
+        coreRuninfoDeterGmSize = coreNum * DETER_CORE_INFO_TMP_GM_NUM * sizeof(int64_t);
+    }
+
     int64_t singlecoreTotalSize = PING_PONG_VALUE * (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize) + dWeightFloatSzie + dQueryIndexFloatSzie;
     int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum()) +
-                                dKeyIndexGmSize;
+                                dKeyIndexGmSize + dKeyIndexDeterGmSize + lossDeterGmSize + coreRuninfoDeterGmSize;
 
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
     OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
