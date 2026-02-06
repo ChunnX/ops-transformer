@@ -599,7 +599,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     if constexpr (isInfer) {
         taskParam.s2Idx += runInfo.s2StartIdx / constInfo.s2BaseSize;
         if constexpr (enableKVPrefix) {
-            taskParam.isPrefixLoop = (runInfo.s2LoopCount < constInfo.prefixLoopCount);
+            taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
             if (taskParam.isPrefixLoop) {
                 taskParam.kvGmOffset = runInfo.prefixOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
             } else {
@@ -884,7 +884,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
 {
     GlobalTensor<KV_T> tempValueGm;
     if constexpr (enableKVPrefix) {
-        taskParam.isPrefixLoop = (runInfo.s2LoopCount < constInfo.prefixLoopCount);
+        taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
         if (taskParam.isPrefixLoop) {
             tempValueGm = this->valueSharedPrefixGm;
         } else {
@@ -936,7 +936,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
     if constexpr (isInfer) {
         taskParam.s2Idx += runInfo.s2StartIdx / constInfo.s2BaseSize;
         if constexpr (enableKVPrefix) {
-            taskParam.isPrefixLoop = (runInfo.s2LoopCount < constInfo.prefixLoopCount);
+            taskParam.isPrefixLoop = ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
             if (taskParam.isPrefixLoop) {
                 taskParam.kvGmOffset = runInfo.prefixOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
             } else {

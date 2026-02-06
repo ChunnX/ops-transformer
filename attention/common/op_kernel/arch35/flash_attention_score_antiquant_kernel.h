@@ -583,7 +583,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
                     if ASCEND_IS_AIV {
                         GlobalTensor<KV_T> keyGmAnti;
                         if constexpr (enableKVPrefix) {
-                            if (runInfo1.s2LoopCount < constInfo.prefixLoopCount) {
+                            if ((runInfo1.s2LoopCount + runInfo1.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
                                 keyGmAnti = this->keySharedPrefixGm;
                             } else {
                                 keyGmAnti = this->keyGm;
