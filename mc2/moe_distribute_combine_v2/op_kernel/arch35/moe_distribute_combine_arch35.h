@@ -52,10 +52,10 @@ __aicore__ inline T Align32(T x)
 }
 
 using namespace AscendC;
-#define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
-#define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
+#define TemplateMoeDistributeCombineA5TypeClass typename ExpandXType, typename ExpandIdxType
+#define TemplateMoeDistributeCombineA5TypeFunc ExpandXType, ExpandIdxType
 
-template <TemplateMC2TypeClass>
+template <TemplateMoeDistributeCombineA5TypeClass>
 class MoeDistributeCombineA5 {
 public:
     __aicore__ inline MoeDistributeCombineA5(){};
@@ -158,8 +158,8 @@ private:
     TBuf<> xActMaskSumTBuf_;
 };
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::TokenMaskCalCnt()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::TokenMaskCalCnt()
 {
     // 一维mask, 计算得到有效bs数量
     LocalTensor<bool> xActiveMaskTensor = xActMaskTBuf_.Get<bool>();
@@ -178,8 +178,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::TokenMaskCal
     activeMaskBsCnt_ = static_cast<int32_t>(sumOutTensor.GetValue(0));
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CalculateRecvBufAndRecvOffset(const MoeDistributeCombineV2TilingData *tilingData)
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::CalculateRecvBufAndRecvOffset(const MoeDistributeCombineV2TilingData *tilingData)
 {
     GlobalTensor<int32_t> statusGT;
     __gm__ HcclCombineOpParam *context = (__gm__ HcclCombineOpParam *)(GetHcclContext<0>());
@@ -203,8 +203,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CalculateRec
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusGT);
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::Init(GM_ADDR expandX,
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::Init(GM_ADDR expandX,
     GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount,
     GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedExpertX, GM_ADDR XOut, GM_ADDR workspaceGM,
     TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
@@ -249,8 +249,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::Init(GM_ADDR
     CalculateRecvBufAndRecvOffset(tilingData);
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CopyAndPadData(uint32_t &startRank,
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::CopyAndPadData(uint32_t &startRank,
     uint32_t &rankNum, uint32_t &eachSize, LocalTensor<uint64_t> &sizeLT, LocalTensor<uint64_t> &sendOffsetLT)
 {
     GlobalTensor<uint64_t> sendGT;
@@ -264,8 +264,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CopyAndPadDa
     DataCopyPad(sendGT, sendOffsetLT, params);
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::SplitRank(uint32_t &start, uint32_t &count)
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::SplitRank(uint32_t &start, uint32_t &count)
 {
     count = epWorldSize_ / aivNum_;
     uint32_t remainCnt = epWorldSize_ % aivNum_;
@@ -279,8 +279,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::SplitRank(ui
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::PrepareInit()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::PrepareInit()
 {
     pipe_->InitBuffer(tokenQue_, BUFFER_NUM, perTokenSize_);
     TBuf<> tmpBuf;
@@ -291,8 +291,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::PrepareInit(
     DataCopyPad(inputCountLT_, epSendCountGT_, copyParams, padParams);
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::HandleSharedAndMoeRank(uint32_t &startRank,
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::HandleSharedAndMoeRank(uint32_t &startRank,
     LocalTensor<uint64_t> &sizeLT, uint32_t &eachCnt, uint32_t &rankNum, LocalTensor<uint32_t> &offsetLT,
     LocalTensor<uint64_t> &sendOffsetLT)
 {
@@ -341,8 +341,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::HandleShared
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::SharedAndMoePrepare()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::SharedAndMoePrepare()
 {
     uint32_t startRank;
     uint32_t rankNum;
@@ -373,15 +373,15 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::SharedAndMoe
     CopyAndPadData(startRank, rankNum, eachSize, sizeLT, sendOffsetLT);
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::PrepareSendData()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::PrepareSendData()
 {
     PrepareInit();
     SharedAndMoePrepare();
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CalculateInit()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::CalculateInit()
 {
     TBuf<> tmpBuf;
     pipe_->InitBuffer(tmpBuf, bskNum_ * sizeof(int32_t));
@@ -426,8 +426,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CalculateIni
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::Communication()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::Communication()
 {
     SyncAll<true>();
     if (aivId_ == 0) {
@@ -457,8 +457,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::Communicatio
     SyncAll<true>();
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::HandleSharedExpertX(uint32_t &tokenIndex,
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::HandleSharedExpertX(uint32_t &tokenIndex,
     uint32_t &tokenOffset, uint32_t &processLen)
 {
     DataCopyParams copyInParams = {1U, static_cast<uint16_t>(processLen * sizeof(ExpandXType)), 0U, 0U};
@@ -477,8 +477,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::HandleShared
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CalculateMoeResult(uint32_t &tokenIndex,
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::CalculateMoeResult(uint32_t &tokenIndex,
     uint32_t &tokenOffset, uint32_t &processLen)
 {
     GlobalTensor<ExpandXType> rowTmpGT;
@@ -507,8 +507,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::CalculateMoe
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::HandleCalculateToken(uint32_t &beginIndex,
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::HandleCalculateToken(uint32_t &beginIndex,
     uint32_t &endIndex, uint32_t &processLen, uint32_t &tokenOffset)
 {
     GM_ADDR sharedBase = nullptr;
@@ -544,8 +544,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::HandleCalcul
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::Calculate()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::Calculate()
 {
     if (activeMaskBsCnt_ == 0U) {
         return;
@@ -590,8 +590,8 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::Calculate()
     HandleCalculateToken(beginIndex, endIndex, processLen, tokenOffset);
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineA5<TemplateMC2TypeFunc>::Process()
+template <TemplateMoeDistributeCombineA5TypeClass>
+__aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
         PrepareSendData();
