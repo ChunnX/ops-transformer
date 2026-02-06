@@ -230,13 +230,6 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                 MIN_BLOCK_SIZE, MAX_BLOCK_SIZE, ALIGN_BLOCK_SIZE, baseShapeInfo_.blockSize),
             return ge::GRAPH_FAILED);
     }
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        const std::set<uint32_t> supportedBlockSize {16, 128};
-        OP_CHECK_IF((supportedBlockSize.find(baseShapeInfo_.blockSize) == supportedBlockSize.end()),
-            OP_LOGE(context_.opName, "BlockSize allows only %s, but got %u.",
-                ConvertContainerToString(supportedBlockSize).c_str(), baseShapeInfo_.blockSize),
-        return ge::GRAPH_FAILED);
-    }
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         uint32_t supportedDtileSize = baseShapeInfo_.hckvSize;
         if (*(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
