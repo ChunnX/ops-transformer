@@ -148,6 +148,10 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
             runParam.actualS1Size = (runParam.actualS1Size > runParam.actualS2Size * constInfo.gSize +
                                      runParam.preTokensPerBatch) ? runParam.actualS2Size * constInfo.gSize +
                                      runParam.preTokensPerBatch : runParam.actualS1Size;
+        } else if (constInfo.isGqa && constInfo.s1Size == 1 && layout != LayOutTypeEnum::LAYOUT_BNSD) {
+            runParam.actualS1Size = (runParam.actualS1Size > (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize) ?
+                                    (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize :
+                                     runParam.actualS1Size;
         } else {
             runParam.actualS1Size = (runParam.actualS1Size > runParam.actualS2Size + runParam.preTokensPerBatch) ?
                                         runParam.actualS2Size + runParam.preTokensPerBatch :
