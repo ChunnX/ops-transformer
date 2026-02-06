@@ -11,10 +11,10 @@
 #include "aclnn_linspace.h"
 #include "linspace.h"
 #include "fill.h"
-#include "common/external/aclnn_kernels/cast.h"
-#include "common/external/aclnn_kernels/contiguous.h"
+#include "aclnn_kernels/cast.h"
+#include "aclnn_kernels/contiguous.h"
 #include "aclnn/aclnn_base.h"
-#include "common/external/aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -22,7 +22,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
-#include "common/external/aclnn_check.h"
+#include "common/aclnn_check.h"
 
 using namespace op;
 #ifdef __cplusplus
