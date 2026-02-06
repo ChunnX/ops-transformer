@@ -507,6 +507,7 @@ int main(int argc, char *argv[])
     const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
     if (!env_dev_num) {
         LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
+        LOG_PRINT("[WARNING] For details related to ENV_DEV_NUM, see aclnnMoeDistributeDispatchV2.md.\n");
         return 0;
     }
     int actual_env_dev_num = std::stoi(std::string(env_dev_num));
