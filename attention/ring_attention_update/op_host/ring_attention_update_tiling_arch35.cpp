@@ -615,8 +615,19 @@ static ge::graphStatus RingAttentionUpdateRegbaseSBHSplitCore(const gert::Tiling
   int64_t dimN = tiling.get_dimN();
   int64_t bnNum = dimB * dimN;
 
-  int64_t groupNum = RingAttentionUpdateRegbaseGcd(bnNum, maxCoreNum); // 分组组数，bnNum和maxCoreNum的最大公约数
+  int64_t groupNumTmpMax = 0;
+  int64_t maxCoreNumTmp = maxCoreNum;
+  for (int64_t core = maxCoreNum; core >= 1; core--) { // 适当减少核数，找到分组组数最大的情况
+    int64_t groupNumTmp = RingAttentionUpdateRegbaseGcd(bnNum, core); // 分组组数，bnNum和core的最大公约数
+    if (groupNumTmp > groupNumTmpMax) {
+      groupNumTmpMax = groupNumTmp;
+      maxCoreNumTmp = core;
+    }
+  }
+  int64_t groupNum = groupNumTmpMax; // 分组组数
+  maxCoreNum = maxCoreNumTmp; // 核数
   OP_LOGD(context->GetNodeName(), "groupNum = %ld", groupNum);
+  
   OP_CHECK_IF(SafeDivisionCheck(groupNum) != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "Division by zero(groupNum) is not supported"),
                   return ge::GRAPH_FAILED);
