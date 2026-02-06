@@ -67,7 +67,7 @@ TEST_P(MatmulAllReduceArch35TilingTest, param)
         {"rankNum", param.ranksize}
     };
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
-        param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+        param.expectTilingDataHash, {}, 0, true);
 }
 
 INSTANTIATE_TEST_SUITE_P(

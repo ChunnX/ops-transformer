@@ -51,14 +51,6 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override
-    {
-        if (antiQuantType_ != AntiQuantType::PER_GROUP) {
-            return weightQuantMatmulAllReduceA5Fp8TilingData_.msg;
-        }
-        return weightQuantMatmulAllReduceA5TilingData_.msg;
-    }
-
     Mc2Tiling::RCSTiling& MutableRCSTilingData() override
     {
         if (antiQuantType_ != AntiQuantType::PER_GROUP) {
@@ -93,7 +85,7 @@ protected:
 
     ge::graphStatus CheckInput() override;
 
-    void SetMc2Hcomm();
+    ge::graphStatus SetMc2Hcomm();
 
 private:
     ge::graphStatus CheckBiasInput();

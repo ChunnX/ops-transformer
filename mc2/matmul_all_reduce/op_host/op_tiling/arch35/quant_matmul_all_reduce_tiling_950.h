@@ -47,8 +47,6 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
-
     Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
 
     ::TCubeTiling& MutableTCubeTileTilingData() override;
@@ -59,7 +57,7 @@ protected:
 
     ge::graphStatus DoQuantTiling();
 
-    void SetMc2Hcomm();
+    ge::graphStatus SetMc2Hcomm();
 
     ge::graphStatus CheckInput() override;
 

@@ -29,21 +29,20 @@ class MatmulAllReduceBase
 public:
     __aicore__ inline MatmulAllReduceBase(
         MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
-        : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tPipe_(tPipe)
+        : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tilingData_(tilingData), tPipe_(tPipe)
     {
         if constexpr (CoreType == Mc2CoreType::ON_CUBE) {
             notifyFlag_ = (GetBlockIdx() == 0);
         } else {
             notifyFlag_ = (g_coreType == AscendC::AIV && GetBlockIdx() == 0);
         }
-        msgInTiling_ = &tilingData->msg;
         paramInTiling_ = &tilingData->param;
     }
 
     __aicore__ inline void Init()
     {
-        hccl_.Init(GetHcclContext<0>());
-
+        hccl_.InitV2(GetHcclContext<0>(), tilingData_);
+        hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTiling));
         __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
         OOMInit(context);
 #if defined(__DAV_C310__)
@@ -154,6 +153,7 @@ protected:
     Mc2Tiling::Mc2Msg* msgInTiling_;
     Mc2Tiling::RCSTiling* paramInTiling_;
     MC2TileInfo tileInfo_, tailInfo_;
+    MC2TilingHeader* tilingData_;
     TPipe* tPipe_;
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
     bool notifyFlag_;

@@ -235,19 +235,18 @@ struct ArnGmAddrs {
 
 struct MC2TilingHeader {
 #if defined(__DAV_C310__)
-    uint32_t version;
-    uint32_t hcommCnt;
-    Mc2Tiling::MC2ServerCfg serverCfg;
-    Mc2Tiling::MC2HcommCfg hcommCfg;
+    Mc2InitTiling mc2InitTiling;
+ 	Mc2CcTiling mc2CcTiling;
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8)) ||               \
     (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||          \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&   \
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))) || \
     ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
-    Mc2Tiling::MC2HcommCfg hcommInt8Cfg;
+    Mc2CcTiling mc2CcTilingCommQuant;
 #endif
-#endif
+#else
     Mc2Tiling::Mc2Msg msg;
+#endif
     Mc2Tiling::RCSTiling param;
 };
 

@@ -43,7 +43,8 @@ public:
 
     __aicore__ inline void Init()
     {
-        hccl_.Init(GetHcclContext<0>());
+        hccl_.InitV2(GetHcclContext<0>(), tilingData_);
+        hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTiling));
         notifyFlag_ = (GetBlockIdx() == 0);
         if (notifyFlag_) {
             hcclHandleId_ =
@@ -142,6 +143,7 @@ private:
 
     MC2GmAddrs* addrs_;
     Mc2Tiling::RCSTiling* param_;
+    MC2TilingHeader* tilingData_;
     bool biasFlag_{false};
     uint64_t cOffset_;
     TPipe* tPipe_;

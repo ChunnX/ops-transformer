@@ -25,50 +25,46 @@
 #include "../arch32/weight_quant_matmul_all_reduce_tiling_data.h"
 namespace Mc2Tiling {
 
-struct WeightQuantMatmulAllReduceA5TilingData {
-    uint32_t version;
-    uint32_t hcommCnt;
-    Mc2Tiling::MC2ServerCfg serverCfg;
-    Mc2Tiling::MC2HcommCfg hcommCfg;
-    Mc2Tiling::Mc2Msg msg;
+#pragma pack(push, 8)
+struct alignas(8) WeightQuantMatmulAllReduceA5TilingData {
+    Mc2InitTiling mc2InitTiling;
+ 	Mc2CcTiling mc2CcTiling;
     Mc2Tiling::RCSTiling param;
     Mc2WeightQuantBatchMatmulV2RegBaseTilingData tileRegBaseMmTiling;
     Mc2WeightQuantBatchMatmulV2RegBaseTilingData tailRegBaseMmTiling;
 };
+#pragma pack(pop)
 
-struct WeightQuantMatmulAllReduceA5Fp8TilingData {
-    uint32_t version;
-    uint32_t hcommCnt;
-    Mc2Tiling::MC2ServerCfg serverCfg;
-    Mc2Tiling::MC2HcommCfg hcommCfg;
-    Mc2Tiling::Mc2Msg msg;
+#pragma pack(push, 8)
+struct alignas(8) WeightQuantMatmulAllReduceA5Fp8TilingData {
+    Mc2InitTiling mc2InitTiling;
+ 	Mc2CcTiling mc2CcTiling;
     Mc2Tiling::RCSTiling param;
     Mc2WeightQuantBatchMatmulV2ASTilingData tileMmASTiling;
     Mc2WeightQuantBatchMatmulV2ASTilingData tailMmASTiling;
 };
+#pragma pack(pop)
 
-struct QuantMatmulAllReduceTilingDataA5{
-    uint32_t version;
-    uint32_t hcommCnt;
-    Mc2Tiling::MC2ServerCfg serverCfg;
-    Mc2Tiling::MC2HcommCfg hcommCfg;
-    Mc2Tiling::MC2HcommCfg hcommInt8Cfg;
-    Mc2Tiling::Mc2Msg msg;
+#pragma pack(push, 8)
+struct alignas(8) QuantMatmulAllReduceTilingDataA5 {
+    Mc2InitTiling mc2InitTiling;
+ 	Mc2CcTiling mc2CcTiling;
+ 	Mc2CcTiling mc2CcTilingCommQuant;
     Mc2Tiling::RCSTiling param;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tilematmulTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tailmatmulTiling;
 };
+#pragma pack(pop)
 
-struct MatmulAllReduce910TilingDataA5{
-    uint32_t version;
-    uint32_t hcommCnt;
-    Mc2Tiling::MC2ServerCfg serverCfg;
-    Mc2Tiling::MC2HcommCfg hcommCfg;
-    Mc2Tiling::Mc2Msg msg;
+#pragma pack(push, 8)
+struct alignas(8) MatmulAllReduce910TilingDataA5 {
+    Mc2InitTiling mc2InitTiling;
+ 	Mc2CcTiling mc2CcTiling;
     Mc2Tiling::RCSTiling param;
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;
 };
+#pragma pack(pop)
 
 }
 #endif // MATMUL_ALL_REDUCE_TILING_STRUCT_ARCH35_H
