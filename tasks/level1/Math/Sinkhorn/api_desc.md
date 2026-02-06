@@ -19,7 +19,7 @@ $$
 ```python
 def sinkhorn(x):
     """
-    实现自定义开平方操作。
+    计算Sinkhorn距离。
     
     参数:
         cost（aclTensor*，计算输入）：表示成本张量，公式中的`cost`，Device侧的aclTensor。数据类型支持BFLOAT16、FLOAT16、FLOAT。[数据格式](common/数据格式.md)支持ND，输入为二维矩阵且列数不超过4096。支持[非连续的Tensor](common/非连续的Tensor.md)。
