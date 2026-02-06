@@ -421,7 +421,7 @@ int main() {
   // 创建x1 aclTensor
   ret = CreateAclTensor(x1HostData, x1Shape, &x1Addr, aclDataType::ACL_FLOAT, &x1);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建x2Optional aclScalar
+  // 创建x2Optional aclTensor
   ret = CreateAclTensor(x2OptionalHostData, x2OptionalShape, &x2OptionalAddr, aclDataType::ACL_FLOAT, &x2Optional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建bias aclTensor

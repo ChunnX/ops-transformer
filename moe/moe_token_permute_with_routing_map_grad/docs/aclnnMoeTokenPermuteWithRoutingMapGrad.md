@@ -19,38 +19,38 @@
 - **计算公式**：
 
     $$
-    permuteTokenId， outIndex= sortedIndices.sort(dim=-1)
+    permuteTokenId, outIndex= sortedIndices.sort(dim=-1)
     $$
 
     $$
-    capacity = permutedTokenOutputGrad.size(0) / numExperts
+    capacity = permutedTokensOutputGrad.size(0) / numExperts
     $$
 
     - probs不为None：
     
     $$
-    probsGradOutOptional = zeros(tokens_num， numExperts)
+    probsGradOutOptional = zeros(tokens_num, numExperts)
     $$
     
     - paddedMode为true时
     
     $$
-    probsGradOutOptional [sortedIndices[i]， i/capacity] = permutedProbsOutputGradOptional[i]
+    probsGradOutOptional [sortedIndices[i], i/capacity] = permutedProbsOutputGradOptional[i]
     $$
     
     - paddedMode为false时
     
     $$
-    probsGradOutOptional = maskedscatter(probsGradOutOptional，routingMap，permutedProbsOutputGradOptional)
+    probsGradOutOptional = maskedscatter(probsGradOutOptional,routingMap, permutedProbsOutputGradOptional)
     $$
     - probs为None：
     
     $$
-    tokensGradout= zeros(restoreShapeOptional， dtype=permutedTokens.dtype， device=permutedTokens.device)
+    tokensGradOut= zeros(restoreShapeOptional, dtype=permutedTokens.dtype, device=permutedTokens.device)
     $$
     
     $$
-    tokensGradout[permuteTokenId[i]] += permutedTokens[outIndex[i]]
+    tokensGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
     $$
 
 ## 函数原型
@@ -66,7 +66,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(
     int64_t          experts_num,
     int64_t          tokens_num,
     bool             dropAndPad,
-    aclTensor       *tokenGradOut
+    aclTensor       *tokenGradOut,
     aclTensor       *probsGradOutOptional,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
@@ -113,8 +113,8 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>
-      • 非droppad模式:（tokens_num * topK_num，hidden_size）<br>
-      • droppad模式: （experts_num * capacity，hidden_size）</td>
+      • 非dropAndPad模式:（tokens_num * topK_num, hidden_size）<br>
+      • dropAndPad模式: （experts_num * capacity, hidden_size）</td>
       <td>√</td>
   </tr>
   <tr>
@@ -128,30 +128,30 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>
-      • 非droppad模式:（tokens_num * topK_num）<br>
-      • droppad模式: （experts_num * capacity）</td>
+      • 非dropAndPad模式:（tokens_num * topK_num）<br>
+      • dropAndPad模式: （experts_num * capacity）</td>
       <td>√</td>
   </tr>
   <tr>
       <td>sortedIndices</td>
       <td>输入</td>
       <td>-</td>
-      <td>非droppad模式索引取值范围[0，tokens_num * topK_num - 1]， droppad模式索引取值范围[0，experts_num * capacity - 1]。</td>
+      <td>非dropAndPad模式索引取值范围[0, tokens_num * topK_num - 1]， dropAndPad模式索引取值范围[0, experts_num * capacity - 1]。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
-      • 非droppad模式:（tokens_num * topK_num，）<br>
-      • droppad模式: （experts_num * capacity）</td>
+      • 非dropAndPad模式:（tokens_num * topK_num, ）<br>
+      • dropAndPad模式: （experts_num * capacity）</td>
       <td>√</td>
   </tr>
   <tr>
       <td>routingMap</td>
       <td>输入</td>
       <td>代表token到expert的映射关系。</td>
-      <td>要求shape为一个2D的tensor，非droppad模式要求每行中包含topK个true 或 1。</td>
+      <td>要求shape为一个2D的tensor，非dropAndPad模式要求每行中包含topK个true 或 1。</td>
       <td>INT8、bool(当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false)</td>
       <td>ND</td>
-      <td>（tokens_num，experts_num）</td>
+      <td>（tokens_num, experts_num）</td>
       <td>√</td>
   </tr>
   <tr>
@@ -191,7 +191,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>要求为一个维度为2D的Tensor。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>（tokens_num ，hidden_size）</td>
+      <td>（tokens_num, hidden_size）</td>
       <td>×</td>
   </tr>
   <tr>
@@ -381,7 +381,7 @@ bool ReadFile(const std::string &filePath, std::vector<int64_t> shape, std::vect
 template <typename T>
 bool WriteFile(const std::string &filePath, int64_t size, std::vector<T>& hostData)
 {
-    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWRITE);
+    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd < 0) {
         LOG_PRINT("Open file failed. path = %s", filePath.c_str());
         return false;

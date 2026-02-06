@@ -40,7 +40,7 @@ aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
     const aclTensor *permutedOutputGrad,
     const aclTensor *sortedIndices,
     int64_t          numTopk,
-    bool             paddedMode
+    bool             paddedMode,
     const aclTensor *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
@@ -93,7 +93,7 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
   <tr>
       <td>sortedIndices</td>
       <td>输入</td>
-      <td>-</td>
+      <td>排序的索引值。</td>
       <td>取值范围是(0, tokens_num * topK_num - 1)，且没有重复索引。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -105,7 +105,7 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
       <td>输入</td>
       <td>被选中的专家个数。</td>
       <td>numTopk <= 512。</td>
-      <td>与permute一致。</td>
+      <td>INT64</td>
       <td>ND</td>
       <td>-</td>
       <td>√</td>
