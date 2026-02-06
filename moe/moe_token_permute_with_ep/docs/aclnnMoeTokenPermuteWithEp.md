@@ -111,7 +111,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEp(
       <td>indices</td>
       <td>输入</td>
       <td>表示输入tokens对应的专家索引。</td>
-      <td><ul><li>支持空tensor。</li><li>要求shape为1D或2D。</li><li>paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为(num_tokens, topK_num)或(num_tokens)。</li><li>paddedMode为true时表示每个专家选中的token索引（暂不支持）。</li><li>元素个数小于16777215，值大于等于0小于16777215。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求shape为1D或2D。</li><li>paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为(num_tokens, topK_num)或(num_tokens)。</li><li>paddedMode为true时表示每个专家选中的token索引（暂不支持）。</li><li>元素个数小于16777215，值大于等于0且小于16777215。</li></ul></td>
       <td>INT32、INT64</td>
       <td>ND</td>
       <td>1或2</td>

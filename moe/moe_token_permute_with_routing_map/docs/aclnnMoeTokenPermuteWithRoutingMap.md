@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- **接口功能**：MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMaps将tokens和可选probsOptional广播后排序
+- **接口功能**：MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMap将tokens和可选probsOptional广播后排序
 - **计算公式**：
 
 
@@ -23,15 +23,15 @@
   dropAndPad为`false`时
 
   $$
-  expertIndex=arrange(tokens\_num).expand(expert\_num,-1)
+  expertIndex=arange(tokens\_num).expand(expert\_num,-1)
   $$
   
   $$
-  sortedIndicesFirst=expertIndex.maskedselect(routingMap.T)
+  sortedIndicesFirst=expertIndex.masked\_select(routingMap.T)
   $$
   
   $$
-  sortedIndicesOut=argSort(sortedIndicesFirst)
+  sortedIndicesOut=argsort(sortedIndicesFirst)
   $$
     
   $$
@@ -47,7 +47,7 @@
   $$
   
   $$
-  permuteProbsOutOptional=probsOptional.T.maskedselect(routingMap.T)
+  permuteProbsOutOptional=probsOptional.T.masked\_select(routingMap.T)
   $$
 
   dropAndPad为`true`时
@@ -75,11 +75,11 @@
   $$
   
   $$
-  indices\_dim0 = arange(num\_experts)
+  indices\_dim0 = arange(expert\_num).view(expert\_num, 1)
   $$
   
   $$
-  indices\_dim1 = sorted_indices.view(expert\_num, capacity)
+  indices\_dim1 = sortedIndicesOut.view(expert\_num, capacity)
   $$
   
   $$
@@ -87,12 +87,12 @@
   $$
   
   $$
-  permuteProbsOutOptional = probs\_T\_1D.index_select(0, indices\_1D)
+  permuteProbsOutOptional = probs\_T\_1D.index\_select(0, indices\_1D)
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMap”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMap”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMap”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
@@ -156,7 +156,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
       <td>routingMap</td>
       <td>输入</td>
       <td>token到expert的映射关系。</td>
-      <td><ul><li>支持空tensor。</li><li>要求shape为2D的(tokens_num, experts_num)。</li><li>数据类型为INT8时取值支持0、1，为BOOL时取值支持true、false。</li><li>非droppad模式要求每行中包含topK个true或1。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求shape为2D的(tokens_num, experts_num)。</li><li>数据类型为INT8时取值支持0、1，为BOOL时取值支持true、false。</li><li>非dropAndPad模式要求每行中包含topK个true或1。</li></ul></td>
       <td>INT8、BOOL</td>
       <td>ND</td>
       <td>2</td>
@@ -282,7 +282,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
       <tr>
         <td>ACLNN_ERR_INNER_TILING_ERROR</td>
         <td>561002</td>
-        <td>topkNum > 512</td>
+        <td>topK > 512</td>
       </tr>
     </tbody>
   </table>

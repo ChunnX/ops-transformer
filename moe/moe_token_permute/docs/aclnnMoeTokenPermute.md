@@ -116,7 +116,7 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>numOutTokens</td>
       <td>输入</td>
       <td>有效输出token数。</td>
-      <td>值范围任意整数；0表示不会删除任何token，不为0时会按照numOutTokens进行切片丢弃按照indices排序好的token中超过numOutTokens的部分，为负数时按照切片索引为负数时处理。</td>
+      <td>值范围为任意整数；0表示不会删除任何token，大于0时会按照numOutTokens进行切片丢弃按照indices排序好的token中超过numOutTokens的部分，小于0时按负的切片索引进行处理。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

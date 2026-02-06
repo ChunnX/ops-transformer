@@ -128,7 +128,7 @@ aclnnStatus aclnnMoeInitRoutingQuant(
       <td>scale</td>
       <td>输入</td>
       <td>量化计算需要的缩放因子。</td>
-      <td>典型值为：$S=\frac{R_{\max }-R_{\min }}{Q_{\max }-Q_{\min }}$，其中$R_{max}$表示输入浮点数中的最大值，$R_{min}$表示输入浮点数中的最小值， $Q_{max}$表示最大定点值，$Q_{min}$表示最小定点值。</td>
+      <td>典型值为：S=(R<sub>max</sub>-R<sub>min</sub>)/(Q<sub>max</sub>-Q<sub>min</sub>)，其中R<sub>max</sub>表示输入浮点数中的最大值，R<sub>min</sub>表示输入浮点数中的最小值，Q<sub>max</sub>表示最大定点值，Q<sub>min</sub>表示最小定点值。</td>
       <td>DOUBLE</td>
       <td>-</td>
       <td>-</td>
@@ -226,30 +226,21 @@ aclnnStatus aclnnMoeInitRoutingQuant(
         <td>输入和输出的数据类型不在支持的范围内。</td>
       </tr>
       <tr>
-        <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="8">561002</td>
-        <td>dropPadMode的属性值不是0和1。</td>
+        <td rowspan="5">ACLNN_ERR_INNER_TILING_ERROR</td>
+        <td rowspan="5">561002</td>
+        <td>x的shape维度不为2。</td>
       </tr>
       <tr>
-        <td>topK小于等于0。</td>
+        <td>rowIdx的shape不为2或者rowIdx和expertIdx的shape不相等</td>
       </tr>
       <tr>
         <td>activeNum小于0。</td>
       </tr>
       <tr>
-        <td>gradExpandedX不是2D/3D，或者dropPadMode为1时，gradExpandedX不是3D。</td>
+        <td>expandedRowIdxOut和expandedExpertIdxOut的shape不相等，且不等于num_rows * k</td>
       </tr>
       <tr>
-        <td>dropPadMode和activeNum都为0时，gradExpandedX和expandedRowIdx的0轴大小不相等。</td>
-      </tr>
-      <tr>
-        <td>dropPadMode为0且activeNum大于0时，gradExpandedX的0轴与activeNum大小不相等。</td>
-      </tr>
-      <tr>
-        <td>out和gradExpandedX的尾轴大小不相等。</td>
-      </tr>
-      <tr>
-        <td>out的0轴不等于expandedRowIdx的0轴大小除以topK。</td>
+        <td>expandedXOut的shape不等于(min(num_rows, activeNum) * k, H)</td>
       </tr>
     </tbody>
   </table>

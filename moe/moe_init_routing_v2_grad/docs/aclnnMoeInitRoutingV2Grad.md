@@ -97,7 +97,7 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
       <td>topK</td>
       <td>输入</td>
       <td>topK值。</td>
-      <td>必须大于0，且能被expandedRowIdx的0轴大小整除。</td>
+      <td>必须大于0，且expandedRowIdx的0轴大小能被topK整除。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -107,7 +107,7 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
       <td>dropPadMode</td>
       <td>输入</td>
       <td>表示是否为Drop/Pad场景。</td>
-      <td>取值为0和1。<ul><li>0：表示Dropless场景。</li><li>1：表示Drop/Pad场景。</li></ul></td>
+      <td>取值为0或1。<ul><li>0：表示Dropless场景。</li><li>1：表示Drop/Pad场景。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -196,7 +196,7 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
       <tr>
         <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
         <td rowspan="8">561002</td>
-        <td>dropPadMode的属性值不是0和1。</td>
+        <td>dropPadMode的属性值不是0或1。</td>
       </tr>
       <tr>
         <td>topK小于等于0。</td>
