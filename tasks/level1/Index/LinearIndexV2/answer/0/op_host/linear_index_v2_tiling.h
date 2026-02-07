@@ -43,9 +43,6 @@ TILING_DATA_FIELD_DEF_STRUCT(LinearIndexV2TilingParam, params)
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(LinearIndexV2, LinearIndexV2TilingData)
-
-struct LinearIndexV2CompileInfo {
-};
 } // namespace optiling
 
 #endif // OPS_BUILT_IN_OP_TILING_RUNTIME_LINEAR_INDEX_V2_H

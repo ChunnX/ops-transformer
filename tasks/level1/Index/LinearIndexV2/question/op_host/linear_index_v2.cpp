@@ -9,10 +9,18 @@
  */
 
 /*!
- * \file embedding_dense_grad_v2.cpp
+ * \file linear_index_v2.cpp
  * \brief
  */
 #include "register/op_def_registry.h"
+
+namespace optiling {
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
+{
+    context->SetBlockDim(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAiv());
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace optiling
 
 namespace ops {
 class LinearIndexV2 : public OpDef

@@ -152,7 +152,7 @@ ge::graphStatus LinearIndexV2Tiling::Init()
         (usedCoreNum_ == 0), OP_LOGE(tilingContext_, "coreNum in common must greater than 0."),
         return ge::GRAPH_FAILED);
     
-    workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();;
+    workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 2. 计算ub内一次最多能存放的数据量
     ubSize_ = ubSize_ - SCALE_SPACE;
     OP_CHECK_IF(
@@ -228,13 +228,6 @@ ge::graphStatus TilingLinearIndexV2(gert::TilingContext* context)
     return tilingObject.RunKernelTiling();
 }
 
-ge::graphStatus TilingPrepareForLinearIndexV2(gert::TilingParseContext* context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
 IMPL_OP_OPTILING(LinearIndexV2)
-    .Tiling(TilingLinearIndexV2)
-    .TilingParse<LinearIndexV2CompileInfo>(TilingPrepareForLinearIndexV2);
+    .Tiling(TilingLinearIndexV2);
 } // namespace optiling

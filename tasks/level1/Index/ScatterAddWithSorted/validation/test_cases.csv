@@ -1,0 +1,21 @@
+case_id;var_shape;value_shape;dtype;use_pos
+0;[10, 5];[5, 5];float32;False
+1;[100, 10];[20, 10];float32;False
+2;[50, 8];[15, 8];float32;True
+3;[10, 5];[5, 5];float16;False
+4;[100, 10];[20, 10];float16;False
+5;[50, 8];[15, 8];float16;True
+6;[10, 5];[5, 5];bfloat16;False
+7;[100, 10];[20, 10];bfloat16;False
+8;[50, 8];[15, 8];bfloat16;True
+9;[10, 5];[5, 5];int32;False
+10;[100, 10];[20, 10];int32;False
+11;[50, 8];[15, 8];int32;True
+12;[10, 5];[5, 5];int8;False
+13;[100, 10];[20, 10];int8;False
+14;[10, 5];[5, 5];uint8;False
+15;[100, 10];[20, 10];uint8;False
+16;[1000, 20];[100, 20];float32;True
+17;[1000, 20];[100, 20];float16;True
+18;[256, 128];[64, 128];float32;False
+19;[256, 128];[64, 128];int32;False

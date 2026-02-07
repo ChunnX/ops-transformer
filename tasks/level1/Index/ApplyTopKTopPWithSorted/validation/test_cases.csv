@@ -1,0 +1,14 @@
+case_id;batch_size;vocab_size;dtype;mode;p_value;k_value
+0;2;100;float32;topk_topp;0.9;10
+1;4;512;float32;topk_topp;0.95;20
+2;1;1024;float16;topk_topp;0.9;50
+3;8;256;bfloat16;topk_topp;0.85;15
+4;2;100;float32;topk;;10
+5;4;512;float16;topk;;20
+6;1;1024;bfloat16;topk;;50
+7;2;100;float32;topp;0.9;
+8;4;512;float16;topp;0.95;
+9;1;1024;bfloat16;topp;0.85;
+10;16;128;float32;topk_topp;0.9;5
+11;1;2048;float16;topk;;100
+12;2;500;bfloat16;topp;0.92;
