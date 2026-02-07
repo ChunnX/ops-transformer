@@ -498,7 +498,7 @@ protected:
     __aicore__ inline void ComputeSoftmaxLse(LocalTensor<T> softmaxlseUb, LocalTensor<T> &lseSumUb,
                                              LocalTensor<T> &lseMaxUb, uint32_t dealRowCountAlign);
     __aicore__ inline void DealSoftmaxLseInvalidRows(LocalTensor<T> &softmaxlseUb, LocalTensor<T> &lseMaxUb,
-                                                     uint32_t dealRowCount, uint32_t curS1Idx);
+                                                     uint32_t dealRowCount, uint64_t s1Size, uint32_t curS1Idx);
     __aicore__ inline void SoftmaxLseCopyOut(const ExtraInfoMla &info, LocalTensor<T> &lseSumUb,
                                              LocalTensor<T> &lseMaxUb, uint32_t dealRowCount);
     __aicore__ inline void GetConfusionTransposeTiling(int64_t numR, int64_t numC, const uint32_t stackBufferSize,
@@ -593,7 +593,7 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadM
     attenMaskFlag = (tilingData->baseParams.attenMaskFlag != 0) ? true : false;
     attenMaskSize = tilingData->baseParams.attenMaskSize;
 
-    softmaxLseFlag = (tilingData->baseParams.softmaxLseFlag != 0) ? true : false;
+    softmaxLseFlag = tilingData->baseParams.softmaxLseFlag;
 
     maxBlockNumPerBatch = tilingData->baseParams.maxBlockNumPerBatch;
     kvCacheBlockSize = tilingData->baseParams.blockSize;
@@ -2753,7 +2753,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::SoftmaxLseCopyO
     uint64_t dealRowCountAlign = dealRowCount * FP32_ONE_BLOCK_SIZE;
     LocalTensor<T> softmaxlseUb = outputQue2.template AllocTensor<T>();
     ComputeSoftmaxLse(softmaxlseUb, lseSumUb, lseMaxUb, dealRowCountAlign);
-    DealSoftmaxLseInvalidRows(softmaxlseUb, lseMaxUb, dealRowCount, s1Idx * s1SizeSub);
+    uint64_t curS1Size = LAYOUT_T == LAYOUT::TND ? info.actS1Size : qSeqSize;
+    DealSoftmaxLseInvalidRows(softmaxlseUb, lseMaxUb, dealRowCount, curS1Size, info.s1Idx * s1SizeSub);
 
     outputQue2.EnQue(softmaxlseUb);
     outputQue2.DeQue<T>();
@@ -2821,17 +2822,18 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::DealSoftmaxLseInvalidRows(LocalTensor<T> &softmaxlseUb,
                                                                                            LocalTensor<T> &lseMaxUb,
                                                                                            uint32_t dealRowCount,
+                                                                                           uint64_t s1Size,
                                                                                            uint32_t curS1Idx)
 {
     if (!attenMaskFlag) {
         return;
     }
 
-    if (actS1Size < curActualSeqLen) {
+    if (s1Size < curActualSeqLen) {
         return;
     }
 
-    uint64_t seqLenGap = actS1Size - curActualSeqLen;
+    uint64_t seqLenGap = s1Size - curActualSeqLen;
     uint64_t startS1Idx = curS1Idx + mSizeVStart / gSize;
     if (startS1Idx < seqLenGap) {
         SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(dealRowCount), static_cast<uint32_t>(BLOCK_ELEMENT_NUM),
