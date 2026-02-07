@@ -97,6 +97,7 @@ struct Position {
     uint32_t n2Idx;
     uint32_t s2Idx;
     uint32_t dIdx;
+    uint32_t s1Idx;
 };
 
 // 场景：query、key、value GM to L1
@@ -129,7 +130,7 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
     BSH\BSND\TND 为BBH
     shape.copyRowNumAlign 需要16字节对齐，如拷贝k矩阵，一次拷贝128*512，遇到尾块 10*512 需对齐到16*512
 */
-template <typename T, SAS_LAYOUT SRC_LAYOUT>
+template <typename T>
 __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  //l1
                                   GlobalTensor<T> &srcTensor, //gm
                                   GlobalTensor<int32_t> &blockTableGm,
@@ -151,20 +152,13 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  //l1
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim ;   //PA的偏移
 
         uint64_t dStride = shape.headDim;
-        if constexpr (SRC_LAYOUT == SAS_LAYOUT::BSND || SRC_LAYOUT == SAS_LAYOUT::TND) {
-            offset += (uint64_t)(startPos.n2Idx * shape.headDim) +
-                      reaminRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
-            dStride = shape.headDim * shape.headNum;
-        } else {
-            offset += (uint64_t)(startPos.n2Idx * shape.headDim * shape.blockSize) +
-                      reaminRowCnt * shape.headDim + startPos.dIdx;
-        }
+        offset += (uint64_t)(startPos.n2Idx * shape.headDim * shape.blockSize) +
+                    reaminRowCnt * shape.headDim + startPos.dIdx;
 
         uint32_t dValue = shape.actHeadDim;
         uint32_t srcDValue = dStride;
         LocalTensor<T> tmpDstTensor = dstTensor[copyFinishRowCnt * blockElementCnt];
         GlobalTensor<T> tmpSrcTensor = srcTensor[offset];
-
         DataCopyGmNDToL1<T>(tmpDstTensor, tmpSrcTensor, copyRowCnt, shape.copyRowNumAlign, dValue, srcDValue);
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
