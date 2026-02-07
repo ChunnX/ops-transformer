@@ -422,14 +422,9 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::SoftmaxDataCopyOut(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::Vec1SinkCompute(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb) 
 {
-    int64_t sinkOffset = 0;
-    LocalTensor<float> sinkUb = sinkQue.AllocTensor<float>();
-    for (int64_t loop = 0; loop < runInfo.halfS1RealSize; ++loop) {
-        sinkOffset = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
-        sinkUb.SetValue(loop, ToFloat(this->sinkGm.GetValue(sinkOffset)));
-    }
-    SinkSubExpAddVF<float>(sinkUb, sumUb, maxUb, runInfo.halfS1RealSize);
-    sinkQue.FreeTensor<float>(sinkUb);
+    int64_t sinkOffset = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
+    float sinkValue = ToFloat(this->sinkGm.GetValue(sinkOffset));
+    SinkSubExpAddVF<float>(sumUb, maxUb, sinkValue, runInfo.halfS1RealSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

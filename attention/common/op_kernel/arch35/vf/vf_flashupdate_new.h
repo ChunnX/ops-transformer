@@ -530,7 +530,7 @@ __aicore__ inline void ComputeLseOutputVF(const LocalTensor<T>& dstTensor, const
 }
 
 template <typename T>
-__simd_vf__ inline void SinkSubExpAddVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *sinkUb, const uint32_t dealCount)
+__simd_vf__ inline void SinkSubExpAddVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, const T sinkValue, const uint32_t dealCount)
 {
     MicroAPI::RegTensor<T> vregSum;
     MicroAPI::RegTensor<T> vregMax;
@@ -547,7 +547,7 @@ __simd_vf__ inline void SinkSubExpAddVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMax
     MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregTail = MicroAPI::UpdateMask<T>(pltTail);
 
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vregSink, sinkUb);
+    Duplicate(vregSink, sinkValue);
 
     for (uint16_t i = 0; i < updateLoops; ++i) {
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregSum, srcSumUb + (i * floatRepSize));
@@ -573,14 +573,13 @@ __simd_vf__ inline void SinkSubExpAddVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMax
 }
 
 template <typename T>
-__aicore__ inline void SinkSubExpAddVF(const LocalTensor<T>& dstTensor, const LocalTensor<T>& softmaxSumTensor,
-    const LocalTensor<T>& softmaxMaxTensor, uint32_t dealCount)
+__aicore__ inline void SinkSubExpAddVF(const LocalTensor<T>& softmaxSumTensor, const LocalTensor<T>& softmaxMaxTensor, 
+    const T sinkValue, uint32_t dealCount)
 {
     __ubuf__ T * srcSumUb = (__ubuf__ T *)softmaxSumTensor.GetPhyAddr();
     __ubuf__ T * srcMaxUb = (__ubuf__ T *)softmaxMaxTensor.GetPhyAddr();
-    __ubuf__ T * dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
-
-    SinkSubExpAddVF<T>(srcSumUb, srcMaxUb, dstUb, dealCount);
+    
+    SinkSubExpAddVF<T>(srcSumUb, srcMaxUb, sinkValue, dealCount);
 }
 
 template <typename T, typename SINK_T>
