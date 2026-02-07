@@ -11,6 +11,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 }
 } // namespace optiling
 
+namespace ops {
 
 class AvgPool3D : public OpDef {
 public:
