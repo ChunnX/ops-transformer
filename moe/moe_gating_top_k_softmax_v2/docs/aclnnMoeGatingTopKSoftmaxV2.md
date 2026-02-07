@@ -150,21 +150,21 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
     <td>x</td>
   </tr>
   <tr>
-    <td>softmaxResultOutOptional</td>
+    <td>expertIdxOut</td>
     <td>输出</td>
-    <td>计算过程中Softmax的结果。</td>
-    <td>shape要求与x一致。</td>
-    <td>FLOAT32</td>
+    <td>公式中的expertIdxOut，topK的值的索引结果，即对应的专家序号。</td>
+    <td>shape要求与yOut一致。</td>
+    <td>INT32</td>
     <td>ND</td>
     <td>2-3</td>
     <td>x</td>
   </tr>
   <tr>
-    <td>rowIdxOut</td>
+    <td>softmaxResultOutOptional</td>
     <td>输出</td>
-    <td>公式中的scales。</td>
-    <td>hape要求与yOut一致。</td>
-    <td>INT32</td>
+    <td>计算过程中Softmax的结果。</td>
+    <td>shape要求与x一致。</td>
+    <td>FLOAT32</td>
     <td>ND</td>
     <td>2-3</td>
     <td>x</td>
@@ -248,7 +248,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
     </tr>
   </tbody></table>
 
-## aclnnMoeGatingTopKSoftmax
+## aclnnMoeGatingTopKSoftmaxV2
 
 - **参数说明：**
   <table>
@@ -257,7 +257,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
     </thead>
     <tbody>
       <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-      <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnInplaceAddGetWorkspaceSize获取。</td></tr>
+      <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize获取。</td></tr>
       <tr><td>executor</td><td>输入</td><td> op执行器，包含了算子计算流程。 </td></tr>
       <tr><td>stream</td><td>输入</td><td> 指定执行任务的Stream。 </td></tr>
     </tbody>

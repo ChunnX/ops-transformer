@@ -137,8 +137,8 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
   <tr>
     <td>rowIdxOut</td>
     <td>输出</td>
-    <td>公式中的scales。</td>
-    <td>hape要求与yOut一致。</td>
+    <td>公式中的rowIdxOut。</td>
+    <td>shape要求与yOut一致。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>2-3</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnInplaceAddGetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKSoftmaxGetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
