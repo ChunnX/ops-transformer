@@ -1479,7 +1479,7 @@ bool IsGqaMtp(gert::TilingContext &context, const string inputLayoutStr, const i
         return false;
     }
     auto tempK = context.GetInputShape(KEY_INDEX);
-    bool isNz = (tempK->GetStorageShape().GetDimNum() == 5) ? true : false;
+    bool isNz = (tempK->GetStorageShape().GetDimNum() == 5);
     if (!isNz) {
         return false;
     }

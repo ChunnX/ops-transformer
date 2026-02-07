@@ -1006,9 +1006,9 @@ bool CheckSpecConditions(const gert::TilingContext *context)
     int32_t innerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
     int32_t sparseMode = *(attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX));
     
-    bool isLayoutSupported = (inputLayoutStr == "TND") ? true : false;
-    bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
-    bool isLearnableSink = context->GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr ? true : false;
+    bool isLayoutSupported = (inputLayoutStr == "TND");
+    bool isPageAttention = (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr);
+    bool isLearnableSink = (context->GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr);
     bool sparseModeSupported = (sparseMode == 0) || (sparseMode == 3) || (sparseMode == 4);
     bool isRopeSplitMla = (qRope != nullptr) && (kRope != nullptr);
     
@@ -1200,9 +1200,9 @@ bool RouteToFia(gert::TilingContext *context)
         int32_t headNum = *(attrs->GetAttrPointer<int32_t>(ATTR_N_INDEX));
         int32_t kvHeadNum = *(attrs->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX));
         bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
-        bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
+        bool isPageAttention = (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr);
         bool isPrefix = (context->GetOptionalInputShape(KEY_SHARED_PREFIX_INDEX) != nullptr) ||
-                        (context->GetOptionalInputShape(VALUE_SHARED_PREFIX_INDEX) != nullptr) ? true : false;
+                        (context->GetOptionalInputShape(VALUE_SHARED_PREFIX_INDEX) != nullptr);
     
         int64_t queryD = 0;
         int64_t queryRopeD = 0;
