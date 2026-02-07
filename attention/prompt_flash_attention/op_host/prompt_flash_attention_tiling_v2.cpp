@@ -3414,11 +3414,31 @@ void PromptFlashAttentionTilingV2::GetPreNextTokensLeftUp(PromptFlashAttentionTi
             nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
     } else if (baseParams->get_sparseMode() == SPARSE_MODE_BAND) {
-        preTokensLeftUp = baseParams->get_preTokens() - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = baseParams->get_nextTokens() + actualSeqLengthKV - actualSeqLength;
+        if (enableIFAMLA) {
+            if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {
+                preTokensLeftUp = baseParams->get_preTokens() * gSize - actualSeqLengthKV * gSize + actualSeqLength;
+                nextTokensLeftUp = baseParams->get_nextTokens() * gSize + actualSeqLengthKV * gSize - actualSeqLength;
+            } else { // BNSD场景下分核不做优化
+                preTokensLeftUp = SPARSE_MODE_INT_MAX;
+                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+            }
+        } else {
+            preTokensLeftUp = baseParams->get_preTokens() - actualSeqLengthKV + actualSeqLength;
+            nextTokensLeftUp = baseParams->get_nextTokens() + actualSeqLengthKV - actualSeqLength;
+        }
     } else {
-        preTokensLeftUp = baseParams->get_preTokens();
-        nextTokensLeftUp = baseParams->get_nextTokens();
+        if (enableIFAMLA) {
+            if (inputLayout == InputLayout::BSND || inputLayout == InputLayout::BSH || inputLayout == InputLayout::TND) {
+                preTokensLeftUp = baseParams->get_preTokens() * gSize;
+                nextTokensLeftUp = baseParams->get_nextTokens() * gSize;
+            } else { // BNSD场景下分核不做优化
+                preTokensLeftUp = SPARSE_MODE_INT_MAX;
+                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+            }
+        } else {
+            preTokensLeftUp = baseParams->get_preTokens();
+            nextTokensLeftUp = baseParams->get_nextTokens();
+        }
     }
 }
 
@@ -3487,8 +3507,14 @@ void PromptFlashAttentionTilingV2::FixParamWithRowInvalid(int64_t& actualSeqLeng
     // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
     int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
     nextTokensError = nextTokensError > actualSeqLength ? actualSeqLength : nextTokensError;
-    int64_t preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
-        (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) : 0;
+    int64_t preTokensError = 0;
+    if (enableIFAMLA) {
+        preTokensError = (actualSeqLength > actualSeqLengthKV * gSize + preTokensLeftUp) ?
+            (actualSeqLength - actualSeqLengthKV * gSize - preTokensLeftUp) : 0;
+    } else {
+        preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
+            (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) : 0;
+    }
     preTokensError = preTokensError > actualSeqLength ? actualSeqLength : preTokensError;
 
     // 若出现上方行无效，需要重新计算nexttokens，pretokens，actualseqlen
