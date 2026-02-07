@@ -100,7 +100,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
     <tr>
       <td>permutedTokens</td>
       <td>输入</td>
-      <td>输入Tokens,公式中的T。</td>
+      <td>输入Tokens，公式中的T。</td>
       <td>shape为（tokens_num * topK_num，hidden_size），其中tokens_num表示输入token的个数，topK_num表示处理每个token的专家个数，hidden_size表示每个token的向量表示的长度。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
   <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnRopeWithSinCosCacheGetWorkspaceSize</code>获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeTokenUnpermuteGetWorkspaceSize</code>获取。</td>
   </tr>
   <tr>
       <td>executor</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
 - <term>Atlas 推理系列产品</term>：
   - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
   - topK_num <= 512。
-  - hiddenSize是128的倍数且小于10240。
+  - hidden_size是128的倍数且小于10240。
 
 ## 调用示例
 
@@ -388,11 +388,11 @@ int main() {
   aclTensor *permutedTokens = nullptr;
 
   ret = CreateAclTensor(permutedTokensData, permutedTokensShape,
-                        &permutedTokensAddr, aclDataType::ACL_BF16,
+                        &permutedTokensAddr, aclDataType::ACL_FLOAT,
                         &permutedTokens);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  std::vector<float> sortedIndicesData = {0,1};
+  std::vector<int> sortedIndicesData = {0,1};
   std::vector<int64_t> sortedIndicesShape = {2};
   void *sortedIndicesAddr = nullptr;
   aclTensor *sortedIndices = nullptr;
@@ -409,7 +409,7 @@ int main() {
 
   ret =
       CreateAclTensor(probsOptionalData, probsOptionalShape, &probsOptionalAddr,
-                      aclDataType::ACL_BF16, &probsOptional);
+                      aclDataType::ACL_FLOAT, &probsOptional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   std::vector<float> outData = {0, 0};
@@ -417,7 +417,7 @@ int main() {
   void *outAddr = nullptr;
   aclTensor *out = nullptr;
 
-  ret = CreateAclTensor(outData, outShape, &outAddr, aclDataType::ACL_BF16,
+  ret = CreateAclTensor(outData, outShape, &outAddr, aclDataType::ACL_FLOAT,
                         &out);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
