@@ -182,7 +182,7 @@ template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quan
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #endif
 
-REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) < 15", IncreFlashAttentionTilingDataV2);
+REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) < 15", FlashAttentionScoreSimplifiedTilingData);
 
 if constexpr (emptyTensor == true) {
     # if (ORIG_DTYPE_ATTENTION_OUT != DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT != DT_BF16)

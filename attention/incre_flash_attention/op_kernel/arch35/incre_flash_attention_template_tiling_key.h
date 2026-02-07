@@ -1289,7 +1289,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1306,7 +1306,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1322,7 +1322,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1338,7 +1338,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1355,7 +1355,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1371,7 +1371,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
 
@@ -1387,7 +1387,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1406,7 +1406,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1422,7 +1422,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1438,7 +1438,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
 
@@ -1454,7 +1454,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1473,7 +1473,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1489,7 +1489,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -1505,7 +1505,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
 
@@ -1521,7 +1521,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1539,7 +1539,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1554,7 +1554,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1569,7 +1569,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1584,7 +1584,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1602,7 +1602,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1617,7 +1617,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1632,7 +1632,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1647,7 +1647,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1666,7 +1666,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1682,7 +1682,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1697,7 +1697,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1712,7 +1712,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1728,7 +1728,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1743,7 +1743,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1758,7 +1758,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1776,7 +1776,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1791,7 +1791,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1806,7 +1806,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1821,7 +1821,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1839,7 +1839,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1854,7 +1854,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1869,7 +1869,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1884,7 +1884,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1902,7 +1902,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1917,7 +1917,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1932,7 +1932,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1947,7 +1947,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -1965,7 +1965,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1980,7 +1980,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -1995,7 +1995,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2010,7 +2010,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -2029,7 +2029,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2045,7 +2045,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2060,7 +2060,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2075,7 +2075,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2091,7 +2091,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2106,7 +2106,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2122,7 +2122,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -2141,7 +2141,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -2158,7 +2158,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -2174,7 +2174,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -2190,7 +2190,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -2207,7 +2207,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -2223,7 +2223,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2239,7 +2239,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -2257,7 +2257,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2272,7 +2272,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2287,7 +2287,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2302,7 +2302,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -2321,7 +2321,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -2337,7 +2337,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         
@@ -2353,7 +2353,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2368,7 +2368,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -2386,7 +2386,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2401,7 +2401,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2416,7 +2416,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2431,7 +2431,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
@@ -2449,7 +2449,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2464,7 +2464,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(        
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2479,7 +2479,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false),         
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
@@ -2494,7 +2494,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMask,  ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK),
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA),
         ASCENDC_TPL_BOOL_SEL(enableKVPrefix, false), 
-        ASCENDC_TPL_TILING_STRUCT_SEL(IncreFlashAttentionTilingDataV2)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
 
