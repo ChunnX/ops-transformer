@@ -185,13 +185,12 @@ ge::graphStatus DenseLISoftmaxLseInfoParser::GetAndCheckInOutDataType()
 {
     inputQType_ = opParamInfo_.query.desc->GetDataType();
     inputKType_ = opParamInfo_.key.desc->GetDataType();
-    weightsType_ = opParamInfo_.weights.desc->GetDataType();
     softmaxMaxOutType_ = opParamInfo_.softmaxMaxOut.desc->GetDataType();
     softmaxSumOutType_ = opParamInfo_.softmaxSumOut.desc->GetDataType();
 
-    bool inDTypeAllEqual = (inputQType_ == inputKType_) && (inputKType_ == weightsType_);
+    bool inDTypeAllEqual = inputQType_ == inputKType_;
     OP_CHECK_IF(!inDTypeAllEqual,
-                OP_LOGE(opName_, "The data types of the input query, key, and weights must be the same."),
+                OP_LOGE(opName_, "The data types of the input query and key must be the same."),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(((inputQType_ != ge::DT_FLOAT16) && (inputQType_ != ge::DT_BF16)),

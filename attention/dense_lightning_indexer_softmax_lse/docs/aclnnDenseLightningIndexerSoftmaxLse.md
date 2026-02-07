@@ -115,7 +115,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>输入</td>
       <td>权重</td>
       <td><ul><li>B: 支持泛化且与queryIndex的B保持一致。</li><li>S1: 支持泛化且与queryIndex的S1保持一致。</li><li>Nidx1: 64、32、16、8。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>(B,S1,Nidx1);(T1,Nidx1)</td>
       <td>×</td>

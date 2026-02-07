@@ -62,6 +62,7 @@ public:
     // 类型定义区
     using Q_T = typename T::queryType;
     using K_T = typename T::keyType;
+    using W_T = typename T::weightType;
     using OUT_T = typename T::outputType;
     static constexpr LAYOUT LAYOUT_T = T::layout;
 
@@ -97,7 +98,7 @@ protected:
     // Global Buffer
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
-    GlobalTensor<K_T> weightsGm;
+    GlobalTensor<W_T> weightsGm;
     GlobalTensor<OUT_T> softmaxMaxGm;
     GlobalTensor<OUT_T> softmaxSumGm;
     GlobalTensor<int64_t> actualSeqLengthsGmQ;
@@ -320,7 +321,7 @@ __aicore__ inline void DenseLISoftmaxLse<T>::Init(__gm__ uint8_t *query, __gm__ 
         softmaxSumGm.SetGlobalBuffer((__gm__ OUT_T *)softmaxSum,
             constInfo.isAccumSeqS1 ? actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) :
             constInfo.batchSize * constInfo.qSeqSize);
-        weightsGm.SetGlobalBuffer((__gm__ K_T *)weights,
+        weightsGm.SetGlobalBuffer((__gm__ W_T *)weights,
             constInfo.isAccumSeqS1 ? actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) * constInfo.qHeadNum :
             constInfo.batchSize * constInfo.qSeqSize * constInfo.qHeadNum);
         vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, weightsGm, softmaxMaxGm, softmaxSumGm);

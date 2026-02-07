@@ -22,10 +22,11 @@ enum class LAYOUT {
     TND = 1,
 };
 
-template <typename Q_T, typename K_T, typename OUT_T, LAYOUT LAYOUT_T = LAYOUT::BSND, typename... Args>
+template <typename Q_T, typename K_T, typename W_T, typename OUT_T, LAYOUT LAYOUT_T = LAYOUT::BSND, typename... Args>
 struct DenseLISoftmaxLseType {
     using queryType = Q_T;
     using keyType = K_T;
+    using weightType = W_T;
     using outputType = OUT_T;
     static constexpr LAYOUT layout = LAYOUT_T;
 };
