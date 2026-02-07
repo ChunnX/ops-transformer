@@ -80,6 +80,7 @@ public:
                                      uint64_t startId, uint64_t endId);
     __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
                                           int64_t keyBNBOffset,int64_t s2IdLimit, const RunInfo &runInfo);
+
     // ================================Vector1==========================================
     __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -531,15 +532,15 @@ __aicore__ inline int64_t SASVectorBlock<SAST>::GetKeyGmOffset(int64_t realS2Idx
         return -1;
     }
     int64_t realKeyGmOffset = 0;
-    if constexpr (PAGE_ATTENTION) {
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
         int64_t blkTableIdx = realS2Idx / constInfo.paCmpBlockSize;
         int64_t blkTableOffset = realS2Idx % constInfo.paCmpBlockSize;
         realKeyGmOffset = cmpBlockTableGm_.GetValue(runInfo.bIdx * constInfo.cmpMaxBlockNumPerBatch + blkTableIdx) *
                           static_cast<int64_t>(constInfo.paCmpBlockSize) * static_cast<int64_t>(constInfo.kvHeadNum) +
                           blkTableOffset;
-    } else { // 只支持PA
-        // realKeyGmOffset = (runInfo.tensorBOffset + realS2Idx * constInfo.kvHeadNum * constInfo.headDim) /
-        //                   constInfo.headDim;
+
+    } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::BSND) {
+        realKeyGmOffset = runInfo.bIdx * constInfo.kvSeqSize / constInfo.cmpRatio * constInfo.kvHeadNum + realS2Idx * constInfo.kvHeadNum;
     }
     return realKeyGmOffset;
 }
@@ -578,16 +579,16 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyInKv(int64_t &mte2Size, int64_t
     }
 
     int64_t keySrcStride = 0;
-    if constexpr (PAGE_ATTENTION) {
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
         int64_t blkTableSrcStride =
         ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
         (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize);
         keySrcStride = blkTableSrcStride * constInfo.headDim * sizeof(KV_T);
-    } else {
+    } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::BSND) {
         keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
                         (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.headDim * sizeof(KV_T);
     }
-    if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 || (!PAGE_ATTENTION) ||
+    if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 ||
         realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
         realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit)) {
         // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令

@@ -333,6 +333,7 @@ ge::graphStatus SASInfoParser::GetKvLayout()
 {
     const map<string, SASLayout> layoutKVMap = {
         {"PA_ND",     SASLayout::PA_ND},
+        {"BSND",     SASLayout::BSND},
     };
     std::string layout(opParamInfo_.layoutKv);
     auto it = layoutKVMap.find(layout);
@@ -567,6 +568,19 @@ ge::graphStatus SASInfoParser::GetS2SizeForPageAttention()
 ge::graphStatus SASInfoParser::GetS2Size()
 {
     // 获取S2基准值:PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
+    // 1、PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
+    // 2、BSND时, S2直接获取
+    if (kvLayout_ == SASLayout::BSND) {
+        if (opParamInfo_.oriKv.tensor != nullptr) {
+            s2Size_ = GetAxisNum(oriKvShape_, SASAxis::S, kvLayout_);
+            return ge::GRAPH_SUCCESS;
+        }
+        if (opParamInfo_.cmpKv.tensor != nullptr) {
+            s2Size_ = GetAxisNum(cmpKvShape_, SASAxis::S, kvLayout_);
+            return ge::GRAPH_SUCCESS;
+        }
+        return ge::GRAPH_FAILED;
+    }
     return GetS2SizeForPageAttention();
 }
 
@@ -678,8 +692,10 @@ void SASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
     sasInfo.cmpKvType = cmpKvType_;
     sasInfo.outputType = outputType_;
 
-    sasInfo.totalBlockNum = (opParamInfo_.oriKv.tensor != nullptr) ?
-        opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0) : 0;
+    if (kvLayout_ == SASLayout::PA_ND) {
+        sasInfo.totalBlockNum = (opParamInfo_.oriKv.tensor != nullptr) ?
+            opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0) : 0;
+    }
     sasInfo.sparseBlockSize = 1;
     sasInfo.oriBlockSize = oriBlockSize_;
     sasInfo.cmpBlockSize = cmpBlockSize_;
