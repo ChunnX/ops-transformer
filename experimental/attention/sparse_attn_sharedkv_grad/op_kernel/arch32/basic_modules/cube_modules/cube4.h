@@ -39,7 +39,9 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
     if constexpr (MODE == SASG_SCFA_MODE) {
         mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * dimDTotal + cBlockIdx * (selectedBlockCount + oriWinLen) * dimDTotal;
     } else {
-        mm4ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
+        mm4ResOutBaseOffset = runInfo.isOri ? 
+                              runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
+                              runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal + dOriKvSize;
     }
     CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[dsGmOffset], mmParam.singleK, selectedCntOffset * selectedBlockSize, singleN);
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {

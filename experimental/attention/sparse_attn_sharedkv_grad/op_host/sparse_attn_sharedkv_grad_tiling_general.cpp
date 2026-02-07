@@ -181,7 +181,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     if (tmpData.mode == SASG_SCFA_MODE) {
         int64_t dAlign = (tilingData.opInfo.get_D() + 15) / 16 * 16;
         // 每个s1做完，做scatter add累加，workspace开DB
-        auto winLen = tilingData.opInfo.get_oriWinLeft() + tilingData.opInfo.get_oriWinRight();
+        auto winLen = tilingData.opInfo.get_oriWinLeft() + tilingData.opInfo.get_oriWinRight() + 1;
         workspaces[0] += 24 * PING_PONG_BUFFER * (tmpData.selected_block_count + winLen) * (dAlign + dAlign) * B32;
     } else {
         workspaces[0] += dkWorkspaceLen; // 用于保存原先dk，在post阶段muls(scale)
@@ -221,7 +221,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoBlockTiling()
     /*
      * 分核策略
      */
-    int32_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? CeilCommon(tmpData.t1, tmpData.s1BasicSize) : tmpData.b * CeilCommon(tmpData.s1, tmpData.s1BasicSize);
+    int32_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? CeilCommon(tmpData.t1, tmpData.s1BasicSize) : CeilCommon(tmpData.b * tmpData.s1, tmpData.s1BasicSize);
     int32_t aicNum = aicoreParams_.aicNum;
     int32_t usedCoreNum = nNums < aicNum ? nNums : aicNum;
     int64_t formerCoreProcessNNums = CeilCommon(nNums, aicNum);

@@ -53,8 +53,10 @@ CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
             CopyGmToL1(l1_query_tensor, queryGm[currentQueryOffset], mmParam.singleM, K_SPLIT_SIZE, dimDqk);
             if constexpr (MODE == SASG_SCFA_MODE) {
                 CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
-            } else {
+            } else if (runInfo.isOri) {
                 CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            } else {
+                CopyGmToL1(l1_key_tensor, cmpKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
             }
 
             MmadInnerWithSync<T1>(l0cTensor, l1_query_tensor, l1_key_tensor,
@@ -84,8 +86,10 @@ CubeOp<T1>::cube1Process(const int64_t queryGmOffset, const int64_t keyGmOffset,
         CopyGmToL1(l1_query_tensor, srcGm, mmParam.singleM, tailLoopDSize, srcDstride);
         if constexpr (MODE == SASG_SCFA_MODE) {
             CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
-        } else {
+        } else if (runInfo.isOri) {
             CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+        } else {
+            CopyGmToL1(l1_key_tensor, cmpKvGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
         }
 
         MmadInnerWithSync<T1>(l0cTensor, l1_query_tensor, l1_key_tensor,

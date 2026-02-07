@@ -37,7 +37,9 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
     if constexpr (MODE == SASG_SCFA_MODE) {
         mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * dimDv + cBlockIdx * (selectedBlockCount + oriWinLen) * dimDv;
     } else {
-        mm5ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
+        mm5ResOutBaseOffset = runInfo.isOri ? 
+                              runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
+                              runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal + dOriKvSize;
     }
 
     LocalTensor<T1> l1_dy_tensor = l1_dy_tensors[mmPingPongIdx];

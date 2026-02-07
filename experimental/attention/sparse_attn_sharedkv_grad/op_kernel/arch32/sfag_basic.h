@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_basic.h
+ * \file sfag_basic.h
  * \brief
  */
 
@@ -464,7 +464,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::GetActualSelCount(cons
     int64_t oriWinDiagOffset = curS2 - curS1;
     oriWinEnd = Min(s1Index + oriWinRight + 1 + oriWinDiagOffset, curS2);
     oriWinEnd = Max(oriWinEnd, 0);
-    oriWinStart = Max(s1Index - oriWinLeft + oriWinDiagOffset + 1, 0);
+    oriWinStart = Max(s1Index - oriWinLeft + oriWinDiagOffset, 0);
     int64_t oriWinS2Len = oriWinEnd - oriWinStart;
     // AscendC::PRINTF("oriWinStart=%d\n", oriWinStart);
     // AscendC::PRINTF("oriWinEnd=%d\n", oriWinEnd);
