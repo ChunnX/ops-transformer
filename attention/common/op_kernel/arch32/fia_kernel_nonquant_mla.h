@@ -354,9 +354,9 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
 
     // init tiling data
     tilingData = tiling;
+    skipInitOutputFlag = !IsInitAttentionOutGm() && !tilingData->baseParams.softmaxLseFlag;
     if (aiCoreIdx >= tilingData->baseParams.usedCoreNum) {
         if ASCEND_IS_AIV {
-            skipInitOutputFlag = !IsInitAttentionOutGm() && !tilingData->baseParams.softmaxLseFlag;
             if (!skipInitOutputFlag){
                 // superkernel 场景，启动核数大于实际运行核数时，未启动的核仅需要保留 SyncAll
                 SyncAll();
