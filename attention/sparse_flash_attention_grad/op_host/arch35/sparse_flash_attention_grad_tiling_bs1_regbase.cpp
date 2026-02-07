@@ -371,6 +371,10 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
     auto selected_block_size =
         *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
+    if (selected_block_size != 1) {
+        OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.", selected_block_size);
+        return ge::GRAPH_FAILED;
+    }        
     auto sparse_mode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE));
     tmpData.deterministic = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
     
