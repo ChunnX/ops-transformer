@@ -926,6 +926,16 @@
   </tr>
   <tr>
     <td>posembedding</td>
+    <td><a href="../../posembedding/qkv_rms_norm_rope_cache/README.md">qkv_rms_norm_rope_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出q_out、k_cache、v_cache、q_out_before_quant(可选)、k_out_before_quant(可选)、v_out_before_quant(可选)。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
     <td><a href="../../posembedding/rope_quant_kvcache/README.md">rope_quant_kvcache</a></td>
     <td>✓</td>
     <td>✓</td>
