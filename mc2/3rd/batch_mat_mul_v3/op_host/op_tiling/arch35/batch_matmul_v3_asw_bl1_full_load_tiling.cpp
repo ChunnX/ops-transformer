@@ -21,7 +21,7 @@
 namespace optiling {
 namespace Mc2batch_matmul_v3_advanced {
 using namespace strategy;
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBL1FullLoadTiling, ASCEND950, BL1_FULL_LOAD);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBL1FullLoadTiling, DAV_3510, BL1_FULL_LOAD);
 
 bool Mc2BatchMatMulV3AswBL1FullLoadTiling::IsCapable()
 {
@@ -58,10 +58,10 @@ bool Mc2BatchMatMulV3AswBL1FullLoadTiling::IsCapable()
 
 ge::graphStatus Mc2BatchMatMulV3AswBL1FullLoadTiling::DoOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
     Mc2MatMulV3AswFullLoadTiling::DoBL1FullLoad(isBl1MulCoreLoad_, args_.batchInfo->batchA, args_.batchInfo->batchBias);
-    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(compileInfo_, args_, batchInfo_->batchC)) {
+    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(context_, args_, batchInfo_->batchC)) {
         aswtModel_ = Mc2MatMulV3Model::DOUBLE_ASWT;
     }
     return ge::GRAPH_SUCCESS;

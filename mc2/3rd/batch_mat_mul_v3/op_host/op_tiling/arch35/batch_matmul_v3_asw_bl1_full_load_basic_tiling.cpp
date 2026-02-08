@@ -21,7 +21,7 @@
 namespace optiling {
 namespace Mc2batch_matmul_v3_advanced {
 using namespace strategy;
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBL1FullLoadBasicTiling, ASCEND950, BL1_FULL_LOAD_BASIC);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBL1FullLoadBasicTiling, DAV_3510, BL1_FULL_LOAD_BASIC);
 
 bool Mc2BatchMatMulV3AswBL1FullLoadBasicTiling::IsCapable()
 {
@@ -59,7 +59,7 @@ bool Mc2BatchMatMulV3AswBL1FullLoadBasicTiling::IsCapable()
 
 ge::graphStatus Mc2BatchMatMulV3AswBL1FullLoadBasicTiling::DoOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
     Mc2MatMulV3AswFullLoadTiling::DoBL1FullLoad(isBl1MulCoreLoad_, args_.batchInfo->batchA, args_.batchInfo->batchBias);
 

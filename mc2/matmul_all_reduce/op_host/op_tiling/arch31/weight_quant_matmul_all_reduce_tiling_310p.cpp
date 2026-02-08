@@ -242,5 +242,6 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
 }
 
 //注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,WeightQuantMatmulAllReduceTiling310P,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P),0);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, WeightQuantMatmulAllReduceTiling310P, \
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P), 0);
 } // namespace optiling

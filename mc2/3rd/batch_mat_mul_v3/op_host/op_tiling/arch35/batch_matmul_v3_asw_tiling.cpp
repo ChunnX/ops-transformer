@@ -21,14 +21,14 @@
 namespace optiling {
 namespace Mc2batch_matmul_v3_advanced {
 using namespace strategy;
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswTiling, ASCEND950, BASE);
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswTiling, RESERVED_VERSION, BASE); //supportMmadS8S4平台
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswTiling, DAV_3510, BASE);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswTiling, DAV_RESV, BASE); //supportMmadS8S4平台
 
 ge::graphStatus Mc2BatchMatMulV3AswTiling::DoOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
-    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(compileInfo_, args_, batchInfo_->batchC)) {
+    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(context_, args_, batchInfo_->batchC)) {
         aswtModel_ = Mc2MatMulV3Model::DOUBLE_ASWT;
     }
 

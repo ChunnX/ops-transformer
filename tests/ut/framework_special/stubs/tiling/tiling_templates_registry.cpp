@@ -27,3 +27,9 @@ TilingRegistryNew &TilingRegistryNew::GetInstance()
     static TilingRegistryNew registry_impl_;
     return registry_impl_;
 }
+
+TilingRegistryArch &TilingRegistryArch::GetInstance()
+{
+    static TilingRegistryArch registry_impl_;
+    return registry_impl_;
+}

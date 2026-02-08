@@ -20,9 +20,9 @@
 #include "platform/platform_infos_def.h"
 #include "mc2_log.h"
 namespace optiling {
-const std::initializer_list<platform_ascendc::SocVersion> Mc2AdvancedSocVersion = {
-    platform_ascendc::SocVersion::ASCEND950,
-    platform_ascendc::SocVersion::RESERVED_VERSION};  // supportMmadS8S4平台
+const std::initializer_list<NpuArch> Mc2AdvancedSocVersion = {
+    NpuArch::DAV_3510,
+    NpuArch::DAV_RESV};  // supportMmadS8S4平台
 
 template <typename T>
 inline typename std::enable_if<
@@ -36,9 +36,9 @@ Mc2IsAdvancedSocVersion(T *context) {
     std::string mmad;
     bool res = platformInfo->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_mmad", mmad);
     bool supportMmadS8S4 = res && mmad.find("s8s4") != std::string::npos;
-    platform_ascendc::SocVersion socVersion =
-        supportMmadS8S4 ? platform_ascendc::SocVersion::RESERVED_VERSION : ascendcPlatform.GetSocVersion();
-    return std::find(Mc2AdvancedSocVersion.begin(), Mc2AdvancedSocVersion.end(), socVersion) != Mc2AdvancedSocVersion.end();
+    NpuArch npuArch =
+        supportMmadS8S4 ? NpuArch::DAV_RESV : ascendcPlatform.GetCurNpuArch();
+    return std::find(Mc2AdvancedSocVersion.begin(), Mc2AdvancedSocVersion.end(), npuArch) != Mc2AdvancedSocVersion.end();
 }
 }
 #endif // __OP_HOST_MATMUL_V3_PLATFORM_COMMON_H__

@@ -65,8 +65,8 @@ bool CheckStreamKSKTiling91095(const Mc2MatmulV3CompileInfo &compileInfo, const 
 
 using CheckStreamKSKTilingFunc = bool (*)(const Mc2MatmulV3CompileInfo &, const Mc2MatMulV3Args &);
 
-const static std::map<platform_ascendc::SocVersion, CheckStreamKSKTilingFunc> CheckStreamKSKTilingFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, CheckStreamKSKTiling91095},
+const static std::map<NpuArch, CheckStreamKSKTilingFunc> CheckStreamKSKTilingFuncMap = {
+    {NpuArch::DAV_3510, CheckStreamKSKTiling91095},
 };
 
 // ------------------------------ CheckStreamKDPSKTiling -------------------------------------------//
@@ -95,8 +95,8 @@ bool CheckStreamKDPSKTiling91095(const Mc2MatmulV3CompileInfo &compileInfo, cons
 
 using CheckStreamKDPSKTilingFunc = bool (*)(const Mc2MatmulV3CompileInfo &, const Mc2MatMulV3Args &);
 
-const static std::map<platform_ascendc::SocVersion, CheckStreamKDPSKTilingFunc> CheckStreamKDPSKTilingFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, CheckStreamKDPSKTiling91095},
+const static std::map<NpuArch, CheckStreamKDPSKTilingFunc> CheckStreamKDPSKTilingFuncMap = {
+    {NpuArch::DAV_3510, CheckStreamKDPSKTiling91095},
 };
 
 // ------------------------------ GetL0C2OutFlag -------------------------------------------//
@@ -116,8 +116,8 @@ Mc2MatMulV3L0C2Out GetL0C2OutFlag91095(const Mc2MatMulV3Args &args)
 
 using GetL0C2OutFlagFunc = Mc2MatMulV3L0C2Out (*)(const Mc2MatMulV3Args &);
 
-const static std::map<platform_ascendc::SocVersion, GetL0C2OutFlagFunc> GetL0C2OutFlagFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, GetL0C2OutFlag91095},
+const static std::map<NpuArch, GetL0C2OutFlagFunc> GetL0C2OutFlagFuncMap = {
+    {NpuArch::DAV_3510, GetL0C2OutFlag91095},
 };
 
 }  // namespace
@@ -125,29 +125,38 @@ const static std::map<platform_ascendc::SocVersion, GetL0C2OutFlagFunc> GetL0C2O
 namespace optiling {
 namespace mc2_matmul_v3_advanced {
 using namespace strategy;
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3BasicStreamKTiling, ASCEND950, BASIC_STREAM_K);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3BasicStreamKTiling, DAV_3510, BASIC_STREAM_K);
 
 bool Mc2MatMulV3BasicStreamKTiling::CheckStreamKSKTiling() const
 {
-    auto iter = (CheckStreamKSKTilingFuncMap.find(compileInfo_.socVersion) == CheckStreamKSKTilingFuncMap.end())
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArchStreamK = ascendcPlatform.GetCurNpuArch();
+    auto iter = (CheckStreamKSKTilingFuncMap.find(npuArchStreamK) == CheckStreamKSKTilingFuncMap.end())
                     ? CheckStreamKSKTilingDefault
-                    : CheckStreamKSKTilingFuncMap.at(compileInfo_.socVersion);
+                    : CheckStreamKSKTilingFuncMap.at(npuArchStreamK);
     return iter(compileInfo_, args_);
 }
 
 bool Mc2MatMulV3BasicStreamKTiling::CheckStreamKDPSKTiling() const
 {
-    auto iter = (CheckStreamKDPSKTilingFuncMap.find(compileInfo_.socVersion) == CheckStreamKDPSKTilingFuncMap.end())
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArchStreamK = ascendcPlatform.GetCurNpuArch();
+    auto iter = (CheckStreamKDPSKTilingFuncMap.find(npuArchStreamK) == CheckStreamKDPSKTilingFuncMap.end())
                     ? CheckStreamKDPSKTilingDefault
-                    : CheckStreamKDPSKTilingFuncMap.at(compileInfo_.socVersion);
+                    : CheckStreamKDPSKTilingFuncMap.at(npuArchStreamK);
     return iter(compileInfo_, args_);
 }
 
 Mc2MatMulV3L0C2Out Mc2MatMulV3BasicStreamKTiling::GetL0C2OutFlag() const
 {
-    auto iter = (GetL0C2OutFlagFuncMap.find(compileInfo_.socVersion) == GetL0C2OutFlagFuncMap.end())
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArchStreamK = ascendcPlatform.GetCurNpuArch();
+    auto iter = (GetL0C2OutFlagFuncMap.find(npuArchStreamK) == GetL0C2OutFlagFuncMap.end())
                     ? GetL0C2OutFlagDefault
-                    : GetL0C2OutFlagFuncMap.at(compileInfo_.socVersion);
+                    : GetL0C2OutFlagFuncMap.at(npuArchStreamK);
     return iter(args_);
 }
 
@@ -158,7 +167,7 @@ bool Mc2MatMulV3BasicStreamKTiling::IsCapable()
 
 ge::graphStatus Mc2MatMulV3BasicStreamKTiling::DoOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
 
     mCnt_ = MathUtil::CeilDivision(args_.mValue, runInfo_.baseM);
     nCnt_ = MathUtil::CeilDivision(args_.nValue, runInfo_.baseN);

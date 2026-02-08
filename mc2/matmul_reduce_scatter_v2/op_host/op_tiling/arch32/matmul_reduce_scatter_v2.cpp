@@ -39,8 +39,9 @@ ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context)
         if (std::strcmp(commModePtr, "aiv") == 0) {
             return MatmulReduceScatterTilingV2AivModeFunc(context);
         }
+        return Ops::Transformer::OpTiling::TilingRegistryNew::GetInstance().DoTilingImpl(context);
     }
-    return Ops::Transformer::OpTiling::TilingRegistryNew::GetInstance().DoTilingImpl(context);
+    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 struct MatmulReduceScatterV2CompileInfo {};

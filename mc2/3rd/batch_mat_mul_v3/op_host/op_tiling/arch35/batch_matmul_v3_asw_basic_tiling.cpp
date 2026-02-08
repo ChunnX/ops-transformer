@@ -21,11 +21,11 @@
 namespace optiling {
 namespace Mc2batch_matmul_v3_advanced {
 using namespace strategy;
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBasicTiling, ASCEND950, ASW_BASIC);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswBasicTiling, DAV_3510, ASW_BASIC);
 
 bool Mc2BatchMatMulV3AswBasicTiling::IsCapable()
 {
-    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(compileInfo_, args_, batchInfo_->batchC)) {
+    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(context_, args_, batchInfo_->batchC)) {
         return false;
     }
 
@@ -39,7 +39,7 @@ bool Mc2BatchMatMulV3AswBasicTiling::IsCapable()
 
 ge::graphStatus Mc2BatchMatMulV3AswBasicTiling::DoOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
     
     // l1开2db后依然只使用了一半的空间，则开启4 db。该字段仅在基础api场景生效

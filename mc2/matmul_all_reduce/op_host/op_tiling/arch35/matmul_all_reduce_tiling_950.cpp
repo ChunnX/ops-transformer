@@ -175,7 +175,7 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
     OP_TILING_CHECK(mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch_, priorities, opName_) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "Get mmv3 priority policy failed."),
                     return ge::GRAPH_FAILED);
-    Mc2MMRegisterCfg registerCfg {"Mc2MatMulV3", socVersion_, priorities};
+    Mc2MMRegisterCfg registerCfg {"Mc2MatMulV3", npuArch_, priorities};
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
 
     // 获取tileTiling
@@ -324,5 +324,6 @@ MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(
 {}
 
 //注册tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,MatmulAllReduceTilingA5,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND950),2);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, MatmulAllReduceTilingA5, \
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 2);
 } // namespace optiling

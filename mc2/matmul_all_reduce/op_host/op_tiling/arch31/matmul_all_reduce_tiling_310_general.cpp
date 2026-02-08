@@ -183,5 +183,6 @@ void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMat
 }
 
 //注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,MatmulAllReduceTiling310General,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P),3);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, MatmulAllReduceTiling310General, \
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P), 3);
 } // namespace optiling

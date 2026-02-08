@@ -50,8 +50,8 @@ void ResetBase91095(const Mc2MatmulV3CompileInfo &compileInfo, const Mc2MatMulV3
 
 using ResetBaseFunc = void (*)(const Mc2MatmulV3CompileInfo &, const Mc2MatMulV3Args &, Mc2MatMulV3RunInfo &);
 
-const static std::map<platform_ascendc::SocVersion, ResetBaseFunc> ResetBaseFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, ResetBase91095},
+const static std::map<NpuArch, ResetBaseFunc> ResetBaseFuncMap = {
+    {NpuArch::DAV_3510, ResetBase91095},
 };
 
 // ------------------------------ CalL1Tiling -------------------------------------------//
@@ -163,8 +163,8 @@ Mc2MatMulV3L0C2Out GetL0C2Out91095(const Mc2MatmulV3CompileInfo &compileInfo, co
 
 using GetL0C2OutFunc = Mc2MatMulV3L0C2Out (*)(const Mc2MatmulV3CompileInfo &, const Mc2MatMulV3Args &, const Mc2MatMulV3RunInfo &);
 
-const static std::map<platform_ascendc::SocVersion, GetL0C2OutFunc> GetL0C2OutFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, GetL0C2Out91095},
+const static std::map<NpuArch, GetL0C2OutFunc> GetL0C2OutFuncMap = {
+    {NpuArch::DAV_3510, GetL0C2Out91095},
 };
 
 // ------------------------------ CheckIfDoubleAswt -------------------------------------------//
@@ -192,24 +192,27 @@ bool CheckIfDoubleAswt91095(const Mc2MatMulV3Args &args, const uint64_t batchC)
 
 using CheckIfDoubleAswtFunc = bool (*)(const Mc2MatMulV3Args &, const uint64_t);
 
-const static std::map<platform_ascendc::SocVersion, CheckIfDoubleAswtFunc> CheckIfDoubleAswtFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, CheckIfDoubleAswt91095},
+const static std::map<NpuArch, CheckIfDoubleAswtFunc> CheckIfDoubleAswtFuncMap = {
+    {NpuArch::DAV_3510, CheckIfDoubleAswt91095},
 };
 }  // namespace
 
 namespace optiling {
 namespace mc2_matmul_v3_advanced {
-void Mc2MatMulV3TilingHelper::ResetBase(const Mc2MatmulV3CompileInfo &compileInfo, const Mc2MatMulV3Args &args,
-                                     Mc2MatMulV3RunInfo &runInfo)
+void Mc2MatMulV3TilingHelper::ResetBase(const gert::TilingContext* context, const Mc2MatmulV3CompileInfo &compileInfo, 
+                                        const Mc2MatMulV3Args &args, Mc2MatMulV3RunInfo &runInfo)
 {
-    auto iter = (ResetBaseFuncMap.find(compileInfo.socVersion) == ResetBaseFuncMap.end())
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArchHelper = ascendcPlatform.GetCurNpuArch();
+    auto iter = (ResetBaseFuncMap.find(npuArchHelper) == ResetBaseFuncMap.end())
                     ? ResetBaseDefault
-                    : ResetBaseFuncMap.at(compileInfo.socVersion);
+                    : ResetBaseFuncMap.at(npuArchHelper);
     iter(compileInfo, args, runInfo);
 }
 
 void Mc2MatMulV3TilingHelper::CalL1Tiling(const Mc2MatmulV3CompileInfo &compileInfo, const Mc2MatMulV3Args &args,
-                                       Mc2MatMulV3RunInfo &runInfo)
+                                          Mc2MatMulV3RunInfo &runInfo)
 {
     auto iter = (CalL1TilingFuncMap.find(compileInfo.socVersion) == CalL1TilingFuncMap.end())
                     ? CalL1TilingDefault
@@ -217,21 +220,30 @@ void Mc2MatMulV3TilingHelper::CalL1Tiling(const Mc2MatmulV3CompileInfo &compileI
     iter(compileInfo, args, runInfo);
 }
 
-Mc2MatMulV3L0C2Out Mc2MatMulV3TilingHelper::GetL0C2Out(const Mc2MatmulV3CompileInfo &compileInfo, const Mc2MatMulV3Args &args,
-                                                 const Mc2MatMulV3RunInfo &runInfo)
+Mc2MatMulV3L0C2Out Mc2MatMulV3TilingHelper::GetL0C2Out(const gert::TilingContext* context, 
+                                                       const Mc2MatmulV3CompileInfo &compileInfo, 
+                                                       const Mc2MatMulV3Args &args,
+                                                       const Mc2MatMulV3RunInfo &runInfo)
 {
-    auto iter = (GetL0C2OutFuncMap.find(compileInfo.socVersion) == GetL0C2OutFuncMap.end())
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArchHelper = ascendcPlatform.GetCurNpuArch();
+    auto iter = (GetL0C2OutFuncMap.find(npuArchHelper) == GetL0C2OutFuncMap.end())
                     ? GetL0C2OutDefault
-                    : GetL0C2OutFuncMap.at(compileInfo.socVersion);
+                    : GetL0C2OutFuncMap.at(npuArchHelper);
     return iter(compileInfo, args, runInfo);
 }
 
-bool Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(const Mc2MatmulV3CompileInfo &compileInfo, const Mc2MatMulV3Args &args,
-                                             const uint64_t batchC)
+bool Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(const gert::TilingContext* context,
+                                                const Mc2MatMulV3Args &args,
+                                                const uint64_t batchC)
 {
-    auto iter = (CheckIfDoubleAswtFuncMap.find(compileInfo.socVersion) == CheckIfDoubleAswtFuncMap.end())
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArchHelper = ascendcPlatform.GetCurNpuArch();
+    auto iter = (CheckIfDoubleAswtFuncMap.find(npuArchHelper) == CheckIfDoubleAswtFuncMap.end())
                     ? CheckIfDoubleAswtDefault
-                    : CheckIfDoubleAswtFuncMap.at(compileInfo.socVersion);
+                    : CheckIfDoubleAswtFuncMap.at(npuArchHelper);
     return iter(args, batchC);
 }
 }  // namespace mc2_matmul_v3_advanced

@@ -133,8 +133,8 @@ namespace optiling {
 namespace mc2_matmul_v3_advanced {
 using namespace strategy;
 
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, ASCEND950, BASE);
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, RESERVED_VERSION, BASE); // supportMmadS8S4平台
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, DAV_3510, BASE);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, DAV_RESV, BASE); // supportMmadS8S4平台
 
 void Mc2MatMulV3AswTiling::CalcTailBasicBlock()
 {
@@ -524,12 +524,12 @@ void Mc2MatMulV3AswTiling::HandleLargeBothSides(
 
 ge::graphStatus Mc2MatMulV3AswTiling::DoNormOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
     FormulateBasicBlock();
     OptimizeEdgeBasicBlock();
     CalcTailBasicBlock();
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
-    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(compileInfo_, args_, 1UL)) {
+    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(context_, args_, 1UL)) {
         aswtModel_ = Mc2MatMulV3Model::DOUBLE_ASWT;
     }
     return ge::GRAPH_SUCCESS;
@@ -537,14 +537,14 @@ ge::graphStatus Mc2MatMulV3AswTiling::DoNormOpTiling()
 
 ge::graphStatus Mc2MatMulV3AswTiling::DoOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
     FormulateLoadBalanceBlock();
     if (runInfo_.baseM == BASIC_BLOCK_SIZE_256 && runInfo_.baseN == BASIC_BLOCK_SIZE_256) {
         OptimizeEdgeBasicBlock();
     }
     CalcTailBasicBlock();
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
-    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(compileInfo_, args_, 1UL)) {
+    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(context_, args_, 1UL)) {
         aswtModel_ = Mc2MatMulV3Model::DOUBLE_ASWT;
     }
     return ge::GRAPH_SUCCESS;
@@ -555,7 +555,7 @@ uint64_t Mc2MatMulV3AswTiling::GetTilingKey() const
     return Mc2MatMulV3TilingKey()
         .SetTrans(args_.isATrans, args_.isBTrans)
         .SetModel(aswtModel_)
-        .SetL0C2Out(Mc2MatMulV3TilingHelper::GetL0C2Out(compileInfo_, args_, runInfo_))
+        .SetL0C2Out(Mc2MatMulV3TilingHelper::GetL0C2Out(context_, compileInfo_, args_, runInfo_))
         .GetTilingKey();
 }
 } // namespace mc2_matmul_v3_advanced

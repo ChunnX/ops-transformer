@@ -336,5 +336,6 @@ TilingTransferHelper::TilingTransferHelper(MatmulAllReduceTiling910& matmulAllRe
 {}
 
 //注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,MatmulAllReduceTiling910,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),2);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, MatmulAllReduceTiling910, \
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), 2);
 } // namespace optiling

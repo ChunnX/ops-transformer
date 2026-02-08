@@ -390,6 +390,7 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(
 {}
 
 //注册带SOC版本Tiling的类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,QuantMatmulAllReduceTiling,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),0);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,QuantMatmulAllReduceTiling, \
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),0);
 } // namespace optiling
 #endif //_QUANT_MATMUL_ALL_REDUCE_TILING_CC_

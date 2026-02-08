@@ -185,5 +185,6 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
 }
 
 //注册Tiling
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,UnQuantMatmulAllReduceTiling310,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P),2);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, UnQuantMatmulAllReduceTiling310, \
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P), 2);
 } // namespace optiling

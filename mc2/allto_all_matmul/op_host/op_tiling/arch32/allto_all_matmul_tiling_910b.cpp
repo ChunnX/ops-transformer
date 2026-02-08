@@ -1004,6 +1004,6 @@ AlltoAllMatmulTiling910b::AlltoAllMatmulTiling910b(gert::TilingContext *context)
 }
 
 // 注册tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(AlltoAllMatmul, AlltoAllMatmulTiling910b,
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(AlltoAllMatmul, AlltoAllMatmulTiling910b, \
                                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), 0);
 } // namespace MC2Tiling

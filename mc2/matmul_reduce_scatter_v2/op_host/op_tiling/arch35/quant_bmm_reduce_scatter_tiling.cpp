@@ -814,8 +814,8 @@ QuantBmmReduceScatterHelper::QuantBmmReduceScatterHelper(QuantBmmReduceScatterTi
 {
 }
 //注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulReduceScatterV2, QuantBmmReduceScatterTiling, \
-                                    static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND950), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling, \
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace
 
 #endif //_QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_

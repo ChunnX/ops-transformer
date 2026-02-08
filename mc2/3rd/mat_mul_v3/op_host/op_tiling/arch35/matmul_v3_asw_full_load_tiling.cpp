@@ -40,13 +40,13 @@ bool ABL1FullLoadExtraCond91095(uint64_t al1SingleCoreSize, uint64_t bl1SingleCo
 
 using ABL1FullLoadExtraCondFunc = bool (*)(uint64_t, uint64_t);
 
-const static std::map<platform_ascendc::SocVersion, ABL1FullLoadExtraCondFunc> ABL1FullLoadExtraCondFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, ABL1FullLoadExtraCond91095},
+const static std::map<NpuArch, ABL1FullLoadExtraCondFunc> ABL1FullLoadExtraCondFuncMap = {
+    {NpuArch::DAV_3510, ABL1FullLoadExtraCond91095},
 };
 
 using CheckBL1FullLoadFunc = bool (Mc2MatMulV3AswFullLoadTiling::*)(bool&, uint64_t, uint64_t);
-const static std::map<platform_ascendc::SocVersion, CheckBL1FullLoadFunc> CheckBL1FullLoadMap = {
-    {platform_ascendc::SocVersion::ASCEND950, &Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095},
+const static std::map<NpuArch, CheckBL1FullLoadFunc> CheckBL1FullLoadMap = {
+    {NpuArch::DAV_3510, &Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095},
 };
 
 // ------------------------------ GetStepSmallK -------------------------------------------//
@@ -88,8 +88,8 @@ uint64_t GetStepSmallK91095(const Mc2MatMulV3Args& args, const Mc2MatMulV3RunInf
 
 using GetStepSmallKFunc = uint64_t (*)(const Mc2MatMulV3Args&, const Mc2MatMulV3RunInfo&, bool);
 
-const static std::map<platform_ascendc::SocVersion, GetStepSmallKFunc> GetStepSmallKFuncMap = {
-    {platform_ascendc::SocVersion::ASCEND950, GetStepSmallK91095},
+const static std::map<NpuArch, GetStepSmallKFunc> GetStepSmallKFuncMap = {
+    {NpuArch::DAV_3510, GetStepSmallK91095},
 };
 
 void ResetLoadBalance(Mc2MatMulV3RunInfo& runInfo)
@@ -106,7 +106,7 @@ namespace optiling {
 namespace mc2_matmul_v3_advanced {
 using namespace strategy;
 
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswFullLoadTiling, ASCEND950, FULL_LOAD_BASE);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswFullLoadTiling, DAV_3510, FULL_LOAD_BASE);
 
 void Mc2MatMulV3AswFullLoadTiling::FullLoadPre()
 {
@@ -119,9 +119,12 @@ void Mc2MatMulV3AswFullLoadTiling::FullLoadPre()
 
 bool Mc2MatMulV3AswFullLoadTiling::ABL1FullLoadExtraCond(uint64_t al1SingleCoreSize, uint64_t bl1SingleCoreSize) const
 {
-    auto iter = (ABL1FullLoadExtraCondFuncMap.find(compileInfo_.socVersion) == ABL1FullLoadExtraCondFuncMap.end()) ?
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    auto iter = (ABL1FullLoadExtraCondFuncMap.find(npuArch) == ABL1FullLoadExtraCondFuncMap.end()) ?
                     ABL1FullLoadExtraCondDefault :
-                    ABL1FullLoadExtraCondFuncMap.at(compileInfo_.socVersion);
+                    ABL1FullLoadExtraCondFuncMap.at(npuArch);
     return iter(al1SingleCoreSize, bl1SingleCoreSize);
 }
 
@@ -156,9 +159,12 @@ void Mc2MatMulV3AswFullLoadTiling::DoABL1FullLoad()
 
 uint64_t Mc2MatMulV3AswFullLoadTiling::GetStepSmallK(bool isBL1FullLoad) const
 {
-    auto iter = (GetStepSmallKFuncMap.find(compileInfo_.socVersion) == GetStepSmallKFuncMap.end()) ?
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    auto iter = (GetStepSmallKFuncMap.find(npuArch) == GetStepSmallKFuncMap.end()) ?
                     GetStepSmallKDefault :
-                    GetStepSmallKFuncMap.at(compileInfo_.socVersion);
+                    GetStepSmallKFuncMap.at(npuArch);
     return iter(args_, runInfo_, isBL1FullLoad);
 }
 
@@ -306,10 +312,13 @@ bool Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad(bool& isKFullLoad)
         kAlignedValue = ops::CeilAlign(args_.kValue, BLOCK_BYTE_SIZE / args_.bDtypeSize);
         nAlignedValue = ops::CeilAlign(args_.nValue, BASIC_BLOCK_SIZE_16);
     }
-    auto iter = (CheckBL1FullLoadMap.find(compileInfo_.socVersion) == CheckBL1FullLoadMap.end() ||
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    auto iter = (CheckBL1FullLoadMap.find(npuArch) == CheckBL1FullLoadMap.end() ||
                  args_.bFormat == ge::FORMAT_FRACTAL_NZ) ?
                     CheckBL1FullLoadDefault(isKFullLoad, kAlignedValue, nAlignedValue) :
-                    (this->*CheckBL1FullLoadMap.at(compileInfo_.socVersion))(isKFullLoad, kAlignedValue, nAlignedValue);
+                    (this->*CheckBL1FullLoadMap.at(npuArch))(isKFullLoad, kAlignedValue, nAlignedValue);
     return iter;
 }
 
@@ -419,7 +428,7 @@ void Mc2MatMulV3AswFullLoadTiling::DoBL1FullLoad(bool isKFullLoad, uint64_t aBat
 ge::graphStatus Mc2MatMulV3AswFullLoadTiling::DoOpTiling()
 {
     Mc2MatMulV3AswTiling::DoOpTiling();
-    l0C2Out_ = Mc2MatMulV3TilingHelper::GetL0C2Out(compileInfo_, args_, runInfo_);
+    l0C2Out_ = Mc2MatMulV3TilingHelper::GetL0C2Out(context_, compileInfo_, args_, runInfo_);
     FullLoadPre();
     bool isKFullLoad = false;
     if (l0C2Out_ == Mc2MatMulV3L0C2Out::ON_THE_FLY && CheckABL1FullLoad()) {
