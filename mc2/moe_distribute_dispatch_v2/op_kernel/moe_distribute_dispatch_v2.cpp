@@ -53,6 +53,7 @@ REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     TPipe pipe;
     
 #if defined(__DAV_C310__)
+    int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_CCU) {
@@ -112,8 +113,9 @@ REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
                     op.Process();
                 }
             }
-        }
-    } 
+        } 
+    }
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
 #else
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))

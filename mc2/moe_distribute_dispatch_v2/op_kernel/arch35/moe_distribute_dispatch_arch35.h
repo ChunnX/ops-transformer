@@ -28,6 +28,7 @@
 #include "../../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
 
+#define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeDispatchA5Impl {
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr uint8_t QUANT_PADDING_VALUE = 0;
@@ -369,6 +370,7 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
     GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
     GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     pipe_ = pipe;
 
     epRankId_ = tilingData->moeDistributeDispatchV2Info.epRankId;

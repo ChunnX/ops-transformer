@@ -29,6 +29,7 @@
 #include "../../common/inc/kernel/moe_distribute_base.h"
 #include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
+#define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeDispatchV2FullMeshImpl {
 constexpr uint8_t BUFFER_NUM = 2;        // 多buf
 constexpr uint32_t STATE_OFFSET = 32U;  // 状态空间偏移地址
@@ -400,6 +401,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
     GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
+#if defined(__DAV_C310__) // A3不支持MX量化，无需使能饱和模式
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
+#endif
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();

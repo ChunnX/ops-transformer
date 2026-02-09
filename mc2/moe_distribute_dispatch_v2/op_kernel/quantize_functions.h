@@ -211,7 +211,7 @@ __aicore__ inline void ComputeData(__ubuf__ T* srcAddr, __ubuf__ uint16_t* halfS
             MicroAPI::RegLayout::ONE, MicroAPI::SatMode::UNKNOWN,
             MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         static constexpr MicroAPI::CastTrait castTrait32to8 = {
-            MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+            MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
         for (uint16_t i = 0; i < loopNum; i++) {
             dataMask1 = MicroAPI::UpdateMask<T>(totalCountInUB);
