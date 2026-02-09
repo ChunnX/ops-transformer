@@ -179,22 +179,6 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
         actual_seq_kvlen_addr = actual_seq_kvlen;
     }
 
-    /*
-     * 初始化workspace
-     */
-    int64_t usedWorkspaceLen = 0;
-    // select
-    usedWorkspaceLen += tilingData->opInfo.selectedKWorkspaceLen * usedCoreNum;
-    usedWorkspaceLen += tilingData->opInfo.selectedVWorkspaceLen * usedCoreNum;
-    // mm1 与 p 复用workspace
-    usedWorkspaceLen += tilingData->opInfo.mm12WorkspaceLen * usedCoreNum;
-    // mm2 与 ds 复用workspace
-    usedWorkspaceLen += tilingData->opInfo.mm12WorkspaceLen * usedCoreNum * usedCoreNum;
-    // post
-    int64_t dqAddr = usedWorkspaceLen / sizeof(float);
-    int64_t dkAddr = dqAddr + tilingData->opInfo.dqWorkspaceLen / sizeof(float);
-    int64_t dvAddr = dkAddr + tilingData->opInfo.dkWorkspaceLen / sizeof(float);
-
     dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                   tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +

@@ -23,6 +23,7 @@
 namespace SFAG_BASIC {
 
 constexpr static uint64_t MAX_CORE_NUM = 24;
+constexpr static uint64_t PER_LOOP_BLOCK_SIZE = 128;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
@@ -72,6 +73,8 @@ struct RunInfo {
     int64_t lastBlockSize;
     bool isLastBasicBlock;
     bool valid = false;
+    bool isSmallS2 = false;
+    bool noReload = false;
 };
 
 /////////////////////////////////////////////////////

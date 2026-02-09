@@ -102,7 +102,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoOpTiling()
 
     // Init
     tmpData.singleM = tilingData.opInfo.get_G();
-    tmpData.singleN = 512;
+    tmpData.singleN = 128; // PER_LOOP_BLOCK_SIZE
 
     // setTilingData
     tilingData.splitCoreParams.set_singleM(tmpData.singleM);
@@ -179,7 +179,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = sysLen;
     workspaces[0] += (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
-    workspaces[0] += mm12WorkspaceLen * 2 * currentUseCoreNum;
+    workspaces[0] += mm12WorkspaceLen * 4 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
     int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
@@ -192,7 +192,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     tilingData.opInfo.set_selectedVWorkspaceLen(selectedVWorkspaceLen);
 
     int64_t workspaceOffsets = (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
-    workspaceOffsets += mm12WorkspaceLen * 2 * currentUseCoreNum;
+    workspaceOffsets += mm12WorkspaceLen * 4 * currentUseCoreNum;
     tilingData.postTilingData.set_dqWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + tilingData.opInfo.get_dqWorkspaceLen();
     tilingData.postTilingData.set_dkWorkSpaceOffset(workspaceOffsets);

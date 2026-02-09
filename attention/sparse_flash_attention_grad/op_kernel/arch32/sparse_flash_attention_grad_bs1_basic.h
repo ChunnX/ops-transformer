@@ -192,8 +192,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Init(const TILING_CLAS
     selectedVWorkspaceLen = tilingData->opInfo.selectedVWorkspaceLen;
     selectedKWspOffset = selectedKWorkspaceLen / sizeof(T1) / 4;
     selectedVWspOffset = selectedVWorkspaceLen / sizeof(T1) / 2;
-    selectedCountOffset = 512 / tilingData->opInfo.selectedBlockSize;
-    if (tilingData->opInfo.selectedBlockSize * tilingData->opInfo.selectedBlockCount <= 512) {
+    selectedCountOffset = PER_LOOP_BLOCK_SIZE / tilingData->opInfo.selectedBlockSize;
+    if (tilingData->opInfo.selectedBlockSize * tilingData->opInfo.selectedBlockCount <= PER_LOOP_BLOCK_SIZE) {
         selectedCountOffset = tilingData->opInfo.selectedBlockCount;
     }
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
@@ -214,7 +214,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         TPipe pipeCube;
         CubeOp<SFAGT> cubeOp;
         cubeOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
-                    actual_seq_qlen, actual_seq_kvlen, query_rope, dq, dk, dv, workspace, tilingData, &pipeCube);
+                    actual_seq_qlen, actual_seq_kvlen, query_rope, key_rope, dq, dk, dv, workspace, tilingData, &pipeCube);
         AllocEventID();
         int64_t task = 0;
         bool changeS1 = false;
@@ -242,7 +242,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                     if (runInfo[1 - mmPingPongIdx].valid) {
                         int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
                         CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+                        runInfo[1 - mmPingPongIdx].noReload = true;
                         cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+                        runInfo[1 - mmPingPongIdx].noReload = false;
                         runInfo[1 - mmPingPongIdx].valid = false;
                     }
                     CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
@@ -259,7 +261,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         if (cubeBlockIdx < usedCoreNum && task > 0) {
             int64_t taskMod = runInfo[1 - mmPingPongIdx].task & 1;
             CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+            runInfo[1 - mmPingPongIdx].noReload = true;
             cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+            runInfo[1 - mmPingPongIdx].noReload = false;
             if (deterministic) {
                 CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
                 CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
@@ -307,9 +311,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                     if (runInfo[1 - mmPingPongIdx].valid) {
                         int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
                         CrossCoreWaitFlag(taskMod1 == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-                        if (subBlockIdx == 0) {
-                            vecOp.Process(runInfo[1 - mmPingPongIdx]);
-                        }
+                        vecOp.Process(runInfo[1 - mmPingPongIdx]);
                         runInfo[1 - mmPingPongIdx].valid = false;
                         CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
                     }
@@ -337,9 +339,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
 
             int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
             CrossCoreWaitFlag(taskMod1 == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-            if (subBlockIdx == 0) {
-                vecOp.Process(runInfo[1 - mmPingPongIdx]);
-            }
+            vecOp.Process(runInfo[1 - mmPingPongIdx]);
             CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
             CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
@@ -378,22 +378,27 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::CubeCompute(CubeOp<SFA
     int64_t taskMod = runInfo[mmPingPongIdx].task & 1;
     // WaitVec for select & gather
     CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_GATHER_PING : CUBE_WAIT_VEC_GATHER_PONG);
-    if (unlikely(loopCnt == 0)) {
-        cubeOp.cube12Process(runInfo[mmPingPongIdx], blkCntOffset, mmPingPongIdx);
-        CrossCoreSetFlag<2, PIPE_FIX>(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-        SaveLastInfo();
-        return;
+    // First Block Load query & dy
+    if (blkCntOffset == 0) {
+        WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_QUERY_EVENTS);
+        WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_DY_EVENTS);
+        cubeOp.preloadQueryAndDy(runInfo[mmPingPongIdx]);
     }
+
     cubeOp.cube12Process(runInfo[mmPingPongIdx], blkCntOffset, mmPingPongIdx);
     CrossCoreSetFlag<2, PIPE_FIX>(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
 
-    if (runInfo[1 - mmPingPongIdx].valid) {
+    if (likely(loopCnt > 0 && runInfo[1 - mmPingPongIdx].valid)) {
         int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
         CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
         cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
         runInfo[1 - mmPingPongIdx].valid = false;
     }
-
+    // Backward Sync, s1 block loop end, reload query & dy
+    if (blkCntOffset + selectedCountOffset >= actualSelectedBlockCount) {
+        SetFlag<HardEvent::MTE1_MTE2>(MM_L1_QUERY_EVENTS);
+        SetFlag<HardEvent::MTE1_MTE2>(MM_L1_DY_EVENTS);
+    }
     SaveLastInfo();
 }
 
@@ -443,9 +448,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::VecCompute(VecOp<SFAGT
         if (runInfo[1 - mmPingPongIdx].valid) {
             int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
             CrossCoreWaitFlag(taskMod1 == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-            if (subBlockIdx == 0) {
-                vecOp.Process(runInfo[1 - mmPingPongIdx]);
-            }
+            vecOp.Process(runInfo[1 - mmPingPongIdx]);
             runInfo[1 - mmPingPongIdx].valid = false;
             CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
         }
@@ -499,6 +502,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateScatterInfo(int6
     scatterRunInfo.s1Index = t1ScatterIndex;
     scatterRunInfo.curS2 = curS2Scatter;
     scatterRunInfo.actualSelectedBlockCount = actualSelectedBlockCountScatter;
+    scatterRunInfo.isSmallS2 = (curMaxS2Scatter <= actualSelectedBlockCountScatter * selectedBlockSize);
 }
 
 template <typename SFAGT>
@@ -571,6 +575,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     runInfo[mmPingPongIdx].curS2 = curS2;
     runInfo[mmPingPongIdx].selectedKGmOffset = selectedKGmOffset;
     runInfo[mmPingPongIdx].selectedVGmOffset = selectedVGmOffset;
+    runInfo[mmPingPongIdx].isSmallS2 = (curMaxS2 <= actualSelectedBlockCount * selectedBlockSize);
 }
 
 template <typename SFAGT>
