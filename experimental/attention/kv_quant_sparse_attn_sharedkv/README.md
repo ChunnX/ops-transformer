@@ -144,11 +144,11 @@ custom.npu_kv_quant_sparse_attn_sharedkv(q, kv_quant_mode, *, ori_kv=None, cmp_k
         
     ori_block_num =  math.ceil(actS2/ori_block_size) * B
     block_table1 = torch.tensor(np.random.permutation(range(ori_block_num))).to(torch.int32).reshape(B, -1).npu()
-    ori_kv = torch.tensor(np.random.uniform(-5, 10, (ori_block_num, ori_block_size, N2, D))).to(ori_kv_type).npu()
+    ori_kv = torch.tensor(np.random.uniform(-5, 10, (ori_block_num, ori_block_size, N2, d_aligned_128))).to(ori_kv_type).npu()
 
     cmp_block_num =  math.ceil(cmp_kv_len/cmp_block_size) * B
     block_table2 = torch.tensor(np.random.permutation(range(cmp_block_num))).to(torch.int32).reshape(B, -1).npu()
-    cmp_kv = torch.tensor(np.random.uniform(-5, 10, (cmp_block_num, cmp_block_size, N2, D))).to(cmp_kv_type).npu()
+    cmp_kv = torch.tensor(np.random.uniform(-5, 10, (cmp_block_num, cmp_block_size, N2, d_aligned_128))).to(cmp_kv_type).npu()
     sinks = torch.rand(N1).to(torch.float32).npu()
 
     metadata = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv_metadata(
@@ -307,11 +307,11 @@ custom.npu_kv_quant_sparse_attn_sharedkv(q, kv_quant_mode, *, ori_kv=None, cmp_k
         
     ori_block_num =  math.ceil(actS2/ori_block_size) * B
     block_table1 = torch.tensor(np.random.permutation(range(ori_block_num))).to(torch.int32).reshape(B, -1).npu()
-    ori_kv = torch.tensor(np.random.uniform(-5, 10, (ori_block_num, ori_block_size, N2, D))).to(ori_kv_type).npu()
+    ori_kv = torch.tensor(np.random.uniform(-5, 10, (ori_block_num, ori_block_size, N2, d_aligned_128))).to(ori_kv_type).npu()
 
     cmp_block_num =  math.ceil(cmp_kv_len/cmp_block_size) * B
     block_table2 = torch.tensor(np.random.permutation(range(cmp_block_num))).to(torch.int32).reshape(B, -1).npu()
-    cmp_kv = torch.tensor(np.random.uniform(-5, 10, (cmp_block_num, cmp_block_size, N2, D))).to(cmp_kv_type).npu()
+    cmp_kv = torch.tensor(np.random.uniform(-5, 10, (cmp_block_num, cmp_block_size, N2, d_aligned_128))).to(cmp_kv_type).npu()
     sinks = torch.rand(N1).to(torch.float32).npu()
 
     torch._dynamo.reset()
