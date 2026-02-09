@@ -9,10 +9,8 @@
  */
 
 #include <gtest/gtest.h>
-#include <iostream>
 #include "matmul_all_reduce_host_ut_param.h"
 #include "mc2_infer_shape_case_executor.h"
-#include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MatmulAllReduceUT {
 
@@ -72,7 +70,7 @@ INSTANTIATE_TEST_SUITE_P(
     MatmulAllReduce,
     InferShapeTest,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceInferShapeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    GetCaseInfoString<MatmulAllReduceInferShapeUtParam>
+    PrintCaseInfoString<MatmulAllReduceInferShapeUtParam>
 );
 
-} // namespace matmul_all_reduce_ut
+} // namespace MatmulAllReduceUT

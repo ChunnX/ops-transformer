@@ -74,7 +74,7 @@ INSTANTIATE_TEST_SUITE_P(
     MatmulAllReduce,
     MatmulAllReduceArch20TilingTest,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    GetCaseInfoString<MatmulAllReduceTilingUtParam>
+    PrintCaseInfoString<MatmulAllReduceTilingUtParam>
 );
 
 } // namespace MatmulAllReduceUT

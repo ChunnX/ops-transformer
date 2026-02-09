@@ -139,6 +139,7 @@ if(UT_TEST_ALL OR OP_API_UT)
               ${ASCEND_DIR}/pkg_inc 
               ${ASCEND_DIR}/include/ascendc/basic_api 
               ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc
+              ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
       )
     target_link_libraries(${OP_API_MODULE_NAME}_cases_obj 
       PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>

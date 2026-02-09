@@ -9,7 +9,6 @@
  */
 
 #include <gtest/gtest.h>
-#include <iostream>
 #include "matmul_all_reduce_host_ut_param.h"
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
@@ -74,7 +73,7 @@ INSTANTIATE_TEST_SUITE_P(
     MatmulAllReduce,
     InferDataTypeTest,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceInferDataTypeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    GetCaseInfoString<MatmulAllReduceInferDataTypeUtParam>
+    PrintCaseInfoString<MatmulAllReduceInferDataTypeUtParam>
 );
 
-} // namespace matmul_all_reduce_ut
+} // namespace MatmulAllReduceUT

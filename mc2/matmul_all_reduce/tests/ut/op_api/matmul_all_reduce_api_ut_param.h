@@ -11,11 +11,8 @@
 #ifndef MATMUL_ALL_REDUCE_API_UT_PARAM_H
 #define MATMUL_ALL_REDUCE_API_UT_PARAM_H
 
-#include <cstdint>
-#include <string>
 #include <sstream>
-#include "op_api_ut_common/tensor_desc.h"
-#include "op_api_ut_common/op_api_ut.h"
+#include "op_api_csv_case_loader.h"
 
 namespace MatmulAllReduceUT {
 
@@ -33,72 +30,54 @@ struct MatmulAllReduceApiUtParam {
     TensorDesc commQuantScale2;
     TensorDesc antiquantScale;
     TensorDesc antiquantOffset;
-    const char* group;
-    const char* reduceOp;
+    TensorDesc output;
+    std::string group;
+    std::string reduceOp;
     int64_t commTurn;
     int64_t streamMode;
     int64_t groupSize;
     int64_t commQuantMode;
-    TensorDesc output;
-    aclnnStatus expectAclnnStatus;
+    op::SocVersion soc;
+    aclnnStatus expectResult;
 
-    // aclnn_matmul_all_reduce
-    MatmulAllReduceApiUtParam(std::string case_name, TensorDesc x1, TensorDesc x2, TensorDesc bias, const char* group,
-        const char* reduceOp, int64_t commTurn, int64_t streamMode, TensorDesc output, aclnnStatus expectAclnnStatus): 
-        case_name(case_name), x1(x1), x2(x2), bias(bias), group(group), reduceOp(reduceOp), commTurn(commTurn),
-        streamMode(streamMode), output(output), expectAclnnStatus(expectAclnnStatus) {}
-
-    // aclnn_matmul_all_reduce_v2
-    MatmulAllReduceApiUtParam(std::string case_name, TensorDesc x1, TensorDesc x2, TensorDesc bias, TensorDesc x3,
-        const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode,
-        TensorDesc output, aclnnStatus expectAclnnStatus): 
-        case_name(case_name), x1(x1), x2(x2), bias(bias), x3(x3), group(group), reduceOp(reduceOp), commTurn(commTurn),
-        streamMode(streamMode), output(output), expectAclnnStatus(expectAclnnStatus) {}
-
-    // aclnn_quant_matmul_all_reduce
-    MatmulAllReduceApiUtParam(std::string case_name, TensorDesc x1, TensorDesc x2, TensorDesc bias, TensorDesc x3,
-        TensorDesc dequantScale, const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode,
-        TensorDesc output, aclnnStatus expectAclnnStatus): 
-        case_name(case_name), x1(x1), x2(x2), bias(bias), x3(x3), dequantScale(dequantScale), group(group),
-        reduceOp(reduceOp), commTurn(commTurn), streamMode(streamMode), output(output),
-        expectAclnnStatus(expectAclnnStatus) {}
-
-    // aclnn_quant_matmul_all_reduce_v2
-    MatmulAllReduceApiUtParam(std::string case_name, TensorDesc x1, TensorDesc x2, TensorDesc bias, TensorDesc x3,
-        TensorDesc dequantScale, TensorDesc pertokenScale, const char* group, const char* reduceOp, int64_t commTurn, 
-        int64_t streamMode, TensorDesc output, aclnnStatus expectAclnnStatus): 
-        case_name(case_name), x1(x1), x2(x2), bias(bias), x3(x3), dequantScale(dequantScale), 
-        pertokenScale(pertokenScale), group(group), reduceOp(reduceOp), commTurn(commTurn), streamMode(streamMode), 
-        output(output), expectAclnnStatus(expectAclnnStatus) {}
-
-    // aclnn_quant_matmul_all_reduce_v3
-    MatmulAllReduceApiUtParam(std::string case_name, TensorDesc x1, TensorDesc x2, TensorDesc bias, TensorDesc x3,
-        TensorDesc dequantScale, TensorDesc pertokenScale, TensorDesc commQuantScale1, TensorDesc commQuantScale2,
-        const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode, TensorDesc output,
-        aclnnStatus expectAclnnStatus): 
-        case_name(case_name), x1(x1), x2(x2), bias(bias), x3(x3), dequantScale(dequantScale), 
-        pertokenScale(pertokenScale), commQuantScale1(commQuantScale1), commQuantScale2(commQuantScale2), 
-        group(group), reduceOp(reduceOp), commTurn(commTurn), streamMode(streamMode), output(output),
-        expectAclnnStatus(expectAclnnStatus) {}
-
-    // aclnn_quant_matmul_all_reduce_v4
-    MatmulAllReduceApiUtParam(std::string case_name, TensorDesc x1, TensorDesc x2, TensorDesc bias, TensorDesc x3, 
-        TensorDesc x1Scale, TensorDesc x2Scale, TensorDesc commQuantScale1, TensorDesc commQuantScale2,
-        const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode, int64_t groupSize, 
-        int64_t commQuantMode, TensorDesc output, aclnnStatus expectAclnnStatus): 
-        case_name(case_name), x1(x1), x2(x2), bias(bias), x3(x3), x1Scale(x1Scale), x2Scale(x2Scale),
-        commQuantScale1(commQuantScale1), commQuantScale2(commQuantScale2), group(group), reduceOp(reduceOp),
-        commTurn(commTurn), streamMode(streamMode), groupSize(groupSize), commQuantMode(commQuantMode), output(output),
-        expectAclnnStatus(expectAclnnStatus) {}
-
-    // aclnnWeightQuantMatmulAllReduce
-    MatmulAllReduceApiUtParam(std::string case_name, TensorDesc x1, TensorDesc x2, TensorDesc bias,
-        TensorDesc antiquantScale, TensorDesc antiquantOffset, TensorDesc x3, const char* group, const char* reduceOp,
-        int64_t commTurn, int64_t streamMode, int64_t groupSize, TensorDesc output, aclnnStatus expectAclnnStatus):
-        case_name(case_name), x1(x1), x2(x2), bias(bias), antiquantScale(antiquantScale),
-        antiquantOffset(antiquantOffset), x3(x3), group(group), reduceOp(reduceOp), commTurn(commTurn), 
-        streamMode(streamMode), groupSize(groupSize), output(output),
-        expectAclnnStatus(expectAclnnStatus) {}
+    MatmulAllReduceApiUtParam(const csv_map& csvMap)
+    {
+        this->case_name = ReadMap(csvMap, "case_name");
+        this->x1 = GetTensorACL(csvMap, 
+            "x1_shape", "x1_dtype", "x1_format");
+        this->x2 = GetTensorACL(csvMap, 
+            "x2_shape", "x2_dtype", "x2_format");
+        this->bias = GetTensorACL(csvMap, 
+            "bias_shape", "bias_dtype", "bias_format");
+        this->x3 = GetTensorACL(csvMap, 
+            "x3_shape", "x3_dtype", "x3_format");
+        this->dequantScale = GetTensorACL(csvMap, 
+            "dequant_scale_shape", "dequant_scale_dtype", "dequant_scale_format");
+        this->pertokenScale = GetTensorACL(csvMap, 
+            "pertoken_scale_shape", "pertoken_scale_dtype", "pertoken_scale_format");
+        this->x1Scale = GetTensorACL(csvMap, 
+            "x1_scale_shape", "x1_scale_dtype", "x1_scale_format");
+        this->x2Scale = GetTensorACL(csvMap, 
+            "x2_scale_shape", "x2_scale_dtype", "x2_scale_format");
+        this->commQuantScale1 = GetTensorACL(csvMap, 
+            "comm_quant_scale1_shape", "comm_quant_scale1_dtype", "comm_quant_scale1_format");
+        this->commQuantScale2 = GetTensorACL(csvMap, 
+            "comm_quant_scale2_shape", "comm_quant_scale2_dtype", "comm_quant_scale2_format");
+        this->antiquantScale = GetTensorACL(csvMap, 
+            "antiquant_scale_shape", "antiquant_scale_dtype", "antiquant_scale_format");
+        this->antiquantOffset = GetTensorACL(csvMap, 
+            "antiquant_offset_shape", "antiquant_offset_dtype", "antiquant_offset_format");
+        this->output = GetTensorACL(csvMap, 
+            "output_shape", "output_dtype", "output_format");
+        this->group = ReadMap(csvMap, "group");
+        this->reduceOp = ReadMap(csvMap, "reduce_op");
+        this->commTurn = stoll(ReadMap(csvMap, "comm_turn", "0"));
+        this->streamMode = stoll(ReadMap(csvMap, "stream_mode", "0"));
+        this->groupSize = stoll(ReadMap(csvMap, "group_size", "0"));
+        this->commQuantMode = stoll(ReadMap(csvMap, "comm_quant_mode", "0"));
+        this->soc = GetCaseSocVersion(csvMap, "soc");
+        this->expectResult = GetAclnnRet(csvMap, "expect_result");
+    }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const MatmulAllReduceApiUtParam& param)
@@ -111,6 +90,6 @@ inline std::string PrintMatmulAllReduceApiUtParam(const testing::TestParamInfo<M
     return info.param.case_name;
 }
 
-} // namespace matmul_all_reduce_ut
+} // namespace MatmulAllReduceUT
 
 #endif // MATMUL_ALL_REDUCE_API_UT_PARAM_H

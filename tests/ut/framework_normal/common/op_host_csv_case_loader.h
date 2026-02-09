@@ -8,19 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MC2_CSV_CASE_LOADER_H
-#define MC2_CSV_CASE_LOADER_H
+#ifndef OP_HOST_CSV_CASE_LOADER_H
+#define OP_HOST_CSV_CASE_LOADER_H
 
-#include <iostream>
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <fstream>
-#include <filesystem>
+#include "csv_case_load_utils.h"
 #include "tiling_context_faker.h"
 #include "infer_shape_context_faker.h"
-
-using csv_map = std::unordered_map<std::string, std::string>;
 
 const std::unordered_map<std::string, ge::DataType> GE_DTYPE {
     {"FLOAT", ge::DT_FLOAT},
@@ -117,25 +110,6 @@ const std::unordered_map<std::string, ge::Format> GE_FORMAT {
     {"NCL", ge::FORMAT_NCL}
 };
 
-template <typename Map>
-inline typename Map::mapped_type ReadMap(const Map& m, const typename Map::key_type& key,
-    const typename Map::mapped_type& defaultValue = typename Map::mapped_type{})
-{
-    auto it = m.find(key);
-    return it != m.end() ? it->second : defaultValue;
-}
-
-inline std::vector<int64_t> GetShapeArr(const std::string& shapeArrStr)
-{
-    std::vector<int64_t> shapeArr;
-    std::istringstream iss(shapeArrStr);
-    int64_t num;
-    while (iss >> num) {
-        shapeArr.emplace_back(num);
-    }
-    return shapeArr;
-}
-
 inline gert::StorageShape GetStorageShape(const std::string& shapeArrStr)
 {
     gert::StorageShape shape;
@@ -172,7 +146,7 @@ inline int GetDataType(const csv_map& csvMap, const std::string& dtypeKey, ge::D
 }
 
 template<typename T>
-inline int GetTensor(const csv_map& csvMap, const std::string& shapeKey, const std::string& dtypeKey,
+inline int GetTensorGE(const csv_map& csvMap, const std::string& shapeKey, const std::string& dtypeKey,
     const std::string& formatKey, T& out)
 {
     std::string shapeStr = ReadMap(csvMap, shapeKey);
@@ -189,58 +163,4 @@ inline int GetTensor(const csv_map& csvMap, const std::string& shapeKey, const s
     return 1;
 }
 
-inline std::string ReplaceFileExtension2Csv(const char* file)
-{
-    return std::filesystem::path(file).replace_extension("csv").string();
-}
-
-template<typename T> // T 需要支持 T(const csv_map&) 构造函数
-std::vector<T> GetCasesFromCsv(const std::string& csvPath)
-{
-    std::vector<T> cases;
-    std::ifstream csvFile(csvPath, std::ios::in);
-    if (!csvFile.is_open()) {
-        std::cout << "[ERROR] Cannot open case file \"" << csvPath << "\"!" << std::endl;
-        return cases;
-    }
-
-    std::vector<std::string> keys;
-    std::string line;
-    std::getline(csvFile, line);
-    std::istringstream stream(line);
-    for (std::string data; std::getline(stream, data, ','); ) {
-        keys.emplace_back(data);
-    }
-    // lineNum = 1 是表头
-    for (int lineNum = 2; std::getline(csvFile, line); ++lineNum) {
-        if (line.empty()) {
-            std::cout << "[ERROR] " << csvPath << ":" << lineNum
-                      << " Row data is empty!" << std::endl;
-            return std::vector<T>();
-        }
-        std::vector<std::string> values;
-        std::istringstream stream(line);
-        for (std::string data; std::getline(stream, data, ','); ) {
-            values.emplace_back(data);
-        }
-        if (line.back() == ',') {
-            values.emplace_back("");
-        }
-        if (keys.size() != values.size()) {
-            std::cout << "[ERROR] " << csvPath << ":" << lineNum
-                      << " Row data does not match CSV header columns. Row has " << values.size()
-                      << " columns, but header has " << keys.size() << " columns." << std::endl;
-            return std::vector<T>();
-        }
-        csv_map csvMap;
-        for (size_t i = 0; i < keys.size(); ++i) {
-            if (! values[i].empty()) {
-                csvMap[keys[i]] = values[i];
-            }
-        }
-        cases.emplace_back(csvMap);
-    }
-    return cases;
-}
-
-#endif // MC2_CSV_CASE_LOADER_H
+#endif // OP_HOST_CSV_CASE_LOADER_H
