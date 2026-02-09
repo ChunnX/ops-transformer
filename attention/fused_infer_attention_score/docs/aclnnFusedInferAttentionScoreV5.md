@@ -764,7 +764,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>innerPrecise为1时，代表高性能模式，且不做行无效修正。</li>
             <li>innerPrecise为2时，代表开启高精度模式，且做行无效修正。</li>
             <li>innerPrecise为3时，代表高性能模式，且做行无效修正。</li>
-            <li>Q_S>1时，sparse_mode为0或1，并传入用户自定义mask的情况下，建议开启行无效；Q_S为1时该参数仅支持innerPrecise为0和1。</li>
+            <li>sparse_mode为0或1，并传入用户自定义mask的情况下，建议开启行无效修正。</li>
             <li>BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。</li>
             <li>当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来使能行无效功能以提升精度，但是该配置会导致性能下降。</li>
             <li>如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparse_mode为3，Sq > Skv场景。</li>
