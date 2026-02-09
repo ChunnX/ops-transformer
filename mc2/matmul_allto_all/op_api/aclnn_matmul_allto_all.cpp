@@ -169,7 +169,7 @@ static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2, const 
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnMatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s .",
+                "aclnnMatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s.",
                 op::ToString(biasOptional->GetDataType()).GetString());
             return false;
         }

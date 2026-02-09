@@ -97,7 +97,7 @@ static bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional)
     uint64_t alltoallAxesSize = 0U;  // alltoallAxes的大小
     aclGetIntArraySize(alltoAllAxesOptional, &alltoallAxesSize);
     if (alltoallAxesSize != TWO_DIMS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimension of alltoAllAxesOptional should be 2U, but it is: %zu.", alltoallAxesSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimension of alltoAllAxesOptional should equal to 2, but it is %zu now.", alltoallAxesSize);
         return false;
     }
     int64_t data1 = (*alltoAllAxesOptional)[0];
@@ -135,7 +135,7 @@ static bool CheckGroupLength(const char *group)
     auto len = strnlen(group, MAX_GROUP_LEN);
     if ((len >= MAX_GROUP_LEN) || (len == ZERO)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "Required group name length in range (0, 128), but it is %zu.", len);
+                "Required group name length in range (0, 128).");
         return false;
     }
     return true;
@@ -266,7 +266,7 @@ static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2, const 
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnMatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s .",
+                "aclnnMatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s.",
                 op::ToString(biasOptional->GetDataType()).GetString());
             return false;
         }

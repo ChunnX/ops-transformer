@@ -98,7 +98,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
     // 判断group是否超过127
     size_t groupLen = strlen(group);
     OP_TILING_CHECK(groupLen > MAX_GROUP_NAME_LEN,
-                    OP_LOGE(opName, "The input attr group length is %zu, which exceeds the limit of 128.", groupLen),
+                    OP_LOGE(opName, "The input attr group length is %zu, which exceeds the limit of 127.", groupLen),
                     return ge::GRAPH_FAILED);
     // 通路输入world_size为可选，如果默认值不为-1，则调用mc2tiling的获取rankSize的方法
     int64_t rankDim = 0;
