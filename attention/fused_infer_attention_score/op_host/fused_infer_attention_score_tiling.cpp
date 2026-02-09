@@ -1087,9 +1087,9 @@ ge::graphStatus CheckFAIQKV(gert::TilingContext *context, bool isPageAttention)
 
 ge::graphStatus CheckFAILearnableSink(const gert::TilingContext *context) {
  	         auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
- 	         auto sinkDataType = context->GetInputDesc(LEARNABLE_SINK_INDEX)->GetDataType();
+ 	         auto sinkDataType = context->GetOptionalInputDesc(LEARNABLE_SINK_INDEX)->GetDataType();
              auto queryShape = context->GetInputShape(QUERY_INDEX);
-             auto learnableSinkShape = context->GetInputShape(LEARNABLE_SINK_INDEX);
+             auto learnableSinkShape = context->GetOptionalInputShape(LEARNABLE_SINK_INDEX);
 
  	         auto attrs = context->GetAttrs();
  	         int32_t tempInnerPrecise = *(attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX));
