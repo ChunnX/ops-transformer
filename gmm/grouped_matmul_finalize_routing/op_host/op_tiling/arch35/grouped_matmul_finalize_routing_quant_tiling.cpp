@@ -163,7 +163,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptional(uint32_t index, cons
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::IsFp4Dtype(ge::DataType dtype)
 {
-    return (dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_FLOAT4_E2M1);
+    return dtype == ge::DT_FLOAT4_E2M1;
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::IsFp8Dtype(ge::DataType dtype)
@@ -179,7 +179,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype()
         OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 ||
                         inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                     OP_LOGE(context_->GetNodeName(),
-                            "With DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E1M2/DT_FLOAT4_E2M1 inputs, \
+                            "With DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E2M1 inputs, \
 the expected dtype of scale and pertokenScale should be DT_FLOAT8_E8M0, but actual dtype is %s, %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str(),
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),

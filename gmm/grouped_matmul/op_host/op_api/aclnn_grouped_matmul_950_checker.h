@@ -78,8 +78,7 @@ private:
     std::string groupTensorName_ = "groupTensor";
     std::string biasName_ = "bias";
     std::string yName_ = "y";
-    const std::vector<op::DataType> SPECIAL_QUANT_DTYPES = {DataType::DT_FLOAT4_E1M2, DataType::DT_FLOAT4_E2M1,
-                                                            DataType::DT_INT4};
+    const std::vector<op::DataType> SPECIAL_QUANT_DTYPES = {DataType::DT_FLOAT4_E2M1, DataType::DT_INT4};
 };
 } // namespace gmm
 #endif

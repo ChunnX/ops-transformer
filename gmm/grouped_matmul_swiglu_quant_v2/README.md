@@ -177,7 +177,6 @@
             | :-----------: | :--: |
             | FLOAT8_E4M3FN |  8   |
             |  FLOAT8_E5M2  |  15  |
-            |  FLOAT4_E1M2  |  1   |
             |  FLOAT4_E2M1  |  2   |
           - $blocksize$：指每次量化的元素个数，仅支持32。
     </details>
@@ -208,14 +207,14 @@
     <td>x</td>
     <td rowspan="1">输入</td>
     <td>表示左矩阵，对应公式中的X。</td>
-    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8</td>
+    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>weight</td>
     <td rowspan="1">输入</td>
     <td>表示权重矩阵，对应公式中的W。</td>
-    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8、INT4、INT32</td>
+    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、INT4、INT32</td>
     <td>ND、FRACTAL_NZ</td>
   </tr>
   <tr>
@@ -299,7 +298,7 @@
     <td>output</td>
     <td rowspan="1">输出</td>
     <td>表示输出的量化结果，公式中的Q。</td>
-    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8</td>
+    <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8</td>
     <td>ND</td>
   </tr>
   <tr>
@@ -340,14 +339,14 @@
     - outputScale仅支持数据类型FLOAT，shape支持1维，形如(M,)。
 - <term>Ascend 950PR/Ascend 950DT</term>：
     - 仅支持FLOAT8、FLOAT4量化数据类型，不支持其他数据类型，支持weight转置。
-    - x支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
-    - weight支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1数据类型，非转置shape形如{(E, K, N)}，weight转置shape形如{(E, N, K)}。
+    - x支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1数据类型。
+    - weight支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1数据类型，非转置shape形如{(E, K, N)}，weight转置shape形如{(E, N, K)}。
     - weightScale支持FLOAT8_E8M0数据类型，shape支持4维：weightScale非转置shape形如{(E, ceil(K / 64), N, 2)}，weightScale转置shape形如{(E, N, ceil(K / 64), 2)}。
     - xScale: FLOAT8_E8M0数据类型：shape支持3维，形如(M, ceil(K / 64), 2)。
     - 支持dequantMode参数：当前仅支持取值2，2表示MX量化。
     - 支持dequantDtype参数：当前仅支持取值0，0表示DT_FLOAT。
     - 支持quantMode参数：当前仅支持取值2，2表示MX量化。
-    - output支持数据类型FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1，shape支持2维，形如(M, N / 2)。
+    - output支持数据类型FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1，shape支持2维，形如(M, N / 2)。
     - outputScale支持数据类型FLOAT8_E8M0，shape支持3维，形如(M, ceil((N / 2) / 64), 2)。
 
 ## 约束说明
@@ -425,11 +424,11 @@
           </tr>
           <tr>
             <td>MXFP4</td>
-            <td>FLOAT4_E1M2、FLOAT4_E2M1</td>
-            <td>FLOAT4_E1M2、FLOAT4_E2M1</td>
+            <td>FLOAT4_E2M1</td>
+            <td>FLOAT4_E2M1</td>
             <td>FLOAT8_E8M0</td>
             <td>FLOAT8_E8M0</td>
-            <td>FLOAT4_E1M2、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+            <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
             <td>FLOAT8_E8M0</td>
           </tr>
         </tbody>
@@ -437,7 +436,7 @@
 
       - MX量化场景下，需满足N为128对齐。
       - MXFP4场景不支持K=2。
-      - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E1M2、FLOAT4_E2M1时，需满足N为大于等于4的偶数。
+      - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E2M1时，需满足N为大于等于4的偶数。
 
   - 确定性计算：
       - aclnnGroupedMatmulSwigluQuantV2默认为确定性实现。

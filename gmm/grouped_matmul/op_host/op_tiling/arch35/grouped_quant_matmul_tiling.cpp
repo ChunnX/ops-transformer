@@ -102,8 +102,7 @@ bool GroupedQbmmTiling::AnalyzeAttrs()
                 ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), inputParams_.groupType),
         return false);
     OP_CHECK_IF(
-        (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
-            inputParams_.groupType != SPLIT_M,
+        inputParams_.aDtype == ge::DT_FLOAT4_E2M1 && inputParams_.groupType != SPLIT_M,
         OP_LOGE(inputParams_.opName, "Only support group type to be 0 when the dtype of x is FLOAT4, actual is %d.",
                 inputParams_.groupType),
         return false);
@@ -129,7 +128,7 @@ bool GroupedQbmmTiling::AnalyzeAttrs()
 
 bool GroupedQbmmTiling::CheckBiasDtype() const
 {
-    if ((inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2)) {
+    if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1) {
         OP_CHECK_IF(inputParams_.biasDtype != ge::DT_FLOAT,
                     OP_LOGE(inputParams_.opName,
                             "The dtype of bias should be FLOAT when the dtype of x is FLOAT4, actual is %s.",
@@ -202,14 +201,14 @@ be in {UINT64, INT64, FLOAT, BF16}, actual is %s.",
 bool GroupedQbmmTiling::AnalyzeDtype()
 {
     static const std::vector<ge::DataType> legalInputDtypes = {
-        ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
+        ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
     auto xDesc = context_->GetDynamicInputDesc(X_INDEX, 0);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context_->GetNodeName(), "xDesc is nullptr."), return false);
     inputParams_.aDtype = xDesc->GetDataType();
     OP_CHECK_IF(
         std::find(legalInputDtypes.begin(), legalInputDtypes.end(), inputParams_.aDtype) == legalInputDtypes.end(),
         OP_LOGE(inputParams_.opName,
-                "The dtype of x should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2}, \
+                "The dtype of x should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1}, \
 actual is %s.",
                 ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str()),
         return false);
@@ -219,8 +218,7 @@ actual is %s.",
     OP_CHECK_IF(
         std::find(legalInputDtypes.begin(), legalInputDtypes.end(), inputParams_.bDtype) == legalInputDtypes.end(),
         OP_LOGE(inputParams_.opName,
-                "The dtype of weight should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1, \
-FLOAT4_E1M2}, actual is %s.",
+                "The dtype of weight should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1}, actual is %s.",
                 ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
         return false);
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
@@ -592,7 +590,7 @@ bool GroupedQbmmTiling::AnalyzeInputs()
         OP_CHECK_IF(!CheckActiveMode(wScaleShape, xScaleStorageShape), OP_LOGE(context_->GetNodeName(), "CheckActiveMode failed."),
                     return false);
     }   
-    if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) {
+    if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1) {
         OP_CHECK_IF(!CheckFp4Shape(), OP_LOGE(inputParams_.opName, "CheckFp4Shape failed."), return false);
         if (inputParams_.hasBias) {
             auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
@@ -937,7 +935,7 @@ void GroupedQbmmTiling::CalBasicBlock()
 
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         basicTiling_.baseK = CeilAlign(basicTiling_.baseK, MXFP_BASEK_FACTOR); // mx_mmad requires basek align to 64
-        bool isFp4Input = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
+        bool isFp4Input = inputParams_.aDtype == ge::DT_FLOAT4_E2M1;
         if (isFp4Input && !inputParams_.transB) {
             // 64: mx_mmad requires the inner axis to align to 64
             basicTiling_.baseN = CeilAlign(basicTiling_.baseN, static_cast<uint64_t>(64));
@@ -1139,7 +1137,7 @@ void GroupedQbmmTiling::CalScaleFactors()
 uint64_t GroupedQbmmTiling::GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
 {
     // shapeSize应该是偶数
-    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4);
+    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_INT4);
     if (is4BitInput) {
         // 2: 判断是否是偶数
         OP_CHECK_IF(shapeSize % 2 != 0,
@@ -1156,7 +1154,7 @@ uint64_t GroupedQbmmTiling::GetSizeWithDataType(uint64_t shapeSize, ge::DataType
 
 uint64_t GroupedQbmmTiling::GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
 {
-    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4);
+    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_INT4);
     if (is4BitInput) {
         return shapeSize + shapeSize;
     } else {

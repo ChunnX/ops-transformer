@@ -69,8 +69,8 @@ struct ConstraintShape {
 
 static const std::initializer_list<ConstraintShape> W4A8_K_N_SUPPORT_LIST = {{2048, 7168}};
 static const std::initializer_list<ge::DataType> MX_IN_TYPE_SUPPORT_LIST = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
-                                                                            ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1};
-static const std::initializer_list<ge::DataType> MXFP4_IN_TYPE_SUPPORT_LIST = {ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1};
+                                                                            ge::DT_FLOAT4_E2M1};
+static const std::initializer_list<ge::DataType> MXFP4_IN_TYPE_SUPPORT_LIST = {ge::DT_FLOAT4_E2M1};
 static const std::initializer_list<ge::DataType> MXFP8_IN_TYPE_SUPPORT_LIST = {ge::DT_FLOAT8_E4M3FN,
                                                                                ge::DT_FLOAT8_E5M2};
 
@@ -403,7 +403,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
            CheckType(context->GetInputDataType(wIndex), MXFP8_IN_TYPE_SUPPORT_LIST))),
         OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
                                   "InputDataType is wrong, only support InputDataType of "
-                                  "INT4,INT8,FLOAT8_E4M3FN,FLOAT8_E5M2,FLOAT4_E1M2 and FLOAT4_E2M1"),
+                                  "INT4,INT8,FLOAT8_E4M3FN,FLOAT8_E5M2,FLOAT4_E2M1"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_FAILED;

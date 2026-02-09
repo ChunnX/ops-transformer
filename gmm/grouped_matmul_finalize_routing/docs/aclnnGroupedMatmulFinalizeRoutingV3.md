@@ -118,7 +118,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>输入</td>
       <td>输入x（左矩阵）。</td>
       <td>-</td>
-      <td>INT8，FLOAT8_E5M2，FLOAT8_E4M3FN，FLOAT4_E2M1，FLOAT4_E1M2</td>
+      <td>INT8，FLOAT8_E5M2，FLOAT8_E4M3FN，FLOAT4_E2M1</td>
       <td>ND</td>
       <td>(m, k)</td>
       <td>-</td>
@@ -128,7 +128,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>输入</td>
       <td>输入weight（右矩阵）。</td>
       <td>-</td>
-      <td>INT4，FLOAT8_E5M2，FLOAT8_E4M3FN，FLOAT4_E2M1，FLOAT4_E1M2</td>
+      <td>INT4，FLOAT8_E5M2，FLOAT8_E4M3FN，FLOAT4_E2M1</td>
       <td>ND</td>
       <td>支持三维</td>
       <td>-</td>
@@ -459,7 +459,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   | MX量化场景 | x1                        | x2                         | scaleOptional | biasOptional  | pertokenScaleOptional | groupListOptional | sharedInputOptional | logitOptional | rowIndexOptional | out     |
   | ---------- | ------------------------- | -------------------------- | ------------- | ------------- | --------------------- | ----------------- | ------------------- | ------------- | ---------------- | ------- |
   | MXFP8      | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16  / null    | FLOAT32       | INT64            | FLOAT32 |
-  | MXFP4      | FLOAT4_E2M1 / FLOAT4_E1M2   | FLOAT4_E2M1 / FLOAT4_E1M2    | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16 / null     | FLOAT32       | INT64            | FLOAT32 |
+  | MXFP4      | FLOAT4_E2M1                 | FLOAT4_E2M1                 | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16 / null     | FLOAT32       | INT64            | FLOAT32 |
 
 
   - 在MXFP4/MXFP8场景中，offsetOptional、antiquantScaleOptional、antiquantOffsetOptional必须设置为空。

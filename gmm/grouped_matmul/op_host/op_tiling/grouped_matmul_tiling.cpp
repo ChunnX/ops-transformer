@@ -2039,7 +2039,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
   if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
       // 全量化：双8bits或双4bits(不会有A4W2)
-      bool isQuant = xDType == ge::DT_FLOAT4_E1M2 || xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 ||
+      bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 ||
                      (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
       if (isQuant) {
           return TilingRegistry::GetInstance().DoTilingImpl(context);

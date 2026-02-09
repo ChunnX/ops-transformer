@@ -36,8 +36,8 @@ constexpr int64_t DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE = -1;
 
 static std::set<std::string> GmmDavidSupportSoc = {"Ascend950"};
 static const std::unordered_set<ge::DataType> DavidSupportedInputDtypes = {
-    ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT4_E1M2,
-    ge::DataType::DT_FLOAT4_E2M1, ge::DataType::DT_INT8,          ge::DataType::DT_HIFLOAT8};
+    ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_FLOAT8_E4M3FN,
+    ge::DataType::DT_FLOAT4_E2M1, ge::DataType::DT_INT8, ge::DataType::DT_HIFLOAT8};
 bool  isSupportedInputDtypeForDavid(ge::DataType dtype)
 {
     return DavidSupportedInputDtypes.find(dtype) != DavidSupportedInputDtypes.end();
@@ -112,7 +112,7 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
         auto weightDtype = context->GetDynamicInputDataType(WEIGHT_INDEX, 0);
         OP_CHECK_IF(!isSupportedInputDtypeForDavid(xDtype) || !isSupportedInputDtypeForDavid(weightDtype),
                 OP_LOGE(context->GetNodeName(), "Invalid Input on this platform, expected FLOAT8_E4M3,"
-                            "FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2, INT_8, HIFLOAT8, but actual value of x is %s, weight is %s.",
+                            "FLOAT8_E5M2, FLOAT4_E2M1, INT_8, HIFLOAT8, but actual value of x is %s, weight is %s.",
                             ge::TypeUtils::DataTypeToSerialString(xDtype).c_str(),
                             ge::TypeUtils::DataTypeToSerialString(weightDtype).c_str()), return GRAPH_FAILED);
         

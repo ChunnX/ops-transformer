@@ -32,9 +32,9 @@ constexpr int64_t MOD2 = 2L;
 constexpr int64_t MAX_NUM_EXPERTS = 1024L;
 
 const std::initializer_list<DataType> MX_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
-                                                                 op::DataType::DT_FLOAT4_E1M2, op::DataType::DT_FLOAT4_E2M1};
-const std::initializer_list<DataType> MXFP4_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT4_E1M2, op::DataType::DT_FLOAT4_E2M1};
-const std::initializer_list<DataType> MXFP8_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT4_E1M2, op::DataType::DT_FLOAT4_E2M1};
+                                                                 op::DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> MXFP4_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> MXFP8_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT4_E2M1};
 static const std::initializer_list<op::DataType> MX_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<op::DataType> MX_ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
 static const std::initializer_list<op::DataType> MX_BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
@@ -213,8 +213,7 @@ public:
                                              (gmmParams_.x2)->GetViewShape().GetDim(TWO_DIM);
         DataType xDtype = gmmParams_.x1->GetDataType();
         DataType weightDtype = gmmParams_.x2->GetDataType();
-        if ((xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2) &&
-            (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
+        if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
             if (!(k % MOD2 == 0)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In MXFP4 , k must be divisible by 2. But got %ld.", k);
                 return false;

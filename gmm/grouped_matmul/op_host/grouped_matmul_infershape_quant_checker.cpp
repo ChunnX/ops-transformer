@@ -18,9 +18,9 @@
 namespace ops {
 
 static const std::unordered_set<ge::DataType> X_TYPE_SUPPORT_SET = {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
-                                                                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1};
+                                                                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1};
 static const std::unordered_set<ge::DataType> WEIGHT_TYPE_SUPPORT_SET = {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
-                                                                    ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1};
+                                                                    ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1};
 static const std::unordered_set<ge::DataType> BIAS_TYPE_SUPPORT_SET = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
                                                                    ge::DT_INT32};
 static const std::unordered_set<ge::DataType> SCALE_TYPE_SUPPORT_SET = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
@@ -109,8 +109,7 @@ x is %s, weight is %s.",
 weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
                 ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()), 
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E1M2 || xDtype == ge::DataType::DT_FLOAT4_E2M1),
-                       (weightDtype == ge::DataType::DT_FLOAT4_E1M2 || weightDtype == ge::DataType::DT_FLOAT4_E2M1)),
+    OP_CHECK_IF(LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E2M1), (weightDtype == ge::DataType::DT_FLOAT4_E2M1)),
         OP_LOGE(context->GetNodeName(),
             "When x input dtype is FLOAT4, then the weight input dtype must be FLOAT4, vice versa, actual x is %s, \
 weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
@@ -645,7 +644,7 @@ is not supported, but the acutal x dtype is [%s] and actual scale dtype is [%s].
 equal to per_token_scale's dtype [%s], and be float32/float8_e8m0.",
                     ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString(),
                     ge::TypeUtils::DataTypeToAscendString(perTokenScaleDtype).GetString()), return ge::GRAPH_FAILED);
-    } else if (xDtype == ge::DT_FLOAT4_E1M2 || xDtype == ge::DT_FLOAT4_E2M1) {
+    } else if (xDtype == ge::DT_FLOAT4_E2M1) {
         OP_CHECK_IF(
             scaleDtype != ge::DataType::DT_FLOAT8_E8M0,
             OP_LOGE(context->GetNodeName(), "When data type of x is float4, data type of scale [%s] should be \

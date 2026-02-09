@@ -145,7 +145,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E1M2、FLOAT4_E2M1</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1</td>
       <td>ND</td>
       <td>-</td>
       <td>-</td>
@@ -155,7 +155,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E1M2、FLOAT4_E2M1</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1</td>
       <td>ND、FRACTAL_NZ</td>
       <td>-</td>
       <td>-</td>
@@ -368,9 +368,9 @@ aclnnStatus aclnnGroupedMatmulV4(
     - groupType不支持n轴分组
     - 输入参数x、weight，输出参数out支持最多128个tensor。
   - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
-    - x支持FLOAT8_E4M3FN、FLOAT8_E5M2、INT8、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32、FLOAT4_E1M2、FLOAT4_E2M1
-    - weight支持FLOAT8_E4M3FN、FLOAT8_E5M2、INT8、INT4、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32、FLOAT4_E1M2、FLOAT4_E2M1，格式仅支持ND格式。
-    - biasOptional支持INT32、BFLOAT16、FLOAT16、FLOAT32，在输入x为INT8、FLOAT16、BFLOAT16、FLOAT32时支持INT32、BFLOAT16、FLOAT16、FLOAT32，在输入x为FLOAT4_E1M2、FLOAT4_E2M1时仅支持FLOAT32，其它类型输入需传空指针
+    - x支持FLOAT8_E4M3FN、FLOAT8_E5M2、INT8、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32、FLOAT4_E2M1
+    - weight支持FLOAT8_E4M3FN、FLOAT8_E5M2、INT8、INT4、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32、FLOAT4_E2M1，格式仅支持ND格式。
+    - biasOptional支持INT32、BFLOAT16、FLOAT16、FLOAT32，在输入x为INT8、FLOAT16、BFLOAT16、FLOAT32时支持INT32、BFLOAT16、FLOAT16、FLOAT32，在输入x为FLOAT4_E2M1时仅支持FLOAT32，其它类型输入需传空指针
     - scaleOptional支持UINT64、INT64、BFLOAT16、FLOAT32、FLOAT8_E8M0
     - perTokenScaleOptional支持FLOAT32、FLOAT8_E8M0
     - groupListType不支持取2
@@ -857,7 +857,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         |groupType| x       | weight  | biasOptional | scaleOptional |  perTokenScaleOptional |out     |
         |:-------:|:-------:|:-------:|:-------:| :-------    | :------   | :------ |
         |0/2|FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| null|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
-        |0|FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT4_E2M1/FLOAT4_E1M2| FLOAT32/null |   FLOAT8_E8M0    | FLOAT8_E8M0    |   BFLOAT16/FLOAT16/FLOAT32 |
+        |0|FLOAT4_E2M1 |FLOAT4_E2M1| FLOAT32/null |   FLOAT8_E8M0    | FLOAT8_E8M0    |   BFLOAT16/FLOAT16/FLOAT32 |
 
     - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开  始））：
 
@@ -873,7 +873,7 @@ aclnnStatus aclnnGroupedMatmulV4(
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
         |2|x单tensor|每个tensor 3维，shape为((K / 64) + g, M, 2), 起始地址偏移与scale 同理|
 
-    - 对于mx量化中输入x为FLOAT4_E2M1/FLOAT4_E1M2时，需要满足K为偶数且K不为2。当weight 非转置时还需满足N为偶数。
+    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight 非转置时还需满足N为偶数。
     </details>
 
     <details>

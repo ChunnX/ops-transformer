@@ -159,7 +159,7 @@ namespace {
 
   bool IsQuant(const DataType &xDtype, const DataType &weightDtype)
   {
-    if (xDtype == DataType::DT_FLOAT4_E1M2 || xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_INT4) {
+    if (xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_INT4) {
       return true;
     }
     return ge::GetSizeByDataType(xDtype) == 1 && ge::GetSizeByDataType(weightDtype) == 1;

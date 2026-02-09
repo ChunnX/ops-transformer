@@ -109,7 +109,7 @@ bool GroupedMatmulSwigluQuantDavidV2Tiling::AnalyzeAttrs()
                     quantDtypeSupportList.end(),
                 OP_LOGE(inputParams_.opName,
                         "In mx quant mode, quantDtype should be in {FLOAT8_E4M3,"
-                        " FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2}, but actual value is %s.",
+                        " FLOAT8_E5M2, FLOAT4_E2M1}, but actual value is %s.",
                         ge::TypeUtils::DataTypeToSerialString(quantDtype).c_str()), return false);
     // gmm quant tiling need groupType to calculate L1 tiling 
   	inputParams_.groupType = SPLIT_M;
@@ -165,7 +165,7 @@ bool GroupedMatmulSwigluQuantDavidV2Tiling::AnalyzeDtype()
 
 bool GroupedMatmulSwigluQuantDavidV2Tiling::IsFp4(ge::DataType dtype) const
 {
-    return dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_FLOAT4_E2M1;
+    return dtype == ge::DT_FLOAT4_E2M1;
 }
 
 bool GroupedMatmulSwigluQuantDavidV2Tiling::IsFp8(ge::DataType dtype) const
@@ -264,7 +264,7 @@ bool GroupedMatmulSwigluQuantDavidV2Tiling::CheckDims() const
     // MXFP4场景不支持K=2
     OP_CHECK_IF(IsFp4Input() && inputParams_.kSize == MXFP4_K_MIN_VALUE,
                 OP_LOGE(inputParams_.opName,
-                        "When the dtypes of x and weight are DT_FLOAT4_E1M2 or DT_FLOAT4_E2M1,"
+                        "When the dtypes of x and weight are DT_FLOAT4_E2M1,"
                         " the K value should be greater than 2, but actual value is %lu.",
                         inputParams_.kSize),
                 return false);

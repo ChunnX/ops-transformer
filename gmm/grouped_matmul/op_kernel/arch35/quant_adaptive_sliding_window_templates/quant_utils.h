@@ -93,7 +93,7 @@ __aicore__ inline constexpr bool IsMxType()
 template <typename T>
 __aicore__ inline constexpr bool IsFp4()
 {
-    return (AscendC::IsSameType<T, fp4x2_e2m1_t>::value || AscendC::IsSameType<T, fp4x2_e1m2_t>::value);
+    return AscendC::IsSameType<T, fp4x2_e2m1_t>::value;
 }
 
 template <typename aType, typename biasType>

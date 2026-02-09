@@ -109,7 +109,6 @@ const std::map<DataType, aclDataType> BIAS_DTYPE {
     {DataType::DT_FLOAT8_E5M2, aclDataType::ACL_FLOAT},
     {DataType::DT_HIFLOAT8, aclDataType::ACL_FLOAT},
     {DataType::DT_INT4, aclDataType::ACL_FLOAT16},
-    {DataType::DT_FLOAT4_E1M2, aclDataType::ACL_FLOAT},
     {DataType::DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT}
 };
 

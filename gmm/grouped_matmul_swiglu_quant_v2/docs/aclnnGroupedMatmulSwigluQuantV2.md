@@ -191,7 +191,6 @@
             | :-----------: | :--: |
             | FLOAT8_E4M3FN |  8   |
             |  FLOAT8_E5M2  |  15  |
-            |  FLOAT4_E1M2  |  1   |
             |  FLOAT4_E2M1  |  2   |
           - $blocksize$：指每次量化的元素个数，仅支持32。
     </details>
@@ -294,7 +293,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td rowspan="1">输入</td>
         <td>表示左矩阵，对应公式中的X。</td>
         <td>不支持空tensor。</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8、HIFLOAT8</td>
+        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、HIFLOAT8</td>
         <td>ND</td>
         <td>2，形如(M, K)</td>
         <td>√</td>
@@ -307,7 +306,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           <li>目前仅支持tensorlist长度为1。</li>
           <li>不支持空tensorlist。</li>
         </ul></td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8、INT4、INT32、HIFLOAT8</td>
+        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、INT4、INT32、HIFLOAT8</td>
         <td>ND、FRACTAL_NZ</td>
         <td>3、5</td>
         <td>√</td>
@@ -450,7 +449,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td rowspan="1">输出</td>
         <td>表示输出的量化结果，公式中的Q。</td>
         <td>-</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8、HIFLOAT8</td>
+        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、HIFLOAT8</td>
         <td>ND</td>
         <td>2，形如(M, N / 2)</td>
         <td>√</td>
@@ -706,11 +705,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
             </tr>
             <tr>
               <td>MXFP4</td>
-              <td>FLOAT4_E1M2、FLOAT4_E2M1</td>
-              <td>FLOAT4_E1M2、FLOAT4_E2M1</td>
+              <td>FLOAT4_E2M1</td>
+              <td>FLOAT4_E2M1</td>
               <td>FLOAT8_E8M0</td>
               <td>FLOAT8_E8M0</td>
-              <td>FLOAT4_E1M2、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+              <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
               <td>FLOAT8_E8M0</td>
             </tr>
           </tbody>
@@ -753,7 +752,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         - weightScale转置属性需要与weight保持一致。
         - MX量化场景下，需满足N为128对齐。
         - MXFP4场景不支持K=2。
-        - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E1M2、FLOAT4_E2M1时，需满足N为大于等于4的偶数。
+        - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E2M1时，需满足N为大于等于4的偶数。
         - groupList第1维最大支持1024，即最多支持1024个group。
     
     - Pertoken量化场景下需满足以下约束条件：

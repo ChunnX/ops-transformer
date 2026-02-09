@@ -48,13 +48,12 @@ constexpr int64_t QUNAT_MODE_MX = 2;
 constexpr int64_t QUNAT_MODE_PERTOKEN = 0;
 
 const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E1M2, DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1};
 const std::initializer_list<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
 const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
                                                                    DataType::DT_FLOAT8_E5M2};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E1M2,
-                                                                         DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1};
 const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
 const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XINT8 = {
     DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
@@ -64,7 +63,7 @@ const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT
 const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
 const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
 const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4 = {
-    DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E1M2, DataType::DT_FLOAT4_E2M1};
+    DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E2M1};
 const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
 const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
@@ -479,7 +478,7 @@ protected:
         // mxfp4场景不支持k=2
         if (kValue == MXFP4_K_CONSTRAINT) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "When the dtypes of x and weight inputs are DT_FLOAT4_E1M2 or DT_FLOAT4_E2M1, the K value \
+                    "When the dtypes of x and weight inputs are DT_FLOAT4_E2M1, the K value \
 should be greater than 2, but actual value is %lu.",
                     kValue);
             return false;
@@ -491,7 +490,7 @@ should be greater than 2, but actual value is %lu.",
         int64_t nModValue = nValue % MXFP4_N_CONSTRAINT;
         if (kModValue != 0) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "When the dtypes of x and weight inputs are DT_FLOAT4_E1M2 or DT_FLOAT4_E2M1, the K value \
+                    "When the dtypes of x and weight inputs are DT_FLOAT4_E2M1, the K value \
 should be even, but actual value is %lu.",
                     kValue);
             return false;
@@ -499,10 +498,10 @@ should be even, but actual value is %lu.",
 
         // mxfp4场景下，当输出类型为fp4时，N需要满足为大于等于4的偶数
         DataType outputDtype = gmmDsqParams_.output->GetDataType();
-        if ((outputDtype == DataType::DT_FLOAT4_E1M2 || outputDtype == DataType::DT_FLOAT4_E2M1)) {
+        if (outputDtype == DataType::DT_FLOAT4_E2M1) {
             if (!(nValue >= MXFP4_N_CONSTRAINT && nModValue == 0)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                        "When the output dtype is DT_FLOAT4_E1M2 or DT_FLOAT4_E2M1, the N value should be even \
+                        "When the output dtype is DT_FLOAT4_E2M1, the N value should be even \
 and greater or equal to 4, but actual value is %lu.",
                         nValue);
                 return false;
@@ -666,8 +665,7 @@ and greater or equal to 4, but actual value is %lu.",
         }
         DataType xDtype = gmmDsqParams_.x->GetDataType();
         DataType weightDtype = ((*gmmDsqParams_.weight)[0])->GetDataType();
-        if ((xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2) &&
-            (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
+        if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
             return checkMxfp4InputShape();
         }
         return true;
@@ -697,8 +695,7 @@ and greater or equal to 4, but actual value is %lu.",
             (weightDtype == DataType::DT_FLOAT8_E4M3FN || weightDtype == DataType::DT_FLOAT8_E5M2)) {
             return CheckFp8DtypeValid();
         } else if (gmmDsqParams_.quantMode == 2 &&
-                   (xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2) &&
-                   (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
+                   xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
             return CheckFp4DtypeValid();
         } else if (gmmDsqParams_.quantMode == 0) {
             return CheckPertokenDtypeValid();
