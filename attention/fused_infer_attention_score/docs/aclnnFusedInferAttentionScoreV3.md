@@ -826,13 +826,15 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         - sparse：支持sparse=0，sparse为3且传入mask，sparse为4且传入mask；
         - key&value支持ND输入。
         - inputLayout：BSH、BSND、BNSD、TND。
-        - 支持actualSeqLengths、actualSeqLengthsKv参数; 当配置Q_S大于1（即MTP）且key&value的normal部分复用同一份数据场景下，仅inputLayout为TND时支持配置actualSeqLengths参数，其他layout不支持。
+        - 支持actualSeqLengths、actualSeqLengthsKv参数, 当配置Q_S大于1（即MTP）且key&value的normal部分复用同一份数据场景下，仅inputLayout为TND时支持配置actualSeqLengths参数，其他layout不支持;
+        - 不支持pse。
       - 当query的d等于128时：
         - queryRope配置时要求queryRope的shape中b、n、s与query一致，d为64；
         - keyRope配置时要求keyRope的shape中b、n、s与key一致，d为64；
         - inputLayout：BSH、BSND、BNSD、BNSD_BSND、TND；
         - 不支持page attention、prefix、伪量化、全量化、后量化；
-        - 当kv为tensorlist时，keyRope的shape中b需要与tensorlist长度保持一致，n、s需要与tensorlist中每个tensor的n、s相等，d为64。
+        - 当kv为tensorlist时，keyRope的shape中b需要与tensorlist长度保持一致，n、s需要与tensorlist中每个tensor的n、s相等，d为64;
+        - 不支持pse。
 
 - numKeyValueHeads使用限制：需要满足numHeads整除numKeyValueHead。在BSND、BNSD、BNSD_BSND、TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。
   - <term>Ascend 950PR/Ascend 950DT</term>：
