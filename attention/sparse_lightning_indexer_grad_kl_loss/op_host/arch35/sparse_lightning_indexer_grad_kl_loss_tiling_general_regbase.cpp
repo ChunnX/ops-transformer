@@ -26,12 +26,15 @@ static const int64_t PING_PONG_VALUE = 2L;
 static const int64_t GM_ALIGN = 512;
 static const int32_t FRACTAL_NUM = 16L;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
+static constexpr size_t SIZE_1 = 1;
+static constexpr size_t SIZE_128 = 128;
 
 static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_33K = 33 * 1024;
+static constexpr uint32_t BUFFER_SIZE_BYTE_128K = 128 * 1024;
 
 static constexpr uint32_t NQUERY_SIZE_8   = 8;
 static constexpr uint32_t NQUERY_SIZE_16  = 16;
@@ -284,11 +287,21 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2);
             OP_CHECK_IF(
+                bSize < SIZE_1 || bSize > SIZE_128,
+                OP_LOGE(opName, "Inputshape B Size should be range in 1~128, but got %ld.", bSize),
+                return false);
+            OP_CHECK_IF(
                 s1Size > s2Size,
-                OP_LOGE(
-                    opName,
-                    "Query s1Size(%ld) must be small than Key s2Size(%ld).",
+                OP_LOGE(opName,"Query s1Size(%ld) must be small than Key s2Size(%ld).",
                     s1Size, s2Size),
+                return false);
+            OP_CHECK_IF(
+                s1Size < SIZE_1 ||  s1Size > BUFFER_SIZE_BYTE_8K,
+                OP_LOGE(opName,"Query s1Size should be range in 1~8K, but got %ld.", s1Size),
+                return false);
+            OP_CHECK_IF(
+                s2Size < SIZE_1 ||  s2Size > BUFFER_SIZE_BYTE_128K,
+                OP_LOGE(opName,"Query s2Size should be range in 1~128K, but got %ld.", s2Size),
                 return false);
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(2) / n2Size;

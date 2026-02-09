@@ -26,6 +26,8 @@ constexpr uint32_t B16 = 2;
 constexpr uint32_t BASE_LEN_256 = 256;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
+constexpr uint32_t D_SIZE = 512;
+constexpr uint32_t DROPE_SIZE = 64;
 
 ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetShapeAttrsInfo()
 {
@@ -378,18 +380,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     auto sparse_mode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE));
     tmpData.deterministic = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
     
-    if (sparse_mode == 0) {
-        tmpData.attenEnable = false;
-    } else if (sparse_mode == 3) {
+    if (sparse_mode == 3) {
         OP_LOGI(context_, "SparseFlashAttentionGrad AttenMask enable.");
         tmpData.attenEnable = true;
     } else {
-        OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_mode=0 or 3, now sparse_mode=%d.", sparse_mode);
+        OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_mode = 3, now sparse_mode=%d.", sparse_mode);
         return ge::GRAPH_FAILED;
     }
-
-    if (dimDq != dimDk) {
-        OP_LOGE(context_, "head_dim of Query[%ld] should be equal to head_dim of Key[%ld].", dimDq, dimDk);
+    if (dimDq != D_SIZE && dimDq != D_SIZE) {
+        OP_LOGE(context_, "head_dim of Query[%ld] should be equal to head_dim of Key[%ld], and their value must be 512.", dimDq, dimDk);
         return ge::GRAPH_FAILED;
     }
     if (dimDq < dimDv) {
@@ -414,12 +413,28 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         const gert::Shape &kRopeShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE))->GetStorageShape();
         auto qRopeDim = qRopeShape.GetDim(dimSize - 1);
         auto kRopeDim = kRopeShape.GetDim(dimSize - 1);
+        auto bSize = queryShape.GetDim(DIM_0);
+        if (qRopeDim != DROPE_SIZE && kRopeDim != DROPE_SIZE) {
+            OP_LOGE(context_, "SparseFlashAttentionGrad headDim of qRope and kRope should be 64, but qRope[%ld], kRope[%ld].", qRopeDim, kRopeDim);
+            return ge::GRAPH_FAILED;
+        }
         if (qRopeDim != kRopeDim) {
             OP_LOGE(context_, "SparseFlashAttentionGrad headDim of qRope and kRope should be equal.");
             return ge::GRAPH_FAILED;
         }
+        if (keyShape.GetDim(DIM_0) != bSize || qRopeShape.GetDim(DIM_0) != bSize || kRopeShape.GetDim(DIM_0) != bSize){
+            OP_LOGE(context_, "SparseFlashAttentionGrad batchsize of query[%ld], key[%ld], query_rope[%ld] and key_rope[%ld] should be equal.",
+            bSize, keyShape.GetDim(DIM_0), qRopeShape.GetDim(DIM_0), kRopeShape.GetDim(DIM_0));
+            return ge::GRAPH_FAILED;            
+        }
+
         tmpData.ropeDim = kRopeDim;
     } else {
+        if (queryShape.GetDim(DIM_0) != keyShape.GetDim(DIM_0)){
+            OP_LOGE(context_, "SparseFlashAttentionGrad batchsize of query[%ld] and key[%ld] should be equal.",
+            queryShape.GetDim(DIM_0), keyShape.GetDim(DIM_0));
+            return ge::GRAPH_FAILED;            
+        }
         tmpData.ropeEnable = false;
         tmpData.ropeDim = 0;
     }
