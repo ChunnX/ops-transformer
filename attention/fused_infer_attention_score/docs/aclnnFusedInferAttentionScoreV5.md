@@ -1881,7 +1881,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <tr>
             <td>actualSeqLengths</td>
             <td></td>
-            <td>当前Ascend 950PR/Ascend 950DT仅在TND/NTD排布下支持配置，会在后续发布版本放开限制</td>
+            <td>当前Ascend 950PR/Ascend 950DT仅在TND/NTD排布下支持配置 actualSeqLengthsQ，会在后续发布版本放开限制，actualSeqLengthsKV 支持在所有 layout 配置</td>
         </tr>
         <tr>
             <td>inputLayout</td>
@@ -1891,7 +1891,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <tr>
             <td>MASK</td>
             <td>sparseMode</td>
-            <td>仅Q_S大于1时支持sparse为3且传入mask</td>
+            <td>支持sparse0、sparse为3且传入mask、sparse为4且传入mask</td>
             <td>-</td>
         </tr>
         <tr>
@@ -1947,7 +1947,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                     <li>shape与query相比仅少一个维度D，例如inputLayout=BSH/BSND时，dequantScaleQuery_shape为(B,S,N)</li></ul></td>
         </tr>
         <tr>
-            <td colspan="3">不支持左padding、tensorlist、pse、prefix、伪量化、后量化</td>
+            <td colspan="3">不支持左padding、tensorlist、pse、prefix、伪量化</td>
         </tr>
         <tr>
             <td rowspan="6">query d=128</td>
@@ -1968,7 +1968,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <td>kv为tensorlist时，keyRope的shape中b需要与tensorlist长度保持一致，n、s需要与tensorlist中每个tensor的n、s相等，d为64</td>
         </tr>
         <tr>
-            <td colspan="4">不支持prefix、伪量化、全量化</td>
+            <td colspan="4">不支持pse、prefix、伪量化、全量化</td>
         </tr>
         </tbody>
     </table>
