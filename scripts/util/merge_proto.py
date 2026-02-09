@@ -15,12 +15,15 @@ import sys
 import re
 import argparse
 
+# 已在fusion_ops 和 experiement_ops 中移除的算子, 原型注册由op_graph/算子_proto.h 注册
+merge_proto_op_dir = {"mc2"}
+
 
 def match_op_proto(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    op_def_pattern = re.compile(r"REG_OP\((.+)\).*OP_END_FACTORY_REG\(\1\)\;", re.DOTALL)
+    op_def_pattern = re.compile(r"REG_OP\((.+)\).*OP_END_FACTORY_REG\(\1\)", re.DOTALL)
     match = op_def_pattern.search(content)
 
     if match:
@@ -29,11 +32,15 @@ def match_op_proto(file_path):
         return op_name, op_def
     else:
         return None, None
-    
+
 
 def merge_op_proto(protos_path, output_file):
     op_defs = []
     for proto_path in protos_path:
+        # 仓内全部算子都迁移后, 该过滤项可下掉
+        need_merged = any(op_dir in proto_path for op_dir in merge_proto_op_dir)
+        if not need_merged:
+            continue
         if not proto_path.endswith("_proto.h"):
             continue
         print(f"proto_path: {proto_path}")

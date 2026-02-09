@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fusion_ops.h
+ * \file moe_distribute_combine_v2_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef MOE_DISTRIBUTE_COMBINE_V2_PROTO_H_
+#define MOE_DISTRIBUTE_COMBINE_V2_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -104,4 +104,4 @@ REG_OP(MoeDistributeCombineV2)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // MOE_DISTRIBUTE_COMBINE_V2_PROTO_H_

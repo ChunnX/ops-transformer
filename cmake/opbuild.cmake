@@ -216,7 +216,16 @@ function(merge_graph_headers)
     ${proto_headers}
     --output-file ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
   )
-  add_custom_target(${MGPROTO_TARGET} ALL
+  add_custom_command(
+    OUTPUT ${MGPROTO_OUT_DIR}/ops_proto_transformer.cpp
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
+      ${MGPROTO_OUT_DIR}/ops_proto_transformer.cpp
     DEPENDS ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
+  )
+  add_custom_target(${MGPROTO_TARGET} ALL
+    DEPENDS
+    ${MGPROTO_OUT_DIR}/ops_proto_transformer.h
+    ${MGPROTO_OUT_DIR}/ops_proto_transformer.cpp
   )
 endfunction()

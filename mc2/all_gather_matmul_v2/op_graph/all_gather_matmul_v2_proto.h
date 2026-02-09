@@ -28,8 +28,8 @@ namespace ge {
   The K value in x2 should be same as the K value in x1 when x2 is non-transposed, and the K value should be in range [256, 65535).
 * @li bias: A matrix tensor. If x1 type is float8_e4m3fn, float8_e5m2, hifloat8, then the bias type support float32.
   If x1 type is float16, bfloat16, then the bias type support float16, bfloat16. The format support ND. The current version not support the scenario where bias is not 0.
-* @li x1_scale: A matrix tensor. The type support float32. The format support ND. The x1_scale only support 1 dimension and only one element in current version, for expample (1,).
-* @li x2_scale: A matrix tensor. The type support float32. The format support ND. The x2_scale only support 1 dimension and only one element in current version, for expample (1,).
+* @li x1_scale: A matrix tensor. The type support float32, float_e8m0. The format support ND. The x1_scale only support 1 dimension and only one element in current version, for example (1,).
+* @li x2_scale: A matrix tensor. The type support float32, float_e8m0. The format support ND. The x2_scale only support 1 dimension and only one element in current version, for example (1,).
 * @li quant_scale: A matrix tensor. The type support float32. The format support ND. The quant_scale only support 1 dimension and only one element, for example (1,). The quant_scale only support nullptr in current version. \n
 *
 * @par Attributes:
@@ -54,6 +54,7 @@ namespace ge {
 * @li y: A matrix tensor. The type support float16, bfloat16, float32. The format support ND. The y is 2 dimension, for example (M*rank_size, N).
 * @li gather_out: A matrix tensor. All data returned from communication. The type of gather_out is consistent with that of x1. The type support float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8. The format support ND.
 * @li amax_out: A matrix tensor. Maximum value of output matrix. The type support float32. The format support ND. The amax_out is 1 dimension and only one element, for example (1,). The amax_out only support nullptr in current version. \n
+* @li comm_mode: A string. Communication mode. Default: "ccu". The comm_mode only supports "ccu", "aiv" or "aicpu" in current version. \n 
 */
 REG_OP(AllGatherMatmulV2)
     .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8}))
@@ -76,7 +77,7 @@ REG_OP(AllGatherMatmulV2)
     .ATTR(is_gather_out, Bool, true)
     .ATTR(is_amax_out, Bool, false)
     .ATTR(y_dtype, Int, 0)
-    .ATTR(comm_mode, String, "aicpu")
+    .ATTR(comm_mode, String, "ccu")
     .OP_END_FACTORY_REG(AllGatherMatmulV2)
 }  // namespace ge
 

@@ -12,8 +12,8 @@
  * \file ffn_to_attention_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef FFN_TO_ATTENTION_PROTO_H_
+#define FFN_TO_ATTENTION_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -55,4 +55,4 @@ REG_OP(FFNToAttention)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // FFN_TO_ATTENTION_PROTO_H_

@@ -125,10 +125,6 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
         include(cmake/opbuild.cmake)
-        merge_graph_headers(
-            TARGET merge_ops_proto ALL
-            OUT_DIR ${ASCEND_GRAPH_CONF_DST}
-        )
         if (ENABLE_OPS_HOST)
             gen_aclnn_with_opdef()
         endif()

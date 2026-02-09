@@ -475,6 +475,91 @@ if (BUILD_OPEN_PROJECT)
         add_dependencies(ops_aclnn opbuild_gen_default opbuild_gen_inner)
     endif()
 
+    if(NOT ENABLE_BUILT_IN)
+        # op dir to be updated
+        set(FILTER_OP_DIR
+            "mc2"
+        )
+        set(update_proto_srcs)
+        
+        foreach(OP_DIR ${OP_DIR_LIST})
+            # filter op dir to be updated
+            set(need_update_proto FALSE)
+            foreach(filter_op_frag ${FILTER_OP_DIR})
+                if(${OP_DIR} MATCHES ".*${filter_op_frag}.*")
+                    set(need_update_proto TRUE)
+                    break()
+                endif()        
+            endforeach()
+            if(NOT need_update_proto)
+                message(STATUS "Skip proto update: ${OP_DIR}")
+                continue()
+            endif()
+
+            # copy updated proto cpps to autogen
+            file(GLOB OP_PROTO_HEADER ${OP_DIR}/op_graph/*_proto.h)
+            if(OP_PROTO_HEADER)
+                list(GET OP_PROTO_HEADER 0 proto_header)
+                message(STATUS "Update proto header path: ${proto_header}")
+                set(TARGET_PROTO_DIR ${generate_proto_dir}/updateproto/)
+                file(MAKE_DIRECTORY ${TARGET_PROTO_DIR})
+
+                get_filename_component(proto_header_filename ${proto_header} NAME)
+                string(REPLACE ".h" ".cpp" proto_cpp_filename ${proto_header_filename})
+                set(proto_cpp ${TARGET_PROTO_DIR}${proto_cpp_filename})
+                set_source_files_properties(${proto_cpp}
+                    PROPERTIES GENERATED TRUE
+                )
+
+                add_custom_command(
+                    OUTPUT ${proto_cpp}
+                    COMMAND ${CMAKE_COMMAND} -E copy ${proto_header} ${proto_cpp}
+                    DEPENDS ${proto_header}
+                    COMMENT "Copying update proto ${proto_header} to ${proto_cpp}"
+                )
+
+                # append updated proto cpps to list
+                list(APPEND update_proto_srcs ${proto_cpp})
+            endif()
+        endforeach()
+
+        # filter same src filename, remove those in generate_proto_srcs, then replace them with updated ones
+        set(generate_proto_srcs_filtered)
+        foreach(generate_proto_file ${generate_proto_srcs})
+            get_filename_component(origin_filename ${generate_proto_file} NAME)
+            set(need_replace FALSE)
+
+            foreach(update_proto_file ${update_proto_srcs})
+                get_filename_component(update_filename ${update_proto_file} NAME)
+                if("${origin_filename}" STREQUAL "${update_filename}")
+                    set(need_replace TRUE)
+                    break()
+                endif()
+            endforeach()
+            # use previous one when no same filename found
+            if(NOT need_replace)
+                list(APPEND generate_proto_srcs_filtered ${generate_proto_file})
+            endif()
+        endforeach()
+
+        # append updated srcs
+        list(APPEND generate_proto_srcs_filtered ${update_proto_srcs})
+        add_custom_target(
+            update_proto_target
+            DEPENDS ${update_proto_srcs}
+            COMMENT "Building update proto files"
+        )
+        add_custom_target(
+            generate_proto_filtered_target
+            DEPENDS ${generate_proto_srcs_filtered}
+            COMMENT "Filtering proto srcs from update files"
+        )
+        add_dependencies(generate_proto_filtered_target update_proto_target ops_transformer_proto_headers)
+        add_dependencies(cust_proto generate_proto_filtered_target)
+
+        set(generate_proto_srcs ${generate_proto_srcs_filtered})
+    endif()
+    
     set_source_files_properties(${generate_proto_srcs}
             PROPERTIES GENERATED TRUE
     )

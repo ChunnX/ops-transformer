@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fusion_ops.h
+ * \file moe_distribute_combine_add_rms_norm_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_PROTO_H_
+#define MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -110,4 +110,4 @@ REG_OP(MoeDistributeCombineAddRmsNorm)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_PROTO_H_

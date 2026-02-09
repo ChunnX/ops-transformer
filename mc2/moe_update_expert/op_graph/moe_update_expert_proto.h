@@ -12,8 +12,8 @@
  * \file moe_update_expert_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef MOE_UPDATE_EXPERT_PROTO_H_
+#define MOE_UPDATE_EXPERT_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -53,4 +53,4 @@ REG_OP(MoeUpdateExpert)
 }  // namespace ge
 
 
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // MOE_UPDATE_EXPERT_PROTO_H_

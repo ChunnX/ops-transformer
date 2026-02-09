@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file fusion_ops.h
+ * \file matmul_all_reduce_add_rms_norm_proto.h
  * \brief
  */
 #ifndef MATMUL_ALL_REDUCE_ADD_RMS_NORM_PROTO_H_

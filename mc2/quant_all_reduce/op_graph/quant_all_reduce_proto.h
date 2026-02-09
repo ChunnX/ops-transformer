@@ -12,22 +12,21 @@
  * \file quant_all_reduce_proto.h
  * \brief 图模式原型定义
  */
-#ifndef QUANT_ALL_REDUCE_PROTO_H
-#define QUANT_ALL_REDUCE_PROTO_H
+#ifndef QUANT_ALL_REDUCE_PROTO_H_
+#define QUANT_ALL_REDUCE_PROTO_H_
 
 #include <graph/operator_reg.h>
 
 namespace ge {
 /**
- * @brief Fusion op of quant and reduce scatter.
+ * @brief Fusion op of quant all reduce.
  * @par Inputs:
  * two inputs, including:
- * @li x: A matrix Tensor. The type support int8, hifloat8, float8_e4m3fn, float8_e5m2, float4_e1m2, float4_e2m1. The
- * format supports ND.
- * @li scale: A matrix Tensor. The type support float, float8_e8m0. The format supports ND.
+ * @li x: A matrix tensor. The type support int8, hifloat8, float8_e4m3fn, float8_e5m2, float4_e1m2, float4_e2m1. The format supports ND.
+ * @li scale: A matrix tensor. The type support float32, float8_e8m0. The format supports ND.
  *
  * @par Outputs:
- * out_put: A matrix Tensor. The type support float16, bfloat16, float. The format supports ND.
+ * out_put: A matrix tensor. The type support float16, bfloat16, float32. The format supports ND.
  *
  * @par Attributes:
  * @li group: A required string identifying the group of ranks participating in the op.
@@ -36,12 +35,15 @@ namespace ge {
  * @li world_size: A required int identifying the rank size.
  */
 REG_OP(QuantAllReduce)
-    .INPUT(x, TensorType({DT_INT8, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1}))
-    .INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-    .OUTPUT(out_put, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
+    .INPUT(x, "T1")
+    .INPUT(scales, "T2")
+    .OUTPUT(out_put, "T3")
+    .DATATYPE(T1, TensorType({DT_INT8, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1}))
+    .DATATYPE(T2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .DATATYPE(T3, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
     .REQUIRED_ATTR(group, String)
     .ATTR(reduce_op, String, "sum")
-    .ATTR(output_dtype, Int, 27)
+    .ATTR(output_dtype, Int, DT_BF16)
     .REQUIRED_ATTR(world_size, Int)
     .OP_END_FACTORY_REG(QuantAllReduce)
 

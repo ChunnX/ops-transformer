@@ -56,7 +56,15 @@ function(gen_opgraph_symbol)
   add_library(${OPGRAPH_NAME} SHARED
     $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
   )
+  merge_graph_headers(TARGET merge_ops_proto ALL OUT_DIR ${ASCEND_GRAPH_CONF_DST})
+  add_dependencies(${OPGRAPH_NAME} merge_ops_proto)
 
+  target_sources(
+    ${OPGRAPH_NAME}
+    PRIVATE
+    ${ASCEND_GRAPH_CONF_DST}/ops_proto_transformer.cpp
+  )
+  
   target_link_libraries(
     ${OPGRAPH_NAME}
     PRIVATE $<BUILD_INTERFACE:intf_pub_cxx17>

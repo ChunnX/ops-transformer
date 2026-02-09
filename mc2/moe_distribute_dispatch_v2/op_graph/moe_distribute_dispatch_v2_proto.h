@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fusion_ops.h
+ * \file moe_distribute_dispatch_v2_proto.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#ifndef MOE_DISTRIBUTE_DISPATCH_V2_PROTO_H_
+#define MOE_DISTRIBUTE_DISPATCH_V2_PROTO_H_
 
 #include "graph/operator_reg.h"
 namespace ge {
@@ -28,7 +28,7 @@ namespace ge {
 * @li scales: An optional tensor. Support dtype: float32, dimension must be 2, support format: ND.
 * @li x_active_mask: An optional tensor. Support dtype: bool, support format: ND.
 * @li expert_scales: An optional tensor. Support dtype: float32. Shape supports (BS, K), support format: ND.
-* @li performance_info: An optional tensor. Support dtype: int64, support format: ND.
+* @li performance_info: An optional tensor. Support dtype: int64, Shape supports (BS, ),support format: ND.
 
 * @par Attributes
 * @li group_ep: Required. Input ep comm group name, ep means experts parallelism, dtype: String.
@@ -92,4 +92,4 @@ REG_OP(MoeDistributeDispatchV2)
     .OP_END_FACTORY_REG(MoeDistributeDispatchV2)
 
 }  // namespace ge
-#endif  // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_
+#endif  // MOE_DISTRIBUTE_DISPATCH_V2_PROTO_H_
