@@ -614,7 +614,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterIndex(
         if constexpr (BaseClass::IS_TND) {
             isValidBlock = isValidBlock && IsValidDeterForTnd(runInfo, nextValidIndex, coordinateInfo);
         } else {
-            isValidBlock = isValidBlock && this->IsValid(runInfo, taskId, nextValidIndex);
+            isValidBlock = isValidBlock && this->IsValidForDeter(runInfo, taskId, nextValidIndex);
         }
         if (isValidBlock) { 
             nextValidRoundId = currentRoundId;
@@ -684,7 +684,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
             isValidBlock = isValidBlock && !(this->coordinateInfos[taskId & 1].batchId < 0 || blockInnerIdx < 0);
             nextblockIdx = nextblockIdx < 0 ? nextblockIdx : ((taskId + 1) & 1);
         } else {
-            isValidBlock = isValidBlock && this->IsValid(runInfos[taskId & 1], taskId, blockInnerIdx);
+            isValidBlock = isValidBlock && this->IsValidForDeter(runInfos[taskId & 1], taskId, blockInnerIdx);
         }
         
         if (!(runInfos[(taskId + 1) & 1].completed)) {
@@ -704,7 +704,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
             if constexpr (BaseClass::IS_TND) {
                 SetRunInfoDeterForTND(runInfos[taskId & 1], taskId, blockInnerIdx, coordinateInfos[taskId & 1], nextblockIdx);
             } else {
-                this->SetRunInfo(runInfos[taskId & 1], taskId, blockInnerIdx, nextblockIdx);
+                this->SetRunInfo(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, blockInnerIdx, nextblockIdx);
             }
  
             mm1ResTensor = this->mm1ResBuf[runInfos[taskId & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();

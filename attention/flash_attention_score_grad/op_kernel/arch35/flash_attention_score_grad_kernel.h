@@ -57,21 +57,21 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     FagRunInfo runInfos[2]; // for cv ping pong
     int64_t nextValidBlockInnerIdx = 0;
     int64_t blockInnerIdx = 0;
-    int64_t dqkvBlockInnerIdx = 0;
     int64_t curLoopIdx = 0; // just for continuous split core
     nextValidBlockInnerIdx = this->GetNextValidIdx(
         runInfos[0], taskId, this->tilingData->s1s2BNGS1S2BlockNumList.blockStarts[this->cBlockIdx], curLoopIdx);
     blockInnerIdx = nextValidBlockInnerIdx;
- 
+    
     LocalTensor<CALC_TYPE> mm1ResTensor;
     LocalTensor<CALC_TYPE> mm2ResTensor;
+    FagRunInfo prevRunInfo;
     bool needSyncDkMM = false;
     bool needSyncDkDvFixUb = false;
     while (true) {
         this->isLastLoop = (blockInnerIdx == -1);
-        dqkvBlockInnerIdx = blockInnerIdx; // save for dq dk dv next valid block index
         if (taskId > 0) {
-            this->vecBlock.ProcessVec1(this->constInfo, runInfos[(taskId + 1) & 1]); // v1: softmaxGrad
+            prevRunInfo = runInfos[(taskId + 1) & 1];
+            this->vecBlock.ProcessVec1(this->constInfo, prevRunInfo); // v1: softmaxGrad
             // wait mm1 and mm2 result
             if ASCEND_IS_AIV {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
@@ -81,8 +81,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         if (!this->isLastLoop) {
             // get mm1 mm2 next valid block index and next s2 begin end
             nextValidBlockInnerIdx = this->GetNextValidIdx(runInfos[(taskId + 1) & 1], taskId + 1, blockInnerIdx + 1, curLoopIdx + 1);
-            this->SetRunInfo(runInfos[taskId & 1], taskId, blockInnerIdx, nextValidBlockInnerIdx);
-            if (this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
+            this->SetRunInfo(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, blockInnerIdx, nextValidBlockInnerIdx);
+            if (this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx || IS_TND_SWIZZLE) {
                 curLoopIdx++;
             } else {
                 blockInnerIdx++;
@@ -124,13 +124,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
         if (taskId > 0) {
             mm1ResTensor =
-                this->mm1ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+                this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
             mm2ResTensor =
-                this->mm2ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
- 
-            this->vecBlock.ProcessVec2(mm2ResTensor, this->constInfo,
-                                       runInfos[(taskId + 1) & 1]); // v2: pse + attenMask + simpleSoftmax
- 
+                this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+            this->vecBlock.ProcessVec2(mm2ResTensor, this->constInfo, prevRunInfo); // v2: pse + attenMask + simpleSoftmax
             if ASCEND_IS_AIV {
                 if (needSyncDkMM) {
                     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
@@ -139,13 +136,13 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
             Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
             this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
-                                       runInfos[(taskId + 1) & 1]); // v3: dropout + cast + nd2nz
+                                       prevRunInfo); // v3: dropout + cast + nd2nz
             if ASCEND_IS_AIV {
                 if (needSyncDkMM) {
                     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C5_TO_V4_FLAG);
                 }
             }
-            this->vecBlock.ProcessVec4(pL1Buffer, mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]); // v4: cast + nd2nz
+            this->vecBlock.ProcessVec4(pL1Buffer, mm2ResTensor, this->constInfo, prevRunInfo); // v4: cast + nd2nz
             if ASCEND_IS_AIV {
                 CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V3_TO_C3_FLAG); // dqk must wait ds copy completely
                 CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG); // dv must wait ds copy completely
@@ -164,10 +161,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 // compute dq
                 if constexpr (BaseClass::IS_DQ_WRITE_UB) {
                     mm1ResTensor =
-                        this->mm1ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+                        this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                     this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
                         mm1ResTensor, this->dSL1Buf, this->constInfo,
-                        runInfos[(taskId + 1) & 1]); // c3
+                        prevRunInfo); // c3
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -175,11 +172,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C3_TO_V5_FLAG);
                     }
                     this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB, DQ_IDX>(
-                        mm1ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]); // v5: dq muls + cast
+                        mm1ResTensor, this->constInfo, prevRunInfo); // v5: dq muls + cast
                 } else {
                     this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
                         this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                        runInfos[(taskId + 1) & 1]); // c3
+                        prevRunInfo); // c3
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -187,15 +184,15 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V5_FLAG);
                     }
                     this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB, DQ_IDX>(
-                        this->dqWorkSpaceGm, this->constInfo, runInfos[(taskId + 1) & 1]); // v5: dq muls + cast
+                        this->dqWorkSpaceGm, this->constInfo, prevRunInfo); // v5: dq muls + cast
                 }
                 // compute dk
                 if constexpr (BaseClass::IS_DK_WRITE_UB) {
                     mm2ResTensor =
-                        this->mm2ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+                        this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                     this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
                         mm2ResTensor, this->dSL1Buf, this->constInfo,
-                        runInfos[(taskId + 1) & 1]); // c4
+                        prevRunInfo); // c4
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
@@ -203,7 +200,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C4_TO_V6_FLAG);
                     }
                     this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DK_WRITE_UB, DK_IDX>(
-                        mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]); // v6: dk muls + cast
+                        mm2ResTensor, this->constInfo, prevRunInfo); // v6: dk muls + cast
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
@@ -214,7 +211,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 } else {
                     this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
                         this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                        runInfos[(taskId + 1) & 1]); // c4
+                        prevRunInfo); // c4
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
@@ -222,7 +219,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C4_TO_V6_FLAG);
                     }                        
                     this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DK_WRITE_UB, DK_IDX>(
-                            this->dkWorkSpaceGm, this->constInfo, runInfos[(taskId + 1) & 1]); // v6: dk muls + cast
+                            this->dkWorkSpaceGm, this->constInfo, prevRunInfo); // v6: dk muls + cast
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
@@ -230,7 +227,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 }
                 // compute dv
                 this->cubeBlock.template IterateMmPDy<OUTDTYPE, BaseClass::IS_DV_WRITE_UB>(
-                    this->dvGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
+                    this->dvGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
@@ -240,8 +237,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 // compute dq
                 this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
                     this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                    runInfos[(taskId + 1) & 1]); // c3
-                if (runInfos[(taskId + 1) & 1].isLastS1Outer) {
+                    prevRunInfo); // c3
+                if (prevRunInfo.isLastS1Outer) {
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -249,14 +246,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V5_FLAG);
                     }
                     this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB, DQ_IDX>(
-                        this->dqWorkSpaceGm, this->constInfo, runInfos[(taskId + 1) & 1]); // v5: dq muls + cast
+                        this->dqWorkSpaceGm, this->constInfo, prevRunInfo); // v5: dq muls + cast
                 }
 
                 // compute dk
                 this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
                     this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                    runInfos[(taskId + 1) & 1]); // c4
-                if (!runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
+                    prevRunInfo); // c4
+                if (!prevRunInfo.isNextS2IdxNoChange) {
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
@@ -264,7 +261,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C4_TO_V6_FLAG);
                     }
                     this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DK_WRITE_UB, DK_IDX>(
-                        this->dkWorkSpaceGm, this->constInfo, runInfos[(taskId + 1) & 1]); // v6: dk muls + cast
+                        this->dkWorkSpaceGm, this->constInfo, prevRunInfo); // v6: dk muls + cast
                 }
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
@@ -273,8 +270,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
                 // compute dv
                 this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                    this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
-                if (!runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
+                    this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
+                if (!prevRunInfo.isNextS2IdxNoChange) {
                     if ASCEND_IS_AIC {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -282,7 +279,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V5_FLAG);
                     }
                     this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DV_WRITE_UB, DV_IDX>(
-                        this->dvWorkSpaceGm, this->constInfo, runInfos[(taskId + 1) & 1]); // v6: dv muls + cast
+                        this->dvWorkSpaceGm, this->constInfo, prevRunInfo); // v6: dv muls + cast
                 }
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
@@ -293,15 +290,15 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 // compute dq
                 this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
                     this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                    runInfos[(taskId + 1) & 1]); // c3
+                    prevRunInfo); // c3
                 // compute dk
                 if constexpr (BaseClass::IS_DK_WRITE_UB) {
                     mm1ResTensor =
-                        this->mm1ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+                        this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                     this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
                         mm1ResTensor, this->dSL1Buf, this->constInfo,
-                        runInfos[(taskId + 1) & 1]); // c4
-                    if (!runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
+                        prevRunInfo); // c4
+                    if (!prevRunInfo.isNextS2IdxNoChange) {
                         if ASCEND_IS_AIC {
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
@@ -309,13 +306,13 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C4_TO_V6_FLAG);
                         }
                         this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DK_WRITE_UB, DK_IDX>(
-                            mm1ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]); // v6: dk muls + cast
+                            mm1ResTensor, this->constInfo, prevRunInfo); // v6: dk muls + cast
                     }
                 } else {
                     this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
                         this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                        runInfos[(taskId + 1) & 1]); // c4
-                    if (!runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
+                        prevRunInfo); // c4
+                    if (!prevRunInfo.isNextS2IdxNoChange) {
                         if ASCEND_IS_AIC {
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
@@ -323,7 +320,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C4_TO_V6_FLAG);
                         }
                         this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DK_WRITE_UB, DK_IDX>(
-                            this->dkWorkSpaceGm, this->constInfo, runInfos[(taskId + 1) & 1]); // v5: dk muls + cast
+                            this->dkWorkSpaceGm, this->constInfo, prevRunInfo); // v5: dk muls + cast
                     }
                 }
                 if ASCEND_IS_AIC {
@@ -333,11 +330,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 // compute dv
                 if constexpr (BaseClass::IS_DV_WRITE_UB) {
                     mm2ResTensor =
-                        this->mm2ResBuf[runInfos[(taskId + 1) & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+                        this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                     this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
                         mm2ResTensor, this->pL1Buf, this->constInfo,
-                        runInfos[(taskId + 1) & 1]); // c3
-                    if (!runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
+                        prevRunInfo); // c3
+                    if (!prevRunInfo.isNextS2IdxNoChange) {
                         if ASCEND_IS_AIC {
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -345,7 +342,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C3_TO_V5_FLAG);
                         }
                         this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DV_WRITE_UB, DV_IDX>(
-                            mm2ResTensor, this->constInfo, runInfos[(taskId + 1) & 1]); // v6: dv muls + cast
+                            mm2ResTensor, this->constInfo, prevRunInfo); // v6: dv muls + cast
                         if ASCEND_IS_AIV {
                             CrossCoreSetFlag<SYNC_MODE, PIPE_V>(SYNC_DETER_FIX_FLAG);
                         }
@@ -353,8 +350,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     }
                 } else {
                     this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                        this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
-                    if (!runInfos[(taskId + 1) & 1].isNextS2IdxNoChange) {
+                        this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
+                    if (!prevRunInfo.isNextS2IdxNoChange) {
                         if ASCEND_IS_AIC {
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -362,7 +359,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V5_FLAG);
                         }
                         this->vecBlock.template ProcessMulsAndCast<CALC_TYPE, BaseClass::IS_DV_WRITE_UB, DV_IDX>(
-                            this->dvWorkSpaceGm, this->constInfo, runInfos[(taskId + 1) & 1]); // v6: dv muls + cast
+                            this->dvWorkSpaceGm, this->constInfo, prevRunInfo); // v6: dv muls + cast
                     }
                 }
                 if ASCEND_IS_AIC {
@@ -374,11 +371,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 // compute dq
                 this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
                     this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                    runInfos[(taskId + 1) & 1]); // c3
+                    prevRunInfo); // c3
                 // compute dk
                 this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
                     this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo,
-                    runInfos[(taskId + 1) & 1]); // c4
+                    prevRunInfo); // c4
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
@@ -386,7 +383,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
  
                 // compute dv
                 this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-                    this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
+                    this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, prevRunInfo); // c5
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
@@ -400,8 +397,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         taskId++;
         blockInnerIdx = nextValidBlockInnerIdx;
     }
-}
- 
+} 
 } // namespace FagBaseApi
  
  

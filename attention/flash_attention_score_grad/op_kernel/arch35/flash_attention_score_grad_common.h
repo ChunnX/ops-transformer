@@ -39,7 +39,7 @@ constexpr uint8_t DV_IDX = 2;
 constexpr uint32_t MIN_SWIZZLE_S1 = 16384;
 // Swizzle块数量，16K对应8块，随S增大倍数增大
 constexpr uint32_t BASE_SWIZZLE_BLOCK_NUM = 8;
-
+ 
 template <typename T, bool IS_WRITE_UB>
 struct DqkvResPos {
     using PosType = typename std::conditional<IS_WRITE_UB, LocalTensor<T> &, GlobalTensor<T> &>::type;
@@ -79,31 +79,28 @@ __aicore__ constexpr bool GET_IS_L1_REUSE(const uint32_t HEAD_DIM_ALIGN, const b
         (CUBE_BASEM) * (CUBE_BASEN) * sizeof(float) :                                  \
         (CUBE_BASEM) * (HEAD_DIM_ALIGN) * sizeof(float))) <= L0C_MAX_SIZE
 
-#define FagTilingType                                                                                                  \
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> \
-        *__restrict
-
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)                                                                               \
     X(INPUT_TYPE)                                                                                                      \
     X(CALC_TYPE)                                                                                                       \
     X(OUTDTYPE)
- 
+
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \
     X(IS_ATTEN_MASK, bool, false)                                                                                      \
     X(IS_PSE, bool, false)                                                                                             \
     X(IS_DROP, bool, false)                                                                                            \
     X(IS_TND, bool, false)                                                                                             \
-    X(IS_BN2_MULTIBLK, bool, false)                                                                                           \
+    X(IS_BN2_MULTIBLK, bool, false)                                                                                    \
     X(DETER_SPARSE_TYPE, uint8_t, 0)                                                                                   \
     X(IS_N_EQUAL, bool, false)                                                                                         \
     X(IS_D_NO_EQUAL, bool, false)                                                                                      \
     X(IS_ROPE, bool, false)                                                                                            \
     X(FP8_OPEN_TSCM, bool, false)                                                                                      \
+    X(IS_TND_SWIZZLE, bool, false)                                                                                     \
     X(SPLIT_AXIS, uint8_t, 0)                                                                                          \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128)                                                      \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128)                                                      \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)
- 
+
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
 #define GEN_CONST_PARAM(name, type, default_val) type (name) = (default_val),

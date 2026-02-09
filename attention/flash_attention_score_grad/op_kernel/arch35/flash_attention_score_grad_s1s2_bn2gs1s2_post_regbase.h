@@ -16,12 +16,19 @@
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_POST_KERNEL_REGBASE_H_
 #include "kernel_basic_intf.h"
 
-template <typename T1, typename T2, typename OUTDTYPE=T1, const uint8_t SPLIT_AXIS = 0, const bool IS_ROPE = false, const uint8_t DETER_SPARSE_TYPE = 0, const bool IS_TND = 0> class FlashAttentionScoreGradS1S2BNGS1S2PostRegbase {
+#define FAG_POST_CLASS_TEMPLATE                                                                                             \
+    template <typename T1, typename T2, typename OUTDTYPE=T1, const uint8_t SPLIT_AXIS = 0, const bool IS_ROPE = false, const uint8_t DETER_SPARSE_TYPE = 0, const bool IS_TND = 0, const bool IS_TND_SWIZZLE = 0> 
+#define FAG_POST_FUNCTION_TEMPLATE                                                                                          \
+    template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE, const uint8_t DETER_SPARSE_TYPE, const bool IS_TND, const bool IS_TND_SWIZZLE>
+#define FAG_POST_FUNCTION_PARAMS_TEMPLATE T1, T2, OUTDTYPE, SPLIT_AXIS, IS_ROPE, DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE
+
+FAG_POST_CLASS_TEMPLATE 
+class FlashAttentionScoreGradS1S2BNGS1S2PostRegbase {
 public:
     __aicore__ inline FlashAttentionScoreGradS1S2BNGS1S2PostRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
                                 __gm__ uint8_t *dkRope,__gm__ uint8_t *workspace,
-                                const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData,
+                                FagTilingType ordTilingData,
                                 TPipe *pipe_in);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessBNS2Deter();
@@ -32,7 +39,7 @@ public:
     uint32_t VALUE_DIM = 128;
     uint32_t POST_S_BASE = 96;
     TPipe *pipe;
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict tilingData;
+    FagTilingType tilingData;
     TQue<QuePosition::VECIN, 1> inQueuePing;
     TQue<QuePosition::VECOUT, 1> outQueuePing;
     TQue<QuePosition::VECIN, 1> inQueuePong;
@@ -47,11 +54,11 @@ public:
     uint32_t qPostTailNum;
 };
 
-template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE, const uint8_t DETER_SPARSE_TYPE, const bool IS_TND>
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUTDTYPE, SPLIT_AXIS, IS_ROPE, DETER_SPARSE_TYPE, IS_TND>::Init(
+FAG_POST_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
     __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND> *__restrict ordTilingData, TPipe *pipe_in)
+    FagTilingType ordTilingData, TPipe *pipe_in)
 {
     vBlockIdx = GetBlockIdx();
     tilingData = ordTilingData;
@@ -82,8 +89,8 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUT
     pipe->InitBuffer(outQueuePong, 1, REGBASE_POST_BASE * sizeof(OUTDTYPE));
 }
 
-template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE, const uint8_t DETER_SPARSE_TYPE, const bool IS_TND>
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<T1, T2, OUTDTYPE, SPLIT_AXIS, IS_ROPE, DETER_SPARSE_TYPE, IS_TND>::Process()
+FAG_POST_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::Process()
 {
     if (g_coreType != AIV) {
         return;

@@ -126,6 +126,26 @@
  constexpr uint32_t CORE_LIST_NUM = 36;
  constexpr uint32_t ARRAY_LENGTH = 3;
  constexpr uint32_t DETER_LENGTH = 4;
+ 
+ struct TndBaseInfo {
+    // for swizzle
+    uint64_t tndSwizzleS1S2PrefixSum[TND_SWIZZLE_PREFIX_NUM] = {0};
+    uint64_t tndSwizzleS1S2AlignPrefixSum[TND_SWIZZLE_PREFIX_NUM] = {0};
+    uint64_t tndS2BlockPrefixSum[TND_SWIZZLE_PREFIX_NUM] = {0};
+    bool isTndSwizzle = false;
+
+    // no swizzle
+    uint64_t tndStartBIdx[CORE_LIST_NUM] = {0};
+    uint64_t tndS1S2PrefixSum[CORE_LIST_NUM] = {0};
+    uint64_t tndS1S2AlignPrefixSum[CORE_LIST_NUM] = {0};
+    uint64_t tndPrefixSum[CORE_LIST_NUM] = {0};
+    uint64_t tndPrefixValidSum[CORE_LIST_NUM] = {0};
+
+    bool isS1GreaterThanS2 = true;
+    bool isS1LessThanS2 = true;
+    bool isSeqExistZero = false;
+ };
+
  struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
      uint64_t coreNum;
      uint64_t aicNum;
@@ -216,6 +236,7 @@
      DtypeEnum inputDtype;
      bool isDeterministic = false;
      uint32_t deterSparseType;
+     uint8_t sparseType;
      bool isS1S2Same = false;
      bool coreDivide = false;
      int64_t deterMaxRound = 0;
@@ -247,11 +268,7 @@
  
      int64_t qStartIdx;
      int64_t kvStartIdx;
-
-    uint64_t tndStartBIdx[CORE_LIST_NUM];
-    uint64_t tndS1S2PrefixSum[CORE_LIST_NUM];
-    uint64_t tndS1S2AlignPrefixSum[CORE_LIST_NUM];
-    uint64_t tndPrefixSum[CORE_LIST_NUM];
+     bool enableSwizzle = false;
  };
  
  class FlashAttentionScoreGradTilingUs1s2Bs2Regbase : public TilingBaseClass {
@@ -269,7 +286,7 @@
      PostParamsRegbase *postTilingData_ = nullptr;
      DeterParamRegbase *deterParam = nullptr;
      TndParamRegbase *tndParam_ = nullptr;
- 
+     TndSwizzleParamRegbase *tndSwizzleParam_ = nullptr;
  protected:
      bool IsCapable() override;
      ge::graphStatus GetPlatformInfo() override;
@@ -353,8 +370,8 @@
      ge::graphStatus GetSparsePrefixBlockInfo();
      ge::graphStatus GetSparseUnpadBlockInfo();
      bool GetBlockInfoOfBNS4TND();
-     bool isPossible(const std::vector<std::vector<float>> &acturalBlockInfo, const float possibleMax);
-     float binarySearchMaxBlockNumPerCore(
+     bool IsPossible(const std::vector<std::vector<float>> &acturalBlockInfo, const float possibleMax);
+     float BinarySearchMaxBlockNumPerCore(
          const std::vector<std::vector<float>> &acturalBlockInfo);
      int64_t FindBandIdx();
      void FillBlockInfo(std::vector<std::vector<std::vector<int64_t>>> &calculatedBlockInfo,
@@ -413,10 +430,12 @@
          const float maxBlockNumPerCore, int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM]);
      ge::graphStatus GetSparseBlockInfoBn2();
      bool CheckIsLargeInvalidBlk();
- 
+     bool IsNewDeter();
+     void SetTndSwizzleParam(int64_t bIdx, int64_t s1OuterTmp, int64_t s2OuterTmp);
      FuzzyBaseInfoParamsRegbase fBaseParams;
      platform_ascendc::SocVersion socVersion;
      NpuArch npuArch = NpuArch::DAV_RESV;
+     TndBaseInfo tndBaseInfo;
  };
  
  class FlashAttentionScoreGradTilingUnpaddedAttensionRegbase : public FlashAttentionScoreGradTilingUs1s2Bs2Regbase {
