@@ -32,6 +32,9 @@ add_library(${GRAPH_PLUGIN_NAME}_proto_headers INTERFACE)
 # global variables
 set(COMPILED_OPS CACHE STRING "Compiled Ops" FORCE)
 set(COMPILED_OP_DIRS CACHE STRING "Compiled Ops Dirs" FORCE)
+set(ACLNN_EXTRA_HEADERS "" CACHE STRING "Aclnn Extra Headers" FORCE)
+set(ACLNN_EXTRA_SRCS "" CACHE STRING "Aclnn Extra Sources" FORCE)
+set(ACLNNINNER_EXTRA_SRCS "" CACHE STRING "AclnnInner Extra Sources" FORCE)
 
 # src path
 get_filename_component(OPS_TRANSFORMER_CMAKE_DIR           "${OPS_TRANSFORMER_DIR}/cmake"                               REALPATH)

@@ -26,5 +26,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     message(STATUS "=== Debug: BUILD is NOT BUILD_OPS_RTY_KERNEL")
-    add_modules_sources(OPTYPE kv_rms_norm_rope_cache ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE kv_rms_norm_rope_cache ACLNNTYPE aclnn ACLNN_EXTRA_VERSION v2)
 endif()
