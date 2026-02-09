@@ -344,7 +344,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   - offsetOptional支持FLOAT32。shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致。
   - perTokenScaleOptional支持FLOAT32。支持一维，维度为(m)，m和x的m一致。
   - groupListOptional支持e和w的e一致。
-  - sharedInputOptional支持一维，维度为(e),e和w的e一致。
+  - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和w的n一致。
   - logitOptional支持m和x的m一致。
   - rowIndexOptional支持m和x的m一致。
   - x1、x2、groupListOptional是必选参数，scaleOptional、pertokenScaleOptional、logitOptional、rowIndexOptional、biasOptional，sharedInputOptional是可选参数。
