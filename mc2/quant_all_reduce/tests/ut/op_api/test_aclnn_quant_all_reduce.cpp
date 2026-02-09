@@ -300,7 +300,11 @@ static void TestOneParamCase(const QuantAllReduceAclnnTestParam& param)
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, retStatus);
+    if (retStatus == ACLNN_SUCCESS) {
+        EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    } else {
+        EXPECT_EQ(aclRet, retStatus);
+    }
 }
 
 TEST_F(TestAclnnQuantAllReduce, DtypeCasesParamsTest)

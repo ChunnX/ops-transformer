@@ -58,7 +58,7 @@ TEST_F(L2GroupedMatMulAlltoAllvTest, Test)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2GroupedMatMulAlltoAllvTest, TestGroupNullptr)
@@ -80,7 +80,7 @@ TEST_F(L2GroupedMatMulAlltoAllvTest, TestGroupNullptr)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
 TEST_F(L2GroupedMatMulAlltoAllvTest, TestGroupInvalid)
@@ -107,7 +107,7 @@ TEST_F(L2GroupedMatMulAlltoAllvTest, TestGroupInvalid)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2GroupedMatMulAlltoAllvTest, TestMmxInvalid)
@@ -130,6 +130,6 @@ TEST_F(L2GroupedMatMulAlltoAllvTest, TestMmxInvalid)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 } // GroupedMatMulAlltoAllvUT

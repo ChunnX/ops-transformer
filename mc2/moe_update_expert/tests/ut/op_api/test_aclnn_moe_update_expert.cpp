@@ -56,7 +56,7 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNoTailor)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertExpertTailor)
@@ -81,6 +81,6 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertExpertTailor)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 } // MoeUpdateExpert

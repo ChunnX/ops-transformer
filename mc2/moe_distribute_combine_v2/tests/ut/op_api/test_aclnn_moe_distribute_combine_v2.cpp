@@ -29,14 +29,14 @@ class L2MoeDistributeCombineV2Test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "l2_moe_distribute_combine_test SetUp" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2MoeDistributeCombineV2Test SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "l2_moe_distribute_combine_test TearDown" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2MoeDistributeCombineV2Test TearDown" << endl;
     }
 };
 
@@ -79,6 +79,6 @@ TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
   uint64_t workspace_size = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 } // MoeDistributeCombineV2

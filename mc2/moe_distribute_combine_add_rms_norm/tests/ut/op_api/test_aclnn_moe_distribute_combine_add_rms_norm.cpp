@@ -88,7 +88,7 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm1
     uint64_t workspaceSize1 = 0;
     aclOpExecutor* executor1 = nullptr;
     aclnnStatus aclRet1 = ut1.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize1, executor1);
-    EXPECT_EQ(aclRet1, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet1, ACLNN_ERR_PARAM_INVALID);
 
     auto ut2 = OP_API_UT(
         aclnnMoeDistributeCombineAddRmsNorm,

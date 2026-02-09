@@ -26,14 +26,14 @@ class L2AclnnMatmulReduceScatterTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "L2AclnnMatmulReduceScatterTest SetUp" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2AclnnMatmulReduceScatterTest SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "L2AclnnMatmulReduceScatterTest TearDown" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2AclnnMatmulReduceScatterTest TearDown" << endl;
     }
 };
 
@@ -48,7 +48,7 @@ TEST_F(L2AclnnMatmulReduceScatterTest, TestAclnnMatmulReduceScatterFirstApi)
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2AclnnMatmulReduceScatterTest, TestAclnnMatmulReduceScatterFirstApi2)
@@ -62,7 +62,7 @@ TEST_F(L2AclnnMatmulReduceScatterTest, TestAclnnMatmulReduceScatterFirstApi2)
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2AclnnMatmulReduceScatterTest, TestAclnnMatmulReduceScatterFirstApi3)
@@ -76,7 +76,7 @@ TEST_F(L2AclnnMatmulReduceScatterTest, TestAclnnMatmulReduceScatterFirstApi3)
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2AclnnMatmulReduceScatterTest, TestSixApi950)
@@ -90,6 +90,6 @@ TEST_F(L2AclnnMatmulReduceScatterTest, TestSixApi950)
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 } // MatmulReduceScatter

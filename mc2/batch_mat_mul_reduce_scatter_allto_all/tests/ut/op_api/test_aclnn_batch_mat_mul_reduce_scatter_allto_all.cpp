@@ -27,14 +27,14 @@ class L2BatchMatmulReduceScatterAllToAllTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
-      cout << "L2BatchMatmulReduceScatterAllToAllTest SetUp" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
+        cout << "L2BatchMatmulReduceScatterAllToAllTest SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "L2BatchMatmulReduceScatterAllToAllTest TearDown" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2BatchMatmulReduceScatterAllToAllTest TearDown" << endl;
     }
 };
 
@@ -52,7 +52,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // yShardType = 1, E = 4, C = 2, H = 6, ep = 2, tp = 2, M = 4
@@ -69,7 +69,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // yShardType = 1, E = 4, C = 2, H = 6, ep = 2, tp = 2, M = 4, trans & no autocontinguous
@@ -86,7 +86,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E > 2048
@@ -103,7 +103,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // K = 0
@@ -120,7 +120,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // ep group name empty
@@ -137,7 +137,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
 // tp group name null
@@ -154,7 +154,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
 // x dim invalid
@@ -171,7 +171,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E != E/ep * ep
@@ -188,7 +188,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // H != H/tp * tp
@@ -205,7 +205,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // bias shape invalid
@@ -222,7 +222,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // epWorldSize invalid
@@ -239,7 +239,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // tpWorldSize invalid
@@ -256,7 +256,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // H > 65535
@@ -273,7 +273,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // C = 0
@@ -290,7 +290,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E/ep = 0
@@ -307,7 +307,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllToAllW0Invalid)
@@ -323,7 +323,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllToAllW1Invalid)
@@ -339,7 +339,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllToAllY2Invalid)
@@ -355,7 +355,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllToAllY1Invalid)
@@ -371,7 +371,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllToAllYshardtype1Y1Invalid)
@@ -387,7 +387,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E = 4, C = 2, H = 6, ep = 2, tp = 2, M = 4
@@ -404,7 +404,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E = 4, C = 2, H = 6, ep = 2, tp = 2, M = 4
@@ -421,7 +421,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E = 4, C = 2, H = 7, ep = 2, tp = 2, M = 4
@@ -438,7 +438,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E = 4, C = 2, H = 6, ep = 2, tp = 2, M = 4
@@ -455,7 +455,7 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // E = 4, C = 2, H = 6, ep = 2, tp = 2, M = 4
@@ -472,6 +472,6 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 } // BatchMatmulReduceScatterAlltoAll

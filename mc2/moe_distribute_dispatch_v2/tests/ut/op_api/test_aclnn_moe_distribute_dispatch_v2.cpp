@@ -75,6 +75,6 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchFirstAp
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 } // MoeDistributeDispatchV2

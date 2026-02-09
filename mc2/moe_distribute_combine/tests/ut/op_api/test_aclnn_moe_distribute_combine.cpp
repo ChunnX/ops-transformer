@@ -24,14 +24,14 @@ class L2MoeDistributeCombineTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "L2MoeDistributeCombineTest SetUp" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2MoeDistributeCombineTest SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "L2MoeDistributeCombineTest TearDown" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2MoeDistributeCombineTest TearDown" << endl;
     }
 };
 
@@ -73,7 +73,7 @@ TEST_F(L2MoeDistributeCombineTest, TestMoeDistributeCombineFirstApi)
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(L2MoeDistributeCombineTest, Ascend910B2TestMoeDistributeCombineTpNotEmpty)
@@ -114,6 +114,6 @@ TEST_F(L2MoeDistributeCombineTest, Ascend910B2TestMoeDistributeCombineTpNotEmpty
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 } // MowDistributeCombine

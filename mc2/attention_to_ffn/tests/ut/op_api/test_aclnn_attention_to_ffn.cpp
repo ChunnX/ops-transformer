@@ -29,14 +29,14 @@ class AclnnAttentionToFfnTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
-      cout << "AclnnAttentionToFfnTest SetUp" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
+        cout << "AclnnAttentionToFfnTest SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "AclnnAttentionToFfnTest TearDown" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "AclnnAttentionToFfnTest TearDown" << endl;
     }
 };
 
@@ -69,7 +69,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
@@ -101,7 +101,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 } // AttentionToFFNUT

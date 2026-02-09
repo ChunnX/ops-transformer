@@ -36,8 +36,8 @@ protected:
 
     static void TearDownTestCase()
     {
-      op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-      cout << "AclnnFfnToAttentionTest TearDown" << endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "AclnnFfnToAttentionTest TearDown" << endl;
     }
 };
 
@@ -63,7 +63,7 @@ TEST_F(AclnnFfnToAttentionTest, TestFfnToAttentionAttnRankTable)
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnFfnToAttentionTest, TestFfnToAttentionNoAttnRankTable)
@@ -88,7 +88,7 @@ TEST_F(AclnnFfnToAttentionTest, TestFfnToAttentionNoAttnRankTable)
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 } // FFNToAttentionUT

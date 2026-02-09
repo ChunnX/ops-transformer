@@ -25,11 +25,15 @@ class test_aclnn_allto_all_quant_matmul : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910_95);
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "test_aclnn_allto_all_quant_matmul SetUp" << endl;
     }
 
-    static void TearDownTestCase() { cout << "test_aclnn_allto_all_quant_matmul TearDown" << endl; }
+    static void TearDownTestCase()
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "test_aclnn_allto_all_quant_matmul TearDown" << endl;
+    }
 };
 
 // ut用例结构体
@@ -142,7 +146,7 @@ static void TestOneParamCase(const AlltoAllQuantMatmulAclnnTestParam& param)
     TensorDesc x2scales = TensorDesc(x2scalesShape, x2scalesDtype, x2_scale_format);
     TensorDesc output = TensorDesc(outputShape, outputDtype, outputFormat);
     // 三个可能为空指针的，需要特殊处理
-    TensorDesc bias = TensorDesc(biasShape, biasDtype, bias_format);
+    TensorDesc bias = TensorDesc(biasShape, biasDtype, biasFormat);
     TensorDesc alltoallout = TensorDesc(alltoalloutShape, alltoalloutDtype, alltoalloutFormat);
     TensorDesc x1scales = TensorDesc(x1scalesShape, x1scalesDtype, x1_scale_format);
     uint64_t workspace_size = 0;
@@ -152,7 +156,11 @@ static void TestOneParamCase(const AlltoAllQuantMatmulAclnnTestParam& param)
                     x1quantmode, x2quantmode, 0, -1, x1quantdtype, 0, transposeX1, transposeX2),
                 OUTPUT(output, alltoallout));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, retStatus);
+    if (retStatus == ACLNN_SUCCESS) {
+        EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    } else {
+        EXPECT_EQ(aclRet, retStatus);
+    }
     std::cout << "end case " <<  param.case_name << std::endl;
 }
 

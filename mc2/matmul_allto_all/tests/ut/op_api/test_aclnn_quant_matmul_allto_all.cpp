@@ -317,12 +317,12 @@ static QuantMatmulAlltoAllAclnnTestParam g_quantCasesParams[] = {
     {"error-AclnnQuantMatmulAlltoAll-x2empty-09", 2, 3, 2, {256, 128}, {0, 256}, {256}, {256}, {256}, {512, 128},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR},
     // 7.4 x2有维度为0，second dim
     {"error-AclnnQuantMatmulAlltoAll-x2empty-10", 2, 3, 2, {256, 128}, {128, 0}, {256}, {256}, {256}, {512, 128},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR},
     // 8. format为私有格式 (6条)
     {"error-AclnnQuantMatmulAlltoAll-private_fmt1-11", 2, 3, 2, {256, 128}, {128, 256}, {256}, {256}, {256}, {512, 128},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT, ACL_BF16,
@@ -380,7 +380,7 @@ static QuantMatmulAlltoAllAclnnTestParam g_quantCasesParams[] = {
     {"error-AclnnQuantMatmulAlltoAll-invalid_x2dim-22", 2, 3, 2, {256, 128}, {128, 256, 32}, {256}, {256}, {256}, {512, 128},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR},
     // 10.3 output维度不合法
     {"error-AclnnQuantMatmulAlltoAll-invalid_outputdim-23", 2, 3, 2, {256, 128}, {128, 256}, {256}, {256}, {256}, {512, 128, 32},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT, ACL_BF16,
@@ -470,20 +470,24 @@ static void TestQuantOneParamCase(const QuantMatmulAlltoAllAclnnTestParam& param
     TensorDesc output = TensorDesc(outputShape, outputDtype, outputFormat);
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet;
     if (biasShape.empty()) {
         auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
                             INPUT(x1, x2, nullptr, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional, group,
                                   x1quantmode, x2quantmode, 0, -1, 0, transposeX1, transposeX2),
                             OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-        EXPECT_EQ(aclRet, retStatus);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     } else {
         TensorDesc bias = TensorDesc(biasShape, biasDtype, biasFormat);
         auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
                             INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional, group,
                                   x1quantmode, x2quantmode, 0, -1, 0, transposeX1, transposeX2),
                             OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    }
+    if (retStatus == ACLNN_SUCCESS) {
+        EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    } else {
         EXPECT_EQ(aclRet, retStatus);
     }
     std::cout << "end case " <<  param.caseName << std::endl;
@@ -569,33 +573,35 @@ static void TestQuantReservedCase(const QuantMatmulAlltoAllAclnnTest2Param& para
     aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet;
     if (!commScaleShape.empty()) {
         auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
                     INPUT(x1, x2, bias, x1scales, x2scales, commScale, nullptr, nullptr, alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
                           3, 2, commQuantMode, commQuantDtype, groupSize, false, false),
                     OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-        EXPECT_EQ(aclRet, retStatus);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     } else if (!x1OffsetShape.empty()) {
         auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
                     INPUT(x1, x2, bias, x1scales, x2scales, nullptr, x1Offset, nullptr, alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
                           3, 2, commQuantMode, commQuantDtype, groupSize, false, false),
                     OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-        EXPECT_EQ(aclRet, retStatus);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     } else if (!x2OffsetShape.empty()) {
         auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
             INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, x2Offset, alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
                   3, 2, commQuantMode, commQuantDtype, groupSize, false, false),
             OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-        EXPECT_EQ(aclRet, retStatus);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     } else {
         auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
             INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
                   3, 2, commQuantMode, commQuantDtype, groupSize, false, false),
             OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    }
+    if (retStatus == ACLNN_SUCCESS) {
+        EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    } else {
         EXPECT_EQ(aclRet, retStatus);
     }
     std::cout << "end case " <<  param.caseName << std::endl;

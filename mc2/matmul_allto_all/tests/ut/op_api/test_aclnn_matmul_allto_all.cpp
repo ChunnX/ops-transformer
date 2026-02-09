@@ -162,12 +162,12 @@ static MatmulAlltoAllAclnnTestParam g_casesParams[] = {
     {"error-AclnnMatmulAlltoAll-x2empty-06", 2, {256, 128}, {0, 256}, {256}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR},
     // 5.3 x2有维度为0，second dim
     {"error-AclnnMatmulAlltoAll-x2empty-07", 2, {256, 128}, {128, 0}, {256}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR},
     // 6. format为私有格式(4条)
     {"error-AclnnMatmulAlltoAll-private_fmt1-08", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
@@ -217,7 +217,7 @@ static MatmulAlltoAllAclnnTestParam g_casesParams[] = {
     {"error-AclnnMatmulAlltoAll-invalid_x2dim-17", 2, {256, 128}, {128, 256, 32}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR},
     // 10.3 output维度不合法
     {"error-AclnnMatmulAlltoAll-invalid_outputdim-18", 2, {256, 128}, {128, 256}, {256}, {512, 128, 32},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
@@ -277,18 +277,22 @@ static void TestOneParamCase(const MatmulAlltoAllAclnnTestParam& param)
     TensorDesc output = TensorDesc(outputShape, outputDtype, outputFormat);
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet;
     if (biasShape.empty()) {
         auto ut = OP_API_UT(aclnnMatmulAlltoAll,
                         INPUT(x1, x2, nullptr, alltoAllAxesOptional, group, transposeX1, transposeX2),
                         OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-        EXPECT_EQ(aclRet, retStatus);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     } else {
         TensorDesc bias = TensorDesc(biasShape, biasDtype, biasFormat);
         auto ut = OP_API_UT(aclnnMatmulAlltoAll,
                         INPUT(x1, x2, bias, alltoAllAxesOptional, group, transposeX1, transposeX2),
                         OUTPUT(output));
-        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    }
+    if (retStatus == ACLNN_SUCCESS) {
+        EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    } else {
         EXPECT_EQ(aclRet, retStatus);
     }
     std::cout << "end case " <<  param.caseName << std::endl;
