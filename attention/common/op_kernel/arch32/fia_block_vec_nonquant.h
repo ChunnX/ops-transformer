@@ -19,7 +19,6 @@
 #include "kernel_cube_intf.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "../fia_public_define.h"
 #include "../memory_copy.h"
@@ -457,10 +456,10 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
 
                 if constexpr (SOFTMAX_WITH_BRC) {
                     AdjustSoftMaxRes<COMPUTE_T, COMPUTE_T>(totalLseUb, maxTensor, negativeIntScalar, 
-                        (COMPUTE_T)3e+99, softmaxShapeInfo);
+                        FLOAT_INF, softmaxShapeInfo);
                 } else {
                     AdjustSoftMaxRes<COMPUTE_T, COMPUTE_T, false, 1>(totalLseUb, maxTensor, negativeIntScalar, 
-                        (COMPUTE_T)3e+99, softmaxShapeInfo);
+                        FLOAT_INF, softmaxShapeInfo);
                 }
             }
 

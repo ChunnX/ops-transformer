@@ -737,7 +737,7 @@ ServiceFlashDecode<IFAT>::FlashDecode(FDparams &fd)
     uint32_t fdS1gOuterMEnd = fd.gS1IdxEndOfFdHeadSplit[blockIdx]; // 当前核的末尾是该规约的第几个base行
     uint32_t tmpFdS1gOuterMStart = (blockIdx > 0) ? fdS1gOuterMPrevEnd + 1 : 0U; // 当前核从第几个base行开始
     uint32_t tmpFdS1gOuterMEnd = 0U;
-    uint32_t reduceGlobaLoop = 0U;
+    uint32_t reduceGlobalLoop = 0U;
     uint32_t reduceMLoop = 0U;
 
     // 并不是每个核都会处理同一规约任务的不同行，以下是一个泛化性说明，自己手动推一下即可
@@ -793,26 +793,26 @@ ServiceFlashDecode<IFAT>::FlashDecode(FDparams &fd)
 
             LocalTensor<T> mm2Res;
             for (uint32_t preLoadIdx = 0; preLoadIdx < constInfo.preLoadNum; preLoadIdx++) {
-                mm2Res = (reduceGlobaLoop + preLoadIdx) % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
-                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
+                mm2Res = (reduceGlobalLoop + preLoadIdx) % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
+                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobalLoop + preLoadIdx) % 2);
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
+                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobalLoop + preLoadIdx) % 2);
             }
 
             ComputeScaleValue(lseExp, startRow, actualGSplitSize, reduceMLoop);
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; i++) {
-                mm2Res = reduceGlobaLoop % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
+                mm2Res = reduceGlobalLoop % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
                 if (i >= constInfo.preLoadNum) {
-                    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
-                    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
                 }
 
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
                 ReduceFinalRes(reduceOut, mm2Res, lseExp, i, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
-                reduceGlobaLoop += 1;
+                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
+                reduceGlobalLoop += 1;
             }
             CopyFinalResOut(reduceOut, startRow, actualGSplitSize, curAttenOutOffset);
             reduceMLoop += 1;

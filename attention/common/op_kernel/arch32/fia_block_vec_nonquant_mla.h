@@ -877,10 +877,10 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1L(const Attentio
 
                     if constexpr (SOFTMAX_WITH_BRC) {
                         AdjustSoftMaxRes<COMPUTE_T, COMPUTE_T>(totalLseUb, maxTensor, negativeIntScalar, 
-                            (COMPUTE_T)3e+99, softmaxShapeInfo);
+                            FLOAT_INF, softmaxShapeInfo);
                     } else {
                         AdjustSoftMaxRes<COMPUTE_T, COMPUTE_T, false, 1>(totalLseUb, maxTensor, negativeIntScalar, 
-                            (COMPUTE_T)3e+99, softmaxShapeInfo);
+                            FLOAT_INF, softmaxShapeInfo);
                     }
                 }
 

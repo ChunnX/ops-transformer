@@ -535,14 +535,14 @@ void FiaBlockVecFlashDecode<FIAT>::ReduceFinalRes(LocalTensor<T> &reduceOut,
                                                       uint32_t dealRowCount)
 {
     uint32_t dealRowCountAlign = dealRowCount * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
-    LocalTensor<T> tmpRst =
+    LocalTensor<T> tmpRes =
         cntKV == 0 ? reduceOut : mm2Res; // 第一次mul结果直接写入reduceOut，否则在mm2Res原地进行mul，再加到reduceOut
 
-    fa_base_vector::RowMuls(tmpRst, mm2Res, lseLocal[cntKV * dealRowCountAlign], dealRowCount, constInfo.headDimAlign, constInfo.headDim);
+    fa_base_vector::RowMuls(tmpRes, mm2Res, lseLocal[cntKV * dealRowCountAlign], dealRowCount, constInfo.headDimAlign, constInfo.headDim);
 
     if (cntKV != 0) {
         AscendC::PipeBarrier<PIPE_V>();
-        Add(reduceOut, reduceOut, tmpRst, dealRowCount * constInfo.headDimAlign);
+        Add(reduceOut, reduceOut, tmpRes, dealRowCount * constInfo.headDimAlign);
         AscendC::PipeBarrier<PIPE_V>();
     }
 }
@@ -788,7 +788,7 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
     uint32_t fdS1gOuterMEnd = fd.gS1IdxEndOfFdHeadSplit[blockIdx]; // 当前核的末尾是该规约的第几个base行
     uint32_t tmpFdS1gOuterMStart = (blockIdx > 0) ? fdS1gOuterMPrevEnd + 1 : 0; // 当前核从第几个base行开始
     uint32_t tmpFdS1gOuterMEnd = 0;
-    uint32_t reduceGlobaLoop = 0;
+    uint32_t reduceGlobalLoop = 0;
     uint32_t reduceMLoop = 0;
 
     for (uint32_t fdTaskId = fdTaskPrevEnd; fdTaskId <= fdTaskEnd; fdTaskId++) {
@@ -827,12 +827,11 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 CopySinkIn(reduceMLoop);
             }
 
-            LocalTensor<T> mm2Res;
             for (uint32_t preLoadIdx = 0; preLoadIdx < constInfo.preLoadNum; preLoadIdx++) {
-                mm2Res = (reduceGlobaLoop + preLoadIdx) % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
-                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
+                LocalTensor<T> mm2Res = (reduceGlobalLoop + preLoadIdx) % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
+                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobalLoop + preLoadIdx) % 2);
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
+                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobalLoop + preLoadIdx) % 2);
             }
 
             ComputeScaleValue(lseExp, startRow, actualGSplitSize, reduceMLoop);
@@ -845,8 +844,8 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 // 新增 最终LSE的计算lse = log(sum) + max
 
                 WaitFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
-                LocalTensor<T> lseftMaxLseUb = fdLseUbBuf.Get<T>();
-                fa_base_vector::ComputeSoftMaxLse(lseftMaxLseUb, lseSumUb, lseMaxUb, actualGSplitSize);
+                LocalTensor<T> maxLseUb = fdLseUbBuf.Get<T>();
+                fa_base_vector::ComputeSoftMaxLse(maxLseUb, lseSumUb, lseMaxUb, actualGSplitSize);
                 // 判断是否行无效
                 bool isInValidRowsFlag = fa_base_vector::IsExistInvalidRows(nextTokensPerBatch, preTokensPerBatch, constInfo.sparseMode,
                                           constInfo.attenMaskFlag, constInfo.isRowInvalid);
@@ -854,7 +853,7 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                     SoftMaxShapeInfo softmaxShapeInfo{
                     static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(FP32_BLOCK_ELEMENT_NUM),
                     static_cast<uint32_t>(actualGSplitSize), static_cast<uint32_t>(FP32_BLOCK_ELEMENT_NUM)};
-                    AdjustSoftMaxRes<T, T>(lseftMaxLseUb, lseMaxUb, negativeIntScalar, (T)3e+99, softmaxShapeInfo);
+                    AdjustSoftMaxRes<T, T>(maxLseUb, lseMaxUb, negativeIntScalar, FLOAT_INF, softmaxShapeInfo);
                 }
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
@@ -862,19 +861,19 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
                     uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
                     uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseTND(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+                    DataCopySoftmaxLseTND(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
                 } else if constexpr (LAYOUT_T == FIA_LAYOUT::NTD) {
                     uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
                     uint32_t s1Size = taskInfo.bIdx == 0U ? 
                             actualSeqLengthsGmQ.GetValue(0U) : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx) - actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1U);
                     uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseNTD(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, s1Size);
+                    DataCopySoftmaxLseNTD(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, s1Size);
                 } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    DataCopySoftmaxLseBSND(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, qActSeqLensParser, taskInfo.bIdx);
+                    DataCopySoftmaxLseBSND(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, qActSeqLensParser, taskInfo.bIdx);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, lseftMaxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, qActSeqLensParser, taskInfo.bIdx);
+                    DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo, qActSeqLensParser, taskInfo.bIdx);
                 }
                 SetFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
@@ -883,17 +882,17 @@ FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
             //****************************************************************************************************** */
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; i++) {
-                mm2Res = reduceGlobaLoop % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
+                LocalTensor<T> mm2Res = reduceGlobalLoop % 2 == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
                 if (i >= constInfo.preLoadNum) {
-                    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
-                    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
                 }
 
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
                 ReduceFinalRes(reduceOut, mm2Res, lseExp, i, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
-                reduceGlobaLoop += 1;
+                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobalLoop % 2);
+                reduceGlobalLoop += 1;
             }
             CopyFinalResOut(reduceOut, startRow, actualGSplitSize, reduceMLoop);
             reduceMLoop += 1;
