@@ -39,16 +39,17 @@ public:
                                    GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
 
 private:
-    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData);
+    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData, 
+                                const GM_ADDR cu_seqlens_q, 
+                                const GM_ADDR cu_seqlens_ori_kv, 
+                                const GM_ADDR cu_seqlens_cmp_kv);
     __aicore__ inline void CubeCompute(CubeOp<SASGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SASGT> &vecOp);
-    __aicore__ inline void UpdateGmOffset(int64_t task);
+    __aicore__ inline void UpdateGmOffset(int64_t task, int32_t loop);
     __aicore__ inline void SaveLastInfo();
-    __aicore__ inline void GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
-                                        const GM_ADDR actual_seq_ori_kvlen_addr,
-                                        const GM_ADDR actual_seq_cmp_kvlen_addr,
-                                        const int64_t t1Idx, int64_t &bIdx);
-    __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount);
+    __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx, int32_t &s1Loop);
+    __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &curS2Loop);
+    __aicore__ inline void ChangeBatchUpdate();
 
     uint32_t cubeBlockIdx;
     uint32_t subBlockIdx;
@@ -57,6 +58,7 @@ private:
     uint32_t usedCoreNum;
 
     // shape info
+    int64_t dimB;
     int64_t dimG;
     int64_t dimN1;
     int64_t dimN2;
@@ -77,6 +79,7 @@ private:
     int64_t oriWinEnd{0};
     int64_t s1BasicSize;
     int64_t curS1Basic;
+    int64_t curLoopS1Basic;
     int64_t oriWinDiagOffset;
 
     // gmoffset
@@ -112,7 +115,12 @@ private:
 
     // selectBlock相关
     int32_t selectedCountOffset{0};
-    int32_t actualSelectedBlockCount{0};
+    int32_t oriSelectedCount{0};
+    int32_t cmpSelectedCount{0};
+    int32_t oriS2Loop{0};
+    int32_t cmpS2Loop{0};
+    int32_t s1Loop{0};
+    int32_t s2Loop{0};
     int32_t selectedBlockSize{0};
     int32_t selectedBlockCount{0};
 
@@ -123,12 +131,21 @@ private:
     constexpr static uint32_t VEC_WAIT_CUBE_PONG = 3;
     constexpr static uint32_t POST_WAIT_CUBE = 4;
 
+    // GM_ADDR
+    const GM_ADDR cu_seqlens_q;
+    const GM_ADDR cu_seqlens_ori_kv;
+    const GM_ADDR cu_seqlens_cmp_kv;
+
     RunInfo runInfo[2];
 };
 
 template <typename SASGT>
-__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::Init(const TILING_CLASS *__restrict tilingData)
+__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::Init(const TILING_CLASS *__restrict tilingData,
+                                                           const GM_ADDR cu_seqlens_q, 
+                                                           const GM_ADDR cu_seqlens_ori_kv, 
+                                                           const GM_ADDR cu_seqlens_cmp_kv)
 {
+    dimB = tilingData->opInfo.B;
     dimS1 = tilingData->opInfo.S1;
     dimG = tilingData->opInfo.G;
     dimN2 = tilingData->opInfo.N2;
@@ -166,6 +183,12 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::Init(const TILING_CLASS *_
     selectedCountOffset = tilingData->splitCoreParams.singleN;
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
     s1BasicSize = tilingData->splitCoreParams.s1BasicSize;
+
+    if constexpr (!IS_BSND) {
+        this->cu_seqlens_q = cu_seqlens_q;
+        this->cu_seqlens_ori_kv = cu_seqlens_ori_kv;
+        this->cu_seqlens_cmp_kv = cu_seqlens_cmp_kv;
+    }
 }
 
 template <typename SASGT>
@@ -174,7 +197,7 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::Process(
     GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, 
     GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
 {
-    Init(tilingData);
+    Init(tilingData, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv);
 
     // AIC Process
     if ASCEND_IS_AIC {
@@ -185,13 +208,22 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::Process(
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             int32_t t1Index = (cubeBlockIdx + usedCoreNum * i) * s1BasicSize;
-            GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, t1Index, bIndex);
-            for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
-                for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
-                    UpdateGmOffset(task);
-                    CubeCompute(cubeOp);
-                    task++;
+            GetTndSeqLen(t1Index, bIndex, s1Loop);
+            int32_t s1BasicAccum = 0;
+            for (int32_t j = 0; j < s1Loop; j++) {
+                bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
+                curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+                for (n2Index = 0; n2Index < dimN2; n2Index++) {
+                    GetActualSelCount(t1Index, n2Index, s2Loop);
+                    for (int32_t loop = 0; loop < s2Loop; loop++) {
+                        UpdateGmOffset(task, loop);
+                        CubeCompute(cubeOp);
+                        task++;
+                    }
+                }
+                s1BasicAccum += curLoopS1Basic;
+                if (changeB) {
+                    ChangeBatchUpdate();
                 }
             }
         }
@@ -215,13 +247,22 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::Process(
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             int32_t t1Index = (cubeBlockIdx + usedCoreNum * i) * s1BasicSize;
-            GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, t1Index, bIndex);
-            for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
-                for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
-                    UpdateGmOffset(task);
-                    VecCompute(vecOp);
-                    task++;
+            GetTndSeqLen(t1Index, bIndex, s1Loop);
+            int32_t s1BasicAccum = 0;
+            for (int32_t j = 0; j < s1Loop; j++) {
+                bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
+                curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+                for (n2Index = 0; n2Index < dimN2; n2Index++) {
+                    GetActualSelCount(t1Index, n2Index, s2Loop);
+                    for (int32_t loop = 0; loop < s2Loop; loop++) {
+                        UpdateGmOffset(task, loop);
+                        VecCompute(vecOp);
+                        task++;
+                    }
+                }
+                s1BasicAccum += curLoopS1Basic;
+                if (changeB) {
+                    ChangeBatchUpdate();
                 }
             }
         }
@@ -268,7 +309,7 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::VecCompute(VecOp<SASGT> &v
 }
 
 template <typename SASGT>
-__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::UpdateGmOffset(int64_t task)
+__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::UpdateGmOffset(int64_t task, int32_t loop)
 {
     /*
      *  query:    B S1 N2 G D
@@ -290,37 +331,42 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::UpdateGmOffset(int64_t tas
     oriKeyGmOffset = t2Offset * (dimN2 * dimDqk) + n2Index * dimDqk;
     mm12GmOffset = mmPingPongIdx * mm12WorkspaceLen;
     mm345GmOffset = mmPingPongIdx * mm345WorkspaceLen;
-    selectedKGmOffset = oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk;
 
+    if (loop == 0 || (MODE == SASG_CFA_MODE && loop == oriS2Loop)) {
+        blkCntOffset = 0;
+    } else {
+        blkCntOffset += selectedCountOffset;
+    }
+    if constexpr (MODE == SASG_CFA_MODE) {
+        cmpKeyGmOffset = t3Offset * (dimN2 * dimDqk) + n2Index * dimDqk;
+        runInfo[mmPingPongIdx].curS3 = curS3;
+    }
+    runInfo[mmPingPongIdx].isOri = loop < oriS2Loop;
+    selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk : 
+                                                       cmpKeyGmOffset + blkCntOffset * dimN2 * dimDqk;
     runInfo[mmPingPongIdx].task = task;
     runInfo[mmPingPongIdx].lseGmOffset = lseGmOffset;
     runInfo[mmPingPongIdx].blkCntOffset = blkCntOffset;
     runInfo[mmPingPongIdx].queryGmOffset = queryGmOffset;
-    runInfo[mmPingPongIdx].oriKeyGmOffset = oriKeyGmOffset;
     runInfo[mmPingPongIdx].dyGmOffset = dyGmOffset;
     runInfo[mmPingPongIdx].mm12GmOffset = mm12GmOffset;
     runInfo[mmPingPongIdx].mm345GmOffset = mm345GmOffset;
     runInfo[mmPingPongIdx].dqOutGmOffset = queryGmOffset;
-    runInfo[mmPingPongIdx].actualSelCntOffset = blkCntOffset + selectedCountOffset <= actualSelectedBlockCount ? selectedCountOffset : actualSelectedBlockCount - blkCntOffset;
-    runInfo[mmPingPongIdx].lastBlockSize = curMaxS3 % selectedBlockSize != 0 ? curMaxS3 % selectedBlockSize : selectedBlockSize;
-    runInfo[mmPingPongIdx].isLastBasicBlock = (blkCntOffset + selectedCountOffset >= actualSelectedBlockCount);
+    runInfo[mmPingPongIdx].actualSelCntOffset = runInfo[mmPingPongIdx].isOri ? 
+                                                (blkCntOffset + selectedCountOffset <= oriSelectedCount ? selectedCountOffset : oriSelectedCount - blkCntOffset) :
+                                                (blkCntOffset + selectedCountOffset <= cmpSelectedCount ? selectedCountOffset : cmpSelectedCount - blkCntOffset);
+    runInfo[mmPingPongIdx].lastBlockSize = 1;
+    runInfo[mmPingPongIdx].isLastBasicBlock = false;
     runInfo[mmPingPongIdx].s1Index = s1Index;
-    runInfo[mmPingPongIdx].actualSelectedBlockCount = actualSelectedBlockCount;
     runInfo[mmPingPongIdx].curS1 = curS1;
     runInfo[mmPingPongIdx].curS2 = curS2;
     runInfo[mmPingPongIdx].oriWinStart = oriWinStart;
     runInfo[mmPingPongIdx].oriWinEnd = oriWinEnd;
     runInfo[mmPingPongIdx].selectedKGmOffset = selectedKGmOffset;
     runInfo[mmPingPongIdx].selectedVGmOffset = selectedKGmOffset;
-    runInfo[mmPingPongIdx].curS1g = curS1Basic * dimG; // 尾块S1处理
-    runInfo[mmPingPongIdx].curS1Basic = curS1Basic;
+    runInfo[mmPingPongIdx].curS1g = curLoopS1Basic * dimG; // 尾块S1处理
+    runInfo[mmPingPongIdx].curS1Basic = curLoopS1Basic;
     runInfo[mmPingPongIdx].oriWinDiagOffset = oriWinDiagOffset;
-
-    if constexpr (MODE == SASG_CFA_MODE) {
-        cmpKeyGmOffset = t3Offset * (dimN2 * dimDqk) + n2Index * dimDqk;
-        runInfo[mmPingPongIdx].cmpKeyGmOffset = cmpKeyGmOffset;
-        runInfo[mmPingPongIdx].curS3 = curS3;
-    }
 }
 
 template <typename SASGT>
@@ -332,41 +378,57 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::SaveLastInfo()
 }
 
 template <typename SASGT>
-__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
-                                                                       const GM_ADDR actual_seq_ori_kvlen_addr,
-                                                                       const GM_ADDR actual_seq_cmp_kvlen_addr,
-                                                                       const int64_t t1Idx, int64_t &bIdx)
+__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::ChangeBatchUpdate()
 {
+    s1Index = 0;
+    bIndex++;
     if constexpr (IS_BSND == false) {
-        int64_t curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex];
+        t1Offset = ((__gm__ int32_t *)cu_seqlens_q)[bIndex - 1];
+        t2Offset = ((__gm__ int32_t *)cu_seqlens_ori_kv)[bIndex - 1];
+        curS1 = ((__gm__ int32_t *)cu_seqlens_q)[bIndex] - ((__gm__ int32_t *)cu_seqlens_q)[bIndex - 1];
+        curS2 = (((__gm__ int32_t *)cu_seqlens_ori_kv)[bIndex] - ((__gm__ int32_t *)cu_seqlens_ori_kv)[bIndex - 1]);
+        if constexpr (MODE == SASG_CFA_MODE) {
+            t3Offset = ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex - 1];
+            curS3 = (((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex] - ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex - 1]);
+        }
+    } else {
+        t1Offset = bIndex * curS1;
+        t2Offset = bIndex * curS2;
+        if constexpr (MODE == SASG_CFA_MODE) {
+            t3Offset = bIndex * curS3;
+        }
+    }
+}
+
+template <typename SASGT>
+__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx, int32_t &s1Loop)
+{
+    s1Loop = 0;
+    if constexpr (IS_BSND == false) {
+        int64_t curT1 = ((__gm__ int32_t *)cu_seqlens_q)[bIdx];
         while (t1Idx >= curT1) {
-            curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[++bIndex];
+            curT1 = ((__gm__ int32_t *)cu_seqlens_q)[++bIdx];
         }
         
-        if (unlikely(bIndex == 0)) {
-            t1Offset = 0;
-            t2Offset = 0;
-            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex + 1];
-            curS2 = ((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex + 1];
-        } else {
-            t1Offset = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
-            t2Offset = ((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex - 1];
-            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
-            curS2 = (((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex - 1]);
-        }
+        t1Offset = ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
+        t2Offset = ((__gm__ int32_t *)cu_seqlens_ori_kv)[bIdx - 1];
+        curS1 = ((__gm__ int32_t *)cu_seqlens_q)[bIdx] - ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
+        curS2 = (((__gm__ int32_t *)cu_seqlens_ori_kv)[bIdx] - ((__gm__ int32_t *)cu_seqlens_ori_kv)[bIdx - 1]);
 
         if constexpr (MODE == SASG_CFA_MODE) {
-            if (unlikely(bIndex == 0)) {
-                t3Offset = 0;
-                curS3 = ((__gm__ int32_t *)actual_seq_cmp_kvlen_addr)[bIndex + 1];
-            } else {
-                t3Offset = ((__gm__ int32_t *)actual_seq_cmp_kvlen_addr)[bIndex - 1];
-                curS3 = (((__gm__ int32_t *)actual_seq_cmp_kvlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_cmp_kvlen_addr)[bIndex - 1]);
-            }
+            t3Offset = ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx - 1];
+            curS3 = (((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx] - ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx - 1]);
         }
 
         s1Index = t1Idx - t1Offset;
         curS1Basic = t1Idx + s1BasicSize <= dimS1 ? s1BasicSize : dimS1 - t1Idx;
+
+        int64_t bIndexTmp = bIdx;
+        while (t1Idx + curS1Basic > curT1) {
+            curT1 = ((__gm__ int32_t *)cu_seqlens_q)[++bIndexTmp];
+            s1Loop++;
+        }
+        s1Loop++;
     } else {
         t1Offset = t1Idx;
         bIdx = t1Idx / curS1;
@@ -375,34 +437,34 @@ __aicore__ inline void SparseAttnSharedkvGrad<SASGT>::GetTndSeqLen(const GM_ADDR
         if constexpr (MODE == SASG_CFA_MODE) {
             t3Offset = bIdx * curS3;
         }
-        curS1Basic = s1Index + s1BasicSize <= dimS1 ? s1BasicSize : dimS1 - s1Index;
+        curS1Basic = t1Idx + s1BasicSize <= dimB * dimS1 ? s1BasicSize : dimB * dimS1 - t1Idx;
+
+        int64_t bIndexTmp = bIdx;
+        while (t1Idx + curS1Basic > (bIndexTmp + 1) * dimS1) {
+            bIndexTmp++;
+            s1Loop++;
+        }
+        s1Loop++;
     }
-    // AscendC::PRINTF("----------t1Idx=%d\n", t1Idx);
-    // AscendC::PRINTF("curS1Basic=%d\n", curS1Basic);
-    // AscendC::PRINTF("curS1=%d\n", curS1);
-    // AscendC::PRINTF("curS2=%d\n", curS2);
-    // AscendC::PRINTF("curS3=%d\n", curS3);
-    // AscendC::PRINTF("t1Offset=%d\n", t1Offset);
-    // AscendC::PRINTF("t2Offset=%d\n", t2Offset);
-    // AscendC::PRINTF("t3Offset=%d\n", t3Offset);
 }
 
 template <typename SASGT>
-__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount)
+__aicore__ inline void SparseAttnSharedkvGrad<SASGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &curS2Loop)
 {
     oriWinDiagOffset = curS2 - curS1;
-    oriWinEnd = Min(s1Index + (s1BasicSize - 1) + oriWinRight + 1 + oriWinDiagOffset, curS2);
+    oriWinEnd = Min(s1Index + (curLoopS1Basic - 1) + oriWinRight + 1 + oriWinDiagOffset, curS2);
     oriWinEnd = Max(oriWinEnd, 0);
-    oriWinStart = Max(s1Index - oriWinLeft + oriWinDiagOffset + 1, 0);
-    actualSelectedBlockCount = oriWinEnd - oriWinStart;
+    oriWinStart = Max(s1Index - oriWinLeft + oriWinDiagOffset, 0);
+    oriSelectedCount = oriWinEnd - oriWinStart;
 
     if constexpr (MODE == SASG_CFA_MODE) {
-        curMaxS3 = Max((curS2 - curS1 + s1Index + 1) / cmpRatio, 0);
-        actualSelectedBlockCount += curMaxS3;
+        curMaxS3 = Max((oriWinDiagOffset + s1Index + (curLoopS1Basic - 1) + 1) / cmpRatio, 0);
+        cmpSelectedCount = curMaxS3;
     }
-    // AscendC::PRINTF("oriWinStart=%d\n", oriWinStart);
-    // AscendC::PRINTF("oriWinEnd=%d\n", oriWinEnd);
-    // AscendC::PRINTF("actualSelectedBlockCount=%d\n", actualSelectedBlockCount);
+
+    oriS2Loop = CeilDiv(oriSelectedCount, selectedCountOffset);
+    cmpS2Loop = CeilDiv(cmpSelectedCount, selectedCountOffset);
+    curS2Loop = oriS2Loop + cmpS2Loop;
 }
 
 } // namespace SASG_BASIC

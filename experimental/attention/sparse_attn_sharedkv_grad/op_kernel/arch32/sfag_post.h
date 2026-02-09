@@ -210,8 +210,6 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
         if (((cBlockIdx + 1) * oriKvPostBlockFactor * oriKvPostBaseNum) > oriKvPostBlockTotal) {
             oriKvEnd = oriKvPostBlockTotal;
         }
-        uint64_t dOriKvOutGmOffset = cBlockIdx * oriKvPostBlockFactor * (oriKvPostBaseNum / dimDqk) * dimDqk;
-
         SetFlag<HardEvent::V_MTE2>(mte2WaitV);
         SetFlag<HardEvent::MTE3_V>(vWaitMte3);
         for (uint64_t i = oriKvBegin; i < oriKvEnd; i = i + oriKvPostBaseNum) {
@@ -236,60 +234,52 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
             SetFlag<HardEvent::V_MTE3>(mte3WaitV);
             WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
             SetAtomicAdd<float>();
-            DataCopy(dkWorkSpaceGm[dOriKvOutGmOffset], vecOut, repeatParams);
+            DataCopy(dkWorkSpaceGm[i], vecOut, repeatParams);
             SetAtomicNone();
             SetFlag<HardEvent::MTE3_V>(vWaitMte3);
-
-            dOriKvOutGmOffset += repeatParams.blockCount * dimDqk;
         }
         WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
         WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
         PIPE_BARRIER(PIPE_ALL);
 
-        // // TODO ----------------------
-        // if constexpr (MODE != SASG_SWA_MODE) {
-        //     uint64_t cmpKvBegin = cBlockIdx * cmpKvPostBlockFactor * cmpKvPostBaseNum;
-        //     uint64_t cmpKvEnd = (cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum;
-        //     if (((cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum) > cmpKvPostBlockTotal) {
-        //         cmpKvEnd = cmpKvPostBlockTotal;
-        //     }
-        //     uint64_t dCmpKvOutGmOffset = cBlockIdx * cmpKvPostBlockFactor * (cmpKvPostBaseNum / dimDqk) * dimDqk;
+        if constexpr (MODE != SASG_SWA_MODE) {
+            uint64_t cmpKvBegin = cBlockIdx * cmpKvPostBlockFactor * cmpKvPostBaseNum;
+            uint64_t cmpKvEnd = (cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum;
+            if (((cBlockIdx + 1) * cmpKvPostBlockFactor * cmpKvPostBaseNum) > cmpKvPostBlockTotal) {
+                cmpKvEnd = cmpKvPostBlockTotal;
+            }
+            SetFlag<HardEvent::V_MTE2>(mte2WaitV);
+            SetFlag<HardEvent::MTE3_V>(vWaitMte3);
+            for (uint64_t i = cmpKvBegin; i < cmpKvEnd; i = i + cmpKvPostBaseNum) {
+                AscendC::LocalTensor<float> vecIn = tmpBuf.GetWithOffset<float>(cmpKvPostBaseNum, 0);
+                AscendC::LocalTensor<float> vecOut = tmpBuf.GetWithOffset<float>(cmpKvPostBaseNum, cmpKvPostBaseNum * sizeof(float));
+                uint64_t dataSize = i + cmpKvPostBaseNum < cmpKvPostBlockTotal ? cmpKvPostBaseNum : cmpKvPostTailNum;
+                WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
+                DataCopy(vecIn, dkWorkSpaceGm[i + dOriKvSize * 2 + dCmpKvSize], (dataSize + 7) / 8 * 8);
+                SetFlag<HardEvent::MTE2_V>(vWaitMte2);
 
-        //     SetFlag<HardEvent::V_MTE2>(0);
-        //     for (uint64_t i = cmpKvBegin; i < cmpKvEnd; i = i + cmpKvPostBaseNum) {
-        //         AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
-        //         AscendC::LocalTensor<OUT_TYPE> vecOut = outQueue.template AllocTensor<OUT_TYPE>();
-        //         uint64_t dataSize = i + cmpKvPostBaseNum < cmpKvPostBlockTotal ? cmpKvPostBaseNum : cmpKvPostTailNum;
-        //         WaitFlag<HardEvent::V_MTE2>(0);
-        //         DataCopy(vecIn, dkWorkSpaceGm[i + dOriKvSize * 2 + dCmpKvSize], (dataSize + 7) / 8 * 8); // dataSize(fp32) align 32B
-        //         inQueue.EnQue(vecIn);
-        //         inQueue.template DeQue<float>();
+                WaitFlag<HardEvent::MTE2_V>(vWaitMte2);
+                WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
+                Muls(vecOut, vecIn, (float)tilingData->postTilingData.scaleValue, dataSize);
+                SetFlag<HardEvent::V_MTE2>(mte2WaitV);
 
-        //         Muls(vecIn, vecIn, (float)tilingData->postTilingData.scaleValue, dataSize);
-        //         PIPE_BARRIER(PIPE_V);
+                DataCopyParams repeatParams;
+                repeatParams.blockCount = dataSize / dimDqk;
+                repeatParams.blockLen = dimDqk * sizeof(float) / 32;
+                repeatParams.srcStride = 0;
+                repeatParams.dstStride = 0;
 
-        //         Cast(vecOut, vecIn, AscendC::RoundMode::CAST_ROUND, dataSize);
-        //         outQueue.EnQue(vecOut);
-        //         outQueue.template DeQue<OUT_TYPE>();
-
-        //         DataCopyParams repeatParams;
-        //         repeatParams.blockCount = dataSize / dimDqk;
-        //         repeatParams.blockLen = dimDqk * sizeof(OUT_TYPE) / 32;
-        //         repeatParams.srcStride = 0;
-        //         repeatParams.dstStride = 0;
-
-        //         SetAtomicAdd<float>();
-        //         DataCopy(dCmpKvGm[dCmpKvOutGmOffset], vecOut, repeatParams);
-        //         SetAtomicNone();
-        //         dCmpKvOutGmOffset += repeatParams.blockCount * dimDqk;
-
-        //         inQueue.FreeTensor(vecIn);
-        //         outQueue.FreeTensor(vecOut);
-        //         SetFlag<HardEvent::V_MTE2>(0);
-        //     }
-        //     WaitFlag<HardEvent::V_MTE2>(0);
-        //     PIPE_BARRIER(PIPE_ALL);
-        // }
+                SetFlag<HardEvent::V_MTE3>(mte3WaitV);
+                WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
+                SetAtomicAdd<float>();
+                DataCopy(dkWorkSpaceGm[dOriKvSize + i], vecOut, repeatParams);
+                SetAtomicNone();
+                SetFlag<HardEvent::MTE3_V>(vWaitMte3);
+            }
+            WaitFlag<HardEvent::V_MTE2>(mte2WaitV);
+            WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
+            PIPE_BARRIER(PIPE_ALL);
+        }
     }
 
     // init oriKv

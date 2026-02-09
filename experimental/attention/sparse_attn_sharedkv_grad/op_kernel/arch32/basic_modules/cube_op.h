@@ -188,6 +188,7 @@ private:
     uint32_t pingPongIdx = 0;
     uint64_t globalBlockOffset = 0;
 
+    int64_t dimB;
     int64_t dimN2;
     int64_t dimG;
     int64_t dimGAlign;
@@ -206,13 +207,15 @@ private:
     uint32_t eventIdPong = 5;
     uint32_t cBlockIdx;
     uint32_t singleN;
-    int64_t s1BasicSize;                                                      
+    int64_t s1BasicSize;
+    int64_t dOriKvSize;                                                     
 };
 
 template <typename SASGT>
 __aicore__ inline void CubeOp<SASGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out_grad, GM_ADDR workspace,
                                            const TILING_CLASS *__restrict tilingData, TPipe *pipe)
 {
+    dimB = tilingData->opInfo.B;
     dimG = tilingData->opInfo.G;
     dimN2 = tilingData->opInfo.N2;
     dimDqk = tilingData->opInfo.D;
@@ -227,9 +230,15 @@ __aicore__ inline void CubeOp<SASGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_ADD
     dqWorkspaceLen = tilingData->opInfo.dqWorkspaceLen;
     dkWorkspaceLen = tilingData->opInfo.dkWorkspaceLen;
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
-    oriWinLen = tilingData->opInfo.oriWinLeft + tilingData->opInfo.oriWinRight;
+    oriWinLen = tilingData->opInfo.oriWinLeft + tilingData->opInfo.oriWinRight + 1;
     singleN = tilingData->splitCoreParams.singleN;
     s1BasicSize = tilingData->splitCoreParams.s1BasicSize;
+
+    if constexpr (IS_BSND == false) {
+        dOriKvSize = tilingData->opInfo.S2 * dimN2 * dimDqk;
+    } else {
+        dOriKvSize = dimB * tilingData->opInfo.S2 * dimN2 * dimDqk;
+    }
 
     usedCoreNum = tilingData->opInfo.usedCoreNum;
     pipe->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);

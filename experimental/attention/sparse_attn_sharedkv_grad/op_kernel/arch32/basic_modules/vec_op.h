@@ -174,6 +174,7 @@ protected:
     event_t mte2WaitMte3;
     event_t mte2WaitMte3Pong;
     event_t mte3WaitMte2Pong;
+    event_t mte2WaitV;
 
     DataCopyPadExtParams<T1> padParams;
     DataCopyExtParams intriParamsKey;
@@ -243,7 +244,7 @@ __aicore__ inline void VecOp<SASGT>::InitParams(const TILING_CLASS *__restrict o
 
     oriWinLeft = tilingData->opInfo.oriWinLeft;
     oriWinRight = tilingData->opInfo.oriWinRight;
-    oriWinLen = oriWinLeft + oriWinRight;
+    oriWinLen = oriWinLeft + oriWinRight + 1;
 
     if constexpr (IS_BSND == false) {
         dimTq = tilingData->opInfo.S1;
@@ -416,6 +417,7 @@ __aicore__ inline void VecOp<SASGT>::InitUB(TPipe *pipe)
     vWaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
     mte3WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
     vWaitMte2Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
+    mte2WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
 }
 
 template <typename SASGT>
@@ -546,16 +548,23 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmax(const int32_t loopIdx, const int
     WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
     actualSelS2 = runInfo.actualSelCntOffset * selectedBlockSize;
     if constexpr (MODE != SASG_SCFA_MODE) {
-        int64_t curOriWinStart = Max(s1Index - oriWinLeft + runInfo.oriWinDiagOffset + 1, 0);
-        int64_t curOriWinEnd = Min(s1Index + oriWinRight + 1 + runInfo.oriWinDiagOffset, runInfo.curS2);
-        int64_t blkStart = runInfo.oriWinStart + runInfo.blkCntOffset;
-        curActualRight = Min(runInfo.oriWinStart + runInfo.blkCntOffset + runInfo.actualSelCntOffset, curOriWinEnd) - blkStart;
-        curActualLeft = Max(runInfo.oriWinStart + runInfo.blkCntOffset, curOriWinStart) - blkStart;
-        curActualRight = Max(curActualRight, curActualLeft);
+        if (MODE == SASG_SWA_MODE || runInfo.isOri) {
+            int64_t curOriWinStart = Max(s1Index - oriWinLeft + runInfo.oriWinDiagOffset, 0);
+            int64_t curOriWinEnd = Min(s1Index + oriWinRight + 1 + runInfo.oriWinDiagOffset, runInfo.curS2);
+            int64_t blkStart = runInfo.oriWinStart + runInfo.blkCntOffset;
+            curActualRight = Min(runInfo.oriWinStart + runInfo.blkCntOffset + runInfo.actualSelCntOffset, curOriWinEnd) - blkStart;
+            curActualLeft = Max(runInfo.oriWinStart + runInfo.blkCntOffset, curOriWinStart) - blkStart;
+            curActualRight = Max(curActualRight, curActualLeft);
+        } else {
+            curActualLeft = 0;
+            curActualRight = Max((runInfo.oriWinDiagOffset + s1Index + 1) / cmpRatio - runInfo.blkCntOffset, 0);
+            curActualRight = Min(curActualRight, actualSelS2);
+        }
     }
     actualSelS2Align = AlignUp(actualSelS2, 8);
     int64_t dataSize = processM * actualSelS2Align;
 
+    WAIT_FLAG(V, MTE2, mte2WaitV); // wait sinkTmp
     DataCopyPad(pTensor, mm1WorkspaceGm[mm12Addr], 
                 {static_cast<uint16_t>(processM), static_cast<uint32_t>(actualSelS2 * sizeof(float)), static_cast<uint32_t>((params.sftBaseN - actualSelS2) * sizeof(float)), 0, 0},
                 {false, 0, 0, 0});
@@ -656,7 +665,11 @@ __aicore__ inline void VecOp<SASGT>::CalDsinks(const int32_t loopIdx, const int3
         PIPE_BARRIER(PIPE_V);
 
         // ReduceSum
-        ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, actualSelS2);
+        if constexpr (MODE != SASG_SCFA_MODE) {
+            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, curActualRight);
+        } else {
+            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, actualSelS2);
+        }
         PIPE_BARRIER(PIPE_V);
 
         float dSink = -dSinkSumTensor.GetValue(i * actualSelS2Align);
@@ -809,6 +822,7 @@ __aicore__ inline void VecOp<SASGT>::Process(const RunInfo &runInfo)
     int64_t s1Index = runInfo.s1Index;
 
     SET_FLAG(MTE3, MTE2, mte2WaitMte3);
+    SET_FLAG(V, MTE2, mte2WaitV);
     for (int32_t s1Basic = 0; s1Basic < runInfo.curS1Basic; s1Basic++) {
         processM = params.sftBaseM;
         mOffset = 0;
@@ -825,6 +839,7 @@ __aicore__ inline void VecOp<SASGT>::Process(const RunInfo &runInfo)
             CalSoftmax(i, processM, mm12Addr, mm345Addr, runInfo, mOffset, s1Index);
             CalSoftmaxGrad(i, processM, mm12Addr, mm345Addr, runInfo);
             CalDsinks(i, processM, runInfo, mOffset);
+            SET_FLAG(V, MTE2, mte2WaitV);
             SET_FLAG(MTE3, MTE2, mte2WaitMte3);
             mm12Addr += dataSize;
             mm345Addr += dataSize;
@@ -833,6 +848,7 @@ __aicore__ inline void VecOp<SASGT>::Process(const RunInfo &runInfo)
         s1Index++;
     }
     WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
+    WAIT_FLAG(V, MTE2, mte2WaitV);
 }
 
 template <typename SASGT>
@@ -849,9 +865,6 @@ __aicore__ inline void VecOp<SASGT>::ScatterAdd(const RunInfo &runInfo)
     int64_t currentCoreKSize = subBlockIdx == 0 ? firstCoreKSize : s2RealSize - firstCoreKSize;
     int64_t curS2Index = subBlockIdx == 0 ? 0 : firstCoreKSize;
     int64_t oriS2End = runInfo.oriWinEnd - runInfo.oriWinStart;
-    // AscendC::PRINTF("scatterAdd s2RealSize=%d\n", s2RealSize);
-    // AscendC::PRINTF("scatterAdd oriWinStart=%d\n", runInfo.oriWinStart);
-    // AscendC::PRINTF("scatterAdd oriWinStart=%d\n", runInfo.oriWinEnd);
 
     if (currentCoreKSize == 0) {
         return;
