@@ -37,6 +37,7 @@ ENABLE_OPKERNEL=FALSE
 ENABLE_BUILD_PKG=FALSE
 ENABLE_BUILT_IN=FALSE
 ENABLE_BUILT_JIT=FALSE
+ENABLE_AICPU=TRUE
 ENABLE_BUILT_CUSTOM=FALSE
 ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
@@ -335,6 +336,10 @@ function set_env()
     export BISHENG_REAL_PATH=$(which bisheng || true)
 
     if [ -z "${BISHENG_REAL_PATH}" ];then
+        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then
+            log "Warning: bisheng compilation tool not found, but --jit --noaicpu is enabled, so continue."
+            return
+        fi
         log "Error: bisheng compilation tool not found, Please check whether the cann package or environment variables are set."
         exit 1
     fi
@@ -921,6 +926,10 @@ while [[ $# -gt 0 ]]; do
         shift
         BUILD="jit"
         ;;
+    --noaicpu)
+        ENABLE_AICPU=FALSE
+        shift
+        ;;
     -n|--op-name)
         ascend_op_name="$2"
         shift 2
@@ -1352,6 +1361,10 @@ CUSTOM_OPTION="${CUSTOM_OPTION} -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}"
 
 if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_STATIC=${ENABLE_STATIC}"
+fi
+
+if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
+ 	CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF"
 fi
 
 if [ -n "${ascend_package_path}" ];then

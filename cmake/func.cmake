@@ -131,6 +131,13 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             endif()
         endif()
 
+        if (NOT ENABLE_AICPU)
+            if(EXISTS "${OP_DIR}/op_kernel_aicpu" AND IS_DIRECTORY "${OP_DIR}/op_kernel_aicpu")
+                MESSAGE(STATUS "disable aicpu kernel ${OP_NAME}, skip it.")
+                continue()
+            endif()
+        endif()
+
         list(APPEND _OP_LIST ${OP_NAME})
         list(APPEND _OP_DIR_LIST ${OP_DIR})
     endforeach()

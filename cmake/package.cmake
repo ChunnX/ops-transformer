@@ -142,7 +142,6 @@ function(pack_built_in)
   endif()
 
   message(STATUS "current compute_unit is: ${compute_unit}")
-  pack_tiling_sink()
 
   # ============= CPack =============
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
