@@ -35,14 +35,14 @@
 
 #define DEQUANT_ARGS_CALL() \
     rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), \
-    tileM0, tileN0, pValue, swizzlDirect, swizzlCount, \
+    tileM0, tileN0, pValue, swizzlDirect, swizzlCount, blockSt, blockSize, \
     blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken
 
 #define DEQUANT_ARGS_FUN() \
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
     __gm__ int32_t *workspace, GM_ADDR output,                                                            \
     uint32_t tileM0, uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount,       \
-    uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize,                                               \
+    uint64_t blockSt, uint64_t blockSize, uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize,        \
     Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false
 
 template <typename OutputType> 
@@ -106,7 +106,8 @@ public:
         uint32_t n = colNum;
         uint32_t mLoop = DivCeil(m, m0);
         uint32_t nLoop = DivCeil(n, n0);
-        uint32_t totalLoop = mLoop * nLoop;
+        uint32_t blockLoop = mLoop * nLoop;
+ 	    uint32_t totalLoop = blockLoop * worldSize;
 
         if (needPerChannel && !needPerToken) {
             DefaultSwizzleDirect = 0;
@@ -118,23 +119,26 @@ public:
         layout::RowMajor layoutC{m, n};
         __gm__ OutputType *gmD = reinterpret_cast<__gm__ OutputType *>(output);
         for (uint32_t loopIdx = blockIdx; loopIdx < totalLoop; loopIdx += coreNum) {
-            GemmCoord blockIdxCoord = GetBlockIdCoord(loopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
+            uint32_t dataBlockIdx = loopIdx / blockLoop;
+ 	        uint32_t blockLoopIdx = loopIdx % blockLoop;
+ 	        GemmCoord blockIdxCoord = GetBlockIdCoord(blockLoopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
             GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
             GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoop, m, nLoop, n, 0);
 
             MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-            uint32_t dataOffset = layoutC.GetOffset(offsetC);
+            uint32_t dataOffset = dataBlockIdx * blockSize + blockSt + layoutC.GetOffset(offsetC);
+ 	        uint32_t perTokenScaleOffset = (dataBlockIdx * blockSize + blockSt) / n + blockLocCoord.m();
             layout::VectorLayout layoutPerChannelScale{blockSizeCoord.n()};
             layout::VectorLayout layoutPerTokenScale{blockSizeCoord.m()};
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              perTokenScale + blockLocCoord.m(), layoutPerTokenScale, workspace + dataOffset, layoutC,
+                              perTokenScale + perTokenScaleOffset, layoutPerTokenScale, workspace + dataOffset, layoutC,
                               gmD + dataOffset, layoutC, blockSizeCoord);
             } else if (needPerChannel) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, workspace + dataOffset,
                               layoutC, gmD + dataOffset, layoutC, blockSizeCoord);
             } else if (needPerToken) {
-                blockEpilogue(perTokenScale + blockLocCoord.m(), layoutPerTokenScale, gmD + dataOffset, layoutC,
+                blockEpilogue(perTokenScale + perTokenScaleOffset, layoutPerTokenScale, gmD + dataOffset, layoutC,
                               blockSizeCoord);
             }
         }

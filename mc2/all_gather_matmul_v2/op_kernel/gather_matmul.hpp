@@ -255,11 +255,9 @@ public:
 
     inline __aicore__ void FixpipeMatmul(Params const &params)
     {
-        DoLocalFixpipeMatmul(params);
-
         FixpipeBlockMmad fixpipeBlockMmad(resource);
 
-        int32_t otherRankNum = params.rankSize - 1;
+        int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
         int32_t blockSize = blockM * kAlign;
         int32_t outputBlockSize = blockM * params.problemShape.n();
@@ -284,7 +282,6 @@ public:
                 }
                 int32_t loopOffsetInBlock = loopOffset / otherRankNum;
                 int32_t dstBlockIdx = loopOffset % otherRankNum;
-                dstBlockIdx = dstBlockIdx >= params.rankIdx ? dstBlockIdx + 1 : dstBlockIdx;
                 GemmCoord blockIdxCoord =
                     GetBlockIdCoord(loopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
@@ -297,6 +294,12 @@ public:
                 int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
                 int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
 
+                AscendC::GlobalTensor<ElementAInt8> gmAIn = gmPeerMemInt8;
+ 	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
+ 	                gmAIn = gmAInt8;
+ 	                gmOffsetA = calIdx * blockSize + params.layoutA.GetOffset(offsetA);
+                }    
+
                 bool isFirstBlock = (loopOffset < coreNum);
                 bool hasNextBlock = false;
                 GemmCoord nextBlockIdCoord;
@@ -305,7 +308,6 @@ public:
                 int32_t nextLoopOffset = loopOffset + coreNum;
                 int32_t nextLoopOffsetInBlock = nextLoopOffset / otherRankNum;
                 int32_t nextDstBlockIdx = nextLoopOffset % otherRankNum;
-                nextDstBlockIdx = nextDstBlockIdx >= params.rankIdx ? nextDstBlockIdx + 1 : nextDstBlockIdx;
                 if (nextLoopOffset < loopNumInOtherRank) {
                     hasNextBlock = true;
                     nextBlockIdCoord = GetBlockIdCoord(nextLoopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect,
@@ -320,11 +322,17 @@ public:
                     pingPongSt + nextDstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetNextA);
                 int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
+                AscendC::GlobalTensor<ElementAInt8> gmANextIn = gmPeerMemInt8;
+ 	            if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取
+ 	                gmANextIn = gmAInt8;
+ 	                gmOffsetNextA = calIdx * blockSize + params.layoutA.GetOffset(offsetNextA);
+ 	            }
+
                 int64_t gmOffsetScale = blockLocCoord.n();
-                fixpipeBlockMmad(gmPeerMemInt8[gmOffsetA], params.layoutPeerMem, gmBInt8[gmOffsetB], params.layoutB,
-                                 gmCHalf[gmOffsetC], params.layoutC, gmScale[gmOffsetScale], params.layoutScale,
-                                 gmPeerMemInt8[gmOffsetNextA], gmBInt8[gmOffsetNextB], blockSizeCoord,
-                                 nextBlockSizeCoord, isFirstBlock, hasNextBlock);
+                fixpipeBlockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmBInt8[gmOffsetB], params.layoutB,
+ 	                                gmCHalf[gmOffsetC], params.layoutC, gmScale[gmOffsetScale], params.layoutScale,
+ 	                                gmANextIn[gmOffsetNextA], gmBInt8[gmOffsetNextB], blockSizeCoord,
+ 	                                nextBlockSizeCoord, isFirstBlock, hasNextBlock);
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
         }
@@ -332,12 +340,10 @@ public:
 
     inline __aicore__ void Matmul(Params const &params)
     {
-        DoLocalMatmul(params);
-
         BlockMmad blockMmad(resource);
 
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
-        int32_t otherRankNum = params.rankSize - 1;
+        int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
         int32_t blockSize = blockM * kAlign;
         int32_t outputBlockSize = blockM * params.problemShape.n();
@@ -362,7 +368,6 @@ public:
                 }
                 int32_t loopOffsetInBlock = loopOffset / otherRankNum;
                 int32_t dstBlockIdx = loopOffset % otherRankNum;
-                dstBlockIdx = dstBlockIdx >= params.rankIdx ? dstBlockIdx + 1 : dstBlockIdx;
                 GemmCoord blockIdxCoord =
                     GetBlockIdCoord(loopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
@@ -375,6 +380,12 @@ public:
                 int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
                 int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
 
+                AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;
+ 	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
+ 	                gmAIn = gmA;
+ 	                gmOffsetA = calIdx * blockSize + params.layoutA.GetOffset(offsetA);
+ 	            }
+
                 bool isFirstBlock = (loopOffset < coreNum);
                 bool hasNextBlock = false;
                 GemmCoord nextBlockIdCoord;
@@ -383,7 +394,6 @@ public:
                 int32_t nextLoopOffset = loopOffset + coreNum;
                 int32_t nextLoopOffsetInBlock = nextLoopOffset / otherRankNum;
                 int32_t nextDstBlockIdx = nextLoopOffset % otherRankNum;
-                nextDstBlockIdx = nextDstBlockIdx >= params.rankIdx ? nextDstBlockIdx + 1 : nextDstBlockIdx;
                 if (nextLoopOffset < loopNumInOtherRank) {
                     hasNextBlock = true;
                     nextBlockIdCoord = GetBlockIdCoord(nextLoopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect,
@@ -398,9 +408,15 @@ public:
                     pingPongSt + nextDstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetNextA);
                 int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
-                blockMmad(gmPeerMem[gmOffsetA], params.layoutPeerMem, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
-                          params.layoutC, gmPeerMem[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord,
-                          nextBlockSizeCoord, isFirstBlock, hasNextBlock);
+                AscendC::GlobalTensor<ElementA> gmAInNext = gmPeerMem;
+ 	            if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取
+ 	                gmAInNext = gmA;
+ 	                gmOffsetNextA = calIdx * blockSize + params.layoutA.GetOffset(offsetNextA);
+ 	            }
+ 	 
+ 	            blockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
+ 	                    params.layoutC, gmAInNext[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord,
+                        nextBlockSizeCoord, isFirstBlock, hasNextBlock);
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
         }
@@ -412,10 +428,14 @@ public:
 
         InitArgs(params);
 
-        if (params.needFixpipe) {
-            FixpipeMatmul(params);
-        } else {
+        if constexpr (std::is_same_v<ElementA, AscendC::int4b_t>) {
             Matmul(params);
+        } else {
+            if (params.needFixpipe) {
+                FixpipeMatmul(params);
+            } else {
+                Matmul(params);
+            }
         }
     }
 

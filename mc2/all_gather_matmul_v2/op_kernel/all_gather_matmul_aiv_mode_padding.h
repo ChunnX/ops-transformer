@@ -111,13 +111,19 @@ public:
     inline __aicore__ void Run(PADDING_ARGS_FUN())
     {
         using ArchTag = Arch::AtlasA2;
-        using ElementA = InputType;
-        using ElementB = WeightType;
+        using ElementA = typename std::conditional<std::is_same<InputType, AscendC::int4b_t>::value, int8_t, InputType>::type;
+        using ElementB = typename std::conditional<std::is_same<WeightType, AscendC::int4b_t>::value, int8_t, WeightType>::type;
         if (!transA && !transB) {
             using LayoutA = layout::RowMajor;
             using LayoutB = layout::RowMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
+            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
+                matrixAK = matrixAK / 2;
+                matrixBN = matrixBN / 2;
+                matrixAKAlign = matrixAKAlign / 2;
+                matrixBNAlign = matrixBNAlign / 2;
+            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             // 根据是否转置
@@ -133,6 +139,12 @@ public:
             using LayoutB = layout::ColumnMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
+            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
+                matrixAK = matrixAK / 2;
+                matrixBK = matrixBK / 2;
+                matrixAKAlign = matrixAKAlign / 2;
+                matrixBKAlign = matrixBKAlign / 2;
+            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             LayoutA layoutWA{matrixAM, matrixAKAlign};
@@ -147,6 +159,12 @@ public:
             using LayoutB = layout::RowMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
+            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
+                matrixAM = matrixAM / 2;
+                matrixBN = matrixBN / 2;
+                matrixAMAlign = matrixAMAlign / 2;
+                matrixBNAlign = matrixBNAlign / 2;
+            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             LayoutA layoutWA{matrixAMAlign, matrixAK};
@@ -161,6 +179,12 @@ public:
             using LayoutB = layout::ColumnMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
+            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
+                matrixAM = matrixAM / 2;
+                matrixBK = matrixBK / 2;
+                matrixAMAlign = matrixAMAlign / 2;
+                matrixBKAlign = matrixBKAlign / 2;
+            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             LayoutA layoutWA{matrixAMAlign, matrixAK};

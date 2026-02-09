@@ -17,6 +17,7 @@
 #define __ALL_GATHER_MATMUL_AIV_MODE_UTIL_H__
 
 #pragma once
+#include "../../3rd/template_linear_algebra/include/template_linear_algebra/numeric_size.hpp"
 
 using namespace AscendC;
 
@@ -25,7 +26,7 @@ using namespace AscendC;
 constexpr static int32_t AIC_WAIT_AIV_FINISH_ALIGN_FLAG_ID = 12;
 template <typename T, size_t SIZE> struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
-    static constexpr size_t size = SIZE / sizeof(T);
+    static constexpr size_t size = Catlass::BytesToBits(SIZE) / Catlass::SizeOfBits<T>::value;
 
     static FORCE_INLINE_AICORE size_t Count(size_t len)
     {
@@ -90,9 +91,9 @@ FORCE_INLINE_AICORE void CopyUbufToGm(__gm__ T *dst, LocalTensor<T> ubTensor, ui
                                       uint16_t srcStride, uint16_t dstStride)
 {
     DataCopyParams dataCopyParams(nBurst,    // blockCount
-                                  lenBurst,  // blockLen
-                                  srcStride, // srcStride
-                                  dstStride  // dstStride
+                              lenBurst,  // blockLen
+                              srcStride, // srcStride
+                              dstStride  // dstStride
     );
     GlobalTensor<T> gmTensor;
     gmTensor.SetGlobalBuffer(dst);

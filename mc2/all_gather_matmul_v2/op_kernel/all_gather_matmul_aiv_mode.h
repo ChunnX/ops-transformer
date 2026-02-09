@@ -60,6 +60,29 @@ constexpr static int32_t FLAG_OFFSET = 180 * 1024 * 1024 / sizeof(int32_t);
 using namespace Catlass;
 
 namespace AllGatherMatmulAIVModeImpl {
+
+template <typename T>
+using supportTypeForDataCopy = typename std::conditional<
+    std::is_same<T, AscendC::int4b_t>::value,
+    int8_t,
+    T
+>::type;
+
+template <typename T, typename ReturnType = size_t>
+struct TILE_SHAPE_K_512B {
+    static constexpr ReturnType value = Catlass::BytesToBits(512) / Catlass::SizeOfBits<T>::value;
+};
+
+template <typename T, typename ReturnType = size_t>
+struct TILE_SHAPE_K_256B {
+    static constexpr ReturnType value = Catlass::BytesToBits(256) / Catlass::SizeOfBits<T>::value;
+};
+
+template <typename T, typename ReturnType = size_t>
+struct TILE_SHAPE_K_128B {
+    static constexpr ReturnType value = Catlass::BytesToBits(128) / Catlass::SizeOfBits<T>::value;
+};
+
 // AGMM : AllGatherMatmulAIVMode
 #define TemplateAGMMClass typename X1Type, typename X2Type, typename BiasType, typename x2ScaleType, typename YType, bool weightNZ, bool TA, bool TB
 #define TemplateAGMMFunc X1Type, X2Type, BiasType, x2ScaleType, YType, weightNZ, TA, TB
@@ -68,8 +91,11 @@ using namespace AscendC;
 template <TemplateAGMMClass>
 class AllGatherMatmulAIVMode
 {
-    constexpr static bool quantFlag = (std::is_same<X1Type, int8_t>::value) && (std::is_same<X2Type, int8_t>::value);
-    constexpr static uint32_t UB_OFFSET = 97440 / sizeof(X1Type); // 2 是 size of T
+    constexpr static bool quantFlag = (std::is_same<X1Type, int8_t>::value && std::is_same<X2Type, int8_t>::value) ||
+    (std::is_same<X1Type, AscendC::int4b_t>::value && std::is_same<X2Type, AscendC::int4b_t>::value);
+    using supportX1Type = supportTypeForDataCopy<X1Type>;
+    using supportX2Type = supportTypeForDataCopy<X2Type>;
+    constexpr static uint32_t UB_OFFSET = Catlass::BytesToBits(97440) / Catlass::SizeOfBits<supportX1Type>::value; // 2 是 size of T
 
 public:
     __aicore__ inline AllGatherMatmulAIVMode(){};
@@ -82,16 +108,16 @@ private:
     __aicore__ inline void AIVInit();
     __aicore__ inline void AICInit();
     __aicore__ inline void Padding();
-    __aicore__ inline void Dequant();
-    __aicore__ inline void AllGatherPerTokenScale();
+    __aicore__ inline void Dequant(int32_t cal_idx);
+    __aicore__ inline void AllGatherPerTokenScale(int32_t buff_st);
     __aicore__ inline void CatlassMatmul();
-    __aicore__ inline void MoveWithSplit(__gm__ X1Type* gm_src, int32_t rank_offset, int32_t len);
+    __aicore__ inline void MoveWithSplit(__gm__ supportX1Type* gm_src, int32_t rank_offset, int32_t len);
     __aicore__ inline void MoveToOtherRankWithSkip(
-        __gm__ X1Type* gm_src, int32_t rank_offset, int32_t len, int32_t rank_st, int32_t skip_num, int32_t group_num,
+        __gm__ supportX1Type* gm_src, int32_t rank_offset, int32_t len, int32_t rank_st, int32_t skip_num, int32_t group_num,
         int32_t rank_scope);
-    __aicore__ inline void MoveResultFromPeerMemToOut(__gm__ X1Type* gm_src, __gm__ X1Type* gm_dst, int32_t actual_m);
-    __aicore__ inline void MoveResultToDst(__gm__ X1Type* gm_src, __gm__ X1Type* gm_dst, int32_t len);
-    __aicore__ inline void MoveResultFromSrcToDst(__gm__ X1Type* gm_src, __gm__ X1Type* gm_dst, int32_t len);
+    __aicore__ inline void MoveResultFromPeerMemToOut(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t actual_m);
+    __aicore__ inline void MoveResultToDst(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t len);
+    __aicore__ inline void MoveResultFromSrcToDst(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t len);
     __aicore__ inline void CrossRankSyncV1(int32_t flag_idx, int32_t flag_data);
     __aicore__ inline void CrossRankSyncV2(int32_t flag_idx, int32_t flag_data);
 
@@ -162,14 +188,17 @@ private:
     bool needAivDequant{false};
     bool isX2ScaleTypeInt64{false};
     DequantType dequantType;
+    bool needPerChannel;
+    bool needPerToken;
 
-    __gm__ X1Type* gm_peer_mem;
+    __gm__ supportX1Type* gm_peer_mem;
 
     GM_ADDR gm_a_align;
     GM_ADDR gm_b_align;
-    __gm__ X1Type* gm_a_src;
-    __gm__ X2Type* gm_b_src;
+    __gm__ supportX1Type* gm_a_src;
+    __gm__ supportX2Type* gm_b_src;
     __gm__ int32_t* gm_accum;
+    GM_ADDR gm_scale_workspace;
 
     DequantRunner<YType> dequantRunner;
     Arch::Resource<Arch::AtlasA2> resource;
@@ -224,8 +253,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     hasBAlign = (tilingData.allGatherMatmulInfo.hasBAlign && !(weightNZ));
     gm_a_align = reinterpret_cast<GM_ADDR>(hasAAlign ? workspaceGM : 0);
     gm_b_align = reinterpret_cast<GM_ADDR>(hasBAlign ? workspaceGM + aAlignSize : 0);
-    gm_a_src = reinterpret_cast<__gm__ X1Type*>(hasAAlign ? gm_a_align : aGM_);
-    gm_b_src = reinterpret_cast<__gm__ X2Type*>(hasBAlign ? gm_b_align : bGM_);
+    gm_a_src = reinterpret_cast<__gm__ supportX1Type*>(hasAAlign ? gm_a_align : aGM_);
+    gm_b_src = reinterpret_cast<__gm__ supportX2Type*>(hasBAlign ? gm_b_align : bGM_);
     gm_accum = reinterpret_cast<__gm__ int32_t*>(quantFlag ? workspaceGM + aAlignSize + bAlignSize : 0);
 
     m_align = Block512B<X1Type>::AlignUp(m);
@@ -237,6 +266,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     isX2ScaleTypeInt64 = tilingData.allGatherMatmulInfo.isX2ScaleTypeInt64;
     dequantType = tilingData.allGatherMatmulInfo.dequantType;
     needAivDequant = quantFlag && (dequantType == PER_TOKEN || std::is_same<YType, bfloat16_t>::value);
+    bool needPerChannelA8W8 = quantFlag && !(isX2ScaleTypeInt64 && std::is_same<YType, float16_t>::value);
+    needPerChannel = std::is_same_v<X1Type, AscendC::int4b_t> || needPerChannelA8W8;
+ 	needPerToken = quantFlag && dequantType == PER_TOKEN;
 
     bool is910C = tilingData.allGatherMatmulInfo.is910C;
     if(is910C){
@@ -258,6 +290,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
         }
     }
 
+    uint64_t gm_scale_workspace_st = aAlignSize + bAlignSize + m * n * worldSize * sizeof(int32_t);
+ 	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
+
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit();
 
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AIVInit();
@@ -270,7 +305,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit()
         SetLoadDataPaddingValue(0);
         SetAtomicNone();
         SetFixpipeNz2ndFlag(1, 0, 0);
-        gm_peer_mem = reinterpret_cast<__gm__ X1Type*>(stateAddrPerRank[rankId]);
+        gm_peer_mem = reinterpret_cast<__gm__ supportX1Type*>(stateAddrPerRank[rankId]);
     }
 }
 
@@ -305,9 +340,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AIVInit()
         SetAtomicNone();
         SetMaskNormImpl();
         SetVectorMask<int32_t>((uint64_t)-1, (uint64_t)-1);
-        __gm__ X1Type* buff[8];
+        __gm__ supportX1Type* buff[8];
         for (int i = 0; i < worldSize; ++i) {
-            buff[i] = reinterpret_cast<__gm__ X1Type*>(stateAddrPerRank[i]);
+            buff[i] = reinterpret_cast<__gm__ supportX1Type*>(stateAddrPerRank[i]);
         }
 
         cal_count = DivCeil(m_loop, pValue);
@@ -327,7 +362,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
         int64_t peer_mem_m = m0 * pValue * worldSize;
         uint32_t layout_b_col = (TB || weightNZ) ? static_cast<uint32_t>(n) : static_cast<uint32_t>(n_align);
         uint32_t layout_b_row = (TB && !weightNZ) ? static_cast<uint32_t>(k_align) : static_cast<uint32_t>(k);
-        bool need_fixpipe = quantFlag && std::is_same<YType, half>::value && isX2ScaleTypeInt64;
+        bool need_fixpipe = quantFlag && std::is_same<YType, half>::value && isX2ScaleTypeInt64 && (!std::is_same_v<X1Type, AscendC::int4b_t>);
 
         using ArchTag = Arch::AtlasA2;
         constexpr bool ENABLE_UNIT_FLAG = false;
@@ -344,8 +379,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
         LayoutScale layoutScale{static_cast<uint32_t>(n)};
         GemmCoord processSize{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
 
-        constexpr int32_t L1TileShapeK = quantFlag ? TILE_SHAPE_512 : TILE_SHAPE_256;
-        constexpr int32_t L0TileShapeK = quantFlag ? TILE_SHAPE_128 : TILE_SHAPE_64;
+        constexpr int32_t L1TileShapeK = TILE_SHAPE_K_512B<X1Type, int32_t>::value;
+        constexpr int32_t L0TileShapeK = TILE_SHAPE_K_128B<X1Type, int32_t>::value;
         using DispatchPolicy = Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>;
         using AType = Gemm::GemmType<ElementA, LayoutA>;
         using CType = Gemm::GemmType<ElementC, LayoutC>;
@@ -491,7 +526,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Padding()
 
 template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromSrcToDst(
-    __gm__ X1Type* gm_src, __gm__ X1Type* gm_dst, int32_t len)
+    __gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t len)
 {
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0); // MTE2等MTE3
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1); // MTE2等MTE3
@@ -501,25 +536,31 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromS
 }
 
 template <TemplateAGMMClass>
-__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AllGatherPerTokenScale()
+__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AllGatherPerTokenScale(int32_t buff_st)
 {
-    int32_t multi = sizeof(float32_t) / sizeof(X1Type);
+    if (!needPerToken) {
+ 	    return;
+ 	}
+
+    int32_t multi = sizeof(float32_t) / sizeof(supportX1Type);
     int32_t scale_size = m * multi;
     int32_t scale_st = rankId * scale_size;
-    __gm__ X1Type* scale = reinterpret_cast<__gm__ X1Type*>(x1ScaleGM_);
-    __gm__ X1Type* scaleOut = reinterpret_cast<__gm__ X1Type*>(stateAddrPerRank[rankId]);
+    __gm__ supportX1Type* scale = reinterpret_cast<__gm__ supportX1Type*>(x1ScaleGM_);
+    __gm__ supportX1Type* scaleOut = reinterpret_cast<__gm__ supportX1Type*>(gm_scale_workspace);
     SetAndWaitAivSync(FLAG_VALUE);
     // 将本卡的scale拷贝到buff中
     if (aivIdx == 0 && rankId == blockIdx) {
-        MoveResultFromSrcToDst(scale, scaleOut + scale_st, scale_size);
+        MoveResultFromSrcToDst(
+            scale, reinterpret_cast<__gm__ supportX1Type*>(stateAddrPerRank[rankId]) + buff_st + scale_st, scale_size);
     }
     CrossRankSyncV1(FLAG_TWO_IDX, FLAG_VALUE);
     SetAndWaitAivSync(FLAG_VALUE);
     // 将其他卡的scale拷贝到buff中
     scale_st = blockIdx * scale_size;
-    if (aivIdx == 0 && rankId != blockIdx && blockIdx < worldSize) {
+    if (aivIdx == 0 && blockIdx < worldSize) {
         MoveResultFromSrcToDst(
-            reinterpret_cast<__gm__ X1Type*>(stateAddrPerRank[blockIdx]) + scale_st, scaleOut + scale_st, scale_size);
+            reinterpret_cast<__gm__ supportX1Type*>(stateAddrPerRank[blockIdx]) + buff_st + scale_st,
+            scaleOut + scale_st, scale_size);
     }
     SetAndWaitAivSync(FLAG_VALUE);
     CrossRankSyncV2(FLAG_THREE_IDX, FLAG_VALUE);
@@ -527,26 +568,22 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AllGatherPerTok
 }
 
 template <TemplateAGMMClass>
-__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant()
+__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t cal_idx)
 {
     // per token 反量化实现
-    bool needPerChannel = quantFlag && !(isX2ScaleTypeInt64 && std::is_same<YType, float16_t>::value);
-    bool needPerToken = quantFlag && dequantType == PER_TOKEN;
     if (!needPerChannel && !needPerToken) {
         return;
     }
-    // 聚合perToken scale
-    if (needPerToken) {
-        AllGatherPerTokenScale();
-    }
 
-    uint32_t rowNum = m * worldSize;
+    uint32_t rowNum = cal_idx == cal_count - 1 ? m - cal_idx * m0 * pValue : m0 * pValue;
     uint32_t colNum = n;
     uint32_t tileM0 = m0;
     uint32_t tileN0 = n0;
+    uint64_t blockSt = cal_idx * m0 * pValue * n;
+ 	uint64_t blockSize = m * n;
 
     __gm__ float32_t* perChannelScale = needPerChannel ? reinterpret_cast<__gm__ float32_t*>(x2ScaleGM_) : nullptr;
-    __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(stateAddrPerRank[rankId]) : nullptr;
+    __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(gm_scale_workspace) : nullptr;
     __gm__ int32_t* workspace = needPerChannel ? reinterpret_cast<__gm__ int32_t*>(gm_accum) : nullptr;
     __gm__ YType* output = reinterpret_cast<__gm__ YType*>(cGM_);
     dequantRunner.Run(DEQUANT_ARGS_CALL());
@@ -555,21 +592,21 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant()
 
 template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveToOtherRankWithSkip(
-    __gm__ X1Type* gm_src, int32_t rank_offset, int32_t len, int32_t rank_st, int32_t skip_num, int32_t group_num,
+    __gm__ supportX1Type* gm_src, int32_t rank_offset, int32_t len, int32_t rank_st, int32_t skip_num, int32_t group_num,
     int32_t rank_scope)
 {
-    LocalTensor<X1Type> ubTensor = uBuf_.AllocTensor<X1Type>();
-    LocalTensor<X1Type> copyTensor0 = ubTensor;
-    LocalTensor<X1Type> copyTensor1 = ubTensor[UB_OFFSET];
+    LocalTensor<supportX1Type> ubTensor = uBuf_.AllocTensor<supportX1Type>();
+    LocalTensor<supportX1Type> copyTensor0 = ubTensor;
+    LocalTensor<supportX1Type> copyTensor1 = ubTensor[UB_OFFSET];
     int32_t ping_pong_move_count = (len + max_ub_ping_pong_size - 1) / max_ub_ping_pong_size;
     for (int32_t move_idx = 0; move_idx < ping_pong_move_count; ++move_idx) {
         int32_t actual_move_size = max_ub_ping_pong_size;
         if (move_idx == ping_pong_move_count - 1) {
             actual_move_size = len - move_idx * max_ub_ping_pong_size;
         }
-        int32_t block_len = actual_move_size * sizeof(X1Type);
+        int32_t block_len = actual_move_size * Catlass::SizeOfBits<X1Type>::value / 8;
         auto event_id = (move_idx & 1) ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<X1Type> copyTensor = (move_idx & 1) ? copyTensor0 : copyTensor1;
+        LocalTensor<supportX1Type> copyTensor = (move_idx & 1) ? copyTensor0 : copyTensor1;
         WaitFlag<HardEvent::MTE3_MTE2>(event_id);
         CopyGmToUbufAlignB16(copyTensor, gm_src, 1, block_len, 0, 0);
         SetFlag<HardEvent::MTE2_MTE3>(event_id);
@@ -577,24 +614,33 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveToOtherRank
         int32_t dst_rank = rank_st % rank_scope;
         for (int32_t cycle_idx = 0; cycle_idx < group_num; ++cycle_idx) {
             if (dst_rank != rankId && dst_rank < worldSize) {
-                CopyUbufToGmAlignB16((__gm__ X1Type*)stateAddrPerRank[dst_rank] + rank_offset, copyTensor, 1, block_len, 0, 0);
+                if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                    CopyUbufToGmAlignB16((__gm__ int8_t*)stateAddrPerRank[dst_rank] + rank_offset / 2, copyTensor, 1, block_len, 0, 0);
+                } else {
+                    CopyUbufToGmAlignB16((__gm__ X1Type*)stateAddrPerRank[dst_rank] + rank_offset, copyTensor, 1, block_len, 0, 0);
+                }
+                
             }
             dst_rank = (dst_rank + skip_num) % rank_scope;
         }
-        gm_src += max_ub_ping_pong_size;
+        if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+            gm_src += (max_ub_ping_pong_size / 2);
+        } else {
+            gm_src += max_ub_ping_pong_size;
+        }
         rank_offset += max_ub_ping_pong_size;
         SetFlag<HardEvent::MTE3_MTE2>(event_id);
     }
-    uBuf_.FreeTensor<X1Type>(ubTensor);
+    uBuf_.FreeTensor<supportX1Type>(ubTensor);
 }
 
 template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromPeerMemToOut(
-    __gm__ X1Type* gm_src, __gm__ X1Type* gm_dst, int32_t actual_m)
+    __gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t actual_m)
 {
-    LocalTensor<X1Type> ubTensor = uBuf_.AllocTensor<X1Type>();
-    LocalTensor<X1Type> copyTensor0 = ubTensor;
-    LocalTensor<X1Type> copyTensor1 = ubTensor[UB_OFFSET];
+    LocalTensor<supportX1Type> ubTensor = uBuf_.AllocTensor<supportX1Type>();
+    LocalTensor<supportX1Type> copyTensor0 = ubTensor;
+    LocalTensor<supportX1Type> copyTensor1 = ubTensor[UB_OFFSET];
     max_move_m = max_ub_ping_pong_size > max_move_k ? max_ub_ping_pong_size / max_move_k : 1;
     int32_t ping_pong_move_count = (actual_m + max_move_m - 1) / max_move_m;
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0); // MTE2等MTE3
@@ -605,7 +651,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromP
             actual_move_m = actual_m - move_idx * max_move_m;
         }
         auto event_id = (move_idx & 1) ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<X1Type> ub_buff_st = (move_idx & 1) ? copyTensor0 : copyTensor1;
+        LocalTensor<supportX1Type> ub_buff_st = (move_idx & 1) ? copyTensor0 : copyTensor1;
         int32_t k_move_count = (k_align + max_move_k - 1) / max_move_k;
         for (int32_t k_move_idx = 0; k_move_idx < k_move_count; ++k_move_idx) {
             int32_t actual_k_move_num_in_peer_mem = max_move_k;
@@ -615,25 +661,23 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromP
                 actual_k_move_num_in_out = k - k_move_idx * max_move_k;
             }
             WaitFlag<HardEvent::MTE3_MTE2>(event_id);
-            CopyGmToUbuf(
-                ub_buff_st, gm_src + move_idx * max_move_m * k_align + k_move_idx * max_move_k, actual_move_m,
-                actual_k_move_num_in_peer_mem * sizeof(X1Type) / 32,
-                (k_align - actual_k_move_num_in_peer_mem) * sizeof(X1Type) / 32, 0);
+            int32_t gm_src_offset_k_align = move_idx * max_move_m * k_align + k_move_idx * max_move_k;
+            if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                gm_src_offset_k_align = gm_src_offset_k_align / 2;
+            }
+            CopyGmToUbuf(ub_buff_st, gm_src + gm_src_offset_k_align, actual_move_m,
+                    actual_k_move_num_in_peer_mem * Catlass::SizeOfBits<X1Type>::value / (8 * 32),
+                    (k_align - actual_k_move_num_in_peer_mem) * Catlass::SizeOfBits<X1Type>::value / (8 * 32), 0);
             SetFlag<HardEvent::MTE2_MTE3>(event_id);
             WaitFlag<HardEvent::MTE2_MTE3>(event_id);
-            if (k % 16 == 0) {
-                CopyUbufToGm(
-                    gm_dst + move_idx * max_move_m * k + k_move_idx * max_move_k, ub_buff_st, actual_move_m,
-                    actual_k_move_num_in_out * sizeof(X1Type) / 32,
-                    (actual_k_move_num_in_peer_mem - actual_k_move_num_in_out) * sizeof(X1Type) / 32,
-                    (k - actual_k_move_num_in_out) * sizeof(X1Type) / 32);
-            } else {
-                CopyUbufToGmAlignB16(
-                    gm_dst + move_idx * max_move_m * k + k_move_idx * max_move_k, ub_buff_st, actual_move_m,
-                    actual_k_move_num_in_out * sizeof(X1Type),
-                    (actual_k_move_num_in_peer_mem - actual_k_move_num_in_out) * sizeof(X1Type) / 32,
-                    (k - actual_k_move_num_in_out) * sizeof(X1Type));
+            int32_t gm_src_offset = move_idx * max_move_m * k + k_move_idx * max_move_k;
+            if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                gm_src_offset = gm_src_offset / 2;
             }
+            CopyUbufToGmAlignB16(gm_dst + gm_src_offset, ub_buff_st, actual_move_m,
+                    actual_k_move_num_in_out * Catlass::SizeOfBits<X1Type>::value / 8,
+                    (actual_k_move_num_in_peer_mem - actual_k_move_num_in_out) * Catlass::SizeOfBits<X1Type>::value / (8 * 32),
+                    (k - actual_k_move_num_in_out) * Catlass::SizeOfBits<X1Type>::value / (8 * 32));
             SetFlag<HardEvent::MTE3_MTE2>(event_id);
         }
     }
@@ -643,11 +687,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromP
 
 template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultToDst(
-    __gm__ X1Type* gm_src, __gm__ X1Type* gm_dst, int32_t len)
+    __gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t len)
 {
-    LocalTensor<X1Type> ubTensor = uBuf_.AllocTensor<X1Type>();
-    LocalTensor<X1Type> copyTensor0 = ubTensor;
-    LocalTensor<X1Type> copyTensor1 = ubTensor[UB_OFFSET];
+    LocalTensor<supportX1Type> ubTensor = uBuf_.AllocTensor<supportX1Type>();
+    LocalTensor<supportX1Type> copyTensor0 = ubTensor;
+    LocalTensor<supportX1Type> copyTensor1 = ubTensor[UB_OFFSET];
     int32_t ping_pong_move_count = (len + max_ub_ping_pong_size - 1) / max_ub_ping_pong_size;
     for (int32_t move_idx = 0; move_idx < ping_pong_move_count; ++move_idx) {
         int32_t actual_move_size = max_ub_ping_pong_size;
@@ -655,22 +699,22 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultToDst
             actual_move_size = len - move_idx * max_ub_ping_pong_size;
         }
         auto event_id = (move_idx & 1) ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<X1Type> copyTensor = (move_idx & 1) ? copyTensor0 : copyTensor1;
+        LocalTensor<supportX1Type> copyTensor = (move_idx & 1) ? copyTensor0 : copyTensor1;
         WaitFlag<HardEvent::MTE3_MTE2>(event_id);
-        CopyGmToUbufAlignB16(copyTensor, gm_src, 1, actual_move_size * sizeof(X1Type), 0, 0);
+        CopyGmToUbufAlignB16(copyTensor, gm_src, 1, actual_move_size * sizeof(supportX1Type), 0, 0);
         SetFlag<HardEvent::MTE2_MTE3>(event_id);
         WaitFlag<HardEvent::MTE2_MTE3>(event_id);
-        CopyUbufToGmAlignB16(gm_dst, copyTensor, 1, actual_move_size * sizeof(X1Type), 0, 0);
+        CopyUbufToGmAlignB16(gm_dst, copyTensor, 1, actual_move_size * sizeof(supportX1Type), 0, 0);
         gm_src += max_ub_ping_pong_size;
         gm_dst += max_ub_ping_pong_size;
         SetFlag<HardEvent::MTE3_MTE2>(event_id);
     }
-    uBuf_.FreeTensor<X1Type>(ubTensor);
+    uBuf_.FreeTensor<supportX1Type>(ubTensor);
 }
 
 template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveWithSplit(
-    __gm__ X1Type* gm_src, int32_t rank_offset, int32_t len)
+    __gm__ supportX1Type* gm_src, int32_t rank_offset, int32_t len)
 {
     int32_t data_split = DivCeil(len, len_per_loop);
     int32_t data_block = len_per_loop; // 每份数据量 len_per_loop = 2560
@@ -690,16 +734,26 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveWithSplit(
         data_len = data_len >= num_per_core ? num_per_core : data_len;
         // npu 方向：一份数据先发送到所有目标卡，再发送下一份数据，以此类推
         if (comm_direct) { // comm_direct=0？
-            MoveToOtherRankWithSkip(
-                gm_src + data_src, rank_offset + data_src, data_len, rank_st, comm_npu_split, group_num, scope);
+            if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                MoveToOtherRankWithSkip(
+                    gm_src + data_src / 2, rank_offset + data_src, data_len, rank_st, comm_npu_split, group_num, scope);
+            } else {
+                MoveToOtherRankWithSkip(
+                    gm_src + data_src, rank_offset + data_src, data_len, rank_st, comm_npu_split, group_num, scope);
+            }
             continue;
         }
         // data len 方向：所有的数据先发送到目标卡0，再发送到目标卡1，以此类推
         int32_t dst_rank = rank_st % scope;
         for (int32_t rank_group_idx = 0; rank_group_idx < group_num; ++rank_group_idx) {
             if (dst_rank != rankId && dst_rank < worldSize) {
-                MoveResultToDst(
-                    gm_src + data_src, (__gm__ X1Type*)stateAddrPerRank[dst_rank] + rank_offset + data_src, data_len);
+                if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                    MoveResultToDst(
+                        gm_src + data_src / 2, (__gm__ int8_t*)stateAddrPerRank[dst_rank] + (rank_offset + data_src) / 2, data_len / 2);
+                } else {
+                    MoveResultToDst(
+                        gm_src + data_src, (__gm__ X1Type*)stateAddrPerRank[dst_rank] + rank_offset + data_src, data_len);
+                }
             }
             dst_rank = (dst_rank + comm_npu_split) % scope;
         }
@@ -731,6 +785,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 num_per_rank_move = data_len - src_offset;
             }
 
+            if (cal_idx == 1) {
+ 	            // 聚合perToken scale
+ 	            AllGatherPerTokenScale(gm_a_pingpong_size);
+ 	        }
+
             // wait aic
             if (cal_idx >= MAX_BLOCK_COUNT) {
                 WaitEvent(flag_idx);
@@ -745,8 +804,13 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
 
             if (cal_idx < cal_count && aivIdx == 0 && blockIdx < core_count) {
                 int64_t gm_rank_offset = flag_idx * gm_a_pingpong_size + rank_offset;
-                MoveWithSplit(
-                    reinterpret_cast<__gm__ X1Type*>(gm_a_src) + src_offset, gm_rank_offset, num_per_rank_move);
+                if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                    MoveWithSplit(
+                        reinterpret_cast<__gm__ int8_t*>(gm_a_src) + src_offset / 2, gm_rank_offset, num_per_rank_move);
+                } else {
+                    MoveWithSplit(
+                        reinterpret_cast<__gm__ X1Type*>(gm_a_src) + src_offset, gm_rank_offset, num_per_rank_move);
+                }
                 src_offset += num_per_rank_move;
             } else if (
                 cal_idx > 0 && cal_idx < cal_count + 1 && aivIdx == 1 && blockIdx >= core_count &&
@@ -768,13 +832,25 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                     }
 
                     if (s2_other_rank != rankId) {
-                        MoveResultFromPeerMemToOut(
-                            (__gm__ X1Type*)stateAddrPerRank[rankId] + other_rank_offset,
-                            reinterpret_cast<__gm__ X1Type*>(allgatherGM_) + dst_offset, s2_actual_m);
+                        if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                            MoveResultFromPeerMemToOut(
+                                (__gm__ int8_t*)stateAddrPerRank[rankId] + other_rank_offset / 2,
+                                reinterpret_cast<__gm__ int8_t*>(allgatherGM_) + dst_offset / 2, s2_actual_m);
+                        } else {
+                            MoveResultFromPeerMemToOut(
+                                (__gm__ X1Type*)stateAddrPerRank[rankId] + other_rank_offset,
+                                reinterpret_cast<__gm__ X1Type*>(allgatherGM_) + dst_offset, s2_actual_m);
+                        }
                     } else {
-                        MoveResultFromPeerMemToOut(
-                            reinterpret_cast<__gm__ X1Type*>(gm_a_src) + src_offset,
-                            reinterpret_cast<__gm__ X1Type*>(allgatherGM_) + dst_offset, s2_actual_m);
+                        if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
+                            MoveResultFromPeerMemToOut(
+                                reinterpret_cast<__gm__ int8_t*>(gm_a_src) + src_offset / 2,
+                                reinterpret_cast<__gm__ int8_t*>(allgatherGM_) + dst_offset / 2, s2_actual_m);
+                        } else {
+                            MoveResultFromPeerMemToOut(
+                                reinterpret_cast<__gm__ X1Type*>(gm_a_src) + src_offset,
+                                reinterpret_cast<__gm__ X1Type*>(allgatherGM_) + dst_offset, s2_actual_m);
+                        }
                     }
                 }
             }
@@ -786,9 +862,12 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 // 发送aic同步
                 SetAicSync(flag_idx);
             }
-        }
 
-        Dequant();
+            // dequant
+ 	        if (cal_idx >= MAX_BLOCK_COUNT) {
+ 	            Dequant(cal_idx - MAX_BLOCK_COUNT);
+ 	        }
+        }
 
         for (int32_t idx = 0; idx < num_flags; ++idx) {
             if (blockIdx == 0 && aivIdx == 0) {

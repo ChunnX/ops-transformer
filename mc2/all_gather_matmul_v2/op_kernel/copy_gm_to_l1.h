@@ -25,7 +25,7 @@ template <class ArchTag, class Element> struct CopyGmToL1<ArchTag, Gemm::GemmTyp
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element); // int64, 32/8=4
+    static constexpr uint32_t ELE_NUM_PER_C0 = Catlass::BytesToBits(BYTE_PER_C0) / Catlass::SizeOfBits<Element>::value; // int64, 32/8=4
 
     // Mehtods
 

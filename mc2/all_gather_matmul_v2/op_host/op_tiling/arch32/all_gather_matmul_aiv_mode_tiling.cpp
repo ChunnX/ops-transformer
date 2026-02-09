@@ -135,6 +135,22 @@ void DealTilingParamByBuffSize(CoCTiling &cocTilingData) {
 }
 
 // Tiling Code Function
+void AllGatherV2MatmulNPU910BTwoRankINT8Tiling(CoCTiling &cocTilingData)
+{
+    int32_t code = ALLGATHERV2_MATMUL_NPU910B_TWO_RANK_INT8_CODE_DEFAULT;
+    std::map<int*, TilingValue> TilingParamMap = {
+        {&code,
+         {ALLGATHERV2_MATMUL_NPU910B_TWO_RANK_INT8_CODE_DEFAULT,
+          g_allGatherV2MatmulNPU910BTwoRankINT8CodeMap}}
+    };
+    SetTilingParam(cocTilingData, TilingParamMap);
+
+    AllGatherV2DecodeTilingData(code, cocTilingData);
+
+    cocTilingData.lenPerLoop = cocTilingData.ubMoveNum * cocTilingData.commDataSplit;
+    DealTilingParamByBuffSize(cocTilingData);
+}
+
 void AllGatherV2MatmulNPU910BFourRankINT8Tiling(CoCTiling &cocTilingData)
 {
     int32_t code = ALLGATHERV2_MATMUL_NPU910B_FOUR_RANK_INT8_CODE_DEFAULT;
@@ -371,15 +387,26 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     info.hasAAlign = hasAAlign;
     info.hasBAlign = hasBAlign;
     if (info.hasAAlign) {
-        info.aAlignSize = static_cast<uint64_t>((info.isTransposeX1 ? info.K * mAlign : info.M * kAlign) * elementSize);
+        if (elementSize != 0) {
+            info.aAlignSize = static_cast<uint64_t>((info.isTransposeX1 ? info.K * mAlign : info.M * kAlign) * elementSize);
+        } else {
+            info.aAlignSize = static_cast<uint64_t>((info.isTransposeX1 ? info.K * mAlign : info.M * kAlign) / 2);
+        }
         userWorkSpaceSize += info.aAlignSize;
     }
     if (info.hasBAlign) {
-        info.bAlignSize = static_cast<uint64_t>((info.isTransposeX2 ? info.N * kAlign : info.K * nAlign) * elementSize);
+        if (elementSize != 0) {
+            info.bAlignSize = static_cast<uint64_t>((info.isTransposeX2 ? info.N * kAlign : info.K * nAlign) * elementSize);
+        } else {
+            info.bAlignSize = static_cast<uint64_t>((info.isTransposeX2 ? info.N * kAlign : info.K * nAlign) / 2);
+        }
         userWorkSpaceSize += info.bAlignSize;
     }
     if (info.quantFlag) {
         userWorkSpaceSize += static_cast<uint64_t>(info.M * info.N * rankSize * sizeof(int32_t));
+    }
+    if (info.dequantType == DequantType::PER_TOKEN) {
+        userWorkSpaceSize += static_cast<uint64_t>(info.M * rankSize * sizeof(float32_t));
     }
 }
 
@@ -414,36 +441,52 @@ static bool CheckDtypeX2(gert::TilingContext *context, AllGatherMatmulAIVModeInf
     return false;
 }
 
+bool SetTilingDataA3(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize) 
+{
+    if (rankSize == RANKSIZE_FOUR && info.quantFlag) {
+        AllGatherV2MatmulNPU91093FourRankINT8Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_FOUR && !info.quantFlag) {
+        AllGatherV2MatmulNPU91093FourRankFP16Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_EIGHT && info.quantFlag) {
+        AllGatherV2MatmulNPU91093EightRankINT8Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_EIGHT && !info.quantFlag) {
+        AllGatherV2MatmulNPU91093EightRankFP16Tiling(cocTilingData);
+        return true;
+    }
+    return false;
+}
+
+bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize) 
+{
+    if (rankSize == RANKSIZE_TWO && info.quantFlag) {
+        AllGatherV2MatmulNPU910BTwoRankINT8Tiling(cocTilingData);
+ 	    return true;
+    } else if (rankSize == RANKSIZE_FOUR && info.quantFlag) {
+        AllGatherV2MatmulNPU910BFourRankINT8Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_FOUR && !info.quantFlag) {
+        AllGatherV2MatmulNPU910BFourRankFP16Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_EIGHT && info.quantFlag) {
+        AllGatherV2MatmulNPU910BEightRankINT8Tiling(cocTilingData);
+        return true;
+    } else if (rankSize == RANKSIZE_EIGHT && !info.quantFlag) {
+        AllGatherV2MatmulNPU910BEightRankFP16Tiling(cocTilingData);
+        return true;
+    }
+    return false;
+}
+
 void SetTilingData(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize)
 {
-    if (info.is910C) {
-        if (rankSize == RANKSIZE_FOUR && info.quantFlag) {
-            AllGatherV2MatmulNPU91093FourRankINT8Tiling(cocTilingData);
-            return;
-        } else if (rankSize == RANKSIZE_FOUR && !info.quantFlag) {
-            AllGatherV2MatmulNPU91093FourRankFP16Tiling(cocTilingData);
-            return;
-        } else if (rankSize == RANKSIZE_EIGHT && info.quantFlag) {
-            AllGatherV2MatmulNPU91093EightRankINT8Tiling(cocTilingData);
-            return;
-        } else if (rankSize == RANKSIZE_EIGHT && !info.quantFlag) {
-            AllGatherV2MatmulNPU91093EightRankFP16Tiling(cocTilingData);
-            return;
-        }
-    } else {
-        if (rankSize == RANKSIZE_FOUR && info.quantFlag) {
-            AllGatherV2MatmulNPU910BFourRankINT8Tiling(cocTilingData);
-            return;
-        } else if (rankSize == RANKSIZE_FOUR && !info.quantFlag) {
-            AllGatherV2MatmulNPU910BFourRankFP16Tiling(cocTilingData);
-            return;
-        } else if (rankSize == RANKSIZE_EIGHT && info.quantFlag) {
-            AllGatherV2MatmulNPU910BEightRankINT8Tiling(cocTilingData);
-            return;
-        } else if (rankSize == RANKSIZE_EIGHT && !info.quantFlag) {
-            AllGatherV2MatmulNPU910BEightRankFP16Tiling(cocTilingData);
-            return;
-        }
+    cocTilingData.rankSize = rankSize;
+    if (info.is910C && SetTilingDataA3(cocTilingData, info, rankSize)) {
+        return;
+    } else if (SetTilingDataA2(cocTilingData, info, rankSize)){
+        return;
     }
     // Default Tiling Func
     AllGatherV2MatmulNPU910BEightRankFP16Tiling(cocTilingData);
@@ -495,7 +538,10 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     auto aType = context->GetInputTensor(0)->GetDataType();
     auto bType = context->GetInputTensor(1)->GetDataType();
     auto cType = context->GetOutputDesc(0)->GetDataType();
-    info.quantFlag = (aType == ge::DT_INT8) && (bType == ge::DT_INT8) && (cType == ge::DT_BF16 || cType == ge::DT_FLOAT16);
+    bool isA4W4 = (aType == ge::DT_INT4) && (bType == ge::DT_INT4);
+    bool isA8W8 = (aType == ge::DT_INT8) && (bType == ge::DT_INT8);
+    bool isOutputTypeValid = (cType == ge::DT_BF16 || cType == ge::DT_FLOAT16);
+    info.quantFlag = (isA4W4 || isA8W8) && isOutputTypeValid;
     if (info.quantFlag) {
         OP_TILING_CHECK(!CheckDtypeX2(context, info, cType), VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "AllGatherMatmulV2 AIV mode invalid x2Scale."), return ge::GRAPH_FAILED);
         info.dequantType = DequantType::PER_CHANNEL;
@@ -528,8 +574,15 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     SetTilingData(tilingData->cocTiling, info, rankSize);
 
     // workspace
-    uint32_t elementSize = D_TYPE_SIZE_MAP.at(aType);
-    uint32_t nElemAlign = HALF_KBYTE / elementSize;
+    uint32_t elementSize = 0;
+    uint32_t nElemAlign = 0;
+    if (aType == ge::DT_INT4) {
+        nElemAlign = HALF_KBYTE * 2;
+    } else {
+        elementSize = D_TYPE_SIZE_MAP.at(aType);
+        nElemAlign = HALF_KBYTE / elementSize;
+    }
+    
     uint64_t userWorkSpaceSize = 0;
     GetUsrWorkSpaceSize(nElemAlign, elementSize, userWorkSpaceSize, rankSize, info);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkSpaceSize;
