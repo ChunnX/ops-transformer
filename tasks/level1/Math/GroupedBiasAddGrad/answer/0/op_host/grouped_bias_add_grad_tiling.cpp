@@ -58,7 +58,7 @@ ge::graphStatus GroupedBiasAddGradTiling::GetPlatformInfo()
 
     // OP_CHECK_NULL_WITH_CONTEXT(context_, compileInfo);
 
-    baseInfoOp_.vectorCoreNum = ascendcPlatform.GetCoreNum();;
+    baseInfoOp_.vectorCoreNum = ascendcPlatform.GetCoreNum();
     OP_CHECK_IF(
         (baseInfoOp_.vectorCoreNum <= 0),
         OP_LOGE(nodeName_, "GroupedBiasAddGradTiling get num of vector core is less than or equal to 0."),
