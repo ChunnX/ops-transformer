@@ -274,7 +274,8 @@ void FiaTilingNonQuant::CalcInnerSize(uint32_t s2Size)
             sInnerSize_ = S_INNER_SIZE_512;
         }
     }
-    if (fiaInfo_->attenMaskFlag && (fiaInfo_->sparseMode == SPARSE_MODE_2 || fiaInfo_->sparseMode == SPARSE_MODE_3 || fiaInfo_->sparseMode == SPARSE_MODE_4)) {
+    if (fiaInfo_->attenMaskFlag && (fiaInfo_->sparseMode == SPARSE_MODE_2 || fiaInfo_->sparseMode == SPARSE_MODE_3 ||
+        fiaInfo_->sparseMode == SPARSE_MODE_4)) {
         sInnerSize_ = std::min(sInnerSize_, S_INNER_SIZE_1024); // attention mask压缩场景，基本块最大支持1024*1024
     }
     // PA特性泛化场景，blockSize可能为112等值，无法被sInnerSize_整除，当step*base跨block时，搬运处理复杂，通过向下对齐避免
@@ -334,7 +335,8 @@ void FiaTilingNonQuant::CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitPa
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
-    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
+    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND ||
+        fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
     baseInfo.sparseMode = fiaInfo_->sparseMode;
     baseInfo.attenMaskFlag = fiaInfo_->attenMaskFlag;
 

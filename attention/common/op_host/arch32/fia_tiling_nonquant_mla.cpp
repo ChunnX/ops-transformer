@@ -141,7 +141,8 @@ bool FiaTilingNonQuantMla::IsCapable()
     }
 
     // 支持的sparse_mode值
-    if ((fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK) && (fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) && (fiaInfo_->sparseMode != SPARSE_MODE_BAND)) {
+    if ((fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK) && (fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) &&
+        (fiaInfo_->sparseMode != SPARSE_MODE_BAND)) {
         return false;
     }
 
@@ -170,7 +171,8 @@ void FiaTilingNonQuantMla::GenTilingKey()
     uint8_t cvRatioVal = (cvRatio_ == 1) ? 1 : 0; // CV1:1场景为1，其他场景为0
 
     const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U}, {TilingKeyLayout::TND, 3U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U},
+        {TilingKeyLayout::TND, 3U}
     };
 
     const std::map<TilingKeyLayout, uint8_t> qLayoutMap = {
@@ -331,7 +333,8 @@ void FiaTilingNonQuantMla::CreateSplitInput(BaseInfo &baseInfo, SplitParam &spli
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
-    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
+    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND ||
+        fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
     baseInfo.sparseMode = fiaInfo_->sparseMode;
     baseInfo.attenMaskFlag = fiaInfo_->attenMaskFlag;
 
