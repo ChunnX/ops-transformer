@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0,
+        1
+    ],
+    "DESCRIPTION": "该执行路径主要应用于TopK与TopP混合计算（Key 0）以及仅执行TopK计算（Key 1）的场景，均使用 ApplyTopKTopPWithSorted 模板类。"
+}

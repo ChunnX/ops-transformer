@@ -1,0 +1,8 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        10,
+        11
+    ],
+    "DESCRIPTION": "该场景主要适用于确定性计算模式（Deterministic）。"
+}
