@@ -172,8 +172,7 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
     return COMM_ALG_DEFAULT;
   }
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-  if (ascendcPlatform.GetSocVersion() ==
-      platform_ascendc::SocVersion::ASCEND950) {
+  if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
     return COMM_ALG_FULL_MESH;
   }
 
@@ -230,16 +229,15 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
   return COMM_ALG_DOUBLE_RING;
 }
 
-bool CheckRankSize(const platform_ascendc::SocVersion socVersion,
+bool CheckRankSize(const NpuArch npuArch,
                    const uint32_t rankSize) {
-  static const std::map<platform_ascendc::SocVersion, std::set<uint32_t>>
+  static const std::map<NpuArch, std::set<uint32_t>>
       SUPPORT_RANK_SIZE_SET = {
-          {platform_ascendc::SocVersion::ASCEND310P, {1, 2, 4}},
-          {platform_ascendc::SocVersion::ASCEND910B, {1, 2, 4, 8}},
-          {platform_ascendc::SocVersion::ASCEND950,
-           {1, 2, 4, 8, 16, 32, 64}},
+          {NpuArch::DAV_2002, {1, 2, 4}},
+          {NpuArch::DAV_2201, {1, 2, 4, 8}},
+          {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
       };
-  auto it = SUPPORT_RANK_SIZE_SET.find(socVersion);
+  auto it = SUPPORT_RANK_SIZE_SET.find(npuArch);
   if (it != SUPPORT_RANK_SIZE_SET.end()) {
     return it->second.count(rankSize) != 0;
   }
@@ -274,21 +272,19 @@ void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3A
   mmV3Args.bDtypeSize = GetDataTypeSize(opName, mmV3Args.bType);
 }
 
-ge::graphStatus GetMatmulV3PriorityPolicy(
-    const platform_ascendc::SocVersion socVersion,
-    std::vector<int32_t> &priorities, const char *opName) {
-  const static std::map<platform_ascendc::SocVersion, std::vector<int32_t>>
+ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t> &priorities, 
+        const char *opName) {
+  const static std::map<NpuArch, std::vector<int32_t>>
       MATMUL_V3_PRIOR_MAP = {
-          {platform_ascendc::SocVersion::ASCEND950,
-           {optiling::mc2_matmul_v3_advanced::strategy::BASE}},
+          {NpuArch::DAV_3510, {optiling::mc2_matmul_v3_advanced::strategy::BASE}},
       };
-  if (MATMUL_V3_PRIOR_MAP.find(socVersion) != MATMUL_V3_PRIOR_MAP.end()) {
-    priorities = MATMUL_V3_PRIOR_MAP.at(socVersion);
+  if (MATMUL_V3_PRIOR_MAP.find(npuArch) != MATMUL_V3_PRIOR_MAP.end()) {
+    priorities = MATMUL_V3_PRIOR_MAP.at(npuArch);
   }
 
   if (priorities.empty()) {
     OP_LOGE(opName, "version %u can't find suitable matmul priorities",
-            static_cast<uint32_t>(socVersion));
+            static_cast<uint32_t>(npuArch));
     return ge::GRAPH_FAILED;
   }
   return ge::GRAPH_SUCCESS;
@@ -380,9 +376,8 @@ bool GetRankSize(const std::string &opName, const char *group,
   return true;
 };
 
-bool Mc2TilingUtils::CheckRankSize(platform_ascendc::SocVersion socVersion,
-                                   uint32_t rankSize) {
-  auto it = supportedRankSizeSet.find(socVersion);
+bool Mc2TilingUtils::CheckRankSize(NpuArch npuArch, uint32_t rankSize) {
+  auto it = supportedRankSizeSet.find(npuArch);
   if (it != supportedRankSizeSet.end()) {
     return it->second.count(rankSize) != 0;
   }

@@ -8,14 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <algorithm>
-
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_moe_distribute_dispatch_shmem.h"
-#include "matmul_util.h"
 #include "op_mc2.h"
 #include "op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
+#include "opdev/platform.h"
 
 using namespace op;
 
@@ -123,28 +122,6 @@ aclnnStatus aclnnMoeDistributeDispatchShmemGetWorkspaceSize(
     aclTensor* expandScalesOut, uint64_t* workspaceSize,
     aclOpExecutor** executor) {
   OP_LOGD("aclnnMoeDistributeDispatchShmemGetWorkspaceSize start");
-
-
-  const static bool is910B =
-      GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
-  auto ret_param =
-      CheckParams(x, expertIds, groupEp, groupTp, quantMode, expandXOut,
-                  dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
-                  epRecvCountsOut, tpRecvCountsOut);
-  CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-
-  if (is910B) {
-    return aclnnInnerMoeDistributeDispatchShmemGetWorkspaceSize(
-        shmemSpace, x, expertIds, scalesOptional, xActiveMaskOptional,
-        expertScalesOptional, elasticInfoOptional, groupEp, epWorldSize,
-        epRankId, moeExpertNum, "", tpWorldSize, tpRankId, expertShardType,
-        sharedExpertNum, sharedExpertRankNum, quantMode, globalBs,
-        expertTokenNumsType, commAlg, zeroExpertNum, copyExpertNum,
-        constExpertNum, shmem_size, expandXOut, dynamicScalesOut,
-        assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut,
-        tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
-  }
-
   return aclnnInnerMoeDistributeDispatchShmemGetWorkspaceSize(
       shmemSpace, x, expertIds, scalesOptional, xActiveMaskOptional,
       expertScalesOptional, elasticInfoOptional, groupEp, epWorldSize, epRankId,

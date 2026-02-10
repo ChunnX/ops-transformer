@@ -14,7 +14,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     )
     add_modules_sources(OPTYPE moe_distribute_combine_shmem ACLNNTYPE aclnn_inner)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(moe_distribute_combine_shmem_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_shmem PARENT_SCOPE)
+    set(moe_distribute_combine_shmem_depends mc2/common mc2/moe_distribute_dispatch_shmem PARENT_SCOPE)
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_combine_v2 ACLNNTYPE aclnn_inner) 
 endif()

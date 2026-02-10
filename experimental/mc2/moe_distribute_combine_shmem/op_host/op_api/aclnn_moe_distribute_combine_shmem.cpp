@@ -11,11 +11,11 @@
 
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_moe_distribute_combine_shmem.h"
-#include "matmul_util.h"
 #include "op_mc2.h"
 #include "op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
+#include "opdev/platform.h"
 
 using namespace op;
 
@@ -120,27 +120,6 @@ aclnnStatus aclnnMoeDistributeCombineShmemGetWorkspaceSize(
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
     int64_t shmem_size, aclTensor* xOut, uint64_t* workspaceSize,
     aclOpExecutor** executor) {
-  const static bool is910B =
-      GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
-  auto ret_param =
-      CheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts,
-                  expertScales, groupEp, groupTp, xOut);
-  CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-
-  if (is910B) {
-    return aclnnInnerMoeDistributeCombineShmemGetWorkspaceSize(
-        shmemSpace, expandX, expertIds, assistInfoForCombine, epSendCounts,
-        expertScales, tpSendCountsOptional, xActiveMaskOptional,
-        activationScaleOptional, weightScaleOptional, groupListOptional,
-        expandScalesOptional, sharedExpertXOptional, elasticInfoOptional,
-        oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
-        constExpertVOptional, groupEp, epWorldSize, epRankId, moeExpertNum, "",
-        tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType,
-        commAlg, zeroExpertNum, copyExpertNum, constExpertNum, shmem_size, xOut,
-        workspaceSize, executor);
-  }
-
   return aclnnInnerMoeDistributeCombineShmemGetWorkspaceSize(
       shmemSpace, expandX, expertIds, assistInfoForCombine, epSendCounts,
       expertScales, tpSendCountsOptional, xActiveMaskOptional,
