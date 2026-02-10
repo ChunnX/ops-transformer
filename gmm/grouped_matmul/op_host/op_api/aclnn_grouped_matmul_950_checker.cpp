@@ -101,12 +101,17 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGeneralQuantShape() const
     }
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.x); i++) {
+        auto weightNIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - 1;
+        if (GetInputTensor(gmmParams_.x)->GetViewShape().GetDim(0) == 0 ||
+            GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightNIndex) == 0) {
+            return ACLNN_SUCCESS;
+        }
         auto weightKIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - LAST_TWO_DIM_INDEX;
         CHECK_COND(GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(1) > 0, ACLNN_ERR_PARAM_INVALID,
-                "The K value[%ld] in %s should be positive.",
+                "When the M or N value is not 0, the K value[%ld] in %s should be positive.",
                 GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(1), xName_.c_str());
         CHECK_COND(GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex) > 0,
-                ACLNN_ERR_PARAM_INVALID, "The K value[%ld] in %s should be positive.",
+                ACLNN_ERR_PARAM_INVALID, "When the M or N value is not 0, The K value[%ld] in %s should be positive.",
                 GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex), weightName_.c_str());
         if (gmmParams_.groupType == SPLIT_K) {
             CHECK_COND(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0) == groupNum, ACLNN_ERR_PARAM_INVALID,
