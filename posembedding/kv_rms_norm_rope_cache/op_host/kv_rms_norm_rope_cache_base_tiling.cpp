@@ -60,7 +60,9 @@ bool KvRmsNormRopeCacheTilingBase::IsB1SD(const gert::TilingContext* context)
     auto kvShapeTuple = GetShapeTuple(context, KV_INDEX);
     auto cosShapeTuple = GetShapeTuple(context, COS_INDEX);
     int64_t seqLen = std::get<SHAPE_IDX_S>(kvShapeTuple);
-    if (seqLen > 1 && std::get<SHAPE_IDX_S>(kvShapeTuple) == std::get<SHAPE_IDX_S>(cosShapeTuple)) {
+    int64_t batchSize = std::get<SHAPE_IDX_B>(kvShapeTuple);
+    if (batchSize > coreNum_ * BATCHES_FOR_EACH_CORE ||
+        seqLen > 1 && std::get<SHAPE_IDX_S>(kvShapeTuple) == std::get<SHAPE_IDX_S>(cosShapeTuple)) {
         return true;
     } else {
         return false;
