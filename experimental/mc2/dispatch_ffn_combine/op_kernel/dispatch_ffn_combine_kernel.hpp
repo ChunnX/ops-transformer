@@ -63,7 +63,8 @@ template <
     class BlockScheduler_,
     class ElementGroupList_,
     class BlockEpilogue1_,
-    class BlockEpilogue2_
+    class BlockEpilogue2_,
+    bool IS_A2
 >
 class DispatchFFNCombineKernel {
 public:
@@ -1030,7 +1031,7 @@ private:
         PeermemInfo(){}
 
         CATLASS_DEVICE
-        PeermemInfo(const Params & params, const HcclShmem & shmem) {
+        PeermemInfo(const Params & params, const HcclShmem<IS_A2> & shmem) {
             offsetA = 0;    // 占用1/3的BUFFSIZE
             offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512); // 占用1MB
             offsetD = offsetPeerPerTokenScale + MB_SIZE;    // 占用剩下的
@@ -1059,7 +1060,7 @@ private:
     AscendC::GlobalTensor<int32_t> cumsumMM;
     AscendC::GlobalTensor<int32_t> preSumBeforeRank;
     Layout3D tokenPerExpertLayout;
-    HcclShmem shmem;
+    HcclShmem<IS_A2> shmem;
 };
 
 } // namespace Catlass::Gemm::Kernel

@@ -22,6 +22,7 @@
 #include <map>
 #include <algorithm>
 #include "../op_kernel/moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
+#include "platform/platform_infos_def.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -155,15 +156,21 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
 // Get hardware info such as AI Core count and UB capacity for the current chip platform.
 static ge::graphStatus DispatchFFNCombineGetPlatformInfoAndSetTiling(gert::TilingContext *context, DispatchFFNCombineInfo& info)
 {
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
 
+    std::string socVersion;
+    (void)platformInfo->GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
+    info.isA2 = socVersion == "Ascend910B";
+
     OP_LOGD(K_INNER_DEBUG, "aivNum=%d", info.aivNum);
     OP_LOGD(K_INNER_DEBUG, "ubSize=%lu", info.totalUbSize);
+    OP_LOGD(K_INNER_DEBUG, "isA2=%d", info.isA2);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -285,8 +292,15 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     // 5. communication
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
-    uint32_t opType = 8U;
-    std::string algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
+    uint32_t opType = 0u;
+    std::string algConfig;
+    if (info.isA2) {
+        opType = 18u;
+        algConfig = "MultiPut=level0:fullmesh";
+    } else {
+        opType = 8U;
+        algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
+    }
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
     mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);

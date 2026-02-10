@@ -26,8 +26,14 @@ extern "C" __global__ __aicore__ void dispatch_ffn_combine(GM_ADDR x, GM_ADDR w1
     if (TILING_KEY_IS(1000010)) {
         KERNEL_TASK_TYPE(1000010, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingData, tilingData, tilingGM);
-        DispatchFFNCombine<int8_t, DTYPE_W1, DTYPE_OUT, false, true> op;
-        op.Init(x, w1, w2, expertId, scale1, scale2, probs, c, workspaceGM, tilingGM);
-        op.Process();
+        if (tilingData.dispatchFFNCombineInfo.isA2) {
+            DispatchFFNCombine<int8_t, DTYPE_W1, DTYPE_OUT, false, true, true> op;
+            op.Init(x, w1, w2, expertId, scale1, scale2, probs, c, workspaceGM, tilingGM);
+            op.Process();
+        } else {
+            DispatchFFNCombine<int8_t, DTYPE_W1, DTYPE_OUT, false, true, false> op;
+            op.Init(x, w1, w2, expertId, scale1, scale2, probs, c, workspaceGM, tilingGM);
+            op.Process();
+        }
     }
 }

@@ -74,20 +74,26 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
     return;
 }
 
-
+template <bool IS_A2>
 class HcclShmem {
 public:
     #ifdef HCCL_COMM    // hccl需要初始化hccl context
-        __gm__ HcclOpResParamCustom *WinContext_{nullptr};
+        std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
+                          __gm__ HcclOpResParamCustom *> WinContext_{nullptr};
         Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
         AscendC::LocalTensor<int32_t> ub;
         FORCE_INLINE_AICORE
         HcclShmem(){
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-            WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
-
-            m_rank = WinContext_->localUsrRankId;
-            m_rankSize = WinContext_->rankSize;
+            if constexpr(IS_A2) {
+                WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
+                m_rank = WinContext_->rankId;
+                m_rankSize = WinContext_->rankNum;
+            } else {
+                WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
+                m_rank = WinContext_->localUsrRankId;
+                m_rankSize = WinContext_->rankSize;
+            }
             m_segmentSize = WinContext_->winSize;
         }
     #else
@@ -106,7 +112,11 @@ public:
     FORCE_INLINE_AICORE
     GM_ADDR operator() () const {   // 无参数，返回本地peermem
         #ifdef HCCL_COMM
-            return (GM_ADDR)(WinContext_->localWindowsIn);
+            if constexpr(IS_A2) {
+                return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
+            } else {
+                return (GM_ADDR)(WinContext_->localWindowsIn);
+            }
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, m_rank));
         #endif
@@ -115,8 +125,12 @@ public:
     FORCE_INLINE_AICORE
     GM_ADDR operator() (int32_t index) const {  // 带index参数，返回远端peermem首地址
         #ifdef HCCL_COMM
-            return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
-                                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
+            if constexpr(IS_A2) {
+                return (GM_ADDR)WinContext_->windowsIn[index];
+            } else {
+                return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
+                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
+            }
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
         #endif
@@ -131,8 +145,12 @@ public:
             if (rankId < 0 || rankId >= m_rankSize) {
                 return nullptr;
             }
-            return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn :
-                                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
+            if constexpr(IS_A2) {
+                return (GM_ADDR)(WinContext_->windowsIn[rankId] + offset);
+            } else {
+                return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn :
+                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
+            }
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
         #endif

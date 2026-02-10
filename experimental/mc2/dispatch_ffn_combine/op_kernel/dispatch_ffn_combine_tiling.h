@@ -31,6 +31,7 @@ struct DispatchFFNCombineInfo {
     uint32_t topK;
     uint32_t worldSize;
     uint32_t listLen;
+    bool isA2;
 };
 
 struct CoCTiling {

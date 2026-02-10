@@ -46,8 +46,8 @@ using namespace AscendC;
 using namespace Catlass;
 
 namespace DispatchFFNCombineImpl {
-#define TemplateMMA2AClass typename AType_, typename BType_, typename CType_, bool TB_, bool Nz_
-#define TemplateMMA2ACFunc AType_, BType_, CType_, TB_, Nz_
+#define TemplateMMA2AClass typename AType_, typename BType_, typename CType_, bool TB_, bool Nz_, bool IS_A2_
+#define TemplateMMA2ACFunc AType_, BType_, CType_, TB_, Nz_, IS_A2_
 
 using namespace AscendC;
 template <TemplateMMA2AClass>
@@ -155,11 +155,17 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(GM_ADDR xGM,
     initRoutingQuantTilingKey = tilingData.cocTiling.initRoutingQuantTilingKey;
 
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    __gm__ HcclOpResParamCustom *WinContext_{nullptr};
-    WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
-
-    rank = WinContext_->localUsrRankId;
-    rankSize = WinContext_->rankSize;
+    if constexpr(IS_A2_) {
+        __gm__ HcclA2CombineOpParam *WinContext_{nullptr};
+        WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
+        rank = WinContext_->rankId;
+        rankSize = WinContext_->rankNum;
+    } else {
+        __gm__ HcclOpResParamCustom *WinContext_{nullptr};
+        WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
+        rank = WinContext_->localUsrRankId;
+        rankSize = WinContext_->rankSize;
+    }
 }
 
 template <TemplateMMA2AClass>
@@ -236,13 +242,14 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
     using EpilogueDispatchPolicy2 = Epilogue::EpilogueAtlasA2PerTokenDequantV2<ubStages>;
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
+    using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
     using BlockEpilogue2 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType,PerTokenScaleType,
-        D2Type, TileCopy2>;
+        D2Type, TileCopy2, IS_A2>;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
     using MatmulKernel = Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad,
-        BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2>;
+        BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2, IS_A2_>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
     LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};
