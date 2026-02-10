@@ -141,7 +141,6 @@ namespace {
     constexpr int32_t MAX_EP_WORLD_SIZE_A2 = 384;
     constexpr int32_t MAX_EP_WORLD_SIZE_A2_LAYERED = 64;
     constexpr int32_t MAX_MOE_EXPERT_NUMS_A2 = 512;
-    constexpr int32_t UNLAYERED_EXP_NUM_PER_RANK_A2 = 120;
     constexpr uint32_t MAX_BATCH_SIZE_A2 = 256;
     constexpr size_t USER_WORKSPACE_A2 = 1UL * 1024UL * 1024UL; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
     constexpr uint64_t TILING_KEY_BASE_A2 = 2000000000;
@@ -1469,9 +1468,6 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(const gert::
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr % *epWorldSizePtr != 0 ||
         *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2,
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
-    OP_TILING_CHECK(!isLayered && *moeExpertNumPtr / *epWorldSizePtr > UNLAYERED_EXP_NUM_PER_RANK_A2,
-        OP_LOGE(K_INNER_DEBUG, "moeExpertNum is %d, in case of unlayered, it must no more than %d.",
-            *moeExpertNumPtr / *epWorldSizePtr, UNLAYERED_EXP_NUM_PER_RANK_A2), return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "tpWorldSize is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(tpRankIdPtr == nullptr,
@@ -1515,6 +1511,8 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(const gert::
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
     info.quantMode = *quantModePtr;
+    info.maxMoeExpertNum = MAX_MOE_EXPERT_NUMS_A2;
+
     if (*globalBsPtr == 0) {
         info.globalBs = *epWorldSizePtr * bs;
     } else {
@@ -1534,6 +1532,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(const gert::
     OP_LOGD(K_INNER_DEBUG, "epRankId=%d", info.epRankId);
     OP_LOGD(K_INNER_DEBUG, "tpRankId=%d", info.tpRankId);
     OP_LOGD(K_INNER_DEBUG, "zeroComputeExpertNum=%d", info.zeroComputeExpertNum);
+    OP_LOGD(K_INNER_DEBUG, "maxMoeExpertNum=%d", info.maxMoeExpertNum);
 
     return ge::GRAPH_SUCCESS;
 }
