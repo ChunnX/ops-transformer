@@ -480,7 +480,9 @@ moe:
       - moe/moe_compute_expert_tokens/docs
       - moe/moe_compute_expert_tokens/README.md
     ut_cov_exclude:
-      - moe/moe_compute_expert_tokens
+      - moe/moe_compute_expert_tokens/op_api
+      - moe/moe_compute_expert_tokens/op_graph
+      - moe/moe_compute_expert_tokens/op_kernel
     options:
       - moe_compute_expert_tokens
 
@@ -564,7 +566,9 @@ moe:
       - moe/moe_init_routing/docs
       - moe/moe_init_routing/README.md
     ut_cov_exclude:
-      - moe/moe_init_routing
+      - moe/moe_init_routing/op_api
+      - moe/moe_init_routing/op_graph
+      - moe/moe_init_routing/op_kernel
     options:
       - moe_init_routing
 
@@ -588,7 +592,9 @@ moe:
       - moe/moe_init_routing_quant_v2/docs
       - moe/moe_init_routing_quant_v2/README.md
     ut_cov_exclude:
-      - moe/moe_init_routing_quant_v2
+      - moe/moe_init_routing_quant_v2/op_api
+      - moe/moe_init_routing_quant_v2/op_graph
+      - moe/moe_init_routing_quant_v2/op_kernel
     options:
       - moe_init_routing_quant_v2
 
@@ -673,7 +679,9 @@ moe:
       - moe/moe_token_permute_with_ep/docs
       - moe/moe_token_permute_with_ep/README.md
     ut_cov_exclude:
-      - moe/moe_token_permute_with_ep
+      - moe/moe_token_permute_with_ep/op_api
+      - moe/moe_token_permute_with_ep/op_graph
+      - moe/moe_token_permute_with_ep/op_kernel
     options:
       - moe_token_permute_with_ep
 
@@ -711,7 +719,9 @@ moe:
       - moe/moe_token_permute_with_routing_map_grad/docs
       - moe/moe_token_permute_with_routing_map_grad/README.md
     ut_cov_exclude:
-      - moe/moe_token_permute_with_routing_map_grad
+      - moe/moe_token_permute_with_routing_map_grad/op_api
+      - moe/moe_token_permute_with_routing_map_grad/op_graph
+      - moe/moe_token_permute_with_routing_map_grad/op_kernel
     options:
       - moe_token_permute_with_routing_map_grad
       - moe_token_unpermute
@@ -724,7 +734,9 @@ moe:
       - moe/moe_token_unpermute/docs
       - moe/moe_token_unpermute/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute
+      - moe/moe_token_unpermute/op_api
+      - moe/moe_token_unpermute/op_graph
+      - moe/moe_token_unpermute/op_kernel
     test:
       examples: False # aclnn_util.h报错
     options:
@@ -739,7 +751,9 @@ moe:
       - moe/moe_token_unpermute_grad/docs
       - moe/moe_token_unpermute_grad/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_grad
+      - moe/moe_token_unpermute_grad/op_api
+      - moe/moe_token_unpermute_grad/op_graph
+      - moe/moe_token_unpermute_grad/op_kernel
     options:
       - moe_token_unpermute_grad
 
@@ -751,7 +765,9 @@ moe:
       - moe/moe_token_unpermute_with_ep/docs
       - moe/moe_token_unpermute_with_ep/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_with_ep
+      - moe/moe_token_unpermute_with_ep/op_api
+      - moe/moe_token_unpermute_with_ep/op_graph
+      - moe/moe_token_unpermute_with_ep/op_kernel
     options:
       - moe_token_unpermute_with_ep
 
@@ -763,7 +779,9 @@ moe:
       - moe/moe_token_unpermute_with_ep_grad/docs
       - moe/moe_token_unpermute_with_ep_grad/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_with_ep_grad
+      - moe/moe_token_unpermute_with_ep_grad/op_api
+      - moe/moe_token_unpermute_with_ep_grad/op_graph
+      - moe/moe_token_unpermute_with_ep_grad/op_kernel
     options:
       - moe_token_unpermute_with_ep_grad
 
@@ -775,7 +793,9 @@ moe:
       - moe/moe_token_unpermute_with_routing_map/docs
       - moe/moe_token_unpermute_with_routing_map/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_with_routing_map
+      - moe/moe_token_unpermute_with_routing_map/op_api
+      - moe/moe_token_unpermute_with_routing_map/op_graph
+      - moe/moe_token_unpermute_with_routing_map/op_kernel
     options:
       - moe_token_unpermute_with_routing_map
     test:
@@ -926,7 +946,9 @@ mc2:
         - mc2/allto_all_all_gather_batch_mat_mul/docs
         - mc2/allto_all_all_gather_batch_mat_mul/README.md
       ut_cov_exclude:
-        - mc2/allto_all_all_gather_batch_mat_mul
+        - mc2/allto_all_all_gather_batch_mat_mul/op_api
+        - mc2/allto_all_all_gather_batch_mat_mul/op_graph
+        - mc2/allto_all_all_gather_batch_mat_mul/op_kernel
       test:
         examples: False
       options:
@@ -942,7 +964,9 @@ mc2:
         - mc2/allto_allv_grouped_mat_mul/docs
         - mc2/allto_allv_grouped_mat_mul/README.md
       ut_cov_exclude:
-        - mc2/allto_allv_grouped_mat_mul
+        - mc2/allto_allv_grouped_mat_mul/op_api
+        - mc2/allto_allv_grouped_mat_mul/op_graph
+        - mc2/allto_allv_grouped_mat_mul/op_kernel
       test:
         examples: False
       options:
@@ -974,7 +998,9 @@ mc2:
         - mc2/batch_mat_mul_reduce_scatter_allto_all/docs
         - mc2/batch_mat_mul_reduce_scatter_allto_all/README.md
       ut_cov_exclude:
-        - mc2/batch_mat_mul_reduce_scatter_allto_all
+        - mc2/batch_mat_mul_reduce_scatter_allto_all/op_api
+        - mc2/batch_mat_mul_reduce_scatter_allto_all/op_graph
+        - mc2/batch_mat_mul_reduce_scatter_allto_all/op_kernel
       test:
         examples: False
       options:
@@ -990,7 +1016,9 @@ mc2:
         - mc2/grouped_mat_mul_all_reduce/docs
         - mc2/grouped_mat_mul_all_reduce/README.md
       ut_cov_exclude:
-        - mc2/grouped_mat_mul_all_reduce
+        - mc2/grouped_mat_mul_all_reduce/op_api
+        - mc2/grouped_mat_mul_all_reduce/op_graph
+        - mc2/grouped_mat_mul_all_reduce/op_kernel
       test:
         examples: False
       options:
@@ -1006,7 +1034,9 @@ mc2:
         - mc2/grouped_mat_mul_allto_allv/docs
         - mc2/grouped_mat_mul_allto_allv/README.md
       ut_cov_exclude:
-        - mc2/grouped_mat_mul_allto_allv
+        - mc2/grouped_mat_mul_allto_allv/op_api
+        - mc2/grouped_mat_mul_allto_allv/op_graph
+        - mc2/grouped_mat_mul_allto_allv/op_kernel
       test:
         examples: False
       options:
@@ -1071,7 +1101,9 @@ mc2:
         - mc2/matmul_reduce_scatter/docs
         - mc2/matmul_reduce_scatter/README.md
       ut_cov_exclude:
-        - mc2/matmul_reduce_scatter
+        - mc2/matmul_reduce_scatter/op_api
+        - mc2/matmul_reduce_scatter/op_graph
+        - mc2/matmul_reduce_scatter/op_kernel
       options:
         - matmul_reduce_scatter
 
@@ -1243,7 +1275,9 @@ mc2:
         - mc2/moe_distribute_combine_add_rms_norm/docs
         - mc2/moe_distribute_combine_add_rms_norm/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_add_rms_norm
+        - mc2/moe_distribute_combine_add_rms_norm/op_api
+        - mc2/moe_distribute_combine_add_rms_norm/op_graph
+        - mc2/moe_distribute_combine_add_rms_norm/op_kernel
       test:
         examples: False
       options:
@@ -1292,7 +1326,9 @@ mc2:
         - mc2/moe_distribute_dispatch/docs
         - mc2/moe_distribute_dispatch/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_dispatch
+        - mc2/moe_distribute_dispatch/op_api
+        - mc2/moe_distribute_dispatch/op_graph
+        - mc2/moe_distribute_dispatch/op_kernel
       test:
         examples: False
       options:
