@@ -24,14 +24,14 @@
   在这个过程中，门控单元会决定有多少新信息存入隐藏状态，以及有多少旧信息需要被遗忘。
 
   $$
-  S_t := S_{t-1}(\alpha_t(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1}k_t)k_t^T
+  S_t := S_{t-1}(\alpha_t Diag(\alpha_{kt})(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t Diag(\alpha_{kt})S_{t-1} + \beta_t (v_t - \alpha_t Diag(\alpha_{kt})S_{t-1}k_t)k_t^T
   $$
 
   $$
   o := \frac{S_t q_t}{\sqrt{d_k}}
   $$
 
-  其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\beta_t \in R$，$o \in R^{d_v}$
+  其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\alpha_k \in R^{d_k}$，$\beta_t \in R$，$o \in R^{d_v}$
 
 
 ## 函数原型
@@ -174,10 +174,10 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
     <tr>
       <td>gk</td>
       <td>输入</td>
-      <td>预留参数，当前版本暂不支持。</td>
-      <td><ul><li>传入nullptr。</li></td>
-      <td>-</td>
-      <td>-</td>
+      <td>衰减系数，公式中的αk=e^gk</td>
+      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
       <td>(T, Nv, Dk)</td>
       <td>√</td>
     </tr>

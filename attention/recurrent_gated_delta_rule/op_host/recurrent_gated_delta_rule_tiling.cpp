@@ -169,11 +169,6 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CheckContext()
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(SSM_STATE_INDICES_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(SSM_STATE_INDICES_INDEX));
 
-    if (context_->GetOptionalInputDesc(GK_INDEX) != nullptr) {
-        OP_LOGE(context_->GetNodeName(), "gk parameter is not supported in the current version");
-        return ge::GRAPH_FAILED;
-    }
-    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -201,6 +196,12 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeDtype()
     if (context_->GetOptionalInputDesc(G_INDEX) != nullptr) {
         auto gamaDtype = context_->GetOptionalInputDesc(G_INDEX)->GetDataType();
         OP_CHECK_IF(gamaDtype != ge::DT_FLOAT, OP_LOGE(context_->GetNodeName(), "gama dtype should be float32"),
+                    return ge::GRAPH_FAILED);
+    }
+
+    if (context_->GetOptionalInputDesc(GK_INDEX) != nullptr) {
+        auto gamaKDtype = context_->GetOptionalInputDesc(GK_INDEX)->GetDataType();
+        OP_CHECK_IF(gamaKDtype != ge::DT_FLOAT, OP_LOGE(context_->GetNodeName(), "gamaK dtype should be float32"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -318,6 +319,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeFormat()
         OP_CHECK_IF(gamaFormat == ge::FORMAT_FRACTAL_NZ, OP_LOGE(context_->GetNodeName(), "gama format not support NZ"),
                     return ge::GRAPH_FAILED);
     }
+    if (context_->GetOptionalInputDesc(GK_INDEX) != nullptr) {
+        auto gamaKFormat = context_->GetOptionalInputDesc(GK_INDEX)->GetStorageFormat();
+        OP_CHECK_IF(gamaKFormat == ge::FORMAT_FRACTAL_NZ, OP_LOGE(context_->GetNodeName(), "gamaK format not support NZ"),
+                    return ge::GRAPH_FAILED);
+    }
     if (context_->GetOptionalInputDesc(ACC_TO_INDEX) != nullptr) {
         auto numAcceptedTokensFormat = context_->GetOptionalInputDesc(ACC_TO_INDEX)->GetStorageFormat();
         OP_CHECK_IF(numAcceptedTokensFormat == ge::FORMAT_FRACTAL_NZ,
@@ -343,7 +349,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::GetOptionalInput()
     } else {
         tilingData_.hasGama = 1;
     }
-
+    if (context_->GetOptionalInputDesc(GK_INDEX) == nullptr) {
+        tilingData_.hasGamaK = 0;
+    } else {
+        tilingData_.hasGamaK = 1;
+    }
     if (context_->GetOptionalInputDesc(ACC_TO_INDEX) == nullptr) {
         tilingData_.hasAcceptedTokens = 0;
     } else {
@@ -379,7 +389,13 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
     int64_t aDk = Ops::Base::CeilAlign(tilingData_.dk, static_cast<uint32_t>(16)); // 16 * 2 = 32B
     int64_t usedUbBytes = MAX_MTP * (4 * aDk + 2 * aDv); // 4 for qInQueue_ & kInQueue_, 2 for vInQueue_
     usedUbBytes += 128;                                  // reserve 128 Bytes
-    usedUbBytes += MAX_MTP * (4 * aNv + 2 * aNv);        // 4 for gamaInQueue_, 2 for betaInQueue_
+    if (tilingData_.hasGamaK) {
+        usedUbBytes += MAX_MTP * 4 * aDk; // 4 for gk gamaInQueue_
+    }
+    if (tilingData_.hasGama) {
+        usedUbBytes += MAX_MTP * 4 * aNv; // 4 for g gamaInQueue_
+    }
+    usedUbBytes += MAX_MTP * 2 * aNv; // 2 for betaInQueue_
     tilingData_.ubRestBytes = ubSize - usedUbBytes;
     usedUbBytes += MAX_MTP * (8 * aDk + 4 * aDv + 4 * aNv); // 8 for qk in ub, 4 for v in ub, 4 for beta in ub
     int64_t coeff = (2 + 2) * aDk + 4;                      // 2 for stateInQueue_, stateOutQueue_, 4 for attnOutQueue_
