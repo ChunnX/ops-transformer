@@ -1,0 +1,18 @@
+case_id;grad_shape;num_weights;dtype;padding_idx;scale_grad_by_freq
+0;[10, 800];100;float32;-1;False
+1;[32, 1600];200;float32;-1;False
+2;[64, 3200];500;float32;-1;False
+3;[10, 800];100;float16;-1;False
+4;[32, 1600];200;float16;-1;False
+5;[64, 3200];500;float16;-1;False
+6;[10, 800];100;bfloat16;-1;False
+7;[32, 1600];200;bfloat16;-1;False
+8;[10, 800];100;float32;0;False
+9;[32, 1600];200;float32;5;False
+10;[10, 800];100;float32;-1;True
+11;[32, 1600];200;float32;-1;True
+12;[64, 3200];500;float16;-1;True
+13;[10, 800];100;bfloat16;0;True
+14;[16, 4, 800];100;float32;-1;False
+15;[8, 8, 1600];200;float16;-1;False
+16;[4, 16, 3200];500;bfloat16;-1;True

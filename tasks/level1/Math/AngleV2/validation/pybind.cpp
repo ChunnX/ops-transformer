@@ -9,7 +9,8 @@
 at::Tensor custom_pybind_api(at::Tensor &x)
 {
     // alloc output memory
-    at::Tensor result = torch::empty_like(x);
+    auto result_dtype = (x.dtype() == torch::kHalf) ? torch::kHalf ? torch::kFloat;
+    at::Tensor result = torch::empty_like(x, x.options().dtype(result_dtype));
 
     // call aclnn interface to perform the computation
     EXEC_NPU_CMD(aclnnCustomOp, x, result);
