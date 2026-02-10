@@ -649,7 +649,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>numHeads</td>
         <td>输入</td>
         <td>query的head个数。</td>
-        <td>在BNSD、BSND、BNSD_BSND、BSND_BNSD、BNSD_NBSD、BSND_NBSD、TND场景下，需要与shape中的query的N轴shape值相同，否则执行异常。</td>
+        <td>在BNSD、BSND、BNSD_BSND、BSND_BNSD、BNSD_NBSD、BSND_NBSD、TND、NTD、NTD_TND、TND_NTD场景下，需要与shape中的query的N轴shape值相同，否则执行异常。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -706,10 +706,10 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>标识输入query、key、value的数据排布格式。</td>
         <td>
         <ul>
-            <li>当前支持BSH、BSND、BNSD、BNSD_BSND（输入为BNSD时，输出格式为BSND，A2、A3仅支持Q_S大于1）、BSND_BNSD（输入为BSND时，输出格式为BNSD）、BSH_BNSD（输入为BSH时，输出格式为BNSD）、BNSD_NBSD（输入为BNSD时，输出格式为NBSD）、BSND_NBSD（输入为BSND时，输出格式为NBSD）、BSH_NBSD（输入为BSH时，输出格式为NBSD）、TND（TND相关场景综合约束见<a href="#约束说明">约束说明</a>）。不特意指定时建议传入"BSH"。</li>
+            <li>当前支持BSH、BSND、BNSD、BNSD_BSND（输入为BNSD时，输出格式为BSND，A2、A3仅支持Q_S大于1）、BSND_BNSD（输入为BSND时，输出格式为BNSD）、BSH_BNSD（输入为BSH时，输出格式为BNSD）、BNSD_NBSD（输入为BNSD时，输出格式为NBSD）、BSND_NBSD（输入为BSND时，输出格式为NBSD）、BSH_NBSD（输入为BSH时，输出格式为NBSD）、TND（TND相关场景综合约束见<a href="#约束说明">约束说明</a>）、NTD、NTD_TND（输入为NTD时，输出格式为TND）、TND_NTD（输入为TND时，输出格式为NTD）。不特意指定时建议传入"BSH"。</li>
             <li>注意排布格式带下划线时，下划线左边表示输入query的layout，下划线右边表示输出output的格式。</li>
             <li>query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。</li>
-            <li>inputLayout=BSH_BNSD、BSND_BNSD、BNSD_BSND仅支持Q_D=K_D=V_D都等于64或128，或Q_D=K_D等于192，V_D等于128<br></li>
+            <li>inputLayout=BSH_BNSD、BSND_BNSD、BNSD_BSND、NTD、NTD_TND仅支持Q_D=K_D=V_D都等于64或128，或Q_D=K_D等于192，V_D等于128<br></li>
         </ul>
         </td>
         <td>CHAR</td>
@@ -725,7 +725,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>用户不特意指定时建议传入0，表示key/value和query的head个数相等。</li>
             <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景(D=64或者D=128)，和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; 其他场景仅支持numHeads与numKeyValueHeads的比值不能大于64</li>
-            <li>在BNSD、BSND、BNSD_BSND、BSND_BNSD、BNSD_NBSD、BSND_NBSD、TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常</li>
+            <li>在BNSD、BSND、BNSD_BSND、BSND_BNSD、BNSD_NBSD、BSND_NBSD、TND、NTD、NTD_TND、TND_NTD场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常</li>
         </ul>
         </td>
         <td>INT64</td>
@@ -1030,18 +1030,28 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         - query，attentionOut所有tensor的shapeSize不为0，若有lse且lse不为空，并且key，value中所有tensor的shapeSize为0，属于空Tensor。
         - attentionOut和lse都为空时，属于空Tensor。
         - 属于空Tensor时，跳过校验流程；否则，走正常校验流程。
-    -  BNSD_BSND场景下的综合限制：
-        - 不支持decode mla场景;
-        - GQA非量化场景仅支持D=64或D=128。
-    -  BSH_BNSD、BSND_BNSD场景下的综合限制：
-        - 不支持decode mla场景;
-        - 不支持左padding、tensorlist、pse、prefix。
-        - GQA非量化场景仅支持D=64或D=128。
-    -  BSH_NBSD、BSND_NBSD、BNSD_NBSD场景下的综合限制：
-        - 仅支持decode mla场景;
-    -  TND、TND_NTD、NTD_TND场景下query，key，value输入的综合限制：
-        - 仅支持TND;
-        - 不支持左padding、tensorlist、pseType=0、prefix。
+    -  BNSD_BSND、BSH_BNSD、BSND_BNSD、BSH_NBSD、BSND_NBSD、BNSD_NBSD场景下的综合限制：
+        - 当query的d等于512时：
+          - 仅支持BSH_NBSD、BSND_NBSD、BNSD_NBSD;
+          - 仅支持decode mla场景，要求queryRope和keyRope不等于空，queryRope和keyRope的d为64;
+        - 当query的d不等于512时：
+          - 仅支持BNSD_BSND、BSH_BNSD、BSND_BNSD;
+          - 支持prefill mla或gqa非量化场景，其中prefill mla场景需满足下述条件之一：
+            - query的d等于128，queryRope和keyRope不等于空，queryRope和keyRope的d为64;
+            - query的d等于192，queryRope和keyRope等于空。
+          - gqa非量化场景，NTD、NTD_TND仅支持D=64或D=128;
+    -  TND、NTD、TND_NTD、NTD_TND场景下query，key，value输入的综合限制：
+        - 当query的d等于512时：
+          - 仅支持TND、TND_NTD;
+          - 仅支持decode mla场景，要求queryRope和keyRope不等于空，queryRope和keyRope的d为64;
+          - 不支持左padding、tensorlist、pseType=0、prefix、伪量化。
+        - 当query的d不等于512时：
+          - 仅支持TND、NTD、NTD_TND;
+          - 支持prefill mla或gqa非量化场景，其中prefill mla场景需满足下述条件之一：
+            - query的d等于128，queryRope和keyRope不等于空，queryRope和keyRope的d为64;
+            - query的d等于192，queryRope和keyRope等于空。
+          - gqa非量化场景，NTD、NTD_TND仅支持D=64或D=128;
+          - 不支持左padding、tensorlist、pseType=0、prefix、伪量化。
 - <a id="public"></a>通用场景
     <table style="undefined;table-layout: fixed; width: 1000px">
         <colgroup>
@@ -1881,11 +1891,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <tr>
             <td>actualSeqLengths</td>
             <td></td>
-            <td>当前Ascend 950PR/Ascend 950DT仅在TND/NTD排布下支持配置 actualSeqLengthsQ，会在后续发布版本放开限制，actualSeqLengthsKV 支持在所有 layout 配置</td>
+            <td>当前Ascend 950PR/Ascend 950DT仅在TND/TND_NTD排布下支持配置 actualSeqLengthsQ，会在后续发布版本放开限制，actualSeqLengthsKV 支持在所有 layout 配置</td>
         </tr>
         <tr>
             <td>inputLayout</td>
-            <td>支持BSH、BSND、BNSD、BSH_NBSD、BSND_NBSD、BNSD_NBSD、TND</td>
+            <td>支持BSH、BSND、BNSD、BSH_NBSD、BSND_NBSD、BNSD_NBSD、TND、TND_NTD</td>
             <td>-</td>
         </tr>
         <tr>
@@ -1953,7 +1963,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <td rowspan="6">query d=128</td>
             <td>非量化</td>
             <td>inputLayout</td>
-            <td>BSH、BSND、TND、BNSD、BNSD_BSND、BSH_BNSD、BSND_BNSD</td>
+            <td>BSH、BSND、TND、NTD、NTD_NTD、BNSD、BNSD_BSND、BSH_BNSD、BSND_BNSD</td>
             <td>-</td>
         </tr>
         <tr>
