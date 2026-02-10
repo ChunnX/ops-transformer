@@ -747,6 +747,11 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T, quantType>::Init(
 template <typename T, typename quantType>
 __aicore__ inline void MoeV2GatherDynamicQuant<T, quantType>::Process()
 {
+    if (this->cols == 0) {
+        LocalTensor<float> dynamicQuantLocal = scaleOutQueue.template AllocTensor<float>();
+        Duplicate<float>(dynamicQuantLocal, 0.0, MAX_VALUE_NUM);
+        scaleOutQueue.FreeTensor(dynamicQuantLocal);
+    }
     if (this->blockIdx < this->needCoreNum) {
         currentLoopRows = perLoopRows;
         if (colLoops > 1) { // 一行无法全载，需要workspace
