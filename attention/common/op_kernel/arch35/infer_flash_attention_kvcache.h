@@ -58,12 +58,9 @@ __aicore__ inline void InitKVLeftPaddingSize(RunParamStr<isInfer>& runParam, con
 }
 
 TEMPLATE_INTF
-__aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam, 
-    const ConstInfo<isInfer, hasRope> &constInfo, const AttenMaskInfo &attenMaskInfo, int32_t bIdx,
-    GlobalTensor<INPUT_T>& keyGm, __gm__ int64_t *actualSeqQlenAddr,
-    __gm__ int64_t * actualSeqKvlenAddr)
+__aicore__ inline void GetKVSeqLengthForTensorList(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope>& constInfo, int32_t bIdx, GlobalTensor<INPUT_T>& keyGm)
 {
-    // TensorList场景获取不同batch的KvSeq长度
     if (constInfo.isKvContinuous == 0) {
         ListTensorDesc keyListTensorDesc((__gm__ void*)keyGm.GetPhyAddr());
         AscendC::TensorDesc<__gm__ uint8_t> kvTensorDesc;
@@ -76,13 +73,15 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
             runParam.s2InCurrentBatch = kvTensorDesc.GetShape(1);
         }
     }
+}
 
-    int64_t actualS1Size = 0;
-    int64_t actualS2Size = 0;
-    int64_t actualSeqMin = 1;
-    int64_t actualSeqKVMin = 1;
+TEMPLATE_INTF
+__aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope>& constInfo, int32_t bIdx,
+    __gm__ int64_t* actualSeqQlenAddr, int64_t actualSeqMin)
+{
     if (constInfo.isActualLenDimsNull) {
-        actualS1Size = constInfo.s1Size;
+        int64_t actualS1Size = constInfo.s1Size;
         if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
             actualS1Size = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = constInfo.s1Size;
@@ -90,36 +89,51 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
         if (constInfo.isGqa) {
             actualS1Size = constInfo.gS1;
         }
-    } else {
-        if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) &&
-            layout == LayOutTypeEnum::LAYOUT_BSH) {
-            runParam.actualSeqLengthOfMlaPerBatch = ((constInfo.actualSeqLenSize == actualSeqMin) ?
-                actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx]);
-            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
-        } else if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) &&
-            layout == LayOutTypeEnum::LAYOUT_TND) {
-            runParam.actualSeqLengthOfMlaPerBatch = ((bIdx == 0) ? actualSeqQlenAddr[0] :
-                actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1]);
-            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
-        } else if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) &&
-            layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            actualS1Size = constInfo.gS1;
-            runParam.actualSeqLengthOfMlaPerBatch = (constInfo.actualSeqLenSize == actualSeqMin) ?
+        return actualS1Size;
+    }
+    
+    int64_t actualS1Size = 0;
+    if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+            runParam.actualSeqLengthOfMlaPerBatch = 
+                (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
-            actualS1Size = (bIdx == 0) ? actualSeqQlenAddr[0] :
+            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
+        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+            runParam.actualSeqLengthOfMlaPerBatch = (bIdx == 0) ? actualSeqQlenAddr[0] :
                 actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
-            if (constInfo.isGqa) {
-                actualS1Size *= constInfo.gSize;
-            }
-        } else {
-            actualS1Size = (constInfo.actualSeqLenSize == actualSeqMin) ? actualSeqQlenAddr[0] :
-                actualSeqQlenAddr[bIdx];
-            if (constInfo.isGqa) {
-                actualS1Size *= constInfo.gSize;
-            }
+            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
+        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+            actualS1Size = constInfo.gS1;
+            runParam.actualSeqLengthOfMlaPerBatch = 
+                (constInfo.actualSeqLenSize == actualSeqMin) ?
+                actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
+        }
+    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || 
+                         layout == LayOutTypeEnum::LAYOUT_NTD) {
+        actualS1Size = (bIdx == 0) ? actualSeqQlenAddr[0] :
+            actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
+        if (constInfo.isGqa) {
+            actualS1Size *= constInfo.gSize;
+        }
+    } else {
+        actualS1Size = (constInfo.actualSeqLenSize == actualSeqMin) ? 
+            actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
+        if (constInfo.isGqa) {
+            actualS1Size *= constInfo.gSize;
         }
     }
+    
+    return actualS1Size;
+}
+
+TEMPLATE_INTF
+__aicore__ inline int64_t CalculateActualS2Size(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope>& constInfo, int32_t bIdx,
+    __gm__ int64_t* actualSeqKvlenAddr, int64_t actualSeqKVMin)
+{
+    int64_t actualS2Size = 0;
+    
     if (constInfo.isActualLenDimsKVNull) {
         actualS2Size = (constInfo.isKvContinuous == 1) ? constInfo.s2Size :
             runParam.s2InCurrentBatch;
@@ -134,33 +148,36 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
                 actualSeqKvlenAddr[0] : actualSeqKvlenAddr[bIdx];
         }
     }
+    
+    return actualS2Size;
+}
 
-    InitQueryLeftPaddingSize<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualS1Size);
-    InitKVLeftPaddingSize<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualS2Size);
-
-    runParam.actualS1Size = actualS1Size;
-    runParam.actualS2Size = actualS2Size;
-    GetSparseParam<TEMPLATE_INTF_ARGS>(constInfo, attenMaskInfo, runParam);
-
+TEMPLATE_INTF
+__aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope>& constInfo)
+{
     if constexpr (enableKVPrefix) {
         runParam.actualS1Size = (runParam.actualS1Size >
-                                 runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch) ?
-                                    runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch :
-                                    runParam.actualS1Size;
+            runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch) ?
+            runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch :
+            runParam.actualS1Size;
     } else {
         if constexpr ((hasRope && (dTemplateType == DTemplateType::Aligned576)) &&
             layout != LayOutTypeEnum::LAYOUT_BNSD) {
-            runParam.actualS1Size = (runParam.actualS1Size > runParam.actualS2Size * constInfo.gSize +
-                                     runParam.preTokensPerBatch) ? runParam.actualS2Size * constInfo.gSize +
-                                     runParam.preTokensPerBatch : runParam.actualS1Size;
+            runParam.actualS1Size = (runParam.actualS1Size >
+                runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch) ?
+                runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch :
+                runParam.actualS1Size;
         } else if (constInfo.isGqa && constInfo.s1Size == 1 && layout != LayOutTypeEnum::LAYOUT_BNSD) {
-            runParam.actualS1Size = (runParam.actualS1Size > (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize) ?
-                                    (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize :
-                                     runParam.actualS1Size;
+            runParam.actualS1Size = (runParam.actualS1Size >
+                (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize) ?
+                (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize :
+                runParam.actualS1Size;
         } else {
-            runParam.actualS1Size = (runParam.actualS1Size > runParam.actualS2Size + runParam.preTokensPerBatch) ?
-                                        runParam.actualS2Size + runParam.preTokensPerBatch :
-                                        runParam.actualS1Size;
+            runParam.actualS1Size = (runParam.actualS1Size >
+                runParam.actualS2Size + runParam.preTokensPerBatch) ?
+                runParam.actualS2Size + runParam.preTokensPerBatch :
+                runParam.actualS1Size;
         }
     }
 
@@ -171,31 +188,83 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
     if (runParam.actualS1Size < 0) { // 修正preToken/nextToken导致全无效场景的qs值
         runParam.actualS1Size = 0;
     }
+}
 
+TEMPLATE_INTF
+__aicore__ inline void CalculateQueryOffset(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope>& constInfo, int32_t bIdx,
+    __gm__ int64_t* actualSeqQlenAddr)
+{
     if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-        runParam.qBOffset = bIdx * constInfo.s1Size * constInfo.n2GD + runParam.queryLeftPaddingSize * constInfo.n2GD;
+        runParam.qBOffset = bIdx * constInfo.s1Size * constInfo.n2GD + 
+                            runParam.queryLeftPaddingSize * constInfo.n2GD;
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         runParam.qBOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1] * constInfo.n2GD;
     } else {
-        runParam.qBOffset = bIdx * constInfo.s1Size * constInfo.n2GD + runParam.queryLeftPaddingSize * constInfo.dSize;
+        runParam.qBOffset = bIdx * constInfo.s1Size * constInfo.n2GD + 
+                            runParam.queryLeftPaddingSize * constInfo.dSize;
     }
+}
 
-    // 推理的TND场景的mask和pse都是padding过的
-    runParam.b1SSOffset = runParam.boIdx * constInfo.s1S2;
-    // 推理的mask的sequence length可能大于qk的sequence length
-    runParam.b1SSAttenMaskOffset = runParam.boIdx * (uint64_t)attenMaskInfo.attenMaskS1Size *
-        (uint64_t)attenMaskInfo.attenMaskS2Size;
+TEMPLATE_INTF
+__aicore__ inline void CalculateRopeOffset(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope>& constInfo, int32_t bIdx,
+    __gm__ int64_t* actualSeqQlenAddr)
+{
     if constexpr (hasRope) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             runParam.qRopeBOffset = bIdx * constInfo.s1Size * constInfo.n2GDR +
                 runParam.queryLeftPaddingSize * constInfo.n2GDR;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            runParam.qRopeBOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1] * constInfo.n2GDR;
+            runParam.qRopeBOffset = (bIdx == 0) ? 0 : 
+                                   actualSeqQlenAddr[bIdx - 1] * constInfo.n2GDR;
         } else {
             runParam.qRopeBOffset = bIdx * constInfo.s1Size * constInfo.n2GDR +
                 runParam.queryLeftPaddingSize * constInfo.dSizeRope;
         }
     }
+}
+
+TEMPLATE_INTF
+__aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam, 
+    const ConstInfo<isInfer, hasRope> &constInfo, const AttenMaskInfo &attenMaskInfo, int32_t bIdx,
+    GlobalTensor<INPUT_T>& keyGm, __gm__ int64_t *actualSeqQlenAddr,
+    __gm__ int64_t * actualSeqKvlenAddr)
+{
+    constexpr int64_t actualSeqMin = 1;
+    constexpr int64_t actualSeqKVMin = 1;
+    
+    // TensorList场景获取不同batch的KvSeq长度
+    GetKVSeqLengthForTensorList<TEMPLATE_INTF_ARGS>(runParam, constInfo, bIdx, keyGm);
+
+    // 计算实际序列长度
+    int64_t actualS1Size = CalculateActualS1Size<TEMPLATE_INTF_ARGS>(
+        runParam, constInfo, bIdx, actualSeqQlenAddr, actualSeqMin);
+    int64_t actualS2Size = CalculateActualS2Size<TEMPLATE_INTF_ARGS>(
+        runParam, constInfo, bIdx, actualSeqKvlenAddr, actualSeqKVMin);
+
+    // 初始化padding大小
+    InitQueryLeftPaddingSize<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualS1Size);
+    InitKVLeftPaddingSize<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualS2Size);
+
+    runParam.actualS1Size = actualS1Size;
+    runParam.actualS2Size = actualS2Size;
+    GetSparseParam<TEMPLATE_INTF_ARGS>(constInfo, attenMaskInfo, runParam);
+
+    // 调整S1大小以适应per token、next token设置
+    AdjustActualS1Size<TEMPLATE_INTF_ARGS>(runParam, constInfo);
+
+    // 计算query偏移量
+    CalculateQueryOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, bIdx, actualSeqQlenAddr);
+    
+    // 推理的TND场景的mask和pse都是padding过的
+    runParam.b1SSOffset = runParam.boIdx * constInfo.s1S2;
+    // 推理的mask的sequence length可能大于qk的sequence length
+    runParam.b1SSAttenMaskOffset = runParam.boIdx * (uint64_t)attenMaskInfo.attenMaskS1Size *
+        (uint64_t)attenMaskInfo.attenMaskS2Size;
+        
+    // 计算RoPE偏移量
+    CalculateRopeOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, bIdx, actualSeqQlenAddr);
 }
 
 TEMPLATE_INTF
