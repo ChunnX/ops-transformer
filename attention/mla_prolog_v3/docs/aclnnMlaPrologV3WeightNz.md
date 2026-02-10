@@ -175,8 +175,8 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | ckvkrRepoMode     | 输入      | 表示kv_cache和kr_cache的存储模式，Host侧参数。  | - 0表示kv_cache和kr_cache分别存储，1表示kv_cache和kr_cache合并存储，默认值为0| INT64  | - | -- | --    |-   |
   | quantScaleRepoMode     | 输入      | 表示量化scale的存储模式，Host侧参数。  | - 0表示量化scale和数据分别存储，1表示量化scale和数据合并存储作为kvCacheRef输出，默认值为0| INT64  | - | -- | --    |-   |
   | tileSize     | 输入      | 表示per-tile量化时每个tile的大小，仅在kv_cache_quant_mode为3时有效，Host侧参数。  | - 默认值为128 | INT64 | - | -- | --    |-   |
-  | qcQrScale     | 输入      |   表示Query的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | - | -   | -  |- |
-  | kcScale     | 输入      |   表示Key的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | - | -    | -  |- |
+  | qcQrScale     | 输入      |   表示Query的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | DOUBLE | -   | -  |- |
+  | kcScale     | 输入      |   表示Key的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | DOUBLE | -    | -  |- |
   | queryOut                   | 输出      | 公式中Query的输出tensor（对应$q^N$），Device侧的aclTensor。     | -  | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN | ND         | - BS合轴：(T,N,Hckv) <br>- BS非合轴：(B,S,N,Hckv) |×   |
   | queryRopeOut               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$），Device侧的aclTensor。  | - | BFLOAT16       | BFLOAT16 | ND         | - BS合轴：(T,N,Dr) <br>- BS非合轴：(B,S,N,Dr)     |×   |
   | dequantScaleQNopeOutOptional  | 输出           | 公式中Query输出的量化参数，Device侧的aclTensor。  | -     | FLOAT      | FLOAT| ND   | - BS合轴：(T,N,1) <br>- BS非合轴：(B*S,N,1)   |×   |
@@ -232,7 +232,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | Dr           | qk 位置编码维度                | 取值固定为：64                                                              |
   | Nkv          | kv 的 head 数                  | 取值固定为：1                                                               |
   | BlockNum     | PagedAttention 场景下的块数    | 1. 当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 `(B*S)/BlockSize` 向上取整的结果。<br> 2. 当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于`B` * `(S / BlockSize)`向上取整的结果（即`B * Ceil(S/BlockSize)`）。注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。 |
-  | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br>                                        |
+  | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br>                                              |
   | T            | BS 合轴后的大小                | 取值范围：不限制；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 |
   | Dtile        | kvCache的D维度的大小           | - Per-tile量化场景下，取值固定为656 <br> - 其他场景下，取值固定为Hckv（512）                                                       |
 
