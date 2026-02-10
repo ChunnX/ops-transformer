@@ -76,7 +76,7 @@ public:
                     CopyInGating<float>(rowIdx, ubIdx, curCol, gatingLocal);
                     ComputeTopK<float>(rowIdx, ubIdx, curCol, indicesOutLocal, finishedLocal);
                 }
-                ComputeSoftmax<float>(gatingLocal, indicesOutLocal);
+                ComputeSoftmax<float>(gatingLocal);
             } else {
                 LocalTensor<T> gatingLocal = gatingQueue.template AllocTensor<T>();
 
@@ -85,7 +85,7 @@ public:
                     CopyInGating<T>(rowIdx, ubIdx, curCol, gatingLocal);
                     ComputeTopK<T>(rowIdx, ubIdx, curCol, indicesOutLocal, finishedLocal);
                 }
-                ComputeSoftmax<T>(gatingLocal, indicesOutLocal);
+                ComputeSoftmax<T>(gatingLocal);
             }
             if (exitFinished) {
                 if (finishedLocal.GetValue(0)) {
@@ -93,6 +93,7 @@ public:
                 }
                 finishedQueue.FreeTensor(finishedLocal);
             }
+            indicesOutQueue.EnQue(indicesOutLocal);
             CopyOut(rowIdx);
         }
     }
@@ -187,7 +188,7 @@ private:
     }
 
     template <typename U>
-    __aicore__ inline void ComputeSoftmax(LocalTensor<U>& gatingLocal, LocalTensor<int32_t>& indicesOutLocal)
+    __aicore__ inline void ComputeSoftmax(LocalTensor<U>& gatingLocal)
     {
         LocalTensor<U> outLocal = outQueue.template AllocTensor<U>();
         SoftMaxShapeInfo softmaxShapeInfoData;
@@ -204,7 +205,6 @@ private:
 
         gatingQueue.FreeTensor(gatingLocal);
         outQueue.EnQue(outLocal);
-        indicesOutQueue.EnQue(indicesOutLocal);
     }
 
     __aicore__ inline void CopyOut(int32_t progress)
