@@ -12,6 +12,7 @@ operator_group_1:
   - mla_prolog_v2
   - mla_prolog_v3
   - gather_pa_kv_cache
+  - scatter_pa_cache
   - scatter_pa_kv_cache
   - attention_update
   - fused_infer_attention_score,10-7

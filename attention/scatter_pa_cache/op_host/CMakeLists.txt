@@ -13,7 +13,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         scatter_pa_cache_def.cpp
     )
-    
+    set(scatter_pa_cache_depends attention/scatter_pa_kv_cache CACHE INTERNAL "Dependencies for scatter_pa_cache")
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME ScatterPaCache
