@@ -215,10 +215,11 @@ static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &
                     return false);
 
     // 校验BS是否被worldSize整除
+    const char* dimDesc = (xDimNum == THREE_DIMS) ? "B*S" : "BS"; // 报错信息二维时为BS, 三维时为B*S
     OP_TILING_CHECK(xValueBS % runInfo.rankSize != 0,
                     OP_LOGE(nodeName,
-                            "Input tensor 'x' has shape %s. The B*S dimension (%lu) is invalid, which must be divisible by rank size (%u).",
-                            Ops::Base::ToString(xShape->GetStorageShape()).c_str(), xValueBS, runInfo.rankSize),
+                            "Input tensor 'x' has shape %s. The %s dimension (%lu) is invalid, which must be divisible by world_size (%u).",
+                            Ops::Base::ToString(xShape->GetStorageShape()).c_str(), dimDesc, xValueBS, runInfo.rankSize),
                     return false);
 
     // 校验H是否在[1024, 8192]之间，且能被128整除
