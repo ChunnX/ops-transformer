@@ -381,6 +381,10 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const acl
     // 目前只有PerToken动态量化+PerChannel静态量化场景，后续场景直接在这里补充判断
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         isAllDtypesValid = CheckAllDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantDtype, output, alltoAllOutOptional);
+    } else {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "The input x1QuantMode %ld and x2QuantMode %ld do not match any currently supported quantization mode scenarios.",
+                x1QuantMode, x2QuantMode);
     }
     return isAllDtypesValid;
 }
