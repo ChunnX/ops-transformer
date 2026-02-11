@@ -224,7 +224,7 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
         inputKeyQueue_.FreeTensor(inputKeyLocal);
     } else if constexpr (isInteger8or16_) {
         LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-        CastToOrigin<U>(inputKeyLocal, kTmpLocal, tilingData_->kHeadSize);
+        CastToOrigin<U>(inputKeyLocal, kTmpLocal, handleNum);
         event_t eventVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(eventVtoMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
@@ -293,7 +293,7 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
         inputValueQueue_.FreeTensor(inputValueLocal);
     } else if constexpr (isInteger8or16_) {
         LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
-        CastToOrigin<U>(inputValueLocal, vTmpLocal, tilingData_->vHeadSize);
+        CastToOrigin<U>(inputValueLocal, vTmpLocal, handleNum);
         event_t eventVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(eventVtoMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
