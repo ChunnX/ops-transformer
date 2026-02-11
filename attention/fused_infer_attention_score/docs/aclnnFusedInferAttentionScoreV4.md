@@ -566,7 +566,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
-            <td>(Q_N,)</a></td>
+            <td>(Q_N)</a></td>
             <td>×</td>
         </tr>
         <tr>
