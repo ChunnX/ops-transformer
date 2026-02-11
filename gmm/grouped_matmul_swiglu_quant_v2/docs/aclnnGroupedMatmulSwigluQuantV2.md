@@ -15,7 +15,13 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。本接口相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)，新增了MXFP8、MXFP4量化场景（仅Ascend 950PR/Ascend 950DT支持），参数weight, weightScale, weightAssistMatrix的字段类型变为tensorlist，请根据实际情况选择合适的接口。
+- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
+
+  相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)接口，**此接口新增：**
+    
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+      - 新增了MXFP8、MXFP4、Pertoken量化场景。
+      - 参数weight, weightScale, weightAssistMatrix的字段类型变为tensorlist，请根据实际情况选择合适的接口。
 - 计算公式：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     <details>
@@ -205,13 +211,13 @@
 
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times ceil(K / 64) \times N \times 2}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M \times ceil(K / 64) \times 2}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
+        * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
+        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
 
         * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
-        * $Q\_scale∈\mathbb{R}^{M \times ceil((N / 2) / 64) \times 2}$：量化缩放因子。
+        * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
  	 
@@ -402,7 +408,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td><ul>
           <li>0表示FLOAT。</li>
           <li>1表示FLOAT16。</li>
-          <li>27表示BF16。</li>
+          <li>27表示BFLOAT16。</li>
           <li>28表示UNDEFINED。</li>
         </ul></td>
         <td>INT64</td>
@@ -672,6 +678,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
+    - groupList第1维最大支持1024，即最多支持1024个group。
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
           <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
@@ -753,7 +760,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         - MX量化场景下，需满足N为128对齐。
         - MXFP4场景不支持K=2。
         - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E2M1时，需满足N为大于等于4的偶数。
-        - groupList第1维最大支持1024，即最多支持1024个group。
     
     - Pertoken量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
@@ -778,25 +784,25 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
             <tr>
               <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
               <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT、BF16</td>
+              <td>FLOAT、BFLOAT16</td>
               <td>FLOAT</td>
               <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
               <td>FLOAT</td>
             </tr>
             <tr>
-              <td>INT_8</td>
-              <td>INT_8</td>
-              <td>FLOAT、BF16、FLOAT16</td>
+              <td>INT8</td>
+              <td>INT8</td>
+              <td>FLOAT、BFLOAT16、FLOAT16</td>
               <td>FLOAT</td>
-              <td>INT_8</td>
+              <td>INT8</td>
               <td>FLOAT</td>
             </tr>
             <tr>
-              <td>HIFLOAT_8</td>
-              <td>HIFLOAT_8</td>
-              <td>FLOAT、BF16</td>
+              <td>HIFLOAT8</td>
+              <td>HIFLOAT8</td>
+              <td>FLOAT、BFLOAT16</td>
               <td>FLOAT</td>
-              <td>HIFLOAT_8</td>
+              <td>HIFLOAT8</td>
               <td>FLOAT</td>
             </tr>
           </tbody>
@@ -835,7 +841,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
             </tr>
           </tbody>
           </table>
-        - groupList第1维最大支持1024，即最多支持1024个group。
 
 ## 调用示例
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
