@@ -1404,37 +1404,48 @@ protected:
         // dSize小于64的场景，无需切D， workspace占用较小
         if (dSize <= D_SPECIFIC_SIZE) {
             // stage1占用2倍的空间，stage2占用2倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 +
-                            SPACE_NUM_2 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                                                               coreParams.get_s1BaseSize() * alignedD *
+                                                                               calcTypeSize) *
+                                                aivNum) +
                             WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用2倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
                 workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                SPACE_NUM_2 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
+                                                    aivNum) +
                                 WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用2倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
                 workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                SPACE_NUM_2 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
+                                                    aivNum) +
                                 WORK_SPACE_RESERVE_SIZE;
             }
-            workspaces[0] += 300*1024*1024;
         } else {
             // 切D场景，stage1占用2倍的空间，stage2占用4倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 +
-                            SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                                                               coreParams.get_s1BaseSize() * alignedD *
+                                                                               calcTypeSize) *
+                                                aivNum) +
                             WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用4倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
                 workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
+                                                    aivNum) +
                                 WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用4倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
                 workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
+                                                    aivNum) +
                                 WORK_SPACE_RESERVE_SIZE;
             }
         }
