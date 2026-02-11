@@ -40,7 +40,7 @@ protected:
 
 private:
     uint64_t tilingKey_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::RESERVED_VERSION;
     MoeReRoutingTilingData tilingData_;
     ParamsMoeReRouting commonParams_;
 };

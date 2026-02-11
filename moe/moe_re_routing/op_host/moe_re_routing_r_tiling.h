@@ -16,6 +16,7 @@
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_RE_R_TILING_H_
 
 #include "moe_re_routing_tiling_base.h"
+#include "tiling_base/tiling_util.h"
 
 namespace optiling {
 
@@ -31,7 +32,7 @@ protected:
     ge::graphStatus PostTiling() override;
     bool IsCapable() override
     {
-        return socVersion_ == platform_ascendc::SocVersion::ASCEND950;
+        return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
 
 private:

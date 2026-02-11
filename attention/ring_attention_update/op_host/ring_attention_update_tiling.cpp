@@ -15,6 +15,7 @@
 
 #include <iostream>
 #include "log/log.h"
+#include "tiling_base/tiling_util.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -531,8 +532,7 @@ static ge::graphStatus Tiling4RingAttentionUpdate(gert::TilingContext* context) 
   OP_CHECK_IF(platformInfoPtr == nullptr,
     OP_LOGE(context, "platformInfoPtr is null"),
     return ge::GRAPH_FAILED);
-  auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-  if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950) {
+  if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
     OP_LOGD(context->GetNodeName(), "RingAttentionUpdateRegbaseTiling tiling start");
     return Tiling4RingAttentionUpdateRegbase(context);
   }
