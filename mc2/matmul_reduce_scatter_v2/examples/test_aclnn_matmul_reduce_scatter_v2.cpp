@@ -120,9 +120,9 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
     std::vector<int32_t> x2ScaleHostData(x2ScaleShapeSize, 0);
     std::vector<int16_t> outHostData(outShapeSize, 0);
     // 创建tensor
-    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
+    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2);
+    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x1Scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -133,7 +133,7 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
 
     // 调用第一阶段接口
     ret = aclnnMatmulReduceScatterV2GetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, "ccu",
+        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, "aiv",
         out, amaxOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
