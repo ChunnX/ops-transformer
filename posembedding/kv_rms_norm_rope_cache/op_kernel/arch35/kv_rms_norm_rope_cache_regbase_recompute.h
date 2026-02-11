@@ -1475,7 +1475,7 @@ public:
 
     __aicore__ inline void RopeSymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
     {
-        for (uint16_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
+        for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
             LocalTensor<T_KV> cosLocalPart1 = inQueueCosSin.AllocTensor<T_KV>();
             kScaleLocalPart1 = kScaleOffsetQueue.AllocTensor<float>();
@@ -1698,7 +1698,7 @@ public:
 
     __aicore__ inline void RopeAsymQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
     {
-        for (uint16_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
+        for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
             LocalTensor<T_KV> cosLocalPart1 = inQueueCosSin.AllocTensor<T_KV>();
             kScaleLocalPart1 = kScaleOffsetQueue.AllocTensor<float>();
@@ -1925,7 +1925,7 @@ public:
 
     __aicore__ inline void RopeSymQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
     {
-        for (uint16_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
+        for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
             LocalTensor<T_KV> cosLocalPart1 = inQueueCosSin.AllocTensor<T_KV>();
             kScaleLocalPart1 = kScaleOffsetQueue.AllocTensor<float>();
@@ -2011,7 +2011,7 @@ public:
 
     __aicore__ inline void RopeWithoutQuant(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinOffset, int64_t kCacheRowOffset) 
     {
-        for (uint16_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
+        for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
             LocalTensor<T_KV> cosLocalPart1 = inQueueCosSin.AllocTensor<T_KV>();
             kOutLocal = outQueue.AllocTensor<T_KV>();
@@ -2218,7 +2218,7 @@ public:
 
     __aicore__ inline void RopeAsymQuantWithKCache(int64_t xDimOffset, int64_t rowIdx, int64_t cosSinDimOffset, int64_t kCacheRowOffset) 
     {
-        for (uint16_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
+        for (int64_t ubIdx = 0; ubIdx < ubFactorDkLoopCountCeil; ubIdx++) {
             LocalTensor<T_KV> ropeLocal = inQueueX.AllocTensor<T_KV>();
             LocalTensor<T_KV> cosLocalPart1 = inQueueCosSin.AllocTensor<T_KV>();
             kScaleLocalPart1 = kScaleOffsetQueue.AllocTensor<float>();
