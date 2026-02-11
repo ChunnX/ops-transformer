@@ -373,7 +373,7 @@ constexpr MatmulConfig CFG_SAMEB_G_64_S2_128_D512 = GetPFACustomConfig(
 
 struct ConstParam {
     int64_t tmpBlockIdx;
-    uint32_t subBlockIdx; // 单个blockDim中vectorCore编号: 0或者1
+    uint32_t subBlockIdx; // 单个numBlocks中vectorCore编号: 0或者1
 
     int32_t sIdStart;        // 分核后，单个核batch的开始idx
     int32_t sIdEnd;          // 分核后，单个核batch的结束idx

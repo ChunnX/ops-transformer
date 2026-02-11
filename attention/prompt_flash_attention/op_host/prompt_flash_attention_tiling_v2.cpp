@@ -290,7 +290,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::CheckEmptyTensor(ContextParamsForP
 }
 
 void PromptFlashAttentionTilingV2::SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams,
-    uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData) {
+    uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData) {
     faRunFlag_ = true;
     quantMode = NoQuantMode;
     PromptFlashAttentionInitOutputSplit(contextKeyParams.outputShape->GetStorageShape().GetShapeSize(), tilingData);
@@ -305,7 +305,7 @@ void PromptFlashAttentionTilingV2::SetEmptyTensor(ContextParamsForPFATiling& con
             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "platformInfoPtr is null!"),
             return);
             auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(coreNum, aicNum, coreNum);
+    numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(coreNum, aicNum, coreNum);
 
     size_t* workspace = contextKeyParams.workspaceSize;
     const size_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -4506,7 +4506,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::ComputeTilingData(ContextParamsFor
 }
 
 ge::graphStatus PromptFlashAttentionTilingV2::ComputeTilingKey(ContextParamsForPFATiling& contextKeyParams,
-    uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData) {
+    uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData) {
     bool tilingRet = TilingGetTilingKeyAttentionAscendC(contextKeyParams, tilingData);
     OP_CHECK_IF(!tilingRet, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Get tilingKey fail"),
         return ge::GRAPH_FAILED);
@@ -4515,7 +4515,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::ComputeTilingKey(ContextParamsForP
         OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "platformInfoPtr is null"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
 
     size_t* workspaces = contextKeyParams.workspaceSize;
     workspaces[0] = GetPFAWorkSpaceSize(tilingData);
@@ -4801,7 +4801,7 @@ void PromptFlashAttentionTilingV2::InitializeMaxWorkspace(PFAShapeInfo& querySha
 }
 
 ge::graphStatus PromptFlashAttentionTilingV2::RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
-    uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData) {
+    uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData) {
     GetMaxWorkspaceFlag(contextKeyParams);
 
     // set memory parameters
@@ -4822,7 +4822,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::RunBigKernelTilingWithParams(Conte
         return ge::GRAPH_FAILED;
     }
     if (emptyTensor) {
-        SetEmptyTensor(contextKeyParams, blockDimToBeSet, tilingData);
+        SetEmptyTensor(contextKeyParams, numBlocksToBeSet, tilingData);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -4899,7 +4899,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::RunBigKernelTilingWithParams(Conte
     }
 
     // Compute tiling key.
-    if (ComputeTilingKey(contextKeyParams, blockDimToBeSet, tilingData) != ge::GRAPH_SUCCESS) {
+    if (ComputeTilingKey(contextKeyParams, numBlocksToBeSet, tilingData) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -4924,10 +4924,10 @@ void PromptFlashAttentionTilingV2::SetTilingKey(ContextParamsForPFATiling& conte
 }
 
 ge::graphStatus PromptFlashAttentionTilingV2::DoSubOpTiling(PromptFlashAttentionTilingData& tilingData, ContextParamsForPFATiling& contextParamsForPFATiling) {
-    uint32_t blockDimToBeSet;
-    auto ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, blockDimToBeSet, tilingData);
+    uint32_t numBlocksToBeSet;
+    auto ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, numBlocksToBeSet, tilingData);
     OP_CHECK_IF(ret == ge::GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to parse tiling params!"), return ge::GRAPH_FAILED);
-    context_->SetBlockDim(blockDimToBeSet);
+    context_->SetBlockDim(numBlocksToBeSet);
     OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         0, context_->GetRawTilingData()->GetCapacity()) != EOK,
         OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to memset tiling data"),

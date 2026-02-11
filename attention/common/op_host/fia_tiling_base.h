@@ -71,9 +71,9 @@ protected:
     virtual bool IsCapable() = 0;
     virtual ge::graphStatus DoOpTiling() = 0;
 
-    [[nodiscard]] ge::graphStatus SetBlockDim(uint32_t blockDim) const
+    [[nodiscard]] ge::graphStatus SetNumBlocks(uint32_t numBlocks) const
     {
-        context_->SetBlockDim(blockDim);
+        context_->SetBlockDim(numBlocks);
         return ge::GRAPH_SUCCESS;
     }
 

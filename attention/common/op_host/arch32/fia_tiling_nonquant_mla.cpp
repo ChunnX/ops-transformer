@@ -243,7 +243,7 @@ void FiaTilingNonQuantMla::InitParams()
 {
     perfMode_ = FiaTemplateId::HIGH_PERFORMANCE_MLA;
     coreNum_ = aicNum_;
-    blockDim_ = aicNum_; // Tiling下沉首次Tiling也会校验blockDim_是否为0，为避免拦截报错，将blockDim_设置为aicNum_，实际不生效
+    numBlocks_ = aicNum_; // Tiling下沉首次Tiling也会校验numBlocks_是否为0，为避免拦截报错，将numBlocks_设置为aicNum_，实际不生效
 
     headDimAlign_ = Align(fiaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
     ZeroTensorProcess();
@@ -551,14 +551,14 @@ void FiaTilingNonQuantMla::CalcMaxWorkspaceSize()
     workspaceSize_ += CalcFlashDecodeWorkspace(aicNum_);
 }
 
-void FiaTilingNonQuantMla::CalcBlockDim(uint32_t coreNum)
+void FiaTilingNonQuantMla::CalcNumBlocks(uint32_t coreNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
     auto aicNum = coreNum;
     auto aivNum = aicNum * cvRatio_;
 
-    blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
 void FiaTilingNonQuantMla::CalcScheduleMode()
@@ -579,13 +579,13 @@ ge::graphStatus FiaTilingNonQuantMla::DoOpTiling()
     } else {
         Split();
         FillTiling();
-        CalcBlockDim(usedCoreNum_);
+        CalcNumBlocks(usedCoreNum_);
         CalcScheduleMode();
         CalcWorkspaceSize();
         GenTilingKey();
     }
 
-    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
+    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
         (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||

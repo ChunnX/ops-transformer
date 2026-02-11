@@ -157,7 +157,7 @@ TILING_DATA_FIELD_DEF(uint64_t, prefixAttenOutOffset); // 临时输出偏移
 TILING_DATA_FIELD_DEF(uint64_t, userPromptAttenOutOffset);
 TILING_DATA_FIELD_DEF(uint64_t, tmpLseOffset);
 TILING_DATA_FIELD_DEF(uint64_t, prefixLen); // prefix 长度
-TILING_DATA_FIELD_DEF(uint32_t, formerCoreNum); // combine 分核参数，参考普通bn分核流程，总数不超过blockdim
+TILING_DATA_FIELD_DEF(uint32_t, formerCoreNum); // combine 分核参数，参考普通bn分核流程，总数不超过numBlocks
 TILING_DATA_FIELD_DEF(uint32_t, blockSplitBn2Range);
 TILING_DATA_FIELD_DEF(uint32_t, tailSplitedBatchRange);
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);

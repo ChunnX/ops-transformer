@@ -92,7 +92,7 @@ public:
     explicit PromptFlashAttentionTilingV2(gert::TilingContext *context) : FiaTilingBase(context) {}
     ~PromptFlashAttentionTilingV2() override = default;
     ge::graphStatus RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
-        uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData);
+        uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus PromptFlashAttentionSetTilingData(gert::TilingContext* context,
         PromptFlashAttentionTilingData& tilingData);
     bool CheckNonEmptyShapeExceptions(const ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* shape,
@@ -108,7 +108,7 @@ protected:
     ge::graphStatus DoOpTiling() override;
     void PromptFlashAttentionInitOutputSplit(int64_t totalSize, PromptFlashAttentionTilingData &tilingData);
     ge::graphStatus CheckEmptyTensor(ContextParamsForPFATiling& contextKeyParams);    
-    void SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint32_t& blockDimToBeSet,
+    void SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint32_t& numBlocksToBeSet,
         PromptFlashAttentionTilingData& tilingData);
     bool CheckIODataType(ContextParamsForPFATiling& contextKeyParams);
     bool SetInputLayout(const char* layout);
@@ -245,7 +245,7 @@ protected:
     ge::graphStatus ComputeTilingData(ContextParamsForPFATiling& contextKeyParams, std::vector<int64_t>& actualSeqLengths,
         std::vector<int64_t>& actualSeqLengthsKV, PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus ComputeTilingKey(ContextParamsForPFATiling& contextKeyParams,
-        uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData);
+        uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData);
     void SetAttenMaskCompressMode();
     void SetLayoutType();
     void PFATilingDataconvert(PromptFlashAttentionTilingData& tilingData);

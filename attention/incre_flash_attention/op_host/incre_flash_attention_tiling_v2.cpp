@@ -1040,7 +1040,7 @@ void IFATilingV2::SetEmptyTensor() {
               OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "platformInfoPtr is null!"),
               return);
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-  ifaContext_->blockDim = ascendcPlatform.CalcTschBlockDim(coreNum_, aicNum_, coreNum_);
+  ifaContext_->numBlocks = ascendcPlatform.CalcTschBlockDim(coreNum_, aicNum_, coreNum_);
   ifaContext_->workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
 }
 
@@ -3894,12 +3894,12 @@ ge::graphStatus IFATilingV2::GenTilingKey() {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus IFATilingV2::CalcBlockDim() const {
+ge::graphStatus IFATilingV2::CalcNumBlocks() const {
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(ifaContext_->platformInfo);
   auto aicNum = aicNum_;
   auto aivNum = aivNum_;
-  ifaContext_->blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);  // 暂时与当前代码一致
-  OP_LOGD(ifaContext_->opName, "IFA block dim:%u aivNum:%u aicNum:%u.", ifaContext_->blockDim, aivNum, aicNum);
+  ifaContext_->numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);  // 暂时与当前代码一致
+  OP_LOGD(ifaContext_->opName, "IFA block dim:%u aivNum:%u aicNum:%u.", ifaContext_->numBlocks, aivNum, aicNum);
   return ge::GRAPH_SUCCESS;
 }
 
@@ -3998,7 +3998,7 @@ ge::graphStatus IFATilingV2::DoTiling(gert::TilingContext& context) {
 
   if (RunBigKernelTiling(ifaContext, tilingData) == ge::SUCCESS) {
     context.SetTilingKey(ifaContext.tilingKey);
-    context.SetBlockDim(ifaContext.blockDim);
+    context.SetBlockDim(ifaContext.numBlocks);
   } else {
     return ge::GRAPH_FAILED;
   }
@@ -4105,7 +4105,7 @@ ge::graphStatus IFATilingV2::RunBigKernelTiling(IncreFlashAttentionContext& cont
   if (EmptyTensorProcess() != ge::GRAPH_SUCCESS) {
     if ((Split() != ge::GRAPH_SUCCESS) || (FillTiling() != ge::GRAPH_SUCCESS) ||
         (GenTilingKey() != ge::GRAPH_SUCCESS) || (CalcWorkSpace() != ge::GRAPH_SUCCESS) ||
-        (CalcBlockDim() != ge::GRAPH_SUCCESS)) {
+        (CalcNumBlocks() != ge::GRAPH_SUCCESS)) {
       return ge::GRAPH_FAILED;
     }
   }
@@ -4352,7 +4352,7 @@ ge::graphStatus IFATilingV2::DoSubOpTiling(IncreFlashAttentionContext& ifaContex
         OP_CHECK_IF(ret == ge::GRAPH_FAILED,
                     OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "failed in IFA RunBigKernelTiling"),
                     return ge::GRAPH_FAILED);
-        context_->SetBlockDim(ifaContext.blockDim);
+        context_->SetBlockDim(ifaContext.numBlocks);
         FlashAttentionScoreSimplifiedTilingData* tiling = context_->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
         OP_CHECK_IF(tiling == nullptr,
                     OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "tilingdata ptr should not be null"),

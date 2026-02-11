@@ -28,7 +28,7 @@ __aicore__ inline void InitConstParam(ConstParam &constParam,
     const optiling::PromptFlashAttentionTilingData* tilingData)
 {
     constParam.tmpBlockIdx = GetBlockIdx();
-    constParam.subBlockIdx = constParam.tmpBlockIdx % 2; // 2: One blockDim has 2 vectorCore
+    constParam.subBlockIdx = constParam.tmpBlockIdx % 2; // 2: One numBlocks has 2 vectorCore
 
     constParam.preTokens = tilingData->promptAttentionBaseParams.preTokens;
     constParam.nextTokens = tilingData->promptAttentionBaseParams.nextTokens;

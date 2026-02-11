@@ -30,7 +30,7 @@ public:
     explicit PromptFlashAttentionTilingArch38(gert::TilingContext *context) : FiaTilingBase(context), ascendcPlatform(nullptr) {}
     ~PromptFlashAttentionTilingArch38() override = default;
     ge::graphStatus RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
-        uint64_t& tilingKey, uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData);
+        uint64_t& tilingKey, uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus PromptFlashAttentionSetTilingData(gert::TilingContext* context,
         PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus DoSubOpTiling(PromptFlashAttentionTilingData& tilingData, ContextParamsForPFATiling& contextParamsForPFATiling);
@@ -43,7 +43,7 @@ protected:
     ge::graphStatus ConvertContextToPFAParams(ContextParamsForPFATiling& contextKeyParams);
     void PromptFlashAttentionInitOutputSplit(int64_t totalSize, PromptFlashAttentionTilingData &tilingData);
     bool CheckEmptyTensor(ContextParamsForPFATiling& contextKeyParams) const;
-    void SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint64_t& tilingKey, uint32_t& blockDimToBeSet,
+    void SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint64_t& tilingKey, uint32_t& numBlocksToBeSet,
         PromptFlashAttentionTilingData& tilingData);
     bool CheckIODataType(ContextParamsForPFATiling& contextKeyParams);
     bool SetInputLayout(const char* layout);
@@ -182,7 +182,7 @@ protected:
     ge::graphStatus ComputeTilingData(ContextParamsForPFATiling& contextKeyParams, std::vector<int64_t>& actualSeqLengths,
         std::vector<int64_t>& actualSeqLengthsKV, PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus ComputeTilingKey(uint64_t& tilingKey, ContextParamsForPFATiling& contextKeyParams,
-        uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData);
+        uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData);
     void SetAttenMaskCompressMode();
     void SetLayoutType();
     void PFATilingDataconvert(PromptFlashAttentionTilingData& tilingData);

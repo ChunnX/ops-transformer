@@ -110,14 +110,14 @@ void FiaTilingEmptyTensor::CalcWorkspaceSize()
     workspaceSize_ = 16UL * 1024UL * 1024UL; // 16 * 1024 * 1024:min size required by workspace
 }
 
-void FiaTilingEmptyTensor::CalcBlockDim(uint32_t coreNum)
+void FiaTilingEmptyTensor::CalcNumBlocks(uint32_t coreNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
     auto aicNum = coreNum;
     auto aivNum = aicNum * (aivNum_ / aicNum_);
 
-    blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
 ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
@@ -128,11 +128,11 @@ ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
     InitParams();
 
     FillTiling();
-    CalcBlockDim(usedCoreNum_);
+    CalcNumBlocks(usedCoreNum_);
     CalcWorkspaceSize();
     GenTilingKey();
 
-    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
+    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
         (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS)) {

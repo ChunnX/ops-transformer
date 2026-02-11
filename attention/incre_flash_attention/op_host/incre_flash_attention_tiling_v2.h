@@ -258,7 +258,7 @@ private:
   bool GetMatmulType(ge::DataType getype, matmul_tiling::DataType *mmType) const;
 
   ge::graphStatus CalcWorkSpace();
-  ge::graphStatus CalcBlockDim() const;
+  ge::graphStatus CalcNumBlocks() const;
   ge::graphStatus GenTilingKey();
   uint8_t GenAntiquantModeVal() const;
   ge::graphStatus FillTiling();

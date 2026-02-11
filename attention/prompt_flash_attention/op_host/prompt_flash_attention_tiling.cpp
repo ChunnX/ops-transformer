@@ -501,7 +501,7 @@ size_t PromptFlashAttentionTiling::GetPFAWorkSpaceSize(PromptFlashAttentionTilin
     }
 }
 
-size_t PromptFlashAttentionTiling::GetPFABaseApiWorkSpaceSize(const uint32_t& blockDimToBeSet) {
+size_t PromptFlashAttentionTiling::GetPFABaseApiWorkSpaceSize(const uint32_t& numBlocksToBeSet) {
     size_t sysWorkspaceSize, workspaceSize;
     const uint64_t defaultSysWorkspaceSize910B = 16U * 1024U * 1024U;
     if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
@@ -510,7 +510,7 @@ size_t PromptFlashAttentionTiling::GetPFABaseApiWorkSpaceSize(const uint32_t& bl
     } else {
         sysWorkspaceSize = defaultSysWorkspaceSize910B;
         uint64_t dataLenFloat = sizeof(float);
-        uint64_t workSize = static_cast<uint64_t>(blockDimToBeSet) * static_cast<uint64_t>(PING_PONG_BUFFER_SIZE) * dataLenFloat;
+        uint64_t workSize = static_cast<uint64_t>(numBlocksToBeSet) * static_cast<uint64_t>(PING_PONG_BUFFER_SIZE) * dataLenFloat;
         baseApiTilingData.promptAttentionBaseApiBaseParams.set_workSize(workSize);
         workspaceSize = tilingMod == TilingMod::CVDIFF_BASE_API ? defaultSysWorkspaceSize910B + workSize * 3U : defaultSysWorkspaceSize910B + workSize * 9U;
         return workspaceSize;
@@ -2972,14 +2972,14 @@ ge::graphStatus PromptFlashAttentionTiling::AtbSplitBlock(ContextParamsForPFATil
     uint32_t startBlk = 0;
     uint32_t endBlk = 0;
 
-    uint32_t blockDim = procNum < nzRealCoreNum ? procNum : nzRealCoreNum;
-    if (blockDim > MAX_BLOCK_DIM) {
+    uint32_t numBlocks = procNum < nzRealCoreNum ? procNum : nzRealCoreNum;
+    if (numBlocks > MAX_BLOCK_DIM) {
         return ge::GRAPH_FAILED;
     }
     std::vector<uint32_t> startBlkArray(MAX_BLOCK_DIM, 0U);
     std::vector<uint32_t> endBlkArray(MAX_BLOCK_DIM, 0U);
 
-    for (uint32_t i = 0; i < blockDim; i++) {
+    for (uint32_t i = 0; i < numBlocks; i++) {
         startBlk = endBlk;
         endBlk = i < tailBlks ? endBlk + procPerBlk + 1U : endBlk + procPerBlk;
         startBlkArray[i] = static_cast<uint32_t>(startBlk);
@@ -3329,7 +3329,7 @@ void PromptFlashAttentionTiling::SetSparseParamsTND()
     coreParams.set_s2SparseValidSize(s2SparseValidSize);
 }
 
-uint32_t PromptFlashAttentionTiling::CalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const
+uint32_t PromptFlashAttentionTiling::CalcTschNumBlocks(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum) const
 {
     uint32_t ration;
     if (aicCoreNum == 0 || aivCoreNum == 0 || aicCoreNum > aivCoreNum) {
@@ -3777,7 +3777,7 @@ ge::graphStatus PromptFlashAttentionTiling::CheckVarLenPreNextToken(ContextParam
 
 ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
     uint64_t& tilingKey,
-    uint32_t& blockDimToBeSet,
+    uint32_t& numBlocksToBeSet,
     PromptFlashAttentionTilingData& tilingData) {
     uint64_t l0CSize;
     uint64_t l1Size;
@@ -3866,12 +3866,12 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
             return ge::GRAPH_FAILED;
         }
         TilingGetBaseApiTilingKeyAttentionAscendC(tilingKey, contextKeyParams);
-        blockDimToBeSet = baseApiTilingData.promptAttentionBaseApiBaseParams.get_headNumSize() * baseApiTilingData.promptAttentionBaseApiBaseParams.get_totalQBlkNum();
-        if (blockDimToBeSet > compileInfoPtr->aicNum) {
-            blockDimToBeSet = compileInfoPtr->aicNum;
+        numBlocksToBeSet = baseApiTilingData.promptAttentionBaseApiBaseParams.get_headNumSize() * baseApiTilingData.promptAttentionBaseApiBaseParams.get_totalQBlkNum();
+        if (numBlocksToBeSet > compileInfoPtr->aicNum) {
+            numBlocksToBeSet = compileInfoPtr->aicNum;
         }
         size_t* workspaces = contextKeyParams.workspaceSize;
-        workspaces[0] = GetPFABaseApiWorkSpaceSize(blockDimToBeSet);
+        workspaces[0] = GetPFABaseApiWorkSpaceSize(numBlocksToBeSet);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -4064,7 +4064,7 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
         PromptAttentionInitOutputParams *initParams = &tilingData.promptAttentionInitOutputParams;
         uint32_t singleCoreSize = initParams->get_singleCoreSize();
         uint32_t actualCore = (singleCoreSize > 0) ? (outShape->GetStorageShape().GetShapeSize() + singleCoreSize - 1) / singleCoreSize : coreNum;
-        blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(actualCore, aicNum, coreNum);
+        numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(actualCore, aicNum, coreNum);
 
         size_t* workspace = contextKeyParams.workspaceSize;
         const size_t sysWorkspaceSize = 16 * 1024 * 1024;  // workspace needs at least this much
@@ -4959,7 +4959,7 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
             }
         }
         tilingKey += static_cast<uint32_t>((static_cast<int32_t>(inputLayout) - static_cast<int32_t>(InputLayout::TND)) * INPUT_LAYOUT_TILING_KEY_FACTOR_HOST_TILING);
-        blockDimToBeSet = CalcTschBlockDim(mlaTilingData.PFAmultiCoreParams.get_coreNum(), aicNum, aivNum);
+        numBlocksToBeSet = CalcTschNumBlocks(mlaTilingData.PFAmultiCoreParams.get_coreNum(), aicNum, aivNum);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -5265,7 +5265,7 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
     OP_CHECK_IF(tilingRet != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Get apiTiling fail"),
         return tilingRet);
-    blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
 
     size_t* workspaces = contextKeyParams.workspaceSize;
     workspaces[0] = GetPFAWorkSpaceSize(tilingData);
@@ -6521,14 +6521,14 @@ PFA_EXTERN_C ge::graphStatus PromptFlashAttentionTiling::DoOpTiling() {
         return ge::GRAPH_FAILED);
     ContextParamsForPFATiling contextParamsForPFATiling;
     uint64_t tilingKey = 7;  // 7: default tiling key
-    uint32_t blockDimToBeSet;
+    uint32_t numBlocksToBeSet;
     auto ret = ConvertContextToPFAParams(context_, contextParamsForPFATiling);
     OP_CHECK_IF(ret == ge::GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
         return ge::GRAPH_FAILED);
-        ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, blockDimToBeSet, tilingData);
+        ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, numBlocksToBeSet, tilingData);
         tilingKey += BENCHMARK_TILING_KEY;
         context_->SetTilingKey(tilingKey);
-        context_->SetBlockDim(blockDimToBeSet);
+        context_->SetBlockDim(numBlocksToBeSet);
         PromptFlashAttentionSetTilingData(context_, tilingData);
         return ret;
 }

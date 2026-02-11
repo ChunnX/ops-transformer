@@ -285,7 +285,7 @@ private:
     std::pair<uint32_t, uint32_t> GetPreLoadNumAndActCoreNum() const;
     void CalcWorkSpaceForBmmAll(const IfaWorkSpaceSizeParams& params, uint32_t preLoadNum, uint32_t actCoreNum);
     ge::graphStatus CalcWorkSpace();
-    ge::graphStatus CalcBlockDim();
+    ge::graphStatus CalcNumBlocks();
     ge::graphStatus GetKvLayoutInfo(KvLayoutInfo &kvLayoutInfo) const;
     ge::graphStatus GetInputLayoutVal(uint8_t &layoutVal) const;
     ge::graphStatus GetInputQueryVal(uint8_t &inputQVal) const;
@@ -316,7 +316,7 @@ private:
 
     ge::graphStatus CalcSysPrefixWorkSpace();
     ge::graphStatus FillSysPrefixTiling();
-    ge::graphStatus CalcSysPrefixBlockDim();
+    ge::graphStatus CalcSysPrefixNumBlocks();
     ge::graphStatus SplitForLseCombine();
 
     void CalcFDWorkSpace(const uint32_t actCoreNum);

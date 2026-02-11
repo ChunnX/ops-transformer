@@ -42,7 +42,7 @@ private:
     void FillTiling();
 
     void CalcWorkspaceSize();
-    void CalcBlockDim(uint32_t coreNum);
+    void CalcNumBlocks(uint32_t coreNum);
 
     uint32_t usedCoreNum_ = 0;
 
@@ -52,7 +52,7 @@ private:
 
     // set info to context
     FusedInferAttentionScoreEmptyTensorTilingData tilingData_;
-    uint32_t blockDim_{0};
+    uint32_t numBlocks_{0};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};
 

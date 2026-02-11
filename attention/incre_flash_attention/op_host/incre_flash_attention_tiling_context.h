@@ -90,7 +90,7 @@ struct IncreFlashAttentionContext {
     std::vector<gert::StorageShape *> kCache = {nullptr};
     std::vector<gert::StorageShape *> vCache = {nullptr};
     uint64_t tilingKey = 0;
-    uint32_t blockDim = 0;
+    uint32_t numBlocks = 0;
 };
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_CONTEXT_H_

@@ -238,12 +238,12 @@ bool PromptFlashAttentionTilingArch38::CheckEmptyTensor(ContextParamsForPFATilin
 }
 
 void PromptFlashAttentionTilingArch38::SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint64_t& tilingKey,
-    uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData) {
+    uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData) {
     tilingKey = EMPTY_KV_TILING_KEY;
     PromptFlashAttentionInitOutputSplit(contextKeyParams.outputShape->GetStorageShape().GetShapeSize(), tilingData);
     tilingData.promptAttentionInitOutputParams.set_needInit(1);
 
-    blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(coreNum, aicNum, coreNum);
+    numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(coreNum, aicNum, coreNum);
 
     size_t* workspace = contextKeyParams.workspaceSize;
     const size_t sysWorkspaceSize = 16 * 1024 * 1024; // minimum size required by workspace
@@ -3709,12 +3709,12 @@ ge::graphStatus PromptFlashAttentionTilingArch38::ComputeTilingData(ContextParam
 }
 
 ge::graphStatus PromptFlashAttentionTilingArch38::ComputeTilingKey(uint64_t& tilingKey, ContextParamsForPFATiling& contextKeyParams,
-    uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData) {
+    uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData) {
     bool tilingRet = TilingGetTilingKeyAttentionAscendC(tilingKey, contextKeyParams, tilingData);
     OP_CHECK_IF(!tilingRet, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Get tilingKey fail"),
         return ge::GRAPH_FAILED);
 
-    blockDimToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    numBlocksToBeSet = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
 
     size_t* workspaces = contextKeyParams.workspaceSize;
     workspaces[0] = GetPFAWorkSpaceSize(tilingData);
@@ -3980,7 +3980,7 @@ ge::graphStatus PromptFlashAttentionTilingArch38::PromptFlashAttentionSetTilingD
     return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus PromptFlashAttentionTilingArch38::RunBigKernelTilingWithParams(ContextParamsForPFATiling& contextKeyParams,
-    uint64_t& tilingKey, uint32_t& blockDimToBeSet, PromptFlashAttentionTilingData& tilingData) {
+    uint64_t& tilingKey, uint32_t& numBlocksToBeSet, PromptFlashAttentionTilingData& tilingData) {
     // set memory parameters
     if (SetPlatMemoryInfo(contextKeyParams) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -3997,7 +3997,7 @@ ge::graphStatus PromptFlashAttentionTilingArch38::RunBigKernelTilingWithParams(C
     if (CheckTensorInvalid(contextKeyParams) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     } else if (CheckEmptyTensor(contextKeyParams)) {
-        SetEmptyTensor(contextKeyParams, tilingKey, blockDimToBeSet, tilingData);
+        SetEmptyTensor(contextKeyParams, tilingKey, numBlocksToBeSet, tilingData);
         return ge::GRAPH_SUCCESS;
     }
     // Input, output check
@@ -4063,7 +4063,7 @@ ge::graphStatus PromptFlashAttentionTilingArch38::RunBigKernelTilingWithParams(C
     }
 
     // Compute tiling key.
-    if (ComputeTilingKey(tilingKey, contextKeyParams, blockDimToBeSet, tilingData) != ge::GRAPH_SUCCESS) {
+    if (ComputeTilingKey(tilingKey, contextKeyParams, numBlocksToBeSet, tilingData) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -4076,11 +4076,11 @@ ge::graphStatus PromptFlashAttentionTilingArch38::RunBigKernelTilingWithParams(C
 
 ge::graphStatus PromptFlashAttentionTilingArch38::DoSubOpTiling(PromptFlashAttentionTilingData& tilingData, ContextParamsForPFATiling& contextParamsForPFATiling) {
     uint64_t tilingKey = 7;
-    uint32_t blockDimToBeSet;
-    auto ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, blockDimToBeSet, tilingData);
+    uint32_t numBlocksToBeSet;
+    auto ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, numBlocksToBeSet, tilingData);
     tilingKey += BENCHMARK_TILING_KEY;
     context_->SetTilingKey(tilingKey);
-    context_->SetBlockDim(blockDimToBeSet);
+    context_->SetBlockDim(numBlocksToBeSet);
     PromptFlashAttentionSetTilingData(context_, tilingData);
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
@@ -4091,12 +4091,12 @@ ge::graphStatus PromptFlashAttentionTilingArch38::DoOpTiling() {
     PromptFlashAttentionTilingData tilingData;
     ContextParamsForPFATiling contextParamsForPFATiling;
     uint64_t tilingKey = 7;
-    uint32_t blockDimToBeSet;
+    uint32_t numBlocksToBeSet;
     auto ret = ConvertContextToPFAParams(contextParamsForPFATiling);
-    ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, blockDimToBeSet, tilingData);
+    ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, numBlocksToBeSet, tilingData);
     tilingKey += BENCHMARK_TILING_KEY;
     context_->SetTilingKey(tilingKey);
-    context_->SetBlockDim(blockDimToBeSet);
+    context_->SetBlockDim(numBlocksToBeSet);
     PromptFlashAttentionSetTilingData(context_, tilingData);
     return ret;
 }
