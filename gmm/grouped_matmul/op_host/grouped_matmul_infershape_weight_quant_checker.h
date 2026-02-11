@@ -87,6 +87,8 @@ private:
     size_t weightdimNum_;
     ge::DataType xDtype_ = ge::DT_UNDEFINED;
     ge::DataType weightDtype_ = ge::DT_UNDEFINED;
+    bool hasBias_ = false;
+    bool hasAntiquantOffset_ = false;
 };
 
 }  // namespace ops

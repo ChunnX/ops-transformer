@@ -114,7 +114,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     for (uint32_t groupIdx = 0, count = 0; groupIdx < gmmBaseTiling_->groupNum; ++groupIdx) {
         SetMKN(groupIdx, preOffset, offsetParam);  // 每个核都必须知道之前group的信息，在单场景下作为baseOffset
         SetGmAddr(groupIdx, xBaseOffset, weightBaseOffset, yBaseOffset, antiquantParamsBaseOffset, offsetParam);
-        if (offsetParam.mSize == 0) {
+        if (offsetParam.mSize == 0 || offsetParam.nSize == 0) {
             continue;
         }
         /*

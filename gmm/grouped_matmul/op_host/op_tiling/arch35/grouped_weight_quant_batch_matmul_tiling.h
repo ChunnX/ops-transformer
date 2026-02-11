@@ -218,6 +218,7 @@ public:
 
 protected:
     bool SetShapeList(const gert::TilingContext *context);
+    bool CheckEmptyTensor(const gert::TilingContext *context);
     bool CheckTensorListSize(const gert::TilingContext *context);
     bool CheckTensorDtype(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const ge::DataType &tensorDtype, const std::string &tensorType) const;
@@ -234,10 +235,8 @@ protected:
                           const std::string &tensorType) const;
     bool CheckDimValue(const gert::TilingContext *context, size_t idx) const;
     bool CheckWeightInnerAxisEven(const gert::TilingContext *context, size_t idx) const;
-    bool CheckXAndWeightShape(const gert::TilingContext *context) const;
     bool CheckEveryTensor(const gert::TilingContext *context) const;
     bool CheckGroupList(const gert::TilingContext *context) const;
-    bool CheckRequiredInputs(const gert::TilingContext *context) const;
     bool AnalyzeAttr(const gert::TilingContext *context);
     bool AnalyzeInput(const gert::TilingContext *context);
     bool CalcResplitTiling(const gert::TilingContext *context);
