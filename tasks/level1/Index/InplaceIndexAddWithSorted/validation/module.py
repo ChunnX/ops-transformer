@@ -36,7 +36,9 @@ class Model(nn.Module):
         """
         # 克隆var以避免修改原始输入
         result = var.clone()
-        
+        result_dtype = result.dtype
+        if result_dtype == torch.bfloat16:
+            result = result.float()
         # 获取alpha值
         alpha_value = alpha.item() if alpha is not None else 1.0
         
@@ -49,7 +51,8 @@ class Model(nn.Module):
                 result[idx] = result[idx] + alpha_value * value[p]
             else:
                 raise NotImplementedError("Only axis=0 is supported")
-        
+        if result_dtype == torch.bfloat16:
+            result = result.to(torch.bfloat16)
         return result
 
 

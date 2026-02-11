@@ -8,11 +8,9 @@
 
 at::Tensor inplace_scatter_add(at::Tensor &var, at::Tensor &indices, at::Tensor &updates)
 {
-    // alloc output memory (same as var)
-    at::Tensor result = var.clone();
 
     // call aclnn interface to perform the computation
-    EXEC_NPU_CMD(aclnnInplaceScatterAdd, result, indices, updates, result);
+    EXEC_NPU_CMD(aclnnInplaceScatterAdd, var, indices, updates);
     return result;
 }
 
