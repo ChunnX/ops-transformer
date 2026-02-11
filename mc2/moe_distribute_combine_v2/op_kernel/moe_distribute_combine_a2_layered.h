@@ -54,11 +54,12 @@ using namespace AscendC;
 template<TemplateMC2TypeA2layeredClass>
 class MoeDistributeCombineA2Layered {
 public:
-    constexpr static uint32_t BUFFER_NUM = 2U;                   // 多buf
+    constexpr static uint32_t RDMA_BUFFER_NUM = 2U;
     constexpr static uint32_t STATE_OFFSET = 512U;              // 状态空间偏移地址
-    constexpr static uint32_t STATE_SPACE_SIZE = 1024U * 1024U;  // 1M
+    constexpr static uint64_t STATE_SPACE_SIZE = 1024U * 1024UL;  // 1M
     constexpr static uint32_t UB_ALIGN = 32U;                   // UB按32字节对齐
     constexpr static uint32_t SELF_STATE_OFFSET = 512U * 1024U;  // 本卡状态空间偏移地址
+    constexpr static uint64_t RDMA_BUFFER_ALIGN = 4 * 1024;
 
     constexpr static uint32_t BLOCK_SIZE = 32U;
     constexpr static uint32_t B16_PER_BLOCK = 16U;
@@ -66,7 +67,6 @@ public:
     constexpr static uint32_t B64_PER_BLOCK = 4U;
     constexpr static uint32_t SERVER_RANK_SIZE = 8U;
     constexpr static uint32_t IPC_DATA_OFFSET = 4U * 1024U * 1024U;
-    constexpr static uint32_t RDMA_DATA_SIZE = 100U * 1024U * 1024U;
     constexpr static uint32_t VEC_LEN = 256U;
     constexpr static uint32_t MAGIC_OFFSET = 2U * 1024U * 1024U - 32U * 32U;
     constexpr static uint32_t FLAG_BUFF_SIZE = 1024U;
@@ -192,20 +192,21 @@ private:
     uint32_t startRankId_{0};
     uint32_t endRankId_{0};
     uint32_t sendRankNum_{0};
-    uint32_t halfWinSize_{0};
-    uint32_t dataSpaceSize_{0};
+    uint64_t rdmaDataSize_{0};
+    uint64_t halfWinSize_{0};
+    uint64_t dataSpaceSize_{0};
     uint32_t bufferId_{0};
     uint32_t tokenNumPerCore_{0};
     uint32_t tokenIndex_{0};
     uint32_t serverNum{0};
-    uint32_t ipcSliceSize{0};
-    uint32_t ipcSliceNodeSize{0};
+    uint64_t ipcSliceSize{0};
+    uint64_t ipcSliceNodeSize{0};
     uint64_t send_counts_inner_offset{0};
     uint64_t offset_inner_offset{0};
     uint64_t send_counts_outer_offset{0};
     uint64_t offset_outer_offset{0};
     uint64_t share_offset{0};
-    uint32_t IPC_DATA_SIZE{0};
+    uint64_t IPC_DATA_SIZE{0};
     uint32_t performanceInfoSize_{0};
     bool needPerformanceInfo_{false};
 
@@ -239,7 +240,7 @@ private:
     uint32_t SCALE_GRANU;
     uint32_t lastRepeatNum{0};
 
-    uint32_t maxBsInRankSizeOnIpc{0};
+    uint64_t maxBsInRankSizeOnIpc{0};
 };
 
 template <TemplateMC2TypeA2layeredClass>
@@ -351,8 +352,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     worldSize_ = tilingData->moeDistributeCombineInfo.epWorldSize;
 
     globalBs = tilingData->moeDistributeCombineInfo.globalBs;
-    if (globalBs >= 256U) {
-        maxLocalBs = 256U;
+    if (globalBs >= 512U) {
+        maxLocalBs = 512U;
     } else {
         maxLocalBs = globalBs;
     }
@@ -388,8 +389,16 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     hccl_.SetCcTilingV2(offsetof(MoeDistributeCombineA2TilingData, mc2CcTiling));
     qp_info_ = (__gm__ HcclAiRMAInfo*)(((__gm__ HcclA2CombineOpParam*)contextGM)->aiRMAInfo);
 
-    halfWinSize_ = RDMA_DATA_SIZE / 2U;
-    IPC_DATA_SIZE = winContext_->winSize - RDMA_DATA_SIZE - IPC_DATA_OFFSET;
+    serverNum = worldSize_ / SERVER_RANK_SIZE;
+    uint64_t maxBs = globalBs / worldSize_;
+    // RDMA分为两块大小相同的buffer，每块存放serverNum个主机发来的最多maxBs个数据，每条数据大小为tokenStructSize
+    // 为保证dispatch和combine的RDMA计算一致，tokenStruct内容沿用dispatch的设计，由token内容和额外4部分token信息组成（专家信息 + 权重信息 + 量化信息 + 标志位）
+    uint64_t tokenStructSize = axisH_ * sizeof(ExpandXType) + RoundUp(axisK_, B32_PER_BLOCK) * sizeof(uint32_t) * 4;
+    rdmaDataSize_ = (serverNum * RoundUp(maxBs * tokenStructSize, RDMA_BUFFER_ALIGN) + STATE_SPACE_SIZE) * RDMA_BUFFER_NUM;
+
+    halfWinSize_ = rdmaDataSize_ / RDMA_BUFFER_NUM;
+
+    IPC_DATA_SIZE = winContext_->winSize - rdmaDataSize_ - IPC_DATA_OFFSET;
     dataSpaceSize_ = halfWinSize_ - STATE_SPACE_SIZE;
     windowInGM_ = hccl_.GetWindowsInAddr(rankId_);
     bufferIdGlobal_.SetGlobalBuffer((__gm__ uint32_t *)(windowInGM_ + dataSpaceSize_ + worldSize_ * STATE_OFFSET));
@@ -398,7 +407,6 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     windowOutGM_ = hccl_.GetWindowsOutAddr(rankId_) + halfWinSize_ * bufferId_;
     coreIdx_ = GetBlockIdx();
 
-    serverNum = worldSize_ / SERVER_RANK_SIZE;
     expandXGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)expandX);
     expertIdsGlobal_.SetGlobalBuffer((__gm__ ExpandIdxType *)expertIds);
     expandIdxGlobal_.SetGlobalBuffer((__gm__ ExpandIdxType *)expandIdx);
@@ -418,7 +426,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     axisHExpandXTypeSize_ = axisH_ * static_cast<uint32_t>(sizeof(ExpandXType));
 
     uint64_t winSizeMin = moeExpertNum_ * axisBS_ * (axisHExpandXTypeSize_ + EXTRA_TOKEN_INFO_NUM * axisK_ * sizeof(uint32_t)) +
-        IPC_DATA_OFFSET + RDMA_DATA_SIZE; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
+        IPC_DATA_OFFSET + rdmaDataSize_; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
 
     GlobalTensor<int32_t> selfStatusTensor;
     selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusSpaceGm_ + SELF_STATE_OFFSET));
@@ -474,7 +482,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     PipeBarrier<PIPE_ALL>();
     for (int i = 0; i < 8; i++) {
         shareAddreRank[i] = reinterpret_cast<uint64_t>(
-            RDMA_DATA_SIZE + hccl_.GetWindowsInAddr(rankId_ / SERVER_RANK_SIZE * SERVER_RANK_SIZE + i));
+            rdmaDataSize_ + hccl_.GetWindowsInAddr(rankId_ / SERVER_RANK_SIZE * SERVER_RANK_SIZE + i));
     }
     magicGlobal_.SetGlobalBuffer((__gm__ uint64_t*)(shareAddreRank[rankId_ % SERVER_RANK_SIZE]));
     magicValue = magicGlobal_.GetValue(MAGIC_OFFSET / sizeof(uint64_t));
@@ -548,8 +556,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 
         dstshareMemGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)(targetRankAddr));
 
-        uint32_t rankTokenNum = 0U;
-        uint32_t rankTokenNumInit = 0U;
+        uint64_t rankTokenNum = 0U;
+        uint64_t rankTokenNumInit = 0U;
         for (uint32_t expertId = 0U; expertId < localMoeExpertNum_; ++expertId) {
             uint32_t preCount = 0U;
 
@@ -704,11 +712,11 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     offsetIndex = 0U;
 
     // 计算offsetIndex,copyNum,dataOffset,scaleOffset
-    uint32_t listLen = 64 ; // maxLocalBs / coreNumPerServer;
-    uint32_t offsetIndexs[65];
-    uint32_t copyNums[65];
-    uint32_t dataOffsets[65];
-    uint32_t scaleOffsets[65];
+    uint32_t listLen = 128 ; // maxLocalBs / coreNumPerServer;
+    uint32_t offsetIndexs[129];
+    uint32_t copyNums[129];
+    uint32_t dataOffsets[129];
+    uint32_t scaleOffsets[129];
     uint32_t totalCopyLen = 0;
     uint32_t processNum_ = 0;
     uint32_t tokenNum = 0;
@@ -744,7 +752,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         uint32_t targetLocalServerExpertId = offsetReduceLocal.GetValue(offsetIndex) / offsetNumPerExpert;
         uint32_t targetIpcRank = (targetLocalServerExpertId / localMoeExpertNum_) + (rankId_ / SERVER_RANK_SIZE) * SERVER_RANK_SIZE;
         uint32_t targetLocalExpertId = targetLocalServerExpertId % localMoeExpertNum_;
-        uint32_t targetIpcOffset = offsetReduceLocal.GetValue(offsetIndex) % offsetNumPerExpert + targetLocalExpertId * maxBsInRankSizeOnIpc;
+        uint64_t targetIpcOffset = offsetReduceLocal.GetValue(offsetIndex) % offsetNumPerExpert + targetLocalExpertId * maxBsInRankSizeOnIpc;
         targetIpcOffset = targetIpcOffset * (axisH_ + WEIGHT_VALUE_NUM);
 
         uint64_t copyAddr = shareAddreRank[targetIpcRank % SERVER_RANK_SIZE] +

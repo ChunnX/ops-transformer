@@ -129,6 +129,7 @@ namespace {
     constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 7168;
     constexpr uint32_t LAYERED_MAX_HIDDEN_SIZE_A2 = 10240;
     constexpr uint32_t MAX_BATCH_SIZE_A2 = 256;
+    constexpr uint32_t LAYERED_MAX_BATCH_SIZE_A2 = 512;
     constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
     constexpr uint32_t BLOCK_SIZE_A2 = 32;
     constexpr uint32_t MAX_K_VALUE_A2 = 16;
@@ -1588,7 +1589,8 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(K_INNER_DEBUG, "expertIdshape is invalid"), return GRAPH_FAILED);
     uint32_t bs = expertIdStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(bs == 0 || bs > MAX_BATCH_SIZE_A2,
+    uint32_t maxBatchSizeA2 = isLayered ? LAYERED_MAX_BATCH_SIZE_A2 : MAX_BATCH_SIZE_A2;
+    OP_TILING_CHECK(bs == 0 || bs > maxBatchSizeA2,
         OP_LOGE(K_INNER_DEBUG, "batchsize is invalid."), return GRAPH_FAILED);
 
     uint32_t k = expertIdStorageShape->GetStorageShape().GetDim(1);
