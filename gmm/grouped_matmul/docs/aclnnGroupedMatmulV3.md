@@ -213,7 +213,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>groupType</td>
       <td>输入</td>
       <td>整数型参数，代表需要分组的轴。</td>
-      <td>如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组。</td>
+      <td>如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

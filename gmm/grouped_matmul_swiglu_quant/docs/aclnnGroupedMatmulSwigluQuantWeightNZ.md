@@ -36,7 +36,7 @@
       * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
       * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
       * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
-      * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
+      * $groupList∈\mathbb{N}^{E}$：cumsum的分组索引列表。
     - **输出**：
 
       * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
@@ -44,32 +44,30 @@
 
     - **计算过程**
 
-      - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$。
+      - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList))$。
 
-        >例子：假设groupList=[3,4,4,6]、groupListType=cumsum或groupList=[3,1,0,2]、groupListType=count。
+        >例子：groupList=[3,4,4,6]。
         >
-        >注：以上两种不同的分组方式，实际为相同的分组结果。
+        >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`Q[0:3]`、`Q_scale[0:3]`；
         >
-        >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0] `、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
+        >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`Q[3:4]`、`Q_scale[3:4]`；
         >
-        >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1] `、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
+        >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`Q[4:4]`、`Q_scale[4:4]`；
         >
-        >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2] `、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
+        >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`Q[4:6]`、`Q_scale[4:6]`；
         >
-        >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3] `、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
+        >注：groupList中未指定的部分将不会参与更新。
+        >例如当groupList=[12,14,18]，x的shape为[30,N/2]时。
         >
-        >注：grouplist中未指定的部分将不会参与更新。
-        >例如当groupList=[12,14,18]、GroupListType=cumsum，X的shape为[30，:]时。
-        >
-        >则第一个输出Q的shape为[30，:]，其中Q[18:，：]的部分不会进行更新和初始化，其中数据为显存空间申请时的原数据。
+        >则第一个输出Q的shape为[30,N/2]，其中Q[18:, :]的部分不会进行更新和初始化，其中数据为显存空间申请时的原数据。
         >
         >同理，第二个输出Q\_scale的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
         >
-        >即输出的Q[:grouplist[-1],:]和Q\_scale[:grouplist[-1]]为有效数据部分。
+        >即输出的Q[:groupList[-1],:]和Q\_scale[:groupList[-1]]为有效数据部分。
 
       - 2.根据分组确定的入参进行如下计算：
 
-        $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ BroadCast} \odot w\_scale_{i\ BroadCast}$
+        $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\,\text{Broadcast}} \odot w\_scale_{i\,\text{Broadcast}}$
 
         $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -96,24 +94,24 @@
     - **输入**：
       * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
       * $W∈\mathbb{Z_4}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-      * $weightAsistMatrix∈\mathbb{R}^{E \times N}$：计算矩阵乘时的辅助矩阵（生成辅助矩阵的计算过程见下文）。
+      * $weightAssistMatrix∈\mathbb{R}^{E \times N}$：计算矩阵乘时的辅助矩阵（生成辅助矩阵的计算过程见下文）。
       * $w\_scale∈\mathbb{R}^{E \times K\_group\_num \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K\_group\_num是在K轴维度上的分组数，N是输出维度。
       * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
-      * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
+      * $groupList∈\mathbb{N}^{E}$：cumsum的分组索引列表。
     - **输出**：
       * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
       * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
     - **计算过程**
-      - 1.根据groupList[i]确定当前分组的token，$i \in [0,Len(groupList)]$。
+      - 1.根据groupList[i]确定当前分组的token，$i \in [0,Len(groupList))$。
         - 分组逻辑与A8W8相同。
-      - 2.生成辅助矩阵（weightAsistMatrix）的计算过程（请注意weightAsistMatrix部分计算为离线生成作为输入，并非算子内部完成）：
+      - 2.生成辅助矩阵（weightAssistMatrix）的计算过程（请注意weightAssistMatrix部分计算为离线生成作为输入，并非算子内部完成）：
         - 当为per-channel量化（$w\_scale$为2维）：
 
-          $weightAsistMatrix_{i} = 8 × weightScale × Σ_{k=0}^{K-1} weight[:,k,:]$
+          $weightAssistMatrix_{i} = 8 × w\_scale × Σ_{k=0}^{K-1} weight[:,k,:]$
 
         - 当为per-group量化（$w\_scale$为3维）：
 
-          $weightAsistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × weightScale[:, ⌊k/num\_per\_group⌋, :])$
+          $weightAssistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × w\_scale[:, ⌊k/num\_per\_group⌋, :])$
 
           注：$num\_per\_group = K // K\_group\_num$
 
@@ -137,7 +135,7 @@
 
         - 3.3.将高低位的矩阵乘结果还原为整体的结果
 
-          $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAsistMatrix_{i}) \odot x\_scale_{i}$
+          $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAssistMatrix_{i}) \odot x\_scale_{i}$
 
           $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -251,7 +249,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
         <td>首轴长度需与weight的首轴维度相等，尾轴长度需要与weight还原为ND格式的尾轴相同。</td>
         <td>FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>2</td>
+        <td>2（per-channel）或3（per-group）</td>
         <td>√</td>
       </tr>
       <tr>
@@ -267,10 +265,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
       <tr>
         <td>groupList</td>
         <td rowspan="1">输入</td>
-        <td>指示每个分组参与计算的Token个数，对应公式中的grouplist。</td>
+        <td>指示每个分组参与计算的Token个数，对应公式中的groupList。</td>
         <td><ul>
           <li>长度需与weight的首轴维度相等。</li>
-          <li>grouplist中的最后一个值约束了输出数据的有效部分，详见功能说明中的计算过程部分。</li>
+          <li>groupList中的最后一个值约束了输出数据的有效部分，详见功能说明中的计算过程部分。</li>
         </ul></td>
         <td>INT64</td>
         <td>ND</td>
@@ -395,7 +393,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
   </thead>
   <tbody>
     <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-    <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize获取。</td></tr>
+    <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize获取。</td></tr>
     <tr><td>executor</td><td>输入</td><td>op执行器，包含了算子计算流程。</td></tr>
     <tr><td>stream</td><td>输入</td><td>指定执行任务的Stream。</td></tr>
   </tbody>
@@ -416,7 +414,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
   - 2.N轴长度不能超过10240。
 
 
-- A8W4场景（`A`指激活矩阵（左矩阵），`W`指权重矩阵（右矩阵），`8`指数据类型为`INT4`）
+- A8W4场景（`A`指激活矩阵（左矩阵），`W`指权重矩阵（右矩阵），`4`指数据类型为`INT4`）
 
   - 1.x的尾轴长度不能大于等于20000。
   - 2.N轴长度不能超过10240。
@@ -585,7 +583,7 @@ int main() {
                         size * sizeof(out1Data[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < size; j++) {
-        LOG_PRINT("result[%d] is: %d\n", j, out1Data[j]);
+        LOG_PRINT("result[%ld] is: %d\n", j, out1Data[j]);
     }
     size = GetShapeSize(outputScaleShape);
     std::vector<float> out2Data(size, 0);
@@ -593,7 +591,7 @@ int main() {
                         size * sizeof(out2Data[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < size; j++) {
-        LOG_PRINT("result[%d] is: %f\n", j, out2Data[j]);
+        LOG_PRINT("result[%ld] is: %f\n", j, out2Data[j]);
     }
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(x);
