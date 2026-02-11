@@ -17,7 +17,11 @@
 #define BLOCK_MX_MM_AIC_TO_AIV_BUILDER_H
 
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 #include "../utils/common_utils.h"
 #include "../utils/layout_utils.h"
