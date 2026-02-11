@@ -44,12 +44,14 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> custom_pybind_api(
     } else {
         per_sample_weights_tensor = at::empty({0}, weight.options());
     }
-    
+    char* mode_ptr = const_cast<char *>(mode.c_str());
     // Call aclnn interface to perform the computation
     EXEC_NPU_CMD(aclnnEmbeddingBag, weight, indices, offsets, per_sample_weights_tensor, 
-                 mode, scale_grad_by_freq, sparse, include_last_offset, padding_idx,
+                 mode_ptr, scale_grad_by_freq, sparse, include_last_offset, padding_idx,
                  y, offset2bag, bag_size, max_indices);
-    
+    if (mode == "sum") {
+        offset2bag = at::empty({}, indices.options().dtype(at::kInt));
+    }
     return std::make_tuple(y, offset2bag, bag_size, max_indices);
 }
 

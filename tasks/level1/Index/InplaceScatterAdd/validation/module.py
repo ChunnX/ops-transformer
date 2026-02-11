@@ -34,7 +34,7 @@ class Model(nn.Module):
         result = var.clone()
         # scatter_add_(dim, index, src)
         # dim=0表示在第0维度上scatter
-        result.scatter_add_(0, indices.unsqueeze(1).expand_as(updates), updates)
+        result.scatter_add_(0, indices.unsqueeze(1).expand_as(updates).long(), updates)
         
         return result
 

@@ -1,94 +1,69 @@
-from typing import List
-
 import torch
+import torch.nn as nn
 import torch_npu
 from torch_npu.contrib import transfer_to_npu
-import torch.nn as nn
 import kernel_gen_ops
-
 
 class Model(nn.Module):
     """
-    实现LinearIndex算子功能的模型（CPU参考实现）。
+    实现 LinearIndex 算子功能的标杆模型。
     """
-
     def __init__(self, axis=-1, combine=False):
-        """
-        初始化模型。
-        
-        Args:
-            axis: 目标维度
-            combine: 是否合轴
-        """
         super(Model, self).__init__()
         self.axis = axis
         self.combine = combine
 
-    def forward(self, indices: torch.Tensor, shape: torch.Tensor) -> torch.Tensor:
+    def forward(self, indices: torch.Tensor, shape_tensor: torch.Tensor) -> torch.Tensor:
         """
-        实现LinearIndex算子功能。
-
         Args:
-            indices: 索引张量
-            shape: 形状张量
-
+            indices: 输入索引张量
+            shape_tensor: 表示维度的 1D Int32 张量
         Returns:
-            线性索引张量（int32）
+            计算后的 int32 索引张量
         """
-        # 转换为int32进行计算
-        indices_int32 = indices.to(torch.int32)
-        shape_list = shape.tolist()
+        # 获取 shape 数值
+        shape_list = shape_tensor.tolist()
+        rank = len(shape_list)
         
-        # 处理axis
+        # 处理负数 axis
         axis = self.axis
         if axis < 0:
-            axis += len(shape_list)
-        
-        target = shape_list[axis]
-        
-        # 处理负数索引
-        mask = indices_int32 < 0
-        indices_int32 = torch.where(mask, indices_int32 + target, indices_int32)
-        
-        # 基础模式：不合轴
-        if not self.combine:
-            return indices_int32
-        
-        # 合轴模式
-        indices_shape = indices.shape
-        
-        # 二维场景或三维场景
-        if len(shape_list) == 2:
-            # 二维场景，合轴和不合轴结果相同
-            return indices_int32
-        elif len(shape_list) == 3:
-            self_stride = shape_list[1]
+            axis += rank
             
-            if len(indices_shape) == 2:
-                # 三维场景，indices是二维
-                indices_stride = indices_shape[1]
-                
-                # 生成偏移量
-                offset = torch.arange(indices_int32.numel(), dtype=torch.int32, device=indices.device)
-                offset = offset.reshape(indices_shape)
-                
-                if axis == 0:
-                    # MODE 1: dim=0
-                    # 计算余数
-                    remainder = offset % indices_stride
-                    # indices * self_stride + remainder
-                    result = indices_int32 * self_stride + remainder
-                else:  # axis == 1
-                    # MODE 2: dim=1
-                    # 计算商
-                    quotient = offset // indices_stride
-                    # indices + self_stride * quotient
-                    result = indices_int32 + self_stride * quotient
-                
-                return result
+        target_dim = shape_list[axis]
         
-        return indices_int32
+        # 1. 标准化：处理负索引 (idx < 0 ? idx + dim : idx)
+        out = torch.where(indices < 0, indices + target_dim, indices)
+        
+        # 2. 合轴逻辑 (Combine Mode)
+        # 根据 Tiling 代码逻辑，仅当 shape 长度为 3 且 axis 为 0 或 1 时，Combine 才会生效
+        if self.combine and rank == 3:
+            stride = shape_list[1]
+            
+            # 确保输入至少是 2D，以便获取行列信息 (参考 tiling 中 GetDim(1) 的逻辑)
+            if indices.dim() >= 2:
+                if axis == 0:
+                    # Mode 1: dim=0 (相当于 out = indices * stride + col_idx)
+                    # 构造列索引矩阵
+                    cols = indices.shape[1]
+                    col_indices = torch.arange(cols, device=indices.device, dtype=indices.dtype).unsqueeze(0)
+                    # 广播到与 indices 相同的形状
+                    col_indices = col_indices.expand_as(indices)
+                    
+                    out = out * stride + col_indices
+                    
+                elif axis == 1:
+                    # Mode 2: dim=1 (相当于 out = indices + stride * row_idx)
+                    # 构造行索引矩阵
+                    rows = indices.shape[0]
+                    row_indices = torch.arange(rows, device=indices.device, dtype=indices.dtype).unsqueeze(1)
+                    # 广播到与 indices 相同的形状
+                    row_indices = row_indices.expand_as(indices)
+                    
+                    out = out + stride * row_indices
 
+        # 算子输出固定为 int32
+        return out.to(torch.int32)
 
 class ModelNew(nn.Module):
     def __init__(self, axis=-1, combine=False):
@@ -96,5 +71,5 @@ class ModelNew(nn.Module):
         self.axis = axis
         self.combine = combine
 
-    def forward(self, indices: torch.Tensor, shape: torch.Tensor) -> torch.Tensor:
-        return kernel_gen_ops.linear_index(indices, shape, self.axis, self.combine)
+    def forward(self, indices: torch.Tensor, shape_tensor: torch.Tensor) -> torch.Tensor:
+        return kernel_gen_ops.linear_index(indices, shape_tensor, self.axis, self.combine)
