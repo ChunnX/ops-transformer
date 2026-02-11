@@ -85,6 +85,12 @@ private:
         basicBlock_;
 
     uint64_t preOffset_ = 0;
+    static constexpr uint64_t MX_A8W4_L1_K_CONFIG_256 = 256;
+    static constexpr uint64_t MX_A8W4_L1_K_CONFIG_512 = 512;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD = 128;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 = 256;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 = 240;
+    uint64_t mxA8W4L1KDynamicConfigMThreshold_; // m轴依赖空间划分，无法静态配置
 };
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -110,6 +116,8 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Init(
     }
     basicBlock_.Init(gmmBaseTiling_->hasBias, gmmBaseTiling_->groupSize, 0, mmTiling_,
                      tPipe);  // gmm场景不确定group是否激活，Init中的prefetch size设定为0，在Process中做prefetch
+    mxA8W4L1KDynamicConfigMThreshold_ = gmmBaseTiling_->hasBias ? MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 :
+                                                                  MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
 }
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -226,9 +234,10 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
             // MxA8W4场景，切换低阶api，支持kernel内动态调整k轴切分
             offsetParam[ctrlParam.processId].kbL1Size =
-                (offsetParam[ctrlParam.processId].mL1Size <= 256 && offsetParam[ctrlParam.processId].nL1Size <= 128)
-                    ? 512
-                    : 256;
+                (offsetParam[ctrlParam.processId].mL1Size <= mxA8W4L1KDynamicConfigMThreshold_ &&
+                 offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
+                    MX_A8W4_L1_K_CONFIG_512 :
+                    MX_A8W4_L1_K_CONFIG_256;
             offsetParam[ctrlParam.processId].kaL1Size =
                 offsetParam[ctrlParam.processId].kbL1Size;  // 当前实现a矩阵切分保持b矩阵一致
         }

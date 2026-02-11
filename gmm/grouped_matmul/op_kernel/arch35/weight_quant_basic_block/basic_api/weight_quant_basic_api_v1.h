@@ -34,6 +34,8 @@ using AscendC::WaitFlag;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 struct BasicApiParamsV1 {
+    uint64_t isBias;
+    uint64_t gmKOffset;
     uint64_t l1KSize;
     uint64_t l0NSize;
     uint64_t l0MSize;
@@ -49,7 +51,7 @@ WQBMM_BASIC_API_V1_TEMPLATE_PARAM class WqbmmBasicApiV1 {
 
 public:
     __aicore__ inline WqbmmBasicApiV1(){};
-    __aicore__ inline void Init(const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe);
+    __aicore__ inline void Init();
     __aicore__ inline void Iterate(bool isLast, bool isFirst, const LocalTensor<xType> &aL1,
                                    const LocalTensor<fp8_e8m0_t> &aMxScaleL1, const LocalTensor<xType> &bL1,
                                    const LocalTensor<fp8_e8m0_t> &bMxScaleL1, const LocalTensor<biasType> &biasL1,
@@ -59,11 +61,11 @@ public:
     __aicore__ inline void End();
 
 private:
-    __aicore__ inline void LoadAL1ToL0A(uint64_t baseK, uint64_t loopId, uint64_t l1KOffset, uint64_t l0MSize,
-                                        uint64_t l1kSize, const LocalTensor<xType> &al1Tensor,
+    __aicore__ inline void LoadAL1ToL0A(uint64_t baseK, uint64_t loopId, uint64_t l1KOffset,
+                                        const BasicApiParamsV1 &basicApiParams, const LocalTensor<xType> &aL1Tensor,
                                         const LocalTensor<fp8_e8m0_t> &scaleAL1Tensor);
-    __aicore__ inline void LoadBL1ToL0B(uint64_t baseK, uint64_t loopId, uint64_t l1KOffset, uint64_t l0NSize,
-                                        uint64_t l1kSize, const LocalTensor<xType> &bl1Tensor,
+    __aicore__ inline void LoadBL1ToL0B(uint64_t baseK, uint64_t loopId, uint64_t l1KOffset,
+                                        const BasicApiParamsV1 &basicApiParams, const LocalTensor<xType> &bL1Tensor,
                                         const LocalTensor<fp8_e8m0_t> &scaleBL1Tensor);
     __aicore__ inline void LoadBiasToBt(uint64_t nL0Size, uint64_t loopId, const LocalTensor<biasType> &biasL1Tensor);
     __aicore__ inline void Mmad(bool isLast, bool isFirst, uint64_t kL0RealSize, uint64_t loopId,
@@ -79,13 +81,11 @@ private:
     static constexpr uint16_t UNIT_FLAG_ENABLE = 2;
     static constexpr uint16_t UNIT_FLAG_ENABLE_AUTO_CLOSE = 3;
 
-    TEventID eventIdsMToMte1_[L0_BUF_NUM];
-    TEventID eventIdsMte1ToM_[L0_BUF_NUM];
+    TEventID eventIdMToMte1_ = 3;
+    TEventID eventIdMte1ToM_ = 3;
 
     uint64_t l0LoopIdx_ = 0;
-    uint64_t scaleAFactor_ = 1;
-    uint64_t scaleBFactor_ = 1;
-    bool isBias_;
+
     LocalTensor<L0DataType> l0a_{TPosition::A2, 0, 64 * GetKBUnit<int8_t>() / sizeof(L0DataType)};
     LocalTensor<L0DataType> l0b_{TPosition::B2, 0, 64 * GetKBUnit<int8_t>() / sizeof(L0DataType)};
     LocalTensor<float> l0c_{TPosition::CO1, 0, 256 * GetKBUnit<int8_t>() / sizeof(float)};
@@ -93,21 +93,11 @@ private:
 };
 
 WQBMM_BASIC_API_V1_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_BASIC_API_V1_CLASS::Init(const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe)
+__aicore__ inline void WQBMM_BASIC_API_V1_CLASS::Init()
 {
-    isBias_ = matmulTiling->isBias;
-
-    scaleAFactor_ = 1; // matmulTiling_->mxTypePara & 0xff;
-    scaleBFactor_ = 1; // (matmulTiling_->mxTypePara >> 8) & 0xff;
-
-    eventIdsMToMte1_[0] = GetTPipePtr()->AllocEventID<HardEvent::M_MTE1>();
-    eventIdsMToMte1_[1] = GetTPipePtr()->AllocEventID<HardEvent::M_MTE1>();
-    eventIdsMte1ToM_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_M>();
-    eventIdsMte1ToM_[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_M>();
-
     // 设置反向同步
     for (uint64_t i = 0; i < L0_BUF_NUM; i++) {
-        SetFlag<HardEvent::M_MTE1>(eventIdsMToMte1_[i]);
+        SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + i);
     }
 }
 
@@ -120,74 +110,75 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::Iterate(bool isLastGmK, bool is
                                                          const BasicApiParamsV1 &basicApiParams)
 {
     uint64_t l0KSize = (basicApiParams.l0MSize <= 128 && basicApiParams.l0NSize <= 128) ? 256 : 128;
-    bool needPipeM =
-        basicApiParams.l0MSize * basicApiParams.l0NSize < 2560; // baseM/16 * baseN/16 < 10，需要插入同步保证精度
     for (uint64_t l1KOffset = 0; l1KOffset < basicApiParams.l1KSize; l1KOffset += l0KSize) {
         bool isLastL1K = l1KOffset + l0KSize >= basicApiParams.l1KSize;
         uint64_t realL0k = isLastL1K ? basicApiParams.l1KSize - l1KOffset : l0KSize;
         uint64_t loopId = l0LoopIdx_ % L0_BUF_NUM; // 等价于 l0LoopIdx_ % L0_BUF_NUM，减少scalar
-        WaitFlag<HardEvent::M_MTE1>(eventIdsMToMte1_[loopId]);
-        LoadAL1ToL0A(realL0k, loopId, l1KOffset, basicApiParams.l0MSize, basicApiParams.l1KSize, aL1, aMxScaleL1);
-        LoadBL1ToL0B(realL0k, loopId, l1KOffset, basicApiParams.l0NSize, basicApiParams.l1KSize, bL1, bMxScaleL1);
-        if (isBias_ && isFirstGmK && l1KOffset == 0) {
+        WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + loopId);
+        LoadAL1ToL0A(realL0k, loopId, l1KOffset, basicApiParams, aL1, aMxScaleL1);
+        LoadBL1ToL0B(realL0k, loopId, l1KOffset, basicApiParams, bL1, bMxScaleL1);
+        if (basicApiParams.isBias && isFirstGmK && l1KOffset == 0) {
             LoadBiasToBt(basicApiParams.l0NSize, loopId, biasL1);
         }
         Mmad(isLastGmK && isLastL1K, isFirstGmK && l1KOffset == 0, realL0k, loopId, basicApiParams);
-        if (needPipeM) {
-            PipeBarrier<PIPE_M>();
-        }
-        SetFlag<HardEvent::M_MTE1>(eventIdsMToMte1_[loopId]);
+        SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + loopId);
         l0LoopIdx_++;
     }
 }
 
 WQBMM_BASIC_API_V1_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::LoadAL1ToL0A(uint64_t baseK, uint64_t loopId, uint64_t l1KOffset,
-                                                              uint64_t l0MSize, uint64_t l1kSize,
+                                                              const BasicApiParamsV1 &basicApiParams,
                                                               const LocalTensor<xType> &aL1Tensor,
                                                               const LocalTensor<fp8_e8m0_t> &scaleAL1Tensor)
 {
     AscendC::LoadData2DParamsV2 aL0Load2dParams;
     aL0Load2dParams.mStartPosition = 0;
     aL0Load2dParams.kStartPosition = CeilDivide(static_cast<uint64_t>(l1KOffset * sizeof(xType)), 32UL); // 单位32B
-    aL0Load2dParams.mStep = CeilDivide(l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
-    aL0Load2dParams.kStep = CeilDivide(baseK, 32UL);                                         // 单位32B
-    aL0Load2dParams.srcStride = CeilDivide(l0MSize * 32, 512UL); // 32为K0，stride单位为512B
-    aL0Load2dParams.dstStride = aL0Load2dParams.srcStride;       // L1和L0 M大小一样，k方向stride也一样
+    aL0Load2dParams.mStep =
+        CeilDivide(basicApiParams.l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
+    aL0Load2dParams.kStep = CeilDivide(baseK, 32UL);                                    // 单位32B
+    aL0Load2dParams.srcStride = CeilDivide(basicApiParams.l0MSize * 32, 512UL);         // 32为K0，stride单位为512B
+    aL0Load2dParams.dstStride = aL0Load2dParams.srcStride; // L1和L0 M大小一样，k方向stride也一样
 
     AscendC::LoadData2DMxParams aL0Load2dMx;
     aL0Load2dMx.xStartPosition = 0;
-    aL0Load2dMx.yStartPosition = CeilDivide(l1KOffset, MX_GROUP_SIZE * MX_UNIT_BYTES);   // 单位是32B
-    aL0Load2dMx.xStep = CeilDivide(l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形
+    aL0Load2dMx.yStartPosition = CeilDivide((l1KOffset + basicApiParams.gmKOffset) % MX_SCALE_K_L1_SIZE,
+                                            MX_GROUP_SIZE * MX_UNIT_BYTES); // 单位是32B
+    aL0Load2dMx.xStep =
+        CeilDivide(basicApiParams.l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形
     aL0Load2dMx.yStep =
         CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES); // mxK = K/32, (baseK / MX_GROUP_SIZE) / MX_UNIT_BYTES
-    aL0Load2dMx.srcStride = CeilDivide(l1kSize * scaleAFactor_, MX_GROUP_SIZE * MX_UNIT_BYTES);
+    aL0Load2dMx.srcStride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUP_SIZE * MX_UNIT_BYTES);
     aL0Load2dMx.dstStride = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
     AscendC::LoadData(l0a_[loopId * L0_BUF_OFFSET_B8], aL1Tensor, scaleAL1Tensor, aL0Load2dParams, aL0Load2dMx);
 }
 
 WQBMM_BASIC_API_V1_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::LoadBL1ToL0B(uint64_t baseK, uint64_t loopId, uint64_t l1KOffset,
-                                                              uint64_t l0NSize, uint64_t l1kSize,
-                                                              const LocalTensor<xType> &bL1Tensor_,
+                                                              const BasicApiParamsV1 &basicApiParams,
+                                                              const LocalTensor<xType> &bL1Tensor,
                                                               const LocalTensor<fp8_e8m0_t> &scaleBL1Tensor)
 {
     AscendC::LoadData2DParamsV2 bL0Load2dParams;
     bL0Load2dParams.mStartPosition = 0;
     bL0Load2dParams.kStartPosition = CeilDivide(static_cast<uint64_t>(l1KOffset * sizeof(xType)), 32UL); // 单位32B
-    bL0Load2dParams.mStep = CeilDivide(l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
-    bL0Load2dParams.kStep = CeilDivide(baseK, 32UL);                                         // 单位32B
-    bL0Load2dParams.srcStride = CeilDivide(l0NSize * 32, 512UL); // 32为K0，stride单位为512B
-    bL0Load2dParams.dstStride = bL0Load2dParams.srcStride;       // L1和L0 N方向大小一样，k方向stride也一样
+    bL0Load2dParams.mStep =
+        CeilDivide(basicApiParams.l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
+    bL0Load2dParams.kStep = CeilDivide(baseK, 32UL);                                    // 单位32B
+    bL0Load2dParams.srcStride = CeilDivide(basicApiParams.l0NSize * 32, 512UL);         // 32为K0，stride单位为512B
+    bL0Load2dParams.dstStride = bL0Load2dParams.srcStride; // L1和L0 N方向大小一样，k方向stride也一样
 
     AscendC::LoadData2DMxParams bL0Load2dMx;
     bL0Load2dMx.xStartPosition = 0;
-    bL0Load2dMx.yStartPosition = CeilDivide(l1KOffset, MX_GROUP_SIZE * MX_UNIT_BYTES);   // 单位是32B
-    bL0Load2dMx.xStep = CeilDivide(l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形，
-    bL0Load2dMx.yStep = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);                // baseK / 32 / 2
-    bL0Load2dMx.srcStride = CeilDivide(l1kSize * scaleBFactor_, MX_GROUP_SIZE * MX_UNIT_BYTES);
+    bL0Load2dMx.yStartPosition = CeilDivide((l1KOffset + basicApiParams.gmKOffset) % MX_SCALE_K_L1_SIZE,
+                                            MX_GROUP_SIZE * MX_UNIT_BYTES); // 单位是32B
+    bL0Load2dMx.xStep =
+        CeilDivide(basicApiParams.l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形，
+    bL0Load2dMx.yStep = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);               // baseK / 32 / 2
+    bL0Load2dMx.srcStride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUP_SIZE * MX_UNIT_BYTES);
     bL0Load2dMx.dstStride = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
-    AscendC::LoadData(l0b_[loopId * L0_BUF_OFFSET_B8], bL1Tensor_, scaleBL1Tensor, bL0Load2dParams, bL0Load2dMx);
+    AscendC::LoadData(l0b_[loopId * L0_BUF_OFFSET_B8], bL1Tensor, scaleBL1Tensor, bL0Load2dParams, bL0Load2dMx);
 }
 
 WQBMM_BASIC_API_V1_TEMPLATE_PARAM
@@ -209,9 +200,9 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::Mmad(bool isLastK, bool isFirst
     mmadParams.cmatrixSource = false;
     mmadParams.unitFlag = isLastK ? UNIT_FLAG_ENABLE_AUTO_CLOSE : UNIT_FLAG_ENABLE;
     mmadParams.disableGemv = true;
-    SetFlag<HardEvent::MTE1_M>(eventIdsMte1ToM_[loopId]);
-    WaitFlag<HardEvent::MTE1_M>(eventIdsMte1ToM_[loopId]);
-    if (isBias_ && isFirstK) {
+    SetFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
+    WaitFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
+    if (basicApiParams.isBias && isFirstK) {
         mmadParams.cmatrixInitVal = false;
         AscendC::Mmad(l0c_, l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
                       biasTable_[loopId * BIAS_TABLE_OFFSET_B32], mmadParams);
@@ -248,7 +239,7 @@ WQBMM_BASIC_API_V1_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::End()
 {
     for (uint64_t i = 0; i < L0_BUF_NUM; i++) {
-        WaitFlag<HardEvent::M_MTE1>(eventIdsMToMte1_[i]);
+        WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + i);
     }
 }
 } // namespace WeightQuantBatchMatmulV2::Arch35

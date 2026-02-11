@@ -58,9 +58,9 @@ static constexpr int64_t L1_HALF_SIZE = L1_SIZE / 2;
 static constexpr int64_t L1_SIZE_WITH_QUANTSCALE = 504;
 static constexpr int64_t L1_SIZE_WITH_QUANTSCALE_BYTE = L1_SIZE_WITH_QUANTSCALE * 1024;
 static constexpr int64_t BIAS_L1_SIZE = 4;
-static constexpr int64_t MX_SCALE_L1_SIZE = 20;
 static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
 static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
+static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
 
 // 控制参数定义
 static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;
@@ -157,16 +157,11 @@ __aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTens
 template <typename T>
 __aicore__ constexpr uint32_t GetKBUnit()
 {
-    if constexpr (IsSameType<T, int4b_t>::value) {
-        return 2048;  // 2048个int4是1kb
+    if constexpr (IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value ||
+                  IsSameType<T, fp4x2_e1m2_t>::value) {
+        return 2048; // 2048个int4是1kb
     }
-    if constexpr (IsSameType<T, int8_t>::value || IsSameType<T, fp8_e4m3fn_t>::value) {
-        return 1024;  // 1024个B8是1kb
-    }
-    if constexpr (IsSameType<T, float>::value) {
-        return 256;  // 256个float是1kb
-    }
-    return 512;  // 512个half是1kb
+    return 1024 / sizeof(T); // 1kb总共大小为1024
 }
 
 template <typename xType, QuantType antiQuantType>
