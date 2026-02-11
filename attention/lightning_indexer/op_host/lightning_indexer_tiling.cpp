@@ -214,14 +214,22 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
     outputType_ = opParamInfo_.attenOut.desc->GetDataType();
     valuesOutType_ = opParamInfo_.valuesOut.desc->GetDataType();
 
-    bool inDTypeAllEqual = (inputQType_ == inputKType_) && (inputKType_ == weightsType_);
+    bool inDTypeAllEqual = (inputQType_ == inputKType_);
     OP_CHECK_IF(!inDTypeAllEqual,
-               OP_LOGE(opName_, "The data types of the input query, key, and weights must be the same."),
-               return ge::GRAPH_FAILED);
-
+            OP_LOGE(opName_, "The data types of the input query and key must be the same."),
+            return ge::GRAPH_FAILED);
     OP_CHECK_IF(((inputQType_ != ge::DT_FLOAT16) && (inputQType_ != ge::DT_BF16)),
-               OP_LOGE(opName_, "The data types of the input query, key, and weights must be float16 or bfloat16."),
+               OP_LOGE(opName_, "The data types of the input query, key must be float16 or bfloat16."),
                return ge::GRAPH_FAILED);
+    if (weightsType_ != ge::DT_FLOAT) {
+        OP_CHECK_IF((inputQType_ != weightsType_),
+                OP_LOGE(opName_, "The data types of the input query, key, and weights must be the same."),
+                return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF((weightsType_ != ge::DT_FLOAT),
+               OP_LOGE(opName_, "The data types of the input weights must be float32."),
+               return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
@@ -620,6 +628,7 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
 
     liInfo.inputQType = inputQType_;
     liInfo.inputKType = inputKType_;
+    liInfo.weightsType = weightsType_;
     liInfo.outputType = outputType_;
 
     liInfo.blockSize = blockSize_;
@@ -724,15 +733,17 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
     // -------------set tilingkey-----------------
-    // DT_Q, DT_KV, DT_OUT, PAGE_ATTENTION, FLASH_DECODE, LAYOUT_T, KV_LAYOUT_T
+    // int DT_W_FLAG, DT_Q, DT_KV, DT_OUT, PAGE_ATTENTION, FLASH_DECODE, LAYOUT_T, KV_LAYOUT_T
     uint32_t inputQType = static_cast<uint32_t>(tilingInfo->inputQType);
     uint32_t inputKType = static_cast<uint32_t>(tilingInfo->inputKType);
+    uint32_t weightsType = static_cast<uint32_t>(tilingInfo->weightsType);
     uint32_t outputType = static_cast<uint32_t>(tilingInfo->outputType);
     uint32_t pageAttentionFlag = static_cast<uint32_t>(tilingInfo->pageAttentionFlag);
     uint32_t inputQLayout = static_cast<uint32_t>(tilingInfo->inputQLayout);
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
-    uint32_t tilingKey =
-        GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputQLayout, inputKLayout);
+    uint32_t weightTypeFlag = (weightsType == ge::DT_FLOAT) ? 1 : 0;
+    uint64_t tilingKey =
+        GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);     // 1: batchmode模式
 

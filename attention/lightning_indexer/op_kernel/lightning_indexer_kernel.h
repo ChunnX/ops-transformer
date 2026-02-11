@@ -61,12 +61,16 @@ public:
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
+    static constexpr bool DT_W_FLAG = LIT::weightsTypeFlag;
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using OUT_T = typename LIT::outputType;
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_LAYOUT K_LAYOUT_T = LIT::keyLayout;
+    // 编译期条件选择模板第二个参数的类型，直接声明W_T 
+    // 第一个模板参数：固定为Q_T；第二个模板参数：编译期选float/void
+    using W_T = typename LightningIndexerTypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     using MM1_OUT_T = float;
 
@@ -100,7 +104,7 @@ protected:
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
-    GlobalTensor<K_T> weightsGm;
+    GlobalTensor<W_T> weightsGm;
 
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
@@ -424,7 +428,7 @@ __aicore__ inline void LIPreload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
         vectorService.InitParams(constInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         valueOutGm.SetGlobalBuffer((__gm__ K_T *)sparseValues);
-        weightsGm.SetGlobalBuffer((__gm__ K_T *)weights);
+        weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
         vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm);
     } else {
         matmulService.InitParams(constInfo);
