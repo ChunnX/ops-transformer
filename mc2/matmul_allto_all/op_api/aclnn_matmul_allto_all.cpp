@@ -58,8 +58,16 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
 }
 
 // 检查是否有空tensor
-// 非量化场景支持x1的m轴为0，即token提示词为空
+// 950 非量化场景支持x1的m轴为0，即token提示词为空
 static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2, bool transposeX2) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        auto mVal = x1->GetViewShape().GetDim(0);
+        OP_API_CHECK((mVal == ZERO), {
+          OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+          "X1 is empty tensor with zero dimM, which is unsupported.");
+          return false;
+        });
+    }
     auto kVal1 = x1->GetViewShape().GetDim(1);
     auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
