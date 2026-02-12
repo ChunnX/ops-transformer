@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0,
+        100
+    ],
+    "DESCRIPTION": "该执行路径主要应用于Normal模式的MaxPool3D反向梯度计算，通过Img2Col和Col2Img方式完成梯度散射，支持重叠和非重叠两种场景。"
+}

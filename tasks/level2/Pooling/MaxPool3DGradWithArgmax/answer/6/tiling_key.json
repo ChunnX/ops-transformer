@@ -1,0 +1,8 @@
+{
+    "ID": 6,
+    "TILING_KEY": [
+        71,
+        171
+    ],
+    "DESCRIPTION": "该执行路径主要应用于CutK-DHW模式的MaxPool3D反向梯度计算，沿kernel的D、H、W三个维度同时进行切分，适用于kernel尺寸在三个维度都较大、UB空间紧张需要最细粒度分块的场景。"
+}

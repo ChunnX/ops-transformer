@@ -1,0 +1,7 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        2
+    ],
+    "DESCRIPTION": "该执行路径主要应用于Scatter模式的MaxPool3D反向梯度计算，逐元素将梯度值通过argmax索引写回输出张量，适用于无核间数据重叠的场景。"
+}
