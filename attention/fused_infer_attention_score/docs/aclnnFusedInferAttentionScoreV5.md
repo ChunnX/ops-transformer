@@ -200,9 +200,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>ND</td>
         <td>
         <ul>
-            <li>sparseMode = 2、3、4时，attenMaskOptional的shape需要为（2048,2048）或（1,2048,2048）或（1,1,2048,2048）。</li>
-            <li>sparseMode为其他值且Q_S不为1时建议shape输入 (Q_S,KV_S); (B,Q_S,KV_S); (1,Q_S,KV_S); (B,1,Q_S,KV_S); (1,1,Q_S,KV_S)。</li>
-            <li>sparseMode为其他值且Q_S为1时建议shape输入(B,KV_S); (B,1,KV_S); (B,1,1,KV_S)。</li>
+            <li>sparseMode = 0、1时，attenMaskOptional的shape输入支持传入(B,Q_S,KV_S)、(1,Q_S,KV_S)、(B,1,Q_S,KV_S)、(1,1,Q_S,KV_S)。</li>
+            <li>sparseMode = 2、3、4时，attenMaskOptional的shape输入支持传入(2048, 2048)或(1,2048,2048)或(1,1,2048,2048)</li>
             <li>上述Q_S为query的shape中的S，KV_S为key和value的shape中的S；如果输入attenMask shape中的Q_S、KV_S非32B对齐，可以向上取到对齐的Q_S、KV_S。</li>
         </ul>
         </td>
@@ -738,11 +737,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>inputLayout为TND、TND_NTD、NTD_TND时，综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            <li>sparseMode为0时，代表defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；如果传入，则需要传入完整的attenmask矩阵（S1 * S2），表示preTokens和nextTokens之间的部分需要计算；要求preTokens > -actualSeqLengthsKv，preTokens + nextTokens >= 0，在perfix场景，actualSeqLengthsKv要叠加prefix长度。 </li>
+            <li>sparseMode为0时，代表defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；如果传入，则需要传入完整的attenmask矩阵（S1 * S2），表示preTokens和nextTokens之间的部分需要计算；要求preTokens + nextTokens >= 0。 </li>
             <li>sparseMode为1时，代表allMask，必须传入完整的attenmask矩阵（S1 * S2）。</li>
             <li>sparseMode为2时，代表leftUpCausal模式的mask，需要传入优化后的attenmask矩阵（2048*2048）。</li>
             <li>sparseMode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵（2048*2048）。</li>
-            <li>sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）；要求preTokens > -actualSeqLengths，nextTokens > -actualSeqLengthsKv，preTokens + nextTokens >= 0，在perfix场景，actualSeqLengthsKv要叠加prefix长度。</li>
+            <li>sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）；要求preTokens + nextTokens >= 0。</li>
             <li>sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block_local，均暂不支持。</li>
             <li>用户不特意指定时建议传入0。</li>
         </ul>
