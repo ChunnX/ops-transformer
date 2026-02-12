@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        2,
+        4
+    ],
+    "DESCRIPTION": "该执行路径主要应用于Hans解码操作，支持BF16（TILING_KEY=2）和FP32（TILING_KEY=4）数据类型。"
+}

@@ -1,0 +1,4 @@
+case_id;input_shape;dtype;with_group_idx;num_groups;expected_shape
+1;"[40, 10]";"float32";"true";4;"[4, 10]"
+3;"[400, 100]";"float32";"true";10;"[10, 100]"
+4;"[800, 10]";"float16";"true";20;"[20, 10]"

@@ -1,0 +1,9 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        1,
+        2,
+        3
+    ],
+    "DESCRIPTION": "该执行路径主要应用于910（__CCE_AICORE__ != 200）硬件平台上的MSE Loss梯度计算，支持float、half和bfloat16_t三种数据类型，使用KernelMseLossGrad910模板类，采用DataCopyPad方式进行数据搬运。"
+}

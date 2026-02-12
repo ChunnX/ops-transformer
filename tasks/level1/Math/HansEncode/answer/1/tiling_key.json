@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        2,
+        4
+    ],
+    "DESCRIPTION": "该执行路径用于处理HansEncode算子的核心编码逻辑，支持half（TILING_KEY=2）和float（TILING_KEY=4）数据类型。根据输入数据类型不同，分别实例化对应类型的AnsPdfStatistic进行概率统计（可选）和HansEncode进行编码操作。"
+}

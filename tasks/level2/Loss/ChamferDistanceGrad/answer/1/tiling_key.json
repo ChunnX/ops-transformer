@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2
+    ],
+    "DESCRIPTION": "该执行路径主要应用于Chamfer Distance的反向梯度计算，支持float(TILING_KEY=1)和half(TILING_KEY=2)两种数据类型，计算两组点集之间的梯度传播。"
+}

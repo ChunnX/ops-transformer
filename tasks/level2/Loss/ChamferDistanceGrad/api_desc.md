@@ -54,7 +54,7 @@ def chamfer_distance_grad(predict, label, reduction='mean'):
     计算预测值和目标值之间的均方误差损失。
     
     参数:
-        xyz1（Tensor): 点集1的坐标张量，形状为 [B, N, 2]，表示 B 个批次中每个批次包含 N 个二维点，数据类型支持 float32 或 float16；
+        xyz1（Tensor): 点集1的坐标张量，形状为 [B, N, 2]，表示 B 个批次中每个批次包含 N 个二维点，数据类型支持 float32;
         xyz2（Tensor): 点集2的坐标张量，形状为 [B, N, 2]，表示 B 个批次中每个批次包含 N 个二维点，数据类型与 xyz1 一致；
         idx1（Tensor): 正向传播中，点集1中每个点到点集2的最近点的索引，形状为 [B, N]，数据类型为 int32；
         idx2（Tensor): 正向传播中，点集2中每个点到点集1的最近点的索引，形状为 [B, N]，数据类型为 int32；
