@@ -299,9 +299,9 @@ __aicore__ inline void MoeV2FullLoadDynamicQuant<T>::CopyOutXQuant1H() {
       if (outIndex == -1 || (this->dropPadMode == DROPLESS_MODE && outIndex >= this->activateRows_)) {
         continue;
       }
-      DataCopyPad(expandedXGm_[outIndex * this->cols_scale_], outLocal, intriParams);   // scale放在data后面的位置
-      //DataCopyPad(dynamicQuantScaleGm[outIndex], quantScaleLocal, {1, 4, 0, 0, 0}); 不需要再额外copy scale
+      DataCopyPad(expandedXGm_[outIndex * this->cols_scale_], outLocal, intriParams);
     }
+
     xCopyInQueue_.FreeTensor(xLocal);
     inputXOutQueue.FreeTensor(outLocal);
   }

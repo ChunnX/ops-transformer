@@ -18,7 +18,7 @@
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/helper.hpp"
 #include "dispatch_policy_custom.hpp"
-#include "hccl_shmem.hpp"
+
 
 namespace Catlass::Gemm::Block {
 
@@ -162,7 +162,6 @@ public:
         InitL0C(resource);
     }
 
-
     CATLASS_DEVICE
     ~BlockMmad()
     {
@@ -227,7 +226,6 @@ public:
             copyGmToL1B(l1BTensorList[l1ListId], gmTileB, L1B_LAYOUT, layoutTileB);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventList[l1ListId]);
 
-
             // If the number of preload instructions reaches the upper limit, perform an mmad calculation on L1 tile
             if (preloadCount == PRELOAD_STAGES) {
                 L1TileMmad(l1TileMmadParamsList[l1TileMmadParamsId]);
@@ -274,7 +272,7 @@ public:
     CATLASS_DEVICE
     void Finalize(int32_t target, int32_t flag = 0)
     {
-        if (ptrSoftFlagBase_ != nullptr) {   // 软同步方案
+        if (ptrSoftFlagBase_ != nullptr) {
             if (target < 0) {
                 return;
             }
@@ -285,8 +283,8 @@ public:
             AscendC::DataCopy(flagGlobal, l1FTensor[target * 16], FLAGSTRIDE);
         }
         else {
-            for(;syncGroupIdx <= target; syncGroupIdx++) {      // 硬同步方案
-                int32_t flagId = syncGroupIdx / 8 + flag;
+            for(;syncGroupIdx <= target; syncGroupIdx++) {
+                int32_t flagId = syncGroupIdx / 15 + flag;
                 AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(flagId);
             }
         }
@@ -329,12 +327,12 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
         }
         if (ptrSoftFlagBase_ != nullptr) {
-            // 把初始化flag
+            // Initialize the flag matrix (structure as below):
             // 1 0 0 0 0 0 0 0
             // 2 0 0 0 0 0 0 0
             // ...
             // 16 0 0 0 0 0 0 0
-            // 搬到L1
+            // Then move it to L1
             uint32_t l1FOffset = l1SOffset + L1S_TILE_SIZE;
             l1FTensor = resource.l1Buf.template GetBufferByByte<int32_t>(l1FOffset);
             AscendC::GlobalTensor<int32_t> flagBase;

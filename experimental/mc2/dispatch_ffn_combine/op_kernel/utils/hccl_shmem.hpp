@@ -17,6 +17,12 @@ using namespace AscendC::HcclContextDef;
 constexpr int32_t MAX_RANK_SIZE = 32;
 constexpr int32_t SHMEM_MEM = 700 * MB_SIZE;
 
+constexpr uint16_t SEND_SYNC_EVENT_ID = 9;
+constexpr uint16_t RECV_SYNC_EVENT_ID = 10;
+
+constexpr uint32_t SELF_STATE_OFFSET = 256 * 1024;
+constexpr uint32_t STATE_OFFSET = 512;
+
 FORCE_INLINE_AICORE void AicSyncAll() {
     AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(8);
     AscendC::CrossCoreWaitFlag<0x0>(8);
@@ -77,7 +83,7 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
 template <bool IS_A2>
 class HcclShmem {
 public:
-    #ifdef HCCL_COMM    // hccl需要初始化hccl context
+    #ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
         std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
                           __gm__ HcclOpResParamCustom *> WinContext_{nullptr};
         Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
@@ -110,7 +116,7 @@ public:
     #endif
 
     FORCE_INLINE_AICORE
-    GM_ADDR operator() () const {   // 无参数，返回本地peermem
+    GM_ADDR operator() () const {   // No parameters: return pointer to local peermem
         #ifdef HCCL_COMM
             if constexpr(IS_A2) {
                 return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
@@ -123,7 +129,7 @@ public:
     }
 
     FORCE_INLINE_AICORE
-    GM_ADDR operator() (int32_t index) const {  // 带index参数，返回远端peermem首地址
+    GM_ADDR operator() (int32_t index) const {  // With index parameter: return pointer to the base address of remote peermem
         #ifdef HCCL_COMM
             if constexpr(IS_A2) {
                 return (GM_ADDR)WinContext_->windowsIn[index];
@@ -194,6 +200,130 @@ public:
         gm_store(sync_base, count);
     }
 
+
+    FORCE_INLINE_AICORE
+    void InitStatusTargetSum()
+    {
+        using namespace AscendC;
+        uint64_t flag_offset = (m_segmentSize - MB_SIZE) + SELF_STATE_OFFSET;
+        //uint64_t self_state_offset = (m_segmentSize - 2 * MB_SIZE);
+        // ep state
+        //uint32_t coreIdx = get_block_idx();;
+        uint32_t coreIdx = GetBlockIdx();
+        GlobalTensor<int32_t> selfStatusTensor;
+        selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)((*this)() + flag_offset));
+        __asm__ __volatile__("");
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor[coreIdx * UB_ALIGN]);
+        __asm__ __volatile__("");
+        int32_t state = selfStatusTensor(coreIdx * UB_ALIGN);
+        if (state == 0) {
+            sumTarget_ = static_cast<float>(1.0);
+            selfStatusTensor(coreIdx * UB_ALIGN) = 0x3F800000;  // 1.0f
+            epStateValue_ = 0x3F800000;                          // 1.0f
+        } else {
+            sumTarget_ = static_cast<float>(0.0);
+            selfStatusTensor(coreIdx * UB_ALIGN) = 0;
+            epStateValue_ = 0;
+        }
+        __asm__ __volatile__("");
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor[coreIdx * UB_ALIGN]);
+        __asm__ __volatile__("");
+    }
+
+    FORCE_INLINE_AICORE
+    void CrossRankSyncV2Set(AscendC::LocalTensor<int32_t> ctrBuffer) {
+        //subblockid = 0
+        uint32_t stateOffset_ =  STATE_OFFSET;
+        // uint32_t epStateOffsetOnWin_ = m_rank * stateOffset_;
+        
+        uint64_t flag_offset = (m_segmentSize - MB_SIZE) + m_rank * stateOffset_;
+        //uint64_t flag_offset = (m_segmentSize - MB_SIZE);
+        int vec_size = get_block_num();
+        int vec_id = get_block_idx();
+ 
+        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
+        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
+        AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
+        pipe_barrier(PIPE_ALL);
+ 
+        ctrBuffer.SetValue(0, epStateValue_);
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        for (uint32_t dstEpIdx = vec_id; dstEpIdx < m_rankSize; dstEpIdx += vec_size) {
+            AscendC::GlobalTensor<int32_t> gmDstStates;
+            gmDstStates.SetGlobalBuffer((__gm__ int32_t*)((*this)(flag_offset, dstEpIdx)));
+            DataCopy(gmDstStates, ctrBuffer, 8);
+        }
+        AscendC::CrossCoreWaitFlag(RECV_SYNC_EVENT_ID);
+    }
+
+    FORCE_INLINE_AICORE
+    void CrossRankSyncV2Wait(AscendC::LocalTensor<float> statusTensor, AscendC::LocalTensor<float> gatherMaskOutTensor,
+        AscendC::LocalTensor<uint32_t> gatherTmpTensor, AscendC::LocalTensor<float> statusSumOutTensor) {
+
+        uint64_t flag_offset = (m_segmentSize - MB_SIZE);
+        int vec_size = get_block_num();
+        int vec_id = get_block_idx();
+        uint32_t stateOffset_ =  STATE_OFFSET;
+
+        uint32_t sendRankNum_ = m_rankSize / vec_size;
+        uint32_t remainderRankNum = m_rankSize % vec_size;
+        uint32_t startRankId_ = sendRankNum_ * vec_id;
+        if (vec_id < remainderRankNum) {
+            sendRankNum_++;
+            startRankId_ += vec_id;
+        } else {
+            startRankId_ += remainderRankNum;
+        }
+        uint32_t endRankId_ = startRankId_ + sendRankNum_;
+        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
+
+        AscendC::GlobalTensor<float> epStatusSpaceGlobalTensor_;
+        epStatusSpaceGlobalTensor_.SetGlobalBuffer((__gm__ float *)((*this)() + flag_offset));
+
+        if (startRankId_ < m_rankSize) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+            gatherTmpTensor.SetValue(0, 1);
+            uint32_t mask = 1;  // gatherMask + sum
+            uint64_t rsvdCnt = 0;
+            // DataCopyParams intriParams{static_cast<uint16_t>(sendRankNum_), 1,
+            //                         static_cast<uint16_t>((moeSendNum_ > 512) ? 7 : 15), 0}; 
+            AscendC::DataCopyParams intriParams{static_cast<uint16_t>(sendRankNum_), 1,
+                                    static_cast<uint16_t>(15), 0}; 
+
+            float sumOfFlag = static_cast<float>(-1.0);
+            float minTarget = (sumTarget_ * sendRankNum_) - (float)0.5;
+            float maxTarget = (sumTarget_ * sendRankNum_) + (float)0.5;
+            AscendC::SumParams sumParams{1, sendRankNum_, sendRankNum_};
+
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
+
+            while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+                AscendC::DataCopy<float>(statusTensor, epStatusSpaceGlobalTensor_[startRankId_ * stateOffset_ / sizeof(float)],
+                                intriParams);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+
+                GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, mask,
+                        {1, (uint16_t)sendRankNum_, 1, 0}, rsvdCnt);
+
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
+                AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                sumOfFlag = statusSumOutTensor.GetValue(0);
+            }
+        }
+
+        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
+        AscendC::CrossCoreWaitFlag(RECV_SYNC_EVENT_ID);
+
+        //unpermute
+        AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
+    }
+
+
     FORCE_INLINE_AICORE
     __gm__ int32_t* SyncBaseAddr() {
         uint64_t flag_offset = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
@@ -205,6 +335,8 @@ private:
     int32_t m_rank;
     int32_t m_rankSize;
     size_t m_segmentSize;
+    float sumTarget_{0.0};
+    int32_t epStateValue_;
 };
 
 

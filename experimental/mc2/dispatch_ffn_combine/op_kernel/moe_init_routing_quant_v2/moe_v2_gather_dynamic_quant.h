@@ -184,7 +184,7 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::CopyOutXQuant1H(int64_t progr
 
     inputXInQueue.EnQue<T>(inLocal);
 
-    // 计算quant
+    // Compute quantization
     Compute(smoothLocal);
 
     LocalTensor<int8_t> outLocal = inputXOutQueue.DeQue<int8_t>();
@@ -196,7 +196,8 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::CopyOutXQuant1H(int64_t progr
       if (outIndex == -1 || (this->dropPadMode == DROPLESS_MODE && outIndex >= this->activateRows)) {
         continue;
       }
-      DataCopyPad(expandedXGm[outIndex * cols_scale_], outLocal, copyOutParams);   // scale放在data后面的位置
+      // Scale is placed after the data position
+      DataCopyPad(expandedXGm[outIndex * cols_scale_], outLocal, copyOutParams);
     }
     inputXInQueue.FreeTensor(inLocal);
     inputXOutQueue.FreeTensor(outLocal);
@@ -519,9 +520,9 @@ template <typename T>
 __aicore__ inline void MoeV2GatherDynamicQuant<T>::Process() {
   if (this->blockIdx < this->needCoreNum) {
     currentLoopRows = perLoopRows;
-    if (colLoops > 1) {  // 一行无法全载，需要workspace
-      trap();   // 不支持
-    } else {  // 一行可以全载
+      if (colLoops > 1) {  // Cannot fit all data in one row, workspace is required
+        trap();   // Not supported
+      } else {  // All data can fit in one row
       if (smoothType == 2) {
         for (int64_t loop = 0; loop < this->rowLoops - 1; loop++) {
           CopyInExpandedExpertIdx(loop);
