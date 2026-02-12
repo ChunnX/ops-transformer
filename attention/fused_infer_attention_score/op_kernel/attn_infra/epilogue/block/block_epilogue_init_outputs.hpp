@@ -11,6 +11,7 @@
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_INIT_OUTPUTS_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_INIT_OUTPUTS_HPP
 
+#include <limits>
 #include "../../../attn_infra/base_defs.hpp"
 #include "../../../attn_infra/arch/resource.hpp"
 #include "../../../attn_infra/epilogue/dispatch_policy.hpp"
