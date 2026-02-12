@@ -2723,9 +2723,6 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::ProcessVec1Inne
         }
 
         if constexpr (FLASH_DECODE) {
-            uint32_t outIdx = info.loop % (PRE_LOAD_NUM_MLA);
-            auto sumTensor = softmaxSumUb[outIdx * BUFFER_SIZE_BYTE_2K / sizeof(T)];
-            auto maxTensor = softmaxMaxUb[outIdx * BUFFER_SIZE_BYTE_2K / sizeof(T)];
             ComputeLogSumExpAndCopyToGm(info, sumTensor, maxTensor);
             return;
         }
