@@ -1,0 +1,10 @@
+{
+    "ID": 5,
+    "TILING_KEY": [
+        41,
+        61,
+        141,
+        161
+    ],
+    "DESCRIPTION": "该执行路径主要应用于CutK-DH模式的MaxPool3D反向梯度计算，沿kernel的D和H维度进行切分，适用于kernel尺寸较大需要同时在深度和高度方向分块处理的场景。"
+}

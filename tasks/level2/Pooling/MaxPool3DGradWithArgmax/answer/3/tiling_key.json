@@ -1,0 +1,7 @@
+{
+    "ID": 3,
+    "TILING_KEY": [
+        102
+    ],
+    "DESCRIPTION": "该执行路径主要应用于Scatter Overlap模式的MaxPool3D反向梯度计算，处理核间输出数据存在重叠的场景，通过workspace中间缓冲区和float累加避免数据竞争，最后进行类型转换。"
+}
