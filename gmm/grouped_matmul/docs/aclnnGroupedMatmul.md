@@ -342,20 +342,19 @@ aclnnStatus aclnnGroupedMatmul(
   - 非量化场景支持的输入类型为：
     - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为 空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT16；
     - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional 为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为BFLOAT16；
-    - x为FLOAT32、weight为FLOAT32、biasOptional为FLOAT32、scaleOptional为 空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT32；
   - 量化场景支持的输入类型为：
 
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为UINT64、 offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为INT8；
   - 伪量化场景支持的输入类型为：
     - x为FLOAT16、weight为INT8、biasOptional为FLOAT16、scaleOptional为空，  offsetOptional为空，antiquantScaleOptional为FLOAT16、 antiquantOffsetOptional为FLOAT16、y为FLOAT16；
     - x为BFLOAT16、weight为INT8、biasOptional为FLOAT32、scaleOptional为 空，offsetOptional为空，antiquantScaleOptional为BFLOAT16、 antiquantOffsetOptional为BFLOAT16、y为BFLOAT16；
-  - 如果传入groupListOptional，groupListOptional必须为非负递增数列，  groupListOptional长度不能为1。
+  - 如果传入groupListOptional，groupListOptional必须为非负递增数列，groupListOptional长度不能为1。
   - 当前支持的场景：
-      支持场景中单表示单tensor，多表示多tensor，表示顺序为x，weight，y，例，单  多单表示支持x为单tensor，weight多tensor，y单tensor的场景。
+      支持场景中单表示单tensor，多表示多tensor，表示顺序为x，weight，y，例，单多单表示支持x为单tensor，weight多tensor，y单tensor的场景。
 
       | 支持场景 | 场景限制 |
       |:-------:| :-------|
-      | 多多多 |1）仅支持splitItem为0/1<br>2）x中tensor要求维度一致，支持2-6维，weight中  tensor需为2维，y中tensor维度和x保持一致<br>3）若x中存在tensor大于2维，  groupListOptional必须传空<br>4）若x中tensor为2维且传入  groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对 应 |
+      | 多多多 |1）仅支持splitItem为0/1<br>2）x中tensor要求维度一致，支持2-6维，weight中  tensor需为2维，y中tensor维度和x保持一致<br>3）若x中存在tensor大于2维，  groupListOptional必须传空<br>4）若x中tensor为2维且传入  groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应 |
       | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且最后 一个值与x中tensor的第一维相等<br>3）x,weight,y中tensor需为2维<br>4） weight中每个tensor的N轴必须相等 |
       | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional， groupListOptional的差值需与y中tensor的第一维一一对应<br>3）x,weight,y中  tensor需为2维 |
       | 多多单 |1）仅支持splitItem为2/3<br>2）x,weight,y中tensor需为2维 <br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional， groupListOptional的差值需与x中tensor的第一维一一对应 |
@@ -376,7 +375,6 @@ aclnnStatus aclnnGroupedMatmul(
       |:-------:|:-------:| :------      |:------ |
       |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
       |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
-      |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
 
     </details>
 
@@ -464,7 +462,7 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
 
     // 调用aclrtMemcpy将Host侧数据拷贝到Device侧内存上
-    std::vector<T> hostData(size, 0);
+    std::vector<T> hostData(GetShapeSize(shape), 0);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
 
@@ -484,12 +482,12 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
 int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** deviceAddr,
                         aclDataType dataType, aclTensorList** tensor) {
     int size = shapes.size();
-    aclTensor* tensors[size];
+    std::vector<aclTensor*> tensors(size);
     for (int i = 0; i < size; i++) {
-        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors + i);
+        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors.data() + i);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
     }
-    *tensor = aclCreateTensorList(tensors, size);
+    *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
 }
 
@@ -565,7 +563,7 @@ int main() {
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
         for (int64_t j = 0; j < size; j++) {
-            LOG_PRINT("result[%ld] is: %f\n", j, resultData[j]);
+            LOG_PRINT("result[%ld] is: %hu\n", j, resultData[j]);
         }
     }
 

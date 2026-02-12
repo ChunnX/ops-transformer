@@ -277,7 +277,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     </tr></thead>
   <tbody>
     <tr>
-      <td>ACLNN_ERRPARAM_NULLPTR</td>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
       <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
     </tr>
@@ -327,7 +327,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulV2GetWorkspaceSize获取。</ td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulV2GetWorkspaceSize获取。</td>
       </tr>
       <tr>
         <td>executor</td>
@@ -486,7 +486,7 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
 
     // 调用aclrtMemcpy将Host侧数据拷贝到Device侧内存上
-    std::vector<T> hostData(size, 0);
+    std::vector<T> hostData(GetShapeSize(shape), 0);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
 
@@ -506,12 +506,12 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
 int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** deviceAddr,
                         aclDataType dataType, aclTensorList** tensor) {
     int size = shapes.size();
-    aclTensor* tensors[size];
+    std::vector<aclTensor*> tensors(size);
     for (int i = 0; i < size; i++) {
-        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors + i);
+        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors.data() + i);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
     }
-    *tensor = aclCreateTensorList(tensors, size);
+    *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
 }
 

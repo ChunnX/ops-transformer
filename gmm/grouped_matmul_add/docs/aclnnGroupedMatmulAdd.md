@@ -108,7 +108,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
       <tr>
         <td>y</td>
         <td>输入</td>
-        <td>表示原地累加的输出矩阵。</td>
+        <td>表示原地累加的输出矩阵，即yRef。</td>
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
@@ -158,7 +158,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
       <tr>
         <td>yRef</td>
         <td>输出</td>
-        <td>表示原地累加的输出矩阵。</td>
+        <td>表示原地累加的输出矩阵，即y。</td>
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnMoeInitRoutingV2GetWorkspaceSize</code>获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnGroupedMatmulAddGetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -352,7 +352,7 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
 
   // 调用aclrtMemcpy将Host侧数据拷贝到Device侧内存上
-  std::vector<T> hostData(size, 0);
+  std::vector<T> hostData(GetShapeSize(shape), 0);
   ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
 
@@ -372,12 +372,12 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
 int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** deviceAddr,
                         aclDataType dataType, aclTensorList** tensor) {
   int size = shapes.size();
-  aclTensor* tensors[size];
+  std::vector<aclTensor*> tensors(size);
   for (int i = 0; i < size; i++) {
-    int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors + i);
+    int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors.data() + i);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
   }
-  *tensor = aclCreateTensorList(tensors, size);
+  *tensor = aclCreateTensorList(tensors.data(), size);
   return ACL_SUCCESS;
 }
 
@@ -392,11 +392,11 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
-  std::vector<int64_t> xShape = {512, 256};
-  std::vector<int64_t> weightShape= {512, 256};
-  std::vector<int64_t> yShape = {2, 256, 256};
+  std::vector<int64_t> xShape = {64, 32};
+  std::vector<int64_t> weightShape= {64, 32};
+  std::vector<int64_t> yShape = {64, 32};
   std::vector<int64_t> groupListShape = {2};
-  std::vector<int64_t> groupListData = {256, 512};
+  std::vector<int64_t> groupListData = {32, 64};
   void* xDeviceAddr;
   void* weightDeviceAddr;
   void* yDeviceAddr;
@@ -433,7 +433,7 @@ int main() {
   // 3. 调用CANN算子库API
   // 调用aclnnGroupedMatmulAdd第一段接口
   ret = aclnnGroupedMatmulAddGetWorkspaceSize(x, weight, groupedList, yRef, transpose_x, transpose_weight, group_type, &workspaceSize, &executor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulAddGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
@@ -442,7 +442,7 @@ int main() {
   }
   // 调用aclnnGroupedMatmulAdd第二段接口
   ret = aclnnGroupedMatmulAdd(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmul failed. ERROR: %d\n", ret); return ret);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulAdd failed. ERROR: %d\n", ret); return ret);
 
   // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
@@ -450,12 +450,12 @@ int main() {
 
   // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
   auto size = GetShapeSize(yShape);
-  std::vector<uint16_t> resultData(size, 0);
+  std::vector<float> resultData(size, 0);
   ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddr,
                         size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
   for (int64_t j = 0; j < size; j++) {
-      LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+      LOG_PRINT("result[%ld] is: %f\n", j, resultData[j]);
   }
 
 

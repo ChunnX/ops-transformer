@@ -365,7 +365,6 @@ aclnnStatus aclnnGroupedMatmulV4(
     - scaleOptional支持UINT64、BFLOAT16、FLOAT32
     - perTokenScaleOptional支持FLOAT32
     - out支持FLOAT16、BFLOAT16、INT8、FLOAT32、INT32
-    - groupType不支持n轴分组
     - 输入参数x、weight，输出参数out支持最多128个tensor。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - x支持FLOAT8_E4M3FN、FLOAT8_E5M2、INT8、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32、FLOAT4_E2M1
@@ -399,7 +398,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     </tr></thead>
   <tbody>
     <tr>
-      <td>ACLNN_ERRPARAM_NULLPTR</td>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
       <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
     </tr>
@@ -562,7 +561,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     - perTokenScaleOptional：一般情况下，只支持1维且长度与x的M相同。仅支持x、weight、out均为单tensor（TensorList长度为1）场景。
     - groupListOptional：当输出中TensorList的长度为1时，groupListOptional约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。
     - groupListType为0时要求groupListOptional中数值为非负单调非递减数列，表示分组轴大小的cumsum结果（累积和），groupListType为1时要求groupListOptional中数值为非负数列，表示分组轴上每组大小，groupListType为2时要求 groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，详见[groupListOptional配置示例](#grouplistoptional配置示例)。
-    - groupType代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。当前不支持n轴分组，详细参考<a href="#groupType-constraints">groupType支持场景</a>约束。
+    - groupType代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。详细参考<a href="#groupType-constraints">groupType支持场景</a>约束。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
 
     <a id="a8w8场景约束"></a>

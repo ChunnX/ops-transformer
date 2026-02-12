@@ -256,7 +256,6 @@ aclnnStatus aclnnGroupedMatmulV3(
     - weight支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - biasOptional支持FLOAT16、FLOAT32、INT32
     - y支持FLOAT16、BFLOAT16、INT8、FLOAT32
-    - groupType不支持n轴分组
     - 输入参数x、weight，输出参数y支持最多128个tensor。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - x支持FLOAT16、BFLOAT16、FLOAT32
@@ -286,7 +285,7 @@ aclnnStatus aclnnGroupedMatmulV3(
     </tr></thead>
   <tbody>
     <tr>
-      <td>ACLNN_ERRPARAM_NULLPTR</td>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
       <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
     </tr>
