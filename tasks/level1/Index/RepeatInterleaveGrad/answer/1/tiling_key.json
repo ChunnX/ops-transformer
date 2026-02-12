@@ -1,0 +1,12 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0,
+        1,
+        2,
+        10,
+        11,
+        12
+    ],
+    "DESCRIPTION": "该执行路径主要应用于repeat_interleave操作的反向梯度计算，支持half/bfloat16/float数据类型与int32/int64索引类型的组合，沿指定维度对重复展开的梯度进行聚合求和。"
+}
