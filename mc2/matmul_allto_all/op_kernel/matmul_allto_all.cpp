@@ -13,7 +13,11 @@
  * \brief kernel内核实现
  */
 #include <lib/matmul_intf.h>
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "arch32/matmul_allto_all_tiling_key.h"
 #include "arch32/matmul_allto_all_tiling.h"
 #include "arch32/matmul_allto_all.h"

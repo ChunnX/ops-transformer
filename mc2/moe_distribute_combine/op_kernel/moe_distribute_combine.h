@@ -15,7 +15,11 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_H
 #define MOE_DISTRIBUTE_COMBINE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #if __has_include("../common/inc/kernel/moe_distribute_base.h")

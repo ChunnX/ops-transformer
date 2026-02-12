@@ -129,7 +129,6 @@ namespace {
     constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 7168;
     constexpr uint32_t LAYERED_MAX_HIDDEN_SIZE_A2 = 10240;
     constexpr uint32_t MAX_BATCH_SIZE_A2 = 256;
-    constexpr uint32_t LAYERED_MAX_BATCH_SIZE_A2 = 512;
     constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
     constexpr uint32_t BLOCK_SIZE_A2 = 32;
     constexpr uint32_t MAX_K_VALUE_A2 = 16;
@@ -1589,8 +1588,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(K_INNER_DEBUG, "expertIdshape is invalid"), return GRAPH_FAILED);
     uint32_t bs = expertIdStorageShape->GetStorageShape().GetDim(0);
-    uint32_t maxBatchSizeA2 = isLayered ? LAYERED_MAX_BATCH_SIZE_A2 : MAX_BATCH_SIZE_A2;
-    OP_TILING_CHECK(bs == 0 || bs > maxBatchSizeA2,
+    OP_TILING_CHECK(bs == 0 || bs > MAX_BATCH_SIZE_A2,
         OP_LOGE(K_INNER_DEBUG, "batchsize is invalid."), return GRAPH_FAILED);
 
     uint32_t k = expertIdStorageShape->GetStorageShape().GetDim(1);
@@ -1841,10 +1839,6 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext*
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter MoeDistributeCombineA2 tiling func.");
-    // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    auto ret = context->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
 
     // tilingData
     MoeDistributeCombineA2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineA2TilingData>();
@@ -1931,11 +1925,10 @@ static ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* 
                     static_cast<ge::DataType>(expandXDesc->GetDataType())), return ge::GRAPH_FAILED);
 
     std::string socVersion = mc2tiling::GetSocVersion(context);
-    NpuArch npuArch = mc2tiling::GetNpuArch(context);
     ge::graphStatus ret;
     if (socVersion == "Ascend910B") {
         ret = MoeDistributeCombineA2TilingFuncImpl(context, config);
-    } else if (npuArch == NpuArch::DAV_3510) {
+    } else if (socVersion == "Ascend950") {
         ret = MoeDistributeCombineA5TilingFuncImpl(context, config);
     } else {
         ret = MoeDistributeCombineA3TilingFuncImpl(context, config);

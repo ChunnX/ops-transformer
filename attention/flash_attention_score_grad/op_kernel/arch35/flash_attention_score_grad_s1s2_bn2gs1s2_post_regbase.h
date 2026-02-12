@@ -14,7 +14,11 @@
  */
 #ifndef FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_POST_KERNEL_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_POST_KERNEL_REGBASE_H_
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 #define FAG_POST_CLASS_TEMPLATE                                                                                             \
     template <typename T1, typename T2, typename OUTDTYPE=T1, const uint8_t SPLIT_AXIS = 0, const bool IS_ROPE = false, const uint8_t DETER_SPARSE_TYPE = 0, const bool IS_TND = 0, const bool IS_TND_SWIZZLE = 0> 

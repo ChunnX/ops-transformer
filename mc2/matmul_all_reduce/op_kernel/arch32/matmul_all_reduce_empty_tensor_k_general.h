@@ -15,7 +15,11 @@
 #ifndef MATMUL_ALL_REDUCE_EMPTY_TENSOR_K_GENERAL_H
 #define MATMUL_ALL_REDUCE_EMPTY_TENSOR_K_GENERAL_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "weight_quant_matmul_all_reduce_tiling_data.h"

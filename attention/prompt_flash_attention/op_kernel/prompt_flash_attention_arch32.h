@@ -31,8 +31,12 @@
 #include "./arch32/prompt_flash_attention_var_len_score_sab_baseapi.h"
 #include "./arch32/prompt_flash_attention_empty_tensor.h"
 #else
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "./arch32/unpad_flash_attention_common.h"
 #include "./arch32/prompt_attention_prefill.h"
 #include "./arch32/prompt_flash_attention_s1s2_bns1_x310_base.h"

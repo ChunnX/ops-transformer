@@ -15,7 +15,11 @@
 
 #include "matmul_reduce_scatter_v2_tiling_key.h"
 #include "lib/matmul_intf.h"
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "matmul_reduce_scatter_aiv_mode.h"
 #include "matmul_reduce_scatter_aiv_mode_smallM.h"
 #include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"

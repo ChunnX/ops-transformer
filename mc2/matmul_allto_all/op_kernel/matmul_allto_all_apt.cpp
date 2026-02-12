@@ -14,7 +14,11 @@
  */
 #include <cstring>
 #include <lib/matmul_intf.h>
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "common.h"
 #include "./arch35/template_head.h"
 #include "./arch35/matmul_allto_all_tiling_key.h"

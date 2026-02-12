@@ -16,7 +16,11 @@
 #ifndef ATTENTION_TO_FFN_H
 #define ATTENTION_TO_FFN_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/reduce/sum.h"
 #include "adv_api/reduce/reduce.h"
 #include "kernel_tiling/kernel_tiling.h"

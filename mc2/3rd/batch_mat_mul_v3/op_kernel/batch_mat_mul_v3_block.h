@@ -15,7 +15,11 @@
 #ifndef BATCH_MATMUL_V3_BLOCK_H
 #define BATCH_MATMUL_V3_BLOCK_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "../../mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "lib/matmul_intf.h"
 #include "batch_mat_mul_v3_tiling_data.h"

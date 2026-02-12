@@ -20,6 +20,7 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_infos_def.h"
 #include "err/ops_err.h"
+#include "platform/soc_spec.h"
 namespace optiling {
 const std::initializer_list<NpuArch> AdvancedNpuArch = {NpuArch::DAV_3510};
 

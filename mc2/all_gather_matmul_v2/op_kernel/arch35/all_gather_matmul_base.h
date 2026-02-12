@@ -16,7 +16,11 @@
 #ifndef ALL_GATHER_MATMUL_V2_BASE_H
 #define ALL_GATHER_MATMUL_V2_BASE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "common.h"
 #include "lib/hccl/hccl.h"

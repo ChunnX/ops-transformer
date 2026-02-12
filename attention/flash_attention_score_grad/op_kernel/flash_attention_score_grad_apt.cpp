@@ -19,7 +19,11 @@
 #define KFC_L1_RESERVER_SIZE 0 // only support Gm in and Gm out
 #endif
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 using namespace AscendC;
 
 #include "arch35/flash_attention_score_grad_entry_regbase.h"

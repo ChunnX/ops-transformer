@@ -23,6 +23,7 @@
 #include "util/shape_util.h"
 #include "ring_attention_update_tiling.h"
 #include "ring_attention_update_tiling_arch35.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 

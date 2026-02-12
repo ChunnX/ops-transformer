@@ -19,6 +19,7 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_log.h"
+#include "platform/soc_spec.h"
 namespace optiling {
 const std::initializer_list<NpuArch> Mc2AdvancedSocVersion = {
     NpuArch::DAV_3510,

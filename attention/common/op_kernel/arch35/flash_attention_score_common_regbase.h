@@ -14,7 +14,11 @@
 #ifndef FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
 #define FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "stdarg.h"

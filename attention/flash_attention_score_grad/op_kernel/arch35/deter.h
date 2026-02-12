@@ -16,7 +16,11 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_DETER_H_
 #define FLASH_ATTENTION_SCORE_GRAD_DETER_H_
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "common.h"
 
 

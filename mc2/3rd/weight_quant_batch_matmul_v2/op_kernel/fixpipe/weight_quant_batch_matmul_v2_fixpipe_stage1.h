@@ -15,7 +15,11 @@
 
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_FIXPIPE_STAGE1_H
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_FIXPIPE_STAGE1_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "../tool.h"
 
 namespace Mc2WeightQuantBatchMatmulV2 {

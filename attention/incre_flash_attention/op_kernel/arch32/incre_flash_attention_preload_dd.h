@@ -15,8 +15,12 @@
 #ifndef INCRE_FLASH_ATTENTION_PRELOAD_DD
 #define INCRE_FLASH_ATTENTION_PRELOAD_DD
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"

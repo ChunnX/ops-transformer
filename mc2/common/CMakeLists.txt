@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+ set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
  if(BUILD_OPEN_PROJECT)
  file(GLOB OPTILING_SRCS 
    src/context_transfer.cpp
@@ -26,8 +27,12 @@
    src/mc2_tiling_utils.cpp
    src/moe_tiling_base.cpp
    src/one_calc_two_comm_tiling.cpp
-   src/mc2_gen_task_ops_utils_arch35.cpp
    )
+ if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950")
+   list(APPEND OPTILING_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/src/mc2_gen_task_ops_utils_arch35.cpp)
+ else()
+   list(APPEND OPTILING_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/src/mc2_gen_task_ops_utils_arch35_stub.cpp)
+ endif()
  if(UT_TEST_ALL OR OP_HOST_UT)
    list(FILTER OPTILING_SRCS EXCLUDE REGEX "src/mc2_hcom_topo_info\\.cpp")
    file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp ${UT_COMMON_INC}/op_cache_tiling.cpp)

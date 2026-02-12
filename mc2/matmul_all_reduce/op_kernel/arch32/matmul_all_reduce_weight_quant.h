@@ -15,7 +15,11 @@
 #ifndef MATMUL_ALL_REDUCE_WEIGHT_QUANT_H
 #define MATMUL_ALL_REDUCE_WEIGHT_QUANT_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #if (FORMAT_X2 == FORMAT_FRACTAL_NZ)

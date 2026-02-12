@@ -20,7 +20,11 @@
 #include "basic_block_vf_mx.h"
 #include "basic_block_vf_nd.h"
 #include "basic_block_vf_nz.h"
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 using AscendC::BLOCK_CUBE;
 using AscendC::CacheMode;

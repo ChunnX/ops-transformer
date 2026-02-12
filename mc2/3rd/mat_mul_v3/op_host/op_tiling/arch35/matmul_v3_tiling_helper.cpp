@@ -15,6 +15,7 @@
 
 #include "matmul_v3_tiling_helper.h"
 #include "common/op_host/math_util.h"
+#include "platform/soc_spec.h"
 
 using Ops::Transformer::MathUtil;
 namespace {

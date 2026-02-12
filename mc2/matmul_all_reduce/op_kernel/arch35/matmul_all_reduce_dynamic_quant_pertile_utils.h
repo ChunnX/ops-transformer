@@ -16,7 +16,11 @@
 #ifndef MATMUL_ALL_REDUCE_DYNAMIC_QUANT_PERTILE_UTILS_H
 #define MATMUL_ALL_REDUCE_DYNAMIC_QUANT_PERTILE_UTILS_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/pad/broadcast.h"
 #include "adv_api/reduce/reduce.h"
 

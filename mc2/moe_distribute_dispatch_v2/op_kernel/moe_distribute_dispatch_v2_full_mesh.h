@@ -15,7 +15,11 @@
 #ifndef MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_H
 #define MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/math/cumsum.h"
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"

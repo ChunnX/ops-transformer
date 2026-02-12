@@ -12,7 +12,11 @@
  * \file allto_all_matmul.cpp
  * \brief
  */
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "arch32/allto_all_matmul_tiling.h"
 #include "arch32/allto_all_matmul_tiling_key.h"
