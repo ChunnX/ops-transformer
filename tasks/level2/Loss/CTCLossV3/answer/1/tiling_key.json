@@ -1,0 +1,7 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0
+    ],
+    "DESCRIPTION": "该执行路径为CTC Loss V3算子的唯一执行路径，适用于所有场景。代码中仅使用了一个基础模板类CTCLossV3，无基于tiling key的分支选择逻辑。"
+}
