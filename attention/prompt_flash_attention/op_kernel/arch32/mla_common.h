@@ -27,6 +27,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "stdarg.h"
+#include "adv_api/select/selectwithbytesmask.h"
 
 using AscendC::AdjustSoftMaxRes;
 using AscendC::AIC;
