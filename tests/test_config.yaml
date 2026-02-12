@@ -341,10 +341,10 @@ gmm:
       - gmm/grouped_matmul/docs
       - gmm/grouped_matmul/README.md
     ut_cov_exclude:
-      - gmm/grouped_matmul
+      - gmm/grouped_matmul/op_kernel
     options:
       - grouped_matmul
-    test: 
+    test:
       examples: False
 
   grouped_matmul_swiglu_quant:
@@ -358,7 +358,7 @@ gmm:
       - gmm/grouped_matmul_swiglu_quant
     options:
       - grouped_matmul_swiglu_quant
-    test: 
+    test:
       examples: False
 
   grouped_matmul_swiglu_quant_v2:
@@ -369,10 +369,10 @@ gmm:
       - gmm/grouped_matmul_swiglu_quant_v2/docs
       - gmm/grouped_matmul_swiglu_quant_v2/README.md
     ut_cov_exclude:
-      - gmm/grouped_matmul_swiglu_quant_v2
+      - gmm/grouped_matmul_swiglu_quant_v2/op_kernel
     options:
       - grouped_matmul_swiglu_quant_v2
-    test: 
+    test:
       examples: False
       ut: False
 
@@ -387,7 +387,7 @@ gmm:
       - gmm/grouped_matmul_add
     options:
       - grouped_matmul_add
-    test: 
+    test:
       examples: False
 
   grouped_matmul_finalize_routing:
@@ -398,7 +398,7 @@ gmm:
       - gmm/grouped_matmul_finalize_routing/docs
       - gmm/grouped_matmul_finalize_routing/README.md
     ut_cov_exclude:
-      - gmm/grouped_matmul_finalize_routing
+      - gmm/grouped_matmul_finalize_routing/op_kernel
     options:
       - grouped_matmul_finalize_routing
 
@@ -876,7 +876,7 @@ posembedding:
       - posembedding/rope_with_sin_cos_cache
     options:
       - rope_with_sin_cos_cache
-    test: 
+    test:
       examples: False
 
   rotary_position_embedding:
