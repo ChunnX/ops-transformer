@@ -57,7 +57,6 @@ public:
     constexpr static uint32_t IPC_BUFF_ALIGN = 512;
     constexpr static int32_t  IPC_FLAG_STEP_1 = 0x0d0d0d0d;
     constexpr static uint32_t TBUF_TEMP_OFFSET = 8 * 1024;
-    constexpr static uint32_t MAX_BS_NUM = 256;
     constexpr static uint32_t TBUF_OFFSET_ALIGN_B32_CNT = 2 * 1024 / sizeof(int32_t);
     constexpr static uint64_t SHOULD_SEND_FLAG_VALUE = 0x0f0f0f0f;
     constexpr static uint64_t END_OF_WRITE_FLAG_VALUE = 0xffffffff;
@@ -223,6 +222,8 @@ private:
     uint32_t innerTableDataOffset_{0};
     uint32_t innerTableFlagOffset_{0};
 
+    uint32_t maxBs_{0};
+
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclA2CombineOpParam *winContext_{nullptr};
 };
@@ -257,9 +258,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     localMoeExpertNum_ = moeExpertNum_ / worldSize_;
     totalSize_ = winContext_->winSize;
     serverNum = worldSize_ / SERVER_RANK_SIZE;
-    uint64_t maxBs = globalBs_ / worldSize_;
+    maxBs_ = globalBs_ / worldSize_;
     uint64_t maxTokenStructLen = axisH_ * sizeof(XType) + EXTRA_TOKEN_INFO_NUM * alignK_ * sizeof(uint32_t);
-    serverSizeOnWin_ = RoundUp(maxBs * maxTokenStructLen, RDMA_BUFFER_ALIGN);
+    serverSizeOnWin_ = RoundUp(maxBs_ * maxTokenStructLen, RDMA_BUFFER_ALIGN);
     totalWinSize_ = (serverSizeOnWin_ * serverNum + STATUS_SIZE_LAYERED) * 2UL;
     shareMemOffset_ = totalWinSize_;
     halfWinSize_ = totalWinSize_ / 2;
@@ -1387,7 +1388,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             AscendC::DcciDst::CACHELINE_OUT>(bufferChosenGlobal_);
     }
 
-    uint32_t tokenEndFlagCleanSize = MAX_BS_NUM * FLAG_SIZE;
+    uint32_t tokenEndFlagCleanSize = maxBs_ * FLAG_SIZE;
     uint32_t writeEndFlagCleanSize = serverNum * STATE_OFFSET;
     uint32_t maxCleanSize =
         tokenEndFlagCleanSize > writeEndFlagCleanSize ? tokenEndFlagCleanSize : writeEndFlagCleanSize;
@@ -1405,7 +1406,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     GlobalTensor<int32_t> tokenEndFlagCleanTensor;
     tokenEndFlagCleanTensor.SetGlobalBuffer((__gm__ int32_t*)(windowInGM_ + aivId_ * serverSizeOnWin_));
-    DataCopyExtParams cleanTokenEndFlagParams{uint16_t(MAX_BS_NUM),
+    DataCopyExtParams cleanTokenEndFlagParams{uint16_t(maxBs_),
         uint32_t(flagLenInStruct_), 0, uint32_t(tokenStructLen_ - flagLenInStruct_), 0};
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(tokenEndFlagCleanTensor[flagOffsetInStruct_ / sizeof(int32_t)], cleanTempLt_, cleanTokenEndFlagParams);
