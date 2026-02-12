@@ -1,0 +1,7 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0
+    ],
+    "DESCRIPTION": "该执行路径为CTC Loss V3梯度计算的唯一执行路径，适用于所有场景。使用CTCLossV3Grad模板类，根据DTYPE_GRAD和DTYPE_TARGETS的不同类型实例化，完成log_beta计算、梯度聚合与反向传播。"
+}
