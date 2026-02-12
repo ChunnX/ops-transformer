@@ -1,0 +1,52 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file foreach_maximum_scalar_list_def.cpp
+ * \brief
+ */
+
+#include "register/op_def_registry.h"
+
+namespace ops {
+class ForeachMaximumScalarList : public OpDef {
+public:
+    explicit ForeachMaximumScalarList(const char* name) : OpDef(name)
+    {
+        std::vector<ge::DataType> tensor_dtype_list = {ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_BF16};
+        std::vector<ge::Format> format_list(tensor_dtype_list.size(), ge::FORMAT_ND);
+        std::vector<ge::DataType> scalar_dtype_list = {ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT};
+
+        this->Input("x")
+            .ParamType(DYNAMIC)
+            .DataType(tensor_dtype_list)
+            .Format(format_list)
+            .UnknownShapeFormat(format_list)
+            .AutoContiguous();
+        this->Input("scalars")
+            .ScalarList()
+            .ParamType(REQUIRED)
+            .DataType(scalar_dtype_list)
+            .Format(format_list)
+            .UnknownShapeFormat(format_list)
+            .AutoContiguous();
+        this->Output("y")
+            .ParamType(DYNAMIC)
+            .DataType(tensor_dtype_list)
+            .Format(format_list)
+            .UnknownShapeFormat(format_list)
+            .AutoContiguous();
+        this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910b");
+    }
+};
+
+OP_ADD(ForeachMaximumScalarList);
+} // namespace ops
