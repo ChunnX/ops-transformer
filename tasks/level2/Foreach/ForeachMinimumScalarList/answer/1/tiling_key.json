@@ -1,0 +1,10 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3,
+        4
+    ],
+    "DESCRIPTION": "该执行路径使用 ForeachOneScalarListBinary 模板类实现 foreach_minimum_scalar_list 算子，支持 half, float, int 和 bfloat16 数据类型的计算。"
+}
