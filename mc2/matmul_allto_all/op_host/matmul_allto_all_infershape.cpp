@@ -27,6 +27,7 @@ constexpr size_t INDEX_IN_X2 = 1;
 constexpr size_t INDEX_IN_X1_SCALE = 3;
 constexpr size_t INDEX_IN_X2_SCALE = 4;
 constexpr size_t INDEX_ATTR_GROUP = 0;
+constexpr size_t INDEX_ATTR_ALLTO_ALL_AXES = 2;
 constexpr size_t INDEX_ATTR_WORLD_SIZE = 1;
 constexpr size_t INDEX_ATTR_Y_DTYPE = 3;
 constexpr size_t INDEX_ATTR_X1_QUANT_MODE = 4;
@@ -36,9 +37,11 @@ constexpr size_t INDEX_ATTR_TRANS_X2 = 9;
 constexpr size_t INDEX_OUT = 0;
 constexpr uint64_t NUM_ONE = 1;
 constexpr uint64_t DIM_TWO = 2;
-constexpr uint64_t NUM_MINUS_ONE = -1;
+constexpr int64_t NUM_MINUS_ONE = -1;
+constexpr int64_t NUM_MINUS_TWO = -2;
 constexpr uint64_t X1_QUANT_MODE_NUM = 3;
 constexpr uint64_t X2_QUANT_MODE_NUM = 2;
+constexpr int64_t OUTPUT_INFER_SHAPE = 2;
 static const char* INNER_DEBUG = "MC2: MatmulAlltoAll InferShape Debug";
 const std::set<int> SUPPORT_RANK_NUM{2, 4, 8, 16};
 
@@ -64,6 +67,16 @@ static ge::graphStatus CheckShapeForMatmulAlltoAll(const gert::InferShapeContext
     OPS_CHECK_NULL_WITH_CONTEXT(context, x2_shape);
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const auto alltoAllAxesPtr = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_ATTR_ALLTO_ALL_AXES);
+    if (alltoAllAxesPtr != nullptr) {
+        OPS_CHECK((alltoAllAxesPtr->GetSize() != DIM_TWO), CUBE_INNER_ERR_REPORT(INNER_DEBUG,
+                  "the size of alltoAllAxes should be %ld, but the actual value is %ld.", DIM_TWO, alltoAllAxesPtr->GetSize()),
+                  return ge::GRAPH_FAILED);
+        const auto alltoAllAxes = static_cast<const int64_t*>(alltoAllAxesPtr->GetData());
+        OPS_CHECK((alltoAllAxes[0] != NUM_MINUS_ONE || alltoAllAxes[1] != NUM_MINUS_TWO), CUBE_INNER_ERR_REPORT(INNER_DEBUG,
+                  "the value of alltoAllAxes should be [-1, -2], but the actual value is [%ld, %ld].", alltoAllAxes[0], alltoAllAxes[1]),
+                  return ge::GRAPH_FAILED);
+    }
     const char* groupStr = attrs->GetAttrPointer<char>(INDEX_ATTR_GROUP);
     OP_LOGE_IF(groupStr == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "Get matmul allto all group failed.");
     const bool* isTransX1 = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_X1);
@@ -119,7 +132,7 @@ static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context
         return ge::GRAPH_FAILED);
     auto shape_out = context->GetOutputShape(INDEX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out);
-    shape_out->SetDimNum(shape.output_dim);
+    shape_out->SetDimNum(OUTPUT_INFER_SHAPE);
     if (shape.m == NUM_MINUS_ONE) {
         shape_out->SetDim(0U, shape.m);
         shape_out->SetDim(1U, shape.n);
@@ -128,7 +141,7 @@ static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context
         uint64_t out_second_dim = CeilDiv(shape.n, shape.rankNum);
         shape_out->SetDim(0U, out_first_dim);
         shape_out->SetDim(1U, out_second_dim);
-        OP_LOGI(INNER_DEBUG, "Matmul allto all output shape after infer shape, dim: %zu m: %ld n: %ld.", shape.output_dim, out_first_dim, out_second_dim);
+        OP_LOGI(INNER_DEBUG, "Matmul allto all output shape after infer shape, dim: %zu m: %ld n: %ld.", OUTPUT_INFER_SHAPE, out_first_dim, out_second_dim);
     }
     return ge::GRAPH_SUCCESS;
 }

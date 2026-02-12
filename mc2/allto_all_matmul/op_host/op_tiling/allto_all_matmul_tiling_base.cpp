@@ -379,7 +379,9 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckKcQuantShapeInfo(const gert::Tili
     uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0); 
     uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1); 
     uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum(); 
-    OP_TILING_CHECK((x2ScaleDimNum != 1), OP_LOGE(opName, "the kc quant input x2scale dimNum should be one."), return ge::GRAPH_FAILED); 
+    OP_TILING_CHECK((x2ScaleDimNum != 1),
+                    OP_LOGE(opName, "In kc quantization, the number of dimensions of input x2 should be two, but actual is:%lu.", x2ScaleDimNum),
+                    return ge::GRAPH_FAILED);
     uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0); 
     bool x2IsTransFlag = false; 
     const gert::RuntimeAttrs *attrs = context->GetAttrs(); 
