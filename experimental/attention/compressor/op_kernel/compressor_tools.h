@@ -629,7 +629,6 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::SetCompressoredScCnt(u
     this->sliceInfo_.compressoredScCnt = compressoredScCnt;
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorVec1SliceIterator<COMP>::SetDealedTcCnt(uint32_t dealedTcCnt)
 {
@@ -641,7 +640,6 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::SetNeedDealTcSize(uint
 {
     this->needDealTcSize_ = needDealTcSize;
 }
-
 
 template <typename COMP>
 template <bool IS_STATISTIC>
@@ -734,7 +732,6 @@ __aicore__ inline StatisticInfo &CompressorVec1SliceIterator<COMP>::FullIterator
 {
     if constexpr (IS_STATISTIC) {
         statisticInfo_ = {0U, 0U, 0U};
-        // isStasticFirst_ = true;
         Vec1SliceInfo tempSliceInfo = GetSlice();
         while (!IsEnd()) {
             GetSlice();
