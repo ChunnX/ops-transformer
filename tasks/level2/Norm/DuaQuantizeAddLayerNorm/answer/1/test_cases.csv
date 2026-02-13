@@ -1,0 +1,3 @@
+case_id;input_shape;normalized_shape;dtype;epsilon;axis
+0;[2, 256];[256];bfloat16;1e-5;-1
+1;[4, 128];[128];bfloat16;1e-5;-1

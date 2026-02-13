@@ -1,0 +1,15 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1120,
+        1121,
+        1122,
+        2120,
+        2121,
+        2122,
+        3120,
+        3121,
+        3122
+    ],
+    "DESCRIPTION": "该执行路径主要应用于单行（SingleRow）处理模式下的动态量化（Dynamic Quant）场景，每次处理一行数据，通过逐行计算LayerNorm后进行动态量化，支持half/float/bfloat16输入类型及可选的smooth缩放。"
+}

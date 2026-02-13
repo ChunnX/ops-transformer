@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1000,
+        1001
+    ],
+    "DESCRIPTION": "该执行路径使用 KernelDuaQuantizeAddLayerNormSingleRow 类，主要应用于 DuaQuantizeAddLayerNorm 算子的单行处理场景，支持不同的 Scale 模式（乘法/除法）。"
+}
