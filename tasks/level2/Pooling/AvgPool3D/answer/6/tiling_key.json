@@ -1,0 +1,9 @@
+{
+    "ID": 6,
+    "TILING_KEY": [
+        60,
+        61,
+        62
+    ],
+    "DESCRIPTION": "该场景主要应用于大核（Big Kernel）情况下的NCDHW AvgPool3d计算。"
+}

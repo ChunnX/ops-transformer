@@ -1,0 +1,9 @@
+{
+    "ID": 3,
+    "TILING_KEY": [
+        30,
+        31,
+        32
+    ],
+    "DESCRIPTION": "该场景主要应用于NDHWC格式下Multi W维度的AvgPool3d计算。"
+}
