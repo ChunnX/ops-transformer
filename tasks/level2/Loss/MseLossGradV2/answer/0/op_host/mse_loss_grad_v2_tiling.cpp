@@ -1,7 +1,7 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -9,33 +9,13 @@
  */
 
 /*!
- * \file mse_loss_grad_v2_tiling.cpp
+ * \file mse_loss_grad_v2_tiling.cc
  * \brief
  */
-
 #include "mse_loss_grad_v2_tiling.h"
-
-namespace {
-#define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)        \
-if ((ptr) == nullptr)                                    \
-{                                                        \
-    std::printf("nullptr error!");                       \
-    return ge::GRAPH_SUCCESS;                            \
-}                                                        \
-
-#define OP_TILING_CHECK(cond, log_func, expr) \
-  do {                                        \
-    if (cond) {                               \
-      log_func;                               \
-      expr;                                   \
-    }                                         \
-  } while (0)
-
-#define OP_LOGD(nodeName, fmt, ...) std::printf(fmt, ##__VA_ARGS__); std::printf("\n")
-#define OP_LOGE(nodeName, fmt, ...) std::printf(fmt, ##__VA_ARGS__); std::printf("\n")
-#define VECTOR_INNER_ERR_REPORT_TILIING(op_name, err_msg, ...) std::printf(err_msg, ##__VA_ARGS__)
-
-}
+// #include "log/log.h"
+#include "register/op_def_registry.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 constexpr uint64_t INPUT_BUFFER_NUM = 4;
@@ -46,7 +26,10 @@ static constexpr uint32_t FLOAT_KEY = 1;
 static constexpr uint32_t FLOAT16_KEY = 2;
 static constexpr uint32_t BFLOAT16_KEY = 3;
 
-void GetTilingKey(const uint32_t dtypeKey, uint32_t &tilingKey) {
+#define OP_LOGE(nodeName, fmt, ...) do {std::printf(fmt, ##__VA_ARGS__); std::printf("\n"); } while(0)
+
+void GetTilingKey(const uint32_t dtypeKey, uint32_t& tilingKey)
+{
     tilingKey = dtypeKey;
 }
 
@@ -57,14 +40,14 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_totalLength(totalLength);
     auto dyDataType = context->GetInputDesc(0)->GetDataType();
     uint32_t dtypeKey = 0;
-    uint32_t sizeofDataType;
+    uint32_t sizeofDataType = 0;
     uint32_t tmpBufferNum = 4;
-    if(ge::DT_FLOAT == dyDataType) {
+    if (ge::DT_FLOAT == dyDataType) {
         // 4 means the size of float data type in bytes
         sizeofDataType = 4;
         dtypeKey = FLOAT_KEY;
         tmpBufferNum = 0;
-    } else if(ge::DT_FLOAT16 == dyDataType){
+    } else if (ge::DT_FLOAT16 == dyDataType) {
         // 2 means the size of float16 data type in bytes
         sizeofDataType = 2;
         dtypeKey = FLOAT16_KEY;
@@ -82,7 +65,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     auto shape_reduction = context->GetInputTensor(0)->GetOriginShape();
     int32_t dimNum = shape_reduction.GetDimNum();
     if (strcmp(reduction, model) == 0) {
-        for (int32_t i=0; i < dimNum; i++) {
+        for (int32_t i = 0; i < dimNum; i++) {
             reduceElts = reduceElts * shape_reduction.GetDim(i);
         }
         // 1.0 means reciprocal, 2.0 means the derivative of the square
@@ -96,11 +79,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     GetTilingKey(dtypeKey, tilingKey);
     context->SetTilingKey(tilingKey);
 
-    // set blockDim
+    // set numBlocks
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     auto coreNum = ascendcPlatform.GetCoreNumAiv();
     // ub size
-    uint64_t ub_size;
+    uint64_t ub_size = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub_size);
     // tmp buffertype is fp16 or bf16 need cast fp32
     uint64_t buffersize = INPUT_BUFFER_NUM * sizeofDataType + tmpBufferNum * FP32_SIZE;
@@ -115,14 +98,14 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     }
     uint64_t allLoopNumAllign = (totalLength + maxTileLength - 1) / maxTileLength;
     uint64_t usedCoreNum = coreNum;
-    
+
     if (allLoopNumAllign <= coreNum) {
         usedCoreNum = allLoopNumAllign;
     }
     uint64_t blockLength = 0;
     uint64_t padLength = totalLength % usedCoreNum;
     context->SetBlockDim(usedCoreNum);
-    if (padLength == 0){
+    if (padLength == 0) {
         blockLength = totalLength / usedCoreNum;
     } else {
         usedCoreNum -= 1;
@@ -143,23 +126,24 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_tileNum(TILE_NUM);
     tiling.set_padLength(padLength);
 
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(),
-                        context->GetRawTilingData()->GetCapacity());
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = 0;
-    std::cout << "*******************START*******************" << std::endl;
-    std::cout << "coreNum = " << context->GetBlockDim() << std::endl;
-    std::cout << "cof = " << tiling.get_cof() << std::endl;
-    std::cout << "totalLength = " << tiling.get_totalLength() << std::endl;
-    std::cout << "tileNum = " << tiling.get_tileNum() << std::endl;
-    std::cout << "padLength = " << tiling.get_padLength() << std::endl;
-    std::cout << "blockLength = " << tiling.get_blockLength() << std::endl;
-    std::cout << "usedDb = " << tiling.get_usedDb() << std::endl;
-    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(MseLossGradV2)
-    .Tiling(TilingFunc);
-}// namespace optiling
+struct MseLossGradCompileInfo {
+};
+
+static ge::graphStatus TilingParse4MseLossGrad(gert::TilingParseContext* context)
+{
+    if (context == nullptr) {
+        OP_LOGE(context, "TilingParse4MseLossGrad got context is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_OPTILING(MseLossGradV2).Tiling(TilingFunc).TilingParse<MseLossGradCompileInfo>(TilingParse4MseLossGrad);
+} // namespace optiling

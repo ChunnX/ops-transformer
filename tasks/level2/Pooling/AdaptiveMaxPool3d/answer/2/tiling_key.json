@@ -1,0 +1,9 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        310000,
+        311000,
+        312000
+    ],
+    "DESCRIPTION": "该场景主要适用于AdaptiveMaxPool3d的大池化窗口计算（Big Pool）。"
+}

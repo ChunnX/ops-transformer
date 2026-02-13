@@ -18,6 +18,7 @@ add_library(cust_op_proto SHARED
 )
 target_include_directories(cust_op_proto PRIVATE
         ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+        ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common/op_host
         ${ASCEND_CANN_PACKAGE_PATH}/include
         ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
         ${ASCEND_CANN_PACKAGE_PATH}/include/external
@@ -117,6 +118,8 @@ endif()
 
 target_include_directories(cust_opapi PRIVATE
         ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
+        ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn_kernels
+        ${ASCEND_CANN_PACKAGE_PATH}/include/aclnnop
         ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
 )
 

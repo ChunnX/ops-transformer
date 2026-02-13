@@ -18,7 +18,7 @@
  *
  * 注意：替换时需保持函数签名和逻辑不变，仅修改上述指定的名称，这一替换过程将在batch_compile.py文件中自动被执行
  */
-std::vector<at::Tensor> mse_loss_grad(at::Tensor gradOutput, at::Tensor self_input, at::Tensor target_input, std::string reduction)
+std::vector<at::Tensor> mse_loss_grad_v2(at::Tensor gradOutput, at::Tensor self_input, at::Tensor target_input, std::string reduction)
 {
     // Output tensor: out
     at::Tensor out = torch::empty_like(gradOutput);
@@ -36,7 +36,7 @@ std::vector<at::Tensor> mse_loss_grad(at::Tensor gradOutput, at::Tensor self_inp
     } else {
         TORCH_CHECK(false, "Unsupported reduction type: ", reduction);
     }
-
+    // 注意这里是aclnnMseLossBackward接口，MseLossGradV2是算子名，不是接口名
     EXEC_NPU_CMD(aclnnMseLossBackward, gradOutput, self_input, target_input, reduction_int, out);
 
     std::vector<at::Tensor> result = {out};
@@ -46,6 +46,6 @@ std::vector<at::Tensor> mse_loss_grad(at::Tensor gradOutput, at::Tensor self_inp
 
 PYBIND11_MODULE(kernel_gen_ops, m) {
     m.doc() = "Python bindings for kernel_gen_ops";
-    // Function name in Python will be `mse_loss_grad`
-    m.def("mse_loss_grad", &mse_loss_grad, "");
+    // Function name in Python will be `mse_loss_grad_v2`
+    m.def("mse_loss_grad_v2", &mse_loss_grad_v2, "");
 }

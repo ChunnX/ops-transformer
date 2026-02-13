@@ -1,0 +1,5 @@
+case_id;input_shape;normalized_shape;dtype;epsilon;use_smooth
+0;[2, 4];[4];float16;1e-6;0
+1;[8, 64];[64];float16;1e-6;0
+2;[4, 128];[128];float16;1e-5;0
+3;[2, 8];[8];float16;1e-6;1

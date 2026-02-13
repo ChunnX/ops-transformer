@@ -52,4 +52,4 @@ class ModelNew(nn.Module):
     def forward(self, input_predict: torch.Tensor, input_label: torch.Tensor, input_dout: torch.Tensor) -> torch.Tensor:
         # Pass input_dout as gradOutput, input_predict as self, input_label as target
         import kernel_gen_ops
-        return kernel_gen_ops.mse_loss_grad(input_dout, input_predict, input_label, self.reduction)
+        return kernel_gen_ops.mse_loss_grad_v2(input_dout, input_predict, input_label, self.reduction)

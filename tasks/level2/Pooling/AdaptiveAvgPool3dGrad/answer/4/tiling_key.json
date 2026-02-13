@@ -1,0 +1,8 @@
+{
+    "ID": 4,
+    "TILING_KEY": [
+        11,
+        21
+    ],
+    "DESCRIPTION": "该执行路径主要应用于 half/bfloat16 类型的大 shape (NC large) 场景。"
+}

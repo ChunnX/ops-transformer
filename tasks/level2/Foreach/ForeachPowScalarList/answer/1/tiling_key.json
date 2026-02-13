@@ -1,0 +1,10 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3,
+        4
+    ],
+    "DESCRIPTION": "该执行路径使用 ForeachPowScalarListND 模板类处理 half, float, int, bfloat16_t 等类型的标量幂运算。"
+}

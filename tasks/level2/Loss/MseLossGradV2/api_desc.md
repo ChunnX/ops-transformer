@@ -1,4 +1,4 @@
-# aclnnMseLossGrad
+# aclnnMseLossGradV2
 
 ## 功能描述
 ### 算子功能
@@ -28,7 +28,7 @@ $$
 该操作通过 PyBind11 封装 C++ 实现，在 Python 中以 `kernel_gen_ops.mse_loss_grad()` 函数形式提供：
 
 ```python
-def mse_loss_grad(gradOutput, self_input, target_input, reduction):
+def mse_loss_grad_v2(gradOutput, self_input, target_input, reduction):
     """
     计算均方误差损失的反向传播梯度。
 
@@ -59,7 +59,7 @@ input_label = torch.randn(input_shape, dtype=dtype)
 input_dout = torch.randn(input_shape, dtype=dtype) # Gradient from downstream
 
 # 使用 mse_loss_grad 计算反向梯度
-out_grad = kernel_gen_ops.mse_loss_grad(input_dout, input_predict, input_label, reduction)
+out_grad = kernel_gen_ops.mse_loss_grad_v2(input_dout, input_predict, input_label, reduction)
 
 # Example with 'sum' reduction
 out_grad_sum = kernel_gen_ops.mse_loss_grad(

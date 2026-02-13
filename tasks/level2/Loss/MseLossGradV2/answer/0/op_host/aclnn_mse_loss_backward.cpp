@@ -1,17 +1,11 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -19,10 +13,11 @@
  * \brief
  */
 
-#include "level2/aclnn_mse_loss_backward.h"
+#include "aclnn_mse_loss_backward.h"
+#include "mse_loss_grad.h"
+
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/contiguous.h"
-#include "level0/mse_loss_grad.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
@@ -33,7 +28,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/platform.h"
-#include "common/level2_base.h"
+#include "op_api/level2_base.h"
 
 using namespace op;
 #ifdef __cplusplus
@@ -57,7 +52,7 @@ static const std::initializer_list<op::DataType> ASCEND910B_DTYPE_DTYPE_SUPPORT_
 
 static inline bool CheckDtypeValid(const aclTensor* gradOutput, const aclTensor* self, const aclTensor* target,
                                    const aclTensor* out) {
-  const auto& supportList = GetDtypeSupportListV1(ASCEND910B_DTYPE_DTYPE_SUPPORT_LIST, ASCEND910_DTYPE_DTYPE_SUPPORT_LIST);
+  const auto& supportList = GetDtypeSupportListV2(ASCEND910B_DTYPE_DTYPE_SUPPORT_LIST, ASCEND910_DTYPE_DTYPE_SUPPORT_LIST);
   OP_CHECK_DTYPE_NOT_SAME(gradOutput, self, return false);
   OP_CHECK_DTYPE_NOT_SAME(target, self, return false);
   OP_CHECK_DTYPE_NOT_SUPPORT(self, supportList, return false);
@@ -109,7 +104,7 @@ aclnnStatus aclnnMseLossBackwardGetWorkspaceSize(const aclTensor* gradOutput, co
                                                  const aclTensor* target, int64_t reduction, aclTensor* out,
                                                  uint64_t* workspaceSize, aclOpExecutor** executor) {
   OP_CHECK_COMM_INPUT(workspaceSize, executor);
-  
+
   L2_DFX_PHASE_1(aclnnMseLossBackward, DFX_IN(gradOutput, self, target, reduction), DFX_OUT(out));
   // 固定写法，创建OpExecutor
   auto uniqueExecutor = CREATE_EXECUTOR();
@@ -119,7 +114,7 @@ aclnnStatus aclnnMseLossBackwardGetWorkspaceSize(const aclTensor* gradOutput, co
   auto ret = CheckParams(gradOutput, self, target, reduction, out);
   CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-  if (self->IsEmpty()) {
+  if (self->IsEmpty() || gradOutput->IsEmpty() || target->IsEmpty()) {
     // 根据实际支持情况补充
     *workspaceSize = 0;
     uniqueExecutor.ReleaseTo(executor);
@@ -139,7 +134,7 @@ aclnnStatus aclnnMseLossBackwardGetWorkspaceSize(const aclTensor* gradOutput, co
   CHECK_RET(targetContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
   // 进行计算
-  auto grad = l0op::MseLossGradV2(gradOutputContiguous, selfContiguous, targetContiguous,
+  auto grad = l0op::MseLossGrad(gradOutputContiguous, selfContiguous, targetContiguous,
                                 REDUCTION_STR[reduction], uniqueExecutor.get());
   CHECK_RET(grad != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

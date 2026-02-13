@@ -1,0 +1,4 @@
+case_id;dtype;grad_out_shape;shape;targets_shape;targets_range;input_lengths;target_lengths;neg_shape;alpha_shape;blank;zero_infinity
+0;bfloat16;[1];[9,1,15];[1,1];[0,10];[3];[1];[1];[1,9,8];11;True
+1;float16;[1];[9,1,15];[1,1];[0,10];[3];[1];[1];[1,9,8];11;True
+2;float32;[1];[9,1,15];[1,1];[0,10];[3];[1];[1];[1,9,8];11;True

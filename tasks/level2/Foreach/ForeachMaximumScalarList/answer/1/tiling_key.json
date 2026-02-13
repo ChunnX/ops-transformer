@@ -1,0 +1,10 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3,
+        4
+    ],
+    "DESCRIPTION": "该执行路径主要应用于foreach_maximum_scalar_list算子，支持half、float、int以及bfloat16（需特定架构支持）数据类型的标量列表最大值计算。"
+}
