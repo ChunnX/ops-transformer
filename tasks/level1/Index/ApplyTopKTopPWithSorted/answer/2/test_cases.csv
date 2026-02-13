@@ -1,0 +1,5 @@
+case_id;batch_size;vocab_size;dtype;mode;p_value;k_value
+0;2;100;float32;topp;0.9;
+1;4;512;float16;topp;0.95;
+2;1;1024;bfloat16;topp;0.85;
+3;2;500;bfloat16;topp;0.92;

@@ -1,0 +1,7 @@
+case_id;input_shape;dtype
+0;[1];bool
+1;[512, 3];bool
+2;[1, 3, 224, 224];bool
+3;[1];uint8
+4;[512, 3];uint8
+5;[1, 3, 224, 224];uint8
