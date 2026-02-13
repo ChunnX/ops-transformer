@@ -311,11 +311,10 @@ static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2, const 
     OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_SUPPORT_LIST, return false);
     if (x1QuantMode == static_cast<int64_t>(QuantModeType::DYN_PERTOKEN_QUANT) && x1ScaleOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SAME(x1ScaleOptional, x1, return false);
-    }
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
-    if (x1ScaleOptional != nullptr) {
+    } else if (x1QuantMode == static_cast<int64_t>(QuantModeType::PERTOKEN_QUANT) && x1ScaleOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x1ScaleOptional, SCALE_DTYPE_SUPPORT_LIST, return false);
     }
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
     if (alltoAllOutOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SAME(x1, alltoAllOutOptional, return false);
     }
