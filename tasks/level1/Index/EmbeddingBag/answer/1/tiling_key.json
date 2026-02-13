@@ -1,0 +1,7 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1
+    ],
+    "DESCRIPTION": "该执行路径主要应用于float类型的EmbeddingBag计算（MODE_SUM, MODE_MEAN, MODE_MAX）。"
+}

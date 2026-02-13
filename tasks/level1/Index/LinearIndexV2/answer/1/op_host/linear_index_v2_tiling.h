@@ -1,0 +1,34 @@
+#ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_LINEAR_INDEX_V2_H
+#define OPS_BUILT_IN_OP_TILING_RUNTIME_LINEAR_INDEX_V2_H
+
+#include "register/tilingdata_base.h"
+constexpr size_t MAX_DIM_NUM = 8;
+namespace optiling {
+BEGIN_TILING_DATA_DEF(LinearIndexV2TilingParam)
+TILING_DATA_FIELD_DEF(uint64_t, usedCoreNum)
+TILING_DATA_FIELD_DEF(uint64_t, tensorId)
+TILING_DATA_FIELD_DEF(uint64_t, formerCoreNum)
+TILING_DATA_FIELD_DEF(uint64_t, formerCoreDataNum)
+TILING_DATA_FIELD_DEF(uint64_t, formerCoreFormerDataNum)
+TILING_DATA_FIELD_DEF(uint64_t, formerCoreTailDataNum)
+TILING_DATA_FIELD_DEF(uint64_t, formerCoreFormerTime)
+TILING_DATA_FIELD_DEF(uint64_t, formerCoreTailTime)
+TILING_DATA_FIELD_DEF(uint64_t, tailCoreNum)
+TILING_DATA_FIELD_DEF(uint64_t, tailCoreDataNum)
+TILING_DATA_FIELD_DEF(uint64_t, tailCoreFormerDataNum)
+TILING_DATA_FIELD_DEF(uint64_t, tailCoreTailDataNum)
+TILING_DATA_FIELD_DEF(uint64_t, tailCoreFormerTime)
+TILING_DATA_FIELD_DEF(uint64_t, tailCoreTailTime)
+TILING_DATA_FIELD_DEF_ARR(uint64_t, MAX_DIM_NUM, indicesMask)
+END_TILING_DATA_DEF
+
+REGISTER_TILING_DATA_CLASS(LinearIndexV2TilingParamOp, LinearIndexV2TilingParam)
+
+BEGIN_TILING_DATA_DEF(LinearIndexV2TilingData)
+TILING_DATA_FIELD_DEF_STRUCT(LinearIndexV2TilingParam, params)
+END_TILING_DATA_DEF
+
+REGISTER_TILING_DATA_CLASS(LinearIndexV2, LinearIndexV2TilingData)
+} // namespace optiling
+
+#endif // OPS_BUILT_IN_OP_TILING_RUNTIME_LINEAR_INDEX_V2_H

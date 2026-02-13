@@ -1,0 +1,8 @@
+{
+    "ID": 3,
+    "TILING_KEY": [
+        100,
+        101
+    ],
+    "DESCRIPTION": "该场景主要适用于小维度（Small Dim）的计算优化。"
+}

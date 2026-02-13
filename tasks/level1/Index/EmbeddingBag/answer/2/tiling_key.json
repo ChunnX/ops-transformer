@@ -1,0 +1,8 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        2,
+        3
+    ],
+    "DESCRIPTION": "该执行路径主要应用于fp16和bf16类型的EmbeddingBag计算，其中Key 3特定于bfloat16。"
+}
