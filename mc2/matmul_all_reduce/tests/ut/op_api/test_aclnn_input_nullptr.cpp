@@ -49,6 +49,8 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnMatmulAllReduce)
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
 
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+
     auto ut_null_x1 = OP_API_UT(
         aclnnMatmulAllReduce,
         INPUT(nullptr, x2, bias, group, reduceOp, commTurn, streamMode),
@@ -101,6 +103,8 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnMatmulAllReduceV2)
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
 
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+
     auto ut_null_x1 = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
         INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
@@ -151,6 +155,8 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduce)
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
+
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
 
     auto ut_null_x1 = OP_API_UT(
         aclnnQuantMatmulAllReduce,
@@ -218,6 +224,8 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV2)
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
 
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+
     auto ut_null_x1 = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
         INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
@@ -271,6 +279,8 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV3)
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
+
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
 
     auto ut_null_x1 = OP_API_UT(
         aclnnQuantMatmulAllReduceV3,
@@ -333,6 +343,8 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV4)
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
 
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+
     auto ut_null_x1 = OP_API_UT(
         aclnnQuantMatmulAllReduceV4,
         INPUT(nullptr, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
@@ -390,6 +402,8 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, AclnnWeightQuantMatmulAllReduce)
     TensorDesc output = TensorDesc({32, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
+
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
 
     auto ut_null_x1 = OP_API_UT(
         aclnnWeightQuantMatmulAllReduce,
