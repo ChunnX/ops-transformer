@@ -22,6 +22,7 @@
 
 namespace optiling {
 using namespace Ops::Base;
+
 // DS
 BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheTilingData)
 TILING_DATA_FIELD_DEF(int64_t, numBlocks);

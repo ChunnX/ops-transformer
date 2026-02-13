@@ -28,6 +28,7 @@
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
+
 BEGIN_TILING_DATA_DEF(InterleaveRopeTilingData)
 TILING_DATA_FIELD_DEF(int64_t, numBlocks);
 TILING_DATA_FIELD_DEF(int64_t, splitAxis);
