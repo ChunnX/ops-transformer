@@ -241,7 +241,6 @@ private:
     bool hasBiasAndExpertIdx{false};
     bool hasScales{false};
 
-
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> expandedXQue;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> biasQue;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> x1Que;
