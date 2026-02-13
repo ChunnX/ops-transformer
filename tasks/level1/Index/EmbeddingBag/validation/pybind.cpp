@@ -6,7 +6,7 @@
 * register forward implementation for NPU device
 */
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> custom_pybind_api(
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> embedding_bag(
     at::Tensor &weight, 
     at::Tensor &indices, 
     at::Tensor &offsets,
@@ -57,7 +57,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> custom_pybind_api(
 
 PYBIND11_MODULE(kernel_gen_ops, m) {
     m.doc() = "Python bindings for kernel_gen_ops";
-    m.def("custom_pybind_api", &custom_pybind_api, "EmbeddingBag custom operation",
+    m.def("embedding_bag", &embedding_bag, "EmbeddingBag custom operation",
           py::arg("weight"),
           py::arg("indices"),
           py::arg("offsets"),

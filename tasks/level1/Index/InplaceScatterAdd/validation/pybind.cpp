@@ -11,7 +11,7 @@ at::Tensor inplace_scatter_add(at::Tensor &var, at::Tensor &indices, at::Tensor 
 
     // call aclnn interface to perform the computation
     EXEC_NPU_CMD(aclnnInplaceScatterAdd, var, indices, updates);
-    return result;
+    return var;
 }
 
 

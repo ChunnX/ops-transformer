@@ -54,7 +54,3 @@ def get_inputs(param, device=None):
 
 def get_init_inputs(param, device=None):
     return []
-
-def custom_check_precision(param, outputs, outputs_new):
-    # Standard precision check
-    return True, None, None 

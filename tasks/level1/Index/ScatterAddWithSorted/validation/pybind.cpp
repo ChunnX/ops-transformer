@@ -10,7 +10,7 @@ at::Tensor scatter_add_with_sorted_custom(at::Tensor &var, at::Tensor &value, at
 
     EXEC_NPU_CMD(aclnnScatterAddWithSorted, var, value, sorted_index, pos_tensor, reduction);
     
-    return output;
+    return var;
 }
 
 PYBIND11_MODULE(kernel_gen_ops, m) {

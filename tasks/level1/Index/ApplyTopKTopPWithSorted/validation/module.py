@@ -47,7 +47,7 @@ class Model(nn.Module):
             sorted_value.masked_fill_(top_k_mask, -float("inf"))
         # Top-P过滤
         if not p.dim() == 0:
-            softmax_res = sorted_value.to(float32).softmax(dim=-1)
+            softmax_res = sorted_value.to(torch.float32).softmax(dim=-1)
             cumsum_res = softmax_res.cumsum(dim=-1)
             top_p_mask = cumsum_res <= 1 - p.unsqueeze(dim=1)
             top_p_mask[:, -1] = False
