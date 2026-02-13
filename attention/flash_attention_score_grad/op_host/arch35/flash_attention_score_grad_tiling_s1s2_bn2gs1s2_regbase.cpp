@@ -503,13 +503,13 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::QuantScaleShapeVal
             int64_t deqScaleKDim3 = deqScaleKStorageShape.GetDim(INPUT_DIM_3);
             OP_CHECK_IF(deqScaleKDim0 != fBaseParams.b || deqScaleKDim1 != fBaseParams.n2 ||
                 deqScaleKDim2 != (fBaseParams.s2 + QUANT_BLOCK_S2_SIZE - 1) / QUANT_BLOCK_S2_SIZE || deqScaleKDim3 != 1,
-                OP_LOGE(context_, "Invalid deqScaleK shape [%ld,%ld,%ld,%ld], only support [B,N2,ceil(S2/128),1].",
+                OP_LOGE(context_, "Invalid deqScaleK shape [%ld,%ld,%ld,%ld], only support [B,N2,ceil(S2/256),1].",
                     deqScaleKDim0, deqScaleKDim1, deqScaleKDim2, deqScaleKDim3),
                 return ge::GRAPH_FAILED);
         }
 
         OP_CHECK_IF(deqScaleKStorageShape != deqScaleVStorageShape,
-            OP_LOGE(context_, "deqScaleKShape and deqScaleVShape are not equal, only support [B,N2,ceil(S2/128),1]"),
+            OP_LOGE(context_, "deqScaleKShape and deqScaleVShape are not equal, only support [B,N2,ceil(S2/256),1]"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
