@@ -1,0 +1,9 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3
+    ],
+    "DESCRIPTION": "该执行路径使用 GeluMulND 模板类，主要应用于 half, float 和 bfloat16 数据类型的 GeluMul 计算场景。"
+}

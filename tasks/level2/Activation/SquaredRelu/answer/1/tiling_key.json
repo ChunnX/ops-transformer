@@ -1,0 +1,9 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3
+    ],
+    "DESCRIPTION": "该执行路径主要应用于SquaredRelu操作，基于SquaredReluND基础模板类，分别支持half (key 1), float (key 2) 和 bfloat16_t (key 3) 数据类型的计算。"
+}

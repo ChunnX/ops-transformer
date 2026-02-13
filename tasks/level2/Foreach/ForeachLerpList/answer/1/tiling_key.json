@@ -1,0 +1,9 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        4
+    ],
+    "DESCRIPTION": "该执行路径主要应用于ForeachLerpListND算子，支持half、float和bfloat16数据类型的计算。"
+}

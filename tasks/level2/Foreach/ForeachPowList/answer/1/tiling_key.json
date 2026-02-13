@@ -1,0 +1,10 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3,
+        4
+    ],
+    "DESCRIPTION": "该执行路径主要应用于ForeachPowList模板类，处理half、float、int及bfloat16类型的ForeachPowList计算。"
+}
