@@ -454,7 +454,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 #include <cstring>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "aclnnop/aclnn_nsa_select_attention_infer.h"
+#include "aclnnop/aclnn_nsa_selected_attention_infer.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
