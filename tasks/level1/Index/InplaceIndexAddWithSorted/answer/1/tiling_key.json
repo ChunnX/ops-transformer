@@ -1,0 +1,9 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        4,
+        5
+    ],
+    "DESCRIPTION": "该执行路径主要应用于 InplaceIndexAddWithSortedAvg 算子，适用于 float, int16_t, int32_t 数据类型，采用 AVG index on each core 策略。"
+}

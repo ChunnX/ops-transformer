@@ -1,0 +1,10 @@
+{
+    "ID": 4,
+    "TILING_KEY": [
+        6,
+        7,
+        8,
+        9
+    ],
+    "DESCRIPTION": "该执行路径主要应用于处理有符号整数类型的输入数据（INT8, INT16, INT32, INT64），调用AngleV2Int模板类进行计算。"
+}

@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0,
+        1
+    ],
+    "DESCRIPTION": "该执行路径主要应用于支持 int64_t 和 int32_t 数据类型的 LinearIndexV2 算子计算场景。"
+}

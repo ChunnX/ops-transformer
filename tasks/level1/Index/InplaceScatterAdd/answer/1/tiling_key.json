@@ -1,0 +1,7 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0
+    ],
+    "DESCRIPTION": "该执行路径主要应用于尾部数据量较小的scatter add场景，通过SmallTailOp处理，将updates按indices就地累加到var中，适用于每行尾部元素较少、可一次性拷入UB处理的情况。"
+}

@@ -1,0 +1,9 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        2,
+        3,
+        6
+    ],
+    "DESCRIPTION": "该执行路径主要应用于 InplaceIndexAddWithSortedFix 算子，适用于 half, bfloat16_t, float 数据类型，采用 same index on the same core 策略。"
+}
