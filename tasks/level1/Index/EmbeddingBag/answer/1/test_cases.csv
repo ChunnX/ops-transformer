@@ -1,0 +1,9 @@
+case_id;num_embeddings;embedding_dim;num_indices;num_bags;dtype;mode;include_last_offset;padding_idx;has_per_sample_weights;scale_grad_by_freq;sparse
+0;10;4;8;2;float32;mean;False;-1;False;False;False
+1;100;16;64;4;float32;sum;False;-1;False;False;False
+2;50;32;100;5;float32;max;False;-1;False;False;False
+3;10;8;20;3;float32;mean;True;-1;False;False;False
+4;20;12;30;4;float32;sum;False;-1;True;False;False
+5;30;16;40;5;float32;mean;False;0;False;False;False
+6;1000;64;512;8;float32;mean;False;-1;False;False;False
+7;500;128;256;10;float32;sum;False;-1;False;False;False

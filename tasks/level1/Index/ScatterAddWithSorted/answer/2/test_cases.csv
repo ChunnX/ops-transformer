@@ -1,0 +1,5 @@
+case_id;input_shape;dtype;num_updates
+0;[128, 64];float16;64
+1;[1024, 32];float;128
+2;[256, 128];float16;128
+3;[128, 64];float;32
