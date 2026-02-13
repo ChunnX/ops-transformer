@@ -1,0 +1,9 @@
+{
+    "ID": 5,
+    "TILING_KEY": [
+        50,
+        51,
+        52
+    ],
+    "DESCRIPTION": "该场景主要应用于普通/通用情况的AvgPool3d计算。"
+}

@@ -1,0 +1,9 @@
+{
+    "ID": 4,
+    "TILING_KEY": [
+        40,
+        41,
+        42
+    ],
+    "DESCRIPTION": "该场景主要应用于NCDHW格式下Reduce D维度的AvgPool3d计算。"
+}
