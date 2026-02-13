@@ -30,6 +30,8 @@ constexpr uint32_t RES_LOCAL_STREAM_MAX_NUM = 19U;
 constexpr uint32_t AICPU_OP_NOTIFY_MAX_NUM = 2;
 constexpr uint32_t AICPU_MAX_RANK_NUM = 128 * 1024;
 constexpr uint32_t TIME_CYCLE = 50; // 系统cycle数转换成时间的基准单位，固定为50
+constexpr uint32_t MAX_RANK_NUM_A3 = 768;
+constexpr uint32_t MAX_MODULE_DEVICE_NUM = 32;
 
 namespace Mc2Kernel {
 constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
@@ -226,8 +228,8 @@ struct HcclOpResParam {
     uint64_t zeroCopyHeadPtr;
     uint64_t zeroCopyTailPtr;
     uint64_t zeroCopyRingBuffer;
-    uint64_t zeroCopyIpcPtrs[32];                // 保存集合通信时每个对端的输入输出内存地址
-    uint32_t zeroCopyDevicePhyId[32];            // 保存每个rank对应的物理卡Id
+    uint64_t zeroCopyIpcPtrs[MAX_MODULE_DEVICE_NUM];                // 保存集合通信时每个对端的输入输出内存地址
+    uint32_t zeroCopyDevicePhyId[MAX_MODULE_DEVICE_NUM];            // 保存每个rank对应的物理卡Id
 
     bool utraceStatusFlag;
     OpCounterInfo opCounterInfo;
@@ -239,8 +241,20 @@ struct HcclOpResParam {
     uint64_t aicpuCustomParamAddr;
     uint64_t aicpuCustomParamSize;
 
-    MemDetails1 userMemRes[768];  // 下标为rank id
+    MemDetails1 userMemRes[MAX_RANK_NUM_A3];  // 下标为rank id
     uint32_t userMemType = 0;
+
+    HcclStreamParam aicpuOrderStreamParam; // 按序下发的stream
+    uint64_t aicpuOrderNotifyAddr;
+    uint64_t aicpuOrderNotifySize;
+    // ARS算法属性
+    uint32_t multiSuperPodDiffDeviceNumMode;
+    bool isARSDoubleRing;
+    // 读取HCCL_ENTRY_LOG_ENABLE环境变量，用于增加算子kernel展开信息
+    bool opEntry{false};
+    uint32_t hcclSdmaQos;   // HCCL SDMA QOS TAG
+    uint64_t sizeOfAiRMAInfo = 0; //用于内存校验
+    uint64_t aiRMAInfo = 0; //HcclAiRMAInfo* 单个结构体指针
 };
 
 // Transport 内存类型

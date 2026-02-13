@@ -73,6 +73,7 @@ constexpr uint32_t STATIC_QUANT = 1;
 constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
 constexpr uint32_t PERGROUP_DYNAMIC_QUANT = 3;
 constexpr uint32_t MX_QUANT = 4;
+constexpr uint32_t CACHEWRITESIZE = 8U;
 
 // combinev2额外所需常量段
 constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL;   // combine 0/1状态区偏移，为dispatch预留50k大小

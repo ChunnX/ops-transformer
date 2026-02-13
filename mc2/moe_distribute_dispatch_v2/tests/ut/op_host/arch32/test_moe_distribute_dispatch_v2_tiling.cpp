@@ -322,7 +322,7 @@ TEST_F(MoeDistributeDispatchV2Arch32TilingTest, Test6)
             // output info
             {{{64, 7168}, {64, 7168}},  ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{64}, {64}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{512}, {512}},  ge::DT_INT32, ge::FORMAT_ND},
+            {{{8192}, {8192}},  ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}},  ge::DT_INT64, ge::FORMAT_ND},
             {{{8}, {8}},  ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}},  ge::DT_INT32, ge::FORMAT_ND},
@@ -736,7 +736,7 @@ TEST_F(MoeDistributeDispatchV2Arch32TilingTest, ZeroComputeExpertNum)
             // output info
             {{{64, 7168}, {64, 7168}},  ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{64}, {64}},  ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{512}, {512}},  ge::DT_INT32, ge::FORMAT_ND},
+            {{{8192}, {8192}},  ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}},  ge::DT_INT64, ge::FORMAT_ND},
             {{{8}, {8}},  ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}},  ge::DT_INT32, ge::FORMAT_ND},
