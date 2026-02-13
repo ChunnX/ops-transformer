@@ -109,7 +109,7 @@ private:
 
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void ComputeMm1(const RunInfo &info);
+    __aicore__ inline void ComputeMm1(const RunInfo &info, bool isNeedExcute);
     __aicore__ inline void ComputeVec1(const RunInfo &info);
     __aicore__ inline void ComputeVec2(const Vec2RunInfo &info);
 
@@ -181,9 +181,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
     } else {
         constInfo.aiCoreIdx = GetBlockIdx();
     }
-
     InitTilingData();
-
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
@@ -387,6 +385,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
         uint32_t curDealTcNUm = 0;
         uint32_t curDealCompressedTcNum = 0;
         // 无法处理完当前整个batch
+        // printf("[SkipOneLoop] quota:%u, remSeqCnt:%u\n", quota, batchInfo.remSeqCnt);
         if (quota < batchInfo.remSeqCnt) {
             // 向下对齐r，
             if (quota > constInfo.cmpRatio - batchInfo.headHolderSeq) {
@@ -398,7 +397,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
                 // 更新当前组所需信息
                 UpdateCurGroup(basicBlockInfo, batchInfo, curGroupQuota, curDealSeq);
                 // 更新batch信息
-                batchInfo.remSeqCnt = batchInfo.remSeqCnt + curDealSeq;
+                batchInfo.remSeqCnt = batchInfo.remSeqCnt - curDealSeq;
                 batchInfo.sIdx = batchInfo.sIdx + curDealSeq;
                 batchInfo.compressedTcNum -= curDealTcNUm;
                 batchInfo.tcNum -= curDealTcNUm;
@@ -419,9 +418,11 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
             batchInfo.remSeqCnt = 0;
             basicBlockInfo.dealTcNum += batchInfo.tcNum;
             basicBlockInfo.compressedTcNum += batchInfo.compressedTcNum;
+            batchInfo.bIdx++;
             SkipInvalidBatch(batchInfo);
         }
     }
+    // printf("[SkipOneLoop] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", basicBlockInfo.bIdx, basicBlockInfo.sIdx, basicBlockInfo.dealTcNum, basicBlockInfo.compressedTcNum);
     return basicBlockInfo;
 }
 
@@ -432,7 +433,7 @@ __aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetLoopTimes()
     // 计算主循环次数
     uint32_t loopTimes = 0;
     BatchInfo batchInfo{};
-
+    SkipInvalidBatch(batchInfo);
     for (;batchInfo.bIdx < constInfo.batchSize; ++loopTimes) {
         SkipOneLoop(batchInfo);
     }
@@ -452,6 +453,8 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
     constInfo.curGroupIdx = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
 
     constInfo.mm1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
+
+    // printf("[CalcSplitCoreInfo] coreGroupNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.curGroupIdx, constInfo.mBaseSize);
 
     // // 单组核在T方向处理的最大基本块数量
     // constInfo.singleCoreDealTcBasicNum = (constInfo.tcBasicBlockNum + constInfo.coreGroupNum - 1) / constInfo.coreGroupNum;
@@ -512,20 +515,24 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info) {
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
-    blockCube_.ComputeMm1(info);
+__aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
+    CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
+    // printf("[MM1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize);
+    if (isNeedExcute) {
+        // blockCube_.ComputeMm1(info);
+    }
     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
 }
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const RunInfo &info) {
 #if (__CCE_AICORE__ == 220)
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG);
+    CrossCoreWaitFlag(SYNC_C1_V1_FLAG);
 #else
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_V>(SYNC_C1_V1_FLAG);
 #endif
-    blockVec_.ComputeVec1(info);
+    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize);
+    // blockVec_.ComputeVec1(info);
 #if (__CCE_AICORE__ == 220)
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C1_FLAG);
 #else
@@ -557,7 +564,7 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
 {
     if ASCEND_IS_AIC {
-        CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
+        CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
         blockCube_.FreeEventID(pipe_);
     } else {
         blockVec_.FreeEventID();
@@ -633,29 +640,27 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
 
     RunInfo extraInfo[1];
     Vec2RunInfo vec2Info{};
+    SkipInvalidBatch(batchInfo);
     for (uint32_t i = 0; i < loopTimes; ++i) {
         RunInfo &extraInfo0 = extraInfo[0];
         bool isNeedExcuteC1 = IsNeedExcuteC1(batchInfo);
-        if (isNeedExcuteC1) {
-            CalcC1V1Params(extraInfo0, batchInfo);
-        }
+        CalcC1V1Params(extraInfo0, batchInfo);
+        // printf("[LOOP] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", extraInfo0.bStart, extraInfo0.sStart, extraInfo0.dealTcNum, extraInfo0.dealScSize);
 
         if ASCEND_IS_AIC {
-            if (isNeedExcuteC1) {
-                // ComputeMm1(extraInfo0);
-            }
+            ComputeMm1(extraInfo0, isNeedExcuteC1);
         } else {
-                SyncAll();
-                // ComputeVec1(extraInfo0);
-                UpdateVec2Info(vec2Info, i, extraInfo0);
+                // SyncAll();
+                ComputeVec1(extraInfo0);
+                // UpdateVec2Info(vec2Info, i, extraInfo0);
 
-            if (IsNeedSyncAll(i)) {
-                SyncAll();
-                if (IsNeedExcuteV2(vec2Info)) {
-                    // ComputeVec2(vec2Info);
-                }
-                SyncAll();
-            }
+            // if (IsNeedSyncAll(i)) {
+            //     SyncAll();
+            //     if (IsNeedExcuteV2(vec2Info)) {
+            //         // ComputeVec2(vec2Info);
+            //     }
+            //     SyncAll();
+            // }
         }
 
     }
