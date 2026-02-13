@@ -15,7 +15,7 @@
 #define SCATTER_WITH_SORTED_H
 #include "kernel_operator.h"
 using namespace AscendC;
-
+constexpr uint32_t BUFFER_NUM = 2;
 template <typename T>
 class KernelScatterWithSorted
 {

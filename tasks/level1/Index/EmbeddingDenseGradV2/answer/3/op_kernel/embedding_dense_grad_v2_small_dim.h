@@ -20,7 +20,10 @@
 #include "kernel_operator.h"
 
 constexpr int64_t SORT_QUE_NUM = 3;
-
+constexpr uint64_t BUFFER_NUM = 1;
+constexpr uint64_t DOUBLE_BUFFER = 1;
+constexpr uint64_t BLOCK_SIZE = 32;
+constexpr uint64_t BLOCK_SIZE_GRAD = 64;
 namespace AscendC {
 template<typename MT, typename CT>
 class EmbeddingDenseGradV2SmallDimKernel {

@@ -17,7 +17,17 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator.h"
-
+constexpr uint32_t TENSOR_COUNT = 8;
+constexpr uint32_t BUFFER_NUM = 1;
+constexpr uint32_t UINT8_BITS = 8;
+constexpr uint32_t BLOCK_BYTES = 32;
+constexpr uint32_t ELE_NUM_PER_REPEAT = 64;
+constexpr uint32_t MODE_SUM = 0;
+constexpr uint32_t MODE_MEAN = 1;
+constexpr uint32_t MODE_MAX = 2;
+constexpr uint32_t NUM_PER_BLOCK = 8;
+constexpr uint32_t NUM_PER_BLOCK_16 = 16;
+extern constexpr uint32_t TILINGKEY_BF16 = 3;
 namespace AscendC {
 template <typename T, typename DTYPE>
 class EmbeddingBagFP16 {
