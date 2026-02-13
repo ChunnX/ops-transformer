@@ -1,0 +1,9 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3
+    ],
+    "DESCRIPTION": "该执行路径适用于对half、float、bfloat16_t类型的输入数据进行logit计算，包含eps裁剪、x/(1-x)计算及取对数操作。"
+}

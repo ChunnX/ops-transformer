@@ -1,0 +1,9 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2,
+        3
+    ],
+    "DESCRIPTION": "该执行路径主要应用于LogitGrad反向梯度计算，支持half、float、bfloat16三种数据类型，在AICore 220架构上执行。"
+}

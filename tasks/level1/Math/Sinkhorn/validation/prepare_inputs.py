@@ -17,8 +17,10 @@ def get_inputs(param, device=None):
     dtype_str = param.get('dtype', 'float32')
     dtype = getattr(torch, dtype_str)
 
-    cost = torch.rand(input_shape, device=device, dtype=dtype)
-    return (cost,)
+    # 获取 tol，若无则使用默认值
+    tol = param.get('tol', 0.0001)
+
+    return (cost, float(tol))
 
 
 def get_init_inputs(param, device=None):

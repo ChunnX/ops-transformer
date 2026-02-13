@@ -1,0 +1,5 @@
+case_id;input_shape;dtype;reshuff
+0;[4, 64, 8, 32];"float16";"false"
+1;[2, 8, 64, 64];"float32";"false"
+2;[1, 65536];"float32";"false"
+3;[1, 65536];"float16";"false"

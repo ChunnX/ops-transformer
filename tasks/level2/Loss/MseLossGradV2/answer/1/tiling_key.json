@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1,
+        2
+    ],
+    "DESCRIPTION": "该执行路径主要应用于310P（__CCE_AICORE__ == 200）硬件平台上的MSE Loss梯度计算，支持float和half数据类型，使用KernelMseLossGrad310P模板类，包含尾部非对齐数据的逐元素搬运处理逻辑。"
+}

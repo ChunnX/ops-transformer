@@ -1,0 +1,5 @@
+case_id;input_shape;dtype;statistic;reshuff
+0;[2, 8, 64, 64];"float32";"true";"false"
+1;[4, 64, 8, 32];"float16";"true";"false"
+2;[1, 65536];"float32";"true";"false"
+3;[2, 128, 32, 32];"bfloat16";"true";"false"
