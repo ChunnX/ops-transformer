@@ -371,6 +371,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
         this->attenMaskInfo.nextTokens = inputParamsRegbase.nextTokens;
         this->attenMaskInfo.compressMode = inputParamsRegbase.attenMaskCompressMode;
         this->attenMaskInfo.attenMaskShapeType = inputParamsRegbase.attenMaskShapeType;
+        this->attenMaskInfo.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
         this->attenMaskInfo.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
         this->attenMaskInfo.bandIndex = inputParamsRegbase.bandIndex;
     }
