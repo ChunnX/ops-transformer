@@ -225,14 +225,15 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
 
 ge::graphStatus CompressorTiling::CalcWorkSpace()
 {
+    uint32_t dbWorkspaceRatio = 2;
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4;      // 4: fp32
     constexpr uint32_t V1_RES_ELEM_SIZE = 2;       // 2: fp16/bf16
     uint32_t maxGroupNum = aicNum_ * baseParams_->headDim / innerSplitParams_->dBaseSize;
     workspaceSize_ = libapiSize_;
-    workspaceSize_ += workspaceParams_->mm1KvResSize * maxGroupNum * MM1_RES_ELEM_SIZE;
-    workspaceSize_ += workspaceParams_->mm1ScoreResSize * maxGroupNum * MM1_RES_ELEM_SIZE;
-    workspaceSize_ += workspaceParams_->vec1TailCacheSize * maxGroupNum * MM1_RES_ELEM_SIZE;
-    workspaceSize_ += aicNum_ * workspaceParams_->vec1ResSize * V1_RES_ELEM_SIZE;
+    workspaceSize_ += workspaceParams_->mm1KvResSize * maxGroupNum * MM1_RES_ELEM_SIZE * dbWorkspaceRatio;
+    workspaceSize_ += workspaceParams_->mm1ScoreResSize * maxGroupNum * MM1_RES_ELEM_SIZE * dbWorkspaceRatio;
+    workspaceSize_ += workspaceParams_->vec1TailCacheSize * maxGroupNum * MM1_RES_ELEM_SIZE * dbWorkspaceRatio;
+    workspaceSize_ += aicNum_ * workspaceParams_->vec1ResSize * V1_RES_ELEM_SIZE * dbWorkspaceRatio;
     
     workspaceSize_ += 1024 * 1024 * 1024; // 1024:申请workspace大小
     if (context_->workSpaces) {
