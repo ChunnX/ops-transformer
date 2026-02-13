@@ -43,7 +43,7 @@ def get_init_inputs(param, device=None):
     """
     num_weights = int(param.get('num_weights', 100))
     padding_idx = int(param.get('padding_idx', -1))
-    scale_grad_by_freq = param.get('scale_grad_by_freq', 'False').lower() == 'true'
+    scale_grad_by_freq = param.get('scale_grad_by_freq', 0) == 1
     
     return (num_weights, padding_idx, scale_grad_by_freq)
 

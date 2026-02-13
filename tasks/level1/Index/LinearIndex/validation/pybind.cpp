@@ -6,25 +6,18 @@
 * register forward implementation for NPU device
 */
 
-at::Tensor linear_index(at::Tensor &indices, at::Tensor &shape, int64_t axis, bool combine)
+at::Tensor linear_index_custom(at::Tensor &indices, at::Tensor &shape, int64_t axis, bool combine)
 {
-    // 获取输出形状（与indices相同）
-    auto output_size = indices.sizes();
-    
-    // alloc output memory (输出类型固定为int32)
-    at::Tensor result = at::empty(output_size, indices.options().dtype(at::kInt));
+    // 创建输出 Tensor，数据类型为 int32 (ge::DT_INT32)
+    at::Tensor result = torch::empty_like(indices, indices.options().dtype(at::kInt));
 
-    // call aclnn interface to perform the computation
+    // 调用 aclnn 接口
+    // 参数顺序根据 EXEC_NPU_CMD 宏定义和算子原型推断：输入1, 输入2, 属性1, 属性2, 输出
     EXEC_NPU_CMD(aclnnLinearIndex, indices, shape, axis, combine, result);
     return result;
 }
 
-
 PYBIND11_MODULE(kernel_gen_ops, m) {
     m.doc() = "Python bindings for kernel_gen_ops";
-    m.def("linear_index", &linear_index, "LinearIndex operator",
-          py::arg("indices"),
-          py::arg("shape"),
-          py::arg("axis") = -1,
-          py::arg("combine") = false);
+    m.def("linear_index", &linear_index_custom, "LinearIndex custom op");
 }

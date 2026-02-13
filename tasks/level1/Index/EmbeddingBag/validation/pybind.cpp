@@ -6,7 +6,7 @@
 * register forward implementation for NPU device
 */
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> custom_pybind_api(
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> embedding_bag(
     at::Tensor &weight, 
     at::Tensor &indices, 
     at::Tensor &offsets,
@@ -44,18 +44,20 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> custom_pybind_api(
     } else {
         per_sample_weights_tensor = at::empty({0}, weight.options());
     }
-    
+    char* mode_ptr = const_cast<char *>(mode.c_str());
     // Call aclnn interface to perform the computation
     EXEC_NPU_CMD(aclnnEmbeddingBag, weight, indices, offsets, per_sample_weights_tensor, 
-                 mode, scale_grad_by_freq, sparse, include_last_offset, padding_idx,
+                 mode_ptr, scale_grad_by_freq, sparse, include_last_offset, padding_idx,
                  y, offset2bag, bag_size, max_indices);
-    
+    if (mode == "sum") {
+        offset2bag = at::empty({}, indices.options().dtype(at::kInt));
+    }
     return std::make_tuple(y, offset2bag, bag_size, max_indices);
 }
 
 PYBIND11_MODULE(kernel_gen_ops, m) {
     m.doc() = "Python bindings for kernel_gen_ops";
-    m.def("custom_pybind_api", &custom_pybind_api, "EmbeddingBag custom operation",
+    m.def("embedding_bag", &embedding_bag, "EmbeddingBag custom operation",
           py::arg("weight"),
           py::arg("indices"),
           py::arg("offsets"),

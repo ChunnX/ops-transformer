@@ -67,9 +67,9 @@ def custom_check_precision(param, outputs, outputs_new):
     is_pass = 1
 
     for out, out_new in zip(outputs, outputs_new):
-        abs_diff = torch.abs(out - out_new)
-        rel_diff = abs_diff / (torch.abs(out) + 1e-7)
-        tolerance = rtol * torch.maximum(torch.tensor(1.0, device=out.device), torch.abs(out))
+        abs_diff = torch.abs(out - out_new) if out.dtype is not torch.bool else (out ^ out_new)
+        rel_diff = abs_diff / (torch.abs(out) + 1e-7) if out.dtype is not torch.bool else (out ^ out_new)
+        tolerance = rtol * torch.maximum(torch.tensor(1.0, device=out.device), torch.abs(out)) if out.dtype is not torch.bool else torch.zeros(out.shape)
         if torch.any(abs_diff > tolerance):
             is_pass = 0
         

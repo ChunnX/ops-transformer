@@ -38,49 +38,21 @@ class Model(nn.Module):
         Returns:
             输出张量，满足top-k/top-p条件的保留原值，其余位置为-inf
         """
-        batch_size, vocab_size = sorted_value.shape
-        device = sorted_value.device
-        dtype = sorted_value.dtype
-        
-        # 初始化输出为-inf
-        out = torch.full_like(sorted_value, float('-inf'))
-        
-        for b in range(batch_size):
-            # 获取当前batch的值和索引
-            values = sorted_value[b].float()
-            indices = sorted_indices[b]
             
-            # 计算softmax（已排序，最大值在末尾）
-            max_val = values[-1]
-            exp_values = torch.exp(values - max_val)
-            softmax_probs = exp_values / exp_values.sum()
-            
-            # 计算累积概率
-            cumsum_probs = torch.cumsum(softmax_probs, dim=0)
-            
-            # 确定掩码
-            mask = torch.ones(vocab_size, dtype=torch.bool, device=device)
-            
-            # Top-K过滤
-            if k is not None:
-                k_val = k[b].item() if k.dim() > 0 else k.item()
-                k_threshold_idx = vocab_size - k_val
-                mask[:k_threshold_idx] = False
-            
-            # Top-P过滤
-            if p is not None:
-                p_val = p[b].item() if p.dim() > 0 else p.item()
-                p_threshold = 1.0 - p_val
-                # 从后往前找第一个累积概率<=p_threshold的位置
-                valid_mask = cumsum_probs > p_threshold
-                if valid_mask.any():
-                    mask = mask & valid_mask
-            
-            # 应用掩码：scatter回原始索引位置
-            valid_values = sorted_value[b][mask]
-            valid_indices = indices[mask]
-            out[b, valid_indices] = valid_values
-        
+        # Top-K过滤
+        if not k.dim() == 0:
+            kth_idx = sorted_value.size(1) - k.long()
+            kth_value = sorted_value.gather(1, kth_idx.unsqueeze(dim=1))
+            top_k_mask = sorted_value < kth_value
+            sorted_value.masked_fill_(top_k_mask, -float("inf"))
+        # Top-P过滤
+        if not p.dim() == 0:
+            softmax_res = sorted_value.to(torch.float32).softmax(dim=-1)
+            cumsum_res = softmax_res.cumsum(dim=-1)
+            top_p_mask = cumsum_res <= 1 - p.unsqueeze(dim=1)
+            top_p_mask[:, -1] = False
+            sorted_value.masked_fill_(top_p_mask, -float("inf"))
+        out = torch.empty_like(sorted_value).scatter_(dim=-1, index=sorted_indices.long(), src=sorted_value)
         return out
 
 

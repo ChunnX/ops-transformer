@@ -84,7 +84,7 @@ class ModelNew(nn.Module):
         include_last_offset: bool,
         padding_idx: int
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        return kernel_gen_ops.custom_pybind_api(
+        return kernel_gen_ops.embedding_bag(
             weight, 
             indices, 
             offsets, 

@@ -34,11 +34,13 @@ def get_inputs(param, device=None):
     elif mode == 'topk':
         # 仅使用k
         k_value = int(param.get('k_value', 10))
+        p = torch.empty(())
         k = torch.full((batch_size,), k_value, device=device, dtype=torch.int32)
     elif mode == 'topp':
         # 仅使用p
         p_value = float(param.get('p_value', 0.9))
         p = torch.full((batch_size,), p_value, device=device, dtype=dtype)
+        k = torch.empty(())
     
     return sorted_value, sorted_indices, p, k
 
