@@ -122,9 +122,8 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0;
 
     // workSpace
-    uint32_t preMm1ResSize = 0;
-    uint32_t curMm1ResSize = 0;
     uint32_t vec1ResSize = 0;
+    uint32_t mm1ResSize = 0;    // 所有cube输出kv/score结果的总大小
 
     uint32_t aiCoreIdx = 0;
     uint32_t nSize = 0;
