@@ -1,0 +1,9 @@
+{
+    "ID": 3,
+    "TILING_KEY": [
+        13,
+        14,
+        15
+    ],
+    "DESCRIPTION": "该执行路径主要应用于整数类型数据的scatter_add累加操作场景，利用硬件原子加指令（SetAtomicAdd）直接将更新值原子累加到目标位置，支持int、uint8_t、int8_t类型。"
+}

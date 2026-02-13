@@ -1,0 +1,7 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        1
+    ],
+    "DESCRIPTION": "该执行路径主要应用于尾部数据量较大的scatter add场景，通过BigTailOp处理，将updates按indices就地累加到var中，适用于每行尾部元素较多、需要分批拷入UB或逐元素处理的情况。"
+}
