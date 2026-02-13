@@ -128,7 +128,7 @@ private:
     static constexpr uint64_t SYNC_MODE2 = 2;
     static constexpr uint32_t SYNC_C1_V1_FLAG = 6;
     static constexpr uint32_t SYNC_V1_C1_FLAG = 7;
-    static constexpr uint32_t dbWorkspaceRatio = 1;
+    static constexpr uint32_t dbWorkspaceRatio = 2;
 
     // ==============================TilingData&TPipe==============================
     TPipe* pipe_;
@@ -136,7 +136,8 @@ private:
     // ===========================Workspace Global Tensor===========================
     GlobalTensor<MM1_OUT_T> mm1KvResGm;
     GlobalTensor<MM1_OUT_T> mm1ScoreResGm;
-    GlobalTensor<MM1_OUT_T> vec1TailCacheGm;
+    GlobalTensor<MM1_OUT_T> vec1KvCacheGm;
+    GlobalTensor<MM1_OUT_T> vec1ScoreCacheGm;
     GlobalTensor<MM1_OUT_T> Vec1InputKvGm;
     GlobalTensor<MM1_OUT_T> Vec1InputScoreGm;
     GlobalTensor<VEC1_OUT_T> vec1ResGm;
@@ -230,9 +231,9 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
 //                         cuSeqlens, seqUsed, startPos, cmpKvOut);
 //         blockVec_.InitBuffers(pipe_);
 // #if __CCE_AICORE__ == 310
-//         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1TailCacheGm, vec1ResGm, vec2InputGm);
+//         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
 // #else 
-//         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1TailCacheGm, vec1ResGm, vec2InputGm);
+//         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
 // #endif
 //     }
 }
@@ -491,6 +492,12 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
 
     Vec1InputScoreGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + mm1ScoreResStartOffset));
+
+    vec1KvCacheGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset));
+    offset += constInfo.cmpRatio * constInfo.headDim;
+
+    vec1ScoreCacheGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset));
+    offset += constInfo.cmpRatio * constInfo.headDim;
 
     uint64_t beforeVecOffset = offset;
 

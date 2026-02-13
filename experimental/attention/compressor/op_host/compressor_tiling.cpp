@@ -176,7 +176,7 @@ ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     if (coff = 2) {
-        workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
+        workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim * 2;
     }
     if (context_->templateId == TemplateId::PERF) {
         workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * baseParams_->nSize;
