@@ -375,7 +375,8 @@ bool GroupedQbmmTiling::CheckFp4Shape() const
                 return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2"),
+                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2, \
+but actual is 2."),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(
