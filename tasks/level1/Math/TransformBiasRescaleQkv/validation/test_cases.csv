@@ -4,3 +4,6 @@ case_id;batch;token;dim;num_heads;dtype
 2;1;32;768;12;float32
 3;2;256;256;8;bfloat16
 4;8;64;1024;16;float16
+5;1;64;128;4;float16
+6;16;32;256;8;float16
+7;2;512;512;16;bfloat16

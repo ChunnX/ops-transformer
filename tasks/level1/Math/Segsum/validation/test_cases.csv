@@ -4,3 +4,6 @@ case_id;shape;dtype
 2;[2, 4, 4];float32
 3;[1, 1, 1, 8];float16
 4;[2, 2, 8];float32
+5;[4, 8, 16];float32
+6;[1, 4, 32];bfloat16
+7;[2, 2, 2, 64];float16

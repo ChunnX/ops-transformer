@@ -1,0 +1,8 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1000,
+        1001
+    ],
+    "DESCRIPTION": "该执行路径使用 SegsumND 模板类，支持 MODE=0 (ComputeBase) 和 MODE=1 (ComputeBatches) 两种计算模式，用于处理不同规模或分块策略的片段求和任务。"
+}

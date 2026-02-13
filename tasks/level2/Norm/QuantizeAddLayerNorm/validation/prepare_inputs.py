@@ -24,8 +24,16 @@ def get_init_inputs(param, device=None):
     gamma = torch.rand(shape, device=device, dtype=dtype)
     beta = torch.rand(shape, device=device, dtype=dtype)
     bias = torch.rand(shape, device=device, dtype=dtype)
-    scales = torch.rand(shape, device=device, dtype=dtype) * 0.01 + 0.01
-    zero_points = torch.zeros(shape, device=device, dtype=dtype)
+    # 算子定义：FP16 主输入时 scales/zero_points 需为 DT_FLOAT；BF16/FP32 时与主输入一致
+    scale_zp_dtype = torch.float32 if dtype == torch.float16 else dtype
+    scale_mode = str(param.get("scale_mode", "per_channel")).strip()
+    if scale_mode == "per_tensor":
+        val = float(torch.rand(1, device=device).item() * 0.01 + 0.01)
+        scales = torch.full(shape, val, device=device, dtype=scale_zp_dtype)
+        zero_points = torch.zeros(shape, device=device, dtype=scale_zp_dtype)
+    else:
+        scales = torch.rand(shape, device=device, dtype=scale_zp_dtype) * 0.01 + 0.01
+        zero_points = torch.zeros(shape, device=device, dtype=scale_zp_dtype)
 
     return [gamma, beta, bias, scales, zero_points, dtype_attr, axis, epsilon, additional_output]
 

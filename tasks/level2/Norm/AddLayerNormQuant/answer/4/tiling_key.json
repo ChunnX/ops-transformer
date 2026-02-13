@@ -1,0 +1,15 @@
+{
+    "ID": 4,
+    "TILING_KEY": [
+        1000,
+        1001,
+        1002,
+        2000,
+        2001,
+        2002,
+        3000,
+        3001,
+        3002
+    ],
+    "DESCRIPTION": "该执行路径主要应用于多行批量（Normal）处理模式下的静态量化（Static Quant）场景，每次处理多行数据并利用逐行ReduceSum计算LayerNorm均值和方差，再使用预设的scale和可选的zeroPoint进行静态量化，支持单路或双路量化输出，支持half/float/bfloat16输入类型。"
+}

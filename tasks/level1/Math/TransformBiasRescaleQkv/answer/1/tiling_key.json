@@ -1,0 +1,7 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1
+    ],
+    "DESCRIPTION": "该执行路径用于TransformBiasRescaleQkvND算子，执行QKV的Bias添加和Rescale操作。"
+}

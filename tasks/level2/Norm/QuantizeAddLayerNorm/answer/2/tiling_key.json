@@ -1,0 +1,12 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        1001,
+        1101,
+        2001,
+        2101,
+        3001,
+        3101
+    ],
+    "DESCRIPTION": "该执行路径主要应用于Per-Tensor（Normal）的量化加LayerNorm计算场景。"
+}

@@ -1,0 +1,12 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        0,
+        1,
+        2,
+        10,
+        11,
+        12
+    ],
+    "DESCRIPTION": "该场景主要实现了GroupNormGrad算子的梯度计算，支持float/half/bfloat16数据类型，以及确定性计算模式。"
+}

@@ -1,0 +1,15 @@
+{
+    "ID": 3,
+    "TILING_KEY": [
+        1020,
+        1021,
+        1022,
+        2020,
+        2021,
+        2022,
+        3020,
+        3021,
+        3022
+    ],
+    "DESCRIPTION": "该执行路径主要应用于单行（SingleRow）处理模式下的静态量化（Static Quant）场景，每次处理一行数据进行LayerNorm后使用预设的scale和可选的zeroPoint进行静态量化，根据scaleOffsetMode运行时选择单路（Sole）或双路（Dual）量化输出，支持half/float/bfloat16输入类型。"
+}

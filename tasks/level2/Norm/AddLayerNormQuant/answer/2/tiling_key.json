@@ -1,0 +1,15 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        1100,
+        1101,
+        1102,
+        2100,
+        2101,
+        2102,
+        3100,
+        3101,
+        3102
+    ],
+    "DESCRIPTION": "该执行路径主要应用于多行批量（Normal）处理模式下的动态量化（Dynamic Quant）场景，每次处理多行数据并利用向量化Reduce操作计算LayerNorm均值和方差，再进行动态量化，支持half/float/bfloat16输入类型及可选的smooth缩放。"
+}
