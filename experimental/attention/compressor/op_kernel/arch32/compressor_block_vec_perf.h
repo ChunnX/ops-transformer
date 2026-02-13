@@ -566,7 +566,7 @@ CompressorBlockVectorPerf<COMP>::PadAlign(const LocalTensor<T> dstLocal, const L
         uint32_t preSrcLocalOffset = srcLocalOffset;
         uint32_t preDstUbOffset = dstUbOffset + (sliceInfo.headHolderSeqCnt + constInfo_.cmpRatio) * dstSingleRowCount;
         DataCopyAlignUbToUb(dstLocal[preDstUbOffset], srcLocal[preSrcLocalOffset],
-                            copyRowCount - min(copyRowCount, onstInfo_.cmpRatio), copyColCount, srcSingleRowCount,
+                            copyRowCount - min(copyRowCount, constInfo_.cmpRatio), copyColCount, srcSingleRowCount,
                             dstSingleRowCount);
         dstUbOffset += dDealSize;
         srcLocalOffset += dDealSize;
