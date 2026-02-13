@@ -1,0 +1,7 @@
+case_id;shape;dtype;approximate
+0;[32, 32];bfloat16;none
+1;[16, 256];bfloat16;tanh
+2;[32, 128];float32;none
+3;[64, 128, 256];float32;tanh
+4;[1024, 256];float16;none
+5;[128, 512];float16;tanh
