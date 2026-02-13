@@ -1,0 +1,7 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        2000
+    ],
+    "DESCRIPTION": "该场景主要应用于无需数据类型转换（NoCast，通常为FP32）的AvgPool3D梯度计算。"
+}
