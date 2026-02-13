@@ -386,7 +386,6 @@ private:
         int64_t gmGroupOffsetC = 0;
         uint32_t startCoreIdx = 0;
         uint32_t syncGroupIdx = 0;
-        AscendC::CrossCoreWaitFlag<0x2>(0); // 等待aiv计算cumsumformm
         int64_t preCurrentmSum = 0;
         int32_t syncLoopIdx = -1;
 
