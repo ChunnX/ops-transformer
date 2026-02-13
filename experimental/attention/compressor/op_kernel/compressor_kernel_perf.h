@@ -19,7 +19,6 @@
 #include "compressor_comm.h"
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
-#include "compressor_comm.h"
 #include "compressor_tools.h"
 #if (__CCE_AICORE__ == 220)
 #include "arch32/compressor_block_cube_perf.h"
@@ -40,7 +39,6 @@ struct CmpBlockInfo {
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
     uint32_t bSeqUsed = 0U;
-    uint32_t bSeqLength = 0U;
     uint32_t bStartPos = 0U;
     bool needReset = false;
     bool isFirst = true;
@@ -52,10 +50,22 @@ struct CmpBlockInfo {
 };
 
 struct BasicBlockInfo {
-    uint32_t dealTcNum = 0;
+    uint32_t bIdx = 0;
+    uint32_t sIdx = 0;
     uint32_t compressedTcNum = 0;
     uint32_t dealSeqCnt = 0;
-    uint32_t preDealSeqCnt = 0;
+    uint32_t dealTcNum = 0;
+};
+
+struct BatchInfo {
+    uint32_t tcNum = 0;
+    uint32_t compressedTcNum = 0;
+    uint32_t remSeqCnt = 0;
+    uint32_t seqCnt = 0;
+    uint32_t headHolderSeq = 0;
+    uint32_t bStartPos = 0;
+    uint32_t bIdx = 0;
+    uint32_t sIdx = 0;
 };
 
 template <typename COMP>
@@ -89,17 +99,11 @@ private:
     // ================================Process functions================================
     __aicore__ inline void InitTilingData();
     __aicore__ inline void SetBaseSize();
-    __aicore__ inline uint32_t CalcSIdxOfLastTc();
     // 获取基本块数量
-    __aicore__ inline void CalcCmpBlockInfo(CmpBlockInfo &cmpBlockInfo);
-    __aicore__ inline void SkipInvalidBatch(CmpBlockInfo &cmpBlockInfo, uint32_t maxBatchSize);
-    __aicore__ inline uint32_t GetNextCmpSeqCnt(CmpBlockInfo &cmpBlockInfo);
-    __aicore__ inline void AcceptUpdate(CmpBlockInfo &cmpBlockInfo);
-    __aicore__ inline void UpdateBasicBlockInfo(BasicBlockInfo &basicBlockInfo, CmpBlockInfo &cmpBlockInfo, bool isLeft);
-    __aicore__ inline BasicBlockInfo SkipOneBasicBlock(CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo);
-    __aicore__ inline uint32_t GetBasicBlockNum();
-    // 计算当前核起始位置
-    __aicore__ inline void CalcCurCoreStartIdx(CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo);
+    __aicore__ inline uint32_t GetLoopTimes();
+    __aicore__ inline void SkipInvalidBatch(BatchInfo &batchInfo);
+    __aicore__ inline void UpdateCurGroup(BasicBlockInfo &basicBlockInfo, BatchInfo batchInfo, uint32_t &curGroupQuota, uint32_t curDealSeq);
+    __aicore__ inline BasicBlockInfo SkipOneLoop(BatchInfo &batchInfo);
     // 计算分核基本信息
     __aicore__ inline void CalcSplitCoreInfo();
 
@@ -109,9 +113,9 @@ private:
     __aicore__ inline void ComputeVec1(const RunInfo &info);
     __aicore__ inline void ComputeVec2(const Vec2RunInfo &info);
 
-    __aicore__ inline bool IsNeedExcuteC1V1(uint32_t curBasicBlockIdx);
+    __aicore__ inline bool IsNeedExcuteC1(BatchInfo batchInfo);
     __aicore__ inline bool IsNeedSyncAll(uint32_t curBasicBlockIdx);
-    __aicore__ inline void CalcC1V1Params(RunInfo &info, uint32_t curBasicBlockIdx, CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo);
+    __aicore__ inline void CalcC1V1Params(RunInfo &info, BatchInfo &batchInfo);
     __aicore__ inline void UpdateVec2Info(Vec2RunInfo &vec2Info, uint32_t curBasicBlockIdx, const RunInfo &info);
     __aicore__ inline bool IsNeedExcuteV2(Vec2RunInfo &vec2Info);
 
@@ -130,8 +134,11 @@ private:
     TPipe* pipe_;
     const optiling::CompressorTilingData* __restrict tilingData_;
     // ===========================Workspace Global Tensor===========================
-    GlobalTensor<MM1_OUT_T> preMm1ResGm;
-    GlobalTensor<MM1_OUT_T> curMm1ResGm;
+    GlobalTensor<MM1_OUT_T> mm1KvResGm;
+    GlobalTensor<MM1_OUT_T> mm1ScoreResGm;
+    GlobalTensor<MM1_OUT_T> vec1TailCacheGm;
+    GlobalTensor<MM1_OUT_T> Vec1InputKvGm;
+    GlobalTensor<MM1_OUT_T> Vec1InputScoreGm;
     GlobalTensor<VEC1_OUT_T> vec1ResGm;
     GlobalTensor<VEC1_OUT_T> vec2InputGm;
     // ================================Task Info====================================
@@ -146,6 +153,7 @@ private:
     uint32_t allCompressedTcNum_ = 0;
     uint32_t curCompressedTcNum_ = 0;
     uint32_t accDealSize = 0;
+    uint32_t loopTimes = 0;
 };
 
 template <typename COMP>
@@ -195,39 +203,38 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
 
     // 0. 计算最后一个Tc块的起始位置
     constInfo.bIdxOfLastTc = constInfo.batchSize - 1;
-    constInfo.sIdxOfLastTc = CalcSIdxOfLastTc();
-    // 1. 计算基本块数量
+    // 1. 计算head_dim的切分大小, 构建ConstInfo的其他信息
     SetBaseSize(); // 设置基本块大小
-    constInfo.tcBasicBlockNum = GetBasicBlockNum();
-    // 2. 计算head_dim的切分大小, 构建ConstInfo的其他信息
     CalcSplitCoreInfo();
+    // 2. 计算循环次数
+    loopTimes = GetLoopTimes();     // TODO 似乎可以不用计算
     // 3. 初始化workspace
     InitWorkspace(workspace);
     // 4. 初始化block层
-    if ASCEND_IS_AIC {
-#if __CCE_AICORE__ == 310
-        blockCube_.InitParams(constInfo);
-#else
-        blockCube_.InitParams(constInfo, tools_);
-#endif
-        blockCube_.Init(x, wKv, wGate, kvState, scoreState, ape, normWeight, ropeSin, ropeCos, 
-            kvBlockTable, scoreBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
-        blockCube_.InitBuffers(pipe_);
-#if __CCE_AICORE__ == 310
-#else
-        blockCube_.InitGlobalBuffers(preMm1ResGm, curMm1ResGm);
-#endif
-    } else {
-        blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(x, wKv, wGate, kvState, scoreState, ape, normWeight, ropeSin, ropeCos, kvBlockTable, scoreBlockTable, 
-                        cuSeqlens, seqUsed, startPos, cmpKvOut);
-        blockVec_.InitBuffers(pipe_);
-#if __CCE_AICORE__ == 310
-        blockVec_.InitVec1GlobalTensor(preMm1ResGm, curMm1ResGm, vec1ResGm, vec2InputGm);
-#else 
-        blockVec_.InitVec1GlobalTensor(preMm1ResGm, curMm1ResGm, vec1ResGm, vec2InputGm);
-#endif
-    }
+//     if ASCEND_IS_AIC {
+// #if __CCE_AICORE__ == 310
+//         blockCube_.InitParams(constInfo);
+// #else
+//         blockCube_.InitParams(constInfo, tools_);
+// #endif
+//         blockCube_.Init(x, wKv, wGate, kvState, scoreState, ape, normWeight, ropeSin, ropeCos, 
+//             kvBlockTable, scoreBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
+//         blockCube_.InitBuffers(pipe_);
+// #if __CCE_AICORE__ == 310
+// #else
+//         blockCube_.InitGlobalBuffers(mm1KvResGm, Vec1InputScoreGm);
+// #endif
+//     } else {
+//         blockVec_.InitParams(constInfo, tools_);
+//         blockVec_.Init(x, wKv, wGate, kvState, scoreState, ape, normWeight, ropeSin, ropeCos, kvBlockTable, scoreBlockTable, 
+//                         cuSeqlens, seqUsed, startPos, cmpKvOut);
+//         blockVec_.InitBuffers(pipe_);
+// #if __CCE_AICORE__ == 310
+//         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1TailCacheGm, vec1ResGm, vec2InputGm);
+// #else 
+//         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1TailCacheGm, vec1ResGm, vec2InputGm);
+// #endif
+//     }
 }
 
 template <typename COMP>
@@ -247,8 +254,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitTilingData() {
     constInfo.blockSize = tilingData_->pageAttentionParams.blockSize;
     constInfo.maxBlockNumPerBatch = tilingData_->pageAttentionParams.maxBlockNumPerBatch;
 
-    constInfo.preMm1ResSize = tilingData_->workspaceParams.preMm1ResSize;
-    constInfo.curMm1ResSize = tilingData_->workspaceParams.curMm1ResSize;
     constInfo.nSize =  tilingData_->baseParams.nSize;
     constInfo.vec1ResSize = tilingData_->workspaceParams.vec1ResSize;
 }
@@ -259,27 +264,27 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
     uint32_t mSize = 0;
     uint32_t minMBaseSize = 0;
     bool sameSeqUsed = true;
-    uint32_t firstBatchSeqLength = tools_.GetSeqLength(0);
+    uint32_t firstBatchSeqUsed = tools_.GetSeqUsed(0);
     for (uint32_t i = 0; i < constInfo.batchSize; i++) {
-        uint32_t bSeqLength = tools_.GetSeqLength(i);
+        uint32_t bSeqUsed = tools_.GetSeqUsed(i);
         uint32_t bStartPos = tools_.GetStartPos(i);
         // 获取m大小
-        mSize += bSeqLength;
+        mSize += bSeqUsed;
         // 获取是否等长
-        if (sameSeqUsed && (bSeqLength != firstBatchSeqLength)) {
+        if (sameSeqUsed && (bSeqUsed != firstBatchSeqUsed)) {
             sameSeqUsed = false;
         }
         // 获取m轴最小切分大小
         if (minMBaseSize != constInfo.cmpRatio) {
             uint32_t startCmpIdx = bStartPos / constInfo.cmpRatio;
-            uint32_t endCmpIdx = (bStartPos + bSeqLength) / constInfo.cmpRatio;
+            uint32_t endCmpIdx = (bStartPos + bSeqUsed) / constInfo.cmpRatio;
             if (startCmpIdx == endCmpIdx) {
-                if (bSeqLength > minMBaseSize) {
-                    minMBaseSize = bSeqLength;
+                if (bSeqUsed > minMBaseSize) {
+                    minMBaseSize = bSeqUsed;
                 }
             } else if (startCmpIdx + 1 == endCmpIdx) {
                 uint32_t startCmpValidSeqCnt = constInfo.cmpRatio - (bStartPos % constInfo.cmpRatio);
-                uint32_t endCmpValidSeqCnt = (bStartPos + bSeqLength) % constInfo.cmpRatio;
+                uint32_t endCmpValidSeqCnt = (bStartPos + bSeqUsed) % constInfo.cmpRatio;
                 if (startCmpValidSeqCnt > minMBaseSize) {
                     minMBaseSize = startCmpValidSeqCnt;
                 }
@@ -314,7 +319,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
             constInfo.dBaseSize = constInfo.headDim / dBaseBlockNum;
             // 开启全核
             uint32_t coreGroupNum = aiCoreNum / dBaseBlockNum;
-            uint32_t newMBaseSize = (constInfo.batchSize + coreGroupNum - 1) / coreGroupNum * firstBatchSeqLength;
+            uint32_t newMBaseSize = (constInfo.batchSize + coreGroupNum - 1) / coreGroupNum * firstBatchSeqUsed;
             if (newMBaseSize > minMBaseSize && newMBaseSize < constInfo.mBaseSize) {
                 constInfo.mBaseSize = newMBaseSize;
             }
@@ -322,181 +327,115 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
     }
 }
 
-template <typename COMP>
-__aicore__ inline uint32_t CompressorKernelPerf<COMP>::CalcSIdxOfLastTc()
-{
-    // 在Init中已确保倒数第一个batch的bSeqUsed不会是0
-    uint32_t cmpRatio = constInfo.cmpRatio;
-    uint32_t bSeqLength = tools_.GetSeqLength(constInfo.batchSize - 1);
-    uint32_t bStartPos = tools_.GetStartPos(constInfo.batchSize - 1);
-
-    // 1.先假设start_pos不再尾块、并且尾块未填满
-    uint32_t lastSeqCnt = (bStartPos + bSeqLength) % cmpRatio;
-    // 2.处理结束点正好填满cmp block的情况
-    if (lastSeqCnt == 0) {
-        lastSeqCnt = cmpRatio;
-    }
-    // 3.处理start_pos在最后一个压缩块的情况
-    if (bSeqLength < lastSeqCnt) {
-        lastSeqCnt = bSeqLength;
-    }
-
-    return (bSeqLength - lastSeqCnt);
-}
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcCmpBlockInfo(CmpBlockInfo &cmpBlockInfo)
+__aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
-    uint32_t cmpRatio = constInfo.cmpRatio;
-    // 计算压缩块信息
-    cmpBlockInfo.headSeqCnt = (cmpBlockInfo.bStartPos + cmpBlockInfo.sIdx) % cmpRatio;
-    cmpBlockInfo.validSeqCnt = cmpBlockInfo.bSeqLength - cmpBlockInfo.sIdx;
-    if (cmpBlockInfo.headSeqCnt + cmpBlockInfo.validSeqCnt > cmpRatio) {
-        cmpBlockInfo.validSeqCnt = cmpRatio - cmpBlockInfo.headSeqCnt;
-        cmpBlockInfo.tailSeqCnt = 0;
-    } else {
-        cmpBlockInfo.tailSeqCnt = cmpRatio - (cmpBlockInfo.headSeqCnt + cmpBlockInfo.validSeqCnt);
-    }
-    cmpBlockInfo.isCompress = (cmpBlockInfo.tailSeqCnt == 0);
-    // 计算有效的需要压缩的块
-    uint32_t  usedValidSeqCnt = cmpBlockInfo.bSeqUsed - cmpBlockInfo.sIdx;
-    if (cmpBlockInfo.sIdx >= cmpBlockInfo.bSeqUsed || usedValidSeqCnt < cmpBlockInfo.validSeqCnt) {
-        cmpBlockInfo.isCompress = false;
-    }
-}
-
-template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(CmpBlockInfo &cmpBlockInfo, uint32_t maxBatchSize)
-{
-    for (; cmpBlockInfo.bIdx < maxBatchSize; ++cmpBlockInfo.bIdx) {
-        cmpBlockInfo.bSeqLength = tools_.GetSeqLength(cmpBlockInfo.bIdx);
-        cmpBlockInfo.bSeqUsed = tools_.GetSeqUsed(cmpBlockInfo.bIdx);
-        if (cmpBlockInfo.bSeqLength > 0) {
+    for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
+        batchInfo.seqCnt = tools_.GetSeqUsed(batchInfo.bIdx);
+        if (batchInfo.seqCnt > 0) {
             break;
         }
     }
-    if (cmpBlockInfo.bIdx < maxBatchSize) {
-        cmpBlockInfo.bStartPos = tools_.GetStartPos(cmpBlockInfo.bIdx);
+    batchInfo.remSeqCnt = batchInfo.seqCnt;
+    if (batchInfo.bIdx < constInfo.batchSize) {
+        batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
+        batchInfo.sIdx = 0;
+        batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
+        batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
+        batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
     }
 }
 
-template <typename COMP>
-__aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetNextCmpSeqCnt(CmpBlockInfo &cmpBlockInfo)
-{
-    if (cmpBlockInfo.isFirst) {
-        cmpBlockInfo.isFirst = false;
-        SkipInvalidBatch(cmpBlockInfo, constInfo.batchSize);
-    }
-
-    if (cmpBlockInfo.bIdx >= constInfo.batchSize) {
-        return 0;
-    }
-
-    CalcCmpBlockInfo(cmpBlockInfo);
-    return cmpBlockInfo.validSeqCnt;
-}
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::AcceptUpdate(CmpBlockInfo &cmpBlockInfo)
+__aicore__ inline void CompressorKernelPerf<COMP>::UpdateCurGroup(BasicBlockInfo &basicBlockInfo, 
+                                BatchInfo batchInfo, uint32_t &curGroupQuota, uint32_t curDealSeq)
 {
-    // 更新sIdx和bIdx、以及与bIdx相关的bStartPos和bSeqUsed
-    cmpBlockInfo.sIdx += cmpBlockInfo.validSeqCnt;
-    if (cmpBlockInfo.sIdx == cmpBlockInfo.bSeqLength) {
-        cmpBlockInfo.sIdx = 0;
-        cmpBlockInfo.bIdx++;
-        if (cmpBlockInfo.needReset && cmpBlockInfo.bIdx == constInfo.batchSize) {
-            cmpBlockInfo.bIdx = 0;
-            cmpBlockInfo.needReset = false;
-        }
-        SkipInvalidBatch(cmpBlockInfo, constInfo.batchSize);
+    // 更新当前组的信息
+    if (curGroupQuota <= 0) {
+        return;
     }
-}
-
-template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::UpdateBasicBlockInfo(BasicBlockInfo &basicBlockInfo,
-    CmpBlockInfo &cmpBlockInfo, bool isLeft)
-{
-    if (isLeft) {
-        basicBlockInfo.preDealSeqCnt += cmpBlockInfo.validSeqCnt;
-    } else {
-        basicBlockInfo.dealSeqCnt += cmpBlockInfo.validSeqCnt;
-        basicBlockInfo.dealTcNum++;
-        if (cmpBlockInfo.isCompress) {
-            basicBlockInfo.compressedTcNum++;
+    basicBlockInfo.bIdx = batchInfo.bIdx;
+    uint32_t curGroupDealSeq = curGroupQuota < curDealSeq ? curGroupQuota : curDealSeq;
+    basicBlockInfo.sIdx = batchInfo.sIdx + curGroupDealSeq;
+    basicBlockInfo.dealSeqCnt += curGroupDealSeq;
+    curGroupQuota -= curGroupDealSeq;
+    // 结尾需要跳batch，需要考虑在当前组起始为末尾，或者当前组起始大于整个M轴
+    if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.batchSize) && basicBlockInfo.sIdx == batchInfo.seqCnt) {
+        basicBlockInfo.sIdx = 0;
+        for (basicBlockInfo.bIdx++; basicBlockInfo.bIdx < constInfo.batchSize; ++basicBlockInfo.bIdx) {
+            uint32_t seqCnt = tools_.GetSeqUsed(basicBlockInfo.bIdx);
+            if (seqCnt > 0) {
+                break;
+            }
         }
     }
 }
 
 template <typename COMP>
-__aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneBasicBlock(
-    CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo)
+__aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchInfo &batchInfo)
 {
     BasicBlockInfo basicBlockInfo{};
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        uint32_t leftFinishSeqCnt = 0;
-        uint32_t rightFinishSeqCnt = 0;
-        for (;;) {
-            uint32_t rightSeqCnt = GetNextCmpSeqCnt(rightCmpBlockInfo);
-            if (rightSeqCnt == 0 || (rightFinishSeqCnt + rightSeqCnt > constInfo.mBaseSize)) {
-                break;
+    uint32_t curGroupQuota = constInfo.mBaseSize * constInfo.curGroupIdx;       // m轴当前组起始
+    bool curGroupStartFlag = false;
+    uint32_t quota = constInfo.coreGroupNum * constInfo.mBaseSize;
+
+    for (uint32_t i = batchInfo.bIdx; i < constInfo.batchSize; ++i) {
+        uint32_t curDealSeq = 0;
+        uint32_t curDealTcNUm = 0;
+        uint32_t curDealCompressedTcNum = 0;
+        // 无法处理完当前整个batch
+        if (quota < batchInfo.remSeqCnt) {
+            // 向下对齐r，
+            if (quota > constInfo.cmpRatio - batchInfo.headHolderSeq) {
+                uint32_t delta = (batchInfo.bStartPos + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
+                // TODO 下面两处检视一下容易减翻
+                curDealSeq = quota - delta;
+                curDealTcNUm = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
+                curDealCompressedTcNum = curDealTcNUm;
+                // 更新当前组所需信息
+                UpdateCurGroup(basicBlockInfo, batchInfo, curGroupQuota, curDealSeq);
+                // 更新batch信息
+                batchInfo.remSeqCnt = batchInfo.remSeqCnt + curDealSeq;
+                batchInfo.sIdx = batchInfo.sIdx + curDealSeq;
+                batchInfo.compressedTcNum -= curDealTcNUm;
+                batchInfo.tcNum -= curDealTcNUm;
+                // 更新loop信息
+                basicBlockInfo.dealTcNum += curDealTcNUm;
+                basicBlockInfo.compressedTcNum += curDealTcNUm;
             }
-            uint32_t leftSeqCnt = GetNextCmpSeqCnt(leftCmpBlockInfo);
-            if ((leftSeqCnt == 0) || (leftFinishSeqCnt + leftSeqCnt > constInfo.mBaseSize)) {
-                break;
-            }
-            rightFinishSeqCnt += rightSeqCnt;
-            leftFinishSeqCnt += leftSeqCnt;
-
-            // 收集基本块信息
-            UpdateBasicBlockInfo(basicBlockInfo, leftCmpBlockInfo, true);
-            UpdateBasicBlockInfo(basicBlockInfo, rightCmpBlockInfo, false);
-
-            AcceptUpdate(rightCmpBlockInfo);
-            AcceptUpdate(leftCmpBlockInfo);
-        }
-    } else {
-        uint32_t rightFinishSeqCnt = 0;
-        for (;;) {
-            uint32_t rightSeqCnt = GetNextCmpSeqCnt(rightCmpBlockInfo);
-            if (rightSeqCnt == 0 || (rightFinishSeqCnt + rightSeqCnt > constInfo.mBaseSize)) {
-                break;
-            }
-            rightFinishSeqCnt += rightSeqCnt;
-
-            // 收集基本块信息
-            UpdateBasicBlockInfo(basicBlockInfo, rightCmpBlockInfo, false);
-
-            AcceptUpdate(rightCmpBlockInfo);
+            break;
+        } else {
+            // 处理整个batch
+            quota -= batchInfo.remSeqCnt;
+            curDealSeq = batchInfo.remSeqCnt;
+            curDealTcNUm = batchInfo.tcNum;
+            curDealCompressedTcNum = batchInfo.compressedTcNum;
+            // 更新当前组所需信息
+            UpdateCurGroup(basicBlockInfo, batchInfo, curGroupQuota, curDealSeq);
+            // 更新batch和lopp信息
+            batchInfo.remSeqCnt = 0;
+            basicBlockInfo.dealTcNum += batchInfo.tcNum;
+            basicBlockInfo.compressedTcNum += batchInfo.compressedTcNum;
+            SkipInvalidBatch(batchInfo);
         }
     }
-
     return basicBlockInfo;
 }
 
-template <typename COMP>
-__aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetBasicBlockNum()
-{
-    // 计算基本块数量
-    uint32_t basicBlockNum = 0;
-    CmpBlockInfo leftCmpBlockInfo(constInfo.bIdxOfLastTc, constInfo.sIdxOfLastTc, true);
-    CmpBlockInfo rightCmpBlockInfo(0, 0, false);
-
-    for (;rightCmpBlockInfo.bIdx < constInfo.batchSize; ++basicBlockNum) {
-        BasicBlockInfo basicBlockInfo = SkipOneBasicBlock(rightCmpBlockInfo, leftCmpBlockInfo);
-        allCompressedTcNum_ += basicBlockInfo.compressedTcNum;
-    }
-    return basicBlockNum;
-}
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcCurCoreStartIdx(
-    CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo)
+__aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetLoopTimes()
 {
-    uint32_t basicBlockNum = constInfo.curGroupIdx * constInfo.singleCoreDealTcBasicNum;
-    for (; basicBlockNum > 0; --basicBlockNum) {
-        BasicBlockInfo basicBlockInfo = SkipOneBasicBlock(rightCmpBlockInfo, leftCmpBlockInfo);
-        curCompressedTcNum_ += basicBlockInfo.compressedTcNum;
+    // 计算主循环次数
+    uint32_t loopTimes = 0;
+    BatchInfo batchInfo{};
+
+    for (;batchInfo.bIdx < constInfo.batchSize; ++loopTimes) {
+        SkipOneLoop(batchInfo);
     }
+    return loopTimes;
 }
 
 template <typename COMP>
@@ -511,37 +450,47 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
     // 当前组id
     constInfo.curGroupIdx = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
 
-    // 单组核在T方向处理的最大基本块数量
-    constInfo.singleCoreDealTcBasicNum = (constInfo.tcBasicBlockNum + constInfo.coreGroupNum - 1) / constInfo.coreGroupNum;
-    // 尾组所在id
-    constInfo.tailGroupIdx = (constInfo.tcBasicBlockNum - 1) / constInfo.singleCoreDealTcBasicNum;
-    // 尾组处理基本块数量
-    constInfo.tailBasicBlockNum = constInfo.tcBasicBlockNum - constInfo.tailGroupIdx * constInfo.singleCoreDealTcBasicNum;
+    constInfo.mm1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
 
-    // 计算当前核需要处理的基本块个数
-    if (constInfo.curGroupIdx < constInfo.tailGroupIdx) {
-        constInfo.realDealBasicBlockNum = constInfo.singleCoreDealTcBasicNum;
-    } else if (constInfo.curGroupIdx > constInfo.tailGroupIdx) {
-        constInfo.realDealBasicBlockNum = 0;
-    } else {
-        constInfo.realDealBasicBlockNum = constInfo.tailBasicBlockNum;
-    }
+    // // 单组核在T方向处理的最大基本块数量
+    // constInfo.singleCoreDealTcBasicNum = (constInfo.tcBasicBlockNum + constInfo.coreGroupNum - 1) / constInfo.coreGroupNum;
+    // // 尾组所在id
+    // constInfo.tailGroupIdx = (constInfo.tcBasicBlockNum - 1) / constInfo.singleCoreDealTcBasicNum;
+    // // 尾组处理基本块数量
+    // constInfo.tailBasicBlockNum = constInfo.tcBasicBlockNum - constInfo.tailGroupIdx * constInfo.singleCoreDealTcBasicNum;
+
+    // // 计算当前核需要处理的基本块个数
+    // if (constInfo.curGroupIdx < constInfo.tailGroupIdx) {
+    //     constInfo.realDealBasicBlockNum = constInfo.singleCoreDealTcBasicNum;
+    // } else if (constInfo.curGroupIdx > constInfo.tailGroupIdx) {
+    //     constInfo.realDealBasicBlockNum = 0;
+    // } else {
+    //     constInfo.realDealBasicBlockNum = constInfo.tailBasicBlockNum;
+    // }
 }
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t *workspace) {
     uint64_t offset = 0;
-    // preMm1ResGm
-    preMm1ResGm.SetGlobalBuffer(
+    uint64_t mm1KvResStartOffset = offset;
+    // mm1KvResGm
+    mm1KvResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
-                             constInfo.aiCoreIdx * dbWorkspaceRatio * constInfo.preMm1ResSize * sizeof(MM1_OUT_T)));
-    offset += GetBlockNum() * dbWorkspaceRatio * constInfo.preMm1ResSize * sizeof(MM1_OUT_T);
+                             constInfo.curGroupIdx * constInfo.mBaseSize * constInfo.headDim * sizeof(MM1_OUT_T)));
+    offset += dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mBaseSize * constInfo.headDim * sizeof(MM1_OUT_T);
 
-    // curMm1ResGm
-    curMm1ResGm.SetGlobalBuffer(
+    uint64_t mm1ScoreResStartOffset = offset;
+    // mm1ScoreResGm
+    mm1ScoreResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
-                             constInfo.aiCoreIdx * dbWorkspaceRatio * constInfo.curMm1ResSize * sizeof(MM1_OUT_T)));
-    offset += GetBlockNum() * dbWorkspaceRatio * constInfo.curMm1ResSize * sizeof(MM1_OUT_T);
+                             constInfo.curGroupIdx * constInfo.mBaseSize * constInfo.headDim * sizeof(MM1_OUT_T)));
+    offset += dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mBaseSize * constInfo.headDim * sizeof(MM1_OUT_T);
+
+    Vec1InputKvGm.SetGlobalBuffer(
+        (__gm__ MM1_OUT_T *)(workspace + mm1KvResStartOffset));
+
+    Vec1InputScoreGm.SetGlobalBuffer(
+        (__gm__ MM1_OUT_T *)(workspace + mm1ScoreResStartOffset));
 
     uint64_t beforeVecOffset = offset;
 
@@ -609,33 +558,20 @@ __aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
 }
 
 template <typename COMP>
-__aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedExcuteC1V1(uint32_t curBasicBlockIdx)
+__aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedExcuteC1(BatchInfo batchInfo)
 {
-    return (curBasicBlockIdx < constInfo.realDealBasicBlockNum);
+    // B超出范围则cube不执行
+    return batchInfo.bIdx < constInfo.batchSize;
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info,
-    uint32_t curBasicBlockIdx, CmpBlockInfo &rightCmpBlockInfo, CmpBlockInfo &leftCmpBlockInfo)
+__aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info, BatchInfo &batchInfo)
 {
-    // 计算v1写出偏移
-    if (curBasicBlockIdx % constInfo.nSize == 0) {
-        info.vec1ResOffset = 0;
-        accDealSize = 0;
-    } else {
-        info.vec1ResOffset = accDealSize * constInfo.headDim;
-    }
-
-    info.preFirstSeqCnt = GetNextCmpSeqCnt(leftCmpBlockInfo);
-    info.preBStart = leftCmpBlockInfo.bIdx;
-    info.preSStart = leftCmpBlockInfo.sIdx;
-    info.bStart = rightCmpBlockInfo.bIdx;
-    info.sStart = rightCmpBlockInfo.sIdx;
-    BasicBlockInfo basicBlockInfo = SkipOneBasicBlock(rightCmpBlockInfo, leftCmpBlockInfo);
+    BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
+    info.bStart = basicBlockInfo.bIdx;
+    info.sStart = basicBlockInfo.sIdx;
     info.dealTcNum = basicBlockInfo.dealTcNum;
     info.dealScSize = basicBlockInfo.compressedTcNum;
-    info.dealSeqCnt = basicBlockInfo.dealSeqCnt;
-    info.preDealSeqCnt = basicBlockInfo.preDealSeqCnt;
     accDealSize += info.dealScSize;
 }
 
@@ -668,16 +604,8 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateVec2Info(
         vec2Info.bStart = info.bStart;
         vec2Info.sStart = info.sStart;
         // 将sStart转成bCompressedId
-        uint32_t bSeqUsed = tools_.GetSeqUsed(vec2Info.bStart);
-        // 如果sStart超出SeqUsed范围，需要跳batch
-        while (vec2Info.sStart >= bSeqUsed && vec2Info.bStart < constInfo.batchSize - 1) {
-            vec2Info.bStart++;
-            vec2Info.sStart = 0;
-            bSeqUsed = tools_.GetSeqUsed(vec2Info.bStart);
-        }
-        
-        uint32_t startPos = tools_.GetStartPos(vec2Info.bStart);
-        vec2Info.bCompressedId = (startPos + vec2Info.sStart) / constInfo.cmpRatio - startPos / constInfo.cmpRatio;
+        uint32_t startPos = tools_.GetStartPos(info.bStart);
+        vec2Info.bCompressedId = (startPos + info.sStart) / constInfo.cmpRatio - startPos / constInfo.cmpRatio;
 
         vec2Info.dealScSize = 0;
     }
@@ -694,33 +622,30 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
     }
     AllocEventID();
 
-    CmpBlockInfo leftCmpBlockInfo(constInfo.bIdxOfLastTc, constInfo.sIdxOfLastTc, true);
-    CmpBlockInfo rightCmpBlockInfo(0, 0, false);
-    CalcCurCoreStartIdx(rightCmpBlockInfo, leftCmpBlockInfo);
+    BatchInfo batchInfo{};
 
     RunInfo extraInfo[1];
     Vec2RunInfo vec2Info{};
-    for (uint32_t i = 0; i < constInfo.singleCoreDealTcBasicNum; ++i) {
+    for (uint32_t i = 0; i < loopTimes; ++i) {
         RunInfo &extraInfo0 = extraInfo[0];
-        bool isNeedExcuteC1V1 = IsNeedExcuteC1V1(i);
-        if (isNeedExcuteC1V1) {
-            CalcC1V1Params(extraInfo0, i, rightCmpBlockInfo, leftCmpBlockInfo);
+        bool isNeedExcuteC1 = IsNeedExcuteC1(batchInfo);
+        if (isNeedExcuteC1) {
+            CalcC1V1Params(extraInfo0, batchInfo);
         }
 
         if ASCEND_IS_AIC {
-            if (isNeedExcuteC1V1) {
-                ComputeMm1(extraInfo0);
+            if (isNeedExcuteC1) {
+                // ComputeMm1(extraInfo0);
             }
         } else {
-            if (isNeedExcuteC1V1) {
-                ComputeVec1(extraInfo0);
+                SyncAll();
+                // ComputeVec1(extraInfo0);
                 UpdateVec2Info(vec2Info, i, extraInfo0);
-            }
 
             if (IsNeedSyncAll(i)) {
                 SyncAll();
                 if (IsNeedExcuteV2(vec2Info)) {
-                    ComputeVec2(vec2Info);
+                    // ComputeVec2(vec2Info);
                 }
                 SyncAll();
             }
