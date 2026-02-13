@@ -32,16 +32,16 @@
     probsGradOutOptional = zeros(tokens_num, numExperts)
     $$
     
-    - paddedMode为true时
+    - dropPaddedMode为true时
     
     $$
     probsGradOutOptional [sortedIndices[i], i/capacity] = permutedProbsOutputGradOptional[i]
     $$
     
-    - paddedMode为false时
+    - dropPaddedMode为false时
     
     $$
-    probsGradOutOptional = maskedscatter(probsGradOutOptional,routingMap, permutedProbsOutputGradOptional)
+    probsGradOutOptional = maskedscatter(probsGradOutOptional,routingMapOptional, permutedProbsOutputGradOptional)
     $$
     - probs为None：
     
@@ -135,8 +135,8 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
   <tr>
       <td>sortedIndices</td>
       <td>输入</td>
-      <td>-</td>
-      <td>非dropAndPad模式索引取值范围[0, tokens_num * topK_num - 1]， dropAndPad模式索引取值范围[0, experts_num * capacity - 1]。</td>
+      <td>排序的索引值。</td>
+      <td>非dropAndPad模式索引取值范围[0, tokens_num * topK_num - 1]， dropAndPad模式索引取值范围[0, experts_num * capacity - 1]，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -145,7 +145,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>√</td>
   </tr>
   <tr>
-      <td>routingMap</td>
+      <td>routingMapOptional</td>
       <td>输入</td>
       <td>代表token到expert的映射关系。</td>
       <td>要求shape为一个2D的tensor，非dropAndPad模式要求每行中包含topK个true 或 1。</td>
@@ -352,32 +352,6 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-
-template <typename T>
-bool ReadFile(const std::string &filePath, std::vector<int64_t> shape, std::vector<T>& hostData)
-{
-    size_t fileSize = 1;
-    for (int64_t i : shape){
-        fileSize *= i; 
-    }
-    std::ifstream file(filePath, std::ios::binary);
-    if (!file.is_open()) {
-        std::cerr << "无法打开文件" << std::endl;
-        return 1;
-    }
-    // 获取文件大小
-    file.seekg(0, std::ios::end);
-    file.seekg(0, std::ios::beg);
-    hostData.reserve(fileSize);
-    if (file.read(reinterpret_cast<char*>(hostData.data()), fileSize * sizeof(T))) {
-    } else {
-        std::cerr << "读取文件失败" << std::endl;
-        return 1;
-    }
-    file.close();
-    return true;
-}
-
 template <typename T>
 bool WriteFile(const std::string &filePath, int64_t size, std::vector<T>& hostData)
 {
@@ -482,7 +456,6 @@ int main()
     std::vector<int64_t> sortedIndicesShape = {num_expert * num_capacity};
     void* sortedIndicesAddr = nullptr;
     aclTensor* sortedIndices = nullptr;
-    ReadFile("./sortedIndices.bin", sortedIndicesShape, sortedIndicesData);
     ret = CreateAclTensor(sortedIndicesData, sortedIndicesShape, &sortedIndicesAddr, aclDataType::ACL_INT32,
                           &sortedIndices);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

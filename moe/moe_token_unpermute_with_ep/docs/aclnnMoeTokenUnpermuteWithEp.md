@@ -62,16 +62,16 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(
     const aclIntArray *rangeOptional,
     bool               paddedMode,
     const aclIntArray *restoreShapeOptional,
-    const aclTensor   *out
+    const aclTensor   *out,
     uint64_t          *workspaceSize,
-    aclOpExecutor     **executor)
+    aclOpExecutor     **executor);
 ```
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithEp(
     void          *workspace,
     uint64_t       workspaceSize,
     aclOpExecutor *executor,
-    aclrtStream    stream)
+    aclrtStream    stream);
 ```
 
 ## aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize
