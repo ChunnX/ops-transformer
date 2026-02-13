@@ -19,22 +19,31 @@
 
   非量化场景：
   - 情形1：
+
     $$
     y_i=x_i\times weight_i + bias_i
     $$
+
   - 情形2：
+
     $$
     output = AllReduce(x1 @ x2 + bias + x3)
     $$
+
   - 情形3：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。
+
     $$
     output= AllReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
     $$
+
   - 情形4：对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant和pertoken计算，接着与x3进行Add操作，最后做AllReduce计算。
+
     $$
     output= AllReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
     $$
+
   - 情形5：对量化后的入参x1、x2进行MatMul、Dequant和pertoken计算，接着与x3进行Add操作，再对输出进行perchannel量化，然后进行AllToAll通信，对第一次通讯结果进行reduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行Dequant，得到最终输出。
+
     $$
     matmulAddOutput = (dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
     $$
@@ -50,6 +59,7 @@
     $$
     outPut = (AllGather(reduceSumOutPut_{int8}) * commQuantScale2Optional);
     $$
+
   - 情形6：
     - commQuantScale1Optional, commQuantScale2Optional不为空时:
 
@@ -68,32 +78,39 @@
       $$
       output = (AllGather(reduceSumOutput_{int8}) * commQuantScale2Optional);
       $$
+
     - x1，x2为INT8，无x1ScaleOptional，x2Scale为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
       $$
       output = AllReduce((x1@x2 + biasOptional) * x2Scale + x3Optional)
       $$
+
     - x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
 
       $$
       output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
       $$
+
     - x1，x2为FLOAT4_E2M1/FLOAT8_E4M3FN/FLOAT8_E5M2，x1ScaleOptional为FLOAT8_E8M0，x2Scale为FLOAT8_E8M0，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
       $$
       output = AllReduce((x1* x1ScaleOptional)@(x2* x2Scale) + biasOptional + x3Optional)
       $$
+
     - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
       $$
       output = AllReduce((x1@x2 + biasOptional) * x2Scale * x1ScaleOptional + x3Optional)
       $$
+
     - x1，x2为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
 
       $$
       output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
       $$
+
   - 情形7：
+  
     $$
     output = Allreduce(x1 @ ((x2 + antiquantOffset) *antiquantScale) + bias+ x3) 
     $$

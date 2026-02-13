@@ -52,23 +52,23 @@
 
     -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut, 当x1为(a0, a1)、x2为(b0, b1)时， x1Scale为(ceildiv(a0, 128)， ceildiv(a1, 128))、x2Scale为(ceildiv(b0, 128), ceildiv(b1, 128))时，入参x1和x1Scale进行AllGather后，对x1、x2进行perblock量化MatMul计算，然后进行dequant操作。
 
-    $$
-    output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
-    $$
+        $$
+        output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
+        $$
 
-    $$
-    gatherOut=AllGather(x1)
-    $$
+        $$
+        gatherOut=AllGather(x1)
+        $$
 
     -   情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，x1为(a0, a1)、x2 为(b0, b1)，且x1Scale为(a0, ceilDiv(a1, 64), 2)、x2Scale为(b0, ceilDiv(b1, 64), 2)，入参x1和x1Scale进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作；
 
-    $$
-    output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
-    $$
+        $$
+        output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
+        $$
 
-    $$
-    gatherOut=AllGather(x1)
-    $$
+        $$
+        gatherOut=AllGather(x1)
+        $$
 
 ## 函数原型
 

@@ -18,19 +18,19 @@
 - **算子功能**：完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算**。
 
 - **计算公式**：
-- 路由专家：
+    - 路由专家：
 
-  $$
-  ataOut = AlltoAllv(gmmX) \\
-  permuteOut = Permute(ataOut) \\
-  gmmY = permuteOut \times gmmWeight
-  $$
+    $$
+    ataOut = AlltoAllv(gmmX) \\
+    permuteOut = Permute(ataOut) \\
+    gmmY = permuteOut \times gmmWeight
+    $$
 
-- 共享专家：
+    - 共享专家：
 
-  $$
-  mmY = mmX \times mmWeight
-  $$
+    $$
+    mmY = mmX \times mmWeight
+    $$
 
 ## 函数原型
 

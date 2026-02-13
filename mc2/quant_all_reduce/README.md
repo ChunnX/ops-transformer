@@ -20,12 +20,15 @@
     $$
     AllGatherData = AllGather(x)
     $$
+
     $$
     AllGatherScales = AllGather(scales)
     $$
+
     $$
     output = Reduce(AllGatherScales * AllGatherData)
     $$
+    
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
 
 ## 参数说明

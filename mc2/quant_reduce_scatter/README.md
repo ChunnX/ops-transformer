@@ -22,14 +22,18 @@
     $$
     output=Reduce(AllToAllScales * AllToAllData)
     $$
+
     $$
     AllToAllData=AllToAll(x)
     $$
+
     $$
     AllToAllScales=AllToAll(scales)
     $$
+    
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
     $$
+
 -   **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">

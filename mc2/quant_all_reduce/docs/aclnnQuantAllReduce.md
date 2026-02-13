@@ -60,15 +60,15 @@ aclnnStatus aclnnQuantAllReduce(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
-      <col style="width: 170px">
-      <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 330px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
-      <col style="width: 190px">
-      <col style="width: 145px">
+    <table style="undefined;table-layout: fixed; width: 1556px"><colgroup>
+    <col style="width: 161px">
+    <col style="width: 141px">
+    <col style="width: 245px">  
+    <col style="width: 408px">  
+    <col style="width: 191px">  
+    <col style="width: 120px"> 
+    <col style="width: 145px">
+    <col style="width: 145px">
       </colgroup>
       <thead>
         <tr>
@@ -86,7 +86,7 @@ aclnnStatus aclnnQuantAllReduce(
           <td>x</td>
           <td>输入</td>
           <td>公式中的输入x。</td>
-          <td><li>不支持空Tensor。</li><li>支持的shape为：(bs, H)或者(b, s, H)。b为batch size，s为sequence length，H为hidden size。</li></td>
+          <td><ul><li>不支持空Tensor。</li><li>支持的shape为：(bs, H)或者(b, s, H)。b为batch size，s为sequence length，H为hidden size。</li></ul></td>
           <td>INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
           <td>ND</td>
           <td>2-3</td>
@@ -96,7 +96,7 @@ aclnnStatus aclnnQuantAllReduce(
           <td>scales</td>
           <td>输入</td>
           <td>公式中的输入scales。</td>
-          <td><li>不支持空Tensor。</li><li>当scales的数据类型为FLOAT8_E8M0时，x的数据类型必须为FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(bs, H)或者(b, s, H)，scales的shape必须对应x的shape为(bs, H/64, 2)或者(b, s, H/64, 2)。</li><li>当scales的数据类型为FLOAT时，x的数据类型必须为INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(bs, H)或者(b, s, H)，scales的shape必须对应x的shape为(bs, H/128)或者(b, s, H/128)。</li></td>
+          <td><ul><li>不支持空Tensor。</li><li>当scales的数据类型为FLOAT8_E8M0时，x的数据类型必须为FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(bs, H)或者(b, s, H)，scales的shape必须对应x的shape为(bs, H/64, 2)或者(b, s, H/64, 2)。</li><li>当scales的数据类型为FLOAT时，x的数据类型必须为INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(bs, H)或者(b, s, H)，scales的shape必须对应x的shape为(bs, H/128)或者(b, s, H/128)。</li></ul></td>
           <td>FLOAT、FLOAT8_E8M0</td>
           <td>ND</td>
           <td>2-4</td>
@@ -106,7 +106,7 @@ aclnnStatus aclnnQuantAllReduce(
           <td>group</td>
           <td>属性</td>
           <td>通信域标识。</td>
-          <td><li>Host侧标识列组的字符串，通信域名称。</li><li>通过Hccl提供的接口"extern HcclResult HcclGetCommName(HcclComm comm, char* commName);"获取，其中commName即为group。</li></td>
+          <td><ul><li>Host侧标识列组的字符串，通信域名称。</li><li>通过Hccl提供的接口"extern HcclResult HcclGetCommName(HcclComm comm, char* commName);"获取，其中commName即为group。</li></ul></td>
           <td>Char*、String</td>
           <td>-</td>
           <td>-</td>
@@ -126,7 +126,7 @@ aclnnStatus aclnnQuantAllReduce(
           <td>output</td>
           <td>输出</td>
           <td>公式中的输出output。</td>
-          <td><li>不支持空Tensor。</li><li>支持的shape为(bs, H)或者(b, s, H)，output的shape与x保持一致。</li></td>
+          <td><ul><li>不支持空Tensor。</li><li>支持的shape为(bs, H)或者(b, s, H)，output的shape与x保持一致。</li></ul></td>
           <td>FLOAT、FLOAT16、BFLOAT16</td>
           <td>ND</td>
           <td>2-3</td>
@@ -157,8 +157,8 @@ aclnnStatus aclnnQuantAllReduce(
 
 - **返回值**
 
-    aclnnStatus: 返回状态码，具体参见aclnn返回码。
-    
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。  
+
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
@@ -231,7 +231,7 @@ aclnnStatus aclnnQuantAllReduce(
     
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

@@ -25,27 +25,27 @@
 -   **计算公式**：
     -   情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，入参x1、x2进行matmul计算后，进行ReduceScatter通信。
 
-    $$
-    output=ReduceScatter(x1@x2)
-    $$
+        $$
+        output=ReduceScatter(x1@x2)
+        $$
 
     -   情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行matmul计算和dequant计算后，进行ReduceScatter通信。
 
-    $$
-    output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
-    $$
+        $$
+        output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
+        $$
 
     -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(ceildiv(a0, 128), ceildiv(a1, 128))、x2Scale为(ceildiv(b0, 128), ceildiv(b1, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
 
-    $$
-    output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
-    $$
+        $$
+        output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
+        $$
 
     -   情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1为(a0, a1)、x2为(b0, b1)时, x1Scale为(a0, ceildiv(a1, 64), 2)、x2Scale为(b0, ceildiv(b1, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
 
-    $$
-    output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
-    $$
+        $$
+        output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
+        $$
     
 ## 函数原型
 

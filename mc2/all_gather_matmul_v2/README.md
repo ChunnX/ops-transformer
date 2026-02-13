@@ -44,32 +44,38 @@
     $$
 
     - 情形3：
-    $$
-    output=(x1Scale*x2Scale)*(quantScale)*(AllGather(x1)@x2 + bias)
-    $$
-    $$
-    gatherOut=AllGather(x1)
-    $$
-    $$
-    amaxOut=amax((x1Scale*x2Scale)*(AllGather(x1)@x2 + bias))
-    $$
+
+      $$
+      output=(x1Scale*x2Scale)*(quantScale)*(AllGather(x1)@x2 + bias)
+      $$
+
+      $$
+      gatherOut=AllGather(x1)
+      $$
+
+      $$
+      amaxOut=amax((x1Scale*x2Scale)*(AllGather(x1)@x2 + bias))
+      $$
 
     - 情形4：
-    $$
-    output[r(i), r(j)] = \sum_{k=1}^{\frac{K}{groupSizeK}} x1Scale[i, k] * x2Scale[k, j] * (AllGather(x1)[r(i), r(j)] @ x2[r(k), r(j)])
-    $$
-    $$
-    r(z) = (groupSizeK * (z - 1) + 1) : (groupSizeK * z)
-    $$
-    $$
-    output = \begin{bmatrix}
-          output[r(1), r(1)] & \cdots & output[r(1), r(\frac{N}{groupSizeN})] \\ 
-          \vdots & \ddots & \vdots \\
-          output[r(\frac{M}{groupSizeM}), r(1)] & \vdots & output[r(\frac{M}{groupSizeM}), r(\frac{N}{groupSizeN})]
-        \end{bmatrix}
-    $$
+
+      $$
+      output[r(i), r(j)] = \sum_{k=1}^{\frac{K}{groupSizeK}} x1Scale[i, k] * x2Scale[k, j] * (AllGather(x1)[r(i), r(j)] @ x2[r(k), r(j)])
+      $$
+
+      $$
+      r(z) = (groupSizeK * (z - 1) + 1) : (groupSizeK * z)
+      $$
+
+      $$
+      output = \begin{bmatrix}
+            output[r(1), r(1)] & \cdots & output[r(1), r(\frac{N}{groupSizeN})] \\ 
+            \vdots & \ddots & \vdots \\
+            output[r(\frac{M}{groupSizeM}), r(1)] & \vdots & output[r(\frac{M}{groupSizeM}), r(\frac{N}{groupSizeN})]
+          \end{bmatrix}
+      $$
     
-    其中$output\left[r(y), r(z)\right]$表示从output矩阵中取出第$(groupSizeM*(y-1)+1)$到$(groupSizeM*y)$行和$(groupSizeN*(z-1)+1)$到$(groupSizeN*z)$列构成的块。
+      其中$output\left[r(y), r(z)\right]$表示从output矩阵中取出第$(groupSizeM*(y-1)+1)$到$(groupSizeM*y)$行和$(groupSizeN*(z-1)+1)$到$(groupSizeN*z)$列构成的块。
 
 ## 参数说明
 

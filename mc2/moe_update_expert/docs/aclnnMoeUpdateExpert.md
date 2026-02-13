@@ -99,35 +99,35 @@ aclnnStatus aclnnMoeUpdateExpert(
     <tr>
     <td>expertIds</td>
     <td>输入</td>
-    <td>每个token的topK个专家索引，Device侧的aclTensor，要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
+    <td>每个token的topK个专家索引，要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
     <td>INT32、INT64</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>eplbTable</td>
     <td>输入</td>
-    <td>逻辑专家到物理专家的映射表（外部需保证值正确）：<br><ul><li> 共world_size*place_per_rank个专家实例（world_size为卡数，place_per_rank为单卡部署路由专家实例数）。<br><li>每行第一列为对应逻辑专家的部署实例数（取值[1, world_size]），后[1, count]列为实例编号（取值[0, world_size*place_per_rank)，且不重复）。<br><li>Device侧的aclTensor，要求为2D Tensor，shape为 (moeExperNum, F)；支持非连续的Tensor。</li></ul></td>
+    <td>逻辑专家到物理专家的映射表（外部需保证值正确）：<br><ul><li> 共world_size*place_per_rank个专家实例（world_size为卡数，place_per_rank为单卡部署路由专家实例数）。<br><li>每行第一列为对应逻辑专家的部署实例数（取值[1, world_size]），后[1, count]列为实例编号（取值[0, world_size*place_per_rank)，且不重复）。<br><li>要求为2D Tensor，shape为 (moeExperNum, F)；支持非连续的Tensor。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>expertScalesOptional</td>
     <td>输入</td>
-    <td>每个token的topK个专家的scale权重（需保证token内部按降序排列），可传有效数据或空指针（传有效数据时，pruningThresholdOptional必须同时传有效数据）。<br>Device侧的aclTensor，要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
+    <td>每个token的topK个专家的scale权重（需保证token内部按降序排列），可传有效数据或空指针（传有效数据时，pruningThresholdOptional必须同时传有效数据）。<br>要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
     <td>FLOAT16、BFLOAT16、FLOAT</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>pruningThresholdOptional</td>
     <td>输入</td>
-    <td>专家scale权重的最小阈值（token对应专家scale小于阈值时会被剪枝），可传有效数据或空指针（传有效数据时，expertScalesOptional必须同时传有效数据）。<br>Device侧的aclTensor，要求为1D或2D Tensor，shape为 (K,) 或 (1, K)；支持非连续的Tensor。</td>
+    <td>专家scale权重的最小阈值（token对应专家scale小于阈值时会被剪枝），可传有效数据或空指针（传有效数据时，expertScalesOptional必须同时传有效数据）。<br>要求为1D或2D Tensor，shape为 (K,) 或 (1, K)；支持非连续的Tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>activeMaskOptional</td>
     <td>输入</td>
-    <td>表示token是否参与通信，可传有效数据或空指针：<br><ul><li> 传有效数据时，expertScalesOptional和pruningThresholdOptional必须同时传有效数据；true表示参与通信，且true需排在false前（例：{true, false, true}非法）。<br><li> 传空指针时，默认所有token参与通信。<br>Device侧的aclTensor，要求为1D Tensor，shape为 (BS,)；支持非连续的Tensor。</li></ul></td>
+    <td>表示token是否参与通信，可传有效数据或空指针：<br><ul><li> 传有效数据时，expertScalesOptional和pruningThresholdOptional必须同时传有效数据；true表示参与通信，且true需排在false前（例：{true, false, true}非法）。<br><li> 传空指针时，默认所有token参与通信。<br>要求为1D Tensor，shape为 (BS,)；支持非连续的Tensor。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
     </tr>
@@ -155,14 +155,14 @@ aclnnStatus aclnnMoeUpdateExpert(
     <tr>
     <td>balancedExpertIds</td>
     <td>输出</td>
-    <td>映射后每个token的topK个专家所在物理专家的实例编号，Device侧的aclTensor，要求为2D Tensor，shape为 (BS, K)；数据类型、数据格式与`expertIds`保持一致。</td>
+    <td>映射后每个token的topK个专家所在物理专家的实例编号，要求为2D Tensor，shape为 (BS, K)；数据类型、数据格式与`expertIds`保持一致。</td>
     <td>与expertIds一致（INT32/INT64）</td>
     <td>ND</td>
     </tr>
     <tr>
     <td>balancedActiveMask</td>
     <td>输出</td>
-    <td>剪枝后均衡的activeMask，仅当expertScalesOptional和pruningThresholdOptional传有效数据时有效。<br>Device侧的aclTensor，要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
+    <td>剪枝后均衡的activeMask，仅当expertScalesOptional和pruningThresholdOptional传有效数据时有效。<br>要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
     <td>BOOL</td>
     <td>ND</td>
     </tr>
@@ -262,7 +262,7 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

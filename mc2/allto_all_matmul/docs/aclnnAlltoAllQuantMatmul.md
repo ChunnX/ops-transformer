@@ -18,6 +18,7 @@
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - **动态量化场景：**
+
       $$
       commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
       permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
@@ -26,7 +27,9 @@
       output = output_{quant} \times x1_{scale} \times x2_{scale} \\
       output = output + bias
       $$
+
     - **全量化场景：**
+
       $$
       commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
       permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
@@ -37,6 +40,7 @@
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - **动态量化场景：**
+    
       $$
       commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
       permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\

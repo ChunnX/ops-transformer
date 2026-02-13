@@ -70,45 +70,45 @@
 
    - 公式7：x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，当commQuantMode为1时，out为FLOAT16/BFLOAT16/FLOAT32:
 
-    $$
-    matmulAddOutput_{fp32} = (x2ScaleOptional * x1ScaleOptional * (x1_{fp8}@x2_{fp8} + biasOptional_{fp32}) + x3Optional);
-    $$
+      $$
+      matmulAddOutput_{fp32} = (x2ScaleOptional * x1ScaleOptional * (x1_{fp8}@x2_{fp8} + biasOptional_{fp32}) + x3Optional);
+      $$
 
-    $$
-    scaleOut_{fp32} = (matmulAddOutput_{fp32} / (reduceMax(abs(matmulAddOutput_{fp32})) / FP32\_MAX));
-    $$
+      $$
+      scaleOut_{fp32} = (matmulAddOutput_{fp32} / (reduceMax(abs(matmulAddOutput_{fp32})) / FP32\_MAX));
+      $$
 
-    $$
-    quantOutput_{fp8} = (append((matmulAddOutput_{fp32} * scaleOut{fp32})@scaleOut_{fp32}));
-    $$
+      $$
+      quantOutput_{fp8} = (append((matmulAddOutput_{fp32} * scaleOut{fp32})@scaleOut_{fp32}));
+      $$
 
-    $$
-    alltoallOutput_{fp8} = (AllToAll(quantOut_{fp8}));
-    $$
+      $$
+      alltoallOutput_{fp8} = (AllToAll(quantOut_{fp8}));
+      $$
 
-    $$
-    dequantOutput_{fp32} = (alltoallOutput_{fp8} / scaleOut_{fp32});
-    $$
+      $$
+      dequantOutput_{fp32} = (alltoallOutput_{fp8} / scaleOut_{fp32});
+      $$
 
-    $$
-    reduceSumOutput_{fp32} = (reduceSum(dequantOutput_{fp32}));
-    $$
+      $$
+      reduceSumOutput_{fp32} = (reduceSum(dequantOutput_{fp32}));
+      $$
 
-    $$
-    preAllGatherQuantScale_{fp32} = (reduceSumOutput_{fp32} / (reduceMax(abs(reduceSumOutput_{fp32})) / FP8\_MAX));
-    $$
+      $$
+      preAllGatherQuantScale_{fp32} = (reduceSumOutput_{fp32} / (reduceMax(abs(reduceSumOutput_{fp32})) / FP8\_MAX));
+      $$
 
-    $$
-    preAllGatherQuantOutput_{fp8} = (append((reduceSumOutput_{fp32} * preAllGatherQuantScale_{fp32})@preAllGatherQuantScale_{fp32}));
-    $$
+      $$
+      preAllGatherQuantOutput_{fp8} = (append((reduceSumOutput_{fp32} * preAllGatherQuantScale_{fp32})@preAllGatherQuantScale_{fp32}));
+      $$
 
-    $$
-    allGatherOutput_{fp8} = (AllGather(preAllGatherQuantOutput_{fp8}));
-    $$
+      $$
+      allGatherOutput_{fp8} = (AllGather(preAllGatherQuantOutput_{fp8}));
+      $$
 
-    $$
-    output = (cast(allGatherOutput_{fp32} / preAllGatherQuantScale_{fp32}));
-    $$
+      $$
+      output = (cast(allGatherOutput_{fp32} / preAllGatherQuantScale_{fp32}));
+      $$
 
 ## 函数原型
 

@@ -25,15 +25,15 @@
 
     - 情形1：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant计算，接着与x3进行Add操作，最后做AllReduce计算。
 
-  $$
-  output= AllReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
-  $$
+        $$
+        output= AllReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
+        $$
 
     - 情形2：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant和pertoken计算，接着与x3进行Add操作，最后做AllReduce计算。
 
-  $$
-  output= AllReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
-  $$
+        $$
+        output= AllReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
+        $$
 
 ## 函数原型
 

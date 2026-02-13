@@ -61,14 +61,14 @@ aclnnStatus aclnnQuantReduceScatter(
 
 -   **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
-    <col style="width: 170px">
-    <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 330px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
-    <col style="width: 190px">
+    <table style="undefined;table-layout: fixed; width: 1556px"><colgroup>
+    <col style="width: 161px">
+    <col style="width: 141px">
+    <col style="width: 245px">  
+    <col style="width: 408px">  
+    <col style="width: 191px">  
+    <col style="width: 120px"> 
+    <col style="width: 145px">
     <col style="width: 145px">
     </colgroup>
     <thead>
@@ -87,7 +87,7 @@ aclnnStatus aclnnQuantReduceScatter(
     <tr>
         <td>x</td>
         <td>输入</td>
-        <td>公式中的输入x</td>
+        <td>公式中的输入x。</td>
         <td><ul><li>不支持空Tensor。</li><li>支持的shape为：(BS, H)或者(B, S, H)。B为batch size，S为sequence length，H为hidden size。当前版本输入x的H支持1024~8192中任意128对齐泛化。</li></td>
         <td>INT8, HIFLOAT8, FLOAT8_E4M3FN, FLOAT8_E5M2</td>
         <td>ND</td>
@@ -97,7 +97,7 @@ aclnnStatus aclnnQuantReduceScatter(
     <tr>
         <td>scales</td>
         <td>输入</td>
-        <td>公式中的输入scales</td>
+        <td>公式中的输入scales。</td>
         <td><ul><li>不支持空Tensor。</li><li>当scales的数据类型为FLOAT8_E8M0时，x的数据类型必须为FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(BS, H)或者(B, S, H)，scales的shape必须对应x的shape为(BS, H/64, 2)或者(B, S, H/64, 2)。</li><li>当scales的数据类型为FLOAT时，x的数据类型必须为INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2，x的shape为(BS, H)或者(B, S, H)，scales的shape必须对应x的shape为(BS, H/128)或者(B, S, H/128)。</li></td>
         <td>FLOAT, FLOAT8_E8M0</td>
         <td>ND</td>
@@ -107,7 +107,7 @@ aclnnStatus aclnnQuantReduceScatter(
     <tr>
         <td>group</td>
         <td>输入</td>
-        <td>通信域标识</td>
+        <td>通信域标识。</td>
         <td><ul><li>通信域标识</li></td>
         <td>String</td>
         <td>-</td>
@@ -233,7 +233,7 @@ aclnnStatus aclnnQuantReduceScatter(
 
 -   **返回值**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
