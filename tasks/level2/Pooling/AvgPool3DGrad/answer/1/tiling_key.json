@@ -1,0 +1,7 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        1000
+    ],
+    "DESCRIPTION": "该场景主要应用于需要数据类型转换（Cast）的AvgPool3D梯度计算。"
+}

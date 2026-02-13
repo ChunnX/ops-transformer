@@ -13,15 +13,15 @@ class Model(nn.Module):
 
     def forward(self, grad_output: torch.Tensor, x: torch.Tensor, ksize: List[int], strides: List[int], pads: List[int], ceil_mode: bool, count_include_pad: bool, divisor_override: int, data_format: str) -> torch.Tensor:
         res = torch.ops.aten.avg_pool3d_backward(
-            grad_output.to(torch.float32).npu(),
-            x.to(torch.float32).npu(),
+            grad_output.to(torch.float32),
+            x.to(torch.float32),
             ksize,
             strides,
             pads,
             ceil_mode,
             count_include_pad,
             divisor_override)
-        return res.to(x.dtype).cpu()
+        return res.to(x.dtype)
 
 class ModelNew(nn.Module):
     def __init__(self):

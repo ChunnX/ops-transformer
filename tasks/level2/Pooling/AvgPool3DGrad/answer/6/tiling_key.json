@@ -1,0 +1,7 @@
+{
+    "ID": 6,
+    "TILING_KEY": [
+        6000
+    ],
+    "DESCRIPTION": "该场景主要应用于Scatter模式的AvgPool3D梯度计算。"
+}
