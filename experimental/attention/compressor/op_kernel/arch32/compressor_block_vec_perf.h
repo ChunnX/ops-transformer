@@ -1204,7 +1204,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::SplitCoreV2(const Compre
 
     // Input: syncAll前每组cube核处理的实际数据块在batch及s方向的起止idx及实际数据量(m方向)
     // Output: 每个vec核的处理数据块在m方向的起止位置及输出到Gm上的起始位置
-    uint32_t coreNum = constInfo_.dBasicBlockNum * 2; // 组中有多少个vec核:16
+    uint32_t coreNum = constInfo_.usedCoreNum  * 2; // 总核数，vec*2
     usedCoreNum = coreNum;
     uint32_t currCoreIdx = GetBlockIdx();                // 当前vec核ID
     uint32_t curVecCoreGroupIdx = currCoreIdx / coreNum; // 当前vec核所在组ID
