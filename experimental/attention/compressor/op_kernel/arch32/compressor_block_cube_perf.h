@@ -328,15 +328,7 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::CopyOutMm1Res(const RunInf
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockCubePerf<COMP>::GetMSize(const RunInfo &info, uint32_t coffId)
 {
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        if (coffId == 0) {
-            return info.preDealSeqCnt;
-        } else {
-            return info.dealSeqCnt;
-        }
-    } else {
-        return info.dealSeqCnt;
-    }
+    return info.dealSeqCnt;
 }
 
 template <typename COMP>
