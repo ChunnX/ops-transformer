@@ -1014,8 +1014,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
       </table>
       </div>
 
-    - D轴限制：<term>
-      - Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - D轴限制：
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
       - Ascend 950PR/Ascend 950DT：

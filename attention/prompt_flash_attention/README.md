@@ -154,7 +154,7 @@
       
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
     
-  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：在TND场景下query，key，value输入的综合限制：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：在TND场景下query，key，value输入的综合限制：
     - T小于等于65536。
     - N等于8/16/32/64/128，且Q_N、K_N、V_N相等。
     - Q_D、K_D等于192，V_D等于128/192。

@@ -304,7 +304,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 ## 约束说明
 
 - 确定性计算：
-  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnWeightQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnWeightQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
   - Ascend 950PR/Ascend 950DT：`aclnnWeightQuantMatmulAllReduce`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。
@@ -328,7 +328,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
   - 仅支持k为0的场景，输出为bias + x3，不支持bs/m/n为0的空tensor输入。
 
 输入和输出支持以下数据类型组合：
-- Atlas A2 训练系列产品/Atlas A2 推理系列产品
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
   <table style="undefined;table-layout: fixed; width: 600px">
     <col style="width: 90px">
     <col style="width: 125px">

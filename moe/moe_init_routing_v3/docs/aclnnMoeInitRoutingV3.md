@@ -481,7 +481,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
@@ -540,7 +540,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - 该算子在以下产品型号上支持三种性能模板，需要分别额外满足准入条件，否则进入通用模板：
   - 支持性能模板的产品：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
   - 性能模板的准入条件：
     <table>

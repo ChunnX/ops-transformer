@@ -1105,7 +1105,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - D轴限制：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
       - query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
-    - Ascend 950PR/Ascend 950DT：
+    - <term>Ascend 950PR/Ascend 950DT</term>：
 
       - 非量化场景：query，key，value的类型全部为FLOAT16、BFLOAT16，D轴1-512全部支持。
       - 全量化场景：query，key，value的类型全部为INT8，D轴1-512全部支持。

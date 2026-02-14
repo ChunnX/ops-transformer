@@ -237,12 +237,12 @@
   - expertTokensNumType 当前只支持 1 和 2，分别代表 count 模式和 key\_value 模式。
   - expertTokensNumFlag 只支持 true，代表输出 expertTokensCountOrCumsumOut。
   - quantMode:
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3，分别表示不量化、动态量化、MXFP8量化到FLOAT8_E5m2、MXFP8量化到FLOAT8_E4M3FN。
   
 - 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板：
   - 支持性能模板的产品：
-    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
 
   - 进入低时延性能模板需要同时满足以下条件：

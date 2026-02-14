@@ -341,7 +341,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
   </colgroup>
   <thead>
     <tr>
-      <th>返回码</th>
+      <th>返回值</th>
       <th>错误码</th>
       <th>描述</th>
     </tr></thead>
