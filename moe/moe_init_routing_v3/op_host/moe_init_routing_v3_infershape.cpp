@@ -58,9 +58,7 @@ enum QuantMode : int8_t {
     STATIC_QUANT = 0,
     DYNAMIC_QUANT = 1,
     MXQUANT_FP8_E5M2 = 2,
-    MXQUANT_FP8_E4M3FN = 3,
-    HIF8_PERTENSOR = 7,
-    HIF8_PERTOKEN = 8
+    MXQUANT_FP8_E4M3FN = 3
 };
 
 enum ExpertTokenNumType : int8_t {
@@ -238,9 +236,9 @@ static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
         return ge::GRAPH_FAILED;
     }
     quantMode = *quantModePtr;
-    if (quantMode < QuantMode::NON_QUANT || quantMode > QuantMode::HIF8_PERTOKEN) {
+    if (quantMode < QuantMode::NON_QUANT || quantMode > QuantMode::MXQUANT_FP8_E4M3FN) {
         OP_LOGE(context, "The quant_mode should be in [%d, %d]. But it is %d.", QuantMode::NON_QUANT,
-                QuantMode::NON_QUANT, QuantMode::HIF8_PERTOKEN, quantMode);
+                QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, quantMode);
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context, "End to do GetAndCheckQuantMode.");
@@ -290,7 +288,7 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
     //  When quant_mode is NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN, scale can be none.
     OP_CHECK_IF((nullptr == scaleShape &&
                  (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
-                  QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode || QuantMode::HIF8_PERTOKEN == quantMode)),
+                  QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode)),
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
@@ -365,24 +363,7 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                 scaleShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
-    } else if (QuantMode::HIF8_PERTENSOR == quantMode) {
-        // 第一步：校验scale的维度数必须为1（DIM_ONE）
-        if (scaleShape->GetDimNum() != DIM_ONE) {
-            OP_LOGE(
-                context,
-                "When quant_mode is %ld, the dimNum of scale should be 1, current dimNum is (%ld).",
-                quantMode, scaleShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        // 第二步：校验scale的唯一维度值必须为1（DIM_ONE），即shape为(1,)
-        OP_CHECK_IF(
-            !isSameDim(scaleShape->GetDim(0), DIM_ONE),
-            OP_LOGE(
-                context,
-                "When quant_mode is %ld, the shape of scale should be (1,), current shape is (%s).",
-                quantMode, Ops::Base::ToString(*scaleShape).c_str()),
-            return ge::GRAPH_FAILED);
-        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -720,25 +701,6 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
         }
         expandedXDtype = (QuantMode::MXQUANT_FP8_E5M2 == quantMode) ? ge::DT_FLOAT8_E5M2 : ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
-    } else if (QuantMode::HIF8_PERTENSOR == quantMode) {
-        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(
-                context,
-                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-                quantMode, xDtype);
-            return ge::GRAPH_FAILED;
-        }
-        expandedXDtype = ge::DT_HIFLOAT8;
-    } else if (QuantMode::HIF8_PERTOKEN == quantMode) {
-        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(
-                context,
-                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-                quantMode, xDtype);
-            return ge::GRAPH_FAILED;
-        }
-        expandedXDtype = ge::DT_HIFLOAT8;
-        expandedScaleDtype = ge::DT_FLOAT;
     }
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X, expandedXDtype);
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_ROW_IDX, ge::DT_INT32);
