@@ -159,6 +159,14 @@ struct RunInfo {
     uint64_t vec1ResOffset = 0;
 };
 
+struct Vec1RunInfo {
+    // vec相关信息，一次syncAll需处理数据的起始索引
+    uint32_t bStart = 0;
+    uint32_t sStart = 0;
+    uint32_t dealTcNum = 0;
+    uint32_t dealScSize = 0;
+};
+
 struct Vec2RunInfo {
     // uint32_t bStart = 0;
     uint32_t sStart = 0;

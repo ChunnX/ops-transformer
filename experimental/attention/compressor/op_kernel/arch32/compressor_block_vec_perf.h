@@ -62,7 +62,7 @@ public:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     // =================================执行计算=================================
-    __aicore__ inline void ComputeVec1(const Compressor::RunInfo &info);
+    __aicore__ inline void ComputeVec1(const Compressor::Vec1RunInfo &info);
     __aicore__ inline uint32_t GetBasicNum();
     __aicore__ inline uint32_t GetScSize();
     __aicore__ inline void GetScIdxInfo(uint32_t bStart, uint32_t scStart, uint32_t dealScSize, uint32_t v2TcStart,
@@ -92,7 +92,7 @@ private:
                                              uint64_t &globalScStart);
     __aicore__ inline void UpdateOutputIdx(uint32_t &outputBStart, uint32_t &outputSStart, uint32_t &dealScSize,
                                            uint32_t &curDealScSize);
-    __aicore__ inline void DealVec1BaseBlock(const RunInfo &info, CompressorVec1SliceIterator<COMP> &sliceIterator,
+    __aicore__ inline void DealVec1BaseBlock(const Vec1RunInfo &info, CompressorVec1SliceIterator<COMP> &sliceIterator,
                                              const LoopInfo &loopInfo, uint32_t dStartIdx, uint32_t dDealSize,
                                              uint32_t dBaseSize);
     __aicore__ inline void CopyInApe(const LocalTensor<T> &apeUb, uint32_t dStartIdx, uint32_t dDealSize);
@@ -137,7 +137,7 @@ private:
     __aicore__ inline void KvMulReduceScore(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
                                             const LocalTensor<T> &dstLocal, const LocalTensor<T> &tmpUb,
                                             uint32_t tcDealSize, uint32_t dDealSize);
-    __aicore__ inline void CopyOutVec1Res(const RunInfo &info, const LocalTensor<T> comperssoredUb,
+    __aicore__ inline void CopyOutVec1Res(const Vec1RunInfo &info, const LocalTensor<T> comperssoredUb,
                                           uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize);
 
     __aicore__ inline void SplitCoreV2(const Compressor::Vec2RunInfo &info);
@@ -860,7 +860,7 @@ CompressorBlockVectorPerf<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLocal,
 
 template <typename COMP>
 __aicore__ inline void
-CompressorBlockVectorPerf<COMP>::CopyOutVec1Res(const RunInfo &info, const LocalTensor<T> comperssoredUb,
+CompressorBlockVectorPerf<COMP>::CopyOutVec1Res(const Vec1RunInfo &info, const LocalTensor<T> comperssoredUb,
                                                 uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize)
 {
     uint64_t outGmOffset = info.vec1ResOffset + compressedCnt_ * constInfo_.headDim + dStartIdx;
@@ -875,7 +875,7 @@ CompressorBlockVectorPerf<COMP>::CopyOutVec1Res(const RunInfo &info, const Local
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
-    const RunInfo &info, CompressorVec1SliceIterator<COMP> &sliceIterator, const LoopInfo &loopInfo, uint32_t dStartIdx,
+    const Vec1RunInfo &info, CompressorVec1SliceIterator<COMP> &sliceIterator, const LoopInfo &loopInfo, uint32_t dStartIdx,
     uint32_t dDealSize, uint32_t dBaseSize)
 {
     Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
@@ -948,7 +948,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const RunInfo &info)
+__aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1RunInfo &info)
 {
     CompressorVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
@@ -1209,8 +1209,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::SplitCoreV2(const Compre
     uint32_t coreNum = constInfo_.usedCoreNum  * 2; // 总核数，vec*2
     usedCoreNum = coreNum;
     uint32_t currCoreIdx = GetBlockIdx();                // 当前vec核ID
-    uint32_t curVecCoreGroupIdx = currCoreIdx / coreNum; // 当前vec核所在组ID
-    vec1ResGmStart = curVecCoreGroupIdx * constInfo_.nSize * constInfo_.tcBaseSize * constInfo_.headDim;
     // 1.计算总vec2基本块数量
     uint32_t totalBaseNum = info.dealScSize; // 当前组核累积的实际数据量
     // 2.每个vec核上分到的数据量
@@ -1241,6 +1239,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::SplitCoreV2(const Compre
             // 更新当前核的End分核信息
             v2TcEndIdx = i + 1;
             GetScIdxInfo(info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
+                         OutputSStartIdx, OutputSize);
+            printf("[SplitCoreV2] bStart:%u, bCompressedId:%u, dealScSize:%u, v2TcStartIdx:%u, v2TcEndIdx:%u, OutputBStartIdx:%u, OutputSStartIdx:%u, OutputSize:%u\n", info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
                          OutputSStartIdx, OutputSize);
             return;
         }
