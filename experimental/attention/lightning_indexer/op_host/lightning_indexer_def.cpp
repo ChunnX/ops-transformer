@@ -64,6 +64,7 @@ public:
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);       // 3:默认值，只计算下三角
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
+        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_values").AttrType(OPTIONAL).Bool(false);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

@@ -50,6 +50,7 @@ struct LightningIndexerGradParams {
     int64_t preTokens;
     int64_t nextTokens;
     bool determinstic;
+    int64_t compressedRatio;
     const aclTensor *dqOut = nullptr;
     const aclTensor *dkOut = nullptr;
     const aclTensor *dweightsOut = nullptr;
@@ -106,7 +107,7 @@ aclnnStatus ContiguousAndLightningIndexerGrad(const LightningIndexerGradParams &
         queryContiguous, keyContiguous, dyContiguous, sparseIndicesContiguous, weightsContiguous,
         actualSeqLengthsQueryOptionalContiguous, actualSeqLengthsKeyOptionalContiguous,
         params.headNum, inputLayoutStr.c_str(), params.sparseMode, params.preTokens, 
-        params.nextTokens, params.determinstic, executor);
+        params.nextTokens, params.determinstic, params.compressedRatio, executor);
 
     // convert output tensor to contiguous tensor
     CHECK_RET(result[0] != nullptr && result[1] != nullptr && result[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -123,12 +124,12 @@ aclnnStatus ContiguousAndLightningIndexerGrad(const LightningIndexerGradParams &
 aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *dy, const aclTensor *sparseIndices,
     const aclTensor *weights, const aclTensor *actualSeqQLenOptional, const aclTensor *actualSeqKvLenOptional,
-    int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool determinstic, 
+    int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool determinstic, int64_t compressedRatio,
     const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dweightsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnLightningIndexerGrad,
                    DFX_IN(query, key, dy, sparseIndices, weights, actualSeqQLenOptional, actualSeqKvLenOptional, 
-                            headNum, inputLayout, sparseMode, preTokens, nextTokens, determinstic),
+                            headNum, inputLayout, sparseMode, preTokens, nextTokens, determinstic, compressedRatio),
                    DFX_OUT(dqOut, dkOut, dweightsOut));
     LightningIndexerGradParams params{query,
                                     key,
@@ -143,6 +144,7 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
                                     preTokens,
                                     nextTokens,
                                     determinstic,
+                                    compressedRatio,
                                     dqOut,
                                     dkOut,
                                     dweightsOut};

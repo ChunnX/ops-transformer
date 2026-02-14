@@ -51,6 +51,8 @@ public:
     int64_t preTokens_ = 0;
     int64_t nextTokens_ = 0;
     bool determinstic_ = false;
+    int64_t compressedRatio = 1;
+
     /* 生成参数 */
     std::string layoutOptional_;
     std::vector<int64_t> actualSeqLenQueryTensorData_ = {};

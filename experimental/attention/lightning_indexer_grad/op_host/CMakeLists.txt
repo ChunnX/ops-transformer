@@ -10,20 +10,18 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnExc PRIVATE
         lightning_indexer_grad_def.cpp
-     )
+    )
 endif()
 
-add_ops_compile_options(
-    OP_NAME LightningIndexerGrad
-    OPTIONS --cce-auto-sync=off
-            -Wno-deprecated-declarations
-            -Werror
-            -mllvm -cce-vf-remove-membar=false
-            -mllvm -cce-aicore-hoist-movemask=false
-)
-
-if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE lightning_indexer_grad ACLNNTYPE aclnn)
+if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
+    add_ops_compile_options(
+        OP_NAME LightningIndexerGrad
+        OPTIONS --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
+    )
+else()
+    add_modules_sources(OPTYPE lightning_indexer_grad ACLNNTYPE aclnn_exclude)
 endif()

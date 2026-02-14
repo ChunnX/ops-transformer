@@ -37,7 +37,7 @@ OP_TYPE_REGISTER(LightningIndexerGrad);
 const std::array<const aclTensor *, LIGHTNING_INDEXER_GRAD_OUTPUT_CNT> LightningIndexerGrad(
     const aclTensor *query, const aclTensor *key, const aclTensor *dy, const aclTensor *sparseIndices,
     const aclTensor *weights, const aclTensor *actualSeqQLenOptional, const aclTensor *actualSeqKvLenOptional,
-    int64_t headNum, const char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool determinstic, 
+    int64_t headNum, const char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool determinstic,
     int64_t compressedRatio, aclOpExecutor *executor)
 {
     L0_DFX(LightningIndexerGrad, query, key, dy, sparseIndices, weights,
