@@ -62,6 +62,7 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
   int64_t           preTokens,
   int64_t           nextTokens,
   bool              determinstic,
+  int64_t           compressedRatio,
   const aclTensor   *dQuery,
   const aclTensor   *dKey,
   const aclTensor   *dWeights,
@@ -117,7 +118,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>Device侧的aclTensor，表示压缩后的key。</td>
       <td>shape支持[B, S2, N2, D]/[T2, N2, D]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -230,6 +231,16 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>Host侧的bool，表示当前是否支持确定性计算。</td>
       <td>-</td>
       <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>compressedRatio</td>
+      <td>输入</td>
+      <td>Host侧的int64_t,用于稀疏计算，表示key的压缩倍数。</td>
+      <td>-</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -563,14 +574,17 @@ int main()
     int64_t g = 64;
     int64_t n2 = 1;
     int64_t topK = 2048;
+    int64_t compressedRatio = 4;
+    int64_t s2c = 2048 / compressedRatio;
+    topK = topK > s2c ? s2c : topK;
 
     std::vector<int64_t> qShape = {batch, s1, n2 * g, d};
-    std::vector<int64_t> kShape = {batch, s2, n2, d};
+    std::vector<int64_t> kShape = {batch, s2c, n2, d};
     std::vector<int64_t> dyShape = {batch, s1, n2 * g, d};
     std::vector<int64_t> sparseIndicesShape = {batch, s1, topK};
     std::vector<int64_t> weightsShape = {batch, s1, n2 * g};
     std::vector<int64_t> dQueryShape = {batch, s1, n2 * g, d};
-    std::vector<int64_t> dKeyShape = {batch, s2, n2, d};
+    std::vector<int64_t> dKeyShape = {batch, topK, n2, d};
     std::vector<int64_t> dWeightsShape = {batch, s1, n2 * g};
 
     int64_t headNum = 64;
@@ -667,7 +681,7 @@ int main()
     // 调用aclnnLightningIndexerGrad第一段接口
     ret = aclnnLightningIndexerGradGetWorkspaceSize(
         q, k, dy, sparseIndices, weights, nullptr, nullptr, headNum,
-        layoutStr, sparseMode, preToken, nextToken, deteminstic, dQuery, dKey, dWeights, &workspaceSize, &executor);
+        layoutStr, sparseMode, preToken, nextToken, deteminstic, compressedRatio, dQuery, dKey, dWeights, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnLightningIndexerGradGetWorkspaceSize failed. ERROR: %d\n", ret);
               FreeResource(q, k, dy, sparseIndices, weights, dQuery, dKey, dWeights, qDeviceAddr, kDeviceAddr, dyDeviceAddr,
                 sparseIndicesDeviceAddr, weightsDeviceAddr, dQueryAddr, dKeyAddr, dWeightsAddr, workspaceSize, workspaceAddr,
