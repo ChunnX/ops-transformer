@@ -450,7 +450,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulV4GetWorkspaceSize获取。</ td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulV4GetWorkspaceSize获取。</td>
       </tr>
       <tr>
         <td>executor</td>
@@ -1069,12 +1069,12 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
 int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** deviceAddr,
                         aclDataType dataType, aclTensorList** tensor) {
     int size = shapes.size();
-    aclTensor* tensors[size];
+    std::vector<aclTensor*> tensors(size);
     for (int i = 0; i < size; i++) {
-        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors + i);
+        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors.data() + i);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
     }
-    *tensor = aclCreateTensorList(tensors, size);
+    *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
 }
 

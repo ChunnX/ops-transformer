@@ -74,7 +74,7 @@
 
         - 2.根据分组确定的入参进行如下计算：
 
-          $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ BroadCast} \odot w\_scale_{i\ BroadCast}$
+          $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ Broadcast} \odot w\_scale_{i\ Broadcast}$
 
           $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -100,7 +100,7 @@
       - **输入**：
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_4}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $weightAsistMatrix∈\mathbb{R}^{E \times N}$：计算矩阵乘时的辅助矩阵（生成辅助矩阵的计算过程见下文）。
+        * $weightAssistMatrix∈\mathbb{R}^{E \times N}$：计算矩阵乘时的辅助矩阵（生成辅助矩阵的计算过程见下文）。
         * $w\_scale∈\mathbb{R}^{E \times K\_group\_num \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K\_group\_num是在K轴维度上的分组数，N是输出维度。
         * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
@@ -110,14 +110,14 @@
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的token，$i \in [0,Len(groupList)]$。
           - 分组逻辑与A8W8相同。
-        - 2.生成辅助矩阵（weightAsistMatrix）的计算过程（请注意weightAsistMatrix部分计算为离线生成作为输入，并非算子内部完成）：
+        - 2.生成辅助矩阵（weightAssistMatrix）的计算过程（请注意weightAssistMatrix部分计算为离线生成作为输入，并非算子内部完成）：
           - 当为per-channel量化（$w\_scale$为2维）：
 
-            $weightAsistMatrix_{i} = 8 × weightScale × Σ_{k=0}^{K-1} weight[:,k,:]$
+            $weightAssistMatrix_{i} = 8 × weightScale × Σ_{k=0}^{K-1} weight[:,k,:]$
 
           - 当为per-group量化（$w\_scale$为3维）：
 
-            $weightAsistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × weightScale[:, ⌊k/num\_per\_group⌋, :])$
+            $weightAssistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × weightScale[:, ⌊k/num\_per\_group⌋, :])$
 
             注：$num\_per\_group = K // K\_group\_num$
 
@@ -141,7 +141,7 @@
 
           - 3.3.将高低位的矩阵乘结果还原为整体的结果
 
-            $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAsistMatrix_{i}) \odot x\_scale_{i}$
+            $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAssistMatrix_{i}) \odot x\_scale_{i}$
 
             $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -178,7 +178,7 @@
 
         - 2.根据分组确定的入参进行如下计算：
 
-          $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i\ BroadCast} \odot wScale_{i\ BroadCast}$
+          $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i\ Broadcast} \odot wScale_{i\ Broadcast}$
 
           $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -245,7 +245,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
     const aclTensor     *x, 
     const aclTensorList *weight, 
     const aclTensorList *weightScale,
-    const aclTensorList *weightAsistMatrix, 
+    const aclTensorList *weightAssistMatrix, 
     const aclTensor     *bias, 
     const aclTensor     *xScale, 
     const aclTensor     *smoothScale, 
@@ -334,7 +334,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       <tr>
         <td>weightAssistMatrix</td>
         <td rowspan="1">可选输入</td>
-        <td>表示计算矩阵乘时的辅助矩阵，公式中的weightAsistMatrix。</td>
+        <td>表示计算矩阵乘时的辅助矩阵，公式中的weightAssistMatrix。</td>
         <td><ul>
           <li>仅A8W4场景生效，其他场景需传空指针。</li>
           <li>首轴长度需与weight的首轴维度相等，尾轴长度需要与weight还原为ND格式的尾轴相同。</li>
@@ -443,7 +443,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       <tr>
         <td>tuningConfig</td>
         <td rowspan="1">可选输入</td>
-        <td>用于算子预估M/E的大小，走不同的算子模板，以适配不不同场景性能要求。</td>
+        <td>用于算子预估M/E的大小，走不同的算子模板，以适配不同场景性能要求。</td>
         <td>预留输入，暂不支持，需要传空指针。</td>
         <td>-</td>
         <td>-</td>
@@ -995,8 +995,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         int64_t quantMode = 0;
         int64_t groupListType = 0;
 
-        std::vector<int64_t> tuningConfigData = {};
-        aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigData.data(), 1);
+        std::vector<int64_t> tuningConfigData;
+        aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigData.data(), 0);
 
         uint64_t workspaceSize = 0;
         aclOpExecutor* executor;
@@ -1056,8 +1056,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
             aclrtFree(weightDeviceAddr[i]);
             aclrtFree(weightScaleDeviceAddr[i]);
         }
-        aclrtFree(weightDeviceAddr);
-        aclrtFree(weightScaleDeviceAddr);
         aclrtFree(xScaleDeviceAddr);
         aclrtFree(groupListDeviceAddr);
         aclrtFree(outputDeviceAddr);

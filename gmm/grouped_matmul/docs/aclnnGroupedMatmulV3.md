@@ -24,7 +24,7 @@
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
       - 非量化场景，支持weight转置（转置指若shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景）。
       - 支持m轴和k轴分组，由groupType表示。
-      - x、weight、y都为单tensor非量化场景支持x，weight输入都为float32类型。
+      - x、weight、y都为单tensor，非量化场景下，支持x、weight输入都为float32类型。
       - 量化、伪量化场景，支持weight转置，支持weight为单tensor。
       - 对于[aclnnGroupedMatmulGetWorkspaceSize](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -336,7 +336,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulV3GetWorkspaceSize获取。</ td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulV3GetWorkspaceSize获取。</td>
       </tr>
       <tr>
         <td>executor</td>
@@ -539,12 +539,12 @@ int CreateAclTensor(const std::vector<int64_t>& shape, void** deviceAddr,
 int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** deviceAddr,
                         aclDataType dataType, aclTensorList** tensor) {
     int size = shapes.size();
-    aclTensor* tensors[size];
+    std::vector<aclTensor*> tensors(size);
     for (int i = 0; i < size; i++) {
-        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors + i);
+        int ret = CreateAclTensor<uint16_t>(shapes[i], deviceAddr + i, dataType, tensors.data() + i);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
     }
-    *tensor = aclCreateTensorList(tensors, size);
+    *tensor = aclCreateTensorList(tensors.data(), size);
     return ACL_SUCCESS;
 }
 
