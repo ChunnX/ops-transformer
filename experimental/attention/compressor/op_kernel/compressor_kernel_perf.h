@@ -392,6 +392,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
                 uint32_t delta = (batchInfo.bStartPos + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
                 // TODO 下面两处检视一下容易减翻
                 curDealSeq = quota - delta;
+                quota -= curDealSeq;
                 curDealTcNUm = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
                 curDealCompressedTcNum = curDealTcNUm;
                 // 更新当前组所需信息
@@ -422,6 +423,20 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
             SkipInvalidBatch(batchInfo);
         }
     }
+    uint32_t totalDataSize = constInfo.coreGroupNum * constInfo.mBaseSize - quota;
+    // 2. 当前组的起始偏移
+    uint32_t currentGroupStart = constInfo.curGroupIdx * constInfo.mBaseSize;
+
+    // 3. 安全判断
+    if (currentGroupStart >= totalDataSize) {
+        // 超出尾块
+        basicBlockInfo.dealSeqCnt = 0;
+    } else {
+        // 还在有效范围内，计算剩余量
+        uint32_t remaining = totalDataSize - currentGroupStart;
+        basicBlockInfo.dealSeqCnt = (remaining < constInfo.mBaseSize) ? remaining : constInfo.mBaseSize;
+    }
+    
     // printf("[SkipOneLoop] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", basicBlockInfo.bIdx, basicBlockInfo.sIdx, basicBlockInfo.dealTcNum, basicBlockInfo.compressedTcNum);
     return basicBlockInfo;
 }
@@ -517,7 +532,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
     CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
-    // printf("[MM1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize);
+    // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize);
     if (isNeedExcute) {
         // blockCube_.ComputeMm1(info);
     }
@@ -582,11 +597,11 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info, BatchInfo &batchInfo)
 {
     BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
+    info.dealSeqCnt = basicBlockInfo.dealSeqCnt;
     info.bStart = basicBlockInfo.bIdx;
     info.sStart = basicBlockInfo.sIdx;
     info.dealTcNum = basicBlockInfo.dealTcNum;
     info.dealScSize = basicBlockInfo.compressedTcNum;
-    accDealSize += info.dealScSize;
 }
 
 template <typename COMP>
