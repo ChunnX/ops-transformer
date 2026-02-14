@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# 每个目录下需要生成的可执行文件，具体参考：ops/built-in/test/CMakeLists.txt： 50~124
+# 每个目录下需要生成的可执行文件，具体参考：ops/built-in/test/CMakeLists.txt： 50~124 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
 foreach(SUB_DIR ${CURRENT_DIRS})

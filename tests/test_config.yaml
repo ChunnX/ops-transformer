@@ -241,16 +241,16 @@ attention:
       src:
         - attention/mla_prolog
       ut_cov_exclude:
-        - attention\mla_prolog\examples
-        - attention\mla_prolog\docs
+        - attention/mla_prolog/examples
+        - attention/mla_prolog/docs
         - attention/mla_prolog/tests
         - attention/mla_prolog/op_kernel
-        - attention\mla_prolog_v2\examples
-        - attention\mla_prolog_v2\docs
+        - attention/mla_prolog_v2/examples
+        - attention/mla_prolog_v2/docs
         - attention/mla_prolog_v2/tests
         - attention/mla_prolog_v2/op_kernel
-        - attention\mla_prolog_v3\examples
-        - attention\mla_prolog_v3\docs
+        - attention/mla_prolog_v3/examples
+        - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/tests
         - attention/mla_prolog_v3/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
@@ -276,16 +276,16 @@ attention:
         - attention/mla_prolog_v2/docs
         - attention/mla_prolog_v2/README.md
       ut_cov_exclude:
-        - attention\mla_prolog\examples
-        - attention\mla_prolog\docs
+        - attention/mla_prolog/examples
+        - attention/mla_prolog/docs
         - attention/mla_prolog/tests
         - attention/mla_prolog/op_kernel
-        - attention\mla_prolog_v2\examples
-        - attention\mla_prolog_v2\docs
+        - attention/mla_prolog_v2/examples
+        - attention/mla_prolog_v2/docs
         - attention/mla_prolog_v2/tests
         - attention/mla_prolog_v2/op_kernel
-        - attention\mla_prolog_v3\examples
-        - attention\mla_prolog_v3\docs
+        - attention/mla_prolog_v3/examples
+        - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/tests
         - attention/mla_prolog_v3/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
@@ -308,16 +308,16 @@ attention:
         - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/README.md
       ut_cov_exclude:
-        - attention\mla_prolog\examples
-        - attention\mla_prolog\docs
+        - attention/mla_prolog/examples
+        - attention/mla_prolog/docs
         - attention/mla_prolog/tests
         - attention/mla_prolog/op_kernel
-        - attention\mla_prolog_v2\examples
-        - attention\mla_prolog_v2\docs
+        - attention/mla_prolog_v2/examples
+        - attention/mla_prolog_v2/docs
         - attention/mla_prolog_v2/tests
         - attention/mla_prolog_v2/op_kernel
-        - attention\mla_prolog_v3\examples
-        - attention\mla_prolog_v3\docs
+        - attention/mla_prolog_v3/examples
+        - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/tests
         - attention/mla_prolog_v3/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp

@@ -357,3 +357,404 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_1)
 
     }
 }
+
+// Mxfp8 kv 非量化
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_2)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV3")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_FLOAT8_E4M3FN;
+        ge::DataType input_ref1 = ge::DT_BF16;
+        ge::DataType input_ref2 = ge::DT_INT64;
+        ge::DataType input_ref3 = ge::DT_FLOAT8_E8M0;
+        ge::DataType input_ref4 = ge::DT_FLOAT;
+        ge::DataType input_ref5 = ge::DT_INT32;
+        ge::DataType output_ref1 = ge::DT_FLOAT8_E8M0;
+        ge::DataType output_ref2 = ge::DT_BF16;
+        ge::DataType output_ref3 = ge::DT_FLOAT;
+        ge::DataType output_ref4 = ge::DT_FLOAT8_E4M3FN;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(21, 7)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_ref, &input_ref, &input_ref, &input_ref1, &input_ref, &input_ref1, &input_ref1, &input_ref1, &input_ref1, &input_ref, &input_ref1,
+                                &input_ref2, &input_ref3, &input_ref3, &input_ref3, &input_ref3, &input_ref4, &input_ref4, &input_ref4, &input_ref5, &input_ref4})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(0.0022971812167027)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(0.00235037235057241)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
+                    {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                    {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                    {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+                    {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                    {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref4);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(2), output_ref4);
+        EXPECT_EQ(context->GetOutputDataType(3), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(4), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(5), output_ref4);
+        EXPECT_EQ(context->GetOutputDataType(6), output_ref1);
+
+    }
+}
+
+// 全量化 kvcache 非量化
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_3)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV3")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_BF16;
+        ge::DataType input_ref1 = ge::DT_INT8;
+        ge::DataType input_ref2 = ge::DT_FLOAT;
+        ge::DataType input_ref3 = ge::DT_INT64;
+        ge::DataType input_ref4 = ge::DT_INT32;
+        ge::DataType output_ref1 = ge::DT_BF16;
+        ge::DataType output_ref2 = ge::DT_FLOAT;
+        ge::DataType output_ref3 = ge::DT_INT8;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(21, 7)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_ref1, &input_ref1, &input_ref1, &input_ref, &input_ref1, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref,
+                                &input_ref3, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref4, &input_ref2})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                    {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                    {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+                    {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                    {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(2), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(3), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(4), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(5), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(6), output_ref2);
+
+    }
+}
+
+// 全量化 kvcache pertensor
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_4)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV3")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_BF16;
+        ge::DataType input_ref1 = ge::DT_INT8;
+        ge::DataType input_ref2 = ge::DT_FLOAT;
+        ge::DataType input_ref3 = ge::DT_INT64;
+        ge::DataType input_ref4 = ge::DT_INT32;
+        ge::DataType output_ref1 = ge::DT_BF16;
+        ge::DataType output_ref2 = ge::DT_FLOAT;
+        ge::DataType output_ref3 = ge::DT_INT8;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(21, 7)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_ref1, &input_ref1, &input_ref1, &input_ref, &input_ref1, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref1, &input_ref,
+                                &input_ref3, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref4, &input_ref2})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                    {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                    {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+                    {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                    {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(2), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(3), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(4), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(5), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(6), output_ref2);
+
+    }
+}
+
+// 半量化 kvcache 非量化
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_5)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV3")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_BF16;
+        ge::DataType input_ref1 = ge::DT_INT8;
+        ge::DataType input_ref2 = ge::DT_FLOAT;
+        ge::DataType input_ref3 = ge::DT_INT64;
+        ge::DataType input_ref4 = ge::DT_INT32;
+        ge::DataType output_ref1 = ge::DT_BF16;
+        ge::DataType output_ref2 = ge::DT_FLOAT;
+        ge::DataType output_ref3 = ge::DT_INT8;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(21, 7)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_ref, &input_ref, &input_ref1, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref,
+                                &input_ref3, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref4, &input_ref2})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                    {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+                    {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                    {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(2), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(3), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(4), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(5), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(6), output_ref2);
+
+    }
+}
+
+// 半量化 kvcache 非量化
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_6)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV3")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_BF16;
+        ge::DataType input_ref1 = ge::DT_INT8;
+        ge::DataType input_ref2 = ge::DT_FLOAT;
+        ge::DataType input_ref3 = ge::DT_INT64;
+        ge::DataType input_ref4 = ge::DT_INT32;
+        ge::DataType output_ref1 = ge::DT_BF16;
+        ge::DataType output_ref2 = ge::DT_FLOAT;
+        ge::DataType output_ref3 = ge::DT_INT8;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(21, 7)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_ref, &input_ref, &input_ref1, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref,
+                                &input_ref3, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref4, &input_ref2})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                    {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+                    {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                    {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(2), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(3), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(4), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(5), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(6), output_ref2);
+
+    }
+}
+
+// 半量化 kvcache perchannel
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_7)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV3")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_BF16;
+        ge::DataType input_ref1 = ge::DT_INT8;
+        ge::DataType input_ref2 = ge::DT_FLOAT;
+        ge::DataType input_ref3 = ge::DT_INT64;
+        ge::DataType input_ref4 = ge::DT_INT32;
+        ge::DataType output_ref1 = ge::DT_BF16;
+        ge::DataType output_ref2 = ge::DT_FLOAT;
+        ge::DataType output_ref3 = ge::DT_INT8;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(21, 7)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_ref, &input_ref, &input_ref1, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref1, &input_ref1,
+                                &input_ref3, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref4, &input_ref2})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                    {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                    {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+                    {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                    {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(2), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(3), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(4), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(5), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(6), output_ref2);
+
+    }
+}
+
+// 全量化 kvcache pertile
+TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_8)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto data_type_func = spaceRegistry->GetOpImpl("MlaPrologV3")->infer_datatype;
+    if (data_type_func != nullptr) {
+        ge::DataType input_ref = ge::DT_BF16;
+        ge::DataType input_ref1 = ge::DT_INT8;
+        ge::DataType input_ref2 = ge::DT_FLOAT;
+        ge::DataType input_ref3 = ge::DT_INT64;
+        ge::DataType input_ref4 = ge::DT_INT32;
+        ge::DataType output_ref1 = ge::DT_BF16;
+        ge::DataType output_ref2 = ge::DT_FLOAT;
+        ge::DataType output_ref3 = ge::DT_INT8;
+        auto context_holder =
+            gert::InferDataTypeContextFaker()
+                .NodeIoNum(21, 7)
+                .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(5, ge::FORMAT_ND, ge::FORMAT_ND)
+                .NodeOutputTd(6, ge::FORMAT_ND, ge::FORMAT_ND)
+                .InputDataTypes({&input_ref1, &input_ref1, &input_ref1, &input_ref, &input_ref1, &input_ref, &input_ref, &input_ref, &input_ref, &input_ref1, &input_ref1,
+                                &input_ref3, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref4, &input_ref2})
+                .NodeAttrs({   
+                    {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                    {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                    {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                    {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                    {"ckvkr_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                    {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)}, // 128 : set value of tile size
+                    {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                    {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                })
+                .Build();
+        auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+        EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+        ASSERT_NE(context, nullptr);
+
+        EXPECT_EQ(context->GetOutputDataType(0), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
+        EXPECT_EQ(context->GetOutputDataType(2), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(3), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(4), output_ref2);
+        EXPECT_EQ(context->GetOutputDataType(5), output_ref3);
+        EXPECT_EQ(context->GetOutputDataType(6), output_ref2);
+
+    }
+}
