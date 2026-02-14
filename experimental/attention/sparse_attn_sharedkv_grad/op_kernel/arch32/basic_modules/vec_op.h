@@ -227,9 +227,7 @@ __aicore__ inline void VecOp<SASGT>::InitParams(const TILING_CLASS *__restrict o
     mm12WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen;
     dqWorkspaceLen = tilingData->opInfo.dqWorkspaceLen;
     dkWorkspaceLen = tilingData->opInfo.dkWorkspaceLen;
-    // dvWorkspaceLen = tilingData->opInfo.dvWorkspaceLen;
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
-    // selectedVWorkspaceLen = tilingData->opInfo.selectedVWorkspaceLen;
 
     params.singleM = tilingData->splitCoreParams.singleM;
     params.singleN = tilingData->splitCoreParams.singleN;

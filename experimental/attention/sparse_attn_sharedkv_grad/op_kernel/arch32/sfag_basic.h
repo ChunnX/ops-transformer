@@ -440,13 +440,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::GetTndSeqLen(const GM_
         t2Offset = bIdx * curS2;
         t3Offset = bIdx * curS3;
     }
-    // AscendC::PRINTF("----------t1Idx=%d\n", t1Idx);
-    // AscendC::PRINTF("curS1=%d\n", curS1);
-    // AscendC::PRINTF("curS2=%d\n", curS2);
-    // AscendC::PRINTF("curS3=%d\n", curS3);
-    // AscendC::PRINTF("t1Offset=%d\n", t1Offset);
-    // AscendC::PRINTF("t2Offset=%d\n", t2Offset);
-    // AscendC::PRINTF("t3Offset=%d\n", t3Offset);
 }
 
 template <typename SASGT>
@@ -466,12 +459,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::GetActualSelCount(cons
     oriWinEnd = Max(oriWinEnd, 0);
     oriWinStart = Max(s1Index - oriWinLeft + oriWinDiagOffset, 0);
     int64_t oriWinS2Len = oriWinEnd - oriWinStart;
-    // AscendC::PRINTF("oriWinStart=%d\n", oriWinStart);
-    // AscendC::PRINTF("oriWinEnd=%d\n", oriWinEnd);
-    // AscendC::PRINTF("oriWinS2Len=%d\n", oriWinS2Len);
 
     actualSelectedBlockCount += oriWinS2Len;
-    // AscendC::PRINTF("actualSelectedBlockCount=%d\n", actualSelectedBlockCount);
 }
 
 } // namespace SASG_BASIC

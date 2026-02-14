@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_post.h
+ * \file sfag_post.h
  * \brief common post process
  */
 

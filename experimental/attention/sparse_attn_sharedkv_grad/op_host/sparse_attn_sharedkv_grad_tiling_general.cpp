@@ -470,21 +470,6 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     }
     tilingData.opInfo.set_selectedBlockSize(1);
 
-    // // 一些拦截校验，暂时不管
-    // auto ret = CheckDtypeValid(context_);
-    // if (ret != ge::GRAPH_SUCCESS) {
-    //     OP_LOGE(context_, "SparseFlashAttentionGrad the dtype of input is invalid.");
-    //     return ge::GRAPH_FAILED;
-    // }
-
-    // if (tmpData.layout == static_cast<uint32_t>(InputLayout::TND)) {
-    //     ret = CheckTndShapeValid(context_, tmpData.t1, tmpData.n2 * tmpData.g, tmpData.d, tmpData.d2, tmpData.n2);
-    // }
-    // if (ret != ge::GRAPH_SUCCESS) {
-    //     OP_LOGE(context_, "SparseFlashAttentionGrad the input shpae of TND Layout is invalid.");
-    //     return ge::GRAPH_FAILED;
-    // }
-
     return ge::GRAPH_SUCCESS;
 }
 
