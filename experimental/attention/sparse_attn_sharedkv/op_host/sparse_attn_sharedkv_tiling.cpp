@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_attn_sharedkv_tiling.cpp
@@ -137,8 +137,6 @@ ge::graphStatus SASInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE(opName_, "tensor of oriKv is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr, OP_LOGE(opName_, "tensor of oriBlockTable is nullptr"),
-                return ge::GRAPH_FAILED);
     if (perfMode_ == SASTemplateMode::CFA_TEMPLATE_MODE){
         OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE(opName_, "tensor of cmpKv is nullptr"),
                     return ge::GRAPH_FAILED);
@@ -146,9 +144,7 @@ ge::graphStatus SASInfoParser::CheckRequiredInOutExistence() const
     if (perfMode_ == SASTemplateMode::SCFA_TEMPLATE_MODE){
         OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE(opName_, "tensor of cmpKv is nullptr"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr, OP_LOGE(opName_, "tensor of oriSparseIndices is nullptr"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor == nullptr, OP_LOGE(opName_, "tensor of cmpSparseIndices is nullptr"),
+        OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor == nullptr, OP_LOGE(opName_, "cmpSparseIndices is nullptr"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -166,6 +162,20 @@ ge::graphStatus SASInfoParser::CheckRequiredParaExistence() const
         return ge::GRAPH_FAILED;
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SASInfoParser::CheckUnrequiredParaExistence() const
+{
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor != nullptr || opParamInfo_.oriSparseIndices.desc != nullptr,
+                OP_LOGE(opName_, "Currently, oriSparseIndices must be a nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.cuSeqLensOriKv.tensor != nullptr || opParamInfo_.cuSeqLensOriKv.desc != nullptr,
+                OP_LOGE(opName_, "Currently, cuSeqLensOriKv must be a nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.cuSeqLensCmpKv.tensor != nullptr || opParamInfo_.cuSeqLensCmpKv.desc != nullptr,
+                OP_LOGE(opName_, "Currently, cuSeqLensCmpKv must be a nullptr"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -217,6 +227,10 @@ void SASInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
     opParamInfo_.cuSeqLensQ.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_Q_INDEX);
     opParamInfo_.cuSeqLensQ.desc = context_->GetOptionalInputDesc(CU_SEQLENS_Q_INDEX);
+    opParamInfo_.cuSeqLensOriKv.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_ORI_KV_INDEX);
+    opParamInfo_.cuSeqLensOriKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_ORI_KV_INDEX);
+    opParamInfo_.cuSeqLensCmpKv.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_CMP_KV_INDEX);
+    opParamInfo_.cuSeqLensCmpKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_CMP_KV_INDEX);
     opParamInfo_.seqUsedQ.tensor = context_->GetOptionalInputTensor(SEQUSED_Q_INDEX);
     opParamInfo_.seqUsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
     opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_INDEX);
@@ -394,13 +408,9 @@ void SASInfoParser::SetSASShape()
     {
         if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
             cmpSparseIndicesShape_ = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
+            uint32_t cmpSparseIndicesT = GetAxisNum(cmpSparseIndicesShape_, SASAxis::T, cmpSparseIndicesLayout_);
         } else {
             OP_LOGE(opName_, "cmpSparseIndices tensor is nullptr, please check input parameters.");
-        }
-        if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
-            oriSparseIndicesShape_ = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
-        } else {
-            OP_LOGE(opName_, "oriSparseIndices tensor is nullptr, please check input parameters.");
         }
     }
 }
@@ -419,7 +429,7 @@ ge::graphStatus SASInfoParser::GetN2Size()
     if (opParamInfo_.cmpKv.tensor != nullptr) {
         uint32_t cmpKvN2Size_ = GetAxisNum(cmpKvShape_, SASAxis::N, kvLayout_);
         if (perfMode_ == SASTemplateMode::SCFA_TEMPLATE_MODE){
-            uint32_t cmpSparseIndicesN2Size_ = GetAxisNum(cmpSparseIndicesShape_, SASAxis::N, kvLayout_);
+            uint32_t cmpSparseIndicesN2Size_ = GetAxisNum(cmpSparseIndicesShape_, SASAxis::N, cmpSparseIndicesLayout_);
             OP_CHECK_IF(cmpKvN2Size_ != n2Size_ || n2Size_ != cmpSparseIndicesN2Size_, 
             OP_LOGE(opName_, "N2 size check failed! Expected oriKvN2 == cmpSparseIndicesN2."),
             return ge::GRAPH_FAILED);
@@ -492,26 +502,21 @@ ge::graphStatus SASInfoParser::GetS1Size()
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组中的最大值为基准
     if (qLayout_ == SASLayout::TND) {
         s1Size_ = GetAxisNum(qShape_, SASAxis::T, qLayout_);
-        if (opParamInfo_.oriSparseIndices.tensor != nullptr){
-            uint32_t oriSparseIndicesT = GetAxisNum(oriSparseIndicesShape_,SASAxis::T,qLayout_);
-            uint32_t cmpSparseIndicesT = GetAxisNum(cmpSparseIndicesShape_,SASAxis::T,qLayout_);
-            OP_CHECK_IF(oriSparseIndicesT != s1Size_ && oriSparseIndicesT != cmpSparseIndicesT,
-                        OP_LOGE(opName_, "T size check failed !"),
-                        return ge::GRAPH_FAILED);
-        }
-        return ge::GRAPH_SUCCESS;
     } else { // BSND
         s1Size_ = GetAxisNum(qShape_, SASAxis::S, qLayout_);
-        if (opParamInfo_.oriSparseIndices.tensor != nullptr){
-            uint32_t oriSparseIndicesS1 = GetAxisNum(oriSparseIndicesShape_,SASAxis::T,qLayout_);
-            uint32_t cmpSparseIndicesS1 = GetAxisNum(cmpSparseIndicesShape_,SASAxis::T,qLayout_);
-            OP_CHECK_IF(oriSparseIndicesS1 != s1Size_ && oriSparseIndicesS1 != cmpSparseIndicesS1,
+    }
+    if (perfMode_ == SASTemplateMode::SCFA_TEMPLATE_MODE){
+        if (cmpSparseIndicesLayout_ == SASLayout::TND) {
+            uint32_t cmpSparseIndicesT = GetAxisNum(cmpSparseIndicesShape_, SASAxis::T, cmpSparseIndicesLayout_);
+            OP_CHECK_IF(cmpSparseIndicesT != s1Size_,
+            OP_LOGE(opName_, "T size check failed !"),
+            return ge::GRAPH_FAILED);
+        } else{
+            uint32_t cmpSparseIndicesS1 = GetAxisNum(cmpSparseIndicesShape_, SASAxis::S, cmpSparseIndicesLayout_);
+            OP_CHECK_IF(cmpSparseIndicesS1 != s1Size_,
                         OP_LOGE(opName_, "s1 size check failed !"),
                         return ge::GRAPH_FAILED);
         }
-    }
-    if (opParamInfo_.oriSparseIndices.tensor != nullptr){
-        uint32_t oriSparseIndicesS1 = GetAxisNum(oriSparseIndicesShape_,SASAxis::S,qLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -606,7 +611,7 @@ ge::graphStatus SASInfoParser::GetValueHeadDim()
 ge::graphStatus SASInfoParser::GetSparseBlockCount()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        sparseBlockCount_ = GetAxisNum(cmpSparseIndicesShape_, SASAxis::K, kvLayout_);
+        sparseBlockCount_ = GetAxisNum(cmpSparseIndicesShape_, SASAxis::K, cmpSparseIndicesLayout_);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -655,14 +660,6 @@ ge::graphStatus SASInfoParser::GetActualseqInfo()
         } else {
             actualLenDimsKV_ = opParamInfo_.cmpKv.tensor->GetShapeSize();
         }
-    } else {
-        OP_LOGE(opName_, "oriKV and cmpKv only support PA_ND layout.");
-        return ge::GRAPH_FAILED;
-    }
-    if (opParamInfo_.seqUsedQ.tensor != nullptr) {
-        actualLenDimsQ_ = opParamInfo_.seqUsedQ.tensor->GetShapeSize();
-    } else if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
-        actualLenDimsQ_ = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() - 1; // cuSeqLensQ shape is B+1
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -734,7 +731,8 @@ ge::graphStatus SASInfoParser::Parse(SASTilingInfo &sasInfo)
     if (ge::GRAPH_SUCCESS != GetOpName() ||
         ge::GRAPH_SUCCESS != GetNpuInfo() ||
         ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
+        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() ||
+        ge::GRAPH_SUCCESS != CheckUnrequiredParaExistence()) {
         return ge::GRAPH_FAILED;
     }
 
@@ -799,7 +797,6 @@ void SASTilingCheck::Init()
     kvLayout_ = sasInfo_.kvLayout;
     outLayout_ = sasInfo_.outLayout;
 }
-
 void SASTilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
     const ge::DataType &actualDtype, const std::string &name) const
 {
@@ -942,7 +939,8 @@ ge::graphStatus SASTilingCheck::CheckSingleParaOriKv() const
 
 ge::graphStatus SASTilingCheck::CheckSingleParaCmpKv() const
 {
-    if (sasInfo_.perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE || sasInfo_.perfMode == SASTemplateMode::CFA_TEMPLATE_MODE) {
+    if (sasInfo_.perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE ||
+        sasInfo_.perfMode == SASTemplateMode::CFA_TEMPLATE_MODE) {
         const std::vector<size_t> cmpKvDimNumList = {DIM_NUM_FOUR};
         if (
             ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpKv.desc, CMP_KV_NAME) ||
@@ -975,17 +973,7 @@ ge::graphStatus SASTilingCheck::CheckSingleParaCmpSparseIndices() const
             ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpSparseIndices.tensor->GetShape(), cmpSparseIndicesDimNumList, CMP_SPARSE_INDICES)) {
             return ge::GRAPH_FAILED;
         }
-        if (cmpSparseIndicesLayout_ == SASLayout::TND)
-        {
-            OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1) != TOPK_LIMIT),
-                        OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT ,opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1)),
-                        return ge::GRAPH_FAILED);
-        } else{
-            OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1) != TOPK_LIMIT),
-                        OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT ,opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1)),
-                        return ge::GRAPH_FAILED);
-        }
-        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1012,12 +1000,13 @@ ge::graphStatus SASTilingCheck::CheckSingleParaCmpBlockTable() const
             const std::vector<size_t> cmpBlockTableDimNumList = {DIM_NUM_TWO};
             if (
                 ge::GRAPH_SUCCESS != CheckDtypeSupport( opParamInfo_.cmpBlockTable.desc, CMP_BLOCK_TABLE_NAME) ||
-                ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpBlockTable.tensor->GetShape(), cmpBlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
+                ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpBlockTable.tensor->GetShape(),
+                cmpBlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
                 return ge::GRAPH_FAILED;
-            }
+                }
             OP_CHECK_IF((cmpBlockSize_ <= 0 || cmpBlockSize_ > BLOCK_SIZE_LIMIT ||
                         (static_cast<uint64_t>(cmpBlockSize_) % 16 != 0UL)),
-                        OP_LOGE(opName_, "cmpBlockSize_ should be in range [1, 1024], and be aligned to 16, but got: %d.",
+                        OP_LOGE(opName_, "cmpBlockSize should be in [1, 1024], and be aligned to 16, but got: %d.",
                         cmpBlockSize_),
                         return ge::GRAPH_FAILED);
         }
@@ -1053,14 +1042,9 @@ ge::graphStatus SASTilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SASTilingCheck::CheckSingleParaCmpRatio() const
 {
-    if (sasInfo_.perfMode == optiling::SASTemplateMode::CFA_TEMPLATE_MODE){
-        OP_CHECK_IF(cmpRatio_ != 128,
-                    OP_LOGE(opName_, "cmpRatio should be 128, but got %u", cmpRatio_),
-                    return ge::GRAPH_FAILED);
-    }
-    if (sasInfo_.perfMode == optiling::SASTemplateMode::SCFA_TEMPLATE_MODE){
-        OP_CHECK_IF(cmpRatio_ != 4,
-                    OP_LOGE(opName_, "cmpRatio should be 4, but got %u", cmpRatio_),
+    if (sasInfo_.perfMode == optiling::SASTemplateMode::CFA_TEMPLATE_MODE || sasInfo_.perfMode == optiling::SASTemplateMode::SCFA_TEMPLATE_MODE){
+        OP_CHECK_IF(cmpRatio_ != 128 && cmpRatio_ != 4,
+                    OP_LOGE(opName_, "cmpRatio should be 128 or 4, but got %u", cmpRatio_),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1207,7 +1191,7 @@ ge::graphStatus SASTilingCheck::CheckFeatureShape() const
     }
 
     OP_CHECK_IF(!(qType_ == oriKvType_),
-                OP_LOGE(opName_, "Head dimension data type check failed! qType[%s], oriKvType[%s]. All data types must be the same.",
+                OP_LOGE(opName_, "Head dimension data type check failed! qType[%s] must be the same with oriKvType[%s].",
                 SASDataTypeToSerialString(qType_).c_str(),
                 SASDataTypeToSerialString(oriKvType_).c_str()),
                 return ge::GRAPH_FAILED);
@@ -1234,7 +1218,8 @@ ge::graphStatus SASTilingCheck::CheckFeatureLayout() const
         "TND"
     };
     std::string layoutQuery = opParamInfo_.layoutQ;
-    OP_CHECK_IF(std::find(layoutQuerySupportList.begin(), layoutQuerySupportList.end(), layoutQuery) == layoutQuerySupportList.end(),
+    OP_CHECK_IF(std::find(layoutQuerySupportList.begin(), layoutQuerySupportList.end(), layoutQuery) ==
+                layoutQuerySupportList.end(),
                 OP_LOGE(opName_, "layoutQuery only supports BSND/TND, but got %s", layoutQuery.c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -1271,7 +1256,8 @@ void SASTilingCheck::SetSASShapeCompare()
     queryShapeCmp_ = opParamInfo_.q.shape->GetStorageShape();
     oriKvShapeCmp_= opParamInfo_.oriKv.tensor->GetShape().GetStorageShape();
     attenOutShapeCmp_ = opParamInfo_.attnOut.shape->GetStorageShape();
-    if (sasInfo_.perfMode == SASTemplateMode::CFA_TEMPLATE_MODE || sasInfo_.perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE ) {
+    if (sasInfo_.perfMode == SASTemplateMode::CFA_TEMPLATE_MODE || 
+        sasInfo_.perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         cmpKvShapeCmp_= opParamInfo_.cmpKv.tensor->GetShape().GetStorageShape();
     }
     if (sasInfo_.perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE) {
@@ -1293,7 +1279,8 @@ ge::graphStatus SASTilingCheck::CheckDTypeConsistency(const ge::DataType &actual
 
 ge::graphStatus SASTilingCheck::CheckOriAndCmpKv() const
 {
-    if (sasInfo_.perfMode == SASTemplateMode::CFA_TEMPLATE_MODE || sasInfo_.perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE)
+    if (sasInfo_.perfMode == SASTemplateMode::CFA_TEMPLATE_MODE ||
+        sasInfo_.perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE)
     {
         if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(cmpKvType_,
             oriKvType_, CMP_KV_NAME)) {
@@ -1366,28 +1353,17 @@ void SparseAttnSharedkvTiling::CalcUbBmm(SASTilingInfo *tilingInfo)
     }
     mmResUbSize_ = sInnerSizeAlign_ * Align(cubeMSize, 16U);// kernel按照16对齐写出，tiling按照这个原则分配内存
     bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U);// kernel按照16对齐写出，tiling按照这个原则分配内存
-
-    qPreSizeMla_ = tilingInfo->gSize * headDimAlign_ * tilingInfo->s1Size;
 }
 
 void SparseAttnSharedkvTiling::SplitBalanced(SASTilingInfo *tilingInfo)
 {
     uint32_t s2Size = tilingInfo->s2Size;
-    sInnerSize_ = 512; // 512:s2默认切分大小
-    sInnerLoopTimes_ = (s2Size + sInnerSize_ - 1) / sInnerSize_;
-    sInnerSizeTail_ = s2Size - (sInnerLoopTimes_ - 1) * sInnerSize_;
-    if (sInnerSize_ > s2Size) {
-        sInnerSize_ = s2Size;
-    }
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
-
+    headDimAlign_ = Align(tilingInfo->qHeadDim, BYTE_BLOCK);
     CalcUbBmm(tilingInfo);
 
-    InnerSplitParams innerSplitParams;
-    innerSplitParams.s1GBaseSize = tilingInfo->gSize;
-    innerSplitParams.s2BaseSize = sInnerSize_;
-    tilingData_.baseParams.set_mBaseSize(innerSplitParams.s1GBaseSize);
-    tilingData_.baseParams.set_s2BaseSize(innerSplitParams.s2BaseSize);
+    tilingData_.baseParams.set_mBaseSize(mBaseSize_);
+    tilingData_.baseParams.set_s2BaseSize(sInnerSize_);
     tilingData_.baseParams.set_mmResUbSize(mmResUbSize_);
     tilingData_.baseParams.set_bmm2ResUbSize(bmm2ResUbSize_);
 }
@@ -1406,27 +1382,21 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
     SplitBalanced(tilingInfo);
     // -------------set workspacesize-----------------
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4;         // 4: fp32
-    constexpr uint32_t DOUBLE_BUFFER = 2;             // 双Buffer
-    constexpr uint32_t M_BASE_SIZE = 512;             // m轴基本块大小
-    constexpr uint32_t S2_BASE_SIZE = 512;            // S2轴基本块大小
-    constexpr uint32_t V1_RES_ELEM_SIZE = 4;          // 4: int32
-    constexpr uint32_t V1_RES_ELEM_TYPE = 2;          // 保留Index和Value 2种数据
-    constexpr uint32_t V1_DECODE_PARAM_ELEM_SIZE = 8; // 8: int64
-    constexpr uint32_t V1_DECODE_PARAM_NUM = 16;      // Decode参数个数
-    constexpr uint32_t V1_DECODE_DATA_NUM = 2;        // Decode每个核需要存储头和尾部两块数据
-    constexpr uint32_t S1_BASE_SIZE = 8;              // S1轴基本块的大小
-    constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
+    constexpr uint32_t VEC1_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
+    constexpr uint32_t MM2_RES_ELEM_SIZE = 4;         // 4: fp32
+    constexpr uint32_t VEC2_RES_ELEM_SIZE = 4;        // 4: fp32
+    constexpr uint32_t PRELOAD_NUM = 2;               // preload数量
+
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
-    uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
-    workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
-    // Decode流程(LD)需要Workspace大小
-    // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
-    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
-    // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
-    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
-
-    workspaceSize = 120 * 1024 * 1024;
+    workspaceSize += PRELOAD_NUM * mmResUbSize_ * MM1_RES_ELEM_SIZE * aicNum;
+    workspaceSize += PRELOAD_NUM * mmResUbSize_ * VEC1_RES_ELEM_SIZE * aicNum;
+    workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * MM2_RES_ELEM_SIZE * aicNum;
+    workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * VEC2_RES_ELEM_SIZE * aicNum;
+    if (tilingInfo->perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+        workspaceSize += 4 * 512 * 512 * 2 * aicNum; // 4:bufNum 512:s2Size  512:D 2:sizeof(half)
+        workspaceSize += 4 * 128 * 4 * (2 * aicNum); // 4:缓存有效mte2 size长度 128:份数 4:512B对齐长度 2:aiv数量
+    }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
@@ -1494,5 +1464,4 @@ ge::graphStatus TilingSparseAttnSharedkv(gert::TilingContext *context)
 IMPL_OP_OPTILING(SparseAttnSharedkv)
     .Tiling(TilingSparseAttnSharedkv)
     .TilingParse<SASCompileInfo>(TilingPrepareForSparseAttnSharedkv);
-
 } // namespace optiling

@@ -1,5 +1,4 @@
-# -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -25,7 +24,6 @@ np.random.seed(21)  # 固定随机种子
 np.set_printoptions(suppress=True)
 
 DEVICE_ID = 0
-torch_npu.npu.set_device(int(DEVICE_ID))
 torch.npu.config.allow_internal_format = True
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
@@ -126,18 +124,6 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
         '---------------------------------------------------------------------------------------')
 # fuzz 中precision_method == 1的精度对比方式
 def check_result(expect, result, data_type, pct_thd = 0.005):
-    if data_type == torch.bfloat16:
-        diff_thd=0.005
-        max_diff_hd=10
-        rtol=0.005
-        atol=0.0078125
-    else:
-        diff_thd=0.005
-        max_diff_hd=10
-        rtol=0.005
-        atol=0.000025
-
-    max_error_idx = 10000000
     real_data = result.cpu().numpy()
     data_compe = expect.cpu().numpy()
     real_data = real_data.flatten()
@@ -145,7 +131,7 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
             'The npu_output is [],and it is same as bm_output, the result of data_compare is \"Pass\"')
-        return "Pass", 100.0, 0
+        return  100.0, "Pass"
     start = 0
     end = real_data.size - 1
     if end < start:
@@ -156,12 +142,26 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
     if real_data.size != data_compe.size:
         print_log(
             'Error,the size of npu output[%s] and benchmark[%s] is not equal.' % (real_data.size, data_compe.size))
-        return result, 0.0, max_error
+        return 0.0, result
     overflows_count = data_compe[np.isinf(data_compe)].size + data_compe[np.isnan(data_compe)].size
+
 
     if overflows_count > 0:
         print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
             overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
+    
+    if data_type == 'bfloat16':
+        diff_thd=0.005
+        max_diff_hd=10.0
+        rtol=0.0078125
+        atol=0.0001
+        max_error_idx = 10000000
+    else:
+        diff_thd=0.005
+        max_diff_hd=10.0
+        rtol=0.005
+        atol=0.000025
+        max_error_idx = 10000000
 
     split_count = int(end - start + 1) if end != start else 1
     print_log('split_count:%s; max_diff_hd:%s;' %
@@ -242,6 +242,7 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
     if result == "Failed":
         display_error_output(real_data, data_compe,
                                 err_idx, err_diff[0:max_error_idx])
+    return fulfill_percent, result
 
 def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
     if seqused is not None:
@@ -306,7 +307,6 @@ def rotary_emb(x, rope_sin, rope_cos, rotary_mode):
                 y[s][idx + 1] = a * rope_sin[s][idx + 1] + b * rope_cos[s][idx + 1] # y_b
     return y
 
-
 # state.shape is (block_num, block_size, coff * head_dim), is numpy type
 # new_state.shape is (s, coff * head_dim), data writed to state
 # block_table.shape is (B, (s_max + block_size - 1) // block_size)
@@ -368,7 +368,6 @@ def cpu_compressor(
     for i in range(wkv.shape[1] // 128):
         leftH = i * 128
         rightH = (i + 1) * 128
-
     new_kv_state = np.matmul(x, wkv.T, dtype=matmul_dtype)
     new_score_state = np.matmul(x, wgate.T, dtype=matmul_dtype)
 
@@ -386,6 +385,7 @@ def cpu_compressor(
         cmp_kv = np.zeros(shape=(B, (S + cmp_ratio - 1) // cmp_ratio, head_dim), dtype=matmul_dtype)
     else:
         cmp_kv = np.zeros(shape=(min(x.shape[0], x.shape[0] // cmp_ratio + B), head_dim), dtype=matmul_dtype)
+
     cmp_kv_mask = np.zeros_like(cmp_kv, dtype=bool)
     out_cu_seqlen = [0] * (B + 1)
     out_seqused = [0] * B
@@ -424,7 +424,7 @@ def cpu_compressor(
             new_score_state[start_offset:end_offset, :] = np.add(new_score_state[start_offset:end_offset, :], ape[start_seq_id_in_sc : end_seq_idx_in_sc, :])
             # 1.判断块是否需要存储到state
             # 2.判断块是否需要压缩
-            save_flag = True if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio) else False
+            save_flag = True
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
@@ -493,10 +493,8 @@ def cpu_compressor(
                 sc_data = sc_kv_state * sc_score_state
                 # reduce sum
                 sc_cmp_kv = np.sum(sc_data, axis=0, keepdims=True)
-
                 # RmsNorm
                 sc_cmp_kv = rms_norm(sc_cmp_kv, norm_weight, norm_eps)
-
                 # inplace rotary_emb
                 if bs_combine_flag == False:
                     sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[b_idx, batch_out_sc_id, :], rope_cos[b_idx, batch_out_sc_id, :], rotary_mode)
@@ -516,13 +514,15 @@ def cpu_compressor(
 
     print(f"out_cu_seqlen: {out_cu_seqlen}")
     print(f"out_seqused: {out_seqused}")
-    print(f"cmp_kv.shape:{cmp_kv.shape}")
+    print(f"cmp_kv.shape: {cmp_kv.shape}")
     cmp_kv_torch = torch.tensor(cmp_kv).to(x_dtype)
     return cmp_kv_torch, cmp_kv_mask
 
 def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0, start_pos=None, seqused=None, cu_seqlens=None,
                          block_size = 128, rotary_mode = 2, data_type = torch.bfloat16, hidden_size = 4096,
-                         rope_head_dim = 64, norm_eps = 1e-6):
+                         rope_head_dim = 64, norm_eps = 1e-6, save_state_seqlens = None, x_datarange = [-10, 10],
+                         wkv_datarange = [-10, 10], wgate_datarange = [-10, 10], ape_datarange = [-10, 10], norm_weight_datarange = [-10, 10],
+                         kv_state_datarange = [-10, 10], score_state_datarange = [-10, 10]):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
     if bs_combine_flag:
@@ -550,15 +550,15 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # ======================== set input params finish ========================
     # ======================== check input params start ========================
     if start_pos is not None:
-        if len(start_pos) > B:
+        if len(start_pos) != B:
             print(f"Error: the len of start_pos is {len(start_pos)}, it should be B({B})")
             return
     if seqused is not None:
-        if len(seqused) > B:
+        if len(seqused) != B:
             print(f"Error: the len of seqused is {len(seqused)}, it should be B({B})")
             return
     if cu_seqlens is not None:
-        if len(start_pos) > B:
+        if len(cu_seqlens) != (B + 1):
             print(f"Error: the len of cu_seqlens is {len(cu_seqlens)}, it should be equal to B({B}) + 1")
             return
     if head_dim < rope_head_dim:
@@ -584,35 +584,60 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
                 if seqused[i] > S:
                     print(f"Error: for batch {i} when shape of x is (B, S, hidden_size), seqused[{i}] > S, seqused[{i}]={seqused[i]}, S={S}")
                     return
+    if save_state_seqlens is not None:
+        if len(save_state_seqlens) != B:
+            print(f"Error: the len of save_state_seqlens is {len(save_state_seqlens)}, it should be equal to B({B})")
+            return
+        for i in range(B):
+            b_seqused = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
+            if b_seqused < save_state_seqlens[i]:
+                print(f"Error: for batch {i}, b_seqused < save_state_seqlens[{i}], b_seqused={b_seqused}, save_state_seqlens[{i}]={save_state_seqlens[i]}")
+                return
+
     # ======================== check input params finish ========================
     # ======================== gen input data start =============================
     # page state
     max_block_num_per_batch = (S_max + block_size - 1) // block_size
     block_num = B * max_block_num_per_batch
-    shuffled_indices = torch.randperm(block_num)
-    index = torch.arange(1, block_num + 1, 1, dtype=torch.int32)
-    index = index[shuffled_indices].reshape(B, max_block_num_per_batch)
+    next_block_id = 1
+    print(f"max_block_num_per_batch: {max_block_num_per_batch}")
     block_table = torch.zeros(size=(B, max_block_num_per_batch), dtype=torch.int32)
     for i in range(B):
+        # 需要读取state的范围
         cur_start = start_pos[i] // cmp_ratio * cmp_ratio - cmp_ratio
         cur_end = start_pos[i] // cmp_ratio * cmp_ratio + cmp_ratio
         if start_pos[i] % cmp_ratio == 0:
             cur_end = start_pos[i]
+        cur_end = min(cur_end, start_pos[i] + S)
         cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
         cur_end_block_id = (cur_end - 1) // block_size
         for j in range(cur_start_block_id, cur_end_block_id + 1):
-            block_table[i][j] = index[i][j]
+            block_table[i][j] = next_block_id
+            next_block_id = next_block_id + 1
+        # 需要写入state的范围
         end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
-        next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
-        next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
-        if (start_pos[i] + end_pos) % cmp_ratio == 0:
+        if save_state_seqlens is not None:
+            next_start = start_pos[i] + end_pos - save_state_seqlens[i]
             next_end = start_pos[i] + end_pos
+        else:
+            next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
+            next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
+            if (start_pos[i] + end_pos) % cmp_ratio == 0:
+                next_end = start_pos[i] + end_pos
+        next_end = min(next_end, start_pos[i] + end_pos)
         next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
         next_end_block_id = (next_end - 1) // block_size
         for j in range(next_start_block_id, next_end_block_id + 1):
-            block_table[i][j] = index[i][j]
-    kv_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
-    score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+            if block_table[i][j] == 0:
+                block_table[i][j] = next_block_id
+                next_block_id = next_block_id + 1
+
+    if B==0:
+        kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+        score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+    else:
+        kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+        score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -624,16 +649,18 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
         rope_cos_shape = rope_sin_shape
 
-    x = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(data_type)
-    wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type)
-    wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type)
-    ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32)
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(data_type)
+    x = torch.tensor(np.random.uniform(x_datarange[0], x_datarange[1], x_shape)).to(data_type)
+    wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
+    wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
+    ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
+    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(data_type)
     rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type)
     rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type)
     print(f"start_pos={start_pos}")
     print(f"seqused={seqused}")
     print(f"cu_seqlens={cu_seqlens}")
+
+
     # ======================== gen input data finish =============================
 
     # ======================== execute cpu start =================================
@@ -701,16 +728,19 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     print(f"cmp_kv: shape {npu_out.shape}, dtype: {npu_out.dtype}")
 
     # 结果精度对比
-    print("\n==========================================================check result=========================================================")
+    check_succeed = True
+    data_type = str(npu_out.dtype)
+    print("--------------------------------------------------------------check result-------------------------------------------------------------")
     check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
-    print("\n==========================================================check kv state update=========================================================")
+    print("--------------------------------------------------------------check kv state update-------------------------------------------------------------")
     check_result(cpu_kv_state[update_kv].to(torch.float32), kv_state.cpu()[update_kv].to(torch.float32), data_type)
-    print("\n==========================================================check score state update=========================================================")
+    print("--------------------------------------------------------------check score state update-------------------------------------------------------------")
     check_result(cpu_score_state[update_score].to(torch.float32), score_state.cpu()[update_score].to(torch.float32), data_type)
-    print("\n==========================================================check kv state origin=========================================================")
+    print("--------------------------------------------------------------check kv state origin-------------------------------------------------------------")
     check_result(cpu_kv_state[~update_kv].to(torch.float32), kv_state.cpu()[~update_kv].to(torch.float32), data_type, 0.0)
-    print("\n==========================================================check score state origin=========================================================")
+    print("--------------------------------------------------------------check score state origin-------------------------------------------------------------")
     check_result(cpu_score_state[~update_score].to(torch.float32), score_state.cpu()[~update_score].to(torch.float32), data_type, 0.0)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -730,6 +760,7 @@ if __name__ == "__main__":
     parser.add_argument('--hidden_size', type=int, default=4096)
     parser.add_argument('--rope_head_dim', type=int, choices=[64], default=64)
     parser.add_argument('--norm_eps', type=float, default=1e-6)
+    parser.add_argument('--save_state_seqlens', type=int, nargs='*', help='save to kv_state and score_state of seq id in [start_pos + seqused - save_state_seqlens, start_pos + seqused)')
     args = parser.parse_args()
 
     if args.data_type == "float16":
@@ -756,4 +787,5 @@ if __name__ == "__main__":
             data_type,
             args.hidden_size,
             args.rope_head_dim,
-            args.norm_eps)
+            args.norm_eps,
+            args.save_state_seqlens)

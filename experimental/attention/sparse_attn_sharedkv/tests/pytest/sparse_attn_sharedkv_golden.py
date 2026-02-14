@@ -1,24 +1,21 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This program is free software, you can redistribute it and/or modify.
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# ======================================================================================================================
+# -----------------------------------------------------------------------------------------------------------
 
-import custom_ops as ops
 import math
 import numpy as np
 import os
 import pytest
 import random
-import test_sas
 import torch
-import torch_npu
 
 DATA_RANGE_LEFT = -10
 DATA_RANGE_RIGHT = 10
@@ -161,7 +158,7 @@ class GeneralizedSFA:
                                     k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:, :]
                             else: # cmp_kv
                                 if i_S2 < total_s2_loop_time - 1:
-                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:(i_S2 + 1) * s2_base_size, :]
+                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:(i_S2 - ori_s2_loop_time + 1) * s2_base_size, :]
                                 else:
                                     k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:, :]
                             v_tile = k_tile.clone()
@@ -505,12 +502,9 @@ def gen_cmp_kv(layout_q, cmp_kv_type, B, S1, T1, N2, D, K, block_num2, block_siz
     if cmp_ratio is None:
         raise ValueError(f"cmp_ratio can't be None")
 
-    if template_idx == 1:
-        if cmp_ratio != 128:
-            raise ValueError(f"unsupported cmp_ratio {cmp_ratio} in template_idx {template_idx}")
-    elif template_idx == 2:
-        if cmp_ratio != 4:
-            raise ValueError(f"unsupported cmp_ratio {cmp_ratio} in template_idx {template_idx}")
+    if template_idx == 1 or template_idx == 2:
+        if cmp_ratio != 128 and cmp_ratio != 4:
+            raise ValueError(f"unsupported cmp_ratio: {cmp_ratio}")
     else:
         raise ValueError(f"unsupported template_idx: {template_idx}")
 
@@ -569,8 +563,8 @@ def gen_cmp_kv(layout_q, cmp_kv_type, B, S1, T1, N2, D, K, block_num2, block_siz
 
 def gen_data(params):
     layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2, \
-    block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, \
-    ori_win_left, ori_win_right, case_name, S2, q_datarange, ori_kv_datarange, cmp_kv_datarange = params
+    block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, \
+    ori_win_left, ori_win_right, case_name, S2, q_datarange, ori_kv_datarange, cmp_kv_datarange, seqused_q = params
     if len(seqused_kv) != B:
         raise ValueError(f"len(seqused_kv) != B, which is {len(seqused_kv)} != {B}")
     else:
@@ -579,6 +573,8 @@ def gen_data(params):
         cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     if seqused_kv is not None:
         seqused_kv = torch.tensor(seqused_kv).to(torch.int32)
+    if seqused_q is not None:
+        seqused_q = torch.tensor(seqused_q).to(torch.int32)
 
     # 获取最长 q
     if layout_q == 'TND':
@@ -593,8 +589,10 @@ def gen_data(params):
         q = (torch.rand((B, S1, N1, D)) * (q_datarange[1] - q_datarange[0]) + q_datarange[0]).to(q_type)
         if seqused_q is None:
             act_q = B * [S1]
+            seqused_q = torch.tensor(B * [S1]).to(torch.int32)
         else:
             act_q = seqused_q
+            seqused_q = torch.tensor(seqused_q).to(torch.int32)
     elif layout_q == "TND":
         T1, B = int(T1), int(B)
         q = (torch.rand((T1, N1, D)) * (q_datarange[1] - q_datarange[0]) + q_datarange[0]).to(q_type)
@@ -669,9 +667,9 @@ def gen_data(params):
             'N1': N1,
             'N2': N2,
             'D': D,
-            'cu_seqlens_q': cu_seqlens_q, 
+            'cu_seqlens_q': cu_seqlens_q,
             'seqused_q': seqused_q,
-            'seqused_kv': seqused_kv,    
+            'seqused_kv': seqused_kv,
             'B': B,
             'max_seqlen_q': max_seqlen_q,
             'max_seqlen_kv': max(seqused_kv),
@@ -717,222 +715,12 @@ def save_test_case(input_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
     case_name = f"{input_data['template_run_mode']}_layoutQ_{input_data['layout_q']}_layoutKV_{input_data['layout_kv']}_B_{input_data['B']}_S1_{input_data['S1']}_S2_{input_data['S2']}_T1_{input_data['T1']}_N1_{input_data['N1']}_N2_{input_data['N2']}_{input_data['case_name']}"
-    
+
     # 生成文件名
     input_filename = f"sas_case_{case_name}.pt"
     input_filepath = os.path.join(output_dir, input_filename)
-    
+
     # 保存数据
     torch.save(input_data, input_filepath)
     print(f"测试用例已保存到: {input_filepath}")
     return input_filepath
-
-def call_npu(input_data):
-    params = input_data['params']
-    metadata_input = input_data['metadata_input']
-    tensor_input = input_data['input']
-    print("用例参数: ", params)
-
-    # metadata解析
-    K = metadata_input['K']
-    cmp_ratio = metadata_input['cmp_ratio']
-    N1 = metadata_input['N1']
-    N2 = metadata_input['N2']
-    D = metadata_input['D']
-    B = metadata_input['B']
-
-    # tensor解析
-    q = tensor_input['q'].npu()
-    ori_kv = tensor_input['ori_kv'].npu()
-    ori_block_table = tensor_input['ori_block_table'].npu()
-    if 'cu_seqlens_q' in tensor_input and tensor_input['cu_seqlens_q'] is not None:
-        cu_seqlens_q = tensor_input['cu_seqlens_q']
-    else:
-        cu_seqlens_q = torch.tensor([])
-    cu_seqlens_q = cu_seqlens_q.npu()
-    used_seqused_q_flag = False
-    if 'seqused_q' in tensor_input and tensor_input['seqused_q'] is not None:
-        seqused_q = tensor_input['seqused_q']
-        used_seqused_q_flag = True
-    else:
-        seqused_q = torch.tensor([])
-    seqused_q = seqused_q.npu()
-    seqused_kv = tensor_input['seqused_kv'].npu()
-    sinks = tensor_input['sinks'].npu()
-    softmax_scale = tensor_input['softmax_scale']
-    ori_mask_mode = tensor_input['ori_mask_mode']
-    cmp_mask_mode = tensor_input['cmp_mask_mode']
-    ori_win_left = tensor_input['ori_win_left']
-    ori_win_right = tensor_input['ori_win_right']
-    layout_q = tensor_input['layout_q'] if type(tensor_input['layout_q']) == type('TND') else tensor_input['layout_q'][0]
-    layout_kv = tensor_input['layout_kv']
-    ori_k_in_pa_shape = tensor_input['ori_kv'].npu()
-    cmp_k_in_pa_shape = tensor_input['cmp_kv'].npu() if tensor_input['cmp_kv'] is not None else None
-    max_seqlen_q = metadata_input['max_seqlen_q']
-    ori_max_s2 = metadata_input['max_seqlen_kv']
-    cmp_sparse_indices = tensor_input['cmp_sparse_indices']
-    cmp_block_table = tensor_input['cmp_block_table']
-
-    # 路由到三个算子的逻辑：
-    template_idx = 0
-    if K is None :
-        if cmp_ratio is None:
-            template_idx = 0  # SWA
-        else:
-            template_idx = 1  # CFA
-    else:
-        template_idx = 2  # SCFA
-
-    if template_idx == 1 or template_idx == 2:
-        cmp_k_in_pa_shape = cmp_k_in_pa_shape.npu()
-        if cmp_block_table is not None:
-            cmp_block_table = cmp_block_table.npu()
-    if template_idx == 2:
-        cmp_sparse_indices = cmp_sparse_indices.npu()
-
-    if template_idx == 1 or template_idx == 2:
-        cmp_k_in_pa_shape = cmp_k_in_pa_shape.npu()
-        if cmp_block_table is not None:
-            cmp_block_table = cmp_block_table.npu()
-    if template_idx == 2:
-        cmp_sparse_indices = cmp_sparse_indices.npu()
-
-    q = q.npu()
-    ori_k_in_pa_shape = ori_k_in_pa_shape.npu()
-    ori_block_table = ori_block_table.npu()
-    cu_seqlens_q = cu_seqlens_q.npu()
-    seqused_kv = seqused_kv.npu()
-    sinks = sinks.npu()
-
-    if template_idx == 0:
-        metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
-            num_heads_q=N1,
-            num_heads_kv=N2,
-            head_dim=D,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
-            seqused_q=seqused_q,
-            seqused_kv=seqused_kv,
-            batch_size=B,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=ori_max_s2,
-            ori_mask_mode=ori_mask_mode,
-            ori_win_left=ori_win_left,
-            ori_win_right=ori_win_right,
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            has_ori_kv=ori_k_in_pa_shape != None,
-            has_cmp_kv=cmp_k_in_pa_shape != None,
-            device = "npu:0")
-        npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
-                                                               ori_kv=ori_k_in_pa_shape,
-                                                               ori_block_table=ori_block_table,
-                                                               cu_seqlens_q=cu_seqlens_q if layout_q == 'TND' else None,
-                                                               seqused_q=seqused_q if used_seqused_q_flag else None,
-                                                               seqused_kv=seqused_kv,
-                                                               sinks=sinks,
-                                                               metadata=metadata,
-                                                               softmax_scale=softmax_scale,
-                                                               ori_mask_mode=ori_mask_mode,
-                                                               ori_win_left=ori_win_left,
-                                                               ori_win_right=ori_win_right,
-                                                               layout_q=layout_q,
-                                                               layout_kv=layout_kv)
-    elif template_idx == 1:
-        metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
-            num_heads_q=N1,
-            num_heads_kv=N2,
-            head_dim=D,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
-            seqused_q=seqused_q,
-            seqused_kv=seqused_kv,
-            batch_size=B,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=ori_max_s2,
-            cmp_ratio=cmp_ratio,
-            ori_mask_mode=ori_mask_mode,
-            cmp_mask_mode=cmp_mask_mode,
-            ori_win_left=ori_win_left,
-            ori_win_right=ori_win_right,
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            has_ori_kv=ori_k_in_pa_shape != None,
-            has_cmp_kv=cmp_k_in_pa_shape != None,
-            device = "npu:0")
-        npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
-                                                               ori_kv=ori_k_in_pa_shape,
-                                                               cmp_kv=cmp_k_in_pa_shape,
-                                                               ori_block_table=ori_block_table,
-                                                               cmp_block_table=cmp_block_table,
-                                                               cu_seqlens_q=cu_seqlens_q if layout_q == 'TND' else None,
-                                                               seqused_q=seqused_q if used_seqused_q_flag else None,
-                                                               seqused_kv=seqused_kv,
-                                                               sinks=sinks,
-                                                               metadata=metadata,
-                                                               softmax_scale=softmax_scale,
-                                                               cmp_ratio=cmp_ratio,
-                                                               ori_mask_mode=ori_mask_mode,
-                                                               cmp_mask_mode=cmp_mask_mode,
-                                                               ori_win_left=ori_win_left,
-                                                               ori_win_right=ori_win_right,
-                                                               layout_q=layout_q,
-                                                               layout_kv=layout_kv)
-    else:
-        metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
-            num_heads_q=N1,
-            num_heads_kv=N2,
-            head_dim=D,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
-            seqused_q=seqused_q,
-            seqused_kv=seqused_kv,
-            batch_size=B,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=ori_max_s2,
-            cmp_topk=K,
-            cmp_ratio=cmp_ratio,
-            ori_mask_mode=ori_mask_mode,
-            cmp_mask_mode=cmp_mask_mode,
-            ori_win_left=ori_win_left,
-            ori_win_right=ori_win_right,
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            has_ori_kv=ori_k_in_pa_shape != None,
-            has_cmp_kv=cmp_k_in_pa_shape != None,
-            device = "npu:0")
-        npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
-                                                                ori_kv=ori_k_in_pa_shape,
-                                                                cmp_kv=cmp_k_in_pa_shape,
-                                                                cmp_sparse_indices=cmp_sparse_indices,
-                                                                ori_block_table=ori_block_table,
-                                                                cmp_block_table=cmp_block_table,
-                                                                cu_seqlens_q=cu_seqlens_q if layout_q == 'TND' else None,
-                                                                seqused_q=seqused_q if used_seqused_q_flag else None,
-                                                                seqused_kv=seqused_kv,
-                                                                sinks=sinks,
-                                                                metadata=metadata,
-                                                                softmax_scale=softmax_scale,
-                                                                cmp_ratio=cmp_ratio,
-                                                                ori_mask_mode=ori_mask_mode,
-                                                                cmp_mask_mode=cmp_mask_mode,
-                                                                ori_win_left=ori_win_left,
-                                                                ori_win_right=ori_win_right,
-                                                                layout_q=layout_q,
-                                                                layout_kv=layout_kv)
-
-    torch.npu.synchronize()
-    return npu_result, softmax_lse
-
-def test_sas_process(params):
-    layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2, \
-    block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, \
-    ori_win_left, ori_win_right, case_name, S2, q_datarange, ori_kv_datarange, cmp_kv_datarange = params
-
-    input_data = gen_data(params)
-    npu_result, softmax_lse = call_npu(input_data)
-
-    return npu_result, input_data['cpu_output']

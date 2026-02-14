@@ -1,18 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This program is free software, you can redistribute it and/or modify.
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# ======================================================================================================================
+# -----------------------------------------------------------------------------------------------------------
 
 import ast
-import check_result
-import deal_excel
+import utils
 import itertools
 import math
 import numpy as np
@@ -22,11 +21,12 @@ from pathlib import Path
 import pytest
 import random
 import sparse_attn_sharedkv_process
+import sparse_attn_sharedkv_golden
 import torch
 
-excel_path = os.getenv("SAS_EXCEL_PATH", "./cases/sas_redline_L0.xlsx")
+excel_path = os.getenv("SAS_EXCEL_PATH", "./excel/example.xlsx")
 excel_sheet = os.getenv("SAS_EXCEL_SHEET", "Sheet1")
-ENABLED_PARAMS_FROM_FILE = deal_excel.load_excel_test_cases(excel_path, excel_sheet)
+ENABLED_PARAMS_FROM_FILE = utils.load_excel_test_cases(excel_path, excel_sheet)
 save_path = os.getenv("SAS_PT_SAVE_PATH", "./data")
 
 param_combinations = []
@@ -51,6 +51,7 @@ for params in ENABLED_PARAMS_FROM_FILE:
         "block_size1": params.get("block_size1"),
         "block_size2": params.get("block_size2", [None]),
         "cu_seqlens_q": params.get("cu_seqlens_q", [None]),
+        "seqused_q": params.get("seqused_q", [None]),
         "seqused_kv": params.get("seqused_kv", [None]),
         "softmax_scale": params.get("softmax_scale"),
         "cmp_ratio": params.get("cmp_ratio", [None]),
@@ -79,7 +80,7 @@ def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
     B = int(param_combinations['B'])
     S1 = int(param_combinations['S1'])
     S2 = None if param_combinations['S2'] is None else int(param_combinations['S2'])
-    T1 = int(param_combinations['T1'])
+    T1 = None if param_combinations['T1'] is None else int(param_combinations['T1'])
     N1 = int(param_combinations['N1'])
     N2 = int(param_combinations['N2'])
     D = int(param_combinations['D'])
@@ -88,7 +89,8 @@ def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
     block_num2 = None if param_combinations['block_num2'] is None else int(param_combinations['block_num2'])
     block_size1 = param_combinations['block_size1']
     block_size2 = None if param_combinations['block_size2'] is None else int(param_combinations['block_size2'])
-    cu_seqlens_q = ast.literal_eval(param_combinations['cu_seqlens_q'])
+    cu_seqlens_q = None if param_combinations['cu_seqlens_q'] is None else ast.literal_eval(param_combinations['cu_seqlens_q'])
+    seqused_q = None if param_combinations['seqused_q'] is None else ast.literal_eval(param_combinations['seqused_q'])
     seqused_kv = ast.literal_eval(param_combinations['seqused_kv'])
     softmax_scale = param_combinations['softmax_scale']
     cmp_ratio = None if param_combinations['cmp_ratio'] is None else int(param_combinations['cmp_ratio'])
@@ -110,11 +112,11 @@ def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
     test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
                 block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
                 ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
-                ori_kv_datarange, cmp_kv_datarange
+                ori_kv_datarange, cmp_kv_datarange, seqused_q
 
     print("data parsed.", test_data)
     print("strat to generate data")
     # 生成测试数据
-    input_data = sparse_attn_sharedkv_process.gen_data(test_data)    
+    input_data = sparse_attn_sharedkv_golden.gen_data(test_data)    
     print("strat to save data")
-    sparse_attn_sharedkv_process.save_test_case(input_data, save_path)
+    sparse_attn_sharedkv_golden.save_test_case(input_data, save_path)

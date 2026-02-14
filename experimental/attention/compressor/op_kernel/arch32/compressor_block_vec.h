@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -762,8 +762,25 @@ __aicore__ inline void CompressorBlockVector<COMP>::ReadState(const LocalTensor<
                     // dDealSize必须为64
                     Duplicate(kvLocal, FLOAT_ZERO, dDealSize, constInfo_.cmpRatio, 1, 2 * dDealSize / 8);
                     Duplicate(scoreLocal, SOFTMAX_MIN_NUM, dDealSize, constInfo_.cmpRatio, 1, 2 * dDealSize / 8);
+                    if (blockInfo.bStartPos) {
+                        uint32_t copySeqCnt = blockInfo.bStartPos;
+                        uint64_t endSeqIdx = blockInfo.bStartPos;
+                        uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
+                        uint64_t srcBaseOffset = dDealSize * constInfo_.cmpRatio * 2;
+                        ReadFromCacheState(kvLocal[srcBaseOffset], kvStateGm_, kvBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                        ReadFromCacheState(scoreLocal[srcBaseOffset], scoreStateGm_, scoreBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                    }
                 } else {
                     uint32_t copySeqCnt = constInfo_.cmpRatio + blockInfo.bStartPos % constInfo_.cmpRatio;
+                    uint64_t endSeqIdx = blockInfo.bStartPos;
+                    uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
+                    uint64_t srcBaseOffset = 0;
+                    ReadFromCacheState(kvLocal, kvStateGm_, kvBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                    ReadFromCacheState(scoreLocal, scoreStateGm_, scoreBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                }
+            } else if (blockInfo.sIdx == (constInfo_.cmpRatio - (blockInfo.bStartPos % constInfo_.cmpRatio))) {
+                if ((blockInfo.bStartPos % constInfo_.cmpRatio) > 0) {
+                    uint32_t copySeqCnt = blockInfo.bStartPos % constInfo_.cmpRatio;
                     uint64_t endSeqIdx = blockInfo.bStartPos;
                     uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
                     uint64_t srcBaseOffset = 0;

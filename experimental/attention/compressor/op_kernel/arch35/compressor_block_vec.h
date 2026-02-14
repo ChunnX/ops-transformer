@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -128,6 +128,7 @@ private:
         const BlockInfo &blockInfo, uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline void ReadState(const LocalTensor<T> kvLocal, const LocalTensor<T> scoreLocal,
         const BlockInfo &blockInfo, uint32_t dStartIdx, uint32_t dDealSize);
+    __aicore__ inline uint32_t GetPreBatchIdx(uint32_t bIdx);
     // static constexpr uint64_t SYNC_INPUT_BUF1_FLAG = 2;
     // static constexpr uint64_t SYNC_INPUT_BUF1_PONG_FLAG = 3;
     uint32_t cmpRatio_ = 0U;
@@ -585,21 +586,36 @@ __aicore__ inline void CompressorBlockVector<COMP>::WriteToCacheState(const Glob
 }
 
 template <typename COMP>
+__aicore__ inline uint32_t CompressorBlockVector<COMP>::GetPreBatchIdx(uint32_t bIdx)
+{
+    uint32_t preBIdx = 0;
+    if (bIdx == 0) {
+        preBIdx = constInfo_.batchSize - 1;
+    } else {
+        preBIdx = bIdx - 1;
+    }
+    return preBIdx;
+}
+
+template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::SaveLeftFirst(const LocalTensor<T> kvLocal, const LocalTensor<T> scoreLocal,
     const BlockInfo &blockInfo, uint32_t dStartIdx, uint32_t dDealSize)
 {
     uint32_t coff = static_cast<uint32_t>(COMP::coff);
-    uint32_t preBIdx = 0;
     // 左边为上一个batch或者最后一个batch的数据
-    preBIdx = (blockInfo.bIdx - 1 + constInfo_.batchSize) % constInfo_.batchSize;
-
+    uint32_t preBIdx = GetPreBatchIdx(blockInfo.bIdx);
     uint32_t bSeqUsed = GetSeqUsed(preBIdx);
     uint32_t bStartPos = GetStartPos(preBIdx);
     // S=0时，跳B
+    uint32_t bLoopIdx = 0;
     while (bSeqUsed == 0) {
-        preBIdx = (preBIdx - 1 + constInfo_.batchSize) % constInfo_.batchSize;
+        preBIdx = GetPreBatchIdx(preBIdx);
         bSeqUsed = GetSeqUsed(preBIdx);
         bStartPos = GetStartPos(preBIdx);
+        bLoopIdx++;
+        if (bLoopIdx >= constInfo_.batchSize) {
+            break;
+        }
     }
 
     uint32_t endIdxInBlock = (bStartPos + bSeqUsed) % constInfo_.cmpRatio;
@@ -619,90 +635,48 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> kvLocal, const LocalTensor<T> scoreLocal,
     const BlockInfo &blockInfo, uint32_t dStartIdx, uint32_t dDealSize)
 {
-    if (COMP::coff == COFF::OVERLAP) {
+    if constexpr (COMP::coff == COFF::OVERLAP) {
         uint32_t coff = static_cast<uint32_t>(COMP::coff);
         // 存右边
-        if (blockInfo.sIdx + blockInfo.validSeqCnt == blockInfo.bSeqUsed) {
-            uint32_t copySeqCnt = constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt;
-            if (blockInfo.validSeqCnt < copySeqCnt) {
-                    copySeqCnt = blockInfo.validSeqCnt;
-            } else {
-                if (blockInfo.tailHolderSeqCnt > 0) {
-                    if (blockInfo.validSeqCnt - copySeqCnt > constInfo_.cmpRatio) {
-                        copySeqCnt += constInfo_.cmpRatio;
-                    } else {
-                        copySeqCnt += blockInfo.validSeqCnt - copySeqCnt;
-                    }
-                }
-            }
-            uint64_t endSeqIdx = blockInfo.bStartPos + blockInfo.sIdx + blockInfo.validSeqCnt;
-            uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
-            uint64_t srcBaseOffset = (blockInfo.headHolderSeqCnt + blockInfo.validSeqCnt - copySeqCnt) * coff * dDealSize;
-            WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset + dDealSize], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx + constInfo_.headDim, dDealSize);
-            WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset + dDealSize], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx + constInfo_.headDim, dDealSize);
-        } else if (blockInfo.sIdx + blockInfo.validSeqCnt + constInfo_.cmpRatio > blockInfo.bSeqUsed) {
-            uint32_t copySeqCnt = constInfo_.cmpRatio;
-            if (copySeqCnt > blockInfo.validSeqCnt) {
-                copySeqCnt = blockInfo.validSeqCnt;
-            }
-            uint64_t endSeqIdx = blockInfo.bStartPos + blockInfo.sIdx + blockInfo.validSeqCnt;
-            uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
-            uint64_t srcBaseOffset = (blockInfo.headHolderSeqCnt + blockInfo.validSeqCnt - copySeqCnt) * coff * dDealSize;
-            WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset + dDealSize], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx + constInfo_.headDim, dDealSize);
-            WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset + dDealSize], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx + constInfo_.headDim, dDealSize);
-        }
-
+        uint64_t copySeqCnt = blockInfo.validSeqCnt;
+        uint64_t startSeqIdx = blockInfo.bStartPos + blockInfo.sIdx;
+        uint64_t endSeqIdx = startSeqIdx + copySeqCnt;
+        uint64_t srcBaseOffset = blockInfo.headHolderSeqCnt * coff * dDealSize;
+        WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset + dDealSize], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx + constInfo_.headDim, dDealSize);
+        WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset + dDealSize], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx + constInfo_.headDim, dDealSize);
         // 存左边
-        if (blockInfo.dealTcSize == 1) {
-            // 左边尾块和首块是同一块
-            if (blockInfo.sIdx == 0) {
-                SaveLeftFirst(kvLocal, scoreLocal, blockInfo, dStartIdx, dDealSize);
-            } else {
-                if (blockInfo.tailHolderSeqCnt > 0) {
-                    // 左边为本batch数据
-                    uint32_t copySeqCnt = constInfo_.cmpRatio;
-                    if (blockInfo.sIdx < copySeqCnt) {
-                        copySeqCnt = blockInfo.sIdx;
-                    }
-                    uint64_t endSeqIdx = blockInfo.bStartPos + blockInfo.sIdx + blockInfo.validSeqCnt - (constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt);
-                    uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
-                    uint64_t srcBaseOffset = (blockInfo.headHolderSeqCnt + blockInfo.validSeqCnt + blockInfo.tailHolderSeqCnt - copySeqCnt) * coff * dDealSize;
-                    WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
-                    WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
-                }
-            }
-        } else {
-            // 存左边第一块
-            if (blockInfo.sIdx == 0) {
-                SaveLeftFirst(kvLocal, scoreLocal, blockInfo, dStartIdx, dDealSize);
-            }
-
-            // 存左边最后一块
-            if (blockInfo.tailHolderSeqCnt > 0) {
-                // 左边为本batch数据
-                uint32_t copySeqCnt = constInfo_.cmpRatio;
-                if (blockInfo.validSeqCnt - (constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt) < copySeqCnt) {
-                    copySeqCnt = blockInfo.validSeqCnt - (constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt);
-                }
-                uint64_t endSeqIdx = blockInfo.bStartPos + blockInfo.sIdx + blockInfo.validSeqCnt - (constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt);
-                uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
-                uint64_t srcBaseOffset = (blockInfo.headHolderSeqCnt + blockInfo.validSeqCnt + blockInfo.tailHolderSeqCnt - copySeqCnt) * coff * dDealSize;
+        if (blockInfo.sIdx == 0) {
+            SaveLeftFirst(kvLocal, scoreLocal, blockInfo, dStartIdx, dDealSize);
+            if (blockInfo.dealTcSize > 1) {
+                uint64_t copySeqCnt = blockInfo.validSeqCnt - (constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt);
+                uint64_t startSeqIdx = blockInfo.bStartPos + blockInfo.sIdx;
+                uint64_t endSeqIdx = startSeqIdx + copySeqCnt;
+                uint64_t srcBaseOffset = (constInfo_.cmpRatio + blockInfo.headHolderSeqCnt) * coff * dDealSize;
                 WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
                 WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
             }
-        }
-    } else {
-        if (blockInfo.tailHolderSeqCnt > 0) { // 仅尾块不满时需要存到state上
-            uint32_t copySeqCnt = constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt;
-            if (copySeqCnt > blockInfo.validSeqCnt) {
-                copySeqCnt = blockInfo.validSeqCnt;
-            }
-            uint64_t srcBaseOffset = (blockInfo.headHolderSeqCnt + blockInfo.validSeqCnt - copySeqCnt) * dDealSize;
-            uint64_t endSeqIdx = blockInfo.bStartPos + blockInfo.sIdx + blockInfo.validSeqCnt;
-            uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
+        } else if (blockInfo.sIdx < constInfo_.cmpRatio) {
+            uint64_t copySeqCnt = blockInfo.validSeqCnt - (constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt) + blockInfo.sIdx;
+            uint64_t startSeqIdx = blockInfo.bStartPos;
+            uint64_t endSeqIdx = startSeqIdx + copySeqCnt;
+            uint64_t srcBaseOffset = (constInfo_.cmpRatio - blockInfo.sIdx) * coff * dDealSize;
+            WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+            WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+        } else {
+            uint64_t copySeqCnt = blockInfo.validSeqCnt - (constInfo_.cmpRatio - blockInfo.tailHolderSeqCnt) + constInfo_.cmpRatio;
+            uint64_t startSeqIdx = blockInfo.bStartPos + blockInfo.sIdx - constInfo_.cmpRatio;
+            uint64_t endSeqIdx = startSeqIdx + copySeqCnt;
+            uint64_t srcBaseOffset = 0;
             WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
             WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
         }
+    } else {
+        uint64_t copySeqCnt = blockInfo.validSeqCnt;
+        uint64_t startSeqIdx = blockInfo.bStartPos + blockInfo.sIdx;
+        uint64_t endSeqIdx = startSeqIdx + copySeqCnt;
+        uint64_t srcBaseOffset = blockInfo.headHolderSeqCnt * dDealSize;
+        WriteToCacheState(kvStateGm_, kvBlockTableGm_, kvLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+        WriteToCacheState(scoreStateGm_, scoreBlockTableGm_, scoreLocal[srcBaseOffset], blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
     }
 }
 
@@ -764,8 +738,25 @@ __aicore__ inline void CompressorBlockVector<COMP>::ReadState(const LocalTensor<
                     // dDealSize必须为64
                     Duplicate(kvLocal, FLOAT_ZERO, dDealSize, constInfo_.cmpRatio, 1, 2 * dDealSize / 8);
                     Duplicate(scoreLocal, SOFTMAX_MIN_NUM, dDealSize, constInfo_.cmpRatio, 1, 2 * dDealSize / 8);
+                    if (blockInfo.bStartPos) {
+                        uint32_t copySeqCnt = blockInfo.bStartPos;
+                        uint64_t endSeqIdx = blockInfo.bStartPos;
+                        uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
+                        uint64_t srcBaseOffset = dDealSize * constInfo_.cmpRatio * 2;
+                        ReadFromCacheState(kvLocal[srcBaseOffset], kvStateGm_, kvBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                        ReadFromCacheState(scoreLocal[srcBaseOffset], scoreStateGm_, scoreBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                    }
                 } else {
                     uint32_t copySeqCnt = constInfo_.cmpRatio + blockInfo.bStartPos % constInfo_.cmpRatio;
+                    uint64_t endSeqIdx = blockInfo.bStartPos;
+                    uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
+                    uint64_t srcBaseOffset = 0;
+                    ReadFromCacheState(kvLocal, kvStateGm_, kvBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                    ReadFromCacheState(scoreLocal, scoreStateGm_, scoreBlockTableGm_, blockInfo.bIdx, startSeqIdx, endSeqIdx, dStartIdx, dDealSize);
+                }
+            } else if (blockInfo.sIdx == (constInfo_.cmpRatio - (blockInfo.bStartPos % constInfo_.cmpRatio))) {
+                if ((blockInfo.bStartPos % constInfo_.cmpRatio) > 0) {
+                    uint32_t copySeqCnt = blockInfo.bStartPos % constInfo_.cmpRatio;
                     uint64_t endSeqIdx = blockInfo.bStartPos;
                     uint64_t startSeqIdx = endSeqIdx - copySeqCnt;
                     uint64_t srcBaseOffset = 0;
@@ -1117,15 +1108,10 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const Compressor::Ru
         inputQue1.EnQue(sinUb);
         inputQue1.DeQue<X_T>();
 
-        if constexpr (COMP::rotaryMode == ROTARY_MODE::INTERLEAVE) {
-            PipeBarrier<PIPE_V>();
-            InterleaveModeVF(sinUb, cosUb, tmpRopeInUb, tmpRopeOutUb, constInfo_.ropeHeadDim, curDealScSize, 1);
-            PipeBarrier<PIPE_V>();
-        } else {
-            PipeBarrier<PIPE_V>();
-            HalfAlignVF(sinUb, cosUb, tmpRopeInUb, tmpRopeOutUb, constInfo_.ropeHeadDim, curDealScSize, 1);
-            PipeBarrier<PIPE_V>();
-        }
+        bool isInterleave = (COMP::rotaryMode == ROTARY_MODE::INTERLEAVE) ? true : false;
+        PipeBarrier<PIPE_V>();
+        RopeVF(sinUb, cosUb, tmpRopeInUb, tmpRopeOutUb, constInfo_.ropeHeadDim, curDealScSize, 1, isInterleave);
+        PipeBarrier<PIPE_V>();
         inputQue1.FreeTensor(sinUb);
         // normal部分和rope拼接，并搬到outputub
         ropeCopyParams.blockCount = curDealScSize;

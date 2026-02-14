@@ -1,10 +1,9 @@
 #!/bin/bash
 
 # 脚本路径
-QSAS_PT_SAVE_SCRIPT="./batch/test_qsas_pt_save_from_excelcase.py"
-TEST_QSAS_PT_BATCH_SCRIPT="./batch/test_qsas_pt_batch.py"
-REPLACE_PATH_SCRIPT="./batch/replace_path.py"
-TEST_QSAS_SINGLE_SCRIPT="test_qsas_pytestcase.py"
+QSAS_PT_SAVE_SCRIPT="./batch/test_kv_quant_sparse_attn_sharedkv_pt_save.py"
+TEST_QSAS_PT_BATCH_SCRIPT="test_kv_quant_sparse_attn_sharedkv_batch.py"
+TEST_QSAS_SINGLE_SCRIPT="test_kv_quant_sparse_attn_sharedkv_single.py"
 
 # ====================== 执行区======================
 

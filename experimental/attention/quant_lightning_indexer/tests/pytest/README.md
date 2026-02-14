@@ -1,6 +1,6 @@
-# QLI算子测试框架
+# quant_lightning_indexer算子测试框架
 ## 功能说明
-基于pytest测试框架，实现QLI算子的功能验证：
+基于pytest测试框架，实现quant_lightning_indexer算子的功能验证：
 - **CPU侧**：复现算子功能用以生成golden数据
 - **NPU侧**：通过torch_npu进行算子直调获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
@@ -9,33 +9,34 @@
 ### 参数限制
 
 - **数据格式**:
-- **query_layout**：BSND TND PA_BSND
-- **key_layout**: PA_BSND
+  - **query_layout**：BSND、TND、PA_BSND
+  - **key_layout**: PA_BSND
 
 ### 环境配置
 
 #### 前置要求
-1. 确认torch_npu为最新版本
-2. source CANN包
+1、 确认torch_npu为最新版本  
+2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 
-#### Custom包调用
+#### custom包调用
 支持custom包调用
 
 ## 文件结构
 #### pytest文件结构说明
-- test_quant_lightning_indexer_single.py       # pytest测试单个用例运行主程序
-- test_quant_lightning_indexer_batch.py        # 用例批量测试主程序并生成excel文件保存结果 
-- test_quant_lightning_indexer_paramset.py     # 单用例入参配置
+- test_run_sh                                  # 执行脚本
 - quant_lightning_indexer_golden.py            # cpu侧算子golden实现
 - result_compare_method.py                     # cpu golden与npu输出精度对比
-- pytest.ini                                   # 创建CI单算子的测试标记
-- test_run_sh                                  # 用例批量测试执行脚本
+- pytest.ini                                   # 创建测试标记
 
-#### 批量用例测试
-./batch --根据excel表格批量生成用例pt文件并批量精度对比
-- quant_lightning_indexer_pt_loadprocess.py    # 读取pt文件并调用算子获取npu输出
-- quant_lightning_indexer_pt_save.py           # 读取excel表格批量生成用例pt文件
-- replace_path.py                              # test_quant_lightning_indexer_batch.py占位符替换
+单用例测试：
+- test_quant_lightning_indexer_single.py       # pytest测试单用例运行主程序 
+- test_quant_lightning_indexer_paramset.py     # 单用例入参配置
+
+批量测试：
+- test_quant_lightning_indexer_batch.py        # 用例批量测试主程序并生成excel文件保存结果
+- ./batch/quant_lightning_indexer_pt_loadprocess.py    # 读取pt文件并调用算子获取npu输出
+- ./batch/quant_lightning_indexer_pt_save.py           # 读取excel表格批量生成用例pt文件
+- ./batch/replace_path.py                              # test_quant_lightning_indexer_batch.py占位符替换
  
 
 ## 使用方法

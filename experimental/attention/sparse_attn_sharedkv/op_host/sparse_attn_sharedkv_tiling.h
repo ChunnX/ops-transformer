@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_attn_sharedkv_tiling.h
@@ -67,10 +67,6 @@ enum class KvStorageMode : uint32_t {
     PAGE_ATTENTION = 2
 };
 
-struct InnerSplitParams {
-    uint32_t s1GBaseSize = 1;
-    uint32_t s2BaseSize = 1;
-};
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
 constexpr uint32_t Q_INDEX = 0;
@@ -81,6 +77,8 @@ constexpr uint32_t CMP_SPARSE_INDICES_INDEX = 4;
 constexpr uint32_t ORI_BLOCK_TABLE_INDEX = 5;
 constexpr uint32_t CMP_BLOCK_TABLE_INDEX = 6;
 constexpr uint32_t CU_SEQLENS_Q_INDEX = 7;
+constexpr uint32_t CU_SEQLENS_ORI_KV_INDEX = 8;
+constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
 constexpr uint32_t SEQUSED_KV_INDEX = 11;
 constexpr uint32_t SINKS_INDEX = 12;
@@ -184,6 +182,8 @@ struct SASParaInfo {
     SASTilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
     SASTilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
     SASTilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
     SASTilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
@@ -232,7 +232,7 @@ public:
     uint32_t actualLenDimsKV = 0;
 
     float softmaxScale = 0;
-    int64_t cmpRatio = 0;
+    int64_t cmpRatio = 1;
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
     int64_t oriWinLeft = 0;
@@ -340,14 +340,12 @@ private:
     ge::graphStatus CheckActualSeqLens() const;
     ge::graphStatus CheckBlockTable() const;
 
-    
     gert::Shape queryShapeCmp_{};
     gert::Shape oriKvShapeCmp_{};
     gert::Shape cmpKvShapeCmp_{};
     gert::Shape oriKvSparseIndicesCmp_{};
     gert::Shape cmpKvSparseIndicesCmp_{};
     gert::Shape attenOutShapeCmp_{};
-
 
 private:
     const char *opName_;
@@ -367,7 +365,7 @@ private:
 
     uint32_t qTSize_ = 0; // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
-    int64_t cmpRatio_ = 0;
+    int64_t cmpRatio_ = 1;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
     int64_t oriWinLeft_ = 0;
@@ -412,6 +410,7 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus CheckUnrequiredParaExistence() const;
 
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
         SASLayout &layout, const std::string &name) const;
@@ -535,25 +534,15 @@ private:
 
     SASTilingInfo *sasInfo_ = nullptr;
 
-    size_t libapiSize_ = 0;
-
-    uint32_t kvSplitPart_ = 1;
     size_t mmResUbSize_ = 0;
     size_t bmm2ResUbSize_ = 0;
-    size_t qPreSizeMla_= 0;
     uint32_t sInnerLoopTimes_ = 0;
-    uint32_t sInnerSize_ = 0;
-    uint32_t sInnerSizeTail_ = 0;
+    uint32_t sInnerSize_ = 512; // s2固定切分512
     uint32_t sInnerSizeAlign_ = 0;
-    uint32_t kvSplit_ = 0;
     uint32_t usedCoreNum_ = 0;
-    uint32_t formerCoreNum_ = 0;
-    uint32_t blockSplitBn2Range_ = 0;
-    uint32_t tailSplitedBatchRange_ = 0;
     
     uint32_t headDimAlign_ = 0;
-    uint32_t mBaseSize_ = 128;
-    uint32_t mFdBaseSize_ = 8;
+    uint32_t mBaseSize_ = 64;
 };
 
 }
