@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file compressor_block_cube_perf.h
@@ -358,25 +358,6 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::CopyOutMm1Res(const RunInf
     } else {
         Fixpipe(curMm1ResGm[gmOffset], cL0Tensor, fixParams);
     }
-
-    // kv和score不拼起来，搬运俩个矩阵，待打开
-    // uint32_t nDealSize = constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
-    // FixpipeParamsV220 fixParams;
-    // fixParams.mSize = mDealSize;
-    // fixParams.nSize = nDealSize;
-    // fixParams.srcStride = (mDealSize + 15) / 16 * 16;   // 需要16对齐
-    // fixParams.dstStride = nDealSize;
-    // fixParams.ndNum = 2;
-    // fixParams.srcNdStride = constInfo_.dBaseSize;
-    // fixParams.dstNdStride = nDealSize * mDealSize;
-
-    // uint64_t gmOffset = mStart * constInfo_.dBaseSize * 2;
-
-    // if constexpr (COMP::coff == COFF::OVERLAP) {
-    //     Fixpipe((coffId == 0) ? preMm1ResGm[gmOffset] : curMm1ResGm[gmOffset], cL0Tensor, fixParams);
-    // } else {
-    //     Fixpipe(curMm1ResGm[gmOffset], cL0Tensor, fixParams);
-    // }
 }
 
 
@@ -405,7 +386,7 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::ComputeMm1(const RunInfo &
 
     // hSize为K_SIZE=512的倍数
     uint32_t hSize = constInfo_.hSize;
-    uint32_t hIdxStart = (constInfo_.aiCoreIdx % constInfo_.dBasicBlockNum) * (hSize / constInfo_.dBasicBlockNum);  // 每组核内的h循环起始不同
+    uint32_t hIdxStart = (constInfo_.aiCoreIdx % constInfo_.dBasicBlockNum) * K_L1_BASE;  // 每组核内的h循环起始不同
     for (uint32_t h = 0; h < hSize; h += K_SIZE) {
         for (uint32_t k = 0; k < K_SIZE; k += K_L1_BASE) {
             bool isFirst = (h == 0 && k == 0);
@@ -467,8 +448,6 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::ComputeMm1(const RunInfo &
         }
     }
 
-    // DumpTensorForDim2(preMm1ResGm, 1, 128 * 2 * constInfo_.dBaseSize);
-    // DumpTensorForDim2(curMm1ResGm, 2, 128 * 2 * constInfo_.dBaseSize);
 }
 
 } // namespace Compressor

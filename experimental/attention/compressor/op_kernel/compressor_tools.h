@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file compressor_slice_iterator.h
@@ -518,6 +518,7 @@ struct Vec1SliceInfo : public SliceInfo {
     uint32_t preBIdx = 0U;
     uint32_t preSIdx = 0U;
     uint32_t preBSeqUsed = 0U;
+    uint32_t preBSeqLength = 0U;
     uint32_t preBStartPos = 0U;
     uint32_t preHeadHolderSeqCnt = 0U;
     uint32_t preValidSeqCnt = 0U;
@@ -526,16 +527,23 @@ struct Vec1SliceInfo : public SliceInfo {
     uint32_t dealedSeqCnt = 0U;
     uint32_t preDealedSeqCnt = 0U;
     uint32_t dealedTcCnt = 0U;
+    uint32_t bSeqLength = 0U;
+    uint32_t actualTcNum = 0U;
+    bool isFirst = false;
+    bool isLast = false;
 };
 
-struct SeqCntInfo {
-    __aicore__ inline SeqCntInfo() {};
+struct StatisticInfo {
+    __aicore__ inline StatisticInfo() {};
+    __aicore__ inline StatisticInfo(uint32_t actualTcCnt, uint32_t dealSeqCnt, uint32_t preDealSeqCnt, bool hasPreLastTc) : actualTcCnt(actualTcCnt), dealSeqCnt(dealSeqCnt), preDealSeqCnt(preDealSeqCnt), hasPreLastTc(hasPreLastTc) {};
 
-    uint32_t dealedSeqCnt = 0U;
-    uint32_t preDealedSeqCnt = 0U;
+    uint32_t actualTcCnt = 0U;
+    uint32_t dealSeqCnt = 0U;
+    uint32_t preDealSeqCnt = 0U;
+    bool hasPreLastTc = false;
 };
 
-template <typename COMP>
+template <typename COMP, bool USE_SEQ_USED = false>
 class CompressorVec1SliceIterator {
 public:
     __aicore__ inline CompressorVec1SliceIterator(CompressorTools<COMP> &tools) : tools_(tools) {}
@@ -544,48 +552,55 @@ public:
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     template <bool RESET_FIRST = false>
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t dealedTcCnt);
+    __aicore__ inline uint32_t GetSeqLength(uint32_t bIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
     __aicore__ inline void SetDealedSeqCnt(uint32_t dealedSeqCnt);
     __aicore__ inline void SetDealedTcCnt(uint32_t dealedTcCnt);
     __aicore__ inline void SetNeedDealTcSize(uint32_t needDealTcSize);
+    __aicore__ inline void SetNeedDealTcSize(uint32_t needDealTcSize, uint32_t canDealTcSize);
     __aicore__ inline uint32_t GetNeedDealTcSize();
     __aicore__ inline bool IsEnd();
+    template <bool IS_STATISTIC = false>
     __aicore__ inline void IteratorSlice();
     __aicore__ inline Vec1SliceInfo& GetSlice();
     __aicore__ inline void GetPreTc();
-    __aicore__ inline SeqCntInfo FullIteratorSlice();
-    __aicore__ inline void Clear();
-    __aicore__ inline void Load();
-    __aicore__ inline void Save();
+    template <bool IS_STATISTIC = false>
+    __aicore__ inline StatisticInfo& FullIteratorSlice();
 
 private:
     CompressorTools<COMP> &tools_;
 
     // iterator
     bool isFirst_ = true;
+    bool isStasticFirst_ = false;
     bool isSaved_ = false;
     Vec1SliceInfo sliceInfo_{};
-    Vec1SliceInfo tempSliceInfo_ {};
-    uint32_t tempNeedDealTcSize_ = 0;
+    StatisticInfo statisticInfo_ {};
     uint32_t preFirstSeqCnt_ = 0U;
     uint32_t needDealTcSize_ = 0U;
+    uint32_t canDealTcSize_ = 0U;
     uint32_t batch_size_ = 0U;
 };
 
-template <typename COMP>
+template <typename COMP, bool USE_SEQ_USED>
 template <bool RESET_FIRST>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::Reset(uint32_t bIdx, uint32_t sIdx)
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::Reset(uint32_t bIdx, uint32_t sIdx)
 {
     sliceInfo_.bIdx = bIdx;
     sliceInfo_.sIdx = sIdx;
-    while (tools_.GetSeqUsed(sliceInfo_.bIdx) == 0) {
+    while (tools_.GetSeqLength(sliceInfo_.bIdx) == 0) {
         sliceInfo_.bIdx++;
         if (sliceInfo_.bIdx == batch_size_) {
             sliceInfo_.bIdx = 0;
         }
     }
-    sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
+    sliceInfo_.bSeqUsed = GetSeqLength(sliceInfo_.bIdx);
     sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
+    if constexpr (USE_SEQ_USED) {
+        sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
+    } else {
+        sliceInfo_.bSeqLength = sliceInfo_.bSeqUsed;
+    }
     if constexpr (COMP::coff == COFF::OVERLAP) {
         GetPreTc();
     }
@@ -594,42 +609,62 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::Reset(uint32_t bIdx, u
     }
 }
 
-template <typename COMP>
+template <typename COMP, bool USE_SEQ_USED>
 template <bool RESET_FIRST>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t dealedTcCnt)
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t dealedTcCnt)
 {
     Reset<RESET_FIRST>(bIdx, sIdx);
     SetDealedSeqCnt(dealedSeqCnt);
     SetDealedTcCnt(dealedTcCnt);
 }
 
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::SetMaxBatchSize(uint32_t batch_size)
+
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline uint32_t CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::GetSeqLength(uint32_t bIdx)
+{
+    if constexpr (USE_SEQ_USED) {
+        return tools_.GetSeqUsed(bIdx);
+    } else {
+        return tools_.GetSeqLength(bIdx);
+    }
+}
+
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::SetMaxBatchSize(uint32_t batch_size)
 {
     this->batch_size_ = batch_size;
 }
 
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::SetDealedSeqCnt(uint32_t dealedSeqCnt)
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::SetDealedSeqCnt(uint32_t dealedSeqCnt)
 {
     this->sliceInfo_.dealedSeqCnt = dealedSeqCnt;
 }
 
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::SetDealedTcCnt(uint32_t dealedTcCnt)
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::SetDealedTcCnt(uint32_t dealedTcCnt)
 {
     this->sliceInfo_.dealedTcCnt = dealedTcCnt;
 }
 
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::SetNeedDealTcSize(uint32_t needDealTcSize)
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::SetNeedDealTcSize(uint32_t needDealTcSize)
 {
     this->needDealTcSize_ = needDealTcSize;
+    this->canDealTcSize_ = needDealTcSize;
+}
+
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::SetNeedDealTcSize(uint32_t needDealTcSize, uint32_t canDealTcSize)
+{
+    this->needDealTcSize_ = needDealTcSize;
+    this->canDealTcSize_ = canDealTcSize;
 }
 
 
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::GetPreTc()
+
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::GetPreTc()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (sliceInfo_.sIdx == 0) {
@@ -641,10 +676,10 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::GetPreTc()
             } else {
                 sliceInfo_.preBIdx--;
             }
-        } while (tools_.GetSeqUsed(sliceInfo_.preBIdx) == 0);
-        sliceInfo_.preBSeqUsed = tools_.GetSeqUsed(sliceInfo_.preBIdx);
+        } while (tools_.GetSeqLength(sliceInfo_.preBIdx) == 0);
+        sliceInfo_.preBSeqUsed = GetSeqLength(sliceInfo_.preBIdx);
         sliceInfo_.preBStartPos = tools_.GetStartPos(sliceInfo_.preBIdx);
-        sliceInfo_.preSIdx = max(Trunc(sliceInfo_.preBStartPos + sliceInfo_.preBSeqUsed - 1, cmpRatio), sliceInfo_.preBStartPos) - sliceInfo_.preBStartPos;
+        sliceInfo_.preSIdx = max(Trunc(sliceInfo_.preBStartPos + tools_.GetSeqLength(sliceInfo_.preBIdx) - 1, cmpRatio), sliceInfo_.preBStartPos) - sliceInfo_.preBStartPos;
     } else {
         sliceInfo_.preBIdx = sliceInfo_.bIdx;
         if (sliceInfo_.sIdx < cmpRatio) {
@@ -655,26 +690,49 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::GetPreTc()
         sliceInfo_.preBSeqUsed = sliceInfo_.bSeqUsed;
         sliceInfo_.preBStartPos = sliceInfo_.bStartPos;
     }
+    if constexpr (USE_SEQ_USED) {
+        sliceInfo_.preBSeqLength = tools_.GetSeqLength(sliceInfo_.preBIdx);
+    } else {
+        sliceInfo_.preBSeqLength = sliceInfo_.preBSeqUsed;
+    }
 }
 
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
+template <typename COMP, bool USE_SEQ_USED>
+template <bool IS_STATISTIC>
+__aicore__ inline void CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::IteratorSlice()
 {
-    // printf("needDealTcSize_: %d -> ", needDealTcSize_);
-    needDealTcSize_ -= (sliceInfo_.headHolderSeqCnt + sliceInfo_.validSeqCnt + sliceInfo_.tailHolderSeqCnt) / tools_.toolParams_.cmpRatio;
-    // printf("%d\n", needDealTcSize_);
+    uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
+    if constexpr (IS_STATISTIC) {
+        statisticInfo_.actualTcCnt += sliceInfo_.actualTcNum;
+        if (isStasticFirst_) {
+            statisticInfo_.hasPreLastTc = sliceInfo_.preSIdx < tools_.GetSeqUsed(sliceInfo_.preBIdx);
+            isStasticFirst_ = false;
+        }
+    }
+    needDealTcSize_ -= sliceInfo_.dealTcSize;
+    canDealTcSize_ -= sliceInfo_.dealTcSize;
     sliceInfo_.dealedSeqCnt += sliceInfo_.validSeqCnt;
     sliceInfo_.dealedTcCnt += sliceInfo_.dealTcSize;
     sliceInfo_.sIdx += sliceInfo_.validSeqCnt;
-    if (sliceInfo_.sIdx == sliceInfo_.bSeqUsed) {
+    if (sliceInfo_.sIdx >= sliceInfo_.bSeqUsed) {
         do {
+            uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
+            if (sliceInfo_.bSeqUsed < seqLength) {
+                sliceInfo_.dealedTcCnt += CeilDivT(sliceInfo_.bStartPos + seqLength, cmpRatio) - CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, cmpRatio);
+                canDealTcSize_ -= CeilDivT(sliceInfo_.bStartPos + seqLength, cmpRatio) - CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, cmpRatio);
+            }
             sliceInfo_.bIdx++;
             if (sliceInfo_.bIdx == batch_size_) {
                 sliceInfo_.bIdx = 0;
             }
-        } while (tools_.GetSeqUsed(sliceInfo_.bIdx) == 0);
-        sliceInfo_.sIdx = 0;
-        sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
+            sliceInfo_.sIdx = 0;
+            sliceInfo_.bSeqUsed = GetSeqLength(sliceInfo_.bIdx);
+        } while (GetSeqLength(sliceInfo_.bIdx) == 0);
+        if constexpr (USE_SEQ_USED) {
+            sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
+        } else {
+            sliceInfo_.bSeqLength = sliceInfo_.bSeqUsed;
+        }
         sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
     }
     if constexpr (COMP::coff == COFF::OVERLAP) {
@@ -685,26 +743,26 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
     }
 }
 
-template <typename COMP>
-__aicore__ inline uint32_t CompressorVec1SliceIterator<COMP>::GetNeedDealTcSize()
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline uint32_t CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::GetNeedDealTcSize()
 {
     return needDealTcSize_;
 }
 
 
-template <typename COMP>
-__aicore__ inline bool CompressorVec1SliceIterator<COMP>::IsEnd()
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline bool CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::IsEnd()
 {
     return (needDealTcSize_ == 0);
 }
 
-template <typename COMP>
-__aicore__ inline Vec1SliceInfo& CompressorVec1SliceIterator<COMP>::GetSlice()
+template <typename COMP, bool USE_SEQ_USED>
+__aicore__ inline Vec1SliceInfo& CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::GetSlice()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if constexpr (COMP::coff == COFF::OVERLAP) {
         sliceInfo_.preHeadHolderSeqCnt = (sliceInfo_.preBStartPos + sliceInfo_.preSIdx) % cmpRatio;
-        sliceInfo_.preValidSeqCnt = min(sliceInfo_.preBSeqUsed - sliceInfo_.preSIdx, cmpRatio - sliceInfo_.preHeadHolderSeqCnt);
+        sliceInfo_.preValidSeqCnt = min(sliceInfo_.preBSeqLength - sliceInfo_.preSIdx, cmpRatio - sliceInfo_.preHeadHolderSeqCnt);
         sliceInfo_.preTailHolderSeqCnt = cmpRatio - (sliceInfo_.preBStartPos + sliceInfo_.preSIdx + sliceInfo_.preValidSeqCnt) % cmpRatio;
         if (sliceInfo_.preTailHolderSeqCnt == cmpRatio) {
             sliceInfo_.preTailHolderSeqCnt = 0;
@@ -716,67 +774,63 @@ __aicore__ inline Vec1SliceInfo& CompressorVec1SliceIterator<COMP>::GetSlice()
     }
     // 计算头部占位行数、有效数据行数、尾部占位行数
     sliceInfo_.headHolderSeqCnt = (sliceInfo_.bStartPos + sliceInfo_.sIdx) % cmpRatio;
-    sliceInfo_.validSeqCnt = sliceInfo_.bSeqUsed - sliceInfo_.sIdx;
-    if (CeilDivT(sliceInfo_.headHolderSeqCnt + sliceInfo_.validSeqCnt, cmpRatio) > needDealTcSize_) {
-        sliceInfo_.validSeqCnt = needDealTcSize_ * cmpRatio - sliceInfo_.headHolderSeqCnt;
+    if (sliceInfo_.sIdx >= sliceInfo_.bSeqUsed) {
+        sliceInfo_.validSeqCnt = 0;
+    } else {
+        sliceInfo_.validSeqCnt = sliceInfo_.bSeqUsed - sliceInfo_.sIdx;
+        if (CeilDivT(sliceInfo_.headHolderSeqCnt + sliceInfo_.validSeqCnt, cmpRatio) > needDealTcSize_) {
+            sliceInfo_.validSeqCnt = needDealTcSize_ * cmpRatio - sliceInfo_.headHolderSeqCnt;
+        }
     }
     uint32_t globalTotalSeqCnt = sliceInfo_.bStartPos + sliceInfo_.sIdx + sliceInfo_.validSeqCnt;
     sliceInfo_.tailHolderSeqCnt = Align(globalTotalSeqCnt, cmpRatio) - globalTotalSeqCnt;
-    sliceInfo_.lastTcSeqCnt = globalTotalSeqCnt - max(Trunc(globalTotalSeqCnt - 1, cmpRatio), sliceInfo_.bStartPos + sliceInfo_.sIdx);
+    if (globalTotalSeqCnt == 0) {
+        sliceInfo_.lastTcSeqCnt = 0;
+    } else { 
+        sliceInfo_.lastTcSeqCnt = globalTotalSeqCnt - max(Trunc(globalTotalSeqCnt - 1, cmpRatio), sliceInfo_.bStartPos + sliceInfo_.sIdx);
+    }
 
     // 计算本次可以处理的Tc个数
     sliceInfo_.dealTcSize = (sliceInfo_.headHolderSeqCnt + sliceInfo_.validSeqCnt + sliceInfo_.tailHolderSeqCnt) / cmpRatio;
 
-    // 因为是一个batch的数据, 只有最后一个压缩块才可能不需要压缩, 此时blockInfo.tailHolderSeqCnt > 0
-    sliceInfo_.compressTcSize = sliceInfo_.dealTcSize;
-    if (sliceInfo_.tailHolderSeqCnt > 0) {
-        sliceInfo_.compressTcSize = sliceInfo_.dealTcSize - 1; // 最后一个压缩块不满时，其不需要压缩
+    uint32_t seqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
+    if (sliceInfo_.sIdx < seqUsed) {
+        sliceInfo_.actualTcNum = CeilDivT(sliceInfo_.headHolderSeqCnt + min(sliceInfo_.validSeqCnt, seqUsed - sliceInfo_.sIdx), cmpRatio);
+        sliceInfo_.compressTcSize = (sliceInfo_.headHolderSeqCnt + min(sliceInfo_.validSeqCnt, seqUsed - sliceInfo_.sIdx)) / cmpRatio;
+    } else {
+        sliceInfo_.actualTcNum = 0;
+        sliceInfo_.compressTcSize = 0;
     }
+    sliceInfo_.isFirst = isFirst_;
+    sliceInfo_.isLast = CeilDivT(sliceInfo_.headHolderSeqCnt + sliceInfo_.bSeqUsed - sliceInfo_.sIdx, cmpRatio) >= canDealTcSize_;
 
     return sliceInfo_;
 }
 
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::Save()
+template <typename COMP, bool USE_SEQ_USED>
+template <bool IS_STATISTIC>
+__aicore__ inline StatisticInfo& CompressorVec1SliceIterator<COMP, USE_SEQ_USED>::FullIteratorSlice()
 {
-    tempSliceInfo_ = GetSlice();
-    tempNeedDealTcSize_ = needDealTcSize_;
-    isSaved_ = true;
-}
-
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::Load()
-{
-    if (isSaved_) {
-        sliceInfo_ = tempSliceInfo_;
-        needDealTcSize_ = tempNeedDealTcSize_;
+    if constexpr (IS_STATISTIC) {
+        statisticInfo_ = {0U, 0U, 0U, false};
+        isStasticFirst_ = true;
+        Vec1SliceInfo tempSliceInfo = GetSlice();
+        while (!IsEnd()) {
+            GetSlice();
+            IteratorSlice<IS_STATISTIC>();
+        }
+        Vec1SliceInfo sliceInfo = GetSlice();
+        statisticInfo_.dealSeqCnt = sliceInfo.dealedSeqCnt - tempSliceInfo.dealedSeqCnt;
+        if constexpr (COMP::coff == COFF::OVERLAP) {
+            statisticInfo_.preDealSeqCnt = sliceInfo.preDealedSeqCnt - tempSliceInfo.preDealedSeqCnt;
+        }
+    } else {
+        while (!IsEnd()) {
+            GetSlice();
+            IteratorSlice<IS_STATISTIC>();
+        }
     }
-}
-
-template <typename COMP>
-__aicore__ inline void CompressorVec1SliceIterator<COMP>::Clear()
-{
-    isSaved_ = false;
-}
-
-template <typename COMP>
-__aicore__ inline SeqCntInfo CompressorVec1SliceIterator<COMP>::FullIteratorSlice()
-{
-    tempSliceInfo_ = GetSlice();
-    tempNeedDealTcSize_ = needDealTcSize_;
-    while (!IsEnd()) {
-        GetSlice();
-        IteratorSlice();
-    }
-    Vec1SliceInfo sliceInfo = GetSlice();
-    SeqCntInfo seqCntInfo {};
-    seqCntInfo.dealedSeqCnt = sliceInfo.dealedSeqCnt - tempSliceInfo_.dealedSeqCnt;
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        seqCntInfo.preDealedSeqCnt = sliceInfo.preDealedSeqCnt - tempSliceInfo_.preDealedSeqCnt;
-    }
-    sliceInfo_ = tempSliceInfo_;
-    needDealTcSize_ = tempNeedDealTcSize_;
-    return seqCntInfo;
+    return statisticInfo_;
 }
 
 }

@@ -1,26 +1,28 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This program is free software, you can redistribute it and/or modify.
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# ======================================================================================================================
+# -----------------------------------------------------------------------------------------------------------
 
-import check_result
-import deal_excel
+import result_compare_method
+import utils
 import itertools
 import torch
 import torch_npu
-from testcases_sas import ENABLED_PARAMS
-import sparse_attn_sharedkv_process
+from sparse_attn_sharedkv_paramset import ENABLED_PARAMS
+import sparse_attn_sharedkv_golden
 import os
 import pytest
 import time
 import random
+from batch import sparse_attn_sharedkv_process
+
 # 处理所有参数组合
 param_combinations = []
 result_path = os.getenv("SAS_RESULT_SAVE_PATH", './result/sas_result.xlsx')
@@ -36,7 +38,7 @@ for params in ENABLED_PARAMS:
         "B": params.get("B"),
         "S1": params.get("S1"),
         "S2": params.get("S2", [None]),
-        "T1": params.get("T1"),
+        "T1": params.get("T1", [None]),
         "N1": params.get("N1"),
         "N2": params.get("N2"),
         "D": params.get("D"),
@@ -100,16 +102,18 @@ def test_example(param_combinations):
     testcase_name = "case_" + str(int(time.time() * 1000000))
 
     torch_npu.npu.set_device(0)
+    # 增加参数请在最后增加，保证结果统计
     test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-                block_num2, block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_kv, softmax_scale, cmp_ratio, \
-                ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, ori_kv_datarange, cmp_kv_datarange
+                block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
+                ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
+                ori_kv_datarange, cmp_kv_datarange, seqused_q
     print("test_data:", test_data)
-
     # 获得cpu结果(真值)和算子结果（测试值）
-    npu_result, cpu_result = sparse_attn_sharedkv_process.test_sas_process(test_data)
+    input_data = sparse_attn_sharedkv_golden.gen_data(test_data)
+    npu_result, softmax_lse = sparse_attn_sharedkv_process.call_npu(input_data)
     print("npu_result.size():", npu_result.size())
 
     # 结果精度对比
-    result, fulfill_percent = check_result.check_result(cpu_result, npu_result)
+    result, fulfill_percent = result_compare_method.check_result(input_data['cpu_output'], npu_result)
     # 记录结果
-    deal_excel.save_result(result, fulfill_percent, test_data, result_path)
+    utils.save_result(result, fulfill_percent, test_data, result_path)

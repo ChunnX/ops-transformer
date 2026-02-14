@@ -1,27 +1,25 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This program is free software, you can redistribute it and/or modify.
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# ======================================================================================================================
+# -----------------------------------------------------------------------------------------------------------
 
-import itertools
 import torch
 import torch_npu
-import check_result
-import deal_excel
-import sparse_attn_sharedkv_process
+import result_compare_method
+import utils
+from batch import sparse_attn_sharedkv_process
 import pytest
 import random
 import pandas as pd
 from pathlib import Path
 import numpy as np
-import math
 import os
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -47,20 +45,20 @@ print("files:", locals()["testcase_files"])
 
 def call_sas_npu(testcase_files):   # 初始化参数和tensor
     print("执行文件: ", testcase_files)
-    torch_npu.npu.set_device(7)
+    torch_npu.npu.set_device(0)
     test_data = torch.load(testcase_files, map_location="cpu")
     npu_result = None
     try:
         npu_result, softmax_lse = sparse_attn_sharedkv_process.call_npu(test_data)
     except Exception as e:
-        deal_excel.save_result('Exception', 0, test_data['params'], result_path)
+        utils.save_result('Exception', 0, test_data['params'], result_path)
         raise e
     if npu_result != None:
-        result, fulfill_percent = check_result.check_result(test_data['cpu_output'], npu_result)
+        result, fulfill_percent = result_compare_method.check_result(test_data['cpu_output'], npu_result)
     else:
         result = "Failed"
         fulfill_percent = 0
-    deal_excel.save_result(result, fulfill_percent, test_data['params'], result_path)
+    utils.save_result(result, fulfill_percent, test_data['params'], result_path)
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])

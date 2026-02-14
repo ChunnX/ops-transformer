@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -29,6 +29,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "Prefill1":{
         "batch_size": [1],
@@ -47,6 +54,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "Prefill2":{
         "batch_size": [1],
@@ -65,6 +79,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "decode0":{
         "batch_size": [1],
@@ -83,6 +104,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "decode1":{
         "batch_size": [1],
@@ -101,6 +129,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "decode2":{
         "batch_size": [1],
@@ -119,6 +154,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "decode3":{
         "batch_size": [8],
@@ -137,6 +179,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "decode4":{
         "batch_size": [8],
@@ -155,6 +204,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     },
     "decode5":{
         "batch_size": [8],
@@ -173,6 +229,13 @@ TEST_PARAMS = {
         "cu_seqlens":[None],
         "seqused":[None],
         "start_pos": [None],
+        "x_datarange": [[-10, 10]],
+        "wkv_datarange": [[-10, 10]],
+        "wgate_datarange": [[-10, 10]],
+        "ape_datarange": [[-10, 10]],
+        "norm_weight_datarange": [[-10, 10]],
+        "kv_state_datarange": [[-10, 10]],
+        "score_state_datarange": [[-10, 10]],
     }
 }#注意单个用例组内的用例尽量不要超过32
 FIRST_CASE = [TEST_PARAMS["Prefill0"], TEST_PARAMS["Prefill1"], TEST_PARAMS["Prefill2"], TEST_PARAMS["decode0"],

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
-namespace SASKernel{
+namespace SASKernel {
 using namespace AscendC;
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
 constexpr SoftmaxConfig SAS_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
@@ -38,9 +38,8 @@ enum class SAS_LAYOUT {
 };
 
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
-	  SAS_LAYOUT LAYOUT_T = SAS_LAYOUT::BSND, SAS_LAYOUT KV_LAYOUT_T = SAS_LAYOUT::PA_ND,
-      int TEMPLATE_MODE = 0,
-      typename... Args>
+          SAS_LAYOUT LAYOUT_T = SAS_LAYOUT::BSND, SAS_LAYOUT KV_LAYOUT_T = SAS_LAYOUT::PA_ND, int TEMPLATE_MODE = 0,
+          typename... Args>
 struct SASType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -53,27 +52,32 @@ struct SASType {
 };
 
 // ================================Util functions==================================
-template <typename T1, typename T2> __aicore__ inline T1 SASAlign(T1 num, T2 rnd)
+template <typename T1, typename T2>
+__aicore__ inline T1 SASAlign(T1 num, T2 rnd)
 {
     return (rnd == 0) ? 0 : ((num + rnd - 1) / rnd * rnd);
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 CeilDiv(T1 num, T2 rnd)
+template <typename T1, typename T2>
+__aicore__ inline T1 CeilDiv(T1 num, T2 rnd)
 {
     return (rnd == 0) ? 0 : ((num + rnd - 1) / rnd);
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Min(T1 a, T2 b)
 {
     return (a > b) ? b : a;
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Max(T1 a, T2 b)
 {
     return (a > b) ? a : b;
 }
 
-template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
+template <typename T>
+__aicore__ inline size_t BlockAlign(size_t s)
 {
     if constexpr (IsSameType<T, int4b_t>::value) {
         return (s + 63) / 64 * 64;
@@ -84,11 +88,11 @@ template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
 
 struct PAShape {
     uint32_t blockSize;
-    uint32_t headNum;             //一般为kv的head num，对应n2
+    uint32_t headNum;             // 一般为kv的head num，对应n2
     uint32_t headDim;             // 512 对应d
-    uint32_t maxblockNumPerBatch; //block table 每一行的最大个数
-    uint32_t actHeadDim;          //实际拷贝col大小,考虑到N切块   s*d, 对应d
-    uint32_t copyRowNum;          //总共要拷贝的行数
+    uint32_t maxblockNumPerBatch; // block table 每一行的最大个数
+    uint32_t actHeadDim;          // 实际拷贝col大小,考虑到N切块   s*d, 对应d
+    uint32_t copyRowNum;          // 总共要拷贝的行数
     uint32_t copyRowNumAlign;
 };
 
@@ -105,18 +109,17 @@ struct Position {
 // L1按NZ格式存储
 // GM的行、列、列的stride
 template <typename T>
-__aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor,
-                                        uint32_t rowAct,
+__aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor, uint32_t rowAct,
                                         uint32_t rowAlign,
                                         uint32_t col,       // D
                                         uint32_t colStride) // D or N*D
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
-    nd2nzPara.nValue = rowAct;       //nd矩阵的行数
+    nd2nzPara.nValue = rowAct; // nd矩阵的行数
     // T为int4场景下，dValue = col / 2，srcDValue = colStride / 2
-    nd2nzPara.dValue = col;          //nd矩阵的列数
-    nd2nzPara.srcDValue = colStride; //同一nd矩阵相邻行起始地址间的偏移
+    nd2nzPara.dValue = col;          // nd矩阵的列数
+    nd2nzPara.srcDValue = colStride; // 同一nd矩阵相邻行起始地址间的偏移
     nd2nzPara.dstNzC0Stride = rowAlign;
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
@@ -134,22 +137,23 @@ template <typename T>
 __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  //l1
                                   GlobalTensor<T> &srcTensor, //gm
                                   GlobalTensor<int32_t> &blockTableGm,
-                                  const PAShape &shape,       // blockSize, headNum, headDim
-                                  const Position &startPos)   // bacthIdx nIdx curSeqIdx
+                                  const PAShape &shape,     // blockSize, headNum, headDim
+                                  const Position &startPos) // bacthIdx nIdx curSeqIdx
 {
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Idx;
     uint32_t blockElementCnt = 32 / sizeof(T);
     while (copyFinishRowCnt < shape.copyRowNum) {
-        uint64_t blockIdOffset = curS2Idx / shape.blockSize;   // 获取block table上的索引
-        uint64_t reaminRowCnt = curS2Idx % shape.blockSize;    // 获取在单个块上超出的行数
-        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上的获取编号
-        uint32_t copyRowCnt = shape.blockSize - reaminRowCnt;  //一次只能处理一个Block
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
+        uint64_t reaminRowCnt = curS2Idx % shape.blockSize;  // 获取在单个块上超出的行数
+        uint64_t idInBlockTable =
+            blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上的获取编号
+        uint32_t copyRowCnt = shape.blockSize - reaminRowCnt;            // 一次只能处理一个Block
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
-            copyRowCnt = shape.copyRowNum - copyFinishRowCnt;  //一个block未拷满
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim ;   //PA的偏移
+        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
 
         uint64_t dStride = shape.headDim;
         offset += (uint64_t)(startPos.n2Idx * shape.headDim * shape.blockSize) +
@@ -210,9 +214,11 @@ struct RunInfo {
     int64_t threshold = 0;
     uint32_t curTopKIdx = 0;
     uint64_t curOffsetInSparseBlock = 0;
-    bool isOri = true;  // 判断当前块是在Ori部分还是Cmp部分
+    bool isOri = true; // 判断当前块是在Ori部分还是Cmp部分
     uint64_t s2StartPoint = 0;
     int64_t cmpS2IdLimit = 0;
+    int32_t v0S2DealSize = 0;
+    int32_t v0S2Start = 0;
 };
 
 struct ConstInfo {
@@ -250,17 +256,17 @@ struct ConstInfo {
     uint64_t qHeadNum = 0ULL;
     uint64_t kvHeadNum = 0;
     uint64_t headDim = 0;
-    uint64_t kvSeqSize = 0ULL;        // kv最大S长度
-    uint64_t qSeqSize = 1ULL;         // q最大S长度
-    int64_t kvCacheBlockSize = 0;    // PA场景的block size
+    uint64_t kvSeqSize = 0ULL;    // kv最大S长度
+    uint64_t qSeqSize = 1ULL;     // q最大S长度
+    int64_t kvCacheBlockSize = 0; // PA场景的block size
     uint64_t paCmpBlockSize = 0;
     uint64_t paOriBlockSize = 0;
     int64_t orikvCacheBlockSize = 0;
     int64_t cmpkvCacheBlockSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0; // PA场景的最大单batch block number
-    uint32_t cmpMaxBlockNumPerBatch =0;
-    uint32_t splitKVNum = 0U;         // S2核间切分的切分份数
-    SAS_LAYOUT outputLayout;          // 输出的Transpose格式
+    uint32_t cmpMaxBlockNumPerBatch = 0;
+    uint32_t splitKVNum = 0U; // S2核间切分的切分份数
+    SAS_LAYOUT outputLayout;  // 输出的Transpose格式
     uint32_t oriMaskMode = 0;
     uint32_t cmpMaskMode = 0;
     bool needInit = false;
@@ -271,8 +277,8 @@ struct ConstInfo {
     uint64_t combineLseOffset = 0ULL;
     uint64_t combineAccumOutOffset = 0ULL;
 
-    uint32_t actualLenDimsQ = 0U;   // query的actualSeqLength 的维度
-    uint32_t actualLenDimsKV = 0U;  // KV 的actualSeqLength 的维度
+    uint32_t actualLenDimsQ = 0U;  // query的actualSeqLength 的维度
+    uint32_t actualLenDimsKV = 0U; // KV 的actualSeqLength 的维度
 
     // TND
     uint32_t s2Start = 0U; // TND场景下，S2的起始位置
@@ -311,5 +317,5 @@ struct MSplitInfo {
     uint32_t vecStartM = 0U;
     uint32_t vecDealM = 0U;
 };
-}
+} // namespace SASKernel
 #endif // SPARSE_ATTN_SHAREDKV_COMMON_H

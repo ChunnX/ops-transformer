@@ -1,6 +1,6 @@
-# QSAS算子测试框架
+# kv_quant_sparse_attn_sharedkv算子测试框架
 ## 功能说明
-基于pytest测试框架，实现QSAS算子的功能验证：
+基于pytest测试框架，实现kv_quant_sparse_attn_sharedkv算子的功能验证：
 - **CPU侧**：复现算子功能用以生成golden数据
 - **NPU侧**：通过torch_npu进行算子直调、图模式调用获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
@@ -9,35 +9,33 @@
 ### 参数限制
 
 - **数据格式**:
-- **query_layout**：BSND TND
-- **key_layout**: PA_ND
-- **value_layout**: PA_ND
+    - **layout_q**：BSND、TND
+    - **layout_kv**：PA_ND
 
 ### 环境配置
 
 #### 前置要求
-1. 确认torch_npu为最新版本
-2. source CANN包
+1、确认torch_npu为最新版本  
+2、参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包合自定义算子包
 
-#### Custom包调用
+#### custom包调用
 支持custom包调用
 
 ## 文件结构
 #### pytest文件结构说明
-- test_qsas_pytestcase.py                           # 读取kv_quant_sparse_attn_sharedkv_paramset.py中自定义参数执行用例，支持单跑及批量测试
-- kv_quant_sparse_attn_sharedkv_paramset.py         # test_qsas_pytestcase.py 测试所需的自定义参数配置
-- kv_quant_sparse_attn_sharedkv_process_ci_graph.py # torch直调、图模式调用算子入口
-- kv_quant_sparse_attn_sharedkv_golden.py           # 根据入参生成torch接口所需tensor及actlen等参数，执行cpu计算生成golden，支持pt保存功能
-- check_result.py                                   # cpu golden与npu结果精度对比脚本
-- check_valid_param.py                              # 参数合法性检查
-- pytest.ini                                        # 创建CI单算子、graph图模式的测试标记
-- test_run.sh                                       # 用例执行脚本
-- ./batch
-    - test_qsas_pt_batch.py                 # 直调模式，读取pt文件批量测试，获取npu输出、npu输出与cpu golden精度对比结果，并保存为excel表格
-    - test_qsas_pt_batch_graph.py           # 图模式，读取pt文件批量测试，获取npu输出、npu输出与cpu golden精度对比结果，并保存为excel表格
-    - test_qsas_pt_save_from_excelcase.py           # 读取表格批量生成用例pt文件
-- ./excel
-    - example.xlsx                                  # 批量用例pt生成示例表格
+- test_run.sh                                               # 用例执行脚本
+- kv_quant_sparse_attn_sharedkv_golden.py                   # 算子入参处理及cpu侧golden实现
+- result_compare_method.py                                  # cpu golden与npu结果精度对比脚本
+- pytest.ini                                                # 创建测试标记
+
+单用例测试：
+- test_kv_quant_sparse_attn_sharedkv_single.py              # pytest测试单用例运行主程序
+- kv_quant_sparse_attn_sharedkv_paramset.py                 # 单用例入参数配置
+
+批量测试：
+- test_kv_quant_sparse_attn_sharedkv_batch.py               # 用例批量测试主程序，读取pt用例并获取npu输出，结果保存至excel文件
+- ./batch/test_kv_quant_sparse_attn_sharedkv_pt_save.py     # 读取excel表格批量生成用例pt文件
+- ./batch/kv_quant_sparse_attn_sharedkv_process.py          # 调用算子接口获取npu输出
 
 ## 使用方法
 在pytest文件夹路径下执行：

@@ -3,11 +3,15 @@
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Atlas A2 推理系列产品</term>   | √  |
-|<term>Atlas A3 推理系列产品</term>   | √  |
+|<term>Ascend 950PR/Ascend 950DT</term>                        | ×  |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
+|<term>Atlas 200I/500 A2 推理系列产品</term>                    | ×  |
+|<term>Atlas 推理系列产品</term>                                | ×  |
+|<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
-- API功能：`SparseAttentionSharedKV`算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
+- API功能：`SparseAttnSharedKV`算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
 
 - 计算公式：
 
@@ -15,81 +19,69 @@
     O = \text{softmax}(Q@\tilde{K}^T \cdot \text{softmax\_scale})@\tilde{V}
     $$
 
-    其中$\tilde{K}=\tilde{V}$为基于ori_kv、cmp_kv以及cmp_kv等入参控制的实际参与计算的 $KV$。
-
-## 函数原型
-
-```
-custom.npu_sparse_attn_sharedkv(q, *, ori_kv=None, cmp_kv=None, ori_sparse_indices=None, cmp_sparse_indices=None, ori_block_table=None, cmp_block_table=None, cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=0, cmp_ratio=0, ori_mask_mode=4, cmp_mask_mode=3, ori_win_left=127, ori_win_right=0, layout_q='BSND', layout_kv='PA_ND', return_softmax_lse=False) -> (Tensor, Tensor)
-```
+    其中$\tilde{K}=\tilde{V}$为基于ori_kv、cmp_kv以及cmp_ratio等入参控制的实际参与计算的 $KV$。
 
 ## 参数说明
 
-> [!NOTE]  
->- q、ori_kv、cmp_kv参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Hidden Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
->- Q_S和S1表示q shape中的S，S2表示ori_kv shape中的S，S3表示cmp_kv shape中的S；Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori_kv\_heads和num\_cmp_kv\_heads；T1表示q shape中的T，T2表示ori_kv shape中的T，T3表示cmp_kv shape中的输入样本序列长度的累加和。
-
--   **q**（`Tensor`）：必选参数，对应公式中的$Q$，不支持非连续，数据格式支持ND，数据类型支持`bfloat16`和`float16`。`layout_query`为TND时shape为[T1,N1,D]，其中N1仅支持64。
-
-- <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
-
--   **ori_kv**（`Tensor`）：可选参数，对应公式中的$\tilde{K}和\tilde{V}$的一部分，为原始不经压缩的KV，不支持非连续，数据格式支持ND，数据类型支持`bfloat16`和`float16`，`layout_kv`为PA_ND时shape为[block\_num1, ori\_block\_size, KV\_N, D]，其中block\_num1为PageAttention时block总数，ori\_block\_size为一个block的token数，ori\_block\_size取值为16的倍数，最大支持1024，KV_N仅支持1。
-
--   **cmp_kv**（`Tensor`）：可选参数，对应公式中的$\tilde{K}和\tilde{V}$的一部分，为经过压缩的KV，不支持非连续，数据格式支持ND，数据类型支持`bfloat16`和`float16`，`layout_kv`为PA_ND时shape为[block\_num, cmp\_block\_size, KV\_N, D]，其中block\_num2为PageAttention时block总数，cmp\_block\_size为一个block的token数，cmp\_block\_size取值为16的倍数，最大支持1024。
-
--   **ori_sparse_indices**（`Tensor`）：可选参数，代表离散取oriKvCache的索引，不支持非连续，数据格式支持ND，数据类型支持`int32`。当`layout_query`为TND时，shape需要传入[Q\_T, KV\_N, K1]，其中K1为对`ori_kv`一次离散选取的token数，K1仅支持512。**目前暂不支持对ori_kv进行稀疏计算，故设置此参数无效**。
-
--   **cmp_sparse_indices**（`Tensor`）：可选参数，代表离散取cmpKvCache的索引，不支持非连续，数据格式支持ND，数据类型支持`int32`。当`layout_query`为TND时，shape需要传入[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2仅支持512。
-
--   **ori_block_table**（`Tensor`）：可选参数，表示PageAttention中oriKvCache存储使用的block映射表。数据格式支持ND，数据类型支持`int32`，shape为2维，其中第一维长度为B，第二维长度不小于所有batch中最大的S2对应的block数量，即S2\_max / block\_size向上取整。
-
--   **cmp_block_table**（`Tensor`）：可选参数，表示PageAttention中cmpKvCache存储使用的block映射表。数据格式支持ND，数据类型支持`int32`，shape为2维，其中第一维长度为B，第二维长度不小于所有batch中最大的S3对应的block数量，即S3\_max / block\_size向上取整。
-
--   **cu_seqlens_q**（`Tensor`）：可选参数，当`layout_query`为TND时，表示不同Batch中`q`的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值，数据类型支持`int32`。
-
--   **cu_seqlens_ori_kv**（`Tensor`）：可选参数，当`layout_kv`为TND时，表示不同Batch中`ori_kv`的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值，数据类型支持`int32`。**目前layout_kv仅支持PA_ND，故设置此参数无效。**
-
--   **cu_seqlens_cmp_kv**（`Tensor`）：可选参数，当`layout_kv`为TND时，表示不同Batch中`cmp_kv`的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值，数据类型支持`int32`。**目前layout_kv仅支持PA_ND，故设置此参数无效。**
-
--   **seqused_q**（`Tensor`）：可选参数，表示不同Batch中`q`实际参与运算的token数，维度为B，数据格式支持ND，数据类型支持`int32`，不输入则所有token均参与运算。目前暂只在layout_q为"BSND"时传入该参数。
-
--   **seqused_kv**（`Tensor`）：可选参数，表示不同Batch中`ori_kv`实际参与运算的token数，维度为B，数据格式支持ND，数据类型支持`int32`，不输入则所有token均参与运算。
-
--   **sinks**（`Tensor`）：可选参数，注意力下沉tensor，数据格式支持ND，数据类型支持`float32`，shape为[N1]。
-
--   **metadata**（`Tensor`）：可选参数，为aicpu算子（npu_sparse_attn_sharedkv_metadata）的分核结果，数据格式支持ND，数据类型支持`int32`，shape固定为[1024]。
-
--   **softmax_scale**（`double`）：可选参数，代表缩放系数，作为q与ori_kv和cmp_kv矩阵乘后Muls的scalar值，数据类型支持`float`，默认值为None，None表示softmax_scale值为1/sqrt(D)。
-    
--   **cmp_ratio**（`int`）：可选参数，表示对ori_kv的压缩率，数据类型支持`int`，数据范围支持4/128，默认值为None。
-
--   **ori_mask_mode**（`int`）：可选参数，表示q和ori_kv计算的mask模式，仅支持输入默认值4，代表band模式的mask，数据类型支持`int`。
-
--   **cmp_mask_mode**（`int`）：可选参数，表示q和cmp_kv计算的mask模式，仅支持输入默认值3，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，数据类型支持`int`。
-
--   **ori_win_left**（`int`）：可选参数，表示q和ori_kv计算中q对过去token计算的数量，数据类型支持`int`，仅支持默认值127。
-
--   **ori_win_right**（`int`）：可选参数，表示q和ori_kv计算中q对未来token计算的数量，数据类型支持`int`，仅支持默认值0。
-
--   **layout_q**（`str`）：可选参数，用于标识输入q的数据排布格式，输入仅支持传入"TND"和BSND"。
-
--   **layout_kv**（`str`）：可选参数，用于标识输入`ori_kv`和`cmp_kv`的数据排布格式，输入仅支持传入"PA_ND"。
-
--   **return_softmax_lse**（`bool`）：可选参数，表示是否返回softmax_lse。True表示返回，False表示不返回；默认值为False。**目前暂不支持返回softmax_lse。**
-
-## 返回值说明
-
--   **attention\_out**（`Tensor`）：公式中的输出。数据格式支持ND，数据类型支持`bfloat16`和`float16`。当layout\_query为BSND时shape为[B,S1,N1,D]，当layout\_query为TND时shape为[T1,N1,D]。
--   **softmax\_lse**（`Tensor`）：可选输出，输出q乘ori_kv的结果先取max得到softmax_max，query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持`float`。当layout\_query为TND时shape为[N2,T1,N1/N2]。**目前softmax_lse输出为无效值。**
+| 参数名            | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
+|----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|
+| q                     | 输入      | 对应公式中的$Q$。                                                     | BFLOAT16、FLOAT16  | ND |
+| ori\_kv               | 可选输入  | 对应公式中的$\tilde{K}和\tilde{V}$的一部分，为原始不经压缩的KV。          | BFLOAT16、FLOAT16 | ND |
+| cmp\_kv               | 可选输入  | 对应公式中的$\tilde{K}和\tilde{V}$的一部分，为经过压缩的KV。             | BFLOAT16、FLOAT16  | ND |
+| ori\_sparse\_indices  | 可选输入  | 代表离散取oriKvCache的索引。                                           | INT32              | ND |
+| cmp\_sparse\_indices  | 可选输入  | 代表离散取cmpKvCache的索引。                                           | INT32              | ND |
+| ori\_block\_table     | 可选输入  | 表示PageAttention中oriKvCache存储使用的block映射表。                   | INT32               | ND |
+| cmp\_block\_table     | 可选输入  | 表示PageAttention中cmpKvCache存储使用的block映射表。                   | INT32               | ND |
+| cu\_seqlens\_q        | 可选输入  | 表示不同Batch中`q`的有效token数。                                      | INT32               | ND |
+| cu\_seqlens\_ori\_kv  | 可选输入  | 表示不同Batch中`ori_kv`的有效token数。                                 | INT32               | ND |
+| cu\_seqlens\_cmp\_kv  | 可选输入  | 表示不同Batch中`cmp_kv`的有效token数。                                 | INT32               | ND |
+| seqused\_q            | 可选输入  | 表示不同Batch中`q`实际参与运算的token数。                               | INT32               | ND |
+| seqused\_kv           | 可选输入  | 表示不同Batch中`ori_kv`实际参与运算的token数。                          | INT32               | ND |
+| sinks                 | 可选输入  | 注意力下沉tensor。                                                     | FLOAT32             | ND |
+| metadata              | 可选输入  | aicpu算子（npu\_sparse\_attn\_sharedkv\_metadata）的分核结果。          | INT32               | ND |
+| softmax\_scale        | 可选属性  | 代表缩放系数，对应公式中的$\text{softmax\_scale}$，默认值为None。         | FLOAT32             | - |
+| cmp_ratio             | 可选属性  | 表示对`ori_kv`的压缩率，仅支持输入4或128，默认值为None。                 | INT32               | - |
+| ori\_mask\_mode       | 可选属性  | 表示`q`和`ori_kv`计算的mask模式，仅支持输入默认值4。                     | INT32               | - |
+| cmp\_mask\_mode       | 可选属性  | 表示`q`和`cmp_kv`计算的mask模式，仅支持输入默认值3。                     | INT32               | - |
+| ori\_win\_left        | 可选属性  | 表示`q`和`ori_kv`计算中q对过去token计算的数量，仅支持输入默认值127。      | INT32               | - |
+| ori\_win\_right       | 可选属性  | 表示`q`和`ori_kv`计算中q对未来token计算的数量，仅支持输入默认值0。        | INT32               | - |
+| layout\_q             | 可选属性  | 用于标识输入`q`的数据排布格式，支持输入"TND"和"BSND"，默认值为"BSND"。     | STRING               | - |
+| layout\_kv            | 可选属性  | 用于标识输入`ori_kv`和`cmp_kv`的数据排布格式，仅支持输入"PA_ND"。         | STRING               | - |
+| return\_softmax_lse   | 可选属性  | 表示是否返回`softmax_lse`。True表示返回，False表示不返回，默认值为False。 | BOOL                | -  |
+| attention\_out        | 输出      | 公式中的输出。                                                          | BFLOAT16、FLOAT16   | ND |
+| softmax\_lse          | 输出      | 返回的`softmax_lse`。                                                 | FLOAT32             | ND |
 
 ## 约束说明
+- 该接口支持推理场景下使用。
+- 该接口支持aclgraph模式。
+- 该接口当前支持三种计算场景：场景一，仅传入`ori_kv`时为Sliding Window Attention计算；场景二，传入`ori_kv`及`cmp_kv`时为Sliding Window Attention + Compressed Attention计算；场景三，传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`时为Sliding Window Attention + Sparse Compressed Attention计算。
 
--   该接口支持推理场景下使用。
--   该接口支持aclgraph模式。
--   参数q中的D和ori_kv、cmp_kv的D值相等为512。
--   参数q、ori_kv、cmp_kv的数据类型必须保持一致。
+- 当`layout_q`为TND时，功能使用限制如下：
+  - `q`的shape需要为[T1,N1,D]，其中N1仅支持64。
+  - `ori_sparse_indices`的shape需要为[Q\_T, KV\_N, K1]，其中K1为对`ori_kv`一次离散选取的token数，K1仅支持512。
+  - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2仅支持512。
+  - `cu_seqlens_q`必须传入，输入维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值。
 
-## 调用示例
+- 当`layout_q`为BSND时，功能使用限制如下：
+  - `q`的shape需要为[B, Q\_S,N1,D]，其中N1仅支持64。
+  - `ori_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K1]，其中K1为对`ori_kv`一次离散选取的token数，K1仅支持512。
+  - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2仅支持512。
+
+- PageAttention场景下，功能使用限制如下：
+  - `ori_kv`和`cmp_kv`的shape分别为[ori\_block\_num, ori\_block\_size, KV\_N, D]和[cmp\_block\_num, cmp\_block\_size, KV\_N, D]，其中ori\_block\_num和cmp\_block\_num为PageAttention时block总数，ori\_block\_size和cmp\_block\_size为一个block的token数，ori\_block\_size和cmp\_block\_size取值为16的倍数，最大支持1024，KV_N仅支持1。
+  - `ori_block_table`和`cmp_block_table`的shape为2维，其中第一维长度为B，第二维长度不小于所有batch中最大的S2和S3对应的block数量，即S2\_max / block\_size和S3\_max / block\_size向上取整。
+- `metadata`为算子实际需要使用的分核结果，目前该参数必传，shape大小固定为[1024]。
+- `layout_kv`仅支持输入PA_ND，故设置`cu_seqlens_ori_kv`和`cu_seqlens_cmp_kv`无效。
+- 目前暂不支持返回`softmax_lse`，`return_softmax_lse`仅支持输入False，返回值`softmax_lse`为无效值。
+- ori_mask_mode及cmp_mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+- 目前暂不支持指定`q`中参与运算的token数，因此设置`seqused_q`无效。
+- 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
+- 目前所有输入不支持传入空tensor。
+- `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+- Q\_S和S1表示q shape中的S，S2表示ori_kv shape中的S，S3表示cmp_kv shape中的S；Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori_kv\_heads和num\_cmp_kv\_heads；Q\_T和T1表示q shape中的输入样本序列长度的累加和。
+
+## Atlas A3 推理系列产品 调用说明
+
 - 单算子模式调用
 
     ```python
@@ -105,7 +97,7 @@ custom.npu_sparse_attn_sharedkv(q, *, ori_kv=None, cmp_kv=None, ori_sparse_indic
     b = 4
     s1 = 128
     s2 = 8192
-    n1 = 128
+    n1 = 64
     n2 = 1
     dn = 512
     k = 512
@@ -122,13 +114,14 @@ custom.npu_sparse_attn_sharedkv(q, *, ori_kv=None, cmp_kv=None, ori_sparse_indic
     q = torch.tensor(np.random.uniform(-10, 10, (b*s1, n1, dn))).to(data_type).npu()
 
     cu_seqlens_q = torch.arange(0, (b + 1) * s1, step=s1).to(torch.int32).npu()
+    t = cu_seqlens_q[-1].item()
     seqused_kv = torch.tensor([s2]*b).to(torch.int32).npu()
 
     cmp_kv_len = s2_act // cmp_ratio
     idxs = random.sample(range(cmp_kv_len - s1 + 1),  k)
-    cmp_sparse_indices = torch.tensor([idxs for _ in range(b * s1 * n2)]).reshape(b, s1, n2, k). \
+    cmp_sparse_indices = torch.tensor([idxs for _ in range(t * n2)]).reshape(t, n2, k). \
         to(torch.int32).npu()
-        
+
     ori_block_num =  math.ceil(s2_act/ori_block_size) * b
     ori_block_table = torch.tensor(np.random.permutation(range(ori_block_num))).to(torch.int32).reshape(b, -1).npu()
     ori_kv = torch.tensor(np.random.uniform(-5, 10, (ori_block_num, ori_block_size, n2, dn))).to(data_type).npu()
@@ -216,13 +209,14 @@ custom.npu_sparse_attn_sharedkv(q, *, ori_kv=None, cmp_kv=None, ori_sparse_indic
     q = torch.tensor(np.random.uniform(-10, 10, (b*s1, n1, dn))).to(data_type).npu()
 
     cu_seqlens_q = torch.arange(0, (b + 1) * s1, step=s1).to(torch.int32).npu()
+    t = cu_seqlens_q[-1].item()
     seqused_kv = torch.tensor([s2]*b).to(torch.int32).npu()
 
     cmp_kv_len = s2_act // cmp_ratio
     idxs = random.sample(range(cmp_kv_len - s1 + 1),  k)
-    cmp_sparse_indices = torch.tensor([idxs for _ in range(b * s1 * n2)]).reshape(b, s1, n2, k). \
+    cmp_sparse_indices = torch.tensor([idxs for _ in range(t * n2)]).reshape(t, n2, k). \
         to(torch.int32).npu()
-        
+
     ori_block_num =  math.ceil(s2_act/ori_block_size) * b
     ori_block_table = torch.tensor(np.random.permutation(range(ori_block_num))).to(torch.int32).reshape(b, -1).npu()
     ori_kv = torch.tensor(np.random.uniform(-5, 10, (ori_block_num, ori_block_size, n2, dn))).to(data_type).npu()
@@ -242,7 +236,7 @@ custom.npu_sparse_attn_sharedkv(q, *, ori_kv=None, cmp_kv=None, ori_sparse_indic
             super(Network, self).__init__()
 
         def forward(self, num_heads_q, num_heads_kv, head_dim, batch_size, max_seqlen_q, max_seqlen_kv,
-            topk, has_ori_kv, has_cmp_kv, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
+            topk, has_ori_kv, has_cmp_kv, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table,
             cmp_block_table, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, sinks,
             ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
             metadata = torch.ops.custom.npu_sparse_attn_sharedkv_metadata(
