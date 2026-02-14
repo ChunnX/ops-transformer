@@ -222,7 +222,7 @@ void FiaTilingNonQuant::ZeroTensorProcess() const
     }
 }
 
-bool FiaTilingNonQuant::IsHighPerformanceTemplate()
+bool FiaTilingNonQuant::IsHighPerformanceTemplate() const
 {
     if ((fiaInfo_->qkHeadDim  == QK_HEAD_DIM_128 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_0 && fiaInfo_->vHeadDim == V_HEAD_DIM_128) || 
         (fiaInfo_->qkHeadDim  == QK_HEAD_DIM_64 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_0 && fiaInfo_->vHeadDim == V_HEAD_DIM_64) ||
@@ -651,7 +651,7 @@ void FiaTilingNonQuant::GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, in
     }
 }
 
-bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo)
+bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo) const
 {
     if (!baseInfo.attenMaskFlag) {
         return false;

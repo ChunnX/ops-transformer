@@ -530,7 +530,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
             intriParams1.dstStride = 0;
         }
     }
-    if (isMlaNoQuant && layout == LayOutTypeEnum::LAYOUT_BSH && constInfo.gSize < 32) {
+    if (isMlaNoQuant && layout == LayOutTypeEnum::LAYOUT_BSH && constInfo.gSize < 32) { // 32:gSize限制
         int64_t currRowOffset = runInfo.sOuterOffset % constInfo.n2G;
         int64_t remainDataLen = runInfo.halfS1RealSize;
         int64_t dealDataLen = 0;
@@ -542,7 +542,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
             intriParams1.blockCount = dealDataLen;
             DataCopyPad(this->softmaxLseGm[tmpSoftmaxLseOffset], lseUb[ubLseOffset], intriParams1);
             remainDataLen -= dealDataLen;
-            ubLseOffset += (dealDataLen * 8);
+            ubLseOffset += (dealDataLen * 8); // 8：fp32对齐
             currRowOffset = (currRowOffset + dealDataLen) % constInfo.n2G;
             tmpSoftmaxLseOffset = ++oSoftmaxLseOffset;
         }
