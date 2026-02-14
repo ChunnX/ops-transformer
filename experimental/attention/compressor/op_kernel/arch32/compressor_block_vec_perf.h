@@ -863,7 +863,7 @@ __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::CopyOutVec1Res(const RunInfo &info, const LocalTensor<T> comperssoredUb,
                                                 uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize)
 {
-    uint64_t outGmOffset = info.vec1ResOffset + compressedCnt_ * constInfo_.headDim + dStartIdx;
+    uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
     DataCopyParams copyParams;
     copyParams.blockCount = compressTcSize;
     copyParams.blockLen = dDealSize / FP32_BLOCK_ELEMENT_NUM;
@@ -945,6 +945,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
         CopyOutVec1Res(info, comperssoredUb, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
         outputQue1.FreeTensor(comperssoredUb);
     }
+    compressedCnt_ += statisticInfo.compressorScCnt;
 }
 
 template <typename COMP>
@@ -989,11 +990,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const RunInf
     // 刷新当前VecCore的起始bIdx和sIdx
     if (preDealTcSize > 0) {
         sliceIterator.SetNeedDealTcSize(preDealTcSize);
-        while (!sliceIterator.IsEnd()) {
-            sliceIterator.GetSlice();
-            curCompressedCnt += sliceInfo.compressTcSize;
-            sliceIterator.IteratorSlice();
-        }
+        StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
+        curCompressedCnt = statisticInfo.compressorScCnt;
         dealSeqStartIdx = sliceInfo.dealedSeqCnt;
         curBStart = sliceInfo.bIdx;
         curSStart = sliceInfo.sIdx;
