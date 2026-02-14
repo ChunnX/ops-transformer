@@ -8,7 +8,7 @@
 
 ## 功能说明
 
--   API功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
+-   API功能：`lightning_indexer`是稀疏attention前处理的计算，选出关键的稀疏token，获取最大收益。
 
 -   计算公式：
      $$
@@ -19,7 +19,7 @@
 ## 函数原型
 
 ```
-torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None, actual_seq_lengths_key=None, block_table=None, layout_query="BSND", layout_key="BSND", sparse_count=2048, sparse_mode=3, pre_tokens=2^63-1, next_tokens=2^63-1, return_value=False) -> (Tensor, Tensor)
+torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None, actual_seq_lengths_key=None, block_table=None, layout_query="BSND", layout_key="BSND", sparse_count=2048, sparse_mode=3, pre_tokens=2^63-1, next_tokens=2^63-1, cmp_ratio=1，return_value=False) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -31,7 +31,7 @@ torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query
 
 -   **query**（`Tensor`）：必选参数，不支持非连续，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`。`layout_query`为BSND时shape为[B,S1,N1,D]，当`layout_query`为TND时shape为[T1,N1,D]，N1仅支持64。
     
--   **key**（`Tensor`）：必选参数，不支持非连续，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，layout\_key为PA_BSND时shape为[block\_count, block\_size, N2, D]，其中block\_count为PageAttention时block总数，block\_size为一个block的token数，block\_size取值为16的整数倍，最大支持到1024。`layout_kv`为BSND时shape为[B, S2, N2, D]，`layout_kv`为TND时shape为[T2, N2, D]，N2仅支持1。
+-   **key**（`Tensor`）：必选参数，不支持非连续，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，layout\_key为PA_BSND时shape为[block\_count\cmp_ratio, block\_size, N2, D]，其中block\_count\cmp_ratio为压缩后PageAttention时block总数，block\_size为一个block的token数，block\_size取值为16的整数倍，最大支持到1024。`layout_kv`为BSND时shape为[B, S2\cmp_ratio, N2, D]，`layout_kv`为TND时shape为[T2\cmp_ratio, N2, D]，N2仅支持1。
     
 -   **weights**（`Tensor`）：必选参数，不支持非连续，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，支持输入shape[B,S1,N1]、[T,N1]。
     
@@ -61,6 +61,8 @@ torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query
 
 -   **next\_tokens**（`int`）：可选参数，用于稀疏计算，表示attention需要和后几个Token计算关联。数据类型支持`int64`。仅支持默认值2^63-1。
 
+-   **cmp_ratio**（`int`）：可选参数，用于稀疏计算，表示key的压缩倍数。数据类型支持`int32`。Atlas A3 推理系列产品支持1/2/4/8/16/32/64/128，Ascend 950PR/Ascend 950DT支持1/4/128。
+
 -   **return\_value**（`bool`）：可选参数，表示是否输出`sparse_values`。True表示输出，但图模式下不支持，False表示不输出；默认值为False。该参数仅在训练且`layout_kv`不为PA_BSND场景支持。
 
 ## 返回值说明
@@ -86,104 +88,33 @@ torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query
     import math
     import numpy as np
     # 生成随机数据, 并发送到npu
+    layout_query = 'BSND'
+    layout_key = 'PA_BSND'
+    sparse_count = 2048
+    sparse_mode = 3
+    cmp_ratio = 4
+
     b = 1
     s1 = 1
-    s2 = 8192
+    s2 = 8192 / cmp_ratio
     n1 = 64
     n2 = 1
     d = 128
     block_size = 256
-    
     query = torch.tensor(np.random.uniform(-10, 10, (b, s1, n1, d))).to(torch.bfloat16).npu()
     key = torch.tensor(np.random.uniform(-10, 10, (b*(s2//block_size), block_size, n2, d))).to(torch.bfloat16).npu()
     weights = torch.tensor(np.random.uniform(-1, 1, (b, s1, n1))).to(torch.bfloat16).npu()
     actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32).npu()
     actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32).npu()
     block_table = torch.tensor([range(b*s2//block_size)], dtype=torch.int32).reshape(b, -1).npu()
-    layout_query = 'BSND'
-    layout_key = 'PA_BSND'
-    sparse_count = 2048
-    sparse_mode = 3
 
     # 调用lightning_indexer算子
     sparse_indices, sparse_values = torch_npu.npu_lightning_indexer(
             query, key, weights, actual_seq_lengths_query=actual_seq_lengths_query, 
             actual_seq_lengths_key=actual_seq_lengths_key, block_table=block_table, layout_query=layout_query, 
-            layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode)
+            layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode, cmp_ratio=cmp_ratio)
 
     # 执行上述代码的输出sparse_indices类似如下
     tensor([[[[4488, 3926, 1154, ..., 3535, 8031, 8180]]]],
             device='npu:0', dtype=torch.int32)
     ```
-
--   图模式调用
-
-    ```python
-    import torch
-    import torch_npu
-    import numpy as np
-    import math
-    import torchair as tng
-
-    from torchair.configs.compiler_config import CompilerConfig
-    import torch._dynamo
-    TORCHDYNAMO_VERBOSE=1
-    TORCH_LOGS="+dynamo"
-
-    # 支持入图的打印宏
-    import logging
-    from torchair.core.utils import logger
-    logger.setLevel(logging.DEBUG)
-    config = CompilerConfig()
-    config.debug.graph_dump.type = "pbtxt"
-    npu_backend = tng.get_npu_backend(compiler_config=config)
-    from torch.library import Library, impl
-
-    # 数据生成
-    b = 1
-    s1 = 1
-    s2 = 8192
-    n1 = 64
-    n2 = 1
-    d = 128
-    block_size = 256
-    
-    query = torch.tensor(np.random.uniform(-10, 10, (b, s1, n1, d))).to(torch.bfloat16).npu()
-    key = torch.tensor(np.random.uniform(-10, 10, (b*(s2//block_size), block_size, n2, d))).to(torch.bfloat16).npu()
-    weights = torch.tensor(np.random.uniform(-1, 1, (b, s1, n1))).to(torch.bfloat16).npu()
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32).npu()
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32).npu()
-    block_table = torch.tensor([range(b*s2//block_size)], dtype=torch.int32).reshape(b, -1).npu()
-    layout_query = 'BSND'
-    layout_key = 'PA_BSND'
-    sparse_count = 2048
-    sparse_mode = 3
-
-    class Model(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-        def forward(self):
-            return torch_npu.npu_lightning_indexer(query, key, weights, actual_seq_lengths_query=actual_seq_lengths_query, 
-                actual_seq_lengths_key=actual_seq_lengths_key, block_table=block_table, layout_query=layout_query, 
-                layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode)
-    def MetaInfershape():
-        with torch.no_grad():
-            model = Model()
-            model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
-            graph_output = model()
-        single_op = torch_npu.npu_lightning_indexer(query, key, weights, actual_seq_lengths_query=actual_seq_lengths_query, 
-            actual_seq_lengths_key=actual_seq_lengths_key, block_table=block_table, layout_query=layout_query, 
-            layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode)
-        print("single op output:", single_op[0], single_op[0].shape)
-        print("graph output:", graph_output[0], graph_output[0].shape)
-    if __name__ == "__main__":
-        MetaInfershape()
-
-    # 执行上述代码的输出类似如下
-    single op output: tensor([[[[4488, 3926, 1154, ..., 3535, 8031, 8180]]]],
-            device='npu:0', dtype=torch.int32) torch.Size([1, 1, 1, 2048])
-
-    graph output: tensor([[[[4488, 3926, 1154, ..., 3535, 8031, 8180]]]],
-            device='npu:0', dtype=torch.int32) torch.Size([1, 1, 1, 2048])
-    ```
-
