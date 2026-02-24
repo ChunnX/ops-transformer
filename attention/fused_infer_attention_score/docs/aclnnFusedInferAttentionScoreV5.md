@@ -2031,7 +2031,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <td>
                     <ul>
                         <li>数据类型固定为FLOAT32</li>
-                        <li>当inputLayout为NTD_TND时，shape为(Q_N, floor(Q_T,128)+B, ceil(D,256))，其他场景shape为(B, Q_N, ceil(K_S,128),1)</li>
+                        <li>当inputLayout为NTD_TND时，shape为(Q_N, floor(Q_T,128)+B, ceil(D,256))，其他场景shape为(B, Q_N, ceil(Q_S,128),1)</li>
                     </ul>
                 </td>
             </tr>
