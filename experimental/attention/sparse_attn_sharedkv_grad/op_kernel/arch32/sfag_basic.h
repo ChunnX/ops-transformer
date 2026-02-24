@@ -205,7 +205,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::Process(
             GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, t1Index, bIndex);
             changePingpong = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
                     UpdateGmOffset(task);
@@ -245,7 +244,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::Process(
             GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, t1Index, bIndex);
             changePingpong = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
                     UpdateGmOffset(task);
@@ -449,10 +447,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SASGT>::GetActualSelCount(cons
     curMaxS3 = (maxS3 + selectedBlockSize - 1) / selectedBlockSize;
 
     actualSelectedBlockCount = Min(selectedBlockCount, curMaxS3);
-    int64_t topkGmOffset = t1Idx * (dimN2 * selectedBlockCount) + n2Idx * selectedBlockCount + actualSelectedBlockCount - 1;
-    if (topkIndicesGm[topkGmOffset].GetValue(0) == curMaxS3 - 1) {
-        isLastBlockSelected = true;
-    }
 
     int64_t oriWinDiagOffset = curS2 - curS1;
     oriWinEnd = Min(s1Index + oriWinRight + 1 + oriWinDiagOffset, curS2);
