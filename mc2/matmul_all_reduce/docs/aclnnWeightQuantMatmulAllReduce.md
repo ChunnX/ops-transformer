@@ -406,7 +406,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <td>null、BFLOAT16</td>
         <td>null、BFLOAT16</td>
         <td>BFLOAT16</td>
-        <td>-</td>
+        <td>支持pertensor、perchannel、pergroup量化场景</td>
       </tr>
       <tr>
         <td>BFLOAT16</td>
@@ -416,7 +416,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <td>null、BFLOAT16</td>
         <td>null、BFLOAT16</td>
         <td>BFLOAT16</td>
-        <td>pergroup场景不支持</td>
+        <td>仅支持perchannel量化场景</td>
       </tr>
       <tr>
         <td>FLOAT16</td>
@@ -426,7 +426,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <td>null、FLOAT16</td>
         <td>null、FLOAT16</td>
         <td>FLOAT16</td>
-        <td>-</td>
+        <td>支持pertensor、perchannel、pergroup量化场景</td>
       </tr>
       <tr>
         <td>FLOAT16</td>
@@ -436,7 +436,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <td>null、FLOAT16</td>
         <td>null、FLOAT16</td>
         <td>FLOAT16</td>
-        <td>pergroup场景不支持</td>
+        <td>仅支持perchannel量化场景</td>
       </tr>
     </tbody>
   </table>
