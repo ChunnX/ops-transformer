@@ -52,6 +52,7 @@ operator_group_5:
 operator_group_6:
   - sparse_lightning_indexer_grad_kl_loss
   - prompt_flash_attention
+  - kv_quant_sparse_flash_attention
 operator_group_7:
   - fused_infer_attention_score,10-0
 operator_group_8:
