@@ -620,8 +620,8 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
     // 使用转换后的左上角的pretoken nexttoken
-    if (runParam.nextTokensPerBatch < 0 && runParam.sOuterOffset < ((runParam.nextTokensPerBatch * (-1)) /
-        runParam.halfS1RealSize * runParam.halfS1RealSize)) {
+    if (runParam.s1RealSize == 0 || (runParam.nextTokensPerBatch < 0 && runParam.sOuterOffset < ((runParam.nextTokensPerBatch * (-1)) /
+        runParam.halfS1RealSize * runParam.halfS1RealSize))) {
         return true;
     }
 
