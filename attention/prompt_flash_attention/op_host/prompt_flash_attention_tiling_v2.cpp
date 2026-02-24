@@ -958,6 +958,10 @@ bool PromptFlashAttentionTilingV2::CheckPerTensorQuantParams(const ContextParams
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "deqScale1, quantScale1 or deqScale2 is empty tensor in per-tensor quant scenario."),
         return false);
+    OP_CHECK_IF(enablePFARope,
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "Rope is not supported in per-tensor quant scenario."),
+        return false);
     const gert::StorageShape* keyShape = contextKeyParams.keyInputShape;
     const gert::StorageShape* valueShape = contextKeyParams.valueInputShape;
     const size_t dIdx = (inputLayout == InputLayout::TND || inputLayout == InputLayout::BSH) ? 2U : 3U; // TND/BSH:2; BSND/BNSD/BNSD_BSND:3
@@ -2901,7 +2905,7 @@ bool PromptFlashAttentionTilingV2::CheckPerblockCrossover(ContextParamsForPFATil
             "PFAMLA is not supported in per-block quant scenario!"),
         return false);
     OP_CHECK_IF(enablePFARope, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "PFARope is not supported in per-block quant scenario!"),
+            "Rope is not supported in per-block quant scenario!"),
         return false);
     OP_CHECK_IF(enableMask, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "mask is not supported in per-block quant scenario!"),
