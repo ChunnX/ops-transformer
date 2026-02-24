@@ -11,12 +11,16 @@ def get_inputs(param, device=None):
         device (torch.device): 设备，如 'cpu' 或 'npu'
 
     Returns:
-        tuple: (cost,)
+        tuple: (cost, tol)
     """
     input_shape = eval(param.get('input_shape', '[1, 1]'))
     dtype_str = param.get('dtype', 'float32')
     dtype = getattr(torch, dtype_str)
-
+    # 生成 cost
+    cost = torch.rand(input_shape, device=device, dtype=dtype)
+    # bfloat16转为float32用于计算
+    if dtype == torch.bfloat16:
+        cost = cost.float() 
     # 获取 tol，若无则使用默认值
     tol = param.get('tol', 0.0001)
 
@@ -40,6 +44,9 @@ def get_init_inputs(param, device=None):
 
     # 生成 cost
     cost = torch.rand(input_shape, device=device, dtype=dtype)
+    # bfloat16转为float32用于计算
+    if dtype == torch.bfloat16:
+        cost = cost.float() 
 
     # 获取 tol，若无则使用默认值
     tol = param.get('tol', 0.0001)
