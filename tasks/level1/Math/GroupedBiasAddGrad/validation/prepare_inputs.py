@@ -22,6 +22,11 @@ def get_inputs(param, device=None):
     if with_group_idx:
         # 有 group_idx：grad_y 为 2D，shape=[GB, H]
         grad_y = torch.rand(input_shape, device=device, dtype=dtype)
+
+        # bfloat16 转 float32用于计算
+        if dtype == torch.bfloat16:
+            grad_y = grad_y.float()
+
         num_groups = int(param.get('num_groups', 4))
 
         # 1. 从 [1, input_shape[0]) 中随机选择 num_groups - 1 个数
@@ -40,6 +45,9 @@ def get_inputs(param, device=None):
         C = int(input_shape[1])
         H = int(input_shape[2])
         grad_y = torch.rand((G, C, H), device=device, dtype=dtype)
+        # bfloat16 转 float32用于计算
+        if dtype == torch.bfloat16:
+            grad_y = grad_y.float()
         # 生成默认 group_idx: [C]
         C_total = G * C
         group_idx = torch.tensor([C_total], dtype=torch.int32, device=device)
@@ -63,6 +71,9 @@ def get_init_inputs(param, device=None):
 
     if with_group_idx:
         grad_y = torch.rand(input_shape, device=device, dtype=dtype)
+        # bfloat16 转 float32用于计算
+        if dtype == torch.bfloat16:
+            grad_y = grad_y.float()
         num_groups = int(param.get('num_groups', 4))
 
         # 1. 从 [1, input_shape[0]) 中随机选择 num_groups - 1 个数
@@ -80,6 +91,9 @@ def get_init_inputs(param, device=None):
         C = int(input_shape[1])
         H = int(input_shape[2])
         grad_y = torch.rand((G, C, H), device=device, dtype=dtype)
+        # bfloat16 转 float32用于计算
+        if dtype == torch.bfloat16:
+            grad_y = grad_y.float()
         C_total = G * C
         group_idx = torch.tensor([C_total], dtype=torch.int32, device=device)
         return (grad_y, None)
