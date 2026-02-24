@@ -26,15 +26,16 @@ if (NOT EXISTS ${CMAKE_SOURCE_DIR}/experimental/third_party/catlass/include)
 endif()
 list(APPEND _DISPATCH_FFN_INC_OPTS -I${CMAKE_SOURCE_DIR}/experimental/third_party/catlass/include)
 list(APPEND _DISPATCH_FFN_INC_OPTS -I${CMAKE_CURRENT_SOURCE_DIR})
+list(APPEND _DISPATCH_FFN_INC_OPTS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel)
 
 
 # Copy moe_distribute_base.h to op_kernel/utils and rename HcclOpResParam to HcclOpResParamCustom
-set(_MOE_DISTRIBUTE_BASE_SRC "${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel/moe_distribute_base.h")
+set(_MOE_DISTRIBUTE_BASE_SRC "${CMAKE_SOURCE_DIR}/experimental/mc2/common/inc/kernel/moe_distribute_base.h")
 set(_MOE_DISTRIBUTE_BASE_DST "${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/utils/moe_distribute_base.h")
 if(EXISTS ${_MOE_DISTRIBUTE_BASE_SRC})
     file(READ ${_MOE_DISTRIBUTE_BASE_SRC} _MOE_DISTRIBUTE_BASE_CONTENT)
-    string(REPLACE "struct HcclOpResParam" "struct HcclOpResParamCustom" _MOE_DISTRIBUTE_BASE_CONTENT "${_MOE_DISTRIBUTE_BASE_CONTENT}")
-    string(REPLACE "struct HcclRankRelationResV2" "struct HcclRankRelationResV2Custom" _MOE_DISTRIBUTE_BASE_CONTENT "${_MOE_DISTRIBUTE_BASE_CONTENT}")
+    string(REPLACE "HcclOpResParam" "HcclOpResParamCustom" _MOE_DISTRIBUTE_BASE_CONTENT "${_MOE_DISTRIBUTE_BASE_CONTENT}")
+    string(REPLACE "HcclRankRelationResV2" "HcclRankRelationResV2Custom" _MOE_DISTRIBUTE_BASE_CONTENT "${_MOE_DISTRIBUTE_BASE_CONTENT}")
     file(WRITE ${_MOE_DISTRIBUTE_BASE_DST} "${_MOE_DISTRIBUTE_BASE_CONTENT}")
     message(STATUS "Copied and modified moe_distribute_base.h to ${_MOE_DISTRIBUTE_BASE_DST}")
 endif()
@@ -44,6 +45,8 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         dispatch_ffn_combine_def.cpp
     )
+    set(MC2_OPT ON PARENT_SCOPE)
+    set(dispatch_ffn_combine_depends mc2/common PARENT_SCOPE)
 endif()
 
 add_ops_compile_options(

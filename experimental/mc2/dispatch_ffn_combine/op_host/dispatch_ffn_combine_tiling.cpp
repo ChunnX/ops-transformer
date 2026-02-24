@@ -14,7 +14,7 @@
 #include "vector"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "error_log.h"
+#include "mc2_log.h"
 #include "hcom_topo_info.h"
 #include "register/op_def_registry.h"
 #include "../op_kernel/dispatch_ffn_combine_tiling.h"
@@ -23,6 +23,7 @@
 #include <algorithm>
 #include "../op_kernel/moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 #include "platform/platform_infos_def.h"
+#include "mc2_hcom_topo_info.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -105,8 +106,8 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
     info.isTransposeB = *is_trans_b;
     info.isWeightNz = *weight_nz;
 
-    int64_t rankSize;
-    (void)ge::HcomTopoInfo::Instance().GetGroupRankSize(groupPtr, rankSize);
+    uint32_t rankSize = 0;
+    (void)Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(groupPtr, &rankSize);
     info.worldSize = rankSize;
 
     OP_LOGD(K_INNER_DEBUG, "maxOutputSize=%d ", info.maxOutputSize);
