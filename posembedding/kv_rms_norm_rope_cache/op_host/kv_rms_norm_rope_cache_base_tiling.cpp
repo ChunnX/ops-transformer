@@ -122,11 +122,18 @@ bool KvRmsNormRopeCacheTilingBase::CheckCosSinValid(
         auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
         ge::DataType kcacheDtype = kcacheDesc->GetDataType();
-        if (kcacheDtype == ge::DT_INT8) {
-            isValid = isValid && (std::get<SHAPE_IDX_D>(sinShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+        bool isValidAlign = true;
+        if (kcacheDtype == ge::DT_INT8 || kcacheDtype == ge::DT_HIFLOAT8
+            || kcacheDtype == ge::DT_FLOAT8_E5M2 || kcacheDtype == ge::DT_FLOAT8_E4M3FN) {
+            isValidAlign = isValidAlign && (std::get<SHAPE_IDX_D>(sinShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
         } else {
-            isValid = isValid && (std::get<SHAPE_IDX_D>(sinShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+            isValidAlign = isValidAlign && (std::get<SHAPE_IDX_D>(sinShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
         }
+        if (!isValidAlign) {
+            OP_LOGE(context_->GetNodeName(),
+            "NZ scenario, Dk must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+        }
+        isValid = isValidAlign && isValid;
     }
     return isValid;
 }
@@ -143,11 +150,18 @@ bool KvRmsNormRopeCacheTilingBase::CheckGammaValid(const gert::TilingContext* co
         auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
         ge::DataType vcacheDtype = vcacheDesc->GetDataType();
-        if (vcacheDtype == ge::DT_INT8) {
-            isValid = isValid && (gammaShapePtr->GetStorageShape().GetDim(0) % INT8_BLOCK_ALIGN_NUM == 0);
+        bool isValidAlign = true;
+        if (vcacheDtype == ge::DT_INT8 || vcacheDtype == ge::DT_HIFLOAT8
+            || vcacheDtype == ge::DT_FLOAT8_E5M2 || vcacheDtype == ge::DT_FLOAT8_E4M3FN) {
+            isValidAlign = isValidAlign && (gammaShapePtr->GetStorageShape().GetDim(0) % INT8_BLOCK_ALIGN_NUM == 0);
         } else {
-            isValid = isValid && (gammaShapePtr->GetStorageShape().GetDim(0) % FP16_BLOCK_ALIGN_NUM == 0);
+            isValidAlign = isValidAlign && (gammaShapePtr->GetStorageShape().GetDim(0) % FP16_BLOCK_ALIGN_NUM == 0);
         }
+        if (!isValidAlign) {
+            OP_LOGE(context_->GetNodeName(),
+            "NZ scenario, Dv must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+        }
+        isValid = isValidAlign && isValid;
     }
     return isValid;
 }
@@ -187,12 +201,18 @@ bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(
     auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
-    if (kcacheDtype == ge::DT_INT8) {
-        isValid = isValid && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+    bool isValidAlign = true;
+    if (kcacheDtype == ge::DT_INT8 || kcacheDtype == ge::DT_HIFLOAT8
+        || kcacheDtype == ge::DT_FLOAT8_E5M2 || kcacheDtype == ge::DT_FLOAT8_E4M3FN) {
+        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
     } else {
-        isValid = isValid && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
     }
-
+    if (!isValidAlign) {
+        OP_LOGE(context_->GetNodeName(),
+            "PA scenario, k_cache blockSize must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+    }
+    isValid = isValid && isValidAlign;
     return isValid;
 }
 
@@ -207,12 +227,18 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValidPA(
     auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
-    if (vcacheDtype == ge::DT_INT8) {
-        isValid = isValid && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+    bool isValidAlign = true;
+    if (vcacheDtype == ge::DT_INT8 || vcacheDtype == ge::DT_HIFLOAT8
+        || vcacheDtype == ge::DT_FLOAT8_E5M2 || vcacheDtype == ge::DT_FLOAT8_E4M3FN) {
+        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
     } else {
-        isValid = isValid && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
     }
-
+    if (!isValidAlign) {
+        OP_LOGE(context_->GetNodeName(),
+            "PA scenario, v_cache blockSize must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+    }
+    isValid = isValid && isValidAlign;
     return isValid;
 }
 

@@ -113,13 +113,6 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>epsilon</td>
-      <td>可选属性</td>
-      <td><ul><li>用于防止rms_norm计算除0错误，对应公式中的eps。</li><li>默认值为1e-5。</li></ul></td>
-      <td>FLOAT32</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>index</td>
       <td>输入</td>
       <td>用于指定写入cache的具体索引位置。</td>
@@ -169,6 +162,13 @@
       <td>ND</td>
     </tr>
     <tr>
+      <td>epsilon</td>
+      <td>可选属性</td>
+      <td><ul><li>用于防止rms_norm计算除0错误，对应公式中的eps。</li><li>默认值为1e-5。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>cache_mode</td>
       <td>可选属性</td>
       <td>cache格式的选择标记。类型有Norm、PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ。</td>
@@ -185,14 +185,14 @@
     <tr>
       <td>k_rope</td>
       <td>输出</td>
-      <td>rope计算结果，对应interleaveRope计算公式中的`y`。</td>
+      <td>rope计算结果，对应interleaveRope计算公式中的`y`。由isOutputKv控制，当isOutputKv为true时，需输出。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>c_kv</td>
       <td>输出</td>
-      <td>rms_norm计算结果，对应rmsNorm计算公式中的`y`。</td>
+      <td>rms_norm计算结果，对应rmsNorm计算公式中的`y`。由isOutputKv控制，当isOutputKv为true时，需输出。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
@@ -206,6 +206,7 @@
       * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
       * D为输入kv的head dim。rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。
       * 若cache_mode为PA场景（cache_mode为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），其shape[BlockNum,BlockSize,N,Dk]中BlockSize需32B对齐。
+      * 输入张量均不支持空Tensor。
   * 其他限制：
       * 对于index，当cache_mode为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
       * 当cache_mode为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。

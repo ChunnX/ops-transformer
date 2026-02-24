@@ -133,7 +133,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>kv</td>
       <td>输入</td>
       <td>公式中用于切分出rms_norm计算所需数据Dv和RoPE计算所需数据Dk的输入数据。</td>
-      <td>shape仅支持4维[Bkv,N,Skv,D]。</td>
+      <td><ul><li>shape仅支持4维[Bkv,N,Skv,D]。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>4</td>
@@ -143,7 +143,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>gamma</td>
       <td>输入</td>
       <td>公式中用于rms_norm计算的输入数据。</td>
-      <td>与 kv 数据类型一致，shape为1维[Dv,]。</td>
+      <td><ul><li>与 kv 数据类型一致，shape为1维[Dv,]。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>1</td>
@@ -153,7 +153,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>cos</td>
       <td>输入</td>
       <td>公式中用于RoPE计算的输入数据，对输入张量Dk进行余弦变换</td>
-      <td>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]。</td>
+      <td><ul><li>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>4</td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>sin</td>
       <td>可选输入</td>
       <td>公式中用于RoPE计算的输入数据，对输入张量Dk进行正弦变换。</td>
-      <td>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，与cos的shape保持一致。</td>
+      <td><ul><li>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，与cos的shape保持一致。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>4</td>
@@ -173,7 +173,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>index</td>
       <td>输入</td>
       <td>用于指定写入cache的具体索引位置，当index的value数值为-1时，代表跳过更新。</td>
-      <td><ul><li>当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]。</li><li>当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]。</li><li>当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv\*ceil_div(Skv,BlockSize)]。</li></ul></td>
+      <td><ul><li>当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]。</li><li>当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]。</li><li>当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv\*ceil_div(Skv,BlockSize)]。</li><li>不支持空Tensor。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>1-2</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>kCacheRef</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。</li></ul></td>
+      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
       <td>4</td>
@@ -193,7 +193,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>ckvCacheRef</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。</li></ul></td>
+      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
       <td>4</td>
@@ -203,7 +203,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>kRopeScaleOptional</td>
       <td>输入</td>
       <td>当kCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。</td>
-      <td>shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。</td>
+      <td><ul><li>shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>1-2</td>
@@ -213,7 +213,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>ckvScaleOptional</td>
       <td>输入</td>
       <td>当ckvCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。</td>
-      <td>shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。</td>
+      <td><ul><li>shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>1-2</td>
@@ -223,7 +223,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>kRopeOffsetOptional</td>
       <td>输入</td>
       <td>当kCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的kRopeScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。</td>
-      <td>shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。</td>
+      <td><ul><li>shape为2维[N,Dk]；或者shape为1维[Dk,]；或者shape为1维[1,]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>1-2</td>
@@ -233,7 +233,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>cKvOffsetOptional</td>
       <td>输入</td>
       <td>当ckvCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的ckvScaleOptional输入存在并量化场景为非对称量化时，需要此参数输入。</td>
-      <td>shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。</td>
+      <td><ul><li>shape为2维[N,Dv]；或者shape为1维[Dv,]；或者shape为1维[1,]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>1-2</td>
@@ -407,7 +407,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
       * D为输入kv的head dim。rms_norm计算所需数据Dv和RoPE计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。若cacheModeOptional为NZ场景（cacheModeOptional为PA_NZ、PA_BLK_NZ），Dk、Dv需32B对齐。
       * 若cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），BlockSize需32B对齐。
-      * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，则需BlockSize%32=0；若cache的数据类型为float16，则需BlockSize%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，BlockSize需同时满足BlockSize%32=0和BlockSize%16=0。
+      * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，则需BlockSize%32=0；若cache的数据类型为float16或bfloat16，则需BlockSize%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，BlockSize需同时满足BlockSize%32=0和BlockSize%16=0。
       * Bcache为输入cache的batch size，Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。 
       * BlockNum为写入cache的内存块数，大小由用户输入场景决定，无明确限制。 
   * index相关约束：
