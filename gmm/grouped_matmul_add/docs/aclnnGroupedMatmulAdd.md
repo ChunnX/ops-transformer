@@ -106,9 +106,9 @@ aclnnStatus aclnnGroupedMatmulAdd(
       <td>-</td>
     </tr>
       <tr>
-        <td>y</td>
-        <td>输入</td>
-        <td>表示原地累加的输出矩阵，即yRef。</td>
+        <td>yRef</td>
+        <td>输出</td>
+        <td>表示原地累加的输出矩阵，即y。</td>
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
@@ -144,26 +144,6 @@ aclnnStatus aclnnGroupedMatmulAdd(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-      </tr>
-      <tr>
-        <td>groupListType</td>
-        <td>属性</td>
-        <td>表示分组groupList格式。</td>
-        <td>仅支持0（cumsum模式）。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>yRef</td>
-        <td>输出</td>
-        <td>表示原地累加的输出矩阵，即y。</td>
-        <td>-</td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>2<sup>1</sup>、3</td>
-        <td>×</td>
       </tr>
       <tr>
         <td>workspaceSize</td>
