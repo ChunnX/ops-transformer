@@ -1,0 +1,18 @@
+{
+    "ID": 3,
+    "TILING_KEY": [
+        401,
+        402,
+        403,
+        404,
+        411,
+        412,
+        413,
+        414,
+        421,
+        422,
+        423,
+        424
+    ],
+    "DESCRIPTION": "该执行路径主要应用于按Batch和W维度切分的场景，通过MaskedSoftmaxWithRelPosBiasBW模板类逐batch处理softmax计算，bias只需加载一次并在所有batch间复用，支持float/half/bfloat16数据类型。"
+}

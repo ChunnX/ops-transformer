@@ -1,0 +1,18 @@
+{
+    "ID": 5,
+    "TILING_KEY": [
+        301,
+        302,
+        303,
+        304,
+        311,
+        312,
+        313,
+        314,
+        321,
+        322,
+        323,
+        324
+    ],
+    "DESCRIPTION": "该执行路径主要应用于按B*W*N维度切分的场景，通过MaskedSoftmaxWithRelPosBiasBWN模板类在每个head粒度上处理softmax，利用attention mask和bias的周期性复用减少数据搬运，支持float/half/bfloat16数据类型。"
+}

@@ -1,0 +1,7 @@
+{
+    "ID": 6,
+    "TILING_KEY": [
+        106
+    ],
+    "DESCRIPTION": "该执行路径主要应用于按Group维度分核、32位浮点数据类型的GroupNorm+SiLU计算，每个核处理多个group的归一化。"
+}

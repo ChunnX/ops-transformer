@@ -115,10 +115,12 @@ at::Tensor GenerateStftPlan(int64_t n_fft, bool onesided, at::Device device) {
  */
 at::Tensor stft(at::Tensor& x, at::Tensor& window, int64_t n_fft, int64_t hop_length, int64_t win_length,
                 bool normalized, bool onesided, bool return_complex) {
+    // 与标杆 AclnnStftApi 一致：complex 输入时 onesided 传 False，输出维度按 n_fft
+    bool onesided_acl = (x.is_complex() ? false : onesided);
     int64_t batch = (x.dim() == 1) ? 1 : x.size(0);
     int64_t len = (x.dim() == 1) ? x.size(0) : x.size(1);
     int64_t n_frames = 1 + (len - n_fft) / hop_length;
-    int64_t n_dim = onesided ? (n_fft / 2 + 1) : n_fft;
+    int64_t n_dim = onesided_acl ? (n_fft / 2 + 1) : n_fft;
 
     c10::SmallVector<int64_t, 4> out_shape;
     if (batch == 1 && x.dim() == 1 && return_complex) {
@@ -131,19 +133,18 @@ at::Tensor stft(at::Tensor& x, at::Tensor& window, int64_t n_fft, int64_t hop_le
         out_shape = {batch, n_dim, n_frames, 2};
     }
 
-    at::TensorOptions opts = x.options();
-    if (return_complex && x.dtype() == torch::kFloat32) {
+    // 算子 tiling 仅支持 DT_FLOAT/DT_FLOAT16/DT_COMPLEX64，不支持 double；且与参考比较时需类型一致，故结果统一为 float32/complex64
+    at::TensorOptions opts = x.options().device(x.device());
+    if (return_complex) {
         opts = opts.dtype(torch::kComplexFloat);
-    } else if (return_complex && x.dtype() == torch::kFloat64) {
-        opts = opts.dtype(torch::kComplexDouble);
-    } else if (!return_complex) {
-        opts = opts.dtype(x.dtype() == torch::kComplexFloat ? torch::kFloat32 : torch::kFloat64);
+    } else {
+        opts = opts.dtype(torch::kFloat32);
     }
     at::Tensor result = torch::empty(out_shape, opts);
 
-    at::Tensor plan = GenerateStftPlan(n_fft, onesided, x.device());
+    at::Tensor plan = GenerateStftPlan(n_fft, onesided_acl, x.device());
 
-    EXEC_NPU_CMD(aclnnSTFT, x, plan, window, hop_length, win_length, normalized, onesided, return_complex, n_fft,
+    EXEC_NPU_CMD(aclnnSTFT, x, plan, window, hop_length, win_length, normalized, onesided_acl, return_complex, n_fft,
                  result);
     return result;
 }

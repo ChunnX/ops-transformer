@@ -1,0 +1,22 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        5011,
+        5012,
+        5013,
+        5014,
+        5021,
+        5022,
+        5023,
+        5024,
+        5111,
+        5112,
+        5113,
+        5114,
+        5121,
+        5122,
+        5123,
+        5124
+    ],
+    "DESCRIPTION": "该执行路径主要应用于half/bfloat16类型数据的Batch维度切分场景，通过MaskedSoftmaxWithRelPosBiasBBf16AndHalf模板类将低精度数据提升为float计算softmax，再转换回原精度输出，支持attention mask、scale乘法和对齐的组合。"
+}

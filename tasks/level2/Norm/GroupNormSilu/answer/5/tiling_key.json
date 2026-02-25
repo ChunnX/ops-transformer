@@ -1,0 +1,8 @@
+{
+    "ID": 5,
+    "TILING_KEY": [
+        1051,
+        1052
+    ],
+    "DESCRIPTION": "该执行路径主要应用于按Group维度分核、16位数据类型的GroupNorm+SiLU计算，每个核处理多个group的归一化。"
+}

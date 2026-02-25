@@ -1,0 +1,7 @@
+{
+    "ID": 4,
+    "TILING_KEY": [
+        104
+    ],
+    "DESCRIPTION": "该执行路径主要应用于按Batch维度分核、32位浮点数据类型的大数据量GroupNorm+SiLU计算，支持单次和多次循环处理。"
+}
