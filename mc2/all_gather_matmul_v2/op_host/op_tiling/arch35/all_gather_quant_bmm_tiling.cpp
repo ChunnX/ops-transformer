@@ -87,8 +87,20 @@ bool AllGatherQuantBmmTiling::IsCapable()
 
 ge::graphStatus AllGatherQuantBmmTiling::CheckGroupSize()
 {
-    uint64_t groupSize = static_cast<uint64_t>(*context_->GetAttrs()->GetAttrPointer<uint64_t>(GROUP_SIZE_INDEX));
+    uint64_t groupSize = static_cast<uint64_t>(*context_->GetAttrs()->GetAttrPointer<int64_t>(GROUP_SIZE_INDEX));
     OP_LOGI(opName_, "groupSize=%lu", groupSize);
+    mc2tiling::Mc2MatmulShapeInfo shapeInfo = {
+        context_->GetInputShape(INPUT_X1),
+        context_->GetInputShape(INPUT_X2),
+        context_->GetOptionalInputShape(SCALE_INV1),
+        context_->GetOptionalInputShape(SCALE_INV2),
+        false,
+        *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B),
+        opName_
+    };
+    uint64_t groupSizeK = groupSize & GROUP_MNK_BIT_SIZE;
+    uint64_t groupSizeN = (groupSize >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
+    uint64_t groupSizeM = (groupSize >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
     if ((quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
         (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT)) {
@@ -98,26 +110,26 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckGroupSize()
             " but actual is groupSize = %ld", groupSize), return ge::GRAPH_FAILED);
     } else if ((quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
         (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
-        // MX
-        uint64_t groupSizeK = groupSize & GROUP_MNK_BIT_SIZE;
-        uint64_t groupSizeN = (groupSize >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
-        uint64_t groupSizeM = (groupSize >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
-        OP_TILING_CHECK(
-            (groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) ||
-            (groupSizeK != MX_SCALE_BLOCK_K),
-            CUBE_INNER_ERR_REPORT(opName_, "(groupSizeM, groupSizeN, groupSizeK) should be (1, 1, 32) in mx scene,"
-            " but actual is [groupSizeM=%ld, groupSizeN=%ld, groupSizeK=%ld]",
-            groupSizeM, groupSizeN, groupSizeK), return ge::GRAPH_FAILED);
+        shapeInfo.isMxfp = true;
+        OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
+            CUBE_INNER_ERR_REPORT(opName_, "Failed to execute inferGroupSize in mx scene."),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) ||
+             (groupSizeK != MX_SCALE_BLOCK_K),
+            CUBE_INNER_ERR_REPORT(opName_, "[groupSizeM, groupSizeN, groupSizeK] should be [1, 1, 32] in mx scene,"
+                " but actual is [groupSizeM=%lu, groupSizeN=%lu, groupSizeK=%lu]",
+                groupSizeM, groupSizeN, groupSizeK),
+            return ge::GRAPH_FAILED);
     } else if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
-        uint64_t groupSizeK = groupSize & GROUP_MNK_BIT_SIZE;
-        uint64_t groupSizeN = (groupSize >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
-        uint64_t groupSizeM = (groupSize >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
-        OP_TILING_CHECK(
-            (groupSizeM != PERBLOCK_SCALE_SIZE) || (groupSizeN != PERBLOCK_SCALE_SIZE) ||
-            (groupSizeK != PERBLOCK_SCALE_SIZE),
+        OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
+            CUBE_INNER_ERR_REPORT(opName_, "Failed to execute inferGroupSize in perblock scene."),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((groupSizeM != PERBLOCK_SCALE_SIZE) || (groupSizeN != PERBLOCK_SCALE_SIZE) ||
+             (groupSizeK != PERBLOCK_SCALE_SIZE),
             CUBE_INNER_ERR_REPORT(opName_, "groupSizeM, groupSizeN and groupSizeK should be 128 in perblock scene,"
-            " but actual is [groupSizeM = %ld, groupSizeN = %ld, groupSizeK = %ld]",
-            groupSizeM, groupSizeN, groupSizeK), return ge::GRAPH_FAILED);
+                " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu]",
+                groupSizeM, groupSizeN, groupSizeK),
+             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }

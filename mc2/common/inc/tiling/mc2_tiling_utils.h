@@ -79,6 +79,10 @@ constexpr double SCATTER_LARGERNK_COMM_GROW_RATIO2 = 1.2;
 constexpr double CUBE_UTIL_THRESH = 0.85;
 constexpr uint32_t AICPU_NUM_BLOCKS_A2 = 6U;
 
+constexpr uint64_t GROUP_M_OFFSET = 32;
+constexpr uint64_t GROUP_N_OFFSET = 16;
+constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
+
 constexpr auto DEFAULT_KEY_FOR_FITTING_MAP = "0_0";
 
 enum class Mc2QuantMode {
@@ -91,6 +95,16 @@ enum class Mc2QuantMode {
 
 struct HcclAicpuOpParam {
   uint8_t res[RES_LEN];
+};
+
+struct Mc2MatmulShapeInfo {
+    const gert::StorageShape *x1Shape{nullptr};
+    const gert::StorageShape *x2Shape{nullptr};
+    const gert::StorageShape *x1ScaleShape{nullptr};
+    const gert::StorageShape *x2ScaleShape{nullptr};
+    bool isMxfp{false};
+    bool isBTrans{false};
+    const char* opName{nullptr};
 };
 
 struct KFCMsgBody {
@@ -161,7 +175,8 @@ class Mc2TilingUtils {
   static bool CheckRankSize(NpuArch npuArch, uint32_t rankSize);
   static HcclDataType ConvertGeTypeToHcclType(const std::string &opName,
                                               ge::DataType type);
-
+  static bool InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupSizeM,
+                             uint64_t &groupSizeN, uint64_t &groupSizeK);
   template <typename T>
   static uint64_t GetTilingKey(T &tilingData, bool isFullMeshHost = false) {
     uint8_t commAlg =

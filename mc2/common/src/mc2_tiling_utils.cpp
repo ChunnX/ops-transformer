@@ -383,4 +383,62 @@ bool Mc2TilingUtils::CheckRankSize(NpuArch npuArch, uint32_t rankSize) {
   return false;
 }
 
+bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupSizeM,
+                                    uint64_t &groupSizeN, uint64_t &groupSizeK)
+{
+  // calculate groupSizeM
+  if (groupSizeM == 0) {
+    // get M of x1
+    auto mValue = mmInfo.x1Shape->GetStorageShape().GetDim(mmInfo.x1Shape->GetStorageShape().GetDimNum() - 2);
+    int64_t scaleMValue = 0;
+    if (mmInfo.isMxfp) {
+      // x1Scale is 3 dims in mx scene, 2 dims in perblock scene 
+      scaleMValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
+        mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 3);
+    } else {
+      scaleMValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
+        mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 2);
+    }
+    OP_TILING_CHECK(scaleMValue == 0, OP_LOGE(mmInfo.opName, "The m dimension of x1Scale is 0."), return false);
+    OP_TILING_CHECK((mValue % scaleMValue) != 0, OP_LOGE(mmInfo.opName, "The groupSize in m dimension is 0 and the m "
+      "dimension of x1 [%lu] is not divisible by m dimension of x1Scale [%lu]. the real groupSize in in m dimension"
+      "can not be infered.", mValue, scaleMValue), return false);
+    groupSizeM = mValue / scaleMValue;
+  }
+
+  if (groupSizeN == 0) {
+    uint64_t nIdx = 1;
+    if (mmInfo.isBTrans) {
+      nIdx = 0; // shape is[n, k] when x2 is transposed 
+    }
+    auto nValue = mmInfo.x2Shape->GetStorageShape().GetDim(nIdx);
+    auto scaleNValue = mmInfo.x2ScaleShape->GetStorageShape().GetDim(nIdx);
+    OP_TILING_CHECK(scaleNValue == 0, OP_LOGE(mmInfo.opName, "The n dimension of x2Scale is 0."), return false);
+    OP_TILING_CHECK((nValue % scaleNValue) != 0, OP_LOGE(mmInfo.opName, "The groupSize in n dimension is 0 and the n "
+      "dimension of x2 [%lu] is not divisible by n dimension of x2Scale [%lu]. the real groupSize in in n dimension "
+      "can not be infered.", nValue, scaleNValue), return false);
+    groupSizeN = nValue / scaleNValue;
+  }
+
+  if (groupSizeK == 0) {
+    // get k of x1 according to x1shape
+    auto kValue = mmInfo.x1Shape->GetStorageShape().GetDim(mmInfo.x1Shape->GetStorageShape().GetDimNum() - 1);
+    int64_t scaleKValue = 0;
+    if (mmInfo.isMxfp) {
+      scaleKValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
+        mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 2) * 2; // in mxfp scene, scaleshape is [m, k/2, 2]
+    } else {
+      scaleKValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
+        mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 1);
+    }
+    OP_TILING_CHECK(scaleKValue == 0, OP_LOGE(mmInfo.opName, "The k dimension of x1Scale is 0."), return false);
+    OP_TILING_CHECK((kValue % scaleKValue) != 0, OP_LOGE(mmInfo.opName, "The groupSize in k dimension is 0 and the k "
+      "dimension of x1 [%lu] is not divisible by k dimension of x1Scale [%lu]. the real groupSize in in k dimension "
+      "can not be infered.", kValue, scaleKValue), return false);
+    groupSizeK = kValue / scaleKValue;
+  }
+
+  return true;
+}
+
 }  // namespace mc2tiling
