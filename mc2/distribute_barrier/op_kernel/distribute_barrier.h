@@ -82,7 +82,7 @@ class DistributeBarrier {
   bool isInputTimeout_{false};
   bool isInputElasticInfo_{false};
   bool isElasticTrueFlag_{false};
-  __gm__ HcclOpResParam *winContext_{nullptr};
+  __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr};
 
   LocalTensor<float> statusFp32Tensor_;
   LocalTensor<int32_t> elasticInfoTensor_;
@@ -143,12 +143,8 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Tim
 
 template <TemplateDistributeBarrierTypeClass>
 __aicore__ inline GM_ADDR DistributeBarrier<TemplateDistributeBarrierTypeFunc>::GeWindowAddr(uint32_t toRankId, uint32_t curRankID)
- {
-  if (toRankId == curRankID) {
-    return (GM_ADDR)(winContext_->localWindowsExp) + dataState_ * WIN_STATE_OFFSET;
-  }
-  return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[toRankId].nextDevicePtr))->windowsExp) +
-         dataState_ * WIN_STATE_OFFSET;
+{
+  return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, toRankId, curRankID) + dataState_ * WIN_STATE_OFFSET;
 }
 
 template <TemplateDistributeBarrierTypeClass>
@@ -171,7 +167,7 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Ini
 template <TemplateDistributeBarrierTypeClass>
 __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::InitStatus() {
   GlobalTensor<int32_t> selfDataStatusTensor;
-  GM_ADDR statusDataSpaceGm = (GM_ADDR)(winContext_->localWindowsExp);
+  GM_ADDR statusDataSpaceGm = Mc2Kernel::GetStatusDataSpaceGm(winContext_);
   // 获取flag标记，flag标记写在win状态区的STATE_WIN_OFFSET偏移的位置
   selfDataStatusTensor.SetGlobalBuffer(
       (__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET));
@@ -212,9 +208,9 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Ini
     const DistributeBarrierTilingData *tilingData) {
   tpipe_ = pipe;
   aivId_ = GetBlockIdx();
-  winContext_ = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-  rankIdOriginal_ = winContext_->localUsrRankId;
-  rankId_ = winContext_->localUsrRankId;
+  winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+  rankIdOriginal_ = Mc2Kernel::GetRankId(winContext_);
+  rankId_ = Mc2Kernel::GetRankId(winContext_);
   aivNum_ = tilingData->distributeBarrierInfo.aivNum;
   worldSizeOriginal_ = tilingData->distributeBarrierInfo.worldSize;
   worldSize_ = tilingData->distributeBarrierInfo.worldSize;
@@ -275,6 +271,7 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Set
         toRankId = elasticInfoTensor_.GetValue(ELASTIC_METAINFO_OFFSET + worldSizeOriginal_ + rankIndex);
       }
       GM_ADDR rankGM = (__gm__ uint8_t *)(GeWindowAddr(toRankId, rankIdOriginal_) + offset);  // 计算地址偏移
+      SyncFunc<AscendC::HardEvent::V_MTE3>();
       rankGMTensor.SetGlobalBuffer((__gm__ float *)rankGM);
       DataCopy<float>(rankGMTensor, statusFp32Tensor_, UB_ALIGN / sizeof(float));  // 8时数据大小，按32对齐拷贝
     }

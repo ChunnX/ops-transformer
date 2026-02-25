@@ -79,6 +79,7 @@ operator_group_10:
   - quant_all_reduce
   - quant_reduce_scatter
   - moe_update_expert
+  - distribute_barrier
 operator_group_11:
   - fused_infer_attention_score,10-3
 operator_group_12:
