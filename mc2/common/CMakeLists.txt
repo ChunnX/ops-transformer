@@ -13,9 +13,11 @@
    src/context_transfer.cpp
    src/hccl_formulaic_tiling.cpp
    src/hccl_performance.cpp
+   src/hccl_performance_arch35.cpp
    src/matmul_all_reduce_gen_task_ops_utils.cpp
    src/matmul_formulaic_tiling.cpp
    src/matmul_performance.cpp
+   src/mc2_fit_based_balance_tiling.cpp
    src/mc2_common_infershape.cpp
    src/mc2_copy_quant_matmul_params.cpp
    src/mc2_gen_task_ops_utils.cpp

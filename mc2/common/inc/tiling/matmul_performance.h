@@ -58,7 +58,7 @@ constexpr double AVERAGE_CUBE_UTIL = 0.75;
 class MatmulPerformanceModel {
 public:
     MatmulParameters mmShapeInfo_;
-    MatmulCalcType calcType_; //区分非两会、全量化、伪量化
+    MatmulCalcType calcType_; // Distinguish the non-quantization, full-quantization and fake-quantization
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
     uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC; 
@@ -134,7 +134,10 @@ public:
     {
         mmShapeInfo_.batchSize = bSize;
     };
-
+    uint32_t GetBaseM()
+    {
+        return mmShapeInfo_.baseM;
+    };
     // 返回允许切分的最小数据量
     uint64_t GetLinearThresholdLen(uint64_t rankTileNum);
     // 性能预测
