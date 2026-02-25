@@ -53,6 +53,32 @@ static constexpr int64_t NEG_TWO = -2;
 static constexpr int64_t ZERO = 0;
 static constexpr size_t MAX_GROUP_LEN = 128U;
 static constexpr size_t TWO_DIMS = 2U;
+static constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 一个int32包含8个int4
+
+// 将int32的输入dtype修改为int4, 同时ViewShape和ViewStrides也从int32修改为int4所对应的
+aclTensor* ConvertTensorToInt4(const aclTensor* input, aclOpExecutor* executor)
+{
+    auto viewShape = input->GetViewShape();
+    viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
+    auto inputTemp = executor->CreateView(input, viewShape, input->GetViewOffset());
+    inputTemp->SetDataType(DataType::DT_INT4);
+    OP_LOGD("The conversion from int32 to int4 is completed.");
+    return inputTemp;
+}
+
+// 对x1和x2进行int32到int4的转换预处理
+void InputPreProcessInt4(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&alltoallout, aclOpExecutor *executor)
+{
+    if (x2->GetDataType() == DataType::DT_INT32) {
+        x2 = ConvertTensorToInt4(x2, executor);
+    }
+    if (x1->GetDataType() == DataType::DT_INT32) {
+        x1 = ConvertTensorToInt4(x1, executor);
+    }
+    if (alltoallout != nullptr && alltoallout->GetDataType() == DataType::DT_INT32) {
+        alltoallout = ConvertTensorToInt4(alltoallout, executor);
+    }
+}
 
 // 检查必要输入是否为空，必须非空
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x2Scale, const aclTensor* output) {
@@ -285,12 +311,12 @@ static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2, const aclTen
 
 // 根据API定义，列出allto_all_quant_matmul量化输入X1所能支持的所有dtype(A2)
 static const std::initializer_list<op::DataType> X1_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_INT4
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_INT4, op::DataType::DT_INT32
 };
 
 // 根据API定义，列出allto_all_quant_matmul量化输入X2所能支持的所有dtype(A2)
 static const std::initializer_list<op::DataType> X2_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_INT8, op::DataType::DT_INT4
+    op::DataType::DT_INT8, op::DataType::DT_INT4, op::DataType::DT_INT32
 };
 
 // 根据API定义，列出allto_all_quant_matmul量化输入SCALE所能支持的所有dtype(A2)
@@ -553,6 +579,14 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1ScaleOptional, x2Scale, alltoAllAxesOptional, group,
         x1QuantMode, x2QuantMode, x1QuantDtype, transposeX1, transposeX2, output, alltoAllOutOptional);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
+    
+    // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201 && executor != nullptr) {
+        auto uniqueExecutor = CREATE_EXECUTOR();
+        InputPreProcessInt4(x1, transX2, alltoAllOutOptional, uniqueExecutor.get());
+        uniqueExecutor.ReleaseTo(executor);
+    }
+    
     aclnnStatus ret = InnerAlltoAllQuantMatmulGetWorkspaceSize(
         x1, transX2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, group, alltoAllAxesOptional,
         x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype, groupSize,
