@@ -193,7 +193,6 @@ static void PrintTilingDataInfo(const char *nodeName, MoeDistributeDispatchV2Til
     OP_LOGD(nodeName, "hasElastic is %d.", tilingData.moeDistributeDispatchV2Info.hasElasticInfo);
     OP_LOGD(nodeName, "isPerformance is %d.", tilingData.moeDistributeDispatchV2Info.isPerformance);
     OP_LOGD(nodeName, "zeroComputeExpertNum is %d", tilingData.moeDistributeDispatchV2Info.zeroComputeExpertNum);
-    OP_LOGD(nodeName, "cumSumUBMinValue is %d", tilingData.moeDistributeDispatchV2Info.cumSumUBMinValue);
 }
 
 static bool CheckDynamicScalesDim(const gert::TilingContext *context,
@@ -882,20 +881,7 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
     tilingData.moeDistributeDispatchV2Info.zeroComputeExpertNum = static_cast<int32_t>(zeroComputeExpertNum);
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 zeroComputeExpertNum = %d\n",
         tilingData.moeDistributeDispatchV2Info.zeroComputeExpertNum);
-    uint32_t localMoeExpertNum = static_cast<uint32_t>(moeExpertNum) / (static_cast<uint32_t>(epWorldSize) - static_cast<uint32_t>(sharedExpertRankNum));
-    uint32_t lastDim = localMoeExpertNum * static_cast<uint32_t>(epWorldSize);
-    
-    if (isSetFullMeshV2) { 
-        lastDim = ((lastDim + CEIL_ALIGN32 - 1) / CEIL_ALIGN32) * CEIL_ALIGN32; 
-        std::vector<int64_t> srcShapeDim = {1, lastDim}; 
-        auto srcShape = ge::Shape(srcShapeDim); 
-        uint32_t cumSumUBMaxValue = 0; 
-        uint32_t cumSumUBMinValue = 0; 
-        AscendC::GetCumSumMaxMinTmpSize(srcShape, sizeof(float), true, true, cumSumUBMaxValue, cumSumUBMinValue); 
-        tilingData.moeDistributeDispatchV2Info.cumSumUBMinValue = static_cast<uint32_t>(cumSumUBMinValue); 
-        OP_LOGD(nodeName, "lastDim = %d, MoeDistributeDispatchV2 cumSumUBMinValue = %d\n", lastDim, 
-            tilingData.moeDistributeDispatchV2Info.cumSumUBMinValue); 
-    }
+
     return ge::GRAPH_SUCCESS;
 }
 
