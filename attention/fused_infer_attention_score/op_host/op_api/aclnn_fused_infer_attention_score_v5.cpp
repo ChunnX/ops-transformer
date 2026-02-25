@@ -10,10 +10,11 @@
 
 #include "aclnn_fused_infer_attention_score_v5.h"
 
+#include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
-#include "opdev/common_types.h"
+#include "aclnn_fused_infer_attention_score_inner.h"
 
 using namespace op;
 
@@ -22,8 +23,6 @@ extern "C" {
 #endif
 
 namespace {
-const uint64_t INT4_NUMS_IN_INT32 = 8;
-
 /**
  * @brief for acl graph calculates the max workspace size based on the specific calculation process.
  * declaration here for testcase to use by extern the interface
@@ -48,123 +47,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
-
-
-extern aclnnStatus aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
-    const aclTensor *query, const aclTensorList *key, const aclTensorList *value, const aclTensor *pseShift,
-    const aclTensor *attenMask, const aclIntArray *actualSeqLengths, const aclIntArray *actualSeqLengthsKv,
-    const aclTensor *deqScale1, const aclTensor *quantScale1, const aclTensor *deqScale2, const aclTensor *quantScale2,
-    const aclTensor *quantOffset2, const aclTensor *antiquantScale, const aclTensor *antiquantOffset,
-    const aclTensor *blockTable, const aclTensor *queryPaddingSize, const aclTensor *kvPaddingSize,
-    const aclTensor *keyAntiquantScale, const aclTensor *keyAntiquantOffset, const aclTensor *valueAntiquantScale,
-    const aclTensor *valueAntiquantOffset, const aclTensor *keySharedPrefix, const aclTensor *valueSharedPrefix,
-    const aclIntArray *actualSharedPrefixLen, const aclTensor *query_rope,
-    const aclTensor *key_rope, const aclTensor *keyRopeAntiquantScale,
-    const aclTensor *dequantScaleQuery, const aclTensor *learnableSinkOptional, 
-    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, int64_t numHeads, double scaleValue, int64_t preTokens,
-    int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
-    int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType, int64_t outType,
-    const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
-
-extern aclnnStatus aclnnInnerFusedInferAttentionScore(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                      const aclrtStream stream);
-
-void TensorPreProcessV5(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue) {
-    if (tensorListKey == nullptr) {
-        OP_LOGD("tensorListKey is nullptr, TensorPreProcess exit.");
-        return;
-    }
-    if (tensorListValue == nullptr) {
-        OP_LOGD("tensorListValue is nullptr, TensorPreProcess exit.");
-        return;
-    }
-    if ((*tensorListKey)[0]->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kv's from OriginalShape is completed.");
-        return;
-    }
-    if ((*tensorListValue)[0]->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kv's from OriginalShape is completed.");
-        return;
-    }
-    auto tempKey = const_cast<aclTensorList *>(tensorListKey);
-    for (uint64_t i = 0; i < tempKey->Size(); i++) {
-        if ((*tempKey)[i] != nullptr) {
-            op::Shape viewShape = (*tempKey)[i]->GetViewShape();
-            auto viewShapeDim = viewShape.GetDimNum();
-            if (viewShapeDim >= 1) {
-                viewShape[viewShapeDim - 1] = viewShape[viewShapeDim - 1] * INT4_NUMS_IN_INT32;
-            }
-            (*tempKey)[i]->SetViewShape(viewShape);
-            (*tempKey)[i]->SetDataType(DataType::DT_INT4);
-        }
-    }
-
-    auto tempValue = const_cast<aclTensorList *>(tensorListValue);
-    for (uint64_t i = 0; i < tempValue->Size(); i++) {
-        if ((*tempValue)[i] != nullptr) {
-            op::Shape viewShape = (*tempValue)[i]->GetViewShape();
-            auto viewShapeDim = viewShape.GetDimNum();
-            if (viewShapeDim >= 1) {
-                viewShape[viewShapeDim - 1] = viewShape[viewShapeDim - 1] * INT4_NUMS_IN_INT32;
-            }
-            (*tempValue)[i]->SetViewShape(viewShape);
-            (*tempValue)[i]->SetDataType(DataType::DT_INT4);
-       }
-    }
-
-    OP_LOGD("The conversion of kv from int32 to int4 is completed.");
-}
-
-void PrefixTensorPreProcessV5(const aclTensor *&tensorKey, const aclTensor *&tensorValue) {
-    if (tensorKey == nullptr) {
-        OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
-        return;
-    }
-    if (tensorValue == nullptr) {
-        OP_LOGD("tensorListValue is nullptr,TensorPreProcess exit..");
-        return;
-    }
-    if (tensorKey->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kvPrefix's from OriginalShape is completed.");
-        return;
-    }
-    if (tensorValue->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kvPrefix's from OriginalShape is completed.");
-        return;
-    }
-    auto tempKey = const_cast<aclTensor *>(tensorKey);
-    op::Shape viewKeyShape = tempKey->GetViewShape();
-    auto viewKeyShapeDim = viewKeyShape.GetDimNum();
-    viewKeyShape[viewKeyShapeDim - 1] = viewKeyShape[viewKeyShapeDim - 1] * INT4_NUMS_IN_INT32;
-    tempKey->SetViewShape(viewKeyShape);
-    tempKey->SetDataType(DataType::DT_INT4);
-
-    auto tempValue = const_cast<aclTensor *>(tensorValue);
-    op::Shape viewValueShape = tempValue->GetViewShape();
-    auto viewValueShapeDim = viewValueShape.GetDimNum();
-    viewValueShape[viewValueShapeDim - 1] = viewValueShape[viewValueShapeDim - 1] * INT4_NUMS_IN_INT32;
-    tempValue->SetViewShape(viewValueShape);
-    tempValue->SetDataType(DataType::DT_INT4);
-
-    OP_LOGD("The conversion of kvPrefix from int32 to int4 is completed.");
-}
-
-aclnnStatus FakeArrayV5(const aclIntArray *inArray, aclIntArray *&outArray) {
-    OP_LOGD("start fake array");
-    if (inArray != nullptr) {
-        OP_LOGD("input array is not nullptr");
-        uint64_t size = inArray->Size();
-        // tiling侧认为有tensor但没有data就是计算最大workspace
-        outArray = aclCreateIntArray(nullptr, size);
-        if (outArray == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc array failed");
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
-    }
-    OP_LOGD("end fake array");
-    return ACLNN_SUCCESS;
-}
 
 aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
@@ -206,53 +88,53 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     OP_LOGD("start aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize");
     const aclTensorList *tensorListKey = key;
     const aclTensorList *tensorListValue = value;
-    TensorPreProcessV5(tensorListKey, tensorListValue);
+    TensorPreProcess(tensorListKey, tensorListValue);
 
     const aclTensor *tensorKeySharedPrefixOptional = keySharedPrefixOptional;
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
-    PrefixTensorPreProcessV5(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
+    PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    aclIntArray *fakeActualSeqLengthsOptional{nullptr};
-    aclIntArray *fakeActualSeqLengthsKvOptional{nullptr};
-    aclIntArray *fakeActualSharedPrefixLenOptional{nullptr};
-    aclIntArray *fakeQStartIdxOptional{nullptr};
-    aclIntArray *fakeKVStartIdxOptional{nullptr};
+    aclTensor *fakeActualSeqLengthsOptional{nullptr};
+    aclTensor *fakeActualSeqLengthsKvOptional{nullptr};
+    aclTensor *fakeActualSharedPrefixLenOptional{nullptr};
+    aclTensor *fakeQStartIdxOptional{nullptr};
+    aclTensor *fakeKVStartIdxOptional{nullptr};
 
     // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
-    aclnnStatus ret = FakeArrayV5(actualSeqLengthsOptional, fakeActualSeqLengthsOptional);
+    aclnnStatus ret = FakeArray(actualSeqLengthsOptional, fakeActualSeqLengthsOptional);
     CHECK_RET_CODE(ret, "Try alloc fake actualSeqLengthsOptional failed");
 
-    ret = FakeArrayV5(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
+    ret = FakeArray(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSeqLengthsKvOptional failed");
-        aclDestroyIntArray(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         return ret;
     }
 
-    ret = FakeArrayV5(actualSharedPrefixLenOptional, fakeActualSharedPrefixLenOptional);
+    ret = FakeArray(actualSharedPrefixLenOptional, fakeActualSharedPrefixLenOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSharedPrefixLenOptional failed");
-        aclDestroyIntArray(fakeActualSeqLengthsOptional); // 没有返回值无需校验
-        aclDestroyIntArray(fakeActualSeqLengthsKvOptional);
+        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsKvOptional);
         return ret;
     }
 
-    ret = FakeArrayV5(qStartIdxOptional, fakeQStartIdxOptional);
+    ret = FakeArray(qStartIdxOptional, fakeQStartIdxOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake qStartIdxOptional failed");
-        aclDestroyIntArray(fakeActualSeqLengthsOptional); // 没有返回值无需校验
-        aclDestroyIntArray(fakeActualSeqLengthsKvOptional);
-        aclDestroyIntArray(fakeActualSharedPrefixLenOptional);
+        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsKvOptional);
+        aclDestroyTensor(fakeActualSharedPrefixLenOptional);
         return ret;
     }
 
-    ret = FakeArrayV5(kvStartIdxOptional, fakeKVStartIdxOptional);
+    ret = FakeArray(kvStartIdxOptional, fakeKVStartIdxOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake kvStartIdxOptional failed");
-        aclDestroyIntArray(fakeActualSeqLengthsOptional); // 没有返回值无需校验
-        aclDestroyIntArray(fakeActualSeqLengthsKvOptional);
-        aclDestroyIntArray(fakeActualSharedPrefixLenOptional);
-        aclDestroyIntArray(fakeQStartIdxOptional);
+        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsKvOptional);
+        aclDestroyTensor(fakeActualSharedPrefixLenOptional);
+        aclDestroyTensor(fakeQStartIdxOptional);
         return ret;
     }
 
@@ -268,7 +150,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
         placeHolder = softmaxLse;
     }
 
-    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    ret = aclnnInnerFusedInferAttentionScoreTensorGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, fakeActualSeqLengthsOptional,
         fakeActualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
@@ -282,9 +164,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }
-    aclDestroyIntArray(fakeActualSeqLengthsOptional); // 只会成功，无需校验
-    aclDestroyIntArray(fakeActualSeqLengthsKvOptional);
-    aclDestroyIntArray(fakeActualSharedPrefixLenOptional);
+    aclDestroyTensor(fakeActualSeqLengthsOptional); // 只会成功，无需校验
+    aclDestroyTensor(fakeActualSeqLengthsKvOptional);
+    aclDestroyTensor(fakeActualSharedPrefixLenOptional);
+    aclDestroyTensor(fakeQStartIdxOptional);
+    aclDestroyTensor(fakeKVStartIdxOptional);
     return ret;
 }
 
@@ -327,11 +211,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
 {
     const aclTensorList *tensorListKey = key;
     const aclTensorList *tensorListValue = value;
-    TensorPreProcessV5(tensorListKey, tensorListValue);
+    TensorPreProcess(tensorListKey, tensorListValue);
 
     const aclTensor *tensorKeySharedPrefixOptional = keySharedPrefixOptional;
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
-    PrefixTensorPreProcessV5(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
+    PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
