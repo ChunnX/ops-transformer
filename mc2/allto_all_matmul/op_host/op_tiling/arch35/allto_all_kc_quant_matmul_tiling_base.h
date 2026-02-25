@@ -54,10 +54,10 @@ protected:
                                                         TilingContextInfo &contextInfo);
     
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
-    void PrintAlltoAllKcQuantMatmulTilingData(AlltoAllKcQuantMatmulTilingData &outTilingData);
+    void PrintAlltoAllKcQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);
     
 private:
-    AlltoAllKcQuantMatmulTilingData localTilingData_;
+    AlltoAllQuantMatmulTilingData localTilingData_;
     uint64_t mm_mvalue_len = 0;
     void PrintAlltoAllKcQuantMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
     void PrintKcQuantMMV3TilingData(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
