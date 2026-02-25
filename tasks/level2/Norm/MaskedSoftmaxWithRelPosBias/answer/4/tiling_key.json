@@ -1,0 +1,18 @@
+{
+    "ID": 4,
+    "TILING_KEY": [
+        203,
+        204,
+        213,
+        214,
+        223,
+        224,
+        2103,
+        2104,
+        2113,
+        2114,
+        2123,
+        2124
+    ],
+    "DESCRIPTION": "该执行路径主要应用于仅有bias（无attention mask）的S1维度切分场景，通过MaskedSoftmaxWithRelPosBiasBS1Bias模板类在S1粒度上处理仅含bias的softmax计算，支持对齐与非对齐模式及float/half/bfloat16数据类型。"
+}

@@ -2,3 +2,6 @@ case_id;input_shape;normalized_shape;dtype;epsilon
 0;[2, 4];[4];float16;1e-6
 1;[8, 64];[64];float16;1e-6
 2;[4, 128];[128];float16;1e-5
+3;[1, 512];[512];float16;1e-6
+4;[2, 4096];[4096];float16;1e-6
+5;[1, 16384];[16384];float16;1e-6

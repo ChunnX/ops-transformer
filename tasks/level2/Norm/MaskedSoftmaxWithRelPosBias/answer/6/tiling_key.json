@@ -1,0 +1,9 @@
+{
+    "ID": 6,
+    "TILING_KEY": [
+        100,
+        110,
+        120
+    ],
+    "DESCRIPTION": "该执行路径主要应用于S2维度为1的退化场景，此时softmax输出恒为1，通过MaskedSoftmaxWithRelPosBiasONES2模板类直接填充全1结果，无需实际计算softmax，支持float/half/bfloat16数据类型。"
+}

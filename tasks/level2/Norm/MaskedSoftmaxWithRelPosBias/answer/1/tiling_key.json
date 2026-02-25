@@ -1,0 +1,14 @@
+{
+    "ID": 1,
+    "TILING_KEY": [
+        5001,
+        5002,
+        5003,
+        5004,
+        5101,
+        5102,
+        5103,
+        5104
+    ],
+    "DESCRIPTION": "该执行路径主要应用于float类型数据的Batch维度切分场景，通过MaskedSoftmaxWithRelPosBiasB模板类处理带attention mask和relative position bias的softmax计算，支持是否存在attention mask、是否进行scale乘法、数据是否对齐三种组合。"
+}

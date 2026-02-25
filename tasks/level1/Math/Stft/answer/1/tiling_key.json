@@ -1,0 +1,8 @@
+{
+    "ID": 2,
+    "TILING_KEY": [
+        1,
+        3
+    ],
+    "DESCRIPTION": "该场景主要应用于通用STFT计算（支持float和half），使用STFTGeneralized类实现，并根据输入情况可选使用StftPlanMul进行预处理。"
+}
