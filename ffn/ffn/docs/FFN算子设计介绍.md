@@ -54,7 +54,7 @@ FFN算子核心计算过程如上图所示，计算主要由matmul1 -> 激活函
 
 * 总结量化场景的vector计算过程如下图：
 
-![FFN量化场景vector计算过程](../../../docs/zh/figures/FFN量化场景vector计算过程.png)
+  ![FFN量化场景vector计算过程](../../../docs/zh/figures/FFN量化场景vector计算过程.png)
 
 ## 2.3 伪量化
 
