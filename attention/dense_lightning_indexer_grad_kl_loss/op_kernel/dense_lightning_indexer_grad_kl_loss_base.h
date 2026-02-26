@@ -193,6 +193,10 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitWorkspace(
     int64_t dWeightFloatSzie = S1_BASE_STEP * constInfo.n1IndexSize * sizeof(float);
     int64_t reluGradSize = constInfo.n1IndexSize * S1_BASE_STEP * S2_BASE_STEP * sizeof(float); // * 2;
     int64_t dKeyIndexFloatSzie = constInfo.bSize * constInfo.s2Size * constInfo.n2IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
+    if constexpr (LAYOUT_T == DLILayout::TND) {
+        int64_t t2Size = this->actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        dKeyIndexFloatSzie = t2Size * constInfo.n2IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
+    }
     int64_t dQueryIndexFloatSzie = S1_BASE_STEP * constInfo.n1IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
     int64_t coreTotalOffset = constInfo.aicIdx *
             (bmm1Offset * 2 + bmm2Offset * 2 + psySyncSize * 2 * DOUBLE_BUFFER + reluGradSize *2 + dWeightFloatSzie + dQueryIndexFloatSzie);

@@ -254,4 +254,4 @@
 
 | 调用方式 | 调用样例                                                                   | 说明                                                           |
 |--------------|------------------------------------------------------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_dense_lightning_indexer_grad_kl_los](examples/test_aclnn_dense_lightning_indexer_grad_kl_los.cpp) | 通过[aclnnDenseLightningIndexerGradKLLoss](docs/aclnnDenseLightningIndexerGradKLLoss.md)接口方式调用dense_lightning_indexer_grad_kl_los算子。 |
+| aclnn调用 | [test_aclnn_dense_lightning_indexer_grad_kl_loss](examples/test_aclnn_dense_lightning_indexer_grad_kl_loss.cpp) | 通过[aclnnDenseLightningIndexerGradKLLoss](docs/aclnnDenseLightningIndexerGradKLLoss.md)接口方式调用dense_lightning_indexer_grad_kl_loss算子。 |
