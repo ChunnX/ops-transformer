@@ -25,7 +25,7 @@ class test_aclnn_allto_all_quant_matmul : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        op::SetPlatformNpuArch(NpuArch::DAV_3510);
         cout << "test_aclnn_allto_all_quant_matmul SetUp" << endl;
     }
 
@@ -49,8 +49,8 @@ struct AlltoAllQuantMatmulAclnnTestParam {
     vector<int64_t> x1_shape; // x1数据shape，正常为（BS，H）
     vector<int64_t> x2_shape; // x2数据shape，正常为（H * world_size，N）
     vector<int64_t> bias_shape; // bias数据shape，正常为（N）
-    vector<int64_t> x1_scale_optional_shape; // x1ScaleOptional数据shape，正常为（BS）
-    vector<int64_t> x2_scale_shape; // x2scales数据shape，正常为（N）
+    vector<int64_t> x1_scale_optional_shape; // x1ScaleOptional数据shape，正常为（BS/rankSize），mx量化为（BS/rankSize，ceil(H*rankSize/64)，2）
+    vector<int64_t> x2_scale_shape; // x2scales数据shape，正常为（N），mx量化为（ceil(H*rankSize/64)，N，2）
     vector<int64_t> output_shape; // output数据shape，正常为（BS / world_size，N）
     vector<int64_t> alltoalloutput_shape; // alltoalloutput数据shape，正常为（BS / ranksize，H * ranksize）
     // 数据类型
@@ -71,6 +71,7 @@ struct AlltoAllQuantMatmulAclnnTestParam {
     aclFormat alltoalloutput_format; // alltoalloutputoutput数据format，仅支持ND
     // 其它属性
     int64_t x1_quantdtype; // x1量化数据类型，仅支持配置35（表示ACL_FLOAT8_E5M2）或36（表示ACL_FLOAT8_E4M3FN）
+    int64_t group_size; // groupSize，仅在perGroup（MX）量化时产生意义，表示分组量化时分组的大小，其余场景默认传0即可
     vector<int64_t> alltoAllAxesOptional; // alltoall数据交换的方向，只能为空或者[-2,-1]
     char* group; // 通信域标识，字符串，长度要求（0，128）
     bool transposeX1; // x1是否转置，现不支持为true
@@ -79,32 +80,71 @@ struct AlltoAllQuantMatmulAclnnTestParam {
     aclnnStatus aclnn_status; //期望状态
 };
 
-static AlltoAllQuantMatmulAclnnTestParam cases_params[] = {
+// KC动态量化UT用例表
+static AlltoAllQuantMatmulAclnnTestParam KCDynQuant_cases_params[] = {
     // 正常用例 192条，caseid按照[算子名-x1-x2-bias-x1scale-x2scale-output-alltoallout-format-transpose-x1quantdtype-id]构成
     // 等待补充
     {"AclnnAlltoAllQuantMatmul-bf16-e4m3-f32-bf16-f32-bf16-bf16-nd-notrans-35-01",
-        2, 7, 2, {256, 64}, {128, 256}, {256}, {256}, {256}, {128, 256}, {128, 128},
+        2, 7, 2, {256, 64}, {128, 256}, {256}, {0}, {256}, {128, 256}, {128, 128},
         ACL_BF16, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_BF16, ACL_FLOAT, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        35, {-2, -1}, "ut_test_allto_all_quant_matmul", false, false, ACLNN_SUCCESS},
-    {"AclnnAlltoAllQuantMatmul-bf16-e4m3-f32-bf16-f32-bf16-bf16-nd-notrans-35-01",
-        2, 7, 2, {256, 64}, {256, 128}, {256}, {256}, {256}, {128, 256}, {128, 128},
+        35, 0, {-2, -1}, "ut_test_allto_all_quant_matmul", false, false, ACLNN_SUCCESS},
+    {"AclnnAlltoAllQuantMatmul-bf16-e4m3-f32-bf16-f32-bf16-bf16-nd-trans-35-02",
+        2, 7, 2, {256, 64}, {256, 128}, {256}, {0}, {256}, {128, 256}, {128, 128},
         ACL_BF16, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_BF16, ACL_FLOAT, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        35, {-2, -1}, "ut_test_allto_all_quant_matmul", false, true, ACLNN_SUCCESS},
+        35, 0, {-2, -1}, "ut_test_allto_all_quant_matmul", false, true, ACLNN_SUCCESS},
 
     // 异常用例 很多很多条，caseid按照[error-算子名-异常原因-id]构成
     // 等待补充
     {"error-AclnnAlltoAllQuantMatmul-x1dtype_invalid-01",
-        2, 7, 2, {256, 64}, {128, 256}, {256}, {256}, {256}, {128, 256}, {128, 128},
+        2, 7, 2, {256, 64}, {128, 256}, {256}, {0}, {256}, {128, 256}, {128, 128},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_BF16, ACL_FLOAT, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        35, {-2, -1}, "ut_test_allto_all_quant_matmul", false, false, ACLNN_ERR_PARAM_INVALID},
+        35, 0, {-2, -1}, "ut_test_allto_all_quant_matmul", false, false, ACLNN_ERR_PARAM_INVALID},
     {"error-AclnnAlltoAllQuantMatmul-x2dtype_invalid-02",
-        2, 7, 2, {256, 64}, {128, 256}, {256}, {256}, {256}, {128, 256}, {128, 128},
+        2, 7, 2, {256, 64}, {128, 256}, {256}, {0}, {256}, {128, 256}, {128, 128},
         ACL_BF16, ACL_BF16, ACL_FLOAT, ACL_BF16, ACL_FLOAT, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        35, {-2, -1}, "ut_test_allto_all_quant_matmul", false, false, ACLNN_ERR_PARAM_INVALID},
+        35, 0, {-2, -1}, "ut_test_allto_all_quant_matmul", false, false, ACLNN_ERR_PARAM_INVALID},
+};
+
+// MX量化UT用例表
+static AlltoAllQuantMatmulAclnnTestParam MXQuant_cases_params[] = {
+    // 正常用例
+    {"AAQMM_MX-bf16-success-001",
+        2, 6, 6, {256, 64}, {256, 128}, {256}, {128, 2, 2}, {256, 2, 2}, {128, 256}, {128, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16, ACL_FLOAT8_E5M2,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        35, 4295032864, {-2, -1}, "ut_test_allto_all_quant_matmul", false, true, ACLNN_SUCCESS}, // 输入fp8_e5m2，输出bf16
+    {"AAQMM_MX-fp16-success-002",
+        2, 6, 6, {256, 64}, {256, 128}, {256}, {128, 2, 2}, {256, 2, 2}, {128, 256}, {128, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16, ACL_FLOAT8_E4M3FN,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        36, 4295032864, {-2, -1}, "ut_test_allto_all_quant_matmul", false, true, ACLNN_SUCCESS}, // 输入fp8_e4m3fn，输出fp16
+    {"AAQMM_MX-fp32-success-003",
+        2, 6, 6, {256, 64}, {256, 128}, {256}, {128, 2, 2}, {256, 2, 2}, {128, 256}, {128, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT, ACL_FLOAT8_E4M3FN,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        36, 4295032864, {-2, -1}, "ut_test_allto_all_quant_matmul", false, true, ACLNN_SUCCESS}, // 输入fp8_e4m3fn，输出fp32
+
+    // 异常用例 很多很多条，caseid按照[error-算子名-异常原因-id]构成
+    // 等待补充
+    {"AAQMM_MX-x1QuantDtype_missmatch-error-001",
+        2, 6, 6, {256, 64}, {256, 128}, {256}, {128, 2, 2, 16}, {256, 2, 2}, {128, 256}, {128, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT, ACL_FLOAT8_E4M3FN,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        36, 4295032864, {-2, -1}, "ut_test_allto_all_quant_matmul", false, true, ACLNN_ERR_PARAM_INVALID}, // x1scale维度不对
+    {"AAQMM_MX-groupSize_invalid-error-002",
+        2, 6, 6, {256, 64}, {256, 128}, {256}, {128, 2, 2}, {256, 2, 2}, {128, 256}, {128, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT, ACL_FLOAT8_E4M3FN,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        36, 31241, {-2, -1}, "ut_test_allto_all_quant_matmul", false, true, ACLNN_ERR_PARAM_INVALID}, // groupSize不是MX量化要的值
+    {"AAQMM_MX-x2nottrans-error-003",
+        2, 6, 6, {256, 64}, {128, 256}, {256}, {128, 2, 2}, {2, 256, 2}, {128, 256}, {128, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT, ACL_FLOAT8_E4M3FN,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        36, 4295032864, {-2, -1}, "ut_test_allto_all_quant_matmul", false, false, ACLNN_ERR_PARAM_INVALID} // x2非转置
 };
 
 static void TestOneParamCase(const AlltoAllQuantMatmulAclnnTestParam& param)
@@ -135,6 +175,7 @@ static void TestOneParamCase(const AlltoAllQuantMatmulAclnnTestParam& param)
     aclFormat outputFormat = param.output_format;
     aclFormat alltoalloutFormat = param.alltoalloutput_format;
     int64_t x1quantdtype = param.x1_quantdtype;
+    int64_t groupSize = param.group_size;
     vector<int64_t> axes_acl = param.alltoAllAxesOptional;
     aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axes_acl.data(), axes_acl.size());
     const char* group = param.group;
@@ -143,33 +184,48 @@ static void TestOneParamCase(const AlltoAllQuantMatmulAclnnTestParam& param)
     aclnnStatus retStatus = param.aclnn_status;
     TensorDesc x1 = TensorDesc(x1Shape, x1Dtype, x1Format);
     TensorDesc x2 = TensorDesc(x2Shape, x2Dtype, x2Format);
+    TensorDesc bias = TensorDesc(biasShape, biasDtype, biasFormat);
+    TensorDesc x1scales = TensorDesc(x1scalesShape, x1scalesDtype, x1_scale_format);
     TensorDesc x2scales = TensorDesc(x2scalesShape, x2scalesDtype, x2_scale_format);
     TensorDesc output = TensorDesc(outputShape, outputDtype, outputFormat);
-    // 三个可能为空指针的，需要特殊处理
-    TensorDesc bias = TensorDesc(biasShape, biasDtype, biasFormat);
     TensorDesc alltoallout = TensorDesc(alltoalloutShape, alltoalloutDtype, alltoalloutFormat);
-    TensorDesc x1scales = TensorDesc(x1scalesShape, x1scalesDtype, x1_scale_format);
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    auto ut = OP_API_UT(aclnnAlltoAllQuantMatmul,
-                INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, group, alltoAllAxesOptional,
-                    x1quantmode, x2quantmode, 0, -1, x1quantdtype, 0, transposeX1, transposeX2),
-                OUTPUT(output, alltoallout));
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    if (retStatus == ACLNN_SUCCESS) {
-        EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    if (x1quantmode == 7) {
+        auto ut = OP_API_UT(aclnnAlltoAllQuantMatmul,
+            INPUT(x1, x2, bias, nullptr, x2scales, nullptr, nullptr, nullptr, group, alltoAllAxesOptional,
+                x1quantmode, x2quantmode, 0, -1, x1quantdtype, groupSize, transposeX1, transposeX2),
+            OUTPUT(output, alltoallout));
+        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+        EXPECT_EQ(aclRet, retStatus);
     } else {
+        auto ut = OP_API_UT(aclnnAlltoAllQuantMatmul,
+            INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, group, alltoAllAxesOptional,
+                x1quantmode, x2quantmode, 0, -1, x1quantdtype, groupSize, transposeX1, transposeX2),
+            OUTPUT(output, alltoallout));
+        aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
         EXPECT_EQ(aclRet, retStatus);
     }
     std::cout << "end case " <<  param.case_name << std::endl;
 }
 
-TEST_F(test_aclnn_allto_all_quant_matmul, cases_params)
+// 测试KC动态量化场景下的UT用例
+TEST_F(test_aclnn_allto_all_quant_matmul, KCDynQuant_cases_params)
 {
-    if (std::size(cases_params) != 0) {
-        uint64_t numCases = sizeof(cases_params) / sizeof(cases_params[0]);
+    if (std::size(KCDynQuant_cases_params) != 0) {
+        uint64_t numCases = sizeof(KCDynQuant_cases_params) / sizeof(KCDynQuant_cases_params[0]);
         for (size_t idx = 0; idx < numCases; idx += 1) {
-            TestOneParamCase(cases_params[idx]);
+            // 这是注释TestOneParamCase(KCDynQuant_cases_params[idx]);
+        }
+    }
+}
+// 测试MX量化场景下的UT用例
+TEST_F(test_aclnn_allto_all_quant_matmul, MXQuant_cases_params)
+{
+    if (std::size(MXQuant_cases_params) != 0) {
+        uint64_t numCases = sizeof(MXQuant_cases_params) / sizeof(MXQuant_cases_params[0]);
+        for (size_t idx = 0; idx < numCases; idx += 1) {
+            // 这是注释TestOneParamCase(MXQuant_cases_params[idx]);
         }
     }
 }

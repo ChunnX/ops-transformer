@@ -30,16 +30,6 @@ namespace {
 using namespace op;
 using namespace matmul_allto_all_check;
 
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
-// 需要使用的常量定义
-static constexpr int64_t ZERO = 0;
-
 // 检查必要输入是否为空，必须非空
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output) {
     if (x1 == nullptr) {
@@ -89,9 +79,61 @@ static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2, bool t
     return true;
 }
 
+// 非量化模式下X支持的FP16数据类型
+static const std::initializer_list<op::DataType> X_DTYPE_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+// 非量化模式下Output支持的FP16数据类型
+static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+// 非量化模式下910B对Bias数据类型有特殊规范
+static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT};
+
+// 非量化场景下，校验所有输入的参数类型是否正确（A5）
+static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2,
+                                const aclTensor* biasOptional, const aclTensor* output) {
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    // biasDtype可以为输入xDtype，也可以为fp32
+    if (biasOptional != nullptr) {
+        if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "MatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s.",
+                op::ToString(biasOptional->GetDataType()).GetString());
+            return false;
+        }
+    }
+    return true;
+}
+
+// 910B在输入为bfloat16时，bias不支持bfloat16，只能为float32
+static bool CheckAllDtypesValid910B(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* output) {
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    if (biasOptional != nullptr) {
+        auto biasDtype = biasOptional->GetDataType();
+        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST, return false);
+        if (x1->GetDataType() == op::DataType::DT_FLOAT16) {
+            OP_CHECK_DTYPE_NOT_SAME(x1, biasOptional, return false);
+        } else if (biasDtype != op::DataType::DT_FLOAT){
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "The dtype of bias must be [DT_FLOAT] when x's dtype is [DT_BFLOAT16], but get: [%s].",
+            op::ToString(biasDtype).GetString());
+            return false;
+        }
+    }
+    return true;
+}
+
 // 检查所有要用到的输入format是否为ND，不支持私有格式，如果内部不为ND格式，会打印warning日志，并将format转换为ND格式
-static bool CheckFormat(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* output)
-{
+static bool CheckFormat(const aclTensor* x1, const aclTensor* x2,
+                        const aclTensor* biasOptional, const aclTensor* output) {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -123,8 +165,8 @@ static bool CheckFormat(const aclTensor* x1, const aclTensor* x2, const aclTenso
 }
 
 // 兼容性处理，非ND格式转换为ND格式
-static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* output)
-{
+static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2,
+                          const aclTensor* biasOptional, const aclTensor* output) {
     // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
@@ -151,62 +193,6 @@ static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2, const aclTen
     return true;
 }
 
-// 根据API定义，列出matmul_all_to_all非量化输入X所能支持的所有dtype
-static const std::initializer_list<op::DataType> X_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16
-};
-
-// 根据API定义，列出matmul_all_to_all非量化输入bias所能支持的所有dtype
-static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT
-};
-
-// 根据API定义，列出matmul_all_to_all非量化输出Output所能支持的所有dtype
-static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16
-};
-
-// 校验所有输入的参数类型是否正确
-static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* output) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
-    // biasDtype可以为输入xDtype，也可以为fp32
-    if (biasOptional != nullptr) {
-        if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnMatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s.",
-                op::ToString(biasOptional->GetDataType()).GetString());
-            return false;
-        }
-    }
-    return true;
-}
-
-// 910B在输入为bfloat16时，bias不支持bfloat16，只能为float32
-static bool CheckAllDtypesValid910B(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* output) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
-    if (biasOptional != nullptr) {
-        auto biasDtype = biasOptional->GetDataType();
-        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST, return false);
-        if (x1->GetDataType() == op::DataType::DT_FLOAT16) {
-            OP_CHECK_DTYPE_NOT_SAME(x1, biasOptional, return false);
-        } else if (biasDtype != op::DataType::DT_FLOAT){
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "The dtype of bias must be [DT_FLOAT] when x's dtype is [DT_BFLOAT16], but get: [%s].",
-            op::ToString(biasDtype).GetString());
-            return false;
-        }
-    }
-    return true;
-}
-
 static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclIntArray* alltoAllAxesOptional, const char *group,
                                         bool transposeX1, bool transposeX2, const aclTensor *output)
@@ -216,7 +202,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 2. 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 3. 检查shape
-    CHECK_RET(CheckShape(x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShapeMMAA(x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
     // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     // bias的数据类型限制在950和910B上有所区别，这里根据芯片版本做区分
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -224,16 +210,16 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     } else {
         CHECK_RET(CheckAllDtypesValid910B(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
     }
-    // 5. 检查alltoallAxes是否为空或者[-1,-2]
-    CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional), ACLNN_ERR_PARAM_INVALID);
-    // 6. 检查transposeX1是否合法, 目前不能为true
-    CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
-    // 7. 检查group长度是否小于等于128
-    CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
-    // 8. 检查输入的数据格式是否为ND
+    // 5. 检查输入的数据格式是否为ND
     CHECK_RET(CheckFormat(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
-    // 9. 兼容性处理非ND格式
+    // 6. 兼容性处理非ND格式
     CHECK_RET(ReFormatNotND(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
+    // 7. 检查alltoallAxes是否为空或者[-1,-2]
+    CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, true), ACLNN_ERR_PARAM_INVALID);
+    // 8. 检查transposeX1是否合法, 目前不能为true
+    CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
+    // 9. 检查group长度是否小于等于128
+    CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
     OP_LOGD("aclnnMatmulAlltoAll checkParams success");
     return ACLNN_SUCCESS;
@@ -302,7 +288,7 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
                                                            uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    CHECK_RET(CheckX2Valid(x2), ACLNN_ERR_PARAM_NULLPTR);	// 先检查x2是否合法，避免访问空指针等等非法操作
+    CHECK_RET(CheckX2Valid(x2), ACLNN_ERR_PARAM_INVALID);	// 先检查x2是否合法，避免访问空指针等等非法操作
     bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
     auto transX2 = x2;    // 复制一个x2
     if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
