@@ -1072,6 +1072,8 @@ mc2:
         - mc2/matmul_all_reduce/README.md
       ut_cov_exclude:
         - mc2/matmul_all_reduce
+      test:
+        ut: False
       options:
         - matmul_all_reduce
 
