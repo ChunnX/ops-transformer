@@ -15,8 +15,12 @@
 #ifndef FA_L1_TENSOR_H
 #define FA_L1_TENSOR_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 using AscendC::LocalTensor;
 

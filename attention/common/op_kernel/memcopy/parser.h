@@ -15,8 +15,12 @@
 #ifndef PARSER_H
 #define PARSER_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 using AscendC::GlobalTensor;
 

@@ -21,6 +21,7 @@
 #include <tiling/platform/platform_ascendc.h>
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
