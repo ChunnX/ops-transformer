@@ -957,7 +957,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
     Vec1SliceInfo &sliceInfo = sliceIterator.GetSlice();
     // 计算当前VecCore的任务量
     uint32_t dealSeqStartIdx = 0;
-    uint32_t dBaseSize = constInfo_.headDim * info.dealTcNum / (GetBlockNum() * 2);
+    uint32_t dBaseSize = min(constInfo_.headDim, static_cast<uint32_t>(constInfo_.headDim * info.dealTcNum / (GetBlockNum() * 2)));
     if (dBaseSize < FP32_BLOCK_ELEMENT_NUM) {
         dBaseSize = 8;
     } else {
