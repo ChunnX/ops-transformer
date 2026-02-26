@@ -23,7 +23,7 @@ elseif (EXISTS "${EIGEN_DST_DIR}" AND IS_DIRECTORY "${CANN_3RD_LIB_PATH}/eigen")
     add_custom_target(external_eigen_transformer)
 else()
     message("The eigen package needs to be downloaded.")
-    set(REQ_URL "https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0/eigen-5.0.0.tar.gz")
+    set(REQ_URL "https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0-h0.trunk/eigen-5.0.0.tar.gz")
     set(EIGEN_ARCHIVE ${CANN_3RD_LIB_PATH}/pkg/eigen-5.0.0.tar.gz)
     file(MAKE_DIRECTORY ${CANN_3RD_LIB_PATH}/pkg)
 
