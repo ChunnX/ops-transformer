@@ -204,7 +204,6 @@ aclnnStatus aclnnApplyRotaryPosEmb(
   </table>
 
   - <term>Atlas 推理系列产品</term>：不支持BFLOAT16
-  - <term>Ascend 950PR/Ascend 950DT</term>：不支持layout为4
 
 - **返回值**
 
