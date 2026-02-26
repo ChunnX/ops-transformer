@@ -144,10 +144,6 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0;
 
     // workSpace
-    uint32_t dbWorkspaceRatio = 1;
-    uint32_t mm1KvResSize = 0;
-    uint32_t mm1ScoreResSize = 0;
-    uint32_t vec1TailCacheSize = 0;
     uint32_t vec1ResSize = 0;
     uint32_t mm1ResSize = 0;    // 所有cube输出kv/score结果的总大小
 
@@ -157,7 +153,6 @@ struct ConstInfo {
 
 struct RunInfo {
     bool isValid = false;
-    uint32_t loop = 0;              // kernel主循环索引
 
     // 增加字段
     uint32_t dealTcNum = 0;
@@ -188,7 +183,6 @@ struct RunInfo {
 
 struct Vec1RunInfo {
     // vec相关信息，一次syncAll需处理数据的起始索引
-    uint32_t loop = 0;              // vec1循环索引
     uint32_t bStart = 0;
     uint32_t sStart = 0;
     uint32_t dealTcNum = 0;
@@ -197,7 +191,6 @@ struct Vec1RunInfo {
 
 struct Vec2RunInfo {
     // uint32_t bStart = 0;
-    uint32_t loop = 0;              // vec2循环索引
     uint32_t sStart = 0;
     uint32_t bEnd = 0;
     uint32_t sEnd = 0;

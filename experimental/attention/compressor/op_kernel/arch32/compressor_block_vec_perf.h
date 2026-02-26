@@ -1036,6 +1036,12 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
         return;
     }
 
+
+    printf("splitInfo:dealSeqStartIdx:%d, dBaseSize:%d, vec1GroupSize:%d, vec1GroupNum:%d, dealTcSize:%d, "
+           "preDealTcSize:%d, curBStart:%d, curSStart:%d, curCompressedCnt:%d, tcSplitSize:%d, dSplitSize:%d, "
+           "dLoopCount:%d\n",
+           dealSeqStartIdx, dBaseSize, vec1GroupSize, vec1GroupNum, dealTcSize, preDealTcSize, curBStart, curSStart,
+           curCompressedCnt, tcSplitSize, dSplitSize, dLoopCount);
     LoopInfo loopInfo;
     loopInfo.groupSize = splitInfo.vec1GroupSize;
     loopInfo.groupNum = splitInfo.vec1GroupNum;
