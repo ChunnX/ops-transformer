@@ -15,11 +15,7 @@ import os
 
 def down_files_native(url_list):
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # 创建子目录（例如：downloads）
-    download_dir = os.path.join(current_dir, "cann_3rd_lib_path_download")
-    os.makedirs(download_dir, exist_ok=True)  # 如果目录不存在则创建
-    
+
     for url in url_list:
 
         file_name = url.split('/')[-1]
@@ -27,8 +23,8 @@ def down_files_native(url_list):
         if not file_name:
             file_name = "downloaded_file"
         
-        # 将文件保存到新建的目录下
-        file_path = os.path.join(download_dir, file_name)
+        # 将下载的文件保存到脚本所在目录
+        file_path = os.path.join(current_dir, file_name)
         
         urllib.request.urlretrieve(url, file_path)
 
