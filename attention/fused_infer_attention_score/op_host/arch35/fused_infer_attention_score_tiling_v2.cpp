@@ -117,7 +117,7 @@ static bool CheckEmptyTensorList(ContextParamsForPFATiling& contextKeyParams, in
 
 static bool CheckNormalTensorList(gert::TilingContext* context, ContextParamsForPFATiling& contextKeyParams,
     const string layoutStr, int64_t validBatchOfK) {
-    if (layoutStr == "BSH") { // check all H across batches and KVs are the same under BSH layout
+    if (layoutStr == "BSH" || layoutStr == "BSH_BNSD" || layoutStr == "BSH_NBSD") { // check all H across batches and KVs are the same under BSH layout
         auto standardKH = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
         auto standardVH = contextKeyParams.vTensorList[0]->GetStorageShape().GetDim(KV_DIM_2);
         int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ? *contextKeyParams.numKeyValueHeads : *contextKeyParams.headsNumber;
@@ -157,7 +157,7 @@ static bool CheckNormalTensorList(gert::TilingContext* context, ContextParamsFor
             }
             contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs, uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
         }
-    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND") { // check N and D, respectively, are the same
+    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND" || layoutStr == "BNSD_NBSD") { // check N and D, respectively, are the same
         // across batches and KVs under BNSD/BNSD_BSND
         auto standardN = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(1);
         auto standardKD = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(KV_DIM_3);

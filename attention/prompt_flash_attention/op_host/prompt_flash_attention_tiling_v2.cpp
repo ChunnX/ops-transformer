@@ -710,6 +710,25 @@ bool PromptFlashAttentionTilingV2::CheckKVDataType(ContextParamsForPFATiling& co
     return true;
 }
 
+bool PromptFlashAttentionTilingV2::CheckRopeDataType(ContextParamsForPFATiling& contextKeyParams) {
+    if (enablePertensorQuant || enablePerblockQuant || enableIFAMLAFullQuant) {
+        return true;
+    }
+    ge::DataType queryDataType = contextKeyParams.inputDataType;
+    ge::DataType keyDataType = contextKeyParams.kDataType;
+    ge::DataType queryRopeDataType = contextKeyParams.qRopeDataType;
+    ge::DataType keyRopeDataType = contextKeyParams.kRopeDataType;
+    OP_CHECK_IF((queryDataType != queryRopeDataType), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+        "DataType of query rope(%s) is not equal to datatype of query(%s).",
+        GetPfaDataTypeStr(queryRopeDataType).c_str(), GetPfaDataTypeStr(queryDataType).c_str()),
+        return false);
+    OP_CHECK_IF((keyDataType != keyRopeDataType), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+        "DataType of key rope(%s) is not equal to datatype of key(%s).",
+        GetPfaDataTypeStr(keyRopeDataType).c_str(), GetPfaDataTypeStr(keyDataType).c_str()),
+        return false);
+    return true;
+}
+
 bool PromptFlashAttentionTilingV2::CheckKeyValueParamsConsistency(ContextParamsForPFATiling& contextKeyParams,
     const gert::StorageShape* keyShape, const gert::StorageShape* valueShape) {
     if (enableTensorList) {
@@ -1814,6 +1833,9 @@ bool PromptFlashAttentionTilingV2::CheckRope(ContextParamsForPFATiling& contextK
     OP_CHECK_IF((contextKeyParams.queryRopeInputShape != nullptr && contextKeyParams.keyRopeInputShape == nullptr),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "queryRope is not null, but keyRope is null, "
         "they should be consistent."), return false);
+    OP_CHECK_IF(!(CheckRopeDataType(contextKeyParams)),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Check rope datatype failed."),
+        return false);
     const gert::StorageShape* queryRopeShape = contextKeyParams.queryRopeInputShape;
     const gert::StorageShape* keyRopeShape = contextKeyParams.keyRopeInputShape;
 
@@ -1908,6 +1930,10 @@ bool PromptFlashAttentionTilingV2::CheckQuant(ContextParamsForPFATiling& context
     OP_CHECK_IF(enableKVAntiquant && !CheckAntiquantParamsShape(contextKeyParams),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "antiquant params check failed!"),
+        return false);
+    OP_CHECK_IF(enableKVAntiquant && (enableIFAMLA || enablePFARope || enablePFAMLA),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "MLA do not support antiquant."),
         return false);
     return true;
 }
@@ -2348,7 +2374,7 @@ bool PromptFlashAttentionTilingV2::CheckPseShiftTypeAndShape(ContextParamsForPFA
     OP_CHECK_IF(isQKVDDifferent,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Not support pse shift when query and key headdim is not equal to value headdim."),
         return false);   
-    OP_CHECK_IF(enableIFAMLA || enablePFAMLA,
+    OP_CHECK_IF(enableIFAMLA || enablePFAMLA || enablePFARope,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "MLA do not support pseShift."),
         return false);
     if (!CheckNonEmptyShapeExceptions(contextKeyParams, pseShiftShape, "pseShift")) {

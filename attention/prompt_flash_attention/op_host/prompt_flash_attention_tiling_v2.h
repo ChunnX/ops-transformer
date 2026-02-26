@@ -122,6 +122,7 @@ protected:
     bool CheckQueryOutParamsConsistency(const ContextParamsForPFATiling& contextKeyParams,
         const gert::StorageShape* queryShape, const gert::StorageShape* outShape) const;
     bool CheckKVDataType(ContextParamsForPFATiling& contextKeyParams);
+    bool CheckRopeDataType(ContextParamsForPFATiling& contextKeyParams);
     bool CheckKeyValueParamsConsistency(ContextParamsForPFATiling& contextKeyParams,
         const gert::StorageShape* keyShape, const gert::StorageShape* valueShape);
     bool SetAndCheckHeadNumRatio(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, PromptFlashAttentionTilingData& tilingData);
