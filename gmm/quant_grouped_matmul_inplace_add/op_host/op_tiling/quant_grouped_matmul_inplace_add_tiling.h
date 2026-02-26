@@ -60,6 +60,7 @@ private:
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckShapeForTCQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
+    bool CheckCoreNum() const override;
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams tilingData_;
 };
 } // namespace optiling

@@ -4778,3 +4778,97 @@ TEST_F(GroupedMatmulTiling, test_tiling_activation_tc_case_n_equal_1)
                                                 }, &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+TEST_F(GroupedMatmulTiling, test_kerneltype_1_corenum_check_fail_nonzero)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        50,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GroupedMatmulTiling, test_kerneltype_1_corenum_check_fail_zero)
+{
+    size_t M = 512;
+    size_t K = 2048;
+    size_t N = 1024;
+    size_t E = 4;
+    optiling::GMMCompileInfo compileInfo = {
+        24,//aicNum
+        0,//aivNum
+        196608,//ubSize
+        524288,//l1Size
+        196608,//l2Size
+        131072,//l0CSize
+        65536,//l0ASize
+        65536,//l0BSize
+        platform_ascendc::SocVersion::ASCEND950,//ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara("GroupedMatmul", // op_name
+                                                { // input info
+                                                    {{{M, K}, {M, K}}, ge::DT_INT8, ge::FORMAT_ND},              //x
+                                                    {{{E, K, N}, {E, N/32, K/16, 16, 32}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},   //weight
+                                                    {{{M, N}, {M, N}}, ge::DT_INT32, ge::FORMAT_ND},                //bias
+                                                    {{{E, N}, {E, N}}, ge::DT_FLOAT, ge::FORMAT_ND},                //scale
+                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //offset
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantScale
+                                                    {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                        //antiquantOffset
+                                                    {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},                      //groupList
+                                                    {{{M}, {M}}, ge::DT_FLOAT, ge::FORMAT_ND},                        //perTokenScale
+                                                }, 
+                                                { // output info
+                                                    {{{M}, {N}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+                                                }, 
+                                                { // attr
+                                                    {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+                                                    {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                    {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                    {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+                                                }, &compileInfo);
+    int64_t expectTilingKey = 16L;
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}

@@ -315,6 +315,21 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                 OP_LOGE(context_->GetNodeName(), "OutputBs (%lu) out of M (%lu).", outputBs_, inputParams_.mSize),
                 return false);
     OP_CHECK_IF(!CheckFp4Shape(), OP_LOGE(context_->GetNodeName(), "CheckFp4Shape failed."), return false);
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);  
+    return true;
+}
+
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckCoreNum() const
+{
+    auto aicNum = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>()->aicNum;
+    auto aivNum = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>()->aivNum;
+    OP_CHECK_IF(aicNum == 0,
+               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+               return false);
+    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
+                OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                return false);
     return true;
 }
 

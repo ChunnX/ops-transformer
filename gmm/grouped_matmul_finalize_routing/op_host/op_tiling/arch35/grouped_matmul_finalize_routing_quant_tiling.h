@@ -19,6 +19,7 @@
 #include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_finalize_routing_tiling_data.h"
 #include "../../../op_kernel/arch35/grouped_matmul_finalize_routing_tiling_key.h"
+#include "../../grouped_matmul_finalize_routing_tiling.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_base.h"
@@ -102,6 +103,7 @@ private:
     bool IsFp4Dtype(ge::DataType dtype);
     bool IsFp8Dtype(ge::DataType dtype);
     bool CheckFp4Shape();
+    bool CheckCoreNum() const override;
 
     GMMFinalizeRoutingTilingData tilingData_;
     uint64_t sharedInputLen_ = 0;
