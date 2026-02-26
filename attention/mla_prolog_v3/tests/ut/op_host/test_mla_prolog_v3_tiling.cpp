@@ -15,7 +15,7 @@
 
 using namespace std;
 
-// 构造芯片版本
+// 构造版本
 std::string MlaPrologV3_tiling_A2SocInfo = 
     "{\n"
     "  \"hardware_info\": {\n"
@@ -37,7 +37,7 @@ std::string MlaPrologV3_tiling_A2SocInfo =
     "  }\n"
     "}";
 
-// 构造芯片版本
+// 构造版本
 std::string MlaPrologV3_tiling_A3SocInfo = 
     "{\n"
     "  \"hardware_info\": {\n"
@@ -111,7 +111,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test0) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -166,7 +166,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test1) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -221,7 +221,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test2) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
@@ -276,7 +276,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test3) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -332,7 +332,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test4) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_NZ")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BLK_NZ")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -387,7 +387,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test5) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(0.00317766385216254)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(0.00488810249669485)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -882,7 +882,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test14) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -937,7 +937,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test15) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -1102,7 +1102,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test18) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -1212,7 +1212,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test20) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -1267,7 +1267,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test21) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -1322,7 +1322,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test22) {
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},

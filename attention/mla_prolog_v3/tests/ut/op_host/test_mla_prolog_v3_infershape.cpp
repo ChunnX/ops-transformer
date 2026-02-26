@@ -69,7 +69,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_infershape_0)
         // {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}, 
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -123,7 +123,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_infershape_1)
     {
         {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
         {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
         {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -331,7 +331,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_1)
                 .NodeAttrs({   
                     {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
                     {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
                     {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                     {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                     {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -447,7 +447,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_3)
                 .NodeAttrs({   
                     {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
                     {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
                     {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                     {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
                     {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -504,7 +504,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_4)
                 .NodeAttrs({   
                     {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
                     {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
                     {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                     {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
                     {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -561,7 +561,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_5)
                 .NodeAttrs({   
                     {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
                     {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
                     {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                     {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                     {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -618,7 +618,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_6)
                 .NodeAttrs({   
                     {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
                     {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
                     {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                     {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                     {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -675,7 +675,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_7)
                 .NodeAttrs({   
                     {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
                     {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
                     {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                     {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                     {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -732,7 +732,7 @@ TEST_F(MlaPrologV3Proto, mla_prolog_v3_inferdtype_8)
                 .NodeAttrs({   
                     {"rmsnorm_epsilon_cq", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
                     {"rmsnorm_epsilon_ckv", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05f)},
-                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},//todo!
+                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
                     {"query_norm_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
                     {"weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
                     {"kv_cache_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},

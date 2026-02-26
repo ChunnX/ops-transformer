@@ -15,7 +15,7 @@
 
 using namespace std;
 
-// 构造芯片版本
+// 构造版本
 std::string MlaProlog_A2SocInfo = 
     "{\n"
     "  \"hardware_info\": {\n"
