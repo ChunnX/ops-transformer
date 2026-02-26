@@ -500,10 +500,10 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
             pseInfo.pseS1Size = inputParamsRegbase.pseS1Size;
             pseInfo.pseS2Size = inputParamsRegbase.pseS2Size;
             pseInfo.pseEncodeType = (uint32_t)inputParamsRegbase.pseEncodeType;
-            pseInfo.pseStride = pseInfo.pseLayoutType == pse1S2 ? 0 : s2BaseSize;
+            pseInfo.pseStride = (pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) ? 0 : s2BaseSize;
             pseInfo.qStartIdx = inputParamsRegbase.qStartIdx;
             pseInfo.kvStartIdx = inputParamsRegbase.kvStartIdx;
-            if (inputParamsRegbase.pseShapeType == pse1S2) {
+            if (inputParamsRegbase.pseShapeType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) {
                 constInfo.gS2 = constInfo.gSize * constInfo.s2Size;
             }
         }

@@ -85,50 +85,50 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
     __gm__ int64_t* actualSeqQlenAddr, int64_t actualSeqMin)
 {
     if (constInfo.isActualLenDimsNull) {
-        int64_t actualS1Size = constInfo.s1Size;
+        int64_t actualMSize = constInfo.s1Size;
         if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
-            actualS1Size = constInfo.gS1;
+            actualMSize = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = constInfo.s1Size;
         }
         if (constInfo.isGqa) {
-            actualS1Size = constInfo.gS1;
+            actualMSize = constInfo.gS1;
         }
-        return actualS1Size;
+        return actualMSize;
     }
     
-    int64_t actualS1Size = 0;
+    int64_t actualMSize = 0;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             runParam.actualSeqLengthOfMlaPerBatch = 
                 (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
-            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
+            actualMSize = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             runParam.actualSeqLengthOfMlaPerBatch = (bIdx == 0) ? actualSeqQlenAddr[0] :
                 actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
-            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
+            actualMSize = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            actualS1Size = constInfo.gS1;
+            actualMSize = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = 
                 (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
         }
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || 
                          layout == LayOutTypeEnum::LAYOUT_NTD) {
-        actualS1Size = (bIdx == 0) ? actualSeqQlenAddr[0] :
+        actualMSize = (bIdx == 0) ? actualSeqQlenAddr[0] :
             actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
         if (constInfo.isGqa) {
-            actualS1Size *= constInfo.gSize;
+            actualMSize *= constInfo.gSize;
         }
     } else {
-        actualS1Size = (constInfo.actualSeqLenSize == actualSeqMin) ? 
+        actualMSize = (constInfo.actualSeqLenSize == actualSeqMin) ? 
             actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
         if (constInfo.isGqa) {
-            actualS1Size *= constInfo.gSize;
+            actualMSize *= constInfo.gSize;
         }
     }
     
-    return actualS1Size;
+    return actualMSize;
 }
 
 TEMPLATE_INTF
@@ -285,7 +285,7 @@ __aicore__ inline void GetKeyCoreOffsetParam(RunParamStr<isInfer>& runParam,
             keyInnerOffsetSize = 0;
         }
         runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * constInfo.dSize;
-    // 遗留问题：TND PA
+
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         if constexpr (!isPa) {
             keyInnerOffsetSize = (bIdx == 0) ? 0 : actualSeqKvlenAddr[bIdx - 1] * constInfo.n2D;
@@ -363,7 +363,6 @@ __aicore__ inline void GetValueCoreOffsetParam(RunParamStr<isInfer>& runParam, c
             prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.n2Dv;
             runParam.prefixCoreOffset = prefixInnerOffsetSize + runParam.n2oIdx * constInfo.dSizeV;
         } else {
-            // 除TND外的其他布局，例如BSH，BNSD，BSND等
             uint64_t headStrideV = 0;
             headStrideV = constInfo.kvPrefixSize * constInfo.dSizeV;
             prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.dSizeV;

@@ -24,10 +24,12 @@
 #include "util_regbase.h"
 
 namespace regbaseutil {
-constexpr static int64_t pseS1S2 = 0;
-constexpr static int64_t pse1S2 = 1;
-constexpr static int64_t pseSlopeBn = 2;
-constexpr static int64_t pseSlopeN = 3;
+enum class PseLayoutTypeEnum: uint32_t{
+    PSE_S1S2 = 0,
+    PSE_1S2 = 1,
+    PSE_SLOPE_BN = 2,
+    PSE_SLOPE_N = 3
+};
 
 constexpr static uint8_t pseEncodeALibiS2Full = 0x11;
 
@@ -114,13 +116,13 @@ __aicore__ inline int64_t PseComputeOffset(const RunInfo<isInfer> &runInfo,
         int64_t s1Offset = 0;
         int64_t s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
         int64_t gOffset = 0;
-        if (pseInfo.pseLayoutType == pseS1S2) {
+        if (pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_S1S2) {
             // b, n2, g, s1, s2
             bOffset = runInfo.b1SSOffset * constInfo.n2G;
             n2Offset = runInfo.n2oIdx * constInfo.gSize * runInfo.actualS1Size * runInfo.actualS2Size;
             gOffset = runInfo.goIdx * runInfo.actualS1Size * runInfo.actualS2Size;
             s1Offset = (runInfo.s1oIdx * constInfo.s1BaseSize + runInfo.vecCoreOffset) * runInfo.actualS2Size;
-        } else if (pseInfo.pseLayoutType == pse1S2) {
+        } else if (pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) {
             // b, n2, g, 1, s2
             bOffset = runInfo.s2SizeAcc * constInfo.n2G;
             n2Offset = runInfo.n2oIdx * constInfo.gSize * runInfo.actualS2Size;
@@ -172,7 +174,6 @@ __aicore__ inline int64_t PseAlibiComputeOffset(const RunInfo<isInfer> &runInfo,
     int64_t s1Offset = m * pseInfo.pseS2Size + runInfo.vecCoreOffset * pseInfo.pseS2Size;
     int64_t s2Offset = k;
     pseInfo.readS2Size = Min(runInfo.s2AlignedSize, pseInfo.pseS2Size - k);
-    pseInfo.pseS2ComputeSize = Align(pseInfo.readS2Size);
 
     return bOffset + n2Offset + gOffset + s1Offset + s2Offset;
 }
@@ -216,7 +217,7 @@ __aicore__ inline void PseCopyIn(LocalTensor<INPUT_T> &dstTensor, GlobalTensor<I
             return PseAlibiCopyIn<T, INPUT_T, hasPse>(dstTensor, srcTensor, runInfo, constInfo, pseInfo);
         }
         int64_t offset = PseComputeOffset<hasPse>(runInfo, constInfo, pseInfo);
-        int64_t s1Size = pseInfo.pseLayoutType == pse1S2 ? 1 : runInfo.halfS1RealSize;
+        int64_t s1Size = pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_1S2 ? 1 : runInfo.halfS1RealSize;
         int64_t pseS2Size;
         if constexpr (isInfer) {
             pseS2Size = pseInfo.pseS2Size;
@@ -246,7 +247,7 @@ __aicore__ inline void PseCopyIn(TQue<QuePosition::VECIN, 1> &pseInQue, GlobalTe
             return;
         }
         int64_t offset = PseComputeOffset<hasPse>(runInfo, constInfo, pseInfo);
-        int64_t s1Size = pseInfo.pseLayoutType == pse1S2 ? 1 : runInfo.halfS1RealSize;
+        int64_t s1Size = pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_1S2 ? 1 : runInfo.halfS1RealSize;
         int64_t pseS2Size;
         if constexpr (isInfer) {
             pseS2Size = pseInfo.pseS2Size;
@@ -279,7 +280,7 @@ __aicore__ inline void ComputeInnerPseOffset(float &slopes, float &posShift, con
         int64_t bOffset = 0;
         int64_t n2Offset = runInfo.n2oIdx * constInfo.gSize;
         int64_t gOffset = runInfo.goIdx;
-        if (pseInfo.pseLayoutType == pseSlopeBn) {
+        if (pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_SLOPE_BN) {
             bOffset = runInfo.boIdx * constInfo.n2G;
         }
         int64_t offset = bOffset + n2Offset + gOffset;

@@ -347,7 +347,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::InitUniqueLocalBuffer(Con
         }
     }
     if constexpr (isMlaFullQuant) {
-        constexpr uint32_t softmaxRowmaxBufSize = 256;
+        constexpr uint32_t softmaxRowmaxBufSize = 256; // s1 baseSize * 4b(fp32)
         this->tPipe->InitBuffer(BaseClass::queryScaleQue[0], 1, BaseClass::s1BaseSize / CV_RATIO * sizeof(float));
         this->tPipe->InitBuffer(BaseClass::queryScaleQue[1], 1, BaseClass::s1BaseSize / CV_RATIO * sizeof(float));
         this->tPipe->InitBuffer(BaseClass::pScaleBuf[0], softmaxRowmaxBufSize);
@@ -713,7 +713,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::Bmm2FDOut(LocalTensor<T> 
     dataCopyParams.dstStride = 0;
 
     uint32_t mStart = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
-    size_t base = (runInfo.boIdx * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV +
+    uint64_t base = (runInfo.boIdx * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV +
                    runInfo.n2oIdx * constInfo.gSize * constInfo.dSizeV) *
                       constInfo.splitKVNum +
                   mStart * constInfo.dSizeV + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV;
@@ -743,8 +743,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::CopyLseIn(ConstInfo<isInf
 
     uint64_t combineLseOffset =
         ((uint64_t)bIdx * constInfo.n2Size * constInfo.splitKVNum + n2Idx * constInfo.splitKVNum) *
-            constInfo.gSize * fp32BaseSize +
-        startRow * fp32BaseSize;
+            constInfo.gSize * fp32BaseSize + startRow * fp32BaseSize;
 
     DataCopyPad(softmaxMaxLocal, softmaxFDMaxGm[combineLseOffset], copyInParams, copyInPadParams);
     DataCopyPad(softmaxSumLocal, softmaxFDSumGm[combineLseOffset], copyInParams, copyInPadParams);

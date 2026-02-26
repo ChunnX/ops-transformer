@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file flash_attention_score_common.h
+ * \file flash_attention_score_common_regbase.h
  * \brief
  */
 #ifndef FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
@@ -33,13 +33,13 @@ constexpr uint64_t BLOCK_BYTE = 32;
 constexpr int32_t SOFTMAX_M_ALIGNED_SIZE = 8;
 constexpr int32_t SOFTMAX_K_ALIGNED_SIZE = 64;
 constexpr uint64_t DATACOPYPAD_PADDING_VALUE_ZERO = 0;
-constexpr uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
-constexpr uint32_t NEGATIVE_MIN_VAULE_FP16 = 0xFBFF;
+constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
+constexpr uint32_t NEGATIVE_MIN_VALUE_FP16 = 0xFBFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP32 = 0x7F7FFFFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP16 = 0x7BFF;
 constexpr int64_t pse1NS1S2 = 2;
 constexpr int64_t FP8_QUANT_BLOCK_SIZE = 128;
-// 0级接口的block间隔范围需要满足32B对齐
+
 constexpr int64_t attenMaskBN2GS1S2 = 0;
 constexpr int64_t attenMaskBS1S2 = 1;
 constexpr int64_t attenMaskS1S2 = 2;
