@@ -110,7 +110,7 @@ private:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline void ComputeMm1(const RunInfo &info, bool isNeedExcute);
-    __aicore__ inline void ComputeVec1(const RunInfo &info);
+    __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
     __aicore__ inline void ComputeVec2(const Vec2RunInfo &info);
 
     __aicore__ inline bool IsNeedExcuteC1(BatchInfo batchInfo);
@@ -540,7 +540,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &inf
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const RunInfo &info) {
+__aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo &info) {
 #if (__CCE_AICORE__ == 220)
     CrossCoreWaitFlag(SYNC_C1_V1_FLAG);
 #else
