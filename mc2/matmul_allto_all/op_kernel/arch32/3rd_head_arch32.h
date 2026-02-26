@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,21 +9,12 @@
  */
 
 /*!
- * \file matmul_factory.h
- * \brief
+ * \file 3rd_head_arch32.h
+ * \brief 3rd引用
  */
+#ifndef THREERD_HEAD_ARCH32_H
+#define THREERD_HEAD_ARCH32_H
 
-#ifndef MC2_MATMUL_FACTORY_H
-#define MC2_MATMUL_FACTORY_H 
-
-namespace MC2KernelTemplate {
-//基本输入输出
-struct BaseGmAddrs {
-    GM_ADDR aGM;
-    GM_ADDR bGM;
-    GM_ADDR cGM;
-    GM_ADDR biasGM;
-};
-};  // namespace MC2kernelComputation
+#include "../../3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h"
 
 #endif

@@ -16,7 +16,7 @@
 #ifndef MC2_COMM_STAGE_H
 #define MC2_COMM_STAGE_H
 
-#include "./primitives/hccl_impl.h"
+#include "./communicator/hccl_impl.h"
 
 namespace MC2KernelTemplate {
 
@@ -32,8 +32,8 @@ namespace MC2KernelTemplate {
  * implName：通信节点实例化变量名
  */
 #ifndef DEFINE_MC2_HCCL_FOR_COMMUNICATION
-#define DEFINE_MC2_HCCL_FOR_COMMUNICATION(serverType, sendCntPerTask, recvCntPerTask, tilingDataType, CommunicationType) \
-    using CommunicationType = HcclCommunication<serverType, tilingDataType, sendCntPerTask, recvCntPerTask>
+#define DEFINE_MC2_HCCL_FOR_COMMUNICATION(AICSync, ServerType, HcclContextType, TilingDataType, Primitive, sendCntPerTask, recvCntPerTask, CommunicationType) \
+    using CommunicationType = HcclCommunication<AICSync, ServerType, HcclContextType, TilingDataType, Primitive, sendCntPerTask, recvCntPerTask>
 #endif
 }
 

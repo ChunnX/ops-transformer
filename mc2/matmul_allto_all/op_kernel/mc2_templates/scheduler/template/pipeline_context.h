@@ -17,45 +17,20 @@
 #define MC2_PIPELINE_CONTEXT_H
 
 namespace MC2KernelTemplate {
+struct MC2TransposeContext;
+struct MC2AlltoAllContext;
+struct MC2PertokenDQuantContext;
 // todo 后续可以按节点拆成对应的上下文复用
-template <typename ExtraDataType, typename TilingDataType>
+template <typename ComputationContextType>
 struct PipelineContext {
     // computation
-    GM_ADDR aGM;
-    GM_ADDR bGM;
-    GM_ADDR cGM;
-    GM_ADDR biasGM;
-    ExtraDataType extraData;
-    TilingDataType *tilingData;
+    ComputationContextType* computationContext;
     // transpose
-    GM_ADDR transposeSrcAddr;
-    GM_ADDR transposeDstAddr;
-    uint64_t transposeSrcOffset;
-    uint64_t nextSrcBlockOffset;
-    uint64_t nextDstBlockOffset;
-    uint64_t transposeDstOffset;
-    uint32_t rankCnt;
-    uint64_t innerAxis;
-    uint64_t transM;
+    MC2TransposeContext* transposeContext;
     // communication
-    uint32_t taskCnt;
-    GM_ADDR sendBuffer;
-    GM_ADDR recvBuffer;
-    uint64_t sendOffset;
-    uint64_t recvOffset;
-    uint64_t sendCount;
-    uint64_t strideCount;
-    uint64_t hcclDataType;
+    MC2AlltoAllContext* communicationContext;
     // quantization
-    GM_ADDR quantInputAddr;
-    GM_ADDR quantOutputAddr;
-    GM_ADDR quantOutputScaleAddr;
-    uint64_t rowNum;
-    uint64_t colNum;
-    uint64_t calBuffSize;
-    uint64_t quantInputAddrOffset;
-    uint64_t quantOutputAddrOffset;
-    uint64_t quantOutputScaleAddrOffset;
+    MC2PertokenDQuantContext* quantizationContext;
 };
 }; // namespace MC2KernelTemplate
 

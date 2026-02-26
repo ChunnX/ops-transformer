@@ -16,41 +16,19 @@
 #ifndef MC2_COMPUTE_STAGE_H
 #define MC2_COMPUTE_STAGE_H
 
-#include "../../arch35/3rd_head.h"
+#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
 #include "./matmul/fp_matmul.h"
+#else
 #include "./matmul/quant_matmul.h"
+#endif
 #include "./math/mc2_vec_transpose.h"
 
 namespace MC2KernelTemplate {
-
-// 使用matmulv3算子作为计算节点的计算实现,后续是否转置的参数通过算子的模板参数获取
-#ifndef DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_FP
-#define DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_FP(TilingType, ComputationType) \
-    using ComputationType = FPMatmul<\
-        Mc2MatmulV3Advanced::Mc2MatmulAswKernel<\
-            MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, false>,\
-            MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, X2TRANSPOSE>,\
-            MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_Y>,\
-            MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DtypeBias>,\
-            Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD>,\
-        FpQuantExtraData, TilingType>
-#endif
-
-#ifndef DEFINE_AND_IMPL_MC2_MATMUL_FOR_MATMUL_COMPUTATION_QUANT
-#define DEFINE_AND_IMPL_MC2_MATMUL_FOR_MATMUL_COMPUTATION_QUANT(TilingType, ComputationType, MMDtypeX1, MMDtypeX2) \
-    using ComputationType = QuantMatmul<\
-        Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel<MMDtypeX1, MMDtypeX2, float, float, float,\
-            DTYPE_Y, CubeFormat::ND, CubeFormat::ND, CubeFormat::ND, false, X2TRANSPOSE, float, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock>,\
-        QuantExtraData, TilingType>
-
-#endif
-
 // 使用math算子作为计算节点的计算实现
 #ifndef DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION
 #define DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(TransposeDataType, TransposeType) \
     using TransposeType = MC2VecTranspose<TransposeDataType>
 #endif
-
 };
 
 #endif // MC2_COMPUTE_STAGE_H
