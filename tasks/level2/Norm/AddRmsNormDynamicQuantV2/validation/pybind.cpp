@@ -7,7 +7,7 @@
 
 #include "pytorch_npu_helper.hpp"
 
-std::vector<at::Tensor> custom_pybind_api(
+std::vector<at::Tensor> add_rms_norm_dynamic_quant_v2(
     at::Tensor x1, at::Tensor x2, at::Tensor gamma,
     c10::optional<at::Tensor> smooth_scale1, c10::optional<at::Tensor> smooth_scale2,
     float epsilon)
@@ -41,5 +41,5 @@ std::vector<at::Tensor> custom_pybind_api(
 
 PYBIND11_MODULE(kernel_gen_ops, m) {
     m.doc() = "Python bindings for kernel_gen_ops";
-    m.def("custom_pybind_api", &custom_pybind_api, "");
+    m.def("add_rms_norm_dynamic_quant_v2", &add_rms_norm_dynamic_quant_v2, "");
 }
