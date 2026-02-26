@@ -11,7 +11,7 @@
  * aclnnCustomOp 将在 batch_compile 时替换为 aclnnDuaQuantizeAddLayerNorm
  * GetWorkspaceSize 参数顺序须与 opbuild 生成一致：x1,x2,gamma,beta,bias,scales1,scales2,zp1,zp2, dtype,axis,epsilon,additional_output, y1,y2,x
  */
-std::vector<at::Tensor> custom_pybind_api(
+std::vector<at::Tensor> dua_quantize_add_layer_norm(
     at::Tensor x1, at::Tensor x2, at::Tensor gamma, at::Tensor beta, at::Tensor bias,
     at::Tensor scales1, at::Tensor scales2,
     c10::optional<at::Tensor> zero_points1, c10::optional<at::Tensor> zero_points2,
@@ -38,5 +38,5 @@ std::vector<at::Tensor> custom_pybind_api(
 
 PYBIND11_MODULE(kernel_gen_ops, m) {
     m.doc() = "Python bindings for kernel_gen_ops";
-    m.def("dua_quantize_add_layer_norm", &custom_pybind_api, "");
+    m.def("dua_quantize_add_layer_norm", &dua_quantize_add_layer_norm, "");
 }
