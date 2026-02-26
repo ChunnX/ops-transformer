@@ -1012,9 +1012,21 @@ bool PromptFlashAttentionTilingV2::CheckPerblockQuantParams(const ContextParamsF
     const gert::StorageShape* dequantScaleQueryShape = contextKeyParams.dequantScaleQueryShape;
     const gert::StorageShape* keyAntiquantScaleShape = contextKeyParams.KeyAntiquantScaleShape;
     const gert::StorageShape* valueAntiquantScaleshape = contextKeyParams.valueAntiquantScaleShape;
+    const gert::StorageShape* deqScale1Shape = contextKeyParams.deqScale1Shape;
+    const gert::StorageShape* quantScale1Shape = contextKeyParams.scale1Shape;
+    const gert::StorageShape* deqScale2Shape = contextKeyParams.deqScale2Shape;
+    const gert::StorageShape* antiquantScaleShape = contextKeyParams.antiquantScaleShape;
     OP_CHECK_IF((dequantScaleQueryShape == nullptr) || (keyAntiquantScaleShape == nullptr) || (valueAntiquantScaleshape == nullptr),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "dequantScaleQuery, keyAntiquantScale or valueAntiquantScale is nullptr in per-block quant scenario."),
+        return false);
+    OP_CHECK_IF((deqScale1Shape != nullptr) || (quantScale1Shape != nullptr) || (deqScale2Shape != nullptr),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "deqScale1, quantScale1 or deqScale2 is not supported in per-block quant scenario."),
+        return false);
+    OP_CHECK_IF(antiquantScaleShape != nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "antiquantScale is not supported in per-block quant scenario."),
         return false);
     const size_t dequeryDim = dequantScaleQueryShape->GetStorageShape().GetDimNum();
     const size_t dekeyDim = keyAntiquantScaleShape->GetStorageShape().GetDimNum();
@@ -1040,9 +1052,10 @@ bool PromptFlashAttentionTilingV2::CheckPerblockQuantParams(const ContextParamsF
             "now dequantScaleQuery's type is %s, KeyAntiquantScale's type is %s, valueAntiquantScale's type is %s.",
             GetPfaDataTypeStr(dequantScaleQueryType).c_str(), GetPfaDataTypeStr(KeyAntiquantScaleType).c_str(), GetPfaDataTypeStr(valueAntiquantScaleType).c_str()),
         return false);
-    OP_CHECK_IF((inputLayout == InputLayout::TND),
+    const std::vector<std::string> unsupportedLayoutList = {"BNSD_NBSD", "BSH_NBSD", "BSH_BNSD", "BSND_BNSD", "BSND_NBSD", "NTD"};
+    OP_CHECK_IF((std::find(unsupportedLayoutList.begin(), unsupportedLayoutList.end(), layoutStr) != unsupportedLayoutList.end()) || inputLayout == InputLayout::TND,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "In per-block quant scenario, the layout TND is not supported."),
+            "In per-block quant scenario, the layout %s is not supported.", layoutStr.c_str()),
         return false);
     OP_CHECK_IF((queryShapeInfo.d > 128) || (keyShapeInfo.d > 128) || (valueShapeInfo.d > 128), // 128 is the limit for d.
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
