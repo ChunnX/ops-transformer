@@ -159,7 +159,7 @@ struct ConstInfo {
 
 struct RunInfo {
     bool isValid = false;
-    uint32_t loop = 0;              // kernel主循环索引
+    uint32_t cubeDbIdx = 0;         // kernel主循环索引
 
     // 增加字段
     uint32_t dealTcNum = 0;
@@ -190,7 +190,9 @@ struct RunInfo {
 
 struct Vec1RunInfo {
     // vec相关信息，一次syncAll需处理数据的起始索引
-    uint32_t dbLoop = 0;              // vec1循环索引
+    bool resetResFlag = false;          // v1积攒N轮 是否是N轮的起始轮
+    uint32_t c1v1DbIdx = 0;               // vec1 doubleBuffer索引
+    uint32_t v1v2DbIdx = 0;             // v1v2 doubleBuffer索引
     uint32_t bStart = 0;
     uint32_t sStart = 0;
     uint32_t dealTcNum = 0;
@@ -199,7 +201,7 @@ struct Vec1RunInfo {
 
 struct Vec2RunInfo {
     // uint32_t bStart = 0;
-    uint32_t loop = 0;              // vec2循环索引
+    uint32_t v2DbIdx = 0;              // v2 doubleBuffer索引
     uint32_t sStart = 0;
     uint32_t bEnd = 0;
     uint32_t sEnd = 0;

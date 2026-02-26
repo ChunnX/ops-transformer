@@ -115,7 +115,7 @@ private:
 
     __aicore__ inline bool IsNeedExcuteC1(BatchInfo batchInfo);
     __aicore__ inline bool IsNeedSyncAll(uint32_t curBasicBlockIdx);
-    __aicore__ inline void CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info, BatchInfo &batchInfo);
+    __aicore__ inline void CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info, BatchInfo &batchInfo, uint32_t loopIdx);
     __aicore__ inline void UpdateVec2Info(Vec2RunInfo &vec2Info, uint32_t curBasicBlockIdx, const Vec1RunInfo &info);
     __aicore__ inline bool IsNeedExcuteV2(Vec2RunInfo &vec2Info);
 
@@ -602,11 +602,15 @@ __aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedExcuteC1(BatchInfo batc
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info, BatchInfo &batchInfo)
+__aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info, BatchInfo &batchInfo, uint32_t loopIdx)
 {
     vec1Info.bStart = batchInfo.bIdx;
     vec1Info.sStart = batchInfo.sIdx;
+    vec1Info.resetResFlag = (loopIdx & (constInfo.nSize - 1)) == 0;
+    vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
+    vec1Info.v1v2DbIdx = (vec2Loop & (constInfo.dbWorkspaceRatio - 1));
     BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
+    info.cubeDbIdx = (cubeLoop++ & (constInfo.dbWorkspaceRatio - 1));
     info.dealSeqCnt = basicBlockInfo.dealSeqCnt;
     info.dealTcNum = basicBlockInfo.dealTcNum;
     info.bStart = basicBlockInfo.bIdx;
@@ -649,6 +653,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateVec2Info(
 
         vec2Info.dealScSize = 0;
     }
+    vec2Info.v2DbIdx = (vec2Loop++ & (constInfo.dbWorkspaceRatio - 1));
     vec2Info.dealScSize += info.dealScSize;
     vec2Info.compressedId += info.dealScSize;
 }
@@ -671,11 +676,10 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
     for (uint32_t i = 0; i < loopTimes; ++i) {
         RunInfo &extraInfo0 = extraInfo[0];
         bool isNeedExcuteC1 = IsNeedExcuteC1(batchInfo);
-        CalcC1V1Params(extraInfo0, vec1Info, batchInfo);
+        CalcC1V1Params(extraInfo0, vec1Info, batchInfo, i);
         // printf("[LOOP] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", extraInfo0.bStart, extraInfo0.sStart, vec1Info.dealTcNum, vec1Info.dealScSize);
 
         if ASCEND_IS_AIC {
-            extraInfo0.loop = cubeLoop++;
             ComputeMm1(extraInfo0, isNeedExcuteC1);
         } else {
                 SyncAll();
@@ -686,7 +690,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
             if (IsNeedSyncAll(i)) {
                 SyncAll();
                 if (IsNeedExcuteV2(vec2Info)) {
-                        vec2Info.loop = vec2Loop++;
                     ComputeVec2(vec2Info);
                 }
                 SyncAll();
