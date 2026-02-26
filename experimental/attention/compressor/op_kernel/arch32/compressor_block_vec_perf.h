@@ -964,15 +964,14 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
     uint32_t vec1GroupNum = min(static_cast<uint32_t>(GetBlockNum() * 2 / vec1GroupSize), info.dealTcNum);
 
     uint32_t dealTcSize = info.dealTcNum / vec1GroupNum;
-    if (GetBlockIdx() < vec1GroupSize * vec1GroupNum &&
-        (info.dealTcNum % vec1GroupNum) > (GetBlockIdx() / vec1GroupSize)) {
+    uint32_t preDealTcSize = dealTcSize * (GetBlockIdx() / vec1GroupSize);
+    if (GetBlockIdx() < vec1GroupSize * (info.dealTcNum % vec1GroupNum)) {
         dealTcSize++;
     }
     if (dealTcSize == 0) {
         return;
     }
-    uint32_t preDealTcSize = dealTcSize * (GetBlockIdx() / vec1GroupSize) +
-                             min(info.dealTcNum % vec1GroupNum, static_cast<uint32_t>(GetBlockIdx() / vec1GroupSize));
+    preDealTcSize += min(info.dealTcNum % vec1GroupNum, static_cast<uint32_t>(GetBlockIdx() / vec1GroupSize));
     uint32_t curBStart = info.bStart;
     uint32_t curSStart = info.sStart;
     uint32_t curCompressedCnt = 0;
