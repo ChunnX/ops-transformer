@@ -46,6 +46,28 @@ __aicore__ inline T Trunc(T num, T rnd)
     return ((rnd) == 0) ? 0 : (((num) / (rnd) * (rnd)));
 }
 
+template <typename T>
+__aicore__ inline T FloorPow2(T num)
+{
+    if (num == 0) return 1;
+    for(uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
+        num |= (num >> i);
+    }
+    return num - (num >> 1);
+}
+
+template <typename T>
+__aicore__ inline T CeilPow2(T num)
+{
+    if (num <= 1) return 1;
+    num --;
+    for(uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
+        num |= (num >> i);
+    }
+    num ++;
+    return num;
+}
+
 enum class X_LAYOUT : std::uint8_t {
     BSH = static_cast<std::uint8_t>(0),
     TH = static_cast<std::uint8_t>(1)
