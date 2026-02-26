@@ -78,7 +78,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadTrue
         int64_t rowIdMapLoopOffset = this->rowIdMapStartOffset + indicesLoopTime;
         int64_t tokenId = this->sortedTwiceIndicesGm.GetValue(rowIdMapLoopOffset);
         int64_t permuteTokenId = this->sortedTwiceIndexGm.GetValue(rowIdMapLoopOffset);
-        int64_t probOffset = tokenId * this->numExpert + permuteTokenId / this->capacity;
+        int64_t probOffset = tokenId * this->numExpert + this->SafeDiv(permuteTokenId, this->capacity);
         ProbsT probTemp = this->probGm.GetValue(probOffset);
         float prob = 0.0;
         if constexpr (IsSameType<ProbsT, bfloat16_t>::value) {
