@@ -173,13 +173,14 @@ ge::graphStatus CompressorTiling::SetPageAttentionInfo()
 
 ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
 {
+    workspaceParams_->dbWorkspaceRatio = 2;
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
-    if (coff = 2) {
+    if (coff == 2) {
         workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim * 2;
     }
     if (context_->templateId == TemplateId::PERF) {
-        workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * innerSplitParams_->dBaseSize * baseParams_->nSize;
+        workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
     } else {
         workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize / baseParams_->cmpRatio * innerSplitParams_->dBaseSize * baseParams_->nSize;
     }
@@ -225,15 +226,14 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
 
 ge::graphStatus CompressorTiling::CalcWorkSpace()
 {
-    uint32_t dbWorkspaceRatio = 2;
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4;      // 4: fp32
     constexpr uint32_t V1_RES_ELEM_SIZE = 2;       // 2: fp16/bf16
     uint32_t maxGroupNum = aicNum_ * baseParams_->headDim / innerSplitParams_->dBaseSize;
     workspaceSize_ = libapiSize_;
-    workspaceSize_ += workspaceParams_->mm1KvResSize * maxGroupNum * MM1_RES_ELEM_SIZE * dbWorkspaceRatio;
-    workspaceSize_ += workspaceParams_->mm1ScoreResSize * maxGroupNum * MM1_RES_ELEM_SIZE * dbWorkspaceRatio;
-    workspaceSize_ += workspaceParams_->vec1TailCacheSize * maxGroupNum * MM1_RES_ELEM_SIZE * dbWorkspaceRatio;
-    workspaceSize_ += aicNum_ * workspaceParams_->vec1ResSize * V1_RES_ELEM_SIZE * dbWorkspaceRatio;
+    workspaceSize_ += workspaceParams_->mm1KvResSize * maxGroupNum * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+    workspaceSize_ += workspaceParams_->mm1ScoreResSize * maxGroupNum * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+    workspaceSize_ += workspaceParams_->vec1TailCacheSize * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio * 2;   // 2 kv和score
+    workspaceSize_ += workspaceParams_->vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
     
     workspaceSize_ += 1024 * 1024 * 1024; // 1024:申请workspace大小
     if (context_->workSpaces) {
