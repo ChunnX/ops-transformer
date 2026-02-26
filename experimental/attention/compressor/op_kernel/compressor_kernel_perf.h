@@ -683,7 +683,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
             ComputeMm1(extraInfo0, isNeedExcuteC1);
         } else {
                 SyncAll();
-                vec1Info.dbLoop = vec1Loop++;
                 ComputeVec1(vec1Info);
                 UpdateVec2Info(vec2Info, i, vec1Info);
 
