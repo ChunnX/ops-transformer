@@ -47,6 +47,7 @@ struct Vec1SplitInfo {
     uint32_t curBStart = 0;
     uint32_t curSStart = 0;
     uint32_t curCompressedCnt = 0;
+    uint32_t totalCompressedCnt = 0;
     uint32_t tcSplitSize = 0;
     uint32_t dSplitSize = 0;
     uint32_t dLoopCount = 0;
@@ -1006,6 +1007,9 @@ __aicore__ inline Vec1SplitInfo CompressorBlockVectorPerf<COMP>::SplitCoreV1(
         splitInfo.curBStart = info.bStart;
         splitInfo.curSStart = info.sStart;
     }
+    sliceIterator.SetNeedDealTcSize(info.dealTcNum - splitInfo.preDealTcSize);
+    StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
+    splitInfo.totalCompressedCnt = splitInfo.curCompressedCnt + statisticInfo.compressorScCnt;
     // 计算headDim和Tc方向切分大小
     constexpr uint32_t BASE_BLOCK_ELEMENT_NUM = BUFFER_SIZE_BYTE_32K / sizeof(T);
     uint32_t maxDealColNum = BASE_BLOCK_ELEMENT_NUM / (constInfo_.cmpRatio * (uint32_t)COMP::coff);
@@ -1029,12 +1033,17 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
     if (info.dealTcNum == 0) {
         return ;
     }
+    if (info.resetResFlag) {
+        compressedCnt_ = 0;
+    }
+    uint32_t preCompressedCnt = compressedCnt_;
     CompressorVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
     sliceIterator.template Reset<true>(info.bStart, info.sStart, 0U, 0U);
     Vec1SplitInfo splitInfo = SplitCoreV1(info, sliceIterator);
     // 计算当前VecCore的任务量
     if (splitInfo.dealTcSize == 0) {
+        compressedCnt_ += splitInfo.totalCompressedCnt;
         return;
     }
 
@@ -1052,7 +1061,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
 
         sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart, splitInfo.dealSeqStartIdx, 0U);
         uint32_t actDealTcSize = splitInfo.tcSplitSize;
-        compressedCnt_ = splitInfo.curCompressedCnt;
+        compressedCnt_ = preCompressedCnt + splitInfo.curCompressedCnt;
         for (uint32_t tcIdx = 0; tcIdx < splitInfo.dealTcSize; tcIdx += splitInfo.tcSplitSize) {
             if (tcIdx + splitInfo.tcSplitSize > splitInfo.dealTcSize) {
                 actDealTcSize = splitInfo.dealTcSize - tcIdx;
@@ -1067,6 +1076,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
                               splitInfo.dSplitSize, splitInfo.dBaseSize);
         }
     }
+    compressedCnt_ = preCompressedCnt + splitInfo.totalCompressedCnt;
 }
 
 template <typename COMP>
