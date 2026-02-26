@@ -92,63 +92,63 @@
       <tr>
           <td>query</td>
           <td>输入</td>
-          <td>attention结构的输入Q</td>
+          <td>attention结构的输入Q。</td>
           <td>FLOAT16、BFLOAT16 </td>
           <td>ND</td>
       </tr>
       <tr>
           <td>key</td>
           <td>输入</td>
-          <td>attention结构的输入K</td>
+          <td>attention结构的输入K。</td>
           <td>FLOAT16、BFLOAT16 </td>
           <td>ND</td>
       </tr>
       <tr>
           <td>queryIndex</td>
           <td>输入</td>
-          <td>lightingIndexer结构的输入queryIndex。</td>
+          <td>lightningIndexer结构的输入queryIndex。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>keyIndex</td>
           <td>输入</td>
-          <td>lightingIndexer结构的输入keyIndex。</td>
+          <td>lightningIndexer结构的输入keyIndex。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>weights</td>
           <td>输入</td>
-          <td>权重</td>
+          <td>权重。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
-          <td>softmaxMax</td>与query的B保持一致
+          <td>softmaxMax</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
           <td>FLOAT32</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>softmaxSum</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
           <td>FLOAT32</td>
           <td>ND</td>
       </tr>
       <tr>
-          <td>softmaxMaxIndex</td>与query的B保持一致
+          <td>softmaxMaxIndex</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
           <td>FLOAT32</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>softmaxSumIndex</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
           <td>FLOAT32</td>
           <td>ND</td>
       </tr>
@@ -162,84 +162,84 @@
       <tr>
           <td>keyRope</td>
           <td>输入</td>
-          <td>MLA rope部分：Key位置编码的输出</<td>
+          <td>MLA rope部分：Key位置编码的输出。</<td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>actualSeqLengthsQuery</td>
           <td>输入</td>
-          <td>每个Batch中，Query的有效token数</td>
+          <td>每个Batch中，Query的有效token数。</td>
           <td>INT64</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>actualSeqLengthsKey</td>
           <td>输入</td>
-          <td>每个Batch中，Key的有效token数</td>
+          <td>每个Batch中，Key的有效token数。</td>
           <td>INT64</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>scaleValue</td>
           <td>输入</td>
-          <td>缩放系数</td>
+          <td>缩放系数。</td>
           <td>double</td>
           <td>-</td>
       </tr>
       <tr>
           <td>layout</td>
           <td>输入</td>
-          <td>layout格式</td>
+          <td>layout格式。</td>
           <td>char*</td>
           <td>-</td>
       </tr>
       <tr>
           <td>sparseMode</td>
           <td>输入</td>
-          <td>sparse的模式</td>
+          <td>sparse的模式。</td>
           <td>INT64</td>
           <td>-</td>
       </tr>
       <tr>
           <td>preTokens</td>
           <td>输入</td>
-          <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
+          <td>用于稀疏计算，表示Attention需要和前几个token计算关联。</td>
           <td>INT64</td>
           <td>-</td>
       </tr>
       <tr>
           <td>nextTokens</td>
           <td>输入</td>
-          <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
+          <td>用于稀疏计算，表示Attention需要和后几个token计算关联。</td>
           <td>INT64</td>
           <td>-</td>
       </tr>
       <tr>
           <td>dQueryIndex</td>
           <td>输出</td>
-          <td>QueryIndex的梯度</td>
+          <td>QueryIndex的梯度。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>dKeyIndex</td>
           <td>输出</td>
-          <td>KeyIndex的梯度</td>
+          <td>KeyIndex的梯度。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>dWeights</td>
           <td>输出</td>
-          <td>Weights的梯度</td>
+          <td>Weights的梯度。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>loss</td>
           <td>输出</td>
-          <td>损失函数值</td>
+          <td>损失函数值。</td>
           <td>FLOAT32</td>
           <td>ND</td>
       </tr>
