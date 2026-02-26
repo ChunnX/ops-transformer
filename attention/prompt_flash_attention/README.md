@@ -163,7 +163,7 @@
     - 当sparse=3时，要求每个batch单独的actualSeqLengths < actualSeqLengthsKv。
     
   - Atlas 推理系列加速卡产品：
-    - 支持B轴小于等于128；支持N轴小于等于256；支持S轴小于等于65535（64k）, Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；支持D轴小于等于512。
+    - 在inputLayout为BSH时，支持B轴小于等于300，其余情况B轴小于等于128；支持N轴小于等于256；支持S轴小于等于65535（64k）, Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；支持D轴小于等于512。
   
 - 当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出attentionOut的shape为BSND；其余情况attentionOut的shape需要与入参query的shape保持一致。
 

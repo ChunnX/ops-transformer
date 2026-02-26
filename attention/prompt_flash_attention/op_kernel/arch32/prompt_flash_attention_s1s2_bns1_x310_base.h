@@ -27,7 +27,7 @@
 #include "kernel_operator_softmax_compute_nz.h"
 
 using namespace matmul;
-constexpr uint32_t BATCH_NUM_MAX_NZ = 128;
+constexpr uint32_t BATCH_NUM_MAX_NZ = 300; // 300 is batch size high limit
 constexpr int32_t MAX_REPEATS_PER_BATCH = 255; // max repeatTime in InitConstValue
 constexpr int32_t REPEAT_DATASIZE_EACH_TIME = 512; // processing a fixed amount of data per iteration
 constexpr static uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
