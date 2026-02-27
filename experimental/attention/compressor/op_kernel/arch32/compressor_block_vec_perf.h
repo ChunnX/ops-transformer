@@ -1089,7 +1089,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec2BaseBlock(const 
 {
     uint32_t computeSize = dealRowCount * constInfo_.headDim;
     int64_t inGmOffset = startRow * constInfo_.headDim;
-    vec2InputGm = vec2InputGm_[info.v2DbIdx * constInfo_.coreGroupNum * constInfo_.vec1ResSize];
+    GlobalTensor vec2InputGm = vec2InputGm_[info.v2DbIdx * constInfo_.coreGroupNum * constInfo_.vec1ResSize];
     // CopyIn
     LocalTensor<T> vec1ResUb = inputQue1.AllocTensor<T>();
     DataCopy(vec1ResUb, vec2InputGm_[inGmOffset], computeSize);

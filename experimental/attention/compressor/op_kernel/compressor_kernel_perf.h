@@ -538,8 +538,8 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
     CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
-    // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize);
     if (isNeedExcute) {
+        // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize);
         blockCube_.ComputeMm1(info);
     }
     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
@@ -681,7 +681,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
             ComputeMm1(extraInfo0, isNeedExcuteC1);
         } else {
                 SyncAll();
-                vec1Info.loop = vec1Loop++;
                 ComputeVec1(vec1Info);
                 UpdateVec2Info(vec2Info, i, vec1Info);
 
