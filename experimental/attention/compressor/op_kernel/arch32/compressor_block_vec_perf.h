@@ -47,6 +47,7 @@ struct Vec1SplitInfo {
     uint32_t curBStart = 0;
     uint32_t curSStart = 0;
     uint32_t curCompressedCnt = 0;
+    uint32_t totalCompressedCnt = 0;
     uint32_t tcSplitSize = 0;
     uint32_t dSplitSize = 0;
     uint32_t dLoopCount = 0;
@@ -153,9 +154,9 @@ private:
     __aicore__ inline void KvMulReduceScore(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
                                             const LocalTensor<T> &dstLocal, const LocalTensor<T> &tmpUb,
                                             uint32_t tcDealSize, uint32_t dDealSize);
-    __aicore__ inline void CopyOutVec1Res(const Vec1RunInfo &info, const LocalTensor<T> comperssoredUb,
-                                          uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize);
-
+    __aicore__ inline void CopyOutVec1Res(const GlobalTensor<T> &resGm, const Vec1RunInfo &info,
+                                          const LocalTensor<T> comperssoredUb, uint32_t compressTcSize,
+                                          uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline Vec1SplitInfo SplitCoreV1(const Vec1RunInfo &info,
                                                 CompressorVec1SliceIterator<COMP> &sliceIterator);
     __aicore__ inline void SplitCoreV2(const Compressor::Vec2RunInfo &info);
@@ -878,8 +879,9 @@ CompressorBlockVectorPerf<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLocal,
 
 template <typename COMP>
 __aicore__ inline void
-CompressorBlockVectorPerf<COMP>::CopyOutVec1Res(const Vec1RunInfo &info, const LocalTensor<T> comperssoredUb,
-                                                uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize)
+CompressorBlockVectorPerf<COMP>::CopyOutVec1Res(const GlobalTensor<T> &resGm, const Vec1RunInfo &info,
+                                                const LocalTensor<T> comperssoredUb, uint32_t compressTcSize,
+                                                uint32_t dStartIdx, uint32_t dDealSize)
 {
     uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
     DataCopyParams copyParams;
@@ -887,7 +889,7 @@ CompressorBlockVectorPerf<COMP>::CopyOutVec1Res(const Vec1RunInfo &info, const L
     copyParams.blockLen = dDealSize / FP32_BLOCK_ELEMENT_NUM;
     copyParams.dstStride = (constInfo_.headDim - dDealSize) / FP32_BLOCK_ELEMENT_NUM;
     copyParams.srcStride = 0;
-    DataCopy(vec1ResGm_[outGmOffset], comperssoredUb, copyParams);
+    DataCopy(resGm[outGmOffset], comperssoredUb, copyParams);
 }
 
 
@@ -907,8 +909,9 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
     overLapSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
     Vec1SliceInfo &overLapSliceInfo = overLapSliceIterator.GetSlice();
 
+    GlobalTensor<T> scoreDBMm1ResGm = scoreMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> scoreUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb(scoreUb, scoreMm1ResGm_, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+    FromWokrSpaceToUb(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(scoreUb);
     inputQue1.DeQue<T>();
     LocalTensor<T> scoreLocal = tmpBuff1.Get<T>();
@@ -916,7 +919,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
-        OverLap<true>(scoreLocal, scoreUb, scoreMm1ResGm_, scoreStateGm_, scoreBlockTableGm_, scoreCacheTcGm_,
+        OverLap<true>(scoreLocal, scoreUb, scoreDBMm1ResGm, scoreStateGm_, scoreBlockTableGm_, scoreCacheTcGm_,
                       overLapSliceInfo, loopInfo, dStartIdx, originSliceInfo.dealedSeqCnt, dDealSize);
         overLapSliceIterator.IteratorSlice();
     }
@@ -930,8 +933,9 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
         overLapSliceIterator.IteratorSlice();
     }
 
+    GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb(kvUb, kvMm1ResGm_, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+    FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
     LocalTensor<T> kvLocal = tmpBuff2.Get<T>();
@@ -939,7 +943,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
-        OverLap<false>(kvLocal, kvUb, kvMm1ResGm_, kvStateGm_, kvBlockTableGm_, kvCacheTcGm_, overLapSliceInfo,
+        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, kvStateGm_, kvBlockTableGm_, kvCacheTcGm_, overLapSliceInfo,
                        loopInfo, dStartIdx, originSliceInfo.dealedSeqCnt, dDealSize);
         overLapSliceIterator.IteratorSlice();
     }
@@ -960,7 +964,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
         PipeBarrier<PIPE_V>();
         outputQue1.EnQue(comperssoredUb);
         outputQue1.DeQue<T>();
-        CopyOutVec1Res(info, comperssoredUb, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
+        GlobalTensor<T> resGm = vec1ResGm_[info.v1v2DbIdx * constInfo_.dbSize];
+        CopyOutVec1Res(resGm, info, comperssoredUb, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
         outputQue1.FreeTensor(comperssoredUb);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
@@ -1004,6 +1009,9 @@ __aicore__ inline Vec1SplitInfo CompressorBlockVectorPerf<COMP>::SplitCoreV1(
         splitInfo.curBStart = info.bStart;
         splitInfo.curSStart = info.sStart;
     }
+    sliceIterator.SetNeedDealTcSize(info.dealTcNum - splitInfo.preDealTcSize);
+    StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
+    splitInfo.totalCompressedCnt = splitInfo.curCompressedCnt + statisticInfo.compressorScCnt;
     // 计算headDim和Tc方向切分大小
     constexpr uint32_t BASE_BLOCK_ELEMENT_NUM = BUFFER_SIZE_BYTE_32K / sizeof(T);
     uint32_t maxDealColNum = BASE_BLOCK_ELEMENT_NUM / (constInfo_.cmpRatio * (uint32_t)COMP::coff);
@@ -1027,12 +1035,17 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
     if (info.dealTcNum == 0) {
         return ;
     }
+    if (info.resetResFlag) {
+        compressedCnt_ = 0;
+    }
+    uint32_t preCompressedCnt = compressedCnt_;
     CompressorVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
     sliceIterator.template Reset<true>(info.bStart, info.sStart, 0U, 0U);
     Vec1SplitInfo splitInfo = SplitCoreV1(info, sliceIterator);
     // 计算当前VecCore的任务量
     if (splitInfo.dealTcSize == 0) {
+        compressedCnt_ += splitInfo.totalCompressedCnt;
         return;
     }
 
@@ -1050,7 +1063,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
 
         sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart, splitInfo.dealSeqStartIdx, 0U);
         uint32_t actDealTcSize = splitInfo.tcSplitSize;
-        compressedCnt_ = splitInfo.curCompressedCnt;
+        compressedCnt_ = preCompressedCnt + splitInfo.curCompressedCnt;
         for (uint32_t tcIdx = 0; tcIdx < splitInfo.dealTcSize; tcIdx += splitInfo.tcSplitSize) {
             if (tcIdx + splitInfo.tcSplitSize > splitInfo.dealTcSize) {
                 actDealTcSize = splitInfo.dealTcSize - tcIdx;
@@ -1065,6 +1078,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
                               splitInfo.dSplitSize, splitInfo.dBaseSize);
         }
     }
+    compressedCnt_ = preCompressedCnt + splitInfo.totalCompressedCnt;
 }
 
 template <typename COMP>
@@ -1089,10 +1103,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec2BaseBlock(const 
 {
     uint32_t computeSize = dealRowCount * constInfo_.headDim;
     int64_t inGmOffset = startRow * constInfo_.headDim;
-    GlobalTensor vec2InputGm = vec2InputGm_[info.v2DbIdx * constInfo_.coreGroupNum * constInfo_.vec1ResSize];
+    GlobalTensor<T> vec2InputGm = vec2InputGm_[info.v2DbIdx * constInfo_.dbSize];
     // CopyIn
     LocalTensor<T> vec1ResUb = inputQue1.AllocTensor<T>();
-    DataCopy(vec1ResUb, vec2InputGm_[inGmOffset], computeSize);
+    DataCopy(vec1ResUb, vec2InputGm[inGmOffset], computeSize);
     inputQue1.EnQue(vec1ResUb);
     inputQue1.DeQue<T>();
 

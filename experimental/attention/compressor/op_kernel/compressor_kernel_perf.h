@@ -475,6 +475,8 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
 
     constInfo.mm1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
 
+    constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
+
     // printf("[CalcSplitCoreInfo] coreGroupNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.curGroupIdx, constInfo.mBaseSize);
 
     // // 单组核在T方向处理的最大基本块数量
@@ -605,7 +607,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info,
     vec1Info.bStart = batchInfo.bIdx;
     vec1Info.sStart = batchInfo.sIdx;
     vec1Info.resetResFlag = (loopIdx & (constInfo.nSize - 1)) == 0;
-    vec1Info.v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
+    vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
     vec1Info.v1v2DbIdx = (vec2Loop & (constInfo.dbWorkspaceRatio - 1));
     BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
     info.cubeDbIdx = (cubeLoop++ & (constInfo.dbWorkspaceRatio - 1));

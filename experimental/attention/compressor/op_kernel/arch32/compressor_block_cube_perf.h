@@ -315,7 +315,8 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::CopyOutMm1Res(const RunInf
     fixParams.dstStride = (uint32_t)COMP::coff * constInfo_.headDim;
     fixParams.ndNum = 1;
 
-    uint64_t gmOffset = coffId * constInfo_.headDim + constInfo_.dIdx + mStart * fixParams.dstStride;
+    uint64_t dbOffset = info.cubeDbIdx * constInfo.coreGroupNum * (uint32_t)COMP::coff * constInfo_.headDim * info.dealSeqCnt;
+    uint64_t gmOffset = coffId * constInfo_.headDim + constInfo_.dIdx + mStart * fixParams.dstStride + dbOffset;
     uint32_t kvOffset = 0;
     uint32_t scoreOffset = mDealSize * constInfo_.dBaseSize;
 
