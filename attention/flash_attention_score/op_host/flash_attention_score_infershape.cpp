@@ -137,7 +137,7 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
         auto h2 =  keyShape->GetDim(DIM_NUM_2);
         auto N2 = h2 / D1;
         if (N2 == 0) {
-            attentionOutShape->SetDim(DIM_NUM_2, 0);
+            attentionOutShape->SetDim(DIM_NUM_2, N1 * D1);
             return GRAPH_SUCCESS;
         }
         auto h3 =  valueShape->GetDim(DIM_NUM_2);
