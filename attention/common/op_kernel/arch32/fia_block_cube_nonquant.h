@@ -260,7 +260,6 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-
 };
 
 template <typename FIAT>
