@@ -984,16 +984,18 @@ __aicore__ inline Vec1SplitInfo CompressorBlockVectorPerf<COMP>::SplitCoreV1(
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
     splitInfo.vec1GroupNum = min(static_cast<uint32_t>(GetBlockNum() * 2 / splitInfo.vec1GroupSize), info.dealTcNum);
 
-    splitInfo.dealTcSize = info.dealTcNum / splitInfo.vec1GroupNum;
-    splitInfo.preDealTcSize = splitInfo.dealTcSize * (GetBlockIdx() / splitInfo.vec1GroupSize);
-    if (GetBlockIdx() < splitInfo.vec1GroupSize * (info.dealTcNum % splitInfo.vec1GroupNum)) {
-        splitInfo.dealTcSize++;
-        splitInfo.preDealTcSize += GetBlockIdx() / splitInfo.vec1GroupSize;
+    if (GetBlockIdx() < splitInfo.vec1GroupSize *  splitInfo.vec1GroupNum) {
+        splitInfo.dealTcSize = info.dealTcNum / splitInfo.vec1GroupNum;
+        splitInfo.preDealTcSize = splitInfo.dealTcSize * (GetBlockIdx() / splitInfo.vec1GroupSize);
+        if (GetBlockIdx() < splitInfo.vec1GroupSize * (info.dealTcNum % splitInfo.vec1GroupNum)) {
+            splitInfo.dealTcSize++;
+            splitInfo.preDealTcSize += GetBlockIdx() / splitInfo.vec1GroupSize;
+        } else {
+            splitInfo.preDealTcSize += info.dealTcNum % splitInfo.vec1GroupNum;
+        }
     } else {
-        splitInfo.preDealTcSize += info.dealTcNum % splitInfo.vec1GroupNum;
-    }
-    if (splitInfo.dealTcSize == 0) {
-        return splitInfo;
+        splitInfo.dealTcSize = 0;
+        splitInfo.preDealTcSize = info.dealTcNum;
     }
     // 刷新当前VecCore的起始bIdx和sIdx
     if (splitInfo.preDealTcSize > 0) {
@@ -1012,6 +1014,9 @@ __aicore__ inline Vec1SplitInfo CompressorBlockVectorPerf<COMP>::SplitCoreV1(
     sliceIterator.SetNeedDealTcSize(info.dealTcNum - splitInfo.preDealTcSize);
     StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
     splitInfo.totalCompressedCnt = splitInfo.curCompressedCnt + statisticInfo.compressorScCnt;
+    if (splitInfo.dealTcSize == 0) {
+        return splitInfo;
+    }
     // 计算headDim和Tc方向切分大小
     constexpr uint32_t BASE_BLOCK_ELEMENT_NUM = BUFFER_SIZE_BYTE_32K / sizeof(T);
     uint32_t maxDealColNum = BASE_BLOCK_ELEMENT_NUM / (constInfo_.cmpRatio * (uint32_t)COMP::coff);
