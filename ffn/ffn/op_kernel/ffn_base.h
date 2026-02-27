@@ -386,7 +386,6 @@ protected:
             uint32_t baseBlockIdx = coreIdx % coreNumEachExpert;
             uint32_t outRowOffset = mm1ExpertParallInfo.LocalOffset[expertOrderInBuf] -
                                     mm1ExpertParallInfo.LocalOffset[mm1ExpertParallInfo.start];
-            // todo, contain activation currently
             MM1Compute(mnConfig, baseBlockIdx, expertIMM, mm1ExpertParallInfo.GlobalOffset[expertOrderInBuf],
                        outRowOffset);
         }
