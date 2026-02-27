@@ -256,10 +256,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitTilingData() {
     constInfo.maxBlockNumPerBatch = tilingData_->pageAttentionParams.maxBlockNumPerBatch;
 
     constInfo.nSize =  tilingData_->baseParams.nSize;
-    constInfo.mm1KvResSize = tilingData_->workspaceParams.mm1KvResSize;
-    constInfo.mm1ScoreResSize = tilingData_->workspaceParams.mm1ScoreResSize;
     constInfo.vec1TailCacheSize = tilingData_->workspaceParams.vec1TailCacheSize;
-    constInfo.vec1ResSize = tilingData_->workspaceParams.vec1ResSize;
     constInfo.dbWorkspaceRatio = tilingData_->workspaceParams.dbWorkspaceRatio;
 }
 
@@ -477,7 +474,12 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
 
     constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
 
-    // printf("[CalcSplitCoreInfo] coreGroupNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.curGroupIdx, constInfo.mBaseSize);
+    uint32_t coff = (uint32_t)COMP::coff;
+    constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
+
+    // printf("[CalcSplitCoreInfo] coreGroupNum:%u, dBaseSize:%u, dBasicBlockNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.dBaseSize, constInfo.dBasicBlockNum, constInfo.curGroupIdx, constInfo.mBaseSize);
 
     // // 单组核在T方向处理的最大基本块数量
     // constInfo.singleCoreDealTcBasicNum = (constInfo.tcBasicBlockNum + constInfo.coreGroupNum - 1) / constInfo.coreGroupNum;
