@@ -1455,3 +1455,154 @@ TEST_F(ApplyRotaryPosEmbTiling, arpe_wrong_Dtype_is_diff) {
  
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_small_Ascend950)
+{
+    optiling::ApplyRotaryPosEmbCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("ApplyRotaryPosEmb",
+                                              {
+                                                  // input info
+                                                  {{{24, 1, 11, 128}, {24, 1, 11, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 128}, {24, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 128}, {24, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 128}, {24, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{24, 1, 11, 128}, {24, 1, 11, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 128}, {24, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {// attr
+                                               {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                               {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")}},
+                                              &compileInfo, "Ascend950", 40, 196608);
+    uint64_t expectTilingKey = 20030;
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
+
+TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_compute_ab_Ascend950)
+{
+    optiling::ApplyRotaryPosEmbCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "ApplyRotaryPosEmb",
+        {
+            // input info
+            {{{640, 1, 15, 128}, {640, 1, 15, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 15, 128}, {640, 1, 15, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 1, 128}, {640, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 1, 128}, {640, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            // output info
+            {{{640, 1, 15, 128}, {640, 1, 15, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 15, 128}, {640, 1, 15, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {// attr
+         {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")}},
+        &compileInfo, "Ascend950", 40, 196608);
+    uint64_t expectTilingKey = 20030;
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
+
+TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_small_BNSD_Ascend950)
+{
+    optiling::ApplyRotaryPosEmbCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("ApplyRotaryPosEmb",
+                                              {
+                                                  // input info
+                                                  {{{24, 11, 1, 128}, {24, 11, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 11, 1, 128}, {24, 11, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 128}, {24, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 128}, {24, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{24, 11, 1, 128}, {24, 11, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 11, 1, 128}, {24, 11, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {// attr
+                                               {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                               {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")}},
+                                              &compileInfo, "Ascend950", 40, 196608);
+    uint64_t expectTilingKey = 20010;
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
+
+TEST_F(ApplyRotaryPosEmbTiling, arpe_fp32_compute_ab_BNSD_Ascend950)
+{
+    optiling::ApplyRotaryPosEmbCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("ApplyRotaryPosEmb",
+                                              {
+                                                  // input info
+                                                  {{{1024, 20, 128}, {1024, 20, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1024, 20, 128}, {1024, 20, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1024, 1, 128}, {1024, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1024, 1, 128}, {1024, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{1024, 20, 128}, {1024, 20, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1024, 20, 128}, {1024, 20, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {// attr
+                                               {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                               {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")}},
+                                              &compileInfo, "Ascend950", 40, 196608);
+    uint64_t expectTilingKey = 20010;
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
+
+TEST_F(ApplyRotaryPosEmbTiling, arpe_bf16_compute_ab_cast_BNSD_Ascend950)
+{
+    optiling::ApplyRotaryPosEmbCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("ApplyRotaryPosEmb",
+                                              {
+                                                  // input info
+                                                  {{{4096, 16, 128}, {4096, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{4096, 16, 128}, {4096, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{4096, 1, 128}, {4096, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{4096, 1, 128}, {4096, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{4096, 16, 128}, {4096, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{4096, 16, 128}, {4096, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {// attr
+                                               {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                               {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")}},
+                                              &compileInfo, "Ascend950", 40, 196608);
+    uint64_t expectTilingKey = 20010;
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
+
+TEST_F(ApplyRotaryPosEmbTiling, arpe_fp16_small_BNSD_Ascend950_D64)
+{
+    optiling::ApplyRotaryPosEmbCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("ApplyRotaryPosEmb",
+                                              {
+                                                  // input info
+                                                  {{{24, 11, 1, 64}, {24, 11, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 11, 1, 64}, {24, 11, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 64}, {24, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 1, 1, 64}, {24, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{24, 11, 1, 64}, {24, 11, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{24, 11, 1, 64}, {24, 11, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {// attr
+                                               {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                               {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")}},
+                                              &compileInfo, "Ascend950", 40, 196608);
+    uint64_t expectTilingKey = 20010;
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
