@@ -865,7 +865,7 @@ but actual transpositions are %s/%s.",
             transposePerTokenScale ? "true" : "false", gmmParams_.transposeX ? "true" : "false");
     }
     CHECK_COND(CheckGroupedMatmulPerTileShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "CheckGroupedMatmulMxfp8Shape failed");
+               "CheckGroupedMatmulPerTileShape failed");
     return ACLNN_SUCCESS;
 }
 
@@ -942,8 +942,72 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp4Params(const DataType &
 }
 
 template <typename T>
-aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() const
+aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputAndOutputDtypeForV3Version() const
+{   
+    DataType xDtype = gmmParams_.xDtype;
+    DataType weightDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
+    DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
+    DataType yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
+    CHECK_COND(xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8, ACLNN_ERR_PARAM_INVALID,
+               "In quant case, both x dtype and weight dtype should be int8, but the actual are %s and %s.",
+               op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
+    CHECK_COND(scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
+               "In quant case, scale dtype should be uint64 or int64, but the actual is %s.",
+               op::ToString(scaleDtype).GetString());
+    CHECK_COND(yDtype == DataType::DT_INT8, ACLNN_ERR_PARAM_INVALID,
+               "In quant case, y dtype should be int8, but the actual is %s.",
+               op::ToString(yDtype).GetString());
+    if (gmmParams_.biasOptional != nullptr) {
+        DataType biasDtype = (*gmmParams_.biasOptional)[0]->GetDataType();
+        CHECK_COND(biasDtype == DataType::DT_INT32, ACLNN_ERR_PARAM_INVALID,
+                   "In quant case, bias dtype should be int32, but the actual is %s.",
+                   op::ToString(biasDtype).GetString());
+    } 
+    return ACLNN_SUCCESS;
+}
+
+template <typename T>
+aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputShapeForV3Version() const
+{   
+    auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
+    auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDimNum();
+    auto scaleNDim = GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(scaleDimNumber - 1);
+    auto weightNIndex = GetInputTensor(gmmParams_.weight)->GetViewShape().GetDimNum() - 1;
+    auto weightNDim = GetInputTensor(gmmParams_.weight)->GetViewShape().GetDim(weightNIndex);
+    CHECK_COND(GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(0) == groupNum,
+               ACLNN_ERR_PARAM_INVALID,
+               "In quant case, the first dim of %s[%ld] should be equal to that of %s[%ld].",
+               scaleName_.c_str(), GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(0),
+               groupTensorName_.c_str(), groupNum);
+    CHECK_COND(scaleNDim == weightNDim, ACLNN_ERR_PARAM_INVALID,
+               "In quant case, the N dim of %s[%ld] should be equal to that of %s[%ld].",
+               scaleName_.c_str(), scaleNDim, weightName_.c_str(), weightNDim);
+    if (gmmParams_.biasOptional != nullptr) {
+        auto biasGDimValue = GetInputTensor(gmmParams_.biasOptional)->GetViewShape().GetDim(0);
+        auto biasNDimValue = GetInputTensor(gmmParams_.biasOptional)->GetViewShape().GetDim(1);
+        CHECK_COND(biasGDimValue == groupNum, ACLNN_ERR_PARAM_INVALID,
+                   "The group dim of %s[%ld] and group number[%ld] should be equal.", biasName_.c_str(), biasGDimValue,
+                   groupNum);
+        CHECK_COND(biasNDimValue == weightNDim, ACLNN_ERR_PARAM_INVALID,
+                   "The n dim of %s[%ld] and n dim of %s[%ld] should be equal.", biasName_.c_str(), biasNDimValue,
+                   weightName_.c_str(), weightNDim);
+    }
+    return ACLNN_SUCCESS;
+}
+
+template <typename T>
+aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputParamsForV3Version() const
 {
+    CHECK_COND(CheckInputAndOutputDtypeForV3Version() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+               "CheckInputAndOutputDtypeForV3Version failed.");
+    CHECK_COND(CheckInputShapeForV3Version() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+               "CheckInputShapeForV3Version failed.");
+    return ACLNN_SUCCESS;
+}
+
+template <typename T>
+aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() const
+{   
     DataType xDtype = gmmParams_.xDtype;
     DataType weightDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
     if (IsQuant(xDtype, weightDtype)) {
@@ -956,8 +1020,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
         CHECK_COND(gmmParams_.groupType != SPLIT_N, ACLNN_ERR_PARAM_INVALID,
                    "Quant case does not support groupType 1 (split N).");
         CHECK_COND(GetInputTensorSize(gmmParams_.x) == 1 && GetInputTensorSize(gmmParams_.weight) == 1 &&
-                       GetInputTensorSize(gmmParams_.y) == 1,
-                   ACLNN_ERR_PARAM_INVALID,
+                   GetInputTensorSize(gmmParams_.y) == 1, ACLNN_ERR_PARAM_INVALID,
                    "In quant case, the size of x, weight and y should all be 1, but actual sizes are %zu, %zu and %zu.",
                    GetInputTensorSize(gmmParams_.x), GetInputTensorSize(gmmParams_.weight),
                    GetInputTensorSize(gmmParams_.y));
@@ -966,17 +1029,18 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
             CHECK_RET(CheckWeightNzSpecialParams() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         }
         CHECK_RET(CheckGeneralQuantShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-
+        if (gmmParams_.apiVersion == gmm::GMMApiVersion::V3) {
+            CHECK_COND(CheckInputParamsForV3Version() == ACLNN_SUCCESS,
+            ACLNN_ERR_PARAM_INVALID, "CheckInputParamsForV3Version failed.");
+        }
         DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
         if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
-            CHECK_COND(gmmParams_.groupType == SPLIT_M, ACLNN_ERR_PARAM_INVALID,
-                       "In int8 quant case only supports groupType 0 (split M), but actual groupType is %ld",
-                       gmmParams_.groupType);
+            CHECK_COND(gmmParams_.groupType == SPLIT_M, ACLNN_ERR_PARAM_INVALID, "In int8 quant case only supports \
+groupType 0 (split M), but actual groupType is %ld", gmmParams_.groupType);
             return CheckInt8QuantParams();
         } else if (xDtype == DataType::DT_HIFLOAT8 && weightDtype == DataType::DT_HIFLOAT8) {
             CHECK_COND(scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_FLOAT ||
-                           scaleDtype == DataType::DT_INT64,
-                       ACLNN_ERR_PARAM_INVALID,
+                       scaleDtype == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
                        "In hifloat8 quant case, scale dtype should be uint64, int64 or float32, but actual dtype is %s",
                        op::ToString(scaleDtype).GetString());
             return CheckFp8Hif8QuantParams();
