@@ -513,8 +513,8 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
         OP_LOGE(opName_, "Mx quant matmul allto all build hccl tiling config failed: %s", matmulAllToAllBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
     }
-    matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2CcTiling);
     matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
+    matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2CcTiling);
     return ge::GRAPH_SUCCESS;
 }
 

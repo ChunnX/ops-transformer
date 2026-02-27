@@ -20,6 +20,7 @@
 #include "./matmul/fp_matmul.h"
 #else
 #include "./matmul/quant_matmul.h"
+#include "./matmul/mx_quant_matmul.h"
 #endif
 #include "./math/mc2_vec_transpose.h"
 
