@@ -511,7 +511,11 @@ protected:
         if (inputSparseMode == SparseMode::LEFT_UP_CAUSAL || inputSparseMode == SparseMode::RIGHT_DOWN_CAUSAL) {
             for (auto i = 0; i < bSize; i++) {
                 // 当前采用保守判断条件，当同batch中S1、S2均超过阈值时开启分核优化
-                if (actualSeqLenData[i] >= thresholdS2Size && actualSeqLenKvData[i] > thresholdS2Size) {
+                int compareValue = actualSeqLenKvData[i];
+                if (inputSparseMode == SparseMode::LEFT_UP_CAUSAL) {
+                    compareValue = std::min(actualSeqLenData[i], actualSeqLenKvData[i]);
+                }
+                if (compareValue > thresholdS2Size) {
                     return true;
                 }
             }
