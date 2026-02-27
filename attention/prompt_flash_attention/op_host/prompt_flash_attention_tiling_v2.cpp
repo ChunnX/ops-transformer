@@ -2780,6 +2780,11 @@ bool PromptFlashAttentionTilingV2::CheckNTDLayoutCrossover(ContextParamsForPFATi
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In GQA scenario, when layout is NTD, d size of query must be 64 or 128, but got d = %d.",
             queryShapeInfo.d), return false);
     }
+    if (!enablePFAMLA && !enablePFARope && !enableIFAMLA && !enablePertensorQuant && !enablePerblockQuant && !enableIFAMLAFullQuant) { // GQA
+        OP_CHECK_IF(isQKVDDifferent,
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "In GQA scenario, not support layout %s when query and key headdim is not equal to value headdim.",
+            layoutStr.c_str()), return false);
+    }
 
     OP_CHECK_IF(enableLeftPadding,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "When layout is %s, left padding is not supported!", layoutStr.c_str()),
