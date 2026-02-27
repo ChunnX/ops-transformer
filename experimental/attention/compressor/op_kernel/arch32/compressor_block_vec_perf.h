@@ -606,7 +606,7 @@ CompressorBlockVectorPerf<COMP>::OverLap(const LocalTensor<T> dstLocal, const Lo
                                          const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo, uint32_t dStartIdx,
                                          uint32_t globalSeqIdx, uint32_t dDealSize)
 {
-    if (sliceInfo.dealedTcCnt == 0) {
+    if (sliceInfo.dealTcSize == 0) {
         return;
     }
     if constexpr (ADD_APE) {
