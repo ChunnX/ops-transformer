@@ -208,21 +208,25 @@ void ApplyRotaryPosEmbTilingABAAndBA::SetTilingData()
     tilingData_.set_ubLoopNumKN(ubLoopNumKN_);
     tilingData_.set_ubFactorKN(ubFactorKN_);
     tilingData_.set_ubTailFactorKN(ubTailFactorKN_);
+    tilingData_.set_realDim(reald_);
     tilingData_.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
+    tilingData_.set_isPartialRope(isPartialRope_);
 
     OP_LOGI(context_->GetNodeName(),
             "ApplyRotaryPosEmbTilingABAAndBA tiling data: B[%ld] CosB[%ld] S[%ld] D[%ld] QN[%ld] KN[%ld] "
             "blockNumB[%ld] blockFactorB[%ld] blockNumS[%ld] blockFactorS[%ld] ubLoopNumS[%ld] ubFactorS[%ld] "
             "ubTailFactorS[%ld] "
             "ubLoopNumB[%ld] ubFactorB[%ld] ubTailFactorB[%ld] ubLoopNumQN[%ld] ubFactorQN[%ld] ubTailFactorQN[%ld] "
-            "ubLoopNumKN[%ld] ubFactorKN[%ld] ubTailFactorKN[%ld] rotaryMode[%ld]",
+            "ubLoopNumKN[%ld] ubFactorKN[%ld] ubTailFactorKN[%ld] rotaryMode[%ld] realDim[%ld] isPartialRope[%d]",
             tilingData_.get_B(), tilingData_.get_CosB(), tilingData_.get_S(), tilingData_.get_D(), tilingData_.get_QN(),
             tilingData_.get_KN(), tilingData_.get_blockNumB(), tilingData_.get_blockFactorB(),
             tilingData_.get_blockNumS(), tilingData_.get_blockFactorS(), tilingData_.get_ubLoopNumS(),
             tilingData_.get_ubFactorS(), tilingData_.get_ubTailFactorS(), tilingData_.get_ubLoopNumB(),
             tilingData_.get_ubFactorB(), tilingData_.get_ubTailFactorB(), tilingData_.get_ubLoopNumQN(),
             tilingData_.get_ubFactorQN(), tilingData_.get_ubTailFactorQN(), tilingData_.get_ubLoopNumKN(),
-            tilingData_.get_ubFactorKN(), tilingData_.get_ubTailFactorKN(), tilingData_.get_rotaryMode());
+            tilingData_.get_ubFactorKN(), tilingData_.get_ubTailFactorKN(), tilingData_.get_rotaryMode(),
+            tilingData_.get_realDim(), tilingData_.get_isPartialRope());
+    return;
 }
 
 ge::graphStatus ApplyRotaryPosEmbTilingABAAndBA::DoOpTiling()

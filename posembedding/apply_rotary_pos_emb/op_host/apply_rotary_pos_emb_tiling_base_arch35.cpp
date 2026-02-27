@@ -186,8 +186,8 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation()
                 OP_LOGE(context_, "S of query, key, cos, sin should be same, actual %ld %ld %ld %ld.",
                         qShape_.GetDim(sIdx), kShape_.GetDim(sIdx), cosShape_.GetDim(sIdx), cosShape_.GetDim(sIdx)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!(cosShape_.GetDim(dIdx) == qShape_.GetDim(dIdx) && kShape_.GetDim(dIdx) == qShape_.GetDim(dIdx)),
-                OP_LOGE(context_, "D of query, key, cos, sin should be same, actual %ld %ld %ld %ld.",
+    OP_CHECK_IF(!(cosShape_.GetDim(dIdx) <= qShape_.GetDim(dIdx) && kShape_.GetDim(dIdx) <= qShape_.GetDim(dIdx)),
+                OP_LOGE(context_, "D of query, key should be bigger than cos, sin , actual %ld %ld %ld %ld.",
                         qShape_.GetDim(dIdx), kShape_.GetDim(dIdx), cosShape_.GetDim(dIdx), cosShape_.GetDim(dIdx)),
                 return ge::GRAPH_FAILED);
     if (layout_ != ApplyRotaryPosEmbLayout::TND) {
@@ -312,6 +312,8 @@ void ApplyRotaryPosEmbRegbaseTilingBaseClass::SetBsnd()
         kn_ = kShape_.GetDim(DIM_1);
         d_ = qShape_.GetDim(DIM_2);
     }
+    reald_ = cosShape_.GetDim(DIM_3);
+    isPartialRope_ = (reald_ != d_);
 }
 
 ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::GetShapeAttrsInfo()
