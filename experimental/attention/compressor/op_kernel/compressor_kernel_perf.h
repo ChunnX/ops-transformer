@@ -685,8 +685,9 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
 
         if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0, isNeedExcuteC1);
+            SyncAll<false>();
         } else {
-                SyncAll();
+                SyncAll<false>();
                 ComputeVec1(vec1Info);
                 UpdateVec2Info(vec2Info, i, vec1Info);
 
