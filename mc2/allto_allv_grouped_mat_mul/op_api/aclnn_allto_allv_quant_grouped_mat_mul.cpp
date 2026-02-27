@@ -262,14 +262,6 @@ static bool CheckEmptyTensor(const aclTensor *gmmX, const aclTensor *gmmWeight, 
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight is empty tensor with three dimN, which is unsupported.");
         return false;
     }
-    if(gmmY->GetViewShape().GetDim(0) == ZERO) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmY is empty tensor with zero dimM, which is unsupported.");
-        return false;
-    }
-    if(gmmY->GetViewShape().GetDim(1) == ZERO) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmY is empty tensor with one dimN, which is unsupported.");
-        return false;
-    }
     return true;
 }
 

@@ -29,14 +29,14 @@ namespace ge {
 * @li recv_counts_tensor: A Tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format supports ND.
 * @li mm_x: A matrix Tensor of shape [BS, H1]. The data type of elements supports float16, bfloat16 or hifloat8; the format supports ND.
 * @li mm_weight: A matrix Tensor of shape [H2, N2]. The data type of elements supports float16, bfloat16 or hifloat8 and should match that of mm_x; the format supports ND.
-* @li gmm_x_scale: A matrix Tensor. The type support float. The format supports ND.
-* @li gmm_weight_scale: A matrix Tensor. The type support float. The format supports ND.
-* @li gmm_x_offset: A matrix Tensor. The type support float. The format supports ND.
-* @li gmm_weight_offset: A matrix Tensor. The type support float. The format supports ND.
-* @li mm_x_scale: A matrix Tensor. The type support float. The format supports ND.
-* @li mm_weight_scale: A matrix Tensor. The type support float. The format supports ND.
-* @li mm_x_offset: A matrix Tensor. The type support float. The format supports ND.
-* @li mm_weight_offset: A matrix Tensor. The type support float. The format supports ND.
+* @li gmm_x_scale: A matrix Tensor. The type support float32. The format supports ND.
+* @li gmm_weight_scale: A matrix Tensor. The type support float32. The format supports ND.
+* @li gmm_x_offset: A matrix Tensor. The type support float32. The format supports ND.
+* @li gmm_weight_offset: A matrix Tensor. The type support float32. The format supports ND.
+* @li mm_x_scale: A matrix Tensor. The type support float32. The format supports ND.
+* @li mm_weight_scale: A matrix Tensor. The type support float32. The format supports ND.
+* @li mm_x_offset: A matrix Tensor. The type support float32. The format supports ND.
+* @li mm_weight_offset: A matrix Tensor. The type support float32. The format supports ND.
 *
 * @par Attributes:
 * @li group: A required String identifying the expert group of ranks.

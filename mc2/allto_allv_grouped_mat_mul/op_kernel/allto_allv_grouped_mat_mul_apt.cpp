@@ -18,8 +18,12 @@
 #include "kernel_operator.h"
 #endif
 #include "allto_allv_grouped_mat_mul_tiling_key.h"
+#include "allto_allv_grouped_mat_mul_tiling.h"
+#if (ORIG_DTYPE_GMM_X == DT_BF16 || ORIG_DTYPE_GMM_X == DT_FLOAT16)
 #include "allto_allv_grouped_mat_mul_coarse_grained.h"
+#else
 #include "mc2_templates/mc2_templates.h"
+#endif
 
 
 using namespace AscendC;
