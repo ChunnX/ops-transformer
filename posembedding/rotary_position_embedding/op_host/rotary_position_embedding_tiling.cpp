@@ -13,6 +13,7 @@
  * \brief
  */
 #include "rotary_position_embedding_tiling.h"
+#include "rope_rotate_matrix_tiling.h"
 #include "rope_rotate_half_tiling.h"
 #include "rope_interleaved_tiling.h"
 #include "register/op_def_registry.h"
@@ -65,6 +66,7 @@ ge::graphStatus TilingPrepareForRotaryPositionEmbedding(gert::TilingParseContext
     return ge::GRAPH_SUCCESS;
 }
 
+REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbedding, RopeRotateMatrixTilingClass, 49999);
 REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbedding, RopeRotateHalfTilingClass, 50000);
 REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbedding, RopeInterLeavedTilingClass, 60000);
 

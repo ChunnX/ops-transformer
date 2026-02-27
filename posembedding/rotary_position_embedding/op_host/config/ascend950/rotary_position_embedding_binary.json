@@ -33,6 +33,16 @@
           "shape": [
             -2
           ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ]
         }
       ],
       "outputs": [
@@ -84,6 +94,16 @@
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -141,6 +161,16 @@
           "shape": [
             -2
           ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ]
         }
       ],
       "outputs": [
@@ -192,6 +222,16 @@
           "dtype": "float16",
           "format": "ND",
           "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -249,6 +289,16 @@
           "shape": [
             -2
           ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ]
         }
       ],
       "outputs": [
@@ -300,6 +350,16 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -357,6 +417,16 @@
           "shape": [
             -2
           ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ]
         }
       ],
       "outputs": [
@@ -408,6 +478,16 @@
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -465,6 +545,16 @@
           "shape": [
             -2
           ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ]
         }
       ],
       "outputs": [
@@ -516,6 +606,16 @@
           "dtype": "float16",
           "format": "ND",
           "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
           "shape": [
             -2
           ]
@@ -573,6 +673,16 @@
           "shape": [
             -2
           ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ]
         }
       ],
       "outputs": [
@@ -624,6 +734,16 @@
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
           "shape": [
             -2
           ]
