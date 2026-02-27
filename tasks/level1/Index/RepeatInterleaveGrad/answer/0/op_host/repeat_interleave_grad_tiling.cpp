@@ -180,6 +180,20 @@ ge::graphStatus Tiling4RepeatInterleaveGrad(gert::TilingContext* context)
     uint32_t tiling_key = grad_dtype_key + index_dtype_key;
     context->SetTilingKey(tiling_key);
     OP_LOGD(context, "RepeatInterleaveGradTiling tiling end");
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "batch_dim_num = " << tiling.get_batch_dim_num() << std::endl;
+    std::cout << "repeats_i_grad_dim_num = " << tiling.get_repeats_i_grad_dim_num() << std::endl;
+    std::cout << "repeats_o_grad_dim_num = " << tiling.get_repeats_o_grad_dim_num() << std::endl;
+    std::cout << "data_dim_num = " << tiling.get_data_dim_num() << std::endl;
+    std::cout << "core_num = " << tiling.get_core_num() << std::endl;
+    std::cout << "batch_dim_num_each_core = " << tiling.get_batch_dim_num_each_core() << std::endl;
+    std::cout << "batch_dim_num_last_core = " << tiling.get_batch_dim_num_last_core() << std::endl;
+    std::cout << "core_num_each_batch = " << tiling.get_core_num_each_batch() << std::endl;
+    std::cout << "element_num_each_core = " << tiling.get_element_num_each_core() << std::endl;
+    std::cout << "element_num_last_core = " << tiling.get_element_num_last_core() << std::endl;
+    std::cout << "element_num_each_loop = " << tiling.get_element_num_each_loop() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

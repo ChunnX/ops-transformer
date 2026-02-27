@@ -111,6 +111,12 @@ ge::graphStatus HeavisideTiling::RunBigKernelTiling()
         tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "elementNum = " << tilingData.get_elementNum() << std::endl;
+    std::cout << "valuesType = " << tilingData.get_valuesType() << std::endl;
+    std::cout << "needCoreNum = " << tilingData.get_needCoreNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingContext->SetBlockDim(needCoreNum);
     return ge::GRAPH_SUCCESS;
 }

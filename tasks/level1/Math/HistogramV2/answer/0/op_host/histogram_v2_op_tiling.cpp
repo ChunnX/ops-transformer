@@ -221,6 +221,25 @@ ge::graphStatus HistogramV2Tiling::SetKernelTiling()
         tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     TilingDataPrint();
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << coreNum << std::endl;
+    std::cout << "totalLength = " << totalLength << std::endl;
+    std::cout << "bins = " << bins << std::endl;
+    std::cout << "formerNum = " << formerNum << std::endl;
+    std::cout << "formerLength = " << formerLength << std::endl;
+    std::cout << "formerLengthAligned = " << formerLengthAligned << std::endl;
+    std::cout << "tailLength = " << tailLength << std::endl;
+    std::cout << "tailLengthAligned = " << tailLengthAligned << std::endl;
+    std::cout << "formerTileNum = " << formerTileNum << std::endl;
+    std::cout << "formerTileDataLength = " << formerTileDataLength << std::endl;
+    std::cout << "formerTileLeftDataLength = " << formerTileLeftDataLength << std::endl;
+    std::cout << "formerTileLeftDataLengthAligned = " << formerTileLeftDataLengthAligned << std::endl;
+    std::cout << "tailTileNum = " << tailTileNum << std::endl;
+    std::cout << "tailTileDataLength = " << tailTileDataLength << std::endl;
+    std::cout << "tailTileLeftDataLength = " << tailTileLeftDataLength << std::endl;
+    std::cout << "tailTileLeftDataLengthAligned = " << tailTileLeftDataLengthAligned << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

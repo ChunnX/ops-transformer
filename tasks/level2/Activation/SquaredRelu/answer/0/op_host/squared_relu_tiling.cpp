@@ -109,6 +109,12 @@ ge::graphStatus SquaredReluTiling::RunBigKernelTiling() {
 
     tilingData.SaveToBuffer(tilingContext->GetRawTilingData()->GetData(),
                             tilingContext->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "elementNum = " << tilingData.get_elementNum() << std::endl;
+    std::cout << "needCoreNum = " << tilingData.get_needCoreNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     tilingContext->SetBlockDim(needCoreNum);

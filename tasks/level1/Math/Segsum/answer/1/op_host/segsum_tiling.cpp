@@ -161,6 +161,14 @@ void SegsumTiling::FillTilingData()
     tilingData.SaveToBuffer(
         tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "batches = " << tilingData.get_batches() << std::endl;
+    std::cout << "tailDimSize = " << tilingData.get_tailDimSize() << std::endl;
+    std::cout << "dataType = " << tilingData.get_dataType() << std::endl;
+    std::cout << "needCoreNum = " << tilingData.get_needCoreNum() << std::endl;
+    std::cout << "slideSize = " << tilingData.get_slideSize() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 static ge::graphStatus Tiling4Segsum(gert::TilingContext* context)

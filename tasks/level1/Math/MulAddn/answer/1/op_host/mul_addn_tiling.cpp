@@ -140,6 +140,21 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     context->SetTilingKey(tilingKey);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "N = " << tiling.get_N() << std::endl;
+    std::cout << "shapeB = " << tiling.get_shapeB() << std::endl;
+    std::cout << "shapeM = " << tiling.get_shapeM() << std::endl;
+    std::cout << "shapeN = " << tiling.get_shapeN() << std::endl;
+    std::cout << "shapeNAlign = " << tiling.get_shapeNAlign() << std::endl;
+    std::cout << "useCoreNum = " << tiling.get_useCoreNum() << std::endl;
+    std::cout << "coreTaskNum = " << tiling.get_coreTaskNum() << std::endl;
+    std::cout << "lastCoreTaskNum = " << tiling.get_lastCoreTaskNum() << std::endl;
+    std::cout << "mNum = " << tiling.get_mNum() << std::endl;
+    std::cout << "mLoopNum = " << tiling.get_mLoopNum() << std::endl;
+    std::cout << "mNumTail = " << tiling.get_mNumTail() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
 

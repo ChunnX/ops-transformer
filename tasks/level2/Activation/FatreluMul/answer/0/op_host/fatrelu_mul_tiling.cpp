@@ -161,6 +161,13 @@ ge::graphStatus FatreluMulTiling::RunBigKernelTiling()
     tilingData.set_needCoreNum(needCoreNum);
     tilingData.SaveToBuffer(
         tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "lastDimSize = " << tilingData.get_lastDimSize() << std::endl;
+    std::cout << "batchSize = " << tilingData.get_batchSize() << std::endl;
+    std::cout << "needCoreNum = " << tilingData.get_needCoreNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     tilingContext->SetBlockDim(needCoreNum);
     return ge::GRAPH_SUCCESS;

@@ -231,6 +231,21 @@ ge::graphStatus EmbeddingBagTiling::SetKernelTiling()
     tilingContext_->SetTilingKey(tilingKey_);
     tilingContext_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     TilingDataPrint();
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "usedCoreNum = " << usedCoreNum_ << std::endl;
+    std::cout << "formerOffsetNum = " << formerOffsetNum_ << std::endl;
+    std::cout << "tailOffsetNum = " << tailOffsetNum_ << std::endl;
+    std::cout << "numEmbeddings = " << numEmbeddings_ << std::endl;
+    std::cout << "computeRepTime = " << computeRepTime_ << std::endl;
+    std::cout << "indicesMaxMoveLength = " << indicesMaxMoveLength_ << std::endl;
+    std::cout << "paddingIdx = " << paddingIdx_ << std::endl;
+    std::cout << "numIndices = " << numIndices_ << std::endl;
+    std::cout << "mode = " << mode_ << std::endl;
+    std::cout << "hasPerSampleWeights = " << hasPerSampleWeights_ << std::endl;
+    std::cout << "tilingKey = " << tilingKey_ << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

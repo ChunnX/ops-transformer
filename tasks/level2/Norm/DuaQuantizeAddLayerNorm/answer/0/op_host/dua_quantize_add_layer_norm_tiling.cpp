@@ -169,6 +169,14 @@ static ge::graphStatus Tiling4DuaQuantizeAddLayerNorm(gert::TilingContext* conte
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "maxCoreNum = " << maxCoreNum << std::endl;
+    std::cout << "numCore = " << numCore << std::endl;
+    std::cout << "numRow = " << numRow << std::endl;
+    std::cout << "numLastDim = " << numLastDim << std::endl;
+    std::cout << "nlFirstDimPerCore = " << nlFirstDimPerCore << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     size_t usrSize = 0;
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = usrSize + sysWorkspaceSize;

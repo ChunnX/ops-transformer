@@ -123,6 +123,28 @@ ge::graphStatus QuantizedBatchNormWelfordTiling::PostTiling()
     td_.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
     rawTilingData->SetDataSize(td_.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << this->commonParams.coreNum << std::endl;
+    std::cout << "usedCoreNum = " << usedCoreNum << std::endl;
+    std::cout << "patternR1 = " << td_.get_patternR1() << std::endl;
+    std::cout << "patternR0 = " << td_.get_patternR0() << std::endl;
+    std::cout << "patternA = " << td_.get_patternA() << std::endl;
+    std::cout << "patternR0Align = " << td_.get_patternR0Align() << std::endl;
+    std::cout << "epsilon = " << td_.get_epsilon() << std::endl;
+    std::cout << "blockFactor = " << td_.get_blockFactor() << std::endl;
+    std::cout << "tailCoreBlockFactor = " << td_.get_tailCoreBlockFactor() << std::endl;
+    std::cout << "aUbFactor = " << td_.get_aUbFactor() << std::endl;
+    std::cout << "r0UbFactor = " << td_.get_r0UbFactor() << std::endl;
+    std::cout << "aUbLoop = " << td_.get_aUbLoop() << std::endl;
+    std::cout << "aUbTail = " << td_.get_aUbTail() << std::endl;
+    std::cout << "tailCoreAUbLoop = " << td_.get_tailCoreAUbLoop() << std::endl;
+    std::cout << "tailCoreAUbTail = " << td_.get_tailCoreAUbTail() << std::endl;
+    std::cout << "r0UbLoop = " << td_.get_r0UbLoop() << std::endl;
+    std::cout << "r0UbTail = " << td_.get_r0UbTail() << std::endl;
+    std::cout << "procNR0 = " << td_.get_procNR0() << std::endl;
+    std::cout << "nR0Loop = " << td_.get_nR0Loop() << std::endl;
+    std::cout << "lastLoopNR0 = " << td_.get_lastLoopNR0() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

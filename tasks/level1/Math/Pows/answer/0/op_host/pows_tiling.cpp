@@ -266,6 +266,19 @@ static ge::graphStatus Tiling4Pows(gert::TilingContext* context)
         tilingData.get_tailCoreTailLength(), tilingData.get_dataLength(), tilingData.get_blockSize());
 
     OP_LOGD(context, "Tiling4Pows exit.");
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "realCoreNum = " << tilingData.get_realCoreNum() << std::endl;
+    std::cout << "numPerCore = " << tilingData.get_numPerCore() << std::endl;
+    std::cout << "mainCoreLoopNum = " << tilingData.get_mainCoreLoopNum() << std::endl;
+    std::cout << "mainCoreTailLength = " << tilingData.get_mainCoreTailLength() << std::endl;
+    std::cout << "tailCoreLoopNum = " << tilingData.get_tailCoreLoopNum() << std::endl;
+    std::cout << "tailCoreTailLength = " << tilingData.get_tailCoreTailLength() << std::endl;
+    std::cout << "dataLength = " << tilingData.get_dataLength() << std::endl;
+    std::cout << "bufSize = " << tilingData.get_bufSize() << std::endl;
+    std::cout << "blockSize = " << tilingData.get_blockSize() << std::endl;
+    std::cout << "tilingKey = " << tilingData.get_tilingKey() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

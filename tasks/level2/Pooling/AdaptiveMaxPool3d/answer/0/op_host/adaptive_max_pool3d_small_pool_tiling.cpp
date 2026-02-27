@@ -170,6 +170,31 @@ ge::graphStatus AdaptiveMaxPool3dSmallPoolTiling::PostTiling()
     tilingdata_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingdata_.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << input_.coreNum << std::endl;
+    std::cout << "useCoreNum = " << tilingdata_.get_useCoreNum() << std::endl;
+    std::cout << "N = " << tilingdata_.get_N() << std::endl;
+    std::cout << "C = " << tilingdata_.get_C() << std::endl;
+    std::cout << "Di = " << tilingdata_.get_Di() << std::endl;
+    std::cout << "Hi = " << tilingdata_.get_Hi() << std::endl;
+    std::cout << "Wi = " << tilingdata_.get_Wi() << std::endl;
+    std::cout << "Do = " << tilingdata_.get_Do() << std::endl;
+    std::cout << "Ho = " << tilingdata_.get_Ho() << std::endl;
+    std::cout << "Wo = " << tilingdata_.get_Wo() << std::endl;
+    std::cout << "ncFactor = " << tilingdata_.get_ncFactor() << std::endl;
+    std::cout << "doFactor = " << tilingdata_.get_doFactor() << std::endl;
+    std::cout << "hoFactor = " << tilingdata_.get_hoFactor() << std::endl;
+    std::cout << "woFactor = " << tilingdata_.get_woFactor() << std::endl;
+    std::cout << "ncOuter = " << tilingdata_.get_ncOuter() << std::endl;
+    std::cout << "doOuter = " << tilingdata_.get_doOuter() << std::endl;
+    std::cout << "hoOuter = " << tilingdata_.get_hoOuter() << std::endl;
+    std::cout << "woOuter = " << tilingdata_.get_woOuter() << std::endl;
+    std::cout << "ncTail = " << tilingdata_.get_ncTail() << std::endl;
+    std::cout << "doTail = " << tilingdata_.get_doTail() << std::endl;
+    std::cout << "hoTail = " << tilingdata_.get_hoTail() << std::endl;
+    std::cout << "woTail = " << tilingdata_.get_woTail() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

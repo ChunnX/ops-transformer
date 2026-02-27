@@ -266,16 +266,18 @@ ge::graphStatus AngleV2Tiling::RunKernelTiling()
 
 void AngleV2Tiling::TilingDataPrint() const
 {
-    OP_LOGD(tilingContext, "usedCoreNum: %ld.", coreNum);
-    OP_LOGD(tilingContext, "totalLength: %ld.", totalLength);
-    OP_LOGD(tilingContext, "formerNum: %ld.", formerNum);
-    OP_LOGD(tilingContext, "tailNum: %ld.", tailNum);
-    OP_LOGD(tilingContext, "formerLength: %ld.", formerLength);
-    OP_LOGD(tilingContext, "tailLength: %ld.", tailLength);
-    OP_LOGD(tilingContext, "alignNum: %ld.", alignNum);
-    OP_LOGD(tilingContext, "totalLengthAligned: %ld.", totalLengthAligned);
-    OP_LOGD(tilingContext, "tileLength: %ld.", tileLength);
-    OP_LOGD(tilingContext, "dataPerRepeat: %ld.", dataPerRepeat);
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << coreNum << std::endl;
+    std::cout << "totalLength = " << totalLength << std::endl;
+    std::cout << "formerNum = " << formerNum << std::endl;
+    std::cout << "tailNum = " << tailNum << std::endl;
+    std::cout << "formerLength = " << formerLength << std::endl;
+    std::cout << "tailLength = " << tailLength << std::endl;
+    std::cout << "alignNum = " << alignNum << std::endl;
+    std::cout << "totalLengthAligned = " << totalLengthAligned << std::endl;
+    std::cout << "tileLength = " << tileLength << std::endl;
+    std::cout << "dataPerRepeat = " << dataPerRepeat << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)

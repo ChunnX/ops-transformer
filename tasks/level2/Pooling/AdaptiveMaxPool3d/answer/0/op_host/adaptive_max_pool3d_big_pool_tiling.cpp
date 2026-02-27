@@ -86,6 +86,22 @@ ge::graphStatus AdaptiveMaxPool3dBigPoolTiling::PostTiling()
     tilingdata_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingdata_.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << input_.coreNum << std::endl;
+    std::cout << "useCoreNum = " << tilingdata_.get_useCoreNum() << std::endl;
+    std::cout << "N = " << tilingdata_.get_N() << std::endl;
+    std::cout << "C = " << tilingdata_.get_C() << std::endl;
+    std::cout << "Di = " << tilingdata_.get_Di() << std::endl;
+    std::cout << "Hi = " << tilingdata_.get_Hi() << std::endl;
+    std::cout << "Wi = " << tilingdata_.get_Wi() << std::endl;
+    std::cout << "Do = " << tilingdata_.get_Do() << std::endl;
+    std::cout << "Ho = " << tilingdata_.get_Ho() << std::endl;
+    std::cout << "Wo = " << tilingdata_.get_Wo() << std::endl;
+    std::cout << "totalIdx = " << tilingdata_.get_totalIdx() << std::endl;
+    std::cout << "blockFactor = " << tilingdata_.get_blockFactor() << std::endl;
+    std::cout << "blockTail = " << tilingdata_.get_blockTail() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

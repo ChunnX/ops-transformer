@@ -110,6 +110,23 @@ void AddRmsNormDynamicQuantTilingHelper::SetTilingDataAndTilingKeyAndWorkSpace(A
     OP_LOGI("SetTilingDataAndTilingKeyAndWorkSpace", "Tilingdata eps_: %f, avgFactor_: %f", eps_, avgFactor_);
     OP_LOGI(
         "SetTilingDataAndTilingKeyAndWorkSpace", "Tilingdata tilingKey = %u, usr Workspace: %zu", tilingKey, usrSize);
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "socCoreNums = " << this->socCoreNums_ << std::endl;
+    std::cout << "useCore = " << this->useCore_ << std::endl;
+    std::cout << "numFirstDim = " << this->numFirstDim_ << std::endl;
+    std::cout << "numLastDim = " << this->numLastDim_ << std::endl;
+    std::cout << "numLastDimAligned = " << this->numLastDimAligned_ << std::endl;
+    std::cout << "firstDimPerCore = " << this->firstDimPerCore_ << std::endl;
+    std::cout << "firstDimPerCoreTail = " << this->firstDimPerCoreTail_ << std::endl;
+    std::cout << "firstDimPerLoop = " << this->firstDimPerLoop_ << std::endl;
+    std::cout << "lastDimSliceLen = " << this->lastDimSliceLen_ << std::endl;
+    std::cout << "lastDimLoopNum = " << this->lastDimLoopNum_ << std::endl;
+    std::cout << "lastDimSliceLenTail = " << this->lastDimSliceLenTail_ << std::endl;
+    std::cout << "eps = " << this->eps_ << std::endl;
+    std::cout << "avgFactor = " << this->avgFactor_ << std::endl;
+    std::cout << "tilingKey = " << tilingKey << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 bool AddRmsNormDynamicQuantTilingHelper::DoTiling()

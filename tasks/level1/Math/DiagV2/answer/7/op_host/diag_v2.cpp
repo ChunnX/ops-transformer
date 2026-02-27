@@ -38,7 +38,20 @@ static ge::graphStatus DiagFlatSetTilingData(gert::TilingContext* context, DiagV
 {
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
-    
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "totalCoreNum = " << tilingData.get_totalCoreNum() << std::endl;
+    std::cout << "usedCoreNum = " << tilingData.get_usedCoreNum() << std::endl;
+    std::cout << "normalCoreHandleNum = " << tilingData.get_normalCoreHandleNum() << std::endl;
+    std::cout << "lastCoreHandleNum = " << tilingData.get_lastCoreHandleNum() << std::endl;
+    std::cout << "inputNum = " << tilingData.get_inputNum() << std::endl;
+    std::cout << "diagonal = " << tilingData.get_diagonal() << std::endl;
+    std::cout << "ubInputSize = " << tilingData.get_ubInputSize() << std::endl;
+    std::cout << "ubOutputSize = " << tilingData.get_ubOutputSize() << std::endl;
+    std::cout << "workspaceSize = " << tilingData.get_workspaceSize() << std::endl;
+    std::cout << "tilingKey = " << tilingData.get_tilingKey() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

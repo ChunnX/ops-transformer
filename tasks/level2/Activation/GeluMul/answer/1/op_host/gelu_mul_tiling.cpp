@@ -161,6 +161,14 @@ ge::graphStatus GeluMulTiling::RunBigKernelTiling() {
                             tilingContext->GetRawTilingData()->GetCapacity());
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "lastDimSize = " << tilingData.get_lastDimSize() << std::endl;
+    std::cout << "batchSize = " << tilingData.get_batchSize() << std::endl;
+    std::cout << "approximateMode = " << tilingData.get_approximateMode() << std::endl;
+    std::cout << "PPMaxCalNum = " << tilingData.get_PPMaxCalNum() << std::endl;
+    std::cout << "needCoreNum = " << tilingData.get_needCoreNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingContext->SetBlockDim(needCoreNum);
     return ge::GRAPH_SUCCESS;
 }

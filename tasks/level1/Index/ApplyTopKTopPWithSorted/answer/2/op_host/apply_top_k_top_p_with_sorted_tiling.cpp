@@ -266,6 +266,23 @@ ge::graphStatus ApplyTopKTopPWithSortedTiling::RunKernelTiling()
 
     tilingData.SaveToBuffer(tilingcontext->GetRawTilingData()->GetData(),
                             tilingcontext->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "batchSize = " << tilingData.get_batchSize() << std::endl;
+    std::cout << "vocabSize = " << tilingData.get_vocabSize() << std::endl;
+    std::cout << "batchPerCore = " << tilingData.get_batchPerCore() << std::endl;
+    std::cout << "tailBatch = " << tilingData.get_tailBatch() << std::endl;
+    std::cout << "blockNum = " << tilingData.get_blockNum() << std::endl;
+    std::cout << "dataNumInit = " << tilingData.get_dataNumInit() << std::endl;
+    std::cout << "dataNumInitAligned = " << tilingData.get_dataNumInitAligned() << std::endl;
+    std::cout << "ubFactorElement = " << tilingData.get_ubFactorElement() << std::endl;
+    std::cout << "ubFactorElementAligned = " << tilingData.get_ubFactorElementAligned() << std::endl;
+    std::cout << "tailUbFactorElement = " << tilingData.get_tailUbFactorElement() << std::endl;
+    std::cout << "tailUbFactorElementAligned = " << tilingData.get_tailUbFactorElementAligned() << std::endl;
+    std::cout << "calUbSize = " << tilingData.get_calUbSize() << std::endl;
+    std::cout << "iterateTimes = " << tilingData.get_iterateTimes() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingcontext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     tilingcontext->SetBlockDim(usedCoreNum_);
 

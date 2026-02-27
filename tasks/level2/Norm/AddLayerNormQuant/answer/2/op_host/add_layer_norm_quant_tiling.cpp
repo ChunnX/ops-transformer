@@ -318,6 +318,12 @@ static ge::graphStatus Tiling4AddLayerNormQuantMembase(gert::TilingContext* cont
 
     SetWorkSapce4AddLayerNormQuant(context, &tiling, tilingType, numRow, numCol);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "scaleOffsetMode = " << tiling.get_scaleOffsetMode() << std::endl;
+    std::cout << "isPerTensor = " << tiling.get_isPerTensor() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
     uint64_t tilingKey = ComputeTilingKey(dataType, isDynamicQuant, tilingType, biasType);

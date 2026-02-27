@@ -254,6 +254,17 @@ static ge::graphStatus NormCommonTiling(gert::TilingContext* context, PrePostTyp
     context->SetBlockDim(tilingData.get_numCore());
     context->SetTilingKey(tilingKey);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "numCol = " << tilingData.get_numCol() << std::endl;
+    std::cout << "sliceSize = " << tilingData.get_sliceSize() << std::endl;
+    std::cout << "avgFactor = " << tilingData.get_avgFactor() << std::endl;
+    std::cout << "epsilon = " << tilingData.get_epsilon() << std::endl;
+    std::cout << "highPrecisionMode = " << tilingData.get_highPrecisionMode() << std::endl;
+    std::cout << "gemmaMode = " << tilingData.get_gemmaMode() << std::endl;
+    std::cout << "dstType = " << tilingData.get_dstType() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     LogTilingData(opName, &tilingData);

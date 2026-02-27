@@ -262,6 +262,30 @@ ge::graphStatus ScatterAddWithSortedTiling::RunKernelTiling()
     tilingData.set_updatesLast(updatesLast);
     tilingData.SaveToBuffer(
         tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "usedCoreNum = " << tilingData.get_usedCoreNum() << std::endl;
+    std::cout << "extraTaskCore = " << tilingData.get_extraTaskCore() << std::endl;
+    std::cout << "eachCount = " << tilingData.get_eachCount() << std::endl;
+    std::cout << "lastCount = " << tilingData.get_lastCount() << std::endl;
+    std::cout << "inputCount = " << tilingData.get_inputCount() << std::endl;
+    std::cout << "indicesCount = " << tilingData.get_indicesCount() << std::endl;
+    std::cout << "updatesCount = " << tilingData.get_updatesCount() << std::endl;
+    std::cout << "inputOneTime = " << tilingData.get_inputOneTime() << std::endl;
+    std::cout << "updatesOneTime = " << tilingData.get_updatesOneTime() << std::endl;
+    std::cout << "updatesAlign = " << tilingData.get_updatesAlign() << std::endl;
+    std::cout << "maxSize = " << tilingData.get_maxSize() << std::endl;
+    std::cout << "eachNum = " << tilingData.get_eachNum() << std::endl;
+    std::cout << "eachLoop = " << tilingData.get_eachLoop() << std::endl;
+    std::cout << "eachTail = " << tilingData.get_eachTail() << std::endl;
+    std::cout << "lastNum = " << tilingData.get_lastNum() << std::endl;
+    std::cout << "lastLoop = " << tilingData.get_lastLoop() << std::endl;
+    std::cout << "lastTail = " << tilingData.get_lastTail() << std::endl;
+    std::cout << "updatesLoop = " << tilingData.get_updatesLoop() << std::endl;
+    std::cout << "updatesEach = " << tilingData.get_updatesEach() << std::endl;
+    std::cout << "updatesLast = " << tilingData.get_updatesLast() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     tilingContext->SetTilingKey(tilingKey);
     tilingContext->SetBlockDim(usedCoreNum);

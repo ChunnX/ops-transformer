@@ -121,6 +121,12 @@ ge::graphStatus LogitGradTiling::RunBigKernelTiling()
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     tilingContext->SetBlockDim(needCoreNum);
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "needCoreNum = " << needCoreNum << std::endl;
+    std::cout << "elementNum = " << inputShapeSize << std::endl;
+    std::cout << "eps = " << epsilon << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

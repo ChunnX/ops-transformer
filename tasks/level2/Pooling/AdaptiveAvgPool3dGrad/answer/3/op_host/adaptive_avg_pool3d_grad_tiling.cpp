@@ -189,6 +189,25 @@ ge::graphStatus AdaptiveAvgPool3dGradTiling::RunKernelTiling()
                     static_cast<size_t>(sysWorkspaceSize);
     TilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(TilingData.GetDataSize());
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << coreNum << std::endl;
+    std::cout << "ncNum = " << ncNum << std::endl;
+    std::cout << "dIn = " << dIn << std::endl;
+    std::cout << "hIn = " << hIn << std::endl;
+    std::cout << "wIn = " << wIn << std::endl;
+    std::cout << "dOut = " << dOut << std::endl;
+    std::cout << "hOut = " << hOut << std::endl;
+    std::cout << "wOut = " << wOut << std::endl;
+    std::cout << "taskCoreUsed = " << taskCoreUsed << std::endl;
+    std::cout << "taskNumPerCore = " << taskNumPerCore << std::endl;
+    std::cout << "taskNumLastCore = " << taskNumLastCore << std::endl;
+    std::cout << "yNumPerCalc = " << yNumPerCalc << std::endl;
+    std::cout << "ncSliceNum = " << ncSliceNum << std::endl;
+    std::cout << "ncAlignSliceLength = " << ncAlignSliceLength << std::endl;
+    std::cout << "ncAlignSliceTail = " << ncAlignSliceTail << std::endl;
+    std::cout << "isAtomicAdd = " << isAtomicAdd << std::endl;
+    std::cout << "deterministicFlag = " << deterministicFlag << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 
