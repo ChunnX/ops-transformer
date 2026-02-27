@@ -973,20 +973,23 @@ bool PromptFlashAttentionTilingV2::CheckPostQuantShape(const ContextParamsForPFA
     return true;
 }
 
-bool PromptFlashAttentionTilingV2::CheckPerTensorQuantParams(const ContextParamsForPFATiling& contextKeyParams) const 
-{
+bool PromptFlashAttentionTilingV2::CheckPerTensorQuantParams(const ContextParamsForPFATiling& contextKeyParams,
+    const PFAShapeInfo& queryShapeInfo) const {
     const gert::StorageShape* deqScale1Shape = contextKeyParams.deqScale1Shape;
     const gert::StorageShape* quantScale1Shape = contextKeyParams.scale1Shape;
     const gert::StorageShape* deqScale2Shape = contextKeyParams.deqScale2Shape;
     const ge::DataType inputParamsType = contextKeyParams.inputDataType;
-    OP_CHECK_IF((inputParamsType != ge::DT_INT8),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+
+    OP_CHECK_IF((inputParamsType != ge::DT_INT8), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "inputParamsType must be INT8 in per-tensor quant scenario, now is %s", 
             GetPfaDataTypeStr(contextKeyParams.inputDataType).c_str()),
         return false);
-    OP_CHECK_IF((inputLayout == InputLayout::TND),
+    std::string layoutStr(contextKeyParams.layout);
+    const std::vector<std::string> unsupportedLayoutList = {"BNSD_NBSD", "BSND_NBSD", "BSH_NBSD", "BSH_BNSD",
+        "BSND_BNSD", "TND", "NTD", "NTD_TND", "TND_NTD"};
+    OP_CHECK_IF(std::find(unsupportedLayoutList.begin(), unsupportedLayoutList.end(), layoutStr) != unsupportedLayoutList.end(),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "TND is not supported in per-tensor quant scenario."),
+            "%s is not supported in per-tensor quant scenario.", layoutStr.c_str()),
         return false);
     OP_CHECK_IF((deqScale1Shape == nullptr) || (quantScale1Shape == nullptr) || (deqScale2Shape == nullptr),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
@@ -998,10 +1001,12 @@ bool PromptFlashAttentionTilingV2::CheckPerTensorQuantParams(const ContextParams
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "deqScale1, quantScale1 or deqScale2 is empty tensor in per-tensor quant scenario."),
         return false);
-    OP_CHECK_IF(enablePFARope,
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "Rope is not supported in per-tensor quant scenario."),
-        return false);
+    OP_CHECK_IF(enablePFARope, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "Rope is not supported in per-tensor quant scenario."), return false);
+    OP_CHECK_IF(enableAlibiPse, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, 
+            "AlibiPse is not supported in per-tensor quant scenario."), return false);
+    OP_CHECK_IF(queryShapeInfo.s == 1, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+        "The q_s should not be equal to 1 in per-tensor quant scenario."), return false);
     const gert::StorageShape* keyShape = contextKeyParams.keyInputShape;
     const gert::StorageShape* valueShape = contextKeyParams.valueInputShape;
     const size_t dIdx = (inputLayout == InputLayout::TND || inputLayout == InputLayout::BSH) ? 2U : 3U; // TND/BSH:2; BSND/BNSD/BNSD_BSND:3
@@ -1015,13 +1020,11 @@ bool PromptFlashAttentionTilingV2::CheckPerTensorQuantParams(const ContextParams
         keyShapeD = static_cast<uint64_t>(keyShapeD / nKV);
         valueShapeD = static_cast<uint64_t>(valueShapeD / nKV);
     }
-    OP_CHECK_IF(keyShapeD != valueShapeD,
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+    OP_CHECK_IF(keyShapeD != valueShapeD, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "The D size of keyInputShape and valueInputShape must be equal in per-tensor quant scenario, but now keyShapeD is %lu, valueShapeD is %lu.",
-            keyShapeD, valueShapeD),
-        return false);
+            keyShapeD, valueShapeD), return false);
     return true;           
-}                                       
+}                                     
 
 bool PromptFlashAttentionTilingV2::CheckPerblockQuantParams(const ContextParamsForPFATiling& contextKeyParams, 
     const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& keyShapeInfo, const PFAShapeInfo& valueShapeInfo) const 
@@ -1941,7 +1944,7 @@ bool PromptFlashAttentionTilingV2::CheckQuant(ContextParamsForPFATiling& context
     const gert::StorageShape* keyShape = contextKeyParams.keyInputShape;
     // per-tensor quant check
     if (enablePertensorQuant) {
-        OP_CHECK_IF(!CheckPerTensorQuantParams(contextKeyParams),
+        OP_CHECK_IF(!CheckPerTensorQuantParams(contextKeyParams, queryShapeInfo),
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "per-tensor quant params check failed!"),
             return false);
         const size_t keyDim = keyShape->GetStorageShape().GetDimNum();
