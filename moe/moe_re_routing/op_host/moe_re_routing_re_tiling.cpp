@@ -32,7 +32,7 @@ void MoeReRoutingReTiling::SplitCore()
     int64_t blockFactor = Ops::Base::CeilDiv(rankNums_, coreNum_);
     blockNumR_ = Ops::Base::CeilDiv(rankNums_, blockFactor);
     blockFactorR_ = Ops::Base::CeilDiv(rankNums_, blockNumR_);
-    // todo tokenSum_ == 0时需要判断
+    // tokenSum_ == 0时需要判断
     if (tokenSum_ == 0) {
         blockNumR_ = 1;
     }
