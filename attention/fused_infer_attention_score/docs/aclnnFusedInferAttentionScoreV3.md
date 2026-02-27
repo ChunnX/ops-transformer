@@ -1,6 +1,6 @@
 # aclnnFusedInferAttentionScoreV3
 
-**该接口后续版本会废弃，请使用最新接口[aclnnFusedInferAttentionScoreV5](./aclnnFusedInferAttentionScoreV5.md)。
+**该接口后续版本会废弃，请使用最新接口[aclnnFusedInferAttentionScoreV5](./aclnnFusedInferAttentionScoreV5.md)**。
 
 ## 产品支持情况
 
@@ -781,12 +781,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且不传mask，或sparse=3且传入优化后的attentionMask：
              - Q_D、K_D、V_D相等且小于等于256或Q_D、K_D等于192，V_D等于128/192场景下，支持sparse=4且传入优化后的attentionMask，要求preTokens>=-actualSeqLengths、nextTokens>=-actualSeqLengthsKv、preTokens+nextTokens>=0;
         - 仅支持innerPrecise=0，即不带行无效的高精度模式；
-        - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize仅支持128；
+        - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize支持<=128 16对齐；
       - TND场景，当head配比为MHA时，有如下约束：
-        - 当数据类型为FLOAT16时，仅支持sparse=0且不传mask；
-        - 当数据类型为FLOAT16时，仅支持innerPrecise=1；
-        - 当数据类型为FLOAT16时，不支持page attention；
-        - 当数据类型为BFLOAT16时，支持sparse=0且不传mask，或sparse=3，4且传入优化后的attentionMask；
+        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且不传mask，或sparse=3，4且传入优化后的attentionMask；
+        - 当数据类型为FLOAT16时，支持innerPrecise=0和innerPrecise=1；
+        - 当数据类型为BFLOAT16时，仅支持innerPrecise=0；
+        - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize支持<=128 16对齐；
       - NTD_TND场景，不支持page attention；
       - 当sparse=3时，要求每个batch单独的actualSeqLengths < actualSeqLengthsKv；
       - 不支持左padding、tensorlist、pse、page attention、prefix、伪量化、全量化、后量化；

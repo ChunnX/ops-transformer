@@ -1520,8 +1520,43 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     <tr>
         <td>GQA/MHA/MQA场景（当queryRope和keyRope为空时）</td>
         <td>Q_D、K_D、V_D</td>
-        <td>Q_D、K_D、V_D都等于64<br>或Q_D、K_D、V_D都等于128<br>或Q_D和K_D等于192时，V_D等于128<br>或TND，GQA/MQA，innerPrecise=0场景下，支持Q_D=K_D=V_D且小于等于256</td>
-                <td>TND，GQA/MQA，innerPrecise=0场景下，支持sparse=4且传入优化后的attentionMask，要求preTokens>=-actualSeqLengths、nextTokens>=-actualSeqLengthsKv、preTokens+nextTokens>=0</td>
+        <td>
+            Q_D、K_D、V_D都等于64<br>或Q_D、K_D、V_D都等于128<br>或Q_D和K_D等于192时，V_D等于128<br>或TND，GQA/MQA，innerPrecise=0场景下，支持Q_D=K_D=V_D且小于等于256<br><br>
+            <ul>
+            <li><strong>GQA/MQA场景</strong>（numHeads是numKeyValueHeads的整数倍且不相等）：
+                <ul>
+                <li>数据类型：FLOAT16、BFLOAT16</li>
+                <li>sparse模式：
+                    <ul>
+                    <li>sparse=0（不传mask）</li>
+                    <li>sparse=3（传优化后的attentionMask）</li>
+                    <li>sparse=4（传优化后的attentionMask，需满足：Q_D=K_D=V_D≤256 或 Q_D=K_D=192且V_D=128/192；同时preTokens≥-actualSeqLengths、nextTokens≥-actualSeqLengthsKv、preTokens+nextTokens≥0）</li>
+                    </ul>
+                </li>
+                <li>innerPrecise：仅支持0（不带行无效的高精度模式）</li>
+                <li>Page Attention：支持BnBsH格式（H≤65535，blockSize<=128 16对齐）</li>
+                </ul>
+            </li>
+            <li><strong>MHA场景</strong>：
+                <ul>
+                <li>数据类型：FLOAT16、BFLOAT16</li>
+                <li>sparse模式：
+                    <ul>
+                    <li>sparse=0（不传mask）</li>
+                    <li>sparse=3/4（传优化后的attentionMask）</li>
+                    </ul>
+                </li>
+                <li>innerPrecise：
+                    <ul>
+                    <li>FLOAT16：支持0和1</li>
+                    <li>BFLOAT16：仅支持0</li>
+                    </ul>
+                </li>
+                <li>Page Attention：支持BnBsH格式（H≤65535，blockSize支持<=128 16对齐）</li>
+                </ul>
+            </li>
+            </ul>
+        </td>
     </tr>
     <tr>
         <td colspan="3">不支持左padding、tensorlist、pse、prefix、伪量化、全量化、后量化。</td>
