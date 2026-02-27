@@ -113,7 +113,7 @@ private:
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
     __aicore__ inline void ComputeVec2(const Vec2RunInfo &info);
 
-    __aicore__ inline bool IsNeedExcuteC1(BatchInfo batchInfo);
+    __aicore__ inline bool IsNeedExcuteC1(RunInfo info);
     __aicore__ inline bool IsNeedSyncAll(uint32_t curBasicBlockIdx);
     __aicore__ inline void CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info, BatchInfo &batchInfo, uint32_t loopIdx);
     __aicore__ inline void UpdateVec2Info(Vec2RunInfo &vec2Info, uint32_t curBasicBlockIdx, const Vec1RunInfo &info);
@@ -541,7 +541,7 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
     CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
     if (isNeedExcute) {
-        // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize);
+        // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u, cubeDbIdx:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize, info.cubeDbIdx);
         blockCube_.ComputeMm1(info);
     }
     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
@@ -554,7 +554,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo
 #else
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_V>(SYNC_C1_V1_FLAG);
 #endif
-    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize);
+    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
 #if (__CCE_AICORE__ == 220)
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C1_FLAG);
@@ -565,6 +565,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec2(const Vec2RunInfo &info) {
+    // printf("[VEC2] bStart:%u, sStart:%u, bCompressedId:%u, dealScSize:%u, v2DbIdx:%u\n", info.bStart, info.sStart, info.bCompressedId, info.dealScSize, info.v2DbIdx);
     blockVec_.ComputeVec2(info);
 }
 
@@ -595,10 +596,10 @@ __aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
 }
 
 template <typename COMP>
-__aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedExcuteC1(BatchInfo batchInfo)
+__aicore__ inline bool CompressorKernelPerf<COMP>::IsNeedExcuteC1(RunInfo info)
 {
     // B超出范围则cube不执行
-    return batchInfo.bIdx < constInfo.batchSize;
+    return info.bStart < constInfo.batchSize;
 }
 
 template <typename COMP>
@@ -617,6 +618,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info,
     info.sStart = basicBlockInfo.sIdx;
     vec1Info.dealTcNum = basicBlockInfo.dealTcNum;
     vec1Info.dealScSize = basicBlockInfo.compressedTcNum;
+    allCompressedTcNum_ += basicBlockInfo.compressedTcNum;
 }
 
 template <typename COMP>
@@ -675,8 +677,8 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
     SkipInvalidBatch(batchInfo);
     for (uint32_t i = 0; i < loopTimes; ++i) {
         RunInfo &extraInfo0 = extraInfo[0];
-        bool isNeedExcuteC1 = IsNeedExcuteC1(batchInfo);
         CalcC1V1Params(extraInfo0, vec1Info, batchInfo, i);
+        bool isNeedExcuteC1 = IsNeedExcuteC1(extraInfo0);
         // printf("[LOOP] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", extraInfo0.bStart, extraInfo0.sStart, vec1Info.dealTcNum, vec1Info.dealScSize);
 
         if ASCEND_IS_AIC {
