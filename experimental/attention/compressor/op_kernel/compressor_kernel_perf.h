@@ -223,7 +223,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
         blockCube_.InitBuffers(pipe_);
 #if __CCE_AICORE__ == 310
 #else
-        blockCube_.InitGlobalBuffers(mm1KvResGm, Vec1InputScoreGm);
+        blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
 #endif
     } else {
         blockVec_.InitParams(constInfo, tools_);
