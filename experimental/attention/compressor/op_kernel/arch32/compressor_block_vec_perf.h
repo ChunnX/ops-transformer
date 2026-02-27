@@ -904,6 +904,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
     if (statisticInfo.actualTcCnt == 0) {
         return;
     }
+    event_t eventId_MTE2_V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    event_t eventId_MTE2_MTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+    event_t eventId_MTE3_MTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    event_t eventId_V_MTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
 
     CompressorVec1SliceIterator overLapSliceIterator(tools_);
     overLapSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
@@ -933,9 +937,20 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
         overLapSliceIterator.IteratorSlice();
     }
 
+    SetFlag<HardEvent::MTE3_MTE2>(eventId_MTE3_MTE2);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventId_MTE3_MTE2);
+    SetFlag<HardEvent::V_MTE2>(eventId_V_MTE2);
+    WaitFlag<HardEvent::V_MTE2>(eventId_V_MTE2);
+
     GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
     FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+
+    SetFlag<HardEvent::MTE2_V>(eventId_MTE2_V);
+    WaitFlag<HardEvent::MTE2_V>(eventId_MTE2_V);
+    SetFlag<HardEvent::MTE2_MTE3>(eventId_MTE2_MTE3);
+    WaitFlag<HardEvent::MTE2_MTE3>(eventId_MTE2_MTE3);
+
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
     LocalTensor<T> kvLocal = tmpBuff2.Get<T>();
@@ -950,7 +965,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
     inputQue1.FreeTensor(kvUb);
 
     PipeBarrier<PIPE_V>();
-    event_t eventId_MTE2_V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventId_MTE2_V);
     WaitFlag<HardEvent::MTE2_V>(eventId_MTE2_V);
 
