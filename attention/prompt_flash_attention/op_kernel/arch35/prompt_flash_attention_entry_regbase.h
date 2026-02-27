@@ -20,9 +20,15 @@
 #include "prompt_flash_attention_zero_output.h"
 #include "prompt_flash_attention_tiling_regbase.h"
 #include "prompt_flash_attention_template_tiling_key_enum.h"
+#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_kernel_infer.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
 #include "../../../common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h"
+#else
+#include "../../common/arch35/flash_attention_score_kernel_infer.h"
+#include "../../common/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
+#include "../../common/arch35/flash_attention_kernel_noquant_mla.h"
+#endif
 
 using namespace regbaseutil;
 
