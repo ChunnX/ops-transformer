@@ -17,7 +17,7 @@
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
-
+namespace FFAG {
 constexpr uint32_t INITIAL_S1_SPLIT_NUM = 128; // to avoid repeat max value 255
 constexpr uint32_t INITIAL_S2_SPLIT_NUM = 64;
 constexpr uint32_t MUL_CORE_SYNC_BUFFER = 16 * 1024;
@@ -1011,5 +1011,5 @@ void FusedFloydAttentionGradTilingS1s2Bn2gs1s2::DetermineMode()
 }
 
 REGISTER_OPS_TILING_TEMPLATE(FusedFloydAttentionGrad, FusedFloydAttentionGradTilingS1s2Bn2gs1s2, 16000);
-
+} // namespace FFAG
 } // namespace optiling

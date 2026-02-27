@@ -27,19 +27,7 @@ using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
-
-constexpr size_t QUERY_INPUT_INDEX = 0;
-constexpr size_t KEY_INPUT_INDEX = 1;
-constexpr size_t VALUE_INPUT_INDEX = 2;
-constexpr size_t SOFTMAXSUM_OUPUT_INDEX = 1;
-// FIXED
-constexpr size_t ATTENTIONOUT_OUPUT_INDEX = 2;
-constexpr size_t INPUTLAYOUT_ATTRS_INDEX = 5;
-constexpr size_t MIN_COPY_UINT_SIZE = 32;
-constexpr uint32_t TILING_KEY_FP16 = 90;
-constexpr uint32_t TILING_KEY_FP32 = 92;
-constexpr uint32_t TILING_KEY_BF16 = 94;
-
+namespace FFA {
 static uint32_t Ceil(uint32_t num1, uint32_t num2)
 {
     if (num2 == 0) {
@@ -60,10 +48,10 @@ public:
 void FusedFloydAttentionEmptyInputTiling::GetTilingKeyAttentionScore4EmptyInput(uint32_t &tilingKey,
                                                                                 const gert::TilingContext *context)
 {
-    OP_CHECK_IF(context->GetInputDesc(KEY_INPUT_INDEX) == nullptr,
+    OP_CHECK_IF(context->GetInputDesc(KEY1_INPUT_INDEX) == nullptr,
         OP_LOGE(context, "GetTilingKeyAttentionScore4EmptyInput occurs nullptr!"),
         return);
-    auto kernelType = context->GetInputDesc(KEY_INPUT_INDEX)->GetDataType();
+    auto kernelType = context->GetInputDesc(KEY1_INPUT_INDEX)->GetDataType();
     if (kernelType == ge::DT_FLOAT16) {
         tilingKey = TILING_KEY_FP16;
     } else if (kernelType == ge::DT_FLOAT) {
@@ -83,39 +71,38 @@ void FusedFloydAttentionEmptyInputTiling::FusedFloydAttentionSetEmptyInputTiling
     context->GetRawTilingData()->SetDataSize(faTilingData.GetDataSize());
 }
 
-static ge::graphStatus CheckParams(const gert::TilingContext *context)
+static ge::graphStatus CheckParams(gert::TilingContext *context)
 {
-    if (context->GetInputShape(QUERY_INPUT_INDEX) != nullptr && context->GetInputShape(KEY_INPUT_INDEX) != nullptr &&
-        context->GetInputShape(VALUE_INPUT_INDEX) != nullptr && context->GetAttrs() != nullptr) {
-        auto &queryShape = context->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
-        auto &keyShape = context->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
-        auto &valueShape = context->GetInputShape(VALUE_INPUT_INDEX)->GetStorageShape();
-
-        return ge::SUCCESS;
+    if (context->GetInputShape(QUERY_INPUT_INDEX) != nullptr && context->GetInputShape(KEY1_INPUT_INDEX) != nullptr &&
+        context->GetInputShape(VALUE1_INPUT_INDEX) != nullptr && context->GetInputShape(KEY2_INPUT_INDEX) != nullptr &&
+        context->GetInputShape(VALUE2_INPUT_INDEX) && context->GetAttrs() != nullptr ) {
+        if (CheckBaseInput(context) == ge::GRAPH_FAILED) {
+            OP_LOGW(context, "fail to get shape or attr from context");
+            return ge::GRAPH_FAILED;
+        }
     }
-    OP_LOGW(context, "fail to get shape or attr from context");
-    return ge::GRAPH_FAILED;
+    return ge::SUCCESS;
 }
 
 static bool IsEmptyInput(gert::TilingContext *context)
 {
-    auto attenOutShape = context->GetOutputShape(ATTENTIONOUT_OUPUT_INDEX);
+    auto attenOutShape = context->GetOutputShape(ATTENTIONOUT_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, attenOutShape);
 
     auto queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
 
-    auto keyShape = context->GetInputShape(KEY_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
+    auto key1Shape = context->GetInputShape(KEY1_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, key1Shape);
 
-    auto softmaxSumShape = context->GetOutputShape(SOFTMAXSUM_OUPUT_INDEX);
+    auto softmaxSumShape = context->GetOutputShape(SOFTMAXSUM_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxSumShape);
 
     int64_t attentionOutShapeSize = attenOutShape->GetStorageShape().GetShapeSize();
     int64_t queryShapeSize = queryShape->GetStorageShape().GetShapeSize();
-    int64_t keyShapeSize = keyShape->GetStorageShape().GetShapeSize();
+    int64_t key1ShapeSize = key1Shape->GetStorageShape().GetShapeSize();
     int64_t softmaxSumShapeSize = softmaxSumShape->GetStorageShape().GetShapeSize();
-    if ((queryShapeSize == 0 || keyShapeSize == 0) && (attentionOutShapeSize != 0 || softmaxSumShapeSize != 0)) {
+    if ((queryShapeSize == 0 || key1ShapeSize == 0) && (attentionOutShapeSize != 0 || softmaxSumShapeSize != 0)) {
         /* 以 MIN_COPY_UINT_SIZE 为 32Byte说明, blocks为数据的块数, blocks与coreNum存在三种关系:
           (1) blocks % coreNum == 0
              主核数量为coreNum,主核处理块数为blocks / coreNum, 最后一个核处理非32Byte对齐的数据, 尾核数量为0
@@ -131,7 +118,7 @@ static bool IsEmptyInput(gert::TilingContext *context)
         |                                   |                             |       |
         |--------n*(blocks/coreNum+1)-------|-----m*(blocks/coreNum)------|<32Byte|
         */
-        auto kernelType = context->GetInputDesc(KEY_INPUT_INDEX)->GetDataType();
+        auto kernelType = context->GetInputDesc(KEY1_INPUT_INDEX)->GetDataType();
         FusedFloydAttentionEmptyInputTiling emptyInputTiling;
         auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"),
@@ -242,7 +229,7 @@ static bool IsEmptyInput(gert::TilingContext *context)
         context->SetTilingKey(tilingKey);
         uint32_t aivActualNum =
             std::max((attentionOutFormerNum + attentionOutTailNum), (softmaxMaxFormerNum + softmaxMaxTailNum));
-        context->SetBlockDim(optiling::FloydCalcTschBlockDim(aivActualNum, 0, compileInfoPtr->aivNum));
+        context->SetBlockDim(optiling::FFA::FloydCalcTschBlockDim(aivActualNum, 0, compileInfoPtr->aivNum));
         size_t *workspaces = context->GetWorkspaceSizes(1);
         // workspace上预留100M
         workspaces[0] = 100 * 1024 * 1024;
@@ -289,7 +276,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFusedFloydAttention(gert::Tilin
 
 IMPL_OP(FusedFloydAttention)
     .Tiling(TilingFusedFloydAttention)
-    // .TilingInputsDataDependency({7, 8, 9, 10, 11})
     .TilingParse<FlashAttentionScoreGradCompileInfo>(TilingPrepareForFusedFloydAttention);  // 向框架注册入口函数
 
+} // namespace FFA
 } // namespace optiling

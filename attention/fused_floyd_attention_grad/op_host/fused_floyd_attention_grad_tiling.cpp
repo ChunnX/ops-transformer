@@ -18,6 +18,7 @@ using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+namespace FFAG {
 constexpr uint32_t OUTPUT_IDX_DQ = 0;
 constexpr uint32_t OUTPUT_IDX_DK1 = 1;
 constexpr uint32_t OUTPUT_IDX_DV1 = 2;
@@ -215,4 +216,5 @@ IMPL_OP(FusedFloydAttentionGrad)
     .Tiling(TilingFusedFloydAttentionGrad)
     .TilingParse<FlashAttentionScoreGradCompileInfo>(TilingPrepareForFusedFloydAttentionGrad); // 向框架注册入口函数
 
+} // namespace FFAG
 } // namespace optiling

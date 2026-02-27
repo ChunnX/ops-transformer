@@ -22,7 +22,7 @@
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
-
+namespace FFAG {
 constexpr uint32_t CORE_LIST_NUM = 50;
 constexpr uint32_t ARRAY_LENGTH = 3;
 struct FuzzyBaseInfoParams { // 频繁使用的基础参数
@@ -179,5 +179,5 @@ protected:
 private:
     FuzzyBaseInfoParams fBaseParams;
 };
-
+} // namespace FFAG
 } // namespace optiling

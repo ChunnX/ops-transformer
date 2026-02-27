@@ -24,74 +24,29 @@
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
-namespace FA {
+namespace FFA {
 const uint32_t BYTE_BLOCK = 32;
-const int64_t GM_ALIGN = 512;
 const int64_t FRACTAL_NUM = 16L;
-const int64_t PSE_DIM_NUM = 4L;
 const int64_t S1_VEC2_BASE_SIZE_MAX = 512L;
 
-const int64_t BYTE_BIT_NUM = 8UL;
-const size_t ATTENTION_MASK_INPUT_INDEX = 5UL;
-const size_t PREFIX_INPUT_INDEX = 7UL;
-const size_t ACTUAL_SEQ_LENGTH_INPUT_INDEX = 8UL;
-const size_t ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX = 9UL;
-const size_t Q_START_IDX_INPUT_INDEX = 10UL;
-const size_t KV_START_IDX_INPUT_INDEX = 11UL;
 const size_t ATTEN_OUT_INDEX = 2UL;
-const size_t ATTENTION_MASK_DIM_NUM_4 = 4UL;
-const size_t ATTENTION_MASK_DIM_NUM_2 = 2UL;
 const int64_t BMM_SOFTMAX_RATIO = 4L;
-const int64_t MAX_AIV_NUM = 48L;
-const int64_t DROP_MASK_ALIGN_UNIT = 256L; // input bits, and align to 32B in UB
 const int64_t HIGH_PERF_BUFFER_NUM = 6L;
-const int64_t HIGH_PERF_SUPPORT_S2_BASIC = 128L;
 const int64_t HIGH_PERF_API_BUFFER_MULTIPLE = 2L;
-const int64_t HIGH_PERF_BLOCK_SIZE = 128L;
-const uint32_t PSE_ALIBI_S_SIZE = 1024;
 
 constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
-const int64_t ATTEN_MASK_S1_REV_INDEX = 2L;
-const int64_t ATTEN_MASK_COMPRESS_LIMIT = 2048L;
-const int64_t ATTEN_MASK_COMPRESS_PREFIX_LIMIT = 3072L;
 const int64_t MAX_VAR_LEN_SEQ_LEN = 4096L;
-const int64_t S2_REUSE_SIZE_512 = 512L;
-const int64_t S2_REUSE_SIZE_1024 = 1024L;
-const int64_t S1_REUSE_SIZE_3840 = 3840L;
 const int64_t D_SPECIFIC_SIZE = 64L;
-const int64_t BALANCE_LOAD_LIST_SIZE = 8L;
-constexpr int64_t COF[BALANCE_LOAD_LIST_SIZE] = {256, 384, 512, 640, 768, 896, 960, 1024};
-const int64_t BMM1_BASICBLOCK_M_128 = 128L;
-const int64_t BMM1_BASICBLOCK_N_256 = 256L;
-const int64_t BMM1_BASICBLOCK_N_128 = 128L;
-const int64_t BMM1_BASICBLOCK_K_64 = 64L;
-const int64_t BMM1_BASICBLOCK_K_128 = 128L;
 const int64_t S2_NZTOND_SIZE_64 = 64L;
 const int64_t SPACE_NUM_2 = 2L;
 const int64_t SPACE_NUM_3 = 3L;
 const int64_t SPACE_NUM_4 = 4L;
-const int64_t BMM2_BASICBLOCK_M_64 = 64L;
-const int64_t BMM2_BASICBLOCK_N_64 = 64L;
-const int64_t BMM2_BASICBLOCK_K_256 = 256L;
-const int64_t S2_SPECIFIC_SIZE_928 = 928L;
-const int64_t S2_NZTOND_SIZE_128 = 128L;
-const int64_t UB_BASIC_LIMIT_SIZE = 8 * 1024;
-const int64_t SLOPE_BN_DIM_NUM = 2L;
-const int64_t SLOPE_N_DIM_NUM = 1L;
 const int64_t L1REUSE_D_Limit = 128L;
 const int64_t L1REUSE_BNG_Limit = 10L;
-const int64_t L1REUSE_S2_Limit_1024 = 1024;
 const int64_t L1REUSE_S2_Limit_2048 = 2048L;
 const int64_t L1REUSE_S2_LIMIT_256 = 256;
 const int64_t L1REUSE_S2_LIMIT_4032 = 4032;
 const int64_t AICAIV_RATIO_2 = 2L;
-const int64_t L1REUSE_S2_LIMIT_512 = 512;
-const int64_t L1REUSE_BNG_LIMIT_64 = 64;
-const int64_t L1REUSE_BNG_LIMIT_4800 = 4800L;
-const int64_t L1REUSE_D_LIMIT_144 = 144L;
-const int64_t INVALID_ROW_SPARSE_RATIO = 6L;
-const int64_t HEAD_DIM_MAX_VALUE = 512L;
-const int64_t DATA_TYPE_FP16 = 2L;
 const int64_t DATA_TYPE_FP32 = 4L;
 enum LayoutType : uint8_t {
     None = 0,
@@ -318,26 +273,26 @@ protected:
     bool Analyze4DimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &attenShape);
     bool AnalyzeOptionalInput();
     bool MatchTemplate();
-    virtual void CalcS1S2BasicBlock(const BufferNum &bufferNum);
-    virtual void CalcDBasicBlock();
+    virtual void CalcS1S2BasicBlock() = 0;
+    virtual void CalcDBasicBlock() = 0;
     int64_t CalcMaxS1BasicBlockSize(int64_t actualD, const BufferNum &bufferNum) const;
     int64_t CalcMaxS2BasicBlockSize(const BufferNum &bufferNum, int64_t tmpS1BasicBlock) const;
-    virtual bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t batch = 1) = 0;
+    virtual bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) = 0;
     bool IsBasicBlockInSoftMax(const ge::Shape &shape) const;
     virtual bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
-                                    int64_t batch, matmul_tiling::MatmulApiTiling &bmm1);
-    virtual bool SetBmm1k1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
                                     matmul_tiling::MatmulApiTiling &bmm1);
-    virtual bool SetBmm2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t tmpDBasicBlock,
-                                    int64_t batch, matmul_tiling::MatmulApiTiling &bmm2) = 0;
+    virtual bool SetBmm1k1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, 
+                            matmul_tiling::MatmulApiTiling &bmm1) = 0;
+    virtual bool SetBmm2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
+                                    matmul_tiling::MatmulApiTiling &bmm2) = 0;
 
-    virtual bool SetBmm2v2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t tmpDBasicBlock,
+    virtual bool SetBmm2v2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
                                     matmul_tiling::MatmulApiTiling &bmm2v2) = 0;
 
-    bool SetMatMulTiling(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t tmpDBasicBlock, int64_t batch,
+    bool SetMatMulTiling(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
                          matmul_tiling::MatmulApiTiling &bmm1, matmul_tiling::MatmulApiTiling &bmm1k1,
                          matmul_tiling::MatmulApiTiling &bmm2, matmul_tiling::MatmulApiTiling &bmm2v2);
-    bool SetMatMulTiling(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t tmpDBasicBlock, int64_t batch = 1);
+    bool SetMatMulTiling(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock);
     bool CaclBmmBatch(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock);
     virtual void SetCoreParams();
     virtual void SetMultiBatchCoreParams();
@@ -699,21 +654,17 @@ bool FusedFloydAttentionTilingBase::Analyze4DimLayout(const gert::Shape &querySh
 
 bool FusedFloydAttentionTilingBase::AnalyzeOptionalInput()
 {
-    auto attenMaskInput = context_->GetOptionalInputDesc(ATTENTION_MASK_INPUT_INDEX);
     auto attenMaskShape = context_->GetOptionalInputShape(ATTENTION_MASK_INPUT_INDEX);
     attenMaskExistFlag = 1;
     tilingData.inputParams.set_attenMaskDataType(1);
     AttenMaskShapeType attenMaskShapeType = ATTEN_B_N2_G_S1_S2;
     auto &attenMaskStorageShape = attenMaskShape->GetStorageShape();
-    size_t attenMaskDimNum = attenMaskStorageShape.GetDimNum();
+    auto attenMaskDimNum = attenMaskStorageShape.GetDimNum();
     if (attenMaskDimNum == 3) { // 3:shape is B_N2_1_1_S2
         attenMaskShapeType = ATTEN_B_N2_1_1_S2;
     } else if (attenMaskDimNum == 5) { // 5:shape is B_N2_G_S1_S2
-        int64_t attenMaskDim0Size = attenMaskStorageShape.GetDim(0);
         int64_t attenMaskDim1Size = attenMaskStorageShape.GetDim(1);
-        int64_t attenMaskDim2Size = attenMaskStorageShape.GetDim(2);
         int64_t attenMaskDim3Size = attenMaskStorageShape.GetDim(3);
-        int64_t attenMaskDim4Size = attenMaskStorageShape.GetDim(4);
 
         if (attenMaskDim1Size == 1 && attenMaskDim3Size == 1) {
             attenMaskShapeType = ATTEN_B_N2_1_1_S2;
@@ -721,7 +672,7 @@ bool FusedFloydAttentionTilingBase::AnalyzeOptionalInput()
             attenMaskShapeType = ATTEN_B_N2_G_S1_S2;
         }
     } else {
-        OP_LOGE(context_, "get unsupported atten_mask shape, dims is %ld!", attenMaskDimNum);
+        OP_LOGE(context_, "get unsupported atten_mask shape, dims is %lu!", attenMaskDimNum);
         return false;
     }
 
@@ -767,7 +718,7 @@ bool FusedFloydAttentionTilingBase::MatchTemplate()
 
     s1BasicBlock = std::numeric_limits<int64_t>::max();
     s2BasicBlock = std::numeric_limits<int64_t>::max();
-    CalcS1S2BasicBlock(bufferNum);
+    CalcS1S2BasicBlock();
 
     if (s2BasicBlock == std::numeric_limits<int64_t>::max()) {
         OP_LOGD(context_,
@@ -791,51 +742,6 @@ bool FusedFloydAttentionTilingBase::MatchTemplate()
     }
 
     return false;
-}
-
-void FusedFloydAttentionTilingBase::CalcS1S2BasicBlock(const BufferNum &bufferNum)
-{
-    // calc s1 s2 first, we set d basic block as s2 now
-    const int64_t actualD = expectTemplate.splitD == 0 ? alignedD : FRACTAL_NUM; // if split d we use min s2 16
-    int64_t maxS1BasicBlock = CalcMaxS1BasicBlockSize(actualD, bufferNum);
-    maxS1BasicBlock = std::min(maxS1BasicBlock, alignedS1);
-    if (maxS1BasicBlock == 0) {
-        return;
-    }
-
-    for (int64_t tmpS1BasicBlock = std::min(GetMinS1BasicBlock(), maxS1BasicBlock); tmpS1BasicBlock <= maxS1BasicBlock;
-         tmpS1BasicBlock += FRACTAL_NUM) {
-        int64_t tmpS2BasicBlock = CalcMaxS2BasicBlockSize(bufferNum, tmpS1BasicBlock);
-        tmpS2BasicBlock = std::min(tmpS2BasicBlock, alignedS2);
-        for (; tmpS2BasicBlock >= FRACTAL_NUM; tmpS2BasicBlock -= FRACTAL_NUM) {
-
-            int64_t tmpDBasicBlock = expectTemplate.splitD == 1 ? std::min(tmpS2BasicBlock, alignedD) : alignedD;
-            OP_LOGD(context_, "[%s]try basic block: [%ld, %ld]", templateName, tmpS1BasicBlock, tmpS2BasicBlock);
-            if (CalcUBSize(tmpS1BasicBlock, tmpS2BasicBlock, 1) &&
-                SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock)) {
-                break;
-            }
-        }
-
-        // check whether is valid, if tmpS1BasicBlock is too big, then there is no proper tmpS2BasicBlock
-        if (tmpS2BasicBlock < FRACTAL_NUM) {
-            break;
-        }
-
-        OP_LOGD(context_, "[%s]get candidate basic block: [%ld, %ld]", templateName, tmpS1BasicBlock,
-                  tmpS2BasicBlock);
-        if (s2BasicBlock == std::numeric_limits<int64_t>::max()) {
-            s1BasicBlock = tmpS1BasicBlock;
-            s2BasicBlock = tmpS2BasicBlock;
-        } else if (s2BasicBlock == tmpS2BasicBlock && s1BasicBlock < tmpS1BasicBlock) {
-            s1BasicBlock = tmpS1BasicBlock;
-        } else {
-            break;
-        }
-    }
-
-    // FIXED
-    n2BasicBlock = 32LL;
 }
 
 void FusedFloydAttentionTilingBase::CalcDBasicBlock()
@@ -964,7 +870,7 @@ void FusedFloydAttentionTilingBase::SetMultiCoreParams()
 
 ge::graphStatus FusedFloydAttentionTilingBase::DoLibApiTiling()
 {
-    if (!SetMatMulTiling(s1BasicBlock, s2BasicBlock, dBasicBlock, batchBasic)) {
+    if (!SetMatMulTiling(s1BasicBlock, s2BasicBlock)) {
         return ge::GRAPH_FAILED;
     }
     SetSoftMaxTiling();
@@ -975,9 +881,8 @@ ge::graphStatus FusedFloydAttentionTilingBase::DoLibApiTiling()
 ge::graphStatus FusedFloydAttentionTilingBase::PostTiling()
 {
     context_->GetRawTilingData()->SetDataSize(tilingData.GetDataSize()); // already check capcity in CheckContext
-    auto blockDim = optiling::FloydCalcTschBlockDim(tilingData.multiCoreParams.get_coreNum(), aicNum, aivNum);
+    auto blockDim = optiling::FFA::FloydCalcTschBlockDim(tilingData.multiCoreParams.get_coreNum(), aicNum, aivNum);
     context_->SetBlockDim(blockDim);
-    auto &inputParams = tilingData.inputParams;
     size_t *workspaces = context_->GetWorkspaceSizes(1);
 
     OP_LOGD(context_, "[%s] final workspace size:%zu, pseAlibiBaseS1:%ld, pseAlibiBaseS2:%ld.",
@@ -988,7 +893,7 @@ ge::graphStatus FusedFloydAttentionTilingBase::PostTiling()
 }
 
 
-bool FusedFloydAttentionTilingBase::SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t batch,
+bool FusedFloydAttentionTilingBase::SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
                                                        matmul_tiling::MatmulApiTiling &bmm1)
 {
     bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
@@ -1006,14 +911,6 @@ bool FusedFloydAttentionTilingBase::SetBmm1TilingInput(int64_t tmpS1BasicBlock, 
 
     return true;
 }
-
-bool FusedFloydAttentionTilingBase::SetBmm1k1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, 
-                                                       matmul_tiling::MatmulApiTiling &bmm1)
-{
-    return false;
-}
-
-
 
 bool FusedFloydAttentionTilingBase::CaclBmmBatch(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock)
 {
@@ -1041,7 +938,6 @@ bool FusedFloydAttentionTilingBase::CaclBmmBatch(int64_t tmpS1BasicBlock, int64_
 
 
 bool FusedFloydAttentionTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
-                                                    int64_t tmpDBasicBlock, int64_t batch,
                                                     matmul_tiling::MatmulApiTiling &bmm1,
                                                     matmul_tiling::MatmulApiTiling &bmm1k1,
                                                     matmul_tiling::MatmulApiTiling &bmm2,
@@ -1052,13 +948,13 @@ bool FusedFloydAttentionTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int
         return false;
     }
 
-    if (!SetBmm1TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, batch, bmm1) ||
-        !SetBmm2TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock, batch, bmm2)) {
+    if (!SetBmm1TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, bmm1) ||
+        !SetBmm2TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, bmm2)) {
         return false;
     }
     
     if (!SetBmm1k1TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, bmm1k1) || 
-        !SetBmm2v2TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock, bmm2v2)) {
+        !SetBmm2v2TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, bmm2v2)) {
         return false;
     }
 
@@ -1099,8 +995,7 @@ bool FusedFloydAttentionTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int
     return true;
 }
 
-bool FusedFloydAttentionTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
-                                                    int64_t tmpDBasicBlock, int64_t batch)
+bool FusedFloydAttentionTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock)
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo != nullptr) {
@@ -1109,14 +1004,14 @@ bool FusedFloydAttentionTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int
         matmul_tiling::MatmulApiTiling bmm1k1(ascendcPlatform);
         matmul_tiling::MatmulApiTiling bmm2(ascendcPlatform);
         matmul_tiling::MatmulApiTiling bmm2v2(ascendcPlatform);
-        return SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock, batch, bmm1, bmm1k1, bmm2, bmm2v2);
+        return SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, bmm1, bmm1k1, bmm2, bmm2v2);
     } else {
         OP_LOGD(context_, "platform info is null, use default info to generate matmul tiling.");
         matmul_tiling::MatmulApiTiling bmm1;
         matmul_tiling::MatmulApiTiling bmm1k1;
         matmul_tiling::MatmulApiTiling bmm2;
         matmul_tiling::MatmulApiTiling bmm2v2;
-        return SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock, batch, bmm1, bmm1k1, bmm2, bmm2v2);
+        return SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, bmm1, bmm1k1, bmm2, bmm2v2);
     }
 }
 
@@ -1207,7 +1102,7 @@ protected:
         bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
     }
 
-    void CalcS1S2BasicBlock(const BufferNum &bufferNum) override
+    void CalcS1S2BasicBlock() override
     {
         s1BasicBlock = std::min(64L, alignedS1);
         // d轴为64
@@ -1268,7 +1163,7 @@ protected:
     }
 
 
-    bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t batch,
+    bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
                             matmul_tiling::MatmulApiTiling &bmm1) override
     {
         bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
@@ -1289,7 +1184,7 @@ protected:
 
 
     bool SetBmm1k1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, 
-                            matmul_tiling::MatmulApiTiling &bmm1)  override
+                            matmul_tiling::MatmulApiTiling &bmm1) override
     {
         bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, true);
@@ -1309,15 +1204,14 @@ protected:
         return true;
     }
 
-
-    bool SetBmm2v2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t tmpDBasicBlock, 
+    bool SetBmm2v2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, 
                             matmul_tiling::MatmulApiTiling &bmm2v2) override
     {
         bmm2v2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2v2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2v2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1OutDtype);
         int64_t s2BaseSize = tmpS2BasicBlock * tilingData.coreParams.get_nRatio();
-        
+
         bmm2v2.SetShape(n2BasicBlock, dSize, s2BaseSize); 
         bmm2v2.SetOrgShape(n2BasicBlock, dSize, s2BaseSize);
         bmm2v2.SetBias(false);
@@ -1333,7 +1227,7 @@ protected:
     }
 
 
-    bool SetBmm2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t tmpDBasicBlock, int64_t batch,
+    bool SetBmm2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
                             matmul_tiling::MatmulApiTiling &bmm2v2) override
     {
         bmm2v2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
@@ -1373,7 +1267,7 @@ protected:
         return true;
     }
 
-    bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t batch) override
+    bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
         apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(float);
         return true;
@@ -1465,5 +1359,5 @@ protected:
 
 // NOTE manually initialize tiling data in hostapi scenario in highest priority template
 REGISTER_OPS_TILING_TEMPLATE(FusedFloydAttention, FusedFloydAttentionTilingS1s2Bn2gs1, 96);
-} // namespace FA
+} // namespace FFA
 } // namespace optiling

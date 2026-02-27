@@ -235,6 +235,11 @@ aclnnStatus aclnnFusedFloydAttention(
         <td>161002</td>
         <td>query、key1、value1、key2、value2、attenMaskOptional、softmaxMaxOut、softmaxSumOut、attentionOutOut的数据类型和数据格式不在支持的范围内。</td>
     </tr>
+     <tr>
+      <td rowspan="1">ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td rowspan="1">561002</td>
+      <td>tiling发生异常，query、key1、value1、key2、value2、attenMaskOptional不符合约束说明。</td>
+    </tr>
     </tbody>
     </table>
 
@@ -290,12 +295,13 @@ aclnnStatus aclnnFusedFloydAttention(
   - N：取值范围为16\~1M且N%16==0。
   - M：取值范围为128\~1M且M%128==0。
   - K：取值范围为128\~1M且K%128==0。
-  - D：取值范围为16\~128。
+  - D：取值范围为32/64/128。
 
 - query与key1的第0/2/4轴需相同。
 - key1与value1 shape需相同。
 - key2与value2 shape需相同。
 - softmaxMax与softmaxSum shape需相同。
+- D只支持32/64/128。
 
 ## 调用示例
 

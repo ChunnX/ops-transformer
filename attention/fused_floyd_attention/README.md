@@ -111,15 +111,20 @@
 
 ## 约束说明
 
-- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-- 定义query输入shape为[BHNMD]，key_1输入shape为[BHNKD]，key_2输入shape为[BHKMD]，value_1输入shape为[BHNKD]，value_2输入shape为[BHKMD]。
-- 输入query、key_1/key_2、value_1/value_2的B必须相等。
-- 输入query、key_1/key_2、value_1/value_2的D必须相等。
-- 输入query、key_1/key_2、value_1/value_2的input_layout必须一致。
-- 输入query、key_1/key_2、value_1/value_2的数据类型必须一致。
-- 输入key_1/value_1的shape必须一致。
-- 输入key_2/value_2的shape必须一致。
-- 原始N，M，K取值范围[128，3072]，具体值为128的整数倍，D支持数值为32或64；
+- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配
+- 关于数据shape的约束，其中：
+  - B：取值范围为1\~2K。
+  - H：取值范围为1\~256。
+  - N：取值范围为16\~1M且N%16==0。
+  - M：取值范围为128\~1M且M%128==0。
+  - K：取值范围为128\~1M且K%128==0。
+  - D：取值范围为32/64/128。
+
+- query与key1的第0/2/4轴需相同。
+- key1与value1 shape需相同。
+- key2与value2 shape需相同。
+- softmaxMax与softmaxSum shape需相同。
+- D只支持32/64/128。
 
 ## 调用说明
 

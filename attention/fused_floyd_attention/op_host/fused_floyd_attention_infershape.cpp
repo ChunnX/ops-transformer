@@ -40,7 +40,6 @@ ge::graphStatus InferShapeFusedFloydAttention(gert::InferShapeContext *context)
 
     int64_t shapeB = 1;
     int64_t shapeS = 1;
-    int64_t shapeT = 0;
     int64_t shapeH = 1;
 
     // BHNSD

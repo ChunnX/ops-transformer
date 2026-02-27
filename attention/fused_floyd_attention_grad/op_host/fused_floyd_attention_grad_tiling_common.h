@@ -19,7 +19,7 @@
 #include "log/log.h"
 
 namespace optiling {
-
+namespace FFAG {
 constexpr int64_t BYTE_PER_BLOCK = 32; // 32 B in block
 constexpr int HIGH_PRECISION = 0;
 constexpr int HIGH_PERFORMANCE = 1;
@@ -55,6 +55,8 @@ constexpr uint32_t ATTEN_MASK_COMPRESS_LIMIT = 2048;
 constexpr uint32_t BOOL_BLOCK_NUMS = 32;
 constexpr uint32_t DROPOUT4BIT_LEN = 16;
 constexpr uint64_t SUPPORT_DIM_NUM = 5;
+constexpr uint32_t ALIGNED_NUM_16 = 16;
+constexpr uint32_t ALIGNED_NUM_128 = 128;
 const int64_t UB_BASIC_LIMIT_SIZE = 8 * 1024;
 const int64_t SAB_TND_SIZE = 1024;
 
@@ -313,4 +315,5 @@ TILING_DATA_FIELD_DEF(int64_t, d);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(FFAGPostParamsOp, FFAGPostParams)
 
+} // namespace FFAG
 } // namespace optiling

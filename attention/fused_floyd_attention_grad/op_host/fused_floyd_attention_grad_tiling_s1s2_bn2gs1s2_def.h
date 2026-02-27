@@ -18,7 +18,7 @@
 #include <register/op_impl_registry.h>
 
 namespace optiling {
-
+namespace FFAG {
 /////////////////////////////////////////////////////////////////////////
 // S1S2_BNGS1S2
 /////////////////////////////////////////////////////////////////////////
@@ -101,4 +101,5 @@ TILING_DATA_FIELD_DEF_STRUCT(FFAGPostParams, postTilingData);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(FusedFloydAttentionGrad, FusedFloydAttentionGradTilingDataS1s2Bn2gs1s2)
+} // namespace FFAG
 } // namespace optiling
