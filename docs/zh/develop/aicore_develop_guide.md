@@ -1,10 +1,11 @@
 # AI Core算子开发指南
 
-> **说明：** 
+> **说明：**
 >
 > 1. 算子开发过程中涉及的基本概念如Tiling、Kernel、Ascend C接口等，详细介绍请参考[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)。  
 > 2. AI Core算子是使用Ascend C语言开发，运行在AI Core硬件单元算子。
 > 3. 针对基于[Ascend/samples](https://gitee.com/ascend/samples/tree/master)仓贡献的算子，请参考[附录 > 算子工程迁移](#算子工程迁移)完成存量算子往本项目工程迁移。
+> 4. build.sh：算子开发过程中涉及的命令可通过`bash build.sh --help`查看，功能参数介绍参考[build参数说明](../context/build.md)。
 
 开发指南以`AddExample`算子开发为例，介绍新算子开发流程以及涉及的交付件，完整样例代码请访问项目`examples`目录。
 
@@ -18,12 +19,13 @@
 
 5. [aclnn适配](#aclnn适配)：自定义算子推荐aclnn接口调用，需提前完成二进制发布。**如采用图模式调用算子**，请参考[图模式适配指南](./graph_develop_guide.md)。
 
-6. [编译部署](#编译部署)：通过工程编译脚本完成自定义算子的编译和安装。 
+6. [编译部署](#编译部署)：通过工程编译脚本完成自定义算子的编译和安装。
 
-7. [算子验证](#算子验证)：通过常见算子调用方式，验证自定义算子功能。    
+7. [算子验证](#算子验证)：通过常见算子调用方式，验证自定义算子功能。
 
 ## 工程创建
-**1. 环境部署** 
+
+**1. 环境部署**
 
 开发算子前，请先参考[环境部署](../context/quick_install.md)完成基础环境搭建。
 
@@ -45,6 +47,7 @@ bash build.sh --genop=${op_class}/${op_name}
 ```bash
 Create the initial directory for ${op_name} under ${op_class} success
 ```
+
 创建完成后，目录结构如下所示：
 
 ```
@@ -103,6 +106,7 @@ endif()
 ```
 
 ## 算子定义
+
 算子定义需要完成两个交付件：`README.md` ```${op_name}_def.cpp```
 
 **交付件1：README.md**
@@ -116,6 +120,7 @@ endif()
 算子信息库。
 
 以自定义`AddExample`算子说明为例，请参考[AddExample算子信息库](../../../examples/add_example/op_host/add_example_def.cpp)。
+
 ## Tiling实现
 
 ### Tiling简介
@@ -201,6 +206,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context){
 // 3.Tiling注册入口
 IMPL_OP_OPTILING(${op_name}).Tiling(TilingFunc).TilingParse<CompileInfo>(TilingParse);
 ```
+
 **交付件2：${op_name}_tiling_key.h**
 
 TilingKey是一个算子内为了区分不同的实现而将kernel代码进行区分的方法，kernel侧可以通过TilingKey来选择不同的算法逻辑。
@@ -216,6 +222,7 @@ ASCENDC_TPL_ARGS_DECL(
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_UINT_SEL(schMode, ASCENDC_TPL_UI_LIST, ELEMENTWISE_TPL_SCH_MODE_0, ELEMENTWISE_TPL_SCH_MODE_1)));
 ```
+
 **交付件3：${op_name}_tiling_data.h**
 
 切分算法相关的参数，比如总数据量大小、每个核数据切块数量，通过结构体存储。
@@ -229,11 +236,13 @@ struct ${op_name}TilingData {
     int64_t tileNum;
 };
 ```
+
 如需实现复杂参数组合完成分支选择（涉及多TilingKey场景），请参考[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)中"算子实现 > 工程化算子开发 > Host侧Tiling实现 > Tiling模板编程"。
 
 ## Kernel实现
 
 ### Kernel简介
+
 Kernel是算子在NPU执行的核心部分，负责张量数据的加载、计算和存储，是算子功能实现的最终载体。Kernel的实现需要与Tiling策略紧密配合，根据Tiling提供的`TilingData`、`TilingKey`信息进行内存分配和计算调度。
 
 Kernel实现包括如下步骤，整个流程通过`Process`函数串联，实现完整的算子流程。
@@ -281,6 +290,7 @@ __global__ __aicore__ void add_example(GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR 
     ....
 }
 ```
+
 **交付件2：${op_name}.h**
 
 定义Kernel头文件，包含函数声明、结构定义、逻辑实现等。
@@ -363,6 +373,7 @@ __aicore__ inline void AddExample<T>::Process()
 }
 ...
 ```
+
 ## aclnn适配
 
 通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C 的API），可直接在应用程序中调用aclnn接口实现调用算子。
@@ -387,6 +398,7 @@ __aicore__ inline void AddExample<T>::Process()
     # 编译指定算子，如bash build.sh --pkg --ops=add_example
     bash build.sh --pkg --soc=${soc_version} --vendor_name=${vendor_name} --ops=${op_list} [--experimental]
     ```
+
     - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
     - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
     - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"--ops=add_example"。
@@ -404,8 +416,9 @@ __aicore__ inline void AddExample<T>::Process()
     # 安装run包
     ./build_out/cann-ops-transformer-${vendor_name}_linux-${arch}.run
     ```
+
     自定义算子包安装在```${ASCEND_HOME_PATH}/opp/vendors```路径中，```${ASCEND_HOME_PATH}```表示CANN软件安装目录，可提前在环境变量中配置。
-    
+
 4. **（可选）删除自定义算子包。**
 
     注意自定义算子包不支持卸载，如需卸载，请删除vendors\/\$\{vendor\_name}目录，并删除vendors/config.ini中load_priority对应\$\{vendor\_name\}的配置项。
@@ -413,6 +426,7 @@ __aicore__ inline void AddExample<T>::Process()
 ## 算子验证
 
 验证算子前需确保已配置了环境变量，命令如下：
+
 ```bash
 export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/${vendor_name}_transformer/op_api/lib:${LD_LIBRARY_PATH}
 ```

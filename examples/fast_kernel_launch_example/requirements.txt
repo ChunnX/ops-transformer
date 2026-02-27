@@ -1,10 +1,6 @@
-numpy
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+build
 pyyaml
-build
-decorator
-scipy
-attrs
-psutil
-expecttest
-build
-wheel
+numpy<2
+pytest

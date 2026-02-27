@@ -5,7 +5,7 @@
 - 环境部署：调用算子之前，请先参考[环境部署](../context/quick_install.md)完成基础环境搭建。
 
 - 调用算子列表：项目可调用的算子参见[算子列表](../op_list.md)，算子对应的aclnn接口参见[aclnn列表](../op_api_list.md)。
-- build.sh：项目的编译运行和功能验证均依赖根目录下**build.sh**脚本，可通过`bash build.sh --help`命令查看所有功能参数，详细介绍参考[build参数说明](../context/build.md)。
+- build.sh：算子调用依赖根目录build.sh脚本，可通过`bash build.sh --help`命令查看功能，参数介绍参考[build参数说明](../context/build.md)。
 
 ## 源码编译
 
@@ -240,78 +240,76 @@
 
 - 基于**自定义算子包**执行算子样例，包安装后，执行如下命令：
 
-  ```bash
-  bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--vendor_name=${vendor_name}] [--soc=${soc_version}]
-  # 以FlashAttentionScore算子example执行为例
-  # bash build.sh --run_example flash_attention_score eager cust --vendor_name=custom
-  ```
+    ```bash
+    bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--vendor_name=${vendor_name}] [--soc=${soc_version}]
+    # 以FlashAttentionScore算子example执行为例
+    # bash build.sh --run_example flash_attention_score eager cust --vendor_name=custom
+    ```
 
-  - \$\{op\}：表示待执行算子，算子名小写下划线形式，如flash_attention_score。
-  - \$\{mode\}：表示执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
-  - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。
-  - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。
-  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。
+    - \$\{op\}：表示待执行算子，算子名为小写下划线形式，如flash_attention_score。
+    - \$\{mode\}：表示执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
+    - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。
+    - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。
+    - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。
 
-  说明：\$\{mode\}为graph时，不指定\$\{pkg_mode\}和\$\{vendor\_name\}
+    说明：\$\{mode\}为graph时，不指定\$\{pkg_mode\}和\$\{vendor\_name\}
 
 - 基于**ops-transformer包**执行算子样例，安装后，执行命令如下：
 
-  ```bash
-  bash build.sh --run_example ${op} ${mode} [--soc=${soc_version}]
-  # 以FlashAttentionScore算子example执行为例
-  # bash build.sh --run_example flash_attention_score eager
-  ```
+    ```bash
+    bash build.sh --run_example ${op} ${mode} [--soc=${soc_version}]
+    # 以FlashAttentionScore算子example执行为例
+    # bash build.sh --run_example flash_attention_score eager
+    ```
 
-  - \$\{op\}：表示待执行算子，算子名小写下划线形式，如flash_attention_score。
-  - \$\{mode\}：表示算子执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
-  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会额外运行"arch35"目录下的示例文件。
+    - \$\{op\}：表示待执行算子，算子名为小写下划线形式，如flash_attention_score。
+    - \$\{mode\}：表示算子执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
+    - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。
 
 - 基于**ops-transformer静态库**执行算子样例：
 
-  1. **前提条件**
+    1. **前提条件**
 
-      ops-transformer静态库依赖于ops-legacy静态库和ops-math静态库，将上述静态库准备好，解压并将所有lib64、include目录移动至统一目录\$\{static\_lib\_path\}下。
+        ops-transformer静态库依赖于ops-legacy静态库和ops-math静态库，将上述静态库准备好，解压并将所有lib64、include目录移动至统一目录\$\{static\_lib\_path\}下。
 
-      > 说明：ops-legacy静态库`cann-${soc_name}-ops-legacy-static_${cann_version}_linux-${arch}.tar.gz`需单击[下载链接](https://mirror-centralrepo.devcloud.cn-north-4.huaweicloud.com/artifactory/cann-run-release/software/9.0.0/)获取， ops-transformer静态库、ops-math静态库暂未提供软件包，请通过本地编译生成。
+        > 说明：ops-legacy静态库`cann-${soc_name}-ops-legacy-static_${cann_version}_linux-${arch}.tar.gz`需单击[下载链接](https://mirror-centralrepo.devcloud.cn-north-4.huaweicloud.com/artifactory/cann-run-release/software/9.0.0/)获取， ops-transformer静态库、ops-math静态库暂未提供软件包，请通过本地编译生成。
 
-  2. **创建run.sh**
+    2. **创建run.sh**
 
-      在待执行算子`examples\test_aclnn_${op_name}.cpp`同级目录下创建run.sh文件。
-  
-      以FlashAttentionScore算子执行test_aclnn_flash_attention_score.cpp为例，示例如下:
-  
-      ```bash
-      # 环境变量生效
-      if [ -n "$ASCEND_INSTALL_PATH" ]; then
-          _ASCEND_INSTALL_PATH=$ASCEND_INSTALL_PATH
-      elif [ -n "$ASCEND_HOME_PATH" ]; then
-          _ASCEND_INSTALL_PATH=$ASCEND_HOME_PATH
-      else
-          _ASCEND_INSTALL_PATH="/usr/local/Ascend/cann"
-      fi
-      
-      source ${_ASCEND_INSTALL_PATH}/bin/setenv.bash 
-      
-      # 编译可执行文件
-      g++ test_aclnn_flash_attention_score.cpp -I ${static_lib_path}/include -L ${static_lib_path}/lib64 -L ${ASCEND_HOME_PATH}/lib64 -Wl,--allow-multiple-definition \
-      -Wl,--start-group -lcann_transformer_static -lcann_math_static -lcann_legacy_static \
-      -Wl,--end-group -lgraph -lmetadef -lascendalog -lregister -lopp_registry -lops_base \
-      -lascendcl -ltiling_api -lplatform -ldl -lnnopbase -lgraph_base -lc_sec -lunified_dlog \
-      -lruntime -lhccl_fwk -o test_aclnn_flash_attention_score   # 替换为实际算子可执行文件名
-      
-      # 执行程序
-      ./test_aclnn_flash_attention_score
-      ```
-  
-      \$\{static\_lib\_path}表示静态库统一放置路径；\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann；最终可执行文件名请替换为实际算子可执行文件名。
-      其中lcann\_transformer\_static、lcann\_math\_static、lcann\_legacy\_static表示算子依赖的静态库文件，从静态库统一放置路径\$\{static\_lib\_path\}中获取；lgraph、lmetadef等表示算子依赖的底层库文件，可在CANN toolkit包获取。
-  
-  3. **执行run.sh**
-  
-      ```bash
-      bash run.sh
-      ```
-  
+        在待执行算子`examples\test_aclnn_${op_name}.cpp`同级目录下创建run.sh文件。
+
+        以FlashAttentionScore算子执行test_aclnn_flash_attention_score.cpp为例，示例如下:
+
+        ```bash
+        # 环境变量生效
+        if [ -n "$ASCEND_INSTALL_PATH" ]; then
+            _ASCEND_INSTALL_PATH=$ASCEND_INSTALL_PATH
+        elif [ -n "$ASCEND_HOME_PATH" ]; then
+            _ASCEND_INSTALL_PATH=$ASCEND_HOME_PATH
+        else
+            _ASCEND_INSTALL_PATH="/usr/local/Ascend/cann"
+        fi
+    
+        source ${_ASCEND_INSTALL_PATH}/bin/setenv.bash
+    
+        # 编译可执行文件
+        g++ test_aclnn_flash_attention_score.cpp -I ${static_lib_path}/include -L ${static_lib_path}/lib64 -L ${ASCEND_HOME_PATH}/lib64 -Wl,--allow-multiple-definition \
+        -Wl,--start-group -lcann_transformer_static -lcann_math_static -lcann_legacy_static -Wl,--end-group -lgraph -lmetadef \
+        -lascendalog -lregister -lopp_registry -lops_base -lascendcl -ltiling_api -lplatform -ldl -lnnopbase -lgraph_base \
+        -lc_sec -lunified_dlog -lruntime -lhccl_fwk -o test_aclnn_flash_attention_score   # 替换为实际算子可执行文件名
+    
+        # 执行程序
+        ./test_aclnn_flash_attention_score
+        ```
+
+        \$\{static\_lib\_path}表示静态库统一放置路径；\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann；最终可执行文件名请替换为实际算子可执行文件名。
+        其中lcann\_transformer\_static、lcann\_math\_static、lcann\_legacy\_static表示算子依赖的静态库文件，从静态库统一放置路径\$\{static\_lib\_path\}中获取；lgraph、lmetadef等表示算子依赖的底层库文件，可在CANN toolkit包获取。
+
+    3. **执行run.sh**
+
+        ```bash
+        bash run.sh
+        ```
 
 无论上述哪种方式，算子样例执行后会打印结果，以FlashAttentionScore算子执行为例：
 
@@ -346,8 +344,8 @@ bash build.sh -u --[opapi|ophost|opkernel] --ops=flash_attention_score
 # bash build.sh -u --[opapi|ophost|opkernel]
 # 方式5: 编译对应功能的UT测试用例但不执行（选其一）
 # bash build.sh -u --noexec --[opapi|ophost|opkernel]
-# 方式6: 编译并执行除公共用例外指定soc的UT测试用例，默认"ascend910b"
-# bash build.sh -u --[opapi|ophost|opkernel] --soc=${soc_version}
+# 方式6: 执行UT测试用例时可指定soc编译
+# bash build.sh -u --[opapi|ophost|opkernel] [--soc=${soc_version}]
 ```
 
 如需验证ophost功能是否正常，执行如下命令：

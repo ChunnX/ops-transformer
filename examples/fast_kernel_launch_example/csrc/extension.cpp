@@ -10,7 +10,7 @@
  */
 
 /*!
- * \file npu_ops_def.cpp
+ * \file extension.cpp
  * \brief
  */
 
