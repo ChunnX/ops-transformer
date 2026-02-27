@@ -1695,28 +1695,6 @@ bool IFATilingV2::CheckSparseMode(bool isDefaultSparseMode, bool enableMask) {
       preToken_, nextToken_),
     return false);
 
-  if (!CheckBandMode(isBandMode)) {
-    return false;
-  }
-  return true;
-}
-
-bool IFATilingV2::CheckBandMode(bool isBandMode) {
-  if (!isBandMode) {
-    return true;
-  }
-  if (ifaContext_->actualSeqLengths.tensor != nullptr) {
-    const gert::Tensor* actSeqLen = ifaContext_->actualSeqLengths.tensor;
-    uint32_t actualLenKvDims = actSeqLen->GetShapeSize();
-    uint32_t actSeqLengthKvSize = std::min(actualLenKvDims, batchSize_);
-    for (uint32_t i = 0; i < actSeqLengthKvSize; ++i) {
-      int64_t actSeqTmp = actSeqLen->GetData<int64_t>()[i];
-      OP_CHECK_IF(nextToken_ <= -actSeqTmp,
-        OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName,
-        "In SparseMode 4(band mode), nextToken must be greater than -actualSeqLengthsKv, but nextToken got %ld while actualSeqLengthsKv[%u] got %ld.", nextToken_, i, actSeqTmp),
-        return false);
-    }
-  }
   return true;
 }
 
@@ -2647,6 +2625,9 @@ ge::graphStatus IFATilingV2::ProcessAntiQuant() {
   auto valueAntiquantScaleDesc = ifaContext_->valueAntiquantScale.desc;
   auto valueAntiquantOffsetTensor = ifaContext_->valueAntiquantOffset.tensor;
   auto valueAntiquantOffsetDesc = ifaContext_->valueAntiquantOffset.desc;
+  auto queryRopeInputShape = ifaContext_->queryRopeInputShape;
+  auto keyRopeInputShape = ifaContext_->keyRopeInputShape;
+
   if (!antiQuantFlag_ && (antiquantScaleTensor != nullptr || antiquantOffsetTensor != nullptr
     || keyAntiquantScaleTensor != nullptr || keyAntiquantOffsetTensor != nullptr
     || valueAntiquantScaleTensor != nullptr || valueAntiquantOffsetTensor != nullptr)) {
@@ -2658,7 +2639,9 @@ ge::graphStatus IFATilingV2::ProcessAntiQuant() {
     return ge::GRAPH_SUCCESS;
   }
   kvAntiParamSplitFlag_ = false;
-
+  OP_CHECK_IF(antiQuantFlag_ && (queryRopeInputShape != nullptr || keyRopeInputShape != nullptr),
+    OP_LOGE(ifaContext_->opName, "Rope is not supported in antiquant scenario."),
+      return ge::GRAPH_FAILED);
   OP_CHECK_IF((keyAntiquantScaleTensor != nullptr && valueAntiquantScaleTensor == nullptr),
     OP_LOGE(ifaContext_->opName, "ValueAntiquantScaleTensor is null, but keyAntiquantScaleTensor exists."),
       return ge::GRAPH_FAILED);

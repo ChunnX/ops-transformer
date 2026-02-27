@@ -85,6 +85,8 @@ struct IncreFlashAttentionContext {
     const int64_t *queryQuantMode = nullptr;
     const int64_t *pseType = nullptr;
     const int64_t *windowSize = nullptr;
+    const gert::StorageShape *queryRopeInputShape = nullptr;
+    const gert::StorageShape *keyRopeInputShape = nullptr;
 
     size_t *workSpaces = nullptr;
     std::vector<gert::StorageShape *> kCache = {nullptr};

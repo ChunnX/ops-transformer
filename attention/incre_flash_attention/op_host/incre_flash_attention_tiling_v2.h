@@ -195,7 +195,6 @@ private:
 
   bool CheckMaskTypeAndShape(const gert::Tensor* maskShape, ge::DataType attenMaskType) const;
   bool CheckSparseMode(bool isDefaultSparseMode, bool enableMask);
-  bool CheckBandMode(bool isBandMode);
   void SetSparseModeData(bool& isBandMode, bool enableMask, bool isDefaultSparseMode);
   bool CheckMaskCrossover(const gert::Tensor* maskShape, ge::DataType attenMaskType, bool enableMask, bool isDefaultSparseMode);
   bool CheckMaskShapeCrossSparse(const gert::Tensor* maskShape, bool isDefaultSparseMode);
