@@ -290,6 +290,7 @@ void ApplyRotaryPosEmbRegbaseTilingBaseClass::SetBsnd()
         qn_ = qShape_.GetDim(DIM_2);
         kn_ = kShape_.GetDim(DIM_2);
         d_ = qShape_.GetDim(DIM_3);
+        reald_ = cosShape_.GetDim(DIM_3);
     } else if (layout_ == ApplyRotaryPosEmbLayout::BNSD) {
         b_ = qShape_.GetDim(DIM_0);
         cosb_ = cosShape_.GetDim(DIM_0);
@@ -297,6 +298,7 @@ void ApplyRotaryPosEmbRegbaseTilingBaseClass::SetBsnd()
         kn_ = kShape_.GetDim(DIM_1);
         s_ = qShape_.GetDim(DIM_2);
         d_ = qShape_.GetDim(DIM_3);
+        reald_ = cosShape_.GetDim(DIM_3);
     } else if (layout_ == ApplyRotaryPosEmbLayout::SBND) {
         s_ = qShape_.GetDim(DIM_0);
         b_ = qShape_.GetDim(DIM_1);
@@ -304,6 +306,7 @@ void ApplyRotaryPosEmbRegbaseTilingBaseClass::SetBsnd()
         qn_ = qShape_.GetDim(DIM_2);
         kn_ = kShape_.GetDim(DIM_2);
         d_ = qShape_.GetDim(DIM_3);
+        reald_ = cosShape_.GetDim(DIM_3);
     } else if (layout_ == ApplyRotaryPosEmbLayout::TND) {
         b_ = 1;
         cosb_ = 1;
@@ -311,8 +314,8 @@ void ApplyRotaryPosEmbRegbaseTilingBaseClass::SetBsnd()
         qn_ = qShape_.GetDim(DIM_1);
         kn_ = kShape_.GetDim(DIM_1);
         d_ = qShape_.GetDim(DIM_2);
+        reald_ = cosShape_.GetDim(DIM_2);
     }
-    reald_ = cosShape_.GetDim(DIM_3);
     isPartialRope_ = (reald_ != d_);
 }
 
