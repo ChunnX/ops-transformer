@@ -367,9 +367,24 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
       <td>输入和输出的必选参数Tensor是空指针。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>输入和输出的数据类型不在支持的范围内。</td>
+        <td rowspan="6">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="6">161002</td>
+        <td>输入和输出的数据类型不在支持的范围内。</td>
+    </tr>
+    <tr>
+        <td>输入Tensor为空Tensor。</td>
+    </tr>
+    <tr>
+        <td>alltoAllAxesOptional非法。</td>
+    </tr>
+    <tr>
+        <td>transposeX1为true。</td>
+    </tr>
+    <tr>
+        <td>通信域长度非法。</td>
+    </tr>
+    <tr>
+        <td>输入输出format不为ND。</td>
     </tr>
       </tbody>
   </table>
