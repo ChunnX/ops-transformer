@@ -1,5 +1,7 @@
 # aclnnGatherPaKvCache
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/gather_pa_kv_cache)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -67,43 +69,148 @@ aclnnStatus aclnnGatherPaKvCache(
 
 - **参数说明**
 
-  - keyCache(aclTensor*，计算输入)：Device侧的aclTensor，表示在当前层存储的key向量缓存。当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]。当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT8、FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-    - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN，[数据格式](../../../docs/zh/context/数据格式.md)支持ND、FRACTAL_NZ。具体地，当cacheMode为"Norm"时，[数据格式](../../../docs/zh/context/数据格式.md)必须为ND；当cacheMode为"PA_NZ"时，[数据格式](../../../docs/zh/context/数据格式.md)必须为FRACTAL_NZ。
+  </style>
+  <table class="tg" style="undefined;table-layout: fixed; width: 1410px"><colgroup>
+  <col style="width: 213px">
+  <col style="width: 90px">
+  <col style="width: 231px">
+  <col style="width: 409px">
+  <col style="width: 175px">
+  <col style="width: 113px">
+  <col style="width: 88px">
+  <col style="width: 98px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th class="tg-0pky">参数名</th>
+      <th class="tg-0pky">输入/输出</th>
+      <th class="tg-0pky">描述</th>
+      <th class="tg-0pky">使用说明</th>
+      <th class="tg-0pky">数据类型</th>
+      <th class="tg-0pky">数据格式</th>
+      <th class="tg-0pky">维度(shape)</th>
+      <th class="tg-0pky">非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td class="tg-0pky">keyCache(aclTensor*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">表示在当前层存储的key向量缓存。</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须时ND。当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
+      <td class="tg-0pky">INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+      <td class="tg-0pky">ND、FRACTAL_NZ</td>
+      <td class="tg-0pky">4</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">valueCache(aclTensor*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">表示在当前层存储的value向量缓存。</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须时ND。当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
+      <td class="tg-0pky">与keyCache保持一致</td>
+      <td class="tg-0pky">ND、FRACTAL_NZ</td>
+      <td class="tg-0pky">4</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">blockTables(aclTensor*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">表示每个序列对应的物理块索引。</td>
+      <td class="tg-0pky">shape为[batch, block_indices]，元素取值范围为[0, num_blocks)。</td>
+      <td class="tg-0pky">INT32、INT64</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">2</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">seqLens(aclTensor*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">表示每个batch对应的序列长度。</td>
+      <td class="tg-0pky">shape为[batch]或[batch + 1]。当isSeqLensCumsum为false时，shape为[batch]；当isSeqLensCumsum为true时，shape为[batch + 1]。元素取值范围为[0, num_blocks)。</td>
+      <td class="tg-0pky">与blockTables保持一致</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">1</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">keyRef(aclTensor*）</td>
+      <td class="tg-0pky">输入/输出</td>
+      <td class="tg-0pky">表示key向量。</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_k]。当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_k]。</td>
+      <td class="tg-0pky">与keyCache保持一致</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">2-3</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">valueRef(aclTensor*)</td>
+      <td class="tg-0pky">输入/输出</td>
+      <td class="tg-0pky">表示value向量。</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_v]。当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_v]。</td>
+      <td class="tg-0pky">与keyCache保持一致</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">2-3</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">seqOffsetOptional(aclTensor*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">如果传入，表示在从blockTables获取blockId时存在首偏移（偏移量为`seqOffsetOptional[i] / block_size`，`i`表示某一个batch）；不传入表示不需要偏移。</td>
+      <td class="tg-0pky">shape为[batch]。</td>
+      <td class="tg-0pky">与blockTables保持一致</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">1</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">cacheMode(char*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">支持["Norm", "PA_NZ"]两种模式，分别表示输入keyCache和keyCache数据格式时ND、FRACTAL_NZ。</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">isSeqLensCumsum(bool)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">表示seqLens是否为累加和。</td>
+      <td class="tg-0pky">false表示非累加和，例如seqLens为[1, 3, 5, 3, 7]。true表示累加和，例如seqLens为[0, 1, 4, 9, 12, 19]，此时第0个元素必定是0。累加和的`seqlens[i + 1] - seqlens[i]`等于非累加的`seqlens[i]`。</td>
+      <td class="tg-0pky">bool</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+    </tr>
+    <tr>
+      <td class="tg-0lax">workspaceSize(uint64_t*)</td>
+      <td class="tg-0lax">输出</td>
+      <td class="tg-0lax">返回需要在Device侧申请的workspace大小。</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+    </tr>
+    <tr>
+      <td class="tg-0lax">executor(aclOpExecutor**）</td>
+      <td class="tg-0lax">输出</td>
+      <td class="tg-0lax">返回op执行器，包含了算子计算流程。</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+    </tr>
+  </tbody>
+  </table>
 
-  - valueCache(aclTensor *,计算输入)：Device侧的aclTensor，表示在当前层存储的value向量缓存。当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_v]。当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_v // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8)。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT8、FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-    - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN，[数据格式](../../../docs/zh/context/数据格式.md)支持ND、FRACTAL_NZ。具体地，当cacheMode为"Norm"时，[数据格式](../../../docs/zh/context/数据格式.md)必须为ND；当cacheMode为"PA_NZ"时，[数据格式](../../../docs/zh/context/数据格式.md)必须为FRACTAL_NZ。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-  - blockTables(aclTensor*，计算输入)：Device侧的aclTensor，表示每个序列对应的物理块索引。shape为[batch, block_indices]，元素取值范围为[0, num_blocks)。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持int32_t，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-    - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持int32_t、int64_t，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
+    - 输入keyCache、valueCache、keyRef、valueRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN数据类型。
+    - 输入blockTables、seqLens、seqOffsetOptional不支持INT64数据类型。
 
-  - seqLens(aclTensor*，计算输入)：Device侧的aclTensor，表示每个batch对应的序列长度。[数据格式](../../../docs/zh/context/数据格式.md)支持ND，shape为[batch]或[batch + 1]。当isSeqLensCumsum为false时，shape为[batch]；当isSeqLensCumsum为true时，shape为[batch + 1]。元素取值范围为[0, num_blocks)。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-    - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT32、INT64，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-
-  - keyRef(aclTensor*，计算输入/输出)：Device侧的aclTensor，表示key向量。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_k]。当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_k]。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT8、FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-    - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-
-  - valueRef(aclTensor*，计算输入/输出)：Device侧的aclTensor，表示value向量。[数据格式](../../../docs/zh/context/数据格式.md)支持ND。当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_v]。当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_v]。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT8、FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-    - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、DT_FLOAT8_E4M3FN，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-
-  - seqOffsetOptional(aclTensor*，可选计算输入)：Device侧的aclTensor，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，shape为[batch]。如果传入，表示在从blockTables获取blockId时存在首偏移（偏移量为`seqOffsetOptional[i] / block_size`，`i`表示某一个batch）；不传入表示不需要偏移。不支持[非连续的Tensor](../../../docs/zh/context/非连续的Tensor.md)，不支持空Tensor。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND
-    - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT32、INT64，[数据格式](../../../docs/zh/context/数据格式.md)支持ND。
-
-  - cacheMode(char*，计算输入)：支持["Norm", "PA_NZ"]两种模式，分别表示ND、NZ的数据格式。表示输入keyCache/valueCache/keyRef/valueRef 的shape输入模式。
-
-  - isSeqLensCumsum(bool，计算输入)：表示seqLens是否为累加和。false表示非累加和，例如seqLens为[1, 3, 5, 3, 7]。true表示累加和，例如seqLens为[0, 1, 4, 9, 12, 19]，此时第0个元素必定是0。累加和的`seqlens[i + 1] - seqlens[i]`等于非累加的`seqlens[i]`。
-
-  - workspaceSize(uint64_t*, 出参)：返回需要在Device侧申请的workspace大小。
-
-  - executor(aclOpExecutor**, 出参)：返回op执行器，包含了算子计算流程。
-
-- **返回值**
+- **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
