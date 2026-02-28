@@ -30,7 +30,7 @@
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FABlockVecDummy<__VA_ARGS__>, BaseApi::FABlockVecTrain<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op;                                                         \
         op.InitBaseAPI(query, key, value, pse, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,     \
-                actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, nullptr,       \
+                actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, pScale, nullptr,       \
                 nullptr, nullptr, nullptr, nullptr, queryRope, keyRope, nullptr, softmaxMax, softmaxSum, softmaxOut, nullptr, attentionOut, user,   \
                 nullptr, &tPipe);                                                                              \
         op.Process();                                                                                          \
@@ -56,7 +56,7 @@
         using VecBlockType = typename BaseApi::FABlockVecTrain<__VA_ARGS__>;                                   \
         templateClass<CubeBlockType, VecBlockType> op;                                                         \
         op.InitBaseAPI(query, key, value, pse, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,     \
-                actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, nullptr,       \
+                actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, pScale, nullptr,       \
                 nullptr,queryRope, keyRope, softmaxMax, softmaxSum, softmaxOut, nullptr, attentionOut, user,   \
                 tilingData, &tPipe);                                                                           \
         op.Process();                                                                                          \
@@ -77,8 +77,8 @@
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FABlockVecDummy<__VA_ARGS__>, BaseApi::FABlockVecTrain<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op;                                                         \
         op.InitBaseAPI(query, key, value, pse, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,     \
-                actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, nullptr,       \
-                nullptr,nullptr, nullptr, nullptr, queryRope, keyRope, nullptr, softmaxMax, softmaxSum, softmaxOut, nullptr, attentionOut, user,   \
+                actualSeqLengthsKv, nullptr, nullptr, nullptr, deqScaleQ, deqScaleK, deqScaleV, pScale, nullptr,       \
+                nullptr, nullptr, nullptr, nullptr, queryRope, keyRope, nullptr, softmaxMax, softmaxSum, softmaxOut, nullptr, attentionOut, user,   \
                 tilingData, &tPipe);                                                                           \
         op.Process();                                                                                          \
     } while (0)
@@ -91,8 +91,8 @@ template<uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2T
 inline __aicore__ void flash_attention_score_regbase(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *pse, __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
-    __gm__ uint8_t *qStartIdx, __gm__ uint8_t *kvStartIdx, __gm__ uint8_t *deqScaleQ,
-    __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+    __gm__ uint8_t *qStartIdx, __gm__ uint8_t *kvStartIdx, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
+    __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
@@ -118,37 +118,7 @@ inline __aicore__ void flash_attention_score_regbase(__gm__ uint8_t *query, __gm
     #endif
 
     // fp8
-    #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E5M2)
-        if constexpr (outDtype == 1) {
-            INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, fp8_e5m2_t, float, half, ImplModeEnum(implMode),
-                LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-                DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
-            return;
-        }
-        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, fp8_e5m2_t, float, bfloat16_t, ImplModeEnum(implMode),
-            LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
-        return;
-    #endif
-    #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN)
-        if constexpr (outDtype == 1) {
-            INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, fp8_e4m3fn_t, float, half, ImplModeEnum(implMode),
-                LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-                DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
-            return;
-        }
-        INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, fp8_e4m3fn_t, float, bfloat16_t, ImplModeEnum(implMode),
-            LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-            DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
-        return;
-    #endif
     #if (ORIG_DTYPE_QUERY == DT_HIFLOAT8)
-        if constexpr (outDtype == 1) {
-            INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, hifloat8_t, float, half, ImplModeEnum(implMode),
-                LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-                DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);
-            return;
-        }
         INVOKE_FA_OP_IMPL_BASEAPI(BaseApi::FlashAttentionScoreKernelTrain, hifloat8_t, float, bfloat16_t, ImplModeEnum(implMode),
             LayOutTypeEnum(layout), S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
             DTemplateType(dTemplateType), DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(pseMode), hasAtten, hasDrop, hasRope);

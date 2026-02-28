@@ -207,7 +207,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::InitInpu
     }
 
     uint64_t singleCoreOffset = 0;
-    this->vecBlock.InitGlobalBuffer(pse, nullptr, nullptr, nullptr, postQuantScale, postQuantOffset,
+    this->vecBlock.InitGlobalBuffer(pse, nullptr, nullptr, nullptr, nullptr, postQuantScale, postQuantOffset,
         nullptr, attenMask, nullptr, nullptr, nullptr, nullptr, nullptr, workspace, singleCoreOffset, this->aicIdx, constInfo);
 }
 

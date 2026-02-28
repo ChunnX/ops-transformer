@@ -49,6 +49,7 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
 {
     this->constInfo.gS1o = this->constInfo.gSize * this->constInfo.s1OuterSize;
     this->constInfo.n2GS1o = this->constInfo.n2Size * this->constInfo.gS1o;
+    this->constInfo.scaleValue = this->sharedParams.scaleValue;
 };
 
 template <typename CubeBlockType, typename VecBlockType>

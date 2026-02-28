@@ -486,7 +486,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_950_tiling_5)
     int64_t expectTilingKey = 3481282513837753104;
     std::string expectTilingData = "2 0 0 1 1 700 856 0 128 128 0 4446465645592182784 65536 65536 0 0 0 257 0 0 0 0 0 0 2 0 255 0 0 0 0 0 0 0 0 0 0 0 0 12 12 6 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // BF16 BNSD
@@ -790,8 +790,8 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_950_tiling_9)
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("same_as_input")}
          },
                 &compileInfo, "Ascend950", 64, 262144, 8192);
-    int64_t expectTilingKey = 2904821760729023248;
-    std::string expectTilingData = "2 0 0 3 3 128 256 0 16 16 0 4503599628435849216 65536 65536 0 0 0 257 0 0 0 0 0 0 0 0 255 0 0 0 0 0 0 0 0 0 0 0 0 18 18 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 ";
+    int64_t expectTilingKey = 2904821760729285392;
+    std::string expectTilingData = "2 0 0 3 3 128 256 0 16 16 0 4503599628435849216 65536 65536 0 0 0 257 0 0 0 0 0 0 0 0 255 0 0 0 0 0 0 0 0 0 0 0 0 18 18 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 1 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

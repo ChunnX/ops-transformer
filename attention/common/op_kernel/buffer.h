@@ -190,6 +190,7 @@ public:
         }
     }
 
+    template<bool isReuse = false>
     __aicore__ inline void WaitCrossCore() {
         if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
@@ -197,7 +198,11 @@ public:
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_);
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_ + AIV0_AIV1_OFFSET);
             } else {
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id0_);
+                if constexpr (isReuse) {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_);
+                } else {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id0_);
+                }
             }
         } else if constexpr (bufferType == BufferType::L1) {
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
@@ -212,6 +217,7 @@ public:
         }
     }
 
+    template<bool isReuse = false>
     __aicore__ inline void SetCrossCore() {
         if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
@@ -219,7 +225,11 @@ public:
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_);
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
             } else {
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+                if constexpr (isReuse) {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
+                } else {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+                }
             }
         } else if constexpr (bufferType == BufferType::L1) {
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV

@@ -24,7 +24,7 @@ using AscendC::QuePosition;
 namespace regbaseutil {
 constexpr uint16_t regBytes = 256;
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
-enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2};
+enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2, NZ_INDEX = 3};
 enum class DTemplateType {
     Aligned16 = 16,
     Aligned32 = 32,
@@ -290,7 +290,8 @@ struct RunInfo<false> {
     float keepProb; \
     float scaleValue; \
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
-    bool learnableSinkFlag = false /* attentionsink */
+    bool learnableSinkFlag = false; /* attentionsink */ \
+    float pScale
 
 
 #define ROPE_INFO \
@@ -440,6 +441,7 @@ struct CVSharedParams<false, false> {
     CV_SHARED_PARAMS;
     int64_t firstFullLoadS1OuterIdx;
     int64_t totalSize;
+    float scaleValue;
 };
 
 /* CVSharedParams需要小于等于CacheLine的大小：128Bytes */
