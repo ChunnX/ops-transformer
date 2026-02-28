@@ -54,9 +54,11 @@ constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 6;
 constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 7;
 
 constexpr uint32_t DIM_NUM_X = 2;
-constexpr uint32_t DIM_NUM_PERTOKENSCALE = 3;
+constexpr uint32_t DIM_NUM_PERTOKENSCALE = 1;
+constexpr uint32_t DIM_NUM_MX_PERTOKENSCALE = 3;
 constexpr uint32_t DIM_NUM_WEIGHT = 3;
-constexpr uint32_t DIM_NUM_SCALE = 4;
+constexpr uint32_t DIM_NUM_SCALE = 3;
+constexpr uint32_t DIM_NUM_MX_SCALE = 4;
 constexpr uint32_t DIM_NUM_Y = 2;
 constexpr uint32_t OUT_DTYPE_BF16_INDEX = 2;
 constexpr int32_t SPLIT_M = 0;
@@ -94,15 +96,20 @@ private:
     void PrintQuantParams() override;
     void PrintMatmulParams();
     bool SetQuantModeForGMMFinalizeRouting();
-    bool CheckShapeForMxQuant(const gert::Shape &xShape, const gert::Shape &wShape,
-                              const gert::Shape &pertokenScaleShape, const gert::Shape &scaleShape,
-                              const gert::Shape &yShape);
-    bool CheckDtype();
-    bool CheckOptional(uint32_t index, const char* paramName, ge::DataType targetDtype);
+   
     bool CheckOptionalAttr();
-    bool IsFp4Dtype(ge::DataType dtype);
-    bool IsFp8Dtype(ge::DataType dtype);
-    bool CheckFp4Shape();
+    bool CheckDtype() const;
+    bool CheckOptional(uint32_t index, const char *paramName, ge::DataType targetDtype) const;
+    bool IsFp4Dtype(ge::DataType dtype) const;
+    bool IsFp8Dtype(ge::DataType dtype) const;
+    bool CheckInputsShape(const gert::Shape &xShape, const gert::StorageShape *wStorageShape,
+                          const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
+                          const gert::Shape &yShape) const;
+    bool CheckOptionalInputsShape();
+    bool CheckDim(const gert::Shape &xShape, const gert::Shape &wShape,
+                  const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
+                  const gert::Shape &yShape) const;
+    bool CheckFp4Shape() const;
     bool CheckCoreNum() const override;
 
     GMMFinalizeRoutingTilingData tilingData_;

@@ -193,6 +193,7 @@ protected:
     virtual void PrintQuantParams();
     bool IsMicroScaling() const;
     bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
+    bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
     GQmmBasicTiling basicTiling_;
     GQmmInputInfo inputParams_;
 
@@ -217,7 +218,6 @@ private:
     bool SetMKNList();
     bool IsBiasInL1() const;
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
-    bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
     bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
  	bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape);
     virtual bool CheckCoreNum() const;
