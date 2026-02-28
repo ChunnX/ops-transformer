@@ -61,7 +61,7 @@ public:
     static constexpr uint64_t BLOCK_VEC_BASE_BUFFER_SIZE = 32 * 1024; // 32k
     static constexpr uint32_t DATABLOCK_BYTES = 32;
     static constexpr float FLOAT_ZERO = 0;
-    static constexpr float SOFTMAX_MIN_NUM = static_cast<float>(-1.0 / 0.0);
+    float SOFTMAX_MIN_NUM = static_cast<float>(-1.0 / 0.0);
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -975,7 +975,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::OverLapScoreKv(
     inputQue1.FreeTensor(scoreUb);
 
     if constexpr (COMP::coff == COFF::OVERLAP) {
-        if (originSliceInfo.sIdx != 0  && (!loopInfo.isCoreRowFirst || !loopInfo.isCoreLoopFirst)) {
+        if (originSliceInfo.sIdx != 0 && originSliceInfo.compressTcSize > 0 &&
+            (!loopInfo.isCoreRowFirst || !loopInfo.isCoreLoopFirst)) {
             AddSingleApeToScore(scoreLocal, apeUb, originSliceInfo, dDealSize);
         }
     }
