@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -101,6 +101,10 @@ aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
         uint64_t *workspaceSize,
         aclOpExecutor **executor)
 {
+    if (query == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Query pointer is null, cannot get data type!");
+        return ge::GRAPH_FAILED;
+    }
     DataType queryDataType = query->GetDataType();
     aclDataType queryAclDataType = ToAclDataType(queryDataType);
     auto sparseValuesOutHolder = TensorHolder(sparseValuesOut, queryAclDataType, std::string("sparseValuesOut"));
