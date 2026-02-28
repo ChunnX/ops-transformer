@@ -33,6 +33,16 @@
           "shape": [
             -2
           ]
+        },
+        {
+          "name": "rotate",
+          "index": 3,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ]
         }
       ],
       "outputs": [
