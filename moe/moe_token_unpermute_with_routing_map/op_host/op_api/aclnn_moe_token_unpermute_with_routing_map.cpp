@@ -29,7 +29,8 @@
 #include "moe_token_unpermute_with_routing_map.h"
 #include "aclnn_moe_token_unpermute_with_routing_map.h"
 #ifdef BUILD_OPEN_PROJECT_API
-    #include "../../../moe/3rd/moe_inplace_index_add_with_sorted/op_host/op_api/moe_inplace_index_add.h"
+    #include "../../../moe/3rd/moe_inplace_index_add_with_sorted/op_host/op_api/moe_inplace_index_add_with_sorted.h"
+    #include "../../../moe/3rd/moe_inplace_index_add/op_host/op_api/moe_inplace_index_add.h"
 #else
     #include "level0/inplace_index_add.h"
 #endif

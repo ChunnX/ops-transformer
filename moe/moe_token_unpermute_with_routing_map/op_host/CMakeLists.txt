@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    set(moe_token_unpermute_with_routing_map_depends moe/3rd/moe_inplace_index_add_with_sorted CACHE INTERNAL "Dependencies for moe_token_unpermute_with_routing_map")
+    set(moe_token_unpermute_with_routing_map_depends moe/3rd/moe_inplace_index_add_with_sorted moe/3rd/moe_inplace_index_add CACHE INTERNAL "Dependencies for moe_token_unpermute_with_routing_map")
     target_sources(op_host_aclnnExc PRIVATE
         moe_token_unpermute_with_routing_map_def.cpp
     )

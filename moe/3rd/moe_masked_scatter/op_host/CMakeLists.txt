@@ -8,6 +8,29 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+if (BUILD_OPEN_PROJECT)
+    target_sources(op_host_aclnnExc PRIVATE
+        moe_masked_scatter_def.cpp
+    )
+    if(CONDITION_UNIT STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME MoeMaskedScatter
+            OPTIONS --cce-auto-sync=off
+                    -Wno-deprecated-declarations
+                    -Werror
+                    -mllvm 
+                    -cce-aicore-dcci-before-kernel-end=false
+        )
+    else()
+        add_ops_compile_options(
+                    OP_NAME MoeMaskedScatter
+                    OPTIONS --cce-auto-sync=off
+                            -Wno-deprecated-declarations
+                            -Werror
+        )
+    endif()
+endif()
+
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE moe_masked_scatter ACLNNTYPE aclnn_exclude)
 endif()

@@ -28,7 +28,8 @@
 #include "level0/zero_op.h"
 #ifdef BUILD_OPEN_PROJECT_API
     #include "../../../moe/3rd/moe_masked_scatter/op_host/op_api/moe_masked_scatter.h"
-    #include "../../../moe/3rd/moe_inplace_index_add_with_sorted/op_host/op_api/moe_inplace_index_add.h"
+    #include "../../../moe/3rd/moe_inplace_index_add_with_sorted/op_host/op_api/moe_inplace_index_add_with_sorted.h"
+    #include "../../../moe/3rd/moe_inplace_index_add/op_host/op_api/moe_inplace_index_add.h"
 #else
     #include "level0/masked_scatter.h"
     #include "level0/inplace_index_add.h"

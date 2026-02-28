@@ -8,17 +8,29 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
-    set(moe_token_permute_with_routing_map_grad_depends moe/3rd/moe_masked_scatter moe/3rd/moe_inplace_index_add_with_sorted CACHE INTERNAL "Dependencies for moe_token_permute_with_routing_map_grad")
+    set(moe_token_permute_with_routing_map_grad_depends moe/3rd/moe_masked_scatter moe/3rd/moe_inplace_index_add_with_sorted moe/3rd/moe_inplace_index_add CACHE INTERNAL "Dependencies for moe_token_permute_with_routing_map_grad")
     target_sources(op_host_aclnnExc PRIVATE
         moe_token_permute_with_routing_map_grad_def.cpp
     )
-    add_ops_compile_options(
-        OP_NAME MoeTokenPermuteWithRoutingMapGrad
-        OPTIONS --cce-auto-sync=on
-                -Wno-deprecated-declarations
-                -Werror
-    )
+    if(CONDITION_UNIT STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME MoeTokenPermuteWithRoutingMapGrad
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+                    -mllvm 
+                    -cce-aicore-dcci-before-kernel-end=false
+        )
+    else()
+        add_ops_compile_options(
+            OP_NAME MoeTokenPermuteWithRoutingMapGrad
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+        )
+    endif()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

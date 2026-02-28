@@ -352,6 +352,12 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
     if ( "${OP_DEPEND_DIR}" MATCHES ".*moe_inplace_index_add_with_sorted.*")
        list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_inplace_index_add_with_sorted)
     endif()
+    if ( "${OP_DEPEND_DIR}" MATCHES ".*moe_inplace_index_add.*")
+       list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_inplace_index_add)
+    endif()
+    if ( "${OP_DEPEND_DIR}" MATCHES ".*moe_masked_scatter.*")
+       list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_masked_scatter)
+    endif()
 endforeach ()
 
 # ------------------------------------------------ aclnn ------------------------------------------------
