@@ -148,7 +148,7 @@ TEST_F(QuantGroupedMatmulDequantTiling, test_tiling_float16_1) {
 
     // workspaces nullptr return failed
     EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    // todo check tiling result
+    // check tiling result
     auto tiling_key = tiling_context->GetTilingKey();
     ASSERT_EQ(tiling_key, 10000003);
 }
@@ -263,7 +263,7 @@ TEST_F(QuantGroupedMatmulDequantTiling, test_tiling_float16_2) {
 
     // workspaces nullptr return failed
     EXPECT_EQ(tiling_func(tiling_context), ge::GRAPH_SUCCESS);
-    // todo check tiling result
+    // check tiling result
     auto tiling_key = tiling_context->GetTilingKey();
     ASSERT_EQ(tiling_key, 10000004);
 }

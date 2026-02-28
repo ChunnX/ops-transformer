@@ -79,7 +79,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910B2_grouped_matmul_fp16)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_weightNz_static)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8ofp16_weightNz_static)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -120,7 +120,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_weightNz_stat
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_weightNz_pertoken)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8ofp16_weightNz_pertoken)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -161,7 +161,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_weightNz_pert
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nd_staticTC)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8ofp16_nd_staticTC)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -203,7 +203,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nd_staticTC)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nz_staticTC)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8ofp16_nz_staticTC)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -245,7 +245,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nz_staticTC)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nd_dynamicKC)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8ofp16_nd_dynamicKC)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -286,7 +286,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nd_dynamicKC)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nz_dynamicKC)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8ofp16_nz_dynamicKC)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -327,7 +327,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8ofp16_nz_dynamicKC)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8o_nz_dynamicKC_scale_bf16_y_bf16)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8o_nz_dynamicKC_scale_bf16_y_bf16)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -368,7 +368,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8o_nz_dynamicKC_scal
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_scale_dtype)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_scale_dtype)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -409,7 +409,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_scale_shape)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_scale_shape)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -450,7 +450,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_scale_dims)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_scale_dims)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -491,7 +491,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_pertokenscale_dims)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_pertokenscale_dims)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -532,7 +532,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_pertokenscale_shape)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_pertokenscale_shape)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -575,7 +575,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_
 
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_pertokenscale_dtype)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_a8w8obf16_nz_dynamicKC_unsupport_pertokenscale_dtype)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -616,7 +616,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_a8w8obf16_nz_dynamicKC_
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_m0_empty_tensor)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_m0_empty_tensor)
 {
     size_t M = 0;
     size_t K = 1280;
@@ -657,7 +657,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_m0_empty_tensor)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_n0_empty_tensor)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_n0_empty_tensor)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -698,7 +698,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_n0_empty_tensor)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_k0_empty_tensor)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_k0_empty_tensor)
 {
     size_t M = 345;
     size_t K = 0;
@@ -739,7 +739,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_k0_empty_tensor)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_V5_a8w8o_nz_dynamicKC_scale_bf16_y_bf16)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_V5_a8w8o_nz_dynamicKC_scale_bf16_y_bf16)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -780,7 +780,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_V5_a8w8o_nz_dynamicKC_s
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_V5_a8w8ofp16_nz_dynamicKC)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_V5_a8w8ofp16_nz_dynamicKC)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -821,7 +821,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_V5_a8w8ofp16_nz_dynamic
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_V5_k0_empty_tensor)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_V5_k0_empty_tensor)
 {
     size_t M = 345;
     size_t K = 0;
@@ -862,7 +862,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_V5_k0_empty_tensor)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_v3_no_bias_case)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_v3_no_bias_case)
 {
     size_t M = 345;
     size_t K = 1280;
@@ -901,7 +901,7 @@ TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_v3_no_bias_case)
     EXPECT_EQ(getWorkspaceResult, 161002);
 }
 
-TEST_F(l2_grouped_matmul_test, Ascend910D_grouped_matmul_v3_has_bias_case)
+TEST_F(l2_grouped_matmul_test, Ascend950_grouped_matmul_v3_has_bias_case)
 {
     size_t M = 345;
     size_t K = 1280;
