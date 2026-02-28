@@ -182,6 +182,7 @@ void GroupedNoQuantMatmulTiling::SetDisableL2Cache(const gert::TilingContext *co
                          m_ * n_ * dataTypeSize;
     OP_LOGD(context->GetNodeName(), "Input and Output TotalSize: %lu, l2Size: %lu", totalSize, compileInfoPtr->l2Size);
     if (totalSize < compileInfoPtr->l2Size) {
+        weightNoL2Cache_ = false;
         return;
     }
     weightNoL2Cache_ = ((innerB * dataTypeSize % ALIGN_128 == 0) && flag || weightNzFlag_) && weightNoL2Cache_;
