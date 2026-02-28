@@ -39,7 +39,7 @@ extern "C" {
  * @param [in]  actType：代表激活函数类型，各激活函数枚举值参考枚举类GMMActType。
  * @param [in] tuningConfigOptional：
  * 调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
- * @param [out] out: 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32数据类型，数据格式支持ND，支持的最大长度为128个。
+ * @param [out] out: 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32、INT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [out] activationFeatureOutOptional: 激活函数的输入数据。
  * @param [out] dynQuantScaleOutOptional: 存在激活函数的时候，对激活后的输出进行动态量化的量化系数输出。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小。

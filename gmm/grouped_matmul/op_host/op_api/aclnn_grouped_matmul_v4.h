@@ -56,7 +56,7 @@ typedef enum {
  * 整数型参数，可取值0或1，0代表groupListOptional中数值为分组轴大小的cumsum结果（累积和），
  * 1代表groupListOptional中数值为分组轴上每组大小。
  * @param [in] actType:整数型参数，代表激活函数类型，各激活函数枚举值参考枚举类GMMActType。
- * @param [out] out: 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32数据类型，数据格式支持ND，支持的最大长度为128个。
+ * @param [out] out: 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32、INT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [out] activationFeatureOutOptional: 激活函数的输入数据。
  * @param [out] dynQuantScaleOutOptional: 预留参数。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小。

@@ -802,7 +802,8 @@ aclnnStatus aclnnGroupedMatmulV4(
 
       |groupType| x       | weight  | biasOptional | scaleOptional | out     |
       |:-------:|:-------:|:-------:| :------      |:-------       | :------ |
-      |0|INT8     |INT8     |INT32/null    | UINT64/INT64  |BFLOAT16/FLOAT16|
+      |0|INT8     |INT8     |INT32/null    | UINT64/INT64  |BFLOAT16/FLOAT16/INT8|
+      |0|INT8     |INT8     |INT32/null    | null/UINT64/INT64  |INT32|
       |0|INT8     |INT8     |INT32/BFLOAT16/FLOAT32/null    | BFLOAT16/FLOAT32  | BFLOAT16|
       |0|INT8     |INT8     |INT32/FLOAT16/FLOAT32/null    | FLOAT32  |FLOAT16|
       |0|HIFLOAT8     |HIFLOAT8    |null    | UINT64/INT64  |BFLOAT16/FLOAT16/  FLOAT32|
