@@ -696,7 +696,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
                 if (IsNeedExcuteV2(vec2Info)) {
                     ComputeVec2(vec2Info);
                 }
-                SyncAll();
             }
         }
 
