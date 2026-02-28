@@ -502,6 +502,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       - 支持dequantMode参数：MX量化场景支持取值2，Pertoken场景支持取值为0。
       - 支持dequantDtype参数：MX量化场景支持取值0，Pertoken场景支持取值为0、1、27。
       - 支持quantMode参数：MX量化场景支持取值2，Pertoken场景支持取值为0。
+      - 仅支持dequantMode和quantMode相同取值。
 
 
 - **返回值**

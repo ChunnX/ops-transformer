@@ -170,7 +170,7 @@ protected:
         }
     }
 
-    bool CheckMXAttrs()
+    bool CheckAttrs()
     {
         CheckOptionalTensorListEmpty(gmmDsqParams_.weightAssistMatrix);
         if (gmmDsqParams_.tuningConfig != nullptr && gmmDsqParams_.tuningConfig->Size() == 0) {
@@ -194,14 +194,13 @@ protected:
                     "The current version does not support tuningConfig, it should be nullptr.");
             return false;
         }
-        if (gmmDsqParams_.dequantMode != 2 && gmmDsqParams_.dequantMode != 0) { // 当前版本仅支持dequantMode为 0 以及 2
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "dequantMode should be 0 (pertoken) or 2 (mx), but actual value is %lu.",
-                    gmmDsqParams_.dequantMode);
-            return false;
-        }
-        if (gmmDsqParams_.quantMode != 2 && gmmDsqParams_.quantMode != 0) { // 当前版本仅支持quantMode为 0 以及 2
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "quantMode should be 0 (pertoken) or 2 (mx), but actual value is %lu.",
-                    gmmDsqParams_.quantMode);
+        if ((gmmDsqParams_.dequantMode != QUNAT_MODE_MX && gmmDsqParams_.dequantMode != QUNAT_MODE_PERTOKEN) ||
+            (gmmDsqParams_.quantMode != QUNAT_MODE_MX && gmmDsqParams_.quantMode != QUNAT_MODE_PERTOKEN) ||
+            (gmmDsqParams_.dequantMode != gmmDsqParams_.quantMode)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "Both dequantMode and quantMode must be 0 (pertoken) or 2 (mx), and they must be equal. Actual "
+                    "value: dequantMode=%lu, dequantMode=%lu.",
+                    gmmDsqParams_.dequantMode, gmmDsqParams_.quantMode);
             return false;
         }
         ge::DataType dequantDtype = static_cast<ge::DataType>(gmmDsqParams_.dequantDtype);
@@ -513,8 +512,8 @@ and greater or equal to 4, but actual value is %lu.",
 
     bool CheckInputOutDims() override
     {
-        if (!CheckMXAttrs()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "CheckMXAttrs failed.");
+        if (!CheckAttrs()) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "CheckAttrs failed.");
             return false;
         }
 
