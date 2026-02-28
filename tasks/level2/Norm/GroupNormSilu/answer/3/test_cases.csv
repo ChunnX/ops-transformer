@@ -1,0 +1,5 @@
+case_id;x_shape;dtype;num_groups;eps;activate_silu
+1;[4, 64, 5, 5];float16;16;1e-5;True
+5;[2, 8, 3, 3];float16;2;1e-5;True
+6;[16, 64, 8, 8];float16;16;1e-5;True
+8;[4, 64, 1, 1];float16;16;1e-5;True

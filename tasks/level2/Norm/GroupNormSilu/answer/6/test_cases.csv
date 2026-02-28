@@ -1,0 +1,5 @@
+case_id;x_shape;dtype;num_groups;eps;activate_silu
+2;[2, 16, 20, 20];float32;4;1e-5;False
+3;[1, 32, 10, 10];float32;8;1e-5;True
+7;[16, 32, 8, 8];float32;8;1e-5;True
+9;[2, 32, 1, 1];float32;8;1e-5;True
