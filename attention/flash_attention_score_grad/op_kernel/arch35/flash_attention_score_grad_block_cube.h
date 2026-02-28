@@ -715,7 +715,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                 nd2NzParams.dstNzC0Stride = AlignTo32(runInfo.commonRunInfo.s1RealSize); 
             } else {
                 // L1->L0A，L1上的src stride为C0对齐后的SingleM
-                nd2NzParams.dstNzC0Stride = AlignTo16(runInfo.commonRunInfo.s1RealSize); // todo: fp8 adapt
+                nd2NzParams.dstNzC0Stride = AlignTo16(runInfo.commonRunInfo.s1RealSize);
             }
             nd2NzParams.dstNzNStride = 1;
             nd2NzParams.dstNzMatrixStride = 0;
@@ -807,7 +807,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                     nd2NzParams.dstNzC0Stride = AlignTo32(preloadArgs.nextMOrN);
                 } else {
                     // L1->L0A，L1上的src stride为C0对齐后的SingleM
-                    nd2NzParams.dstNzC0Stride = AlignTo16(preloadArgs.nextMOrN); // todo: fp8 adapt
+                    nd2NzParams.dstNzC0Stride = AlignTo16(preloadArgs.nextMOrN);
                 }
                 nd2NzParams.dstNzNStride = 1;
                 nd2NzParams.dstNzMatrixStride = 0;
@@ -1363,7 +1363,6 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(typename DqkvResPos<T, IS_WRITE_
                 }
             }
         } else {
-            // todo: 待确认dv是否有直接输出到UB的情况，如无可以删除此分支
             if (isFixpOut) {
                 fixpipeParams.nSize = (realN + 7) >> 3 << 3;
                 Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[gmNOffset], dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);

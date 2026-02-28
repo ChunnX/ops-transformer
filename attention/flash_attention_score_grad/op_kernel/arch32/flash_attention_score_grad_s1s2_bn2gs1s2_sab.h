@@ -2019,7 +2019,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeM
         }
         mm4.SetOrgShape(s1_size, dbParam.s2Stride, s2_size, dbParam.actualS2Len, dqKc);
         mm4.SetTail(dbParam.s1CvExtend, d, dbParam.s2CvExtend); // M N K
-        mm4.SetTensorA(mulWorkSpaceGm[pingpongIdx * cubeBaseMN * 2]);  //todo offset
+        mm4.SetTensorA(mulWorkSpaceGm[pingpongIdx * cubeBaseMN * 2]);
         mm4.SetTensorB(keyGm[dbParam.bTensorOffsetCv]);
         mm4.template IterateAll<false>(dqWorkSpaceGm[dqOffset], 1);
         mm4.End();
@@ -2034,7 +2034,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeM
             }
             mm4.SetOrgShape(s1_size, dbParam.s2Stride / d * rope_d, s2_size, dbParam.actualS2Len, dqKc / d * rope_d);
             mm4.SetTail(dbParam.s1CvExtend, rope_d, dbParam.s2CvExtend); // M N K
-            mm4.SetTensorA(mulWorkSpaceGm[pingpongIdx * cubeBaseMN * 2]);  //todo offset
+            mm4.SetTensorA(mulWorkSpaceGm[pingpongIdx * cubeBaseMN * 2]);
             mm4.SetTensorB(keyRopeGm[dbParam.bTensorOffsetCv_rope]);
             mm4.template IterateAll<false>(dqRopeWorkSpaceGm[dqRopeOffset], 1);
             mm4.End();
