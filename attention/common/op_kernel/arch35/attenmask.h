@@ -68,7 +68,7 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
     dataCopyParams.blockCount = s1Size;
     dataCopyParams.blockLen = CeilDiv(s2Size, blockBytes);
     dataCopyParams.dstStride = CeilDiv(s2BaseSize, blockBytes) - dataCopyParams.blockLen;
-    if (totalS2Size % blockBytes == 0) {
+    if (totalS2Size % blockBytes == 0 && s2Size % blockBytes == 0) {
         dataCopyParams.srcStride = (totalS2Size - s2Size) / blockBytes;
         if constexpr (isInfer == true) {
             if (constInfo.isGqa) {

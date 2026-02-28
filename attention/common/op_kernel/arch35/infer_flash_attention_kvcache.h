@@ -187,8 +187,13 @@ __aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
     }
 
     // 计算S1的尾块大小，非对齐
-    runParam.actualS1Size = (runParam.nextTokensPerBatch >= 0) ? runParam.actualS1Size :
-        (runParam.actualS1Size + runParam.nextTokensPerBatch);
+    if (runParam.nextTokensPerBatch >= 0) {
+        runParam.actualS1Size = runParam.actualS1Size;
+    } else if (constInfo.isGqa && constInfo.s1Size == 1 && layout != LayOutTypeEnum::LAYOUT_BNSD) {
+        runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch * constInfo.gSize;
+    } else {
+        runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
+    }
 
     if (runParam.actualS1Size < 0) { // 修正preToken/nextToken导致全无效场景的qs值
         runParam.actualS1Size = 0;
