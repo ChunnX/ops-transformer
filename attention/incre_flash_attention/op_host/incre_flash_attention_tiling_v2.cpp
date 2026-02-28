@@ -4241,6 +4241,7 @@ void IFATilingV2::IFATilingDataconvert() {
   inputParams.set_fromFused(1);   //伪量化模板没有用到，设置为默认值
   std::string layout(ifaContext_->layOut);
   inputParams.set_isBSNDOut(layout == "BNSD_BSND");
+  inputParams.set_transposeLayout(ifaContext_->transposeLayout);
   //关于合轴
   inputParams.set_isGqa(isGqa_);
   inputParams.set_isSoftMaxLseEnable(softmaxLseFlag_ );

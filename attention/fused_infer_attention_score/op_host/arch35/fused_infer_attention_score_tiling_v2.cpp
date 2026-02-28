@@ -679,6 +679,8 @@ static ge::graphStatus ConvertContextToParamsIFA(gert::TilingContext& context,
                   OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Learnable sink only supports no-quantized GQA mode."),
                   return ge::GRAPH_FAILED);
 
+  ifaContext.transposeLayout = GetTransposeLayout(string(ifaContext.layOut));
+
   return ge::GRAPH_SUCCESS;
 }
 
