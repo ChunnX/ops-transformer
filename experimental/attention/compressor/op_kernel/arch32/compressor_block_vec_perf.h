@@ -709,7 +709,7 @@ CompressorBlockVectorPerf<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLoca
     uint32_t copyColCount = dDealSize;
     uint32_t srcSingleRowCount = srcSingleRowElemNum;
     uint32_t dstSingleRowCount = dDealSize;
-    uint32_t srcGmOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum + dStartIdx;
+    uint32_t srcGmOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum * coff + dStartIdx;
     DataCopyAlignGmToUb(dstLocal, srcGm[srcGmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount);
 }
 
