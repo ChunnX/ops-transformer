@@ -612,7 +612,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tr>
             <td>inputLayout</td>
             <td>可选输入</td>
-            <td>用于标识输入query、key、value的数据排布格式，当该字段包含“_”时，表示“输入layout_输出layput”</td>
+            <td>用于标识输入query、key、value的数据排布格式，当该字段包含“_”时，表示“输入layout_输出layout”</td>
             <td>
             <ul>
                 <li>支持配置的inputLayout包括BSH、BSND、TND、BNSD、NTD、BSH_BNSD、BSND_BNSD、BNSD_BSND、NTD_TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD</li>
@@ -917,7 +917,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tr>
             <td>2</td>
             <td>leftUpCausal模式的mask，需要传入优化后的attenmask矩阵</td>
-            <td rowspan="3">传入的attenMask为下三角矩阵，对角线全0。不传入attenMask或者传入的shape不正确报错。</td>
+            <td rowspan="3">传入的attenMask为下三角矩阵，对角线全0。attenMask为nullptr或者传入的shape不正确报错。</td>
         </tr>
         <tr>
             <td>3</td>
@@ -1528,9 +1528,9 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <li>数据类型：FLOAT16、BFLOAT16</li>
                 <li>sparse模式：
                     <ul>
-                    <li>sparse=0（不传mask）</li>
-                    <li>sparse=3（传优化后的attentionMask）</li>
-                    <li>sparse=4（传优化后的attentionMask，需满足：Q_D=K_D=V_D≤256 或 Q_D=K_D=192且V_D=128/192；同时preTokens≥-actualSeqLengths、nextTokens≥-actualSeqLengthsKv、preTokens+nextTokens≥0）</li>
+                    <li>sparse=0（attenMask为nullptr）</li>
+                    <li>sparse=3（传优化后的attenMask）</li>
+                    <li>sparse=4（传优化后的attenMask，需满足：Q_D=K_D=V_D≤256 或 Q_D=K_D=192且V_D=128/192；同时preTokens≥-actualSeqLengths、nextTokens≥-actualSeqLengthsKv、preTokens+nextTokens≥0）</li>
                     </ul>
                 </li>
                 <li>innerPrecise：仅支持0（不带行无效的高精度模式）</li>
@@ -1542,8 +1542,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <li>数据类型：FLOAT16、BFLOAT16</li>
                 <li>sparse模式：
                     <ul>
-                    <li>sparse=0（不传mask）</li>
-                    <li>sparse=3/4（传优化后的attentionMask）</li>
+                    <li>sparse=0（attenMask为nullptr）</li>
+                    <li>sparse=3/4（传优化后的attenMask）</li>
                     </ul>
                 </li>
                 <li>innerPrecise：
@@ -1683,7 +1683,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         <tr>
             <td>sparseMode</td>
             <td>全量化场景sparseMode仅支持0,3</td>
-            <td>qs=1时，仅支持sparseMode=0，且不传mask;qs>1时，仅支持sparseMode=3，且mask shape为[2048,2048]</td>
+            <td>qs=1时，仅支持sparseMode=0，且attenMask为nullptr; qs>1时，仅支持sparseMode=3，且attenMask的shape为[2048,2048]</td>
         </tr>
         <tr>
             <td>blockSize</td>
@@ -1796,7 +1796,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tr>
     <tr>
         <td colspan="2">Mask</td>
-        <td colspan="3">当MTP等于0时，支持sparseMode=0且不传mask；当MTP大于0、小于16时，支持sparseMode=3且传入优化后的attenmask矩阵，attenmask矩阵shape必须传入（2048*2048）；</td>
+        <td colspan="3">当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3且传入优化后的attenMask矩阵，attenMask矩阵shape必须传入（2048*2048）；</td>
     </tr>
     <tr>
         <td rowspan="9">伪量化</td>
@@ -1965,7 +1965,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>
                 <ul>
                 <li>sparseMode = 0时，attenMaskOptional如果为空指针，或者在左padding场景传入attenMaskOptional，则忽略入参preTokens、nextTokens。</li>
-                <li>sparseMode = 2、3、4时，attenMaskOptional的shape需要为（2048,2048）或（1,2048,2048）或（1,1,2048,2048），且需要用户保证传入的attenMaskOptional为下三角，不传入attenMaskOptional或者传入的shape不正确报错。</li>
+                <li>sparseMode = 2、3、4时，attenMaskOptional的shape需要为（2048,2048）或（1,2048,2048）或（1,1,2048,2048），且需要用户保证传入的attenMaskOptional为下三角，attenMaskOptional为nullptre或者传入的shape不正确报错。</li>
                 <li>sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。</li>
                 <li>sparseMode取其它值时会报错</li>
                 </ul>

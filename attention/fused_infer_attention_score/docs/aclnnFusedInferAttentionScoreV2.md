@@ -1027,7 +1027,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2(
   - 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
 
     - sparseMode = 0时，attenMask如果为空指针，或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
-    - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，不传入attenMask或者传入的shape不正确报错。
+    - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，attenMask为nullptr或者传入的shape不正确报错。
     - sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。
   - kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
   - page attention场景：

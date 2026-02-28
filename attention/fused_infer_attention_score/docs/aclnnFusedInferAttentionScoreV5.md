@@ -1220,7 +1220,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <td>2</td>
             <td>leftUpCausal模式的mask，需要传入优化后的attenmask矩阵</td>
             <td rowspan="2">忽略入参preTokens、nextTokens并按照相关规则赋值</br>
-                传入的attenMask为下三角矩阵，对角线全0。不传入attenMask或者传入的shape不正确报错。shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048。</td>
+                传入的attenMask为下三角矩阵，对角线全0。attenMask为nullptr或者传入的shape不正确报错。shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048。</td>
         </tr>
         <tr>
             <td>3</td>
@@ -1229,7 +1229,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <tr>
             <td>4</td>
             <td>band模式的mask，需要传入优化后的attenmask矩阵</td>
-            <td>传入的attenMask为下三角矩阵，对角线全0。不传入attenMask或者传入的shape不正确报错。shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048。</td></td>
+            <td>传入的attenMask为下三角矩阵，对角线全0。attenMask为nullptr或者传入的shape不正确报错。shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048。</td></td>
         </tr>
         <tr>
         <td colspan="3"><ul>

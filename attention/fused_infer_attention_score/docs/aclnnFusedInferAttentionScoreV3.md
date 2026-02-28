@@ -764,7 +764,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
   - actualSeqLengths和actualSeqLengthsKv必须传入，且以该入参元素的数量作为Batch值。该入参中每个元素的值表示当前Batch与之前所有Batch的Sequence Length和，因此后一个元素的值必须大于等于前一个元素的值；
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - sparse模式仅支持sparse=0且不传mask，或sparse=3且传入mask，或sparse=4且传入mask；
+    - sparse模式仅支持sparse=0且attenMask为nullptr，或sparse=3且attenMask不为nullptr，或sparse=4且传入attenMask不为nullptr；
     - 当query的d等于512时：
       - 支持TND、TND_NTD;
       - 必须开启page attention，此时actualSeqLengthsKv长度等于key/value的batch值，代表每个batch的实际长度，值不大于KV_S；
@@ -778,12 +778,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - 支持TND、NTD_TND；
       - TND场景，数据类型仅支持FLOAT16、BFLOAT16；NTD_TND场景，数据类型仅支持BFLOAT16；
       - TND场景，当head配比为GQA/MQA时（即必须完整传入numHeads和numKeyValueHeads参数，且numHeads是numKeyValueHeads的整数倍，且二者不相等），有如下约束：
-        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且不传mask，或sparse=3且传入优化后的attentionMask：
-             - Q_D、K_D、V_D相等且小于等于256或Q_D、K_D等于192，V_D等于128/192场景下，支持sparse=4且传入优化后的attentionMask，要求preTokens>=-actualSeqLengths、nextTokens>=-actualSeqLengthsKv、preTokens+nextTokens>=0;
+        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且attenMask为nullptr，或sparse=3且传入优化后的attenMask：
+             - Q_D、K_D、V_D相等且小于等于256或Q_D、K_D等于192，V_D等于128/192场景下，支持sparse=4且传入优化后的attenMask，要求preTokens>=-actualSeqLengths、nextTokens>=-actualSeqLengthsKv、preTokens+nextTokens>=0;
         - 仅支持innerPrecise=0，即不带行无效的高精度模式；
         - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize支持<=128 16对齐；
       - TND场景，当head配比为MHA时，有如下约束：
-        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且不传mask，或sparse=3，4且传入优化后的attentionMask；
+        - 当数据类型为FLOAT16、BFLOAT16时，支持sparse=0且attenMask为nullptr，或sparse=3，4且传入优化后的attenMask；
         - 当数据类型为FLOAT16时，支持innerPrecise=0和innerPrecise=1；
         - 当数据类型为BFLOAT16时，仅支持innerPrecise=0；
         - 支持page attention，kv cache排布格式支持BnBsH（blocknum, blocksize, H），H不大于65535，blockSize支持<=128 16对齐；
@@ -808,7 +808,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
       - 当query的d等于512时：
         - queryRope配置时要求query的s为1-16、n为1、2、4、8、16、32、64、128，queryRope的shape中d为64，其余维度与query一致；
         - keyRope配置时要求key的n为1，d为512，keyRope的shape中d为64，其余维度与key一致；
-        - sparse：Q_S等于1时只支持sparse=0且不传mask，Q_S大于1时只支持sparse=3且传入mask；
+        - sparse：Q_S等于1时只支持sparse=0且attenMask为nullptr，Q_S大于1时只支持sparse=3且传入mask；
         - key&value&keyRope支持ND和NZ输入，当输入NZ时，输入格式为[blockNum, N, D/16, blockSize, 16]；
         - inputLayout：BSH、BSND、BNSD、BNSD_NBSD、BSND_NBSD、BSH_NBSD、TND、TND_NTD，其中NZ输入不支持BNSD、BNSD_NBSD；
         - 必须开启page attention：blockSize支持16、128，其中NZ输入不支持配置16；
@@ -1120,7 +1120,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   - 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
 
     - sparseMode = 0时，attenMask如果为空指针，或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
-    - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，不传入attenMask或者传入的shape不正确报错。
+    - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，attenMask为nullptr或者传入的shape不正确报错。
     - sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。
   - kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
   - page attention场景：
