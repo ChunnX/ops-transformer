@@ -186,11 +186,14 @@ private:
                                      const LocalTensor<T> &normResUb, uint32_t startRow, uint32_t dealRowCount);
     __aicore__ inline void CalRopeBsh(const Compressor::Vec2RunInfo &info, const LocalTensor<X_T> &outputUb,
                                       const LocalTensor<T> &normResUb, uint32_t startRow, uint32_t dealRowCount);
-    __aicore__ inline void SaveState(const LocalTensor<T> srcLocal, const GlobalTensor<T> &stateGm,
+    __aicore__ inline void SaveState(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &stateGm,
                                      const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
                                      uint32_t dStartIdx, uint32_t dDealSize);
     template <bool IS_SCORE>
-    __aicore__ inline void ReadState(const LocalTensor<T> srcLocal, const GlobalTensor<T> &stateGm,
+    __aicore__ inline void DuplicateFirstBlock(const LocalTensor<T> &dstLocal, uint32_t duplicateRowCount,
+                                               uint32_t duplicateColCount, uint32_t singleRowCount);
+    template <bool IS_SCORE>
+    __aicore__ inline void ReadState(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &stateGm,
                                      const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
                                      uint32_t dStartIdx, uint32_t dDealSize);
     uint32_t cmpRatio_ = 0U;
@@ -831,7 +834,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::WriteToCacheState(
 
 template <typename COMP>
 __aicore__ inline void
-CompressorBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> srcLocal, const GlobalTensor<T> &stateGm,
+CompressorBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &stateGm,
                                            const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
                                            uint32_t dStartIdx, uint32_t dDealSize)
 {
@@ -854,7 +857,27 @@ CompressorBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> srcLocal, const 
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void
-CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> dstLocal, const GlobalTensor<T> &stateGm,
+CompressorBlockVectorPerf<COMP>::DuplicateFirstBlock(const LocalTensor<T> &dstLocal, uint32_t duplicateRowCount,
+                                                     uint32_t duplicateColCount, uint32_t singleRowCount)
+{
+    uint32_t loopTimes = duplicateColCount / FP32_BLOCK_ELEMENT_NUM;
+    for (uint32_t offset = 0; offset < duplicateColCount; offset += FP32_BLOCK_ELEMENT_NUM) {
+        uint32_t curDuplicateColCount = min(duplicateColCount - offset, FP32_BLOCK_ELEMENT_NUM);
+        if constexpr (IS_SCORE) {
+            Duplicate(dstLocal[offset], SOFTMAX_MIN_NUM, FP32_BLOCK_ELEMENT_NUM, curDuplicateColCount, 1,
+                      singleRowCount / REPEAT_STRIDE_NUM);
+        } else {
+            Duplicate(dstLocal[offset], FLOAT_ZERO, FP32_BLOCK_ELEMENT_NUM, curDuplicateColCount, 1,
+                      singleRowCount / REPEAT_STRIDE_NUM);
+        }
+    }
+}
+
+
+template <typename COMP>
+template <bool IS_SCORE>
+__aicore__ inline void
+CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &stateGm,
                                            const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
                                            uint32_t dStartIdx, uint32_t dDealSize)
 {
@@ -883,13 +906,7 @@ CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> dstLocal, const 
             // 无历史数据
             // dDealSize必须为64
             uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * coff * dDealSize;
-            if constexpr (IS_SCORE) {
-                Duplicate(dstLocal[dstBaseOffset], SOFTMAX_MIN_NUM, dDealSize, constInfo_.cmpRatio, 1,
-                          coff * dDealSize / REPEAT_STRIDE_NUM);
-            } else {
-                Duplicate(dstLocal[dstBaseOffset], FLOAT_ZERO, dDealSize, constInfo_.cmpRatio, 1,
-                          coff * dDealSize / REPEAT_STRIDE_NUM);
-            }
+            DuplicateFirstBlock<IS_SCORE>(dstLocal[dstBaseOffset], constInfo_.cmpRatio, dDealSize, coff * dDealSize);
         }
         if (sliceInfo.sIdx < constInfo_.cmpRatio && (!isFirst || sliceInfo.compressTcSize > 1)) {
             uint32_t startSeqIdx =
