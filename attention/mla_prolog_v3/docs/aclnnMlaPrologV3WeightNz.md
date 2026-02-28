@@ -180,7 +180,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | queryOut                   | 输出      | 公式中Query的输出tensor（对应$q^N$），Device侧的aclTensor。     | -  | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN | ND         | - BS合轴：(T,N,Hckv) <br>- BS非合轴：(B,S,N,Hckv) |×   |
   | queryRopeOut               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$），Device侧的aclTensor。  | - | BFLOAT16       | BFLOAT16 | ND         | - BS合轴：(T,N,Dr) <br>- BS非合轴：(B,S,N,Dr)     |×   |
   | dequantScaleQNopeOutOptional  | 输出           | 公式中Query输出的量化参数，Device侧的aclTensor。  | -     | FLOAT      | FLOAT| ND   | - BS合轴：(T,N,1) <br>- BS非合轴：(B*S,N,1)   |×   |
-  | queryNormOutOptional     | 输出      | 公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$），Device侧的aclTensor。  |  | BFLOAT16、INT8  | FLOAT8_E4M3FN | ND | - BS合轴：(T,Hcq) <br> - BS非合轴：(B*S,Hcq)  |×   |
+  | queryNormOutOptional     | 输出      | 公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$），Device侧的aclTensor。  |  | BFLOAT16、INT8  | BFLOAT16、FLOAT8_E4M3FN | ND | - BS合轴：(T,Hcq) <br> - BS非合轴：(B*S,Hcq)  |×   |
   | dequantScaleQNormOutOptional     | 输出      | query_norm的输出tensor的量化参数，Device侧的aclTensor。  |  | FLOAT  | FLOAT8_E8M0 | ND | - BS合轴：（T,1）<br> - BS非合轴：（B*S,1） <br> mxfp8全量化场景： <br>  - BS合轴：(T, Hcq/32) <br>  - BS非合轴：(B\*S, Hcq/32) |×   |
   | workspaceSize              | 输出      | 返回需在Device侧申请的workspace大小。  | - 仅用于输出结果，无需输入配置 - 数据类型为uint64_t* | -              | -| -          | -                                  |-   |
   | executor                   | 输出      | 返回op执行器，包含算子计算流程。        | - 仅用于输出结果，无需输入配置 - 数据类型为aclOpExecutor**    | -              | -| -          | -                                  |-   |
