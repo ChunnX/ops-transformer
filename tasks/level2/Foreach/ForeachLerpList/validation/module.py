@@ -33,11 +33,11 @@ class Model(nn.Module):
         x2_new = []
         weight_new = []
         for i in range(len(x1)):
-            x1_new.append(x1[i].npu())
-            x2_new.append(x2[i].npu())
-            weight_new.append(weight[i].npu())
+            x1_new.append(x1[i].to(torch.float32))
+            x2_new.append(x2[i].to(torch.float32))
+            weight_new.append(weight[i].to(torch.float32))
         res = torch._foreach_lerp(x1_new, x2_new, weight_new)
-        return [r.cpu() for r in res]
+        return [r.to(x1[0].dtype) for r in res]
 
 
 class ModelNew(nn.Module):
