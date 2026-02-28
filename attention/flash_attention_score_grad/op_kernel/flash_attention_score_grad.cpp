@@ -496,7 +496,8 @@ __global__ __aicore__ void flash_attention_score_grad(
     __gm__ uint8_t *softmax_sum, __gm__ uint8_t *softmax_in, __gm__ uint8_t *attention_in, __gm__ uint8_t *prefix,
     __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *q_start_idx, __gm__ uint8_t *kv_start_idx, 
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *deqScaleDy, __gm__ uint8_t *deqScaleO,
-    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,  __gm__ uint8_t *sink ,__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
+    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,  __gm__ uint8_t *sink, __gm__ uint8_t *dsScale, __gm__ uint8_t *pScale, 
+    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
     __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope, __gm__ uint8_t *dsink, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

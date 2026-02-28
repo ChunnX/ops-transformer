@@ -199,6 +199,9 @@
      uint32_t layoutType;
      float scaleValue;
      float keepProb;
+     float dsScale = 1;
+     float pScale = 1;
+     float pScaleLog = 1;
      uint32_t bandIdx;
      int64_t seed;
      int64_t offset;
@@ -359,6 +362,7 @@
      std::tuple<uint32_t, uint32_t, uint32_t> FuzzyForBestSplit();
      virtual ge::graphStatus GetSparseBlockInfo();
      void DoPreTiling();
+     int64_t DoPreSfmgTiling();
      void DoPostTiling();
      void DetermineMode();
      ge::graphStatus CheckAttenMaskShape();

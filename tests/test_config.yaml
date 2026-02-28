@@ -62,7 +62,6 @@ attention:
     module: True
     src:
       - attention/flash_attention_score
-      - attention/common
     exclude:
       - attention/flash_attention_score/docs
       - attention/flash_attention_score/README.md
@@ -75,7 +74,6 @@ attention:
     module: True
     src:
       - attention/flash_attention_score_grad
-      - attention/common
     exclude:
       - attention/flash_attention_score_grad/docs
       - attention/flash_attention_score_grad/README.md

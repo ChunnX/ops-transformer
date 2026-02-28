@@ -47,6 +47,7 @@ enum class S1TemplateType {
     Aligned64 = 64,
     Aligned128 = 128,
     Aligned256 = 256,
+    Aligned512 = 512,
     NotAligned,
 };
 

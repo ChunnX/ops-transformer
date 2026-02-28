@@ -35,6 +35,16 @@ constexpr uint8_t DQ_IDX = 0;
 constexpr uint8_t DK_IDX = 1;
 constexpr uint8_t DV_IDX = 2;
 
+// quant flag
+constexpr uint8_t SYNC_COMPUTE_DKV_FLAG = 2;
+constexpr uint8_t SYNC_TRANSFER_DKV_FLAG = 3;
+constexpr uint8_t SYNC_TRANSFER_DQ_FLAG = 4;
+constexpr uint8_t SYNC_UB2L1_P_FLAG = 9;
+constexpr uint8_t SYNC_UB2L1_DS_FLAG = 10;
+constexpr uint8_t SYNC_PDS_TO_DKV_FLAG = 8;
+constexpr uint8_t SYNC_PDS_TO_DQ_FLAG = 7;
+constexpr uint8_t SYNC_DETER_FLAG = 11;
+
 // 最小Swizzle块数量
 constexpr uint32_t MIN_SWIZZLE_S1 = 16384;
 // Swizzle块数量，16K对应8块，随S增大倍数增大

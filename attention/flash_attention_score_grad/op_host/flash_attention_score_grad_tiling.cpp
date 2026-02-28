@@ -350,8 +350,8 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
         OP_LOGE("CheckParams", "context is null."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckAttrs(context) != ge::GRAPH_SUCCESS,
                OP_LOGE(context->GetNodeName(), "invalid attrs"), return ge::GRAPH_FAILED);
-    if ((context->GetInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr && context->GetInputShape(KEY_ROPE_INPUT_INDEX) == nullptr) ||
-        (context->GetInputShape(QUERY_ROPE_INPUT_INDEX) == nullptr && context->GetInputShape(KEY_ROPE_INPUT_INDEX) != nullptr)) {
+    if ((context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) == nullptr) ||
+        (context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) == nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) != nullptr)) {
         OP_LOGE(context, "input shape Query Rope and Key Rope must be either both defined or both undefined.");
         return ge::GRAPH_FAILED;
     }
