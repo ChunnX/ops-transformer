@@ -1373,7 +1373,7 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
     bool sparseModeSupported = (sparseMode == 0) || (sparseMode == 3) || (sparseMode == 4);
     bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
     bool mhaConditions = isMha && !((qDataType == ge::DT_BF16) && (innerPrecise == 1)) && 
-        (tempAttnMaskShape == nullptr);
+        !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
 
     bool usingFAI = false;
@@ -1989,6 +1989,7 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     if (RouteToFia(context)) {
         return TilingFusedInferAttentionScoreV3(context);
     }
+    
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();

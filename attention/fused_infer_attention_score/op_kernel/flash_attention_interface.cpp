@@ -14,6 +14,7 @@
 */
 
 #include "flash_attention_regular.h"
+#include <type_traits>
 using namespace NpuArch;
 
 namespace SplitFuse {
@@ -97,27 +98,20 @@ namespace SplitFuse {
             Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
 
         using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
-        using OType = Gemm::GemmType<ElementO, LayoutO>;
-        using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
         using EpilogueInitOut =
             Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
 
-        if constexpr (IS_FD) {
-            using CombineScale = Epilogue::Block::CombineScale<OType, LseType>;
-            using FAInferKernel = FAInferKernel<BlockMmadQK, BlockMmadPV,
+        using CombineScale = Epilogue::Block::CombineScale<OType, LseType>;
+        using FAInferKernel_FD = FAInferKernel<BlockMmadQK, BlockMmadPV,
                                                 EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
                                                 PagedCacheFlag, maskCategory, inLayout, CombineScale, IS_FD>;
-    
-            FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
-            FAInferKernel flashAttnInfer;
-            flashAttnInfer(params);
-        } else {
-            using FAInferKernel = FAInferKernel<BlockMmadQK, BlockMmadPV,
-                                            EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                            PagedCacheFlag, maskCategory, inLayout>;
-            FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
-            FAInferKernel flashAttnInfer;
-            flashAttnInfer(params);
-        }
+        using FAInferKernel_NonFD = FAInferKernel<BlockMmadQK, BlockMmadPV,
+                                                   EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
+                                                   PagedCacheFlag, maskCategory, inLayout>;
+        using FAInferKernel = std::conditional_t<IS_FD, FAInferKernel_FD, FAInferKernel_NonFD>;
+
+        FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
+        FAInferKernel flashAttnInfer;
+        flashAttnInfer(params);
     }
 }
