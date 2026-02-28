@@ -117,8 +117,7 @@ private:
     __aicore__ inline void AddApeToScore(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeUb,
                                          const Vec1SliceInfo &sliceInfo, uint32_t dDealSize);
     __aicore__ inline void AddSingleApeToScore(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeUb,
-                                               const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
-                                               uint32_t dDealSize);
+                                               const Vec1SliceInfo &sliceInfo, uint32_t dDealSize);
     template <typename O>
     __aicore__ inline void DataCopyAlignUbToUb(const LocalTensor<O> dstLocal, const LocalTensor<O> srcLocal,
                                                uint32_t copyRowCount, uint32_t copyColCount, uint32_t srcSingleRowCount,
@@ -524,17 +523,12 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
 template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::AddSingleApeToScore(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeUb,
-                                                     const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
-                                                     uint32_t dDealSize)
+                                                     const Vec1SliceInfo &sliceInfo, uint32_t dDealSize)
 {
-    if (sliceInfo.sIdx == 0 || (loopInfo.isCoreRowFirst && loopInfo.isCoreLoopFirst) || !sliceInfo.isFirst) {
-        return;
-    }
     uint32_t coff = static_cast<uint32_t>(COMP::coff);
     uint32_t SingleRowElemNum = dDealSize * coff;
     uint32_t dealRowCount = min(sliceInfo.sIdx, constInfo_.cmpRatio);
-    uint64_t scoreOffset =
-        (sliceInfo.compressoredScCnt * constInfo_.cmpRatio + constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
+    uint64_t scoreOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
     uint64_t apeOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
     Add(scoreLocal[scoreOffset], scoreLocal[scoreOffset], apeUb[apeOffset], dDealSize, dealRowCount,
         {1, 1, 1, static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),
@@ -980,12 +974,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::OverLapScoreKv(
     }
     inputQue1.FreeTensor(scoreUb);
 
-    overLapSliceIterator.template Reset<true>(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
-    overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
-    while (!overLapSliceIterator.IsEnd()) {
-        overLapSliceIterator.GetSlice();
-        AddSingleApeToScore(scoreLocal, apeUb, overLapSliceInfo, loopInfo, dDealSize);
-        overLapSliceIterator.IteratorSlice();
+    if constexpr (COMP::coff == COFF::OVERLAP) {
+        if (originSliceInfo.sIdx != 0  && (!loopInfo.isCoreRowFirst || !loopInfo.isCoreLoopFirst)) {
+            AddSingleApeToScore(scoreLocal, apeUb, originSliceInfo, dDealSize);
+        }
     }
 
     GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
