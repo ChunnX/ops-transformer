@@ -35,7 +35,6 @@ private:
         size_t biasDimNum = 0;
     };
 
-    bool IsQuant(DataType &xDtype, DataType &weightDtype) const;
     aclnnStatus CheckGeneralQuantShape() const;
     aclnnStatus CheckQuantCasesFormat() const;
     aclnnStatus CheckWeightNzSpecialParams() const;

@@ -445,6 +445,9 @@ or (g,1), which is (%ld,%ld) or (%ld,1), but the actual shape is (%ld,%ld).",
 ge::graphStatus GroupedMatmulQuantChecker::CheckShapeForQuantParam(const gert::InferShapeContext *context,
                                                                    const GMMAttrs &gmmAttrs) const
 {
+    if (gmmAttrs.outputDtype == GMM_OUT_DTYPE_INT32) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto scaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 0);
     auto perTokenScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_PERTOKEN_SCALE, 0);
     if (IsPerTileQuantMode(context, gmmAttrs)) {

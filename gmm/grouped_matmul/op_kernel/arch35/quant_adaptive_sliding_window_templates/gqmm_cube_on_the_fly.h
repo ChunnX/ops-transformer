@@ -325,14 +325,16 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAndCom
         return;
     }
     mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    if constexpr (QuantUtils::IsMxType<scaleType>()) {
-        mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
-        mm_.SetTensorScaleB(mxScaleBGlobal_[block_.offset_.offsetScale], bTrans);
-    } else {
-        if (gmmQuantParams_->bQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTENSOR_MODE)) { // perTensor && doubleScale
-            mm_.SetQuantScalar(scaleScalar_);
+    if constexpr (!AscendC::IsSameType<yType, int32_t>::value) {
+        if constexpr (QuantUtils::IsMxType<scaleType>()) {
+            mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
+            mm_.SetTensorScaleB(mxScaleBGlobal_[block_.offset_.offsetScale], bTrans);
         } else {
-            mm_.SetQuantVector(scaleBGlobal_[block_.offset_.offsetScale]);
+            if (gmmQuantParams_->bQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTENSOR_MODE)) { // perTensor && doubleScale
+                mm_.SetQuantScalar(scaleScalar_);
+            } else {
+                mm_.SetQuantVector(scaleBGlobal_[block_.offset_.offsetScale]);
+            }
         }
     }
     if (gmmQuantParams_->hasBias) {
