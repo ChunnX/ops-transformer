@@ -741,7 +741,7 @@ HPTG2@ops-transformer:
     src:  
         release:
             huawei_style: 
-                - ops-transformer/posembedding/apply_rotary_pos_emb/op_host/apply_rotary_pos_emb_tiling_aba_and_ba_arch35.cpp
+                - ops/ops-transformer/posembedding/apply_rotary_pos_emb/op_host/apply_rotary_pos_emb_tiling_aba_and_ba_arch35.cpp
             opensource_style: null 
             kernel_style: null  
         unrelease:
