@@ -4,10 +4,14 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Atlas A2 推理系列产品</term>   | √  |
-|<term>Atlas A3 推理系列产品</term>   | √  |
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -53,8 +57,11 @@ aclnnStatus aclnnLightningIndexer(
 ## aclnnLightningIndexerGetWorkspaceSize
 
 - **参数说明：**
+> [!NOTE]
+> - query、key、weights参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+> - S1表示query shape中的S，S2表示key shape中的S，T1表示query shape中的T，T2表示key shape中的T，N1表示query shape中的N，N2表示key shape中的N。
 
-  <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
   <col style="width: 146px">
   <col style="width: 110px">
   <col style="width: 301px">
@@ -80,67 +87,120 @@ aclnnStatus aclnnLightningIndexer(
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入Q。</td>
-      <td>shape支持(B,S1,Nidx1,D)和(T1,Nidx1,D)。</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3、4</td>
+      <td>
+          <ul>
+                <li>layout_query为BSND时，shape为(B,S1,N1,D)。</li>
+                <li>layout_query为TND时，shape为(T1,N1,D)。</li>
+          </ul>
+      </td>
       <td>x</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
       <td>公式中的输入K。</td>
-      <td>shape支持(block_num,block_size,Nidx2,D)、(B,S2,Nidx2,D)和(T2,Nidx2,D)。</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+                <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
+          </ul>
+      </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3、4</td>
+      <td>
+          <ul>
+                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2, D)。</li>
+                <li>layout_kv为BSND时，shape为(B, S2, N2, D)。</li>
+                <li>layout_kv为TND时，shape为(T2, N2, D)。</li>
+          </ul>
+      </td>
       <td>x</td>
     </tr>
     <tr>
       <td>weights</td>
       <td>输入</td>
       <td>公式中的输入W。</td>
-      <td>shape支持(B,S1,Nidx1)和(T1,Nidx1)。</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
       <td>FLOAT16、BFLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>2、3</td>
+      <td>
+          <ul>
+                <li>layout_query为BSND时，shape为(B,S1,N1)。</li>
+                <li>layout_query为TND时，shape为(T1,N1)。</li>
+          </ul>
+      </td>
       <td>x</td>
     </tr>
     <tr>
       <td>actualSeqLengthsQuery</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数。</td>
-      <td>shape支持(B,)。</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+                <li>如果不指定seqlen可传入None，表示和`query`的shape的S长度相同。</li>
+                <li>该入参中每个Batch的有效token数不超过`query`中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
+                <li>当`layout_query`为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
+          </ul>
+      </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1</td>
+      <td>(B,)</td>
       <td>x</td>
     </tr>
     <tr>
       <td>actualSeqLengthsKey</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数。</td>
-      <td>shape支持(B,)。</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+                <li>如果不指定seqlen可传入None，表示和key的shape的S长度相同。</li>
+                <li> 该参数中每个Batch的有效token数不超过`key/value`中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
+                <li>当`layout_key`为TND或PA_BSND时，该入参必须传入，`layout_key`为TND，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
+          </ul>
+      </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1</td>
+      <td>(B,)</td>
       <td>x</td>
     </tr>
     <tr>
       <td>blockTable</td>
       <td>输入</td>
       <td>表示PageAttention中KV存储使用的block映射表。</td>
-      <td>shape支持(B,S2/block_size)。</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+                <li>PageAttention场景下，block\_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actual\_seq\_lengths\_key对应的block数量）</li>
+          </ul>
+      </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>2</td>
+      <td>shape支持(B,S2/block_size)</td>
       <td>x</td>
     </tr>
     <tr>
       <td>layoutQuery</td>
       <td>输入</td>
       <td>用于标识输入Query的数据排布格式。</td>
-      <td>-</td>
+      <td>
+          <ul>
+                <li>用户不特意指定时可传入默认值"BSND"。</li>
+                <li>当前支持BSND、TND。</li>
+          </ul>
+      </td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
@@ -150,7 +210,12 @@ aclnnStatus aclnnLightningIndexer(
       <td>layoutKey</td>
       <td>输入</td>
       <td>用于标识输入Key的数据排布格式。</td>
-      <td>-</td>
+      <td>
+          <ul>
+                <li>用户不特意指定时可传入默认值"BSND"。</li>
+                <li>当前支持PA_BSND、BSND、TND。</li>
+          </ul>
+      </td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
@@ -160,8 +225,12 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseCount</td>
       <td>输入</td>
       <td>topK阶段需要保留的block数量。</td>
-      <td>-</td>
-      <td>INT</td>
+      <td>
+          <ul>
+                <li>支持[1, 2048]，以及3072、4096、5120、6144、7168、8192</li>
+          </ul>
+      </td>
+      <td>INT32</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -170,8 +239,13 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseMode</td>
       <td>输入</td>
       <td>表示sparse的模式。</td>
-      <td>-</td>
-      <td>INT</td>
+      <td>
+          <ul>
+                <li>sparse_mode为0时，代表defaultMask模式。</li>
+                <li>sparse_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li>
+          </ul>
+      </td>
+      <td>INT32</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -180,8 +254,12 @@ aclnnStatus aclnnLightningIndexer(
       <td>preTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
-      <td>-</td>
-      <td>INT</td>
+      <td>
+          <ul>
+                <li>仅支持默认值2^63-1。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -190,8 +268,12 @@ aclnnStatus aclnnLightningIndexer(
       <td>nextTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
-      <td>-</td>
-      <td>INT</td>
+      <td>
+          <ul>
+                <li>仅支持默认值2^63-1。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -199,8 +281,13 @@ aclnnStatus aclnnLightningIndexer(
     <tr>
       <td>returnValue</td>
       <td>输入</td>
-      <td>表示是否输出`sparseValues`。</td>
-      <td>-</td>
+      <td>表示是否输出sparseValues。</td>
+      <td>
+          <ul>
+                <li>True表示输出，但图模式下不支持，False表示不输出；默认值为False</li>
+                <li>仅在训练且layout_key不为PA_BSND场景支持</li>
+          </ul>
+      </td>
       <td>BOOL</td>
       <td>-</td>
       <td>-</td>
@@ -210,20 +297,33 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseIndices</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
-      <td>shape支持(B,S1,Nidx2,k)和(T1,Nidx2,k)。</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
       <td>INT32</td>
       <td>-</td>
-      <td>3、4</td>
+      <td>
+          <ul>
+                <li>layout_query为"BSND"时输出shape为[B, S1, N2, sparseCount]。</li>
+                <li>layout_query为"TND"时输出shape为[T1, N2, sparseCount]。</li>
+          </ul>
+      </td>
       <td>x</td>
     </tr>
     <tr>
       <td>sparseValues</td>
       <td>输出</td>
       <td>公式中的Indices输出对应的value值。</td>
-      <td>shape支持(B,S1,Nidx2,k)和(T1,Nidx2,k)。</td>
-      <td>INT32</td>
+      <td>
+          <ul>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3、4</td>
+      <td>shape与sparseIndices保持一致</td>
       <td>x</td>
     </tr>
     <tr>
@@ -323,9 +423,10 @@ aclnnStatus aclnnLightningIndexer(
 
 ## 约束说明
 
-- 参数query中的N支持648，key、value的N支持1。
-- sparseCount不大于2K。
+- 参数query中的N支持64，key、value的N支持1。
+- sparseCount支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
 - headdim支持128。
+- block_size取值为16的倍数，最大支持1024。
 
 ## 调用示例
 
