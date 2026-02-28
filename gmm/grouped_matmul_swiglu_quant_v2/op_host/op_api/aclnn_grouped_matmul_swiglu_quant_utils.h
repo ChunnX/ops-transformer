@@ -209,10 +209,6 @@ protected:
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The weight or weightScale is an empty container.");
             return false;
         }
-        if (gmmDsqParams_.x->IsEmpty() || gmmDsqParams_.xScale->IsEmpty()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x or xScale is an empty container.");
-            return false;
-        }
         return true;
     }
 
