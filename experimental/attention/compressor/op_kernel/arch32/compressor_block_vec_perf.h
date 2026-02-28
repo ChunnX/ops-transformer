@@ -61,6 +61,7 @@ public:
     static constexpr uint64_t BLOCK_VEC_BASE_BUFFER_SIZE = 32 * 1024; // 32k
     static constexpr uint32_t DATABLOCK_BYTES = 32;
     static constexpr float FLOAT_ZERO = 0;
+    static constexpr float SOFTMAX_MIN_NUM = static_cast<float>(-1.0 / 0.0);
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -136,7 +137,7 @@ private:
                                                  uint32_t srcSingleRowCount, uint32_t dstSingleRowCount);
     __aicore__ inline void PadAlign(const LocalTensor<T> dstLocal, const LocalTensor<T> srcLocal,
                                     const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx, uint32_t dDealSize);
-    template <bool ADD_APE>
+    template <bool IS_SCORE>
     __aicore__ inline void OverLap(const LocalTensor<T> dstLocal, const LocalTensor<T> srcLocal,
                                    const GlobalTensor<T> &srcGm, const GlobalTensor<T> &stateGm,
                                    const GlobalTensor<int32_t> &blockTableGm, const GlobalTensor<T> &cacheTcGm,
@@ -189,6 +190,7 @@ private:
     __aicore__ inline void SaveState(const LocalTensor<T> srcLocal, const GlobalTensor<T> &stateGm,
                                      const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
                                      uint32_t dStartIdx, uint32_t dDealSize);
+    template <bool IS_SCORE>
     __aicore__ inline void ReadState(const LocalTensor<T> srcLocal, const GlobalTensor<T> &stateGm,
                                      const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
                                      uint32_t dStartIdx, uint32_t dDealSize);
@@ -666,7 +668,7 @@ CompressorBlockVectorPerf<COMP>::PadAlign(const LocalTensor<T> dstLocal, const L
 
 
 template <typename COMP>
-template <bool ADD_APE>
+template <bool IS_SCORE>
 __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::OverLap(const LocalTensor<T> dstLocal, const LocalTensor<T> srcLocal,
                                          const GlobalTensor<T> &srcGm, const GlobalTensor<T> &stateGm,
@@ -680,7 +682,7 @@ CompressorBlockVectorPerf<COMP>::OverLap(const LocalTensor<T> dstLocal, const Lo
     event_t eventId_V_MTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
     event_t eventId_MTE2_V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
 
-    if constexpr (ADD_APE) {
+    if constexpr (IS_SCORE) {
         AddApeToScore(srcLocal, apeUb, sliceInfo, dDealSize);
         PipeBarrier<PIPE_V>();
     }
@@ -688,7 +690,7 @@ CompressorBlockVectorPerf<COMP>::OverLap(const LocalTensor<T> dstLocal, const Lo
 
     SetFlag<HardEvent::V_MTE2>(eventId_V_MTE2);
     WaitFlag<HardEvent::V_MTE2>(eventId_V_MTE2);
-    ReadState(dstLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize);
+    ReadState<IS_SCORE>(dstLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize);
 
     if constexpr (COMP::coff == COFF::OVERLAP) {
         SaveToWorkSpace(srcLocal, cacheTcGm, sliceInfo, loopInfo, dStartIdx, dDealSize);
@@ -856,6 +858,7 @@ CompressorBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> srcLocal, const 
 }
 
 template <typename COMP>
+template <bool IS_SCORE>
 __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> dstLocal, const GlobalTensor<T> &stateGm,
                                            const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
@@ -881,12 +884,18 @@ CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> dstLocal, const 
 
     // 填充左边
     if constexpr (COMP::coff == Compressor::COFF::OVERLAP) {
-        float SOFTMAX_MIN_NUM = static_cast<float>(-1.0 / 0.0);
         bool isFirst = sliceInfo.bStartPos + sliceInfo.sIdx < constInfo_.cmpRatio;
         if (isFirst) {
             // 无历史数据
             // dDealSize必须为64
-            Duplicate(dstLocal, FLOAT_ZERO, dDealSize, constInfo_.cmpRatio, 1, coff * dDealSize / REPEAT_STRIDE_NUM);
+            uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * coff * dDealSize;
+            if constexpr (IS_SCORE) {
+                Duplicate(dstLocal[dstBaseOffset], SOFTMAX_MIN_NUM, dDealSize, constInfo_.cmpRatio, 1,
+                          coff * dDealSize / REPEAT_STRIDE_NUM);
+            } else {
+                Duplicate(dstLocal[dstBaseOffset], FLOAT_ZERO, dDealSize, constInfo_.cmpRatio, 1,
+                          coff * dDealSize / REPEAT_STRIDE_NUM);
+            }
         }
         if (sliceInfo.sIdx < constInfo_.cmpRatio && (!isFirst || sliceInfo.compressTcSize > 1)) {
             uint32_t startSeqIdx =
