@@ -29,13 +29,17 @@ class Model(nn.Module):
         Returns:
             Output tensor of same shape as input with abs applied elementwise.
         """
-        x1_new = []
-        x2_new = []
-        for i in range(len(x1)):
-            x1_new.append(x1[i].npu())
-            x2_new.append(x2[i].npu())
-        res = torch._foreach_pow(x1_new, x2_new)
-        return [r.cpu() for r in res]
+        if x1[0].dtype in [torch.float16, torch.bfloat16]:
+            x1_new = []
+            x2_new = []
+            for i in range(len(x1)):
+                x1_new.append(x1[i].to(torch.float32))
+                x2_new.append(x2[i].to(torch.float32))
+            res = torch._foreach_pow(x1_new, x2_new)
+            return [r.to(x1[0].dtype) for r in res]
+        else:
+            res = torch._foreach_pow(x1, x2)
+            return [r for r in res]
 
 
 class ModelNew(nn.Module):
