@@ -325,8 +325,8 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
     auto queryShape = query->GetViewShape();
     auto keyShape = key->GetViewShape();
     auto valueShape = value->GetViewShape();
-    auto queryDimSize = query->Size();
-    auto kvDimSize = key->Size();
+    auto queryDimSize = queryShape.GetShapeSize();
+    auto kvDimSize = keyShape.GetShapeSize();
     fagShape.inputLayoutStr = op::ToString(inputLayout).GetString();
     bool isLayoutBNSD = (fagShape.inputLayoutStr == "BNSD");
     bool isLayoutBSND = (fagShape.inputLayoutStr == "BSND");
@@ -433,7 +433,7 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
 
         // 判断是否需要PAD和transpose, 同时判断是否为如下特殊场景 (SBH下，只需要PAD不需要transpose)
         fagShape.needPadDimD =
-            (fagShape.dDim % fagShape.alignDim != 0 && queryShape.GetShapeSize() != 0 && keyShape.GetShapeSize() != 0) ?
+            (fagShape.dDim % fagShape.alignDim != 0 && queryDimSize != 0 && kvDimSize != 0) ?
                 true :
                 false;
 
@@ -456,7 +456,7 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         }
 
         bool needTranspose =
-            queryShape.GetShapeSize() != 0 && keyShape.GetShapeSize() != 0 &&
+            queryDimSize != 0 && kvDimSize != 0 &&
             (fagShape.inputLayoutStr != "BNSD" && fagShape.inputLayoutStr != "TND" &&
             (fagShape.querySDimStrideSize > MAX_BSN_DIMS_SIZE || fagShape.kvSDimStrideSize > MAX_BSN_DIMS_SIZE));
         fagShape.needTranspose = needTranspose;
