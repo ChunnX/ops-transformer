@@ -1,0 +1,3 @@
+case_id;shape;dtype;n;norm
+5;[8192];float32;8192;1
+6;[16384];float32;16384;1

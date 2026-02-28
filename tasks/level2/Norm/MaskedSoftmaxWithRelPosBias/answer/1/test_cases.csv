@@ -1,0 +1,2 @@
+case_id;x_shape;bias_shape;dtype;scale_value;has_attn
+1;[24, 2, 4, 8, 16];[1, 1, 4, 8, 16];float32;1.0;0

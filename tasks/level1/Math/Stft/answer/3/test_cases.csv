@@ -1,0 +1,6 @@
+case_id;shape;dtype;n_fft;hop_length;win_length;normalized;onesided;return_complex
+0;[64];float32;8;4;8;False;True;True
+2;[128];float32;32;16;32;True;True;True
+3;[256];float32;64;32;64;False;True;True
+5;[64];float32;16;4;16;False;True;False
+6;[128];float32;32;8;32;True;True;False
