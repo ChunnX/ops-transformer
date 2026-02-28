@@ -199,11 +199,16 @@ transformer-5@ops-transformer:
     src:  
         release:
             huawei_style: 
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_cube.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_vec.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_processor.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_baseapi.h
                 - ops/ops-transformer/attention/common/op_kernel/memory_copy.h
                 - ops/ops-transformer/attention/common/op_kernel/CopyInL1.h
                 - ops/ops-transformer/attention/common/op_kernel/FixpipeOut.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch32/incre_flash_attention_preload_mla.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch32/ifa_service_matmul_full_quant.h
             opensource_style: null  
