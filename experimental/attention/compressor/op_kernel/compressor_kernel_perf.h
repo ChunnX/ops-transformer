@@ -355,13 +355,14 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateCurGroup(BasicBlockInfo
                                 BatchInfo batchInfo, uint32_t &curGroupQuota, uint32_t curDealSeq)
 {
     // 更新当前组的信息
-    if (curGroupQuota <= 0) {
-        return;
-    }
+    
     basicBlockInfo.bIdx = batchInfo.bIdx;
     uint32_t curGroupDealSeq = curGroupQuota < curDealSeq ? curGroupQuota : curDealSeq;
     basicBlockInfo.sIdx = batchInfo.sIdx + curGroupDealSeq;
     basicBlockInfo.dealSeqCnt += curGroupDealSeq;
+    if (curGroupQuota <= 0) {
+        return;
+    }
     curGroupQuota -= curGroupDealSeq;
     // 结尾需要跳batch，需要考虑在当前组起始为末尾，或者当前组起始大于整个M轴
     if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.batchSize - 1) && basicBlockInfo.sIdx == batchInfo.seqCnt) {
@@ -472,12 +473,12 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
 
     constInfo.mm1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
 
-    constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
-
     uint32_t coff = (uint32_t)COMP::coff;
     constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
     constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim * coff;
     constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
+
+    constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
 
     // printf("[CalcSplitCoreInfo] coreGroupNum:%u, dBaseSize:%u, dBasicBlockNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.dBaseSize, constInfo.dBasicBlockNum, constInfo.curGroupIdx, constInfo.mBaseSize);
 
@@ -536,7 +537,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
     // vec2Input
     vec2InputGm.SetGlobalBuffer(
         (__gm__ VEC1_OUT_T *)(workspace + beforeVecOffset));
-    offset +=  constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.vec1ResSize * sizeof(VEC1_OUT_T);
 }
 
 template <typename COMP>
