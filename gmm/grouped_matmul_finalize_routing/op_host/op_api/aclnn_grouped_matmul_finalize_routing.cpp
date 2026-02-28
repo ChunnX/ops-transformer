@@ -240,7 +240,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
     OP_CHECK_MIN_DIM(params.x1, MIN_DIM_NUM_ND, return false);
     OP_CHECK_MIN_DIM(params.out, MIN_DIM_NUM_ND, return false);
 
-    if (CheckType(params.x2->GetDataType(), MX_IN_TYPE_SUPPORT_LIST)) {
+    if (CheckType(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
         OP_CHECK_WRONG_DIMENSION(params.scale, MX_SCALE_DIM, return false);
         if (params.bias != nullptr) {
             OP_CHECK_WRONG_DIMENSION(params.bias, TWO_DIM_NUM, return false);
@@ -257,7 +257,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
         OP_CHECK_WRONG_DIMENSION(params.scale, SCALE_DIM, return false);
     }
 
-    if (CheckType(params.x1->GetDataType(), MX_IN_TYPE_SUPPORT_LIST)) {
+    if (CheckType(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, MX_PERTOKEN_SCALE_DIM, return false);
     } else if (params.pertokenScaleOptional != nullptr) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, 1, return false);
@@ -734,6 +734,11 @@ static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, 
 {
     // if weight is already in nz format, no need to set contiguous
     if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            if (transposeX2 == false) {
+                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
+            }
+        } 
     } else {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             if (transposeX2 == false) {
@@ -799,7 +804,7 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     auto ret = WeightNZCaseProcess(x2, transposeX2, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    if (scale != nullptr && CheckType(x1->GetDataType(), MX_IN_TYPE_SUPPORT_LIST)) {
+    if (scale != nullptr && CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) && CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposescale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposescale, executor);
         CHECK_RET(transposeX2 == transposescale, ret);
@@ -1037,58 +1042,58 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
     (void) antiquantScaleOptional;
     (void) antiquantOffsetOptional;
     auto viewShape = x2->GetViewShape();
-
     auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
-    auto storageShape = x2->GetStorageShape();
-    if (tmpWeight->GetDataType() == DataType::DT_INT32) {
-        tmpWeight->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-        auto viewShapeDim = viewShape.GetDimNum();
-        viewShape[viewShapeDim - 1] *= PER_INT4_IN_U32;
-        auto storageShapeDim = storageShape.GetDimNum();
-        // The following line adjusts the storage shape because we have a few
-        // checks that put some requirements on the storage shape and the view shape,
-        // e.g., the function 'CheckWeightNzStorageShape'.
-        //
-        // HACK: Right now we hard code the value of the last dim as
-        // 'NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8' (which is 64), instead of
-        // 'storageShape[storageShapeDim - 1] *= PER_INT4_IN_U32' because as of
-        // torch_npu 7.1.0, the function 'npu_convert_weight_to_int4pack' does
-        // not support 3D tensor. So in the ascend-vllm project, the following
-        // procedures are used to generate the int4 weight tensor in NZ format:
-        //
-        //   - Pack two int4 of (E, K, N/2) as an int8 (E, K, N/2)
-        //   - 'npu_format_cast' the int8 tensor to NZ format ('npu_format_cast'
-        //     gives wrong results for int32 here because C0 is 8)
-        //   - '.view(torch.int32)' to change the view shape to (E, K, N/8)
-        //     and the data type to int32.
-        //
-        // Therefore, the storage shape of the final tensor does not necessarily
-        // matches the data type, int32. That is why we hard code the value here.
-        // Fortunately, this is not so bad because the existing checks will verify
-        // the new storage shape here to some extent. For example, 'CheckWeightNzStorageShape'
-        // ensures that the two shapes still match.
-        //
-        // In the future, when we settle on a canonical way to handle NZ int4 tensors
-        // in torch_npu, we should update the following line accordingly.
-        storageShape[storageShapeDim - 1] = NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8;
-        tmpWeight->SetViewShape(viewShape);
-        tmpWeight->SetDataType(DataType::DT_INT4);
-    }
-    tmpWeight->SetStorageShape(storageShape);
+    if(op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510){
+        auto storageShape = x2->GetStorageShape();
+        if (tmpWeight->GetDataType() == DataType::DT_INT32) {
+            tmpWeight->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+            auto viewShapeDim = viewShape.GetDimNum();
+            viewShape[viewShapeDim - 1] *= PER_INT4_IN_U32;
+            auto storageShapeDim = storageShape.GetDimNum();
+            // The following line adjusts the storage shape because we have a few
+            // checks that put some requirements on the storage shape and the view shape,
+            // e.g., the function 'CheckWeightNzStorageShape'.
+            //
+            // HACK: Right now we hard code the value of the last dim as
+            // 'NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8' (which is 64), instead of
+            // 'storageShape[storageShapeDim - 1] *= PER_INT4_IN_U32' because as of
+            // torch_npu 7.1.0, the function 'npu_convert_weight_to_int4pack' does
+            // not support 3D tensor. So in the ascend-vllm project, the following
+            // procedures are used to generate the int4 weight tensor in NZ format:
+            //
+            //   - Pack two int4 of (E, K, N/2) as an int8 (E, K, N/2)
+            //   - 'npu_format_cast' the int8 tensor to NZ format ('npu_format_cast'
+            //     gives wrong results for int32 here because C0 is 8)
+            //   - '.view(torch.int32)' to change the view shape to (E, K, N/8)
+            //     and the data type to int32.
+            //
+            // Therefore, the storage shape of the final tensor does not necessarily
+            // matches the data type, int32. That is why we hard code the value here.
+            // Fortunately, this is not so bad because the existing checks will verify
+            // the new storage shape here to some extent. For example, 'CheckWeightNzStorageShape'
+            // ensures that the two shapes still match.
+            //
+            // In the future, when we settle on a canonical way to handle NZ int4 tensors
+            // in torch_npu, we should update the following line accordingly.
+            storageShape[storageShapeDim - 1] = NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8;
+            tmpWeight->SetViewShape(viewShape);
+            tmpWeight->SetDataType(DataType::DT_INT4);
+        }
+        tmpWeight->SetStorageShape(storageShape);
 
-    if (tmpWeight->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                "GroupedMatmulFinalizeRoutingWeightNz does not support nullptr for pertokenScale.");
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
+        if (tmpWeight->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                    "GroupedMatmulFinalizeRoutingWeightNz does not support nullptr for pertokenScale.");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
 
-    CheckSupportSceneParams sceneParams{x1, tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
-                                   logit, rowIndex, dtype};
-    auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
-    CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
-    
+        CheckSupportSceneParams sceneParams{x1,    tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
+                                            logit, rowIndex,  dtype};
+        auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
+        CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
+    }
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, tmpWeight, out)
         .SetScale(scale)
         .SetBias(bias)
@@ -1347,8 +1352,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    bool isMXValid = CheckType(x1->GetDataType(), MX_IN_TYPE_SUPPORT_LIST) &&
-                     CheckType(tmpWeightV3->GetDataType(), MX_IN_TYPE_SUPPORT_LIST);
+    bool isMXValid = CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+                     CheckType(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && !isMXValid) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "aclnnGroupedMatmulFinalizeRoutingV3 weightNd: Invalid dtype combination."

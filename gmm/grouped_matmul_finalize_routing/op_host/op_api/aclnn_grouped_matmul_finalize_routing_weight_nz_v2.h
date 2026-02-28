@@ -22,10 +22,10 @@ extern "C" {
  * @brief aclnnGroupedMatmulFinalizeRoutingWeightNzV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * 算子功能：实现GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作, 当前仅支持w为nz格式。
- * @param [in] x1: matmul左矩阵，数据类型支持：int8。
- * @param [in] x2: matmul右矩阵，数据类型支持：int8、int4。
- * @param [in] scale: 量化参数中的缩放因子，数据类型支持：float32、int64。
- * @param [in] bias: 偏置，数据类型支持：float32。
+ * @param [in] x1: matmul左矩阵，数据类型支持：int8、float8_e4m3fn、hifloat8。
+ * @param [in] x2: matmul右矩阵，数据类型支持：int8、int4、float8_e4m3fn、hifloat8。
+ * @param [in] scale: 量化参数中的缩放因子，数据类型支持：float32、int64、bf16。
+ * @param [in] bias: 偏置，数据类型支持：float32、bf16。
  * @param [in] offsetOptional: 量化参数偏移量，数据类型支持：float32。
  * @param [in] antiquantScaleOptional: 伪量化参数中缩放因子，暂不支持。
  * @param [in] antiquantOffsetOptional: 伪量化参数中偏移量，暂不支持。

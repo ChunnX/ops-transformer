@@ -31,19 +31,29 @@ constexpr int64_t GMMFR_SPLIT_FACTOR = 2L;
 constexpr int64_t MOD2 = 2L;
 constexpr int64_t MAX_NUM_EXPERTS = 1024L;
 
-const std::initializer_list<DataType> MX_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
-                                                                 op::DataType::DT_FLOAT4_E2M1};
-const std::initializer_list<DataType> MXFP4_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT4_E2M1};
-const std::initializer_list<DataType> MXFP8_IN_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT4_E2M1};
-static const std::initializer_list<op::DataType> MX_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<op::DataType> MX_ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
-static const std::initializer_list<op::DataType> MX_BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> MX_PERTOKEN_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT8_E8M0};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
+                                                                 op::DataType::DT_FLOAT4_E1M2, op::DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
+static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
 static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
+static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {op::DataType::DT_INT64, op::DataType::DT_INT32};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8 = {op::DataType::DT_INT64};
+enum class QuantMode {
+    PERTOEKN = 0, // pertoken 量化
+    MX = 2        // MX量化
+};
 
 class AclnnGroupedMatmulFinalizeRoutingDAV3510Checker {
 public:
@@ -52,6 +62,20 @@ public:
     aclnnStatus CheckParams(GroupedMatmulParams &gmmParams)
     {
         gmmParams_ = gmmParams;
+        // 0. 进入判断逻辑之前先判断是哪种量化
+        CHECK_COND(gmmParams_.scale != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+                   "In MX quant, scaleOptional should not be nullptr.");
+        DataType scaleDtype = gmmParams_.scale->GetDataType();
+        if (CheckType(scaleDtype, SCALE_TYPE_SUPPORT_LIST_MX)) {
+            quantMode_ = QuantMode::MX;
+        } 
+        else if(CheckType(scaleDtype, SCALE_TYPE_SUPPORT_LIST_PERTOKEN)){
+            quantMode_ = QuantMode::PERTOEKN;
+        }else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scale dtype %s is not supported.",
+                    op::ToString(scaleDtype).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         // 1. 检查参数是否为空指针
         CHECK_RET(CheckNotNull() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
         // 2. 检查输入的数据类型是否在支持的数据类型范围之内
@@ -61,7 +85,7 @@ public:
         // 4. 校验输入、输出shape参数
         CHECK_RET(CheckInputOutShape(), ACLNN_ERR_PARAM_INVALID);
         // 5. 校验输入、输出shape参数针对MXFP4
-        if (CheckType(gmmParams_.x1->GetDataType(), MXFP4_IN_TYPE_SUPPORT_LIST)) {
+        if (CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4)) {
             CHECK_RET(CheckInputOutShapeForMXFP4(), ACLNN_ERR_PARAM_INVALID);
         }
         // 6. 检查数据形状是否支持
@@ -71,20 +95,20 @@ public:
 
     aclnnStatus CheckNotNull()
     {
-        CHECK_COND(gmmParams_.x1 != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In MX quant , x should not be nullptr.");
-        CHECK_COND(gmmParams_.x2 != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In MX quant , weight should not be nullptr.");
-        CHECK_COND(gmmParams_.scale != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                   "In MX quant, scaleOptional should not be nullptr.");
-        CHECK_COND(gmmParams_.pertokenScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                   "In MX quant, perTokenScaleOptional should not be nullptr.");
+        CHECK_COND(gmmParams_.x1 != nullptr, ACLNN_ERR_PARAM_NULLPTR, "x should not be nullptr.");
+        CHECK_COND(gmmParams_.x2 != nullptr, ACLNN_ERR_PARAM_NULLPTR, "weight should not be nullptr.");
+        CHECK_COND(gmmParams_.scale != nullptr, ACLNN_ERR_PARAM_NULLPTR, "scaleOptional should not be nullptr.");
         CHECK_COND(gmmParams_.groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                   "In MX quant, groupListOptional should not be nullptr.");
-        CHECK_COND(gmmParams_.logit != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In MX quant, logit should not be nullptr.");
+                   "groupListOptional should not be nullptr.");
+        CHECK_COND(gmmParams_.logit != nullptr, ACLNN_ERR_PARAM_NULLPTR, "logit should not be nullptr.");
         CHECK_COND(gmmParams_.rowIndex != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                   "In MX quant, rowIndex should not be nullptr.");
-        CHECK_COND(gmmParams_.out != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                   "In MX quant, out should not be nullptr.");
-        CHECK_COND(gmmParams_.offset == nullptr, ACLNN_ERR_PARAM_INVALID, "MX quant case does not support offset.");
+                   "rowIndex should not be nullptr.");
+        CHECK_COND(gmmParams_.out != nullptr, ACLNN_ERR_PARAM_NULLPTR, "out should not be nullptr.");
+        CHECK_COND(gmmParams_.offset == nullptr, ACLNN_ERR_PARAM_INVALID, "Quanttization modes (MX and pertoken) do not support offset.");
+        if (quantMode_ == QuantMode::MX) {
+            CHECK_COND(gmmParams_.pertokenScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+                       "In MX quant, perTokenScaleOptional should not be nullptr.");
+        }
         return ACLNN_SUCCESS;
     }
 
@@ -98,31 +122,36 @@ public:
         auto logitDimNumber = gmmParams_.logit->GetViewShape().GetDimNum();
         auto rowindexDimNumber = gmmParams_.rowIndex->GetViewShape().GetDimNum();
         auto outDimNumber = gmmParams_.out->GetViewShape().GetDimNum();
+        size_t xscaleExpectDim = quantMode_ == QuantMode::MX ?  THERE_DIM:ONE_DIM;
+        size_t weightscaleExpectDim = quantMode_ == QuantMode::MX ?  FOUR_DIM:THERE_DIM;
         CHECK_COND(xDimNumber == TWO_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of x should be equal 2, current dim is %lu", xDimNumber);
+                   "The dim num of x should be equal 2, current dim is %lu.", xDimNumber);
         CHECK_COND(wDimNumber == THERE_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of w should be equal 3, current dim is %lu", wDimNumber);
-        CHECK_COND(xScaleDimNumber == THERE_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of pertokenscale should be equal 3, current dim is %lu", xScaleDimNumber);
-        CHECK_COND(wScaleDimNumber == FOUR_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of scale should be equal 4, current dim is %lu", wScaleDimNumber);
+                   "The dim num of w should be equal 3, current dim is %lu.", wDimNumber);
+        CHECK_COND(xScaleDimNumber == xscaleExpectDim, ACLNN_ERR_PARAM_INVALID,
+                   "The dim num of pertokenscale should be equal %lu, current dim is %lu.", xscaleExpectDim,xScaleDimNumber);
         CHECK_COND(grouplistDimNumber == ONE_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of grouplist should be equal 1, current dim is %lu", grouplistDimNumber);
+                   "The dim num of grouplist should be equal 1, current dim is %lu.", grouplistDimNumber);
         CHECK_COND(logitDimNumber == ONE_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of logit should be equal 1, current dim is %lu", logitDimNumber);
+                   "The dim num of logit should be equal 1, current dim is %lu.", logitDimNumber);
         CHECK_COND(rowindexDimNumber == ONE_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of rowindex should be equal 1, current dim is %lu", rowindexDimNumber);
+                   "The dim num of rowindex should be equal 1, current dim is %lu.", rowindexDimNumber);
         CHECK_COND(outDimNumber == TWO_DIM, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of out should be equal 1, current dim is %lu", outDimNumber);
+                   "The dim num of out should be equal 1, current dim is %lu.", outDimNumber);
+        if (gmmParams_.pertokenScaleOptional != nullptr) {
+            CHECK_COND(wScaleDimNumber == weightscaleExpectDim, ACLNN_ERR_PARAM_INVALID,
+                       "The dim num of scale should be equal %lu, current dim is %lu.", weightscaleExpectDim,
+                       wScaleDimNumber);
+        }
         if (gmmParams_.bias != nullptr) {
             auto baisDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
             CHECK_COND(baisDimNumber == TWO_DIM, ACLNN_ERR_PARAM_INVALID,
-                       "The dim num of bais should be equal 2, current dim is %lu", baisDimNumber);
+                       "The dim num of bais should be equal 2, current dim is %lu.", baisDimNumber);
         }
         if (gmmParams_.shareInput != nullptr) {
             auto shareInputDimNumber = gmmParams_.shareInput->GetViewShape().GetDimNum();
             CHECK_COND(shareInputDimNumber == TWO_DIM, ACLNN_ERR_PARAM_INVALID,
-                       "The dim num of shareinput should be equal 2, current dim is %lu", shareInputDimNumber);
+                       "The dim num of shareinput should be equal 2, current dim is %lu.", shareInputDimNumber);
         }
         return ACLNN_SUCCESS;
     }
@@ -141,17 +170,18 @@ public:
         int64_t outputBS = gmmParams_.out->GetViewShape().GetDim(0);
         op::Shape xExpectShape = {m, k};
         op::Shape weightExpectShape = {e, k, n};
-        op::Shape xScaleExpectShape = {m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR};
-        op::Shape weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), n, GMMFR_SPLIT_FACTOR};
+        op::Shape weightScaleExpectShape =
+            quantMode_ == QuantMode::MX ? op::Shape{e, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), n, GMMFR_SPLIT_FACTOR} :
+                                          op::Shape{e, 1, n};
         op::Shape weightTransExpectShape = {e, n, k};
-        op::Shape weightScaleTransExpectShape = {e, n, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR};
+        op::Shape weightScaleTransExpectShape =
+            quantMode_ == QuantMode::MX ? op::Shape{e, n, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR} :
+                                          op::Shape{e, 1, n};
         op::Shape grouplistExpectShape = {e};
         op::Shape logitExpectShape = {m};
         op::Shape rowindexExpectShape = {m};
         op::Shape outputExpectShape = {outputBS, n};
-
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x1, xExpectShape, return false);
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.pertokenScaleOptional, xScaleExpectShape, return false);
         if (gmmParams_.transposeX2) {
             OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.scale, weightScaleTransExpectShape, return false);
             OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x2, weightTransExpectShape, return false);
@@ -163,7 +193,12 @@ public:
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.logit, logitExpectShape, return false);
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.rowIndex, rowindexExpectShape, return false);
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.out, outputExpectShape, return false);
-
+        if (gmmParams_.pertokenScaleOptional != nullptr) {
+            op::Shape xScaleExpectShape =
+                quantMode_ == QuantMode::MX ? op::Shape{m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR} : op::Shape{m};
+            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.pertokenScaleOptional, xScaleExpectShape,
+                                                        return false);
+        }
         if (gmmParams_.bias != nullptr) {
             // bias的shape期望为[E, N]
             op::Shape biasExpectShape = {e, n};
@@ -215,15 +250,15 @@ public:
         DataType weightDtype = gmmParams_.x2->GetDataType();
         if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
             if (!(k % MOD2 == 0)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In MXFP4 , k must be divisible by 2. But got %ld.", k);
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In MXFP4, k must be divisible by 2. But got %ld.", k);
                 return false;
             }
             if (gmmParams_.transposeX2 == false && (n % MOD2 != 0)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In MXFP4 , n must be even when x2 is not transposed. But got %ld.", n);
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In MXFP4, n must be even when x2 is not transposed. But got %ld.", n);
                 return false;
             }
             if (k == MOD2) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In MXFP4 , k cannot be 2");
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In MXFP4, k cannot be 2");
                 return false;
             }
         }
@@ -232,39 +267,85 @@ public:
 
     bool CheckDtypeValid()
     {
-        DataType xDtype = gmmParams_.x1->GetDataType();
-        DataType weightDtype = gmmParams_.x2->GetDataType();
-        if (CheckType(xDtype, MX_IN_TYPE_SUPPORT_LIST) && CheckType(weightDtype, MX_IN_TYPE_SUPPORT_LIST)) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.x1, MX_IN_TYPE_SUPPORT_LIST, return false);
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.x2, MX_IN_TYPE_SUPPORT_LIST, return false);
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.scale, MX_SCALE_TYPE_SUPPORT_LIST, return false);
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.rowIndex, MX_ROW_INDEX_TYPE_SUPPORT_LIST, return false);
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.pertokenScaleOptional, MX_PERTOKEN_SCALE_TYPE_SUPPORT_LIST,
-                                       return false);
-            if (gmmParams_.bias != nullptr) {
-                OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.bias, MX_BIAS_TYPE_SUPPORT_LIST, return false);
+        DataType scaleDtype = gmmParams_.scale->GetDataType();
+        if (quantMode_ == QuantMode::MX) {
+            if (CheckDtypeValidForMX() == false) {
+                return false;
             }
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.groupList, GROUP_LIST_TYPE_SUPPORT_LIST, return false);
-            if (gmmParams_.shareInput != nullptr) {
-                OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.shareInput, SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
+        } else if (quantMode_ == QuantMode::PERTOEKN) {
+            if (CheckDtypeValidForPertoken() == false) {
+                return false;
             }
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.logit, LOGIT_TYPE_SUPPORT_LIST, return false);
-            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.out, OUT_TYPE_SUPPORT_LIST, return false);
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scale dtype %s is not supported.", op::ToString(scaleDtype).GetString());
+            return false;
+        }
+        return true;
+    }
+    
+    bool CheckDtypeValidForMX()
+    {
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.x1, X_WEIGHT_TYPE_SUPPORT_LIST_MX, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.x2, X_WEIGHT_TYPE_SUPPORT_LIST_MX, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.scale, SCALE_TYPE_SUPPORT_LIST_MX, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.rowIndex, ROW_INDEX_TYPE_SUPPORT_LIST_MX, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.pertokenScaleOptional, PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX, return false);
+        if (gmmParams_.bias != nullptr) {
+            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.bias, BIAS_TYPE_SUPPORT_LIST_MX, return false);
+        }
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.groupList, GROUP_LIST_TYPE_SUPPORT_LIST, return false);
+        if (gmmParams_.shareInput != nullptr) {
+            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.shareInput, SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
+        }
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.logit, LOGIT_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.out, OUT_TYPE_SUPPORT_LIST, return false);
+        if ((CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4) !=
+             CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4)) ||
+            (CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8) !=
+             CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8))) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "X1 and x2 dtype should be both mxfp4 or both mxfp8, actual x1 dtype is %s and x2 dtype is %s.",
+                    op::ToString(gmmParams_.x1->GetDataType()).GetString(),
+                    op::ToString(gmmParams_.x2->GetDataType()).GetString());
+            return false;
+        }
+        return true;
+    }
 
-            if ((CheckType(gmmParams_.x1->GetDataType(), MXFP4_IN_TYPE_SUPPORT_LIST) !=
-                 CheckType(gmmParams_.x2->GetDataType(), MXFP4_IN_TYPE_SUPPORT_LIST)) ||
-                (CheckType(gmmParams_.x1->GetDataType(), MXFP8_IN_TYPE_SUPPORT_LIST) !=
-                 CheckType(gmmParams_.x2->GetDataType(), MXFP8_IN_TYPE_SUPPORT_LIST))) {
+    bool CheckDtypeValidForPertoken()
+    {
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.x1, X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.x2, X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.scale, SCALE_TYPE_SUPPORT_LIST_PERTOKEN, return false);
+        if (gmmParams_.x1->GetDataType() == DataType::DT_INT8) {
+            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.rowIndex, ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8, return false);
+        } else {
+            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.rowIndex, ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8,
+                                       return false);
+        }
+        if (gmmParams_.pertokenScaleOptional != nullptr) {
+            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.pertokenScaleOptional, PERTOKEN_SCALE_TYPE_SUPPORT_LIST_PERTOKEN,
+                                       return false);
+        }
+        if (gmmParams_.bias != nullptr) {
+            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.bias, BIAS_TYPE_SUPPORT_LIST_PERTOKEN, return false);
+        }
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.groupList, GROUP_LIST_TYPE_SUPPORT_LIST, return false);
+        if (gmmParams_.shareInput != nullptr) {
+            OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.shareInput, SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
+        }
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.logit, LOGIT_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmParams_.out, OUT_TYPE_SUPPORT_LIST, return false);
+        if (gmmParams_.x1->GetDataType() != gmmParams_.x2->GetDataType()) {
+            bool xIsFP8 = CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8);
+            bool wIsFP8 = CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8);
+            if (!xIsFP8 || !wIsFP8) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "X1 and x2 dtype should be same, actual x1 dtype is %s and x2 dtype is %s.",
                         op::ToString(gmmParams_.x1->GetDataType()).GetString(),
                         op::ToString(gmmParams_.x2->GetDataType()).GetString());
                 return false;
             }
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x dtype %s and weight dtype %s is not supported.",
-                    op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
-            return false;
         }
         return true;
     }
@@ -278,10 +359,21 @@ public:
                     op::ToString(gmmParams_.pertokenScaleOptional->GetStorageFormat()).GetString());
             return false;
         }
-        if (op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat()) ||
-            op::IsPrivateFormat(gmmParams_.scale->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "weight and scale must be ND format, but got: %s, %s.",
-                    op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(),
+        if (quantMode_ == QuantMode::MX) {
+            if (op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat())) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of weight should be ND, current format is %s.",
+                        op::ToString(gmmParams_.x2->GetStorageFormat()).GetString());
+                return false;
+            }
+        } else {
+            if (gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of weight should be NZ, current format is %s.",
+                        op::ToString(gmmParams_.x2->GetStorageFormat()).GetString());
+                return false;
+            }
+        }
+        if (op::IsPrivateFormat(gmmParams_.scale->GetStorageFormat())) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of scale should be ND, current format is %s.",
                     op::ToString(gmmParams_.scale->GetStorageFormat()).GetString());
             return false;
         }
@@ -320,6 +412,7 @@ public:
 
 private:
     GroupedMatmulParams gmmParams_;
+    QuantMode quantMode_;
 };
 } // namespace GmmFinalizeRouting
 #endif
