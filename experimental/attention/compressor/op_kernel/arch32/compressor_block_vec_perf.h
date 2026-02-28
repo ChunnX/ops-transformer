@@ -850,7 +850,7 @@ CompressorBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> srcLocal, const 
 
 template <typename COMP>
 __aicore__ inline void
-CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> srcLocal, const GlobalTensor<T> &stateGm,
+CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> dstLocal, const GlobalTensor<T> &stateGm,
                                            const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
                                            uint32_t dStartIdx, uint32_t dDealSize)
 {
@@ -864,8 +864,11 @@ CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> srcLocal, const 
         // 整个batch的第一块
         uint32_t startSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, constInfo_.cmpRatio);
         uint32_t endSeqIdx = sliceInfo.bStartPos;
-        uint64_t srcBaseOffset = (coff - 1) * dDealSize;
-        ReadFromCacheState(srcLocal[srcBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
+        uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * coff * dDealSize;
+        if constexpr (COMP::coff == Compressor::COFF::OVERLAP) {
+            dstBaseOffset += (coff - 1) * dDealSize;
+        }
+        ReadFromCacheState(dstLocal[dstBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
                            dStartIdx + (coff - 1) * constInfo_.headDim, dDealSize);
     }
 
@@ -876,7 +879,7 @@ CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> srcLocal, const 
         if (isFirst) {
             // 无历史数据
             // dDealSize必须为64
-            Duplicate(srcLocal, FLOAT_ZERO, dDealSize, constInfo_.cmpRatio, 1, coff * dDealSize / REPEAT_STRIDE_NUM);
+            Duplicate(dstLocal, FLOAT_ZERO, dDealSize, constInfo_.cmpRatio, 1, coff * dDealSize / REPEAT_STRIDE_NUM);
         }
         if (sliceInfo.sIdx < constInfo_.cmpRatio && (!isFirst || sliceInfo.compressTcSize > 1)) {
             uint32_t startSeqIdx =
@@ -887,8 +890,11 @@ CompressorBlockVectorPerf<COMP>::ReadState(const LocalTensor<T> srcLocal, const 
                 min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, constInfo_.cmpRatio) -
                         constInfo_.cmpRatio,
                     sliceInfo.bStartPos);
-            uint64_t srcBaseOffset = isFirst ? constInfo_.cmpRatio * coff * dDealSize : 0;
-            ReadFromCacheState(srcLocal[srcBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
+            uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * coff * dDealSize;
+            if (isFirst) {
+                dstBaseOffset += constInfo_.cmpRatio * coff * dDealSize;
+            }
+            ReadFromCacheState(dstLocal[dstBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
                                dStartIdx, dDealSize);
         }
     }
