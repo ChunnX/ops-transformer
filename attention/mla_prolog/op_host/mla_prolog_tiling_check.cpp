@@ -175,11 +175,17 @@ ge::graphStatus MlaPrologTilingCheck::CheckAttrs() const
 ge::graphStatus MlaPrologTilingCheck::CheckDims() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_CHECK_IF(scenarioInfo_.quantMode_ != QUANT_MODE::NO_QUANT && scenarioInfo_.quantMode_ != QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR &&
-            scenarioInfo_.quantMode_ != QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT && scenarioInfo_.quantMode_ != QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE,
-            OP_LOGE(context_.opName, "QUANT_MODE allows only %u, %u, %u, %u, got %u.",
-                QUANT_MODE::NO_QUANT, QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT, QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR,
-                QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE, scenarioInfo_.quantMode_),
+        const std::set<uint32_t> supportedQuantModes {
+            static_cast<uint32_t>(QUANT_MODE::NO_QUANT),
+            static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT),
+            static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL),
+            static_cast<uint32_t>(QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT),
+            static_cast<uint32_t>(QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR),
+            static_cast<uint32_t>(QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE)
+        };
+        OP_CHECK_IF(supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
+            OP_LOGE(context_.opName, "QUANT_MODE allows only %s, got %u.",
+                ConvertContainerToString(supportedQuantModes).c_str(), static_cast<uint32_t>(scenarioInfo_.quantMode_)),
             return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(baseShapeInfo_.bSize > MAX_B_SIZE,
@@ -850,7 +856,7 @@ bool MlaPrologTilingCheck::CheckWDq() const
 bool MlaPrologTilingCheck::CheckWUqQr() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_FRACTAL_NZ},
+        return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME, {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_FRACTAL_NZ},
                                 {2, 4});
     } else {
         return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_FRACTAL_NZ},
@@ -908,7 +914,7 @@ bool MlaPrologTilingCheck::CheckCacheIndex() const
 bool MlaPrologTilingCheck::CheckKvCache() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
     } else {
         return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
     }
@@ -918,7 +924,7 @@ bool MlaPrologTilingCheck::CheckKrCache() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
         return IsSingleParamValid(
-            context_.krCache, KR_CACHE_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
+            context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
     } else {
     return (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
                 *(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) ||

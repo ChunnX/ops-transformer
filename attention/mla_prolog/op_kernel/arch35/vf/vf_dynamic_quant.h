@@ -19,6 +19,7 @@
 #include "kernel_tensor.h"
 
 namespace MlaProlog {
+constexpr float INT8_MAX_VALUE = 127.0f;
 constexpr float FP8_E4M3FN_MAX_VALUE = 448.0f;
 constexpr float FP8_E4M3FN_MIN_VALUE = -448.0f;
 constexpr uint32_t FP8_E4M3FN_BLOCK_SIZE = 32;
@@ -45,9 +46,12 @@ __simd_vf__ void ComputeVFImpl(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ fl
     constexpr static AscendC::MicroAPI::CastTrait castTraitB16ToF32 = {
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
         AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
-    constexpr static AscendC::MicroAPI::CastTrait castTraitF32Tofp8 = {
+    constexpr static AscendC::MicroAPI::CastTrait castTraitPack2 = {
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
         AscendC::MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    constexpr static AscendC::MicroAPI::CastTrait castTraitF32ToHalf = {
+        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
+        AscendC::MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
     static constexpr AscendC::MicroAPI::DivSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING, true};
     AscendC::MicroAPI::RegTensor<T> xInput; // 搬入的x
     AscendC::MicroAPI::RegTensor<float> xFp32; // cast成float之后的x
@@ -57,7 +61,8 @@ __simd_vf__ void ComputeVFImpl(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ fl
     AscendC::MicroAPI::RegTensor<float> xScale; // scale
     AscendC::MicroAPI::RegTensor<float> xScaleDup; // Duplicate之后的scale，为了和input一起得到y
     AscendC::MicroAPI::RegTensor<float> xNorm; // input/scale
-    AscendC::MicroAPI::RegTensor<O> yFp8; // 最终y
+    AscendC::MicroAPI::RegTensor<half> yHalf; // float-->half-->int8
+    AscendC::MicroAPI::RegTensor<O> yOutput; // 最终y
 
     AscendC::MicroAPI::MaskReg validMask0; // 有效掩码
     AscendC::MicroAPI::MaskReg fullMask1 = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>(); // 启用所有通道，全掩码
@@ -74,8 +79,7 @@ __simd_vf__ void ComputeVFImpl(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ fl
             AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xInput, xAddr + rowIndex * rowCount + j * VL);
             AscendC::MicroAPI::Cast<float, T, castTraitB16ToF32>(xFp32, xInput, validMask0);
         } else {
-            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_NORM>(xInput, xAddr + rowIndex * rowCount + j * VL);
-            xFp32 = xInput;
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_NORM>(xFp32, xAddr + rowIndex * rowCount + j * VL);
         }
         AscendC::MicroAPI::Abs(xFp32Abs, xFp32, validMask0);
         AscendC::MicroAPI::Max(xMaxAbs, xFp32Abs, xMaxAbs, fullMask1);
@@ -100,12 +104,16 @@ __simd_vf__ void ComputeVFImpl(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ fl
             AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xInput, xAddr + rowIndex * rowCount + j * VL);
             AscendC::MicroAPI::Cast<float, T, castTraitB16ToF32>(xFp32, xInput, validMask2);
         } else {
-            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_NORM>(xInput, xAddr + rowIndex * rowCount + j * VL);
-            xFp32 = xInput;
+            AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_NORM>(xFp32, xAddr + rowIndex * rowCount + j * VL);
         }
         AscendC::MicroAPI::Div(xNorm, xFp32, xScaleDup, validMask2);
-        AscendC::MicroAPI::Cast<O, float, castTraitF32Tofp8>(yFp8, xNorm, validMask2);
-        AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(addr, yFp8, validMask2);
+        if constexpr (std::is_same<O, fp8_e4m3fn_t>::value) {
+            AscendC::MicroAPI::Cast<O, float, castTraitPack2>(yOutput, xNorm, validMask2);
+        } else {
+            AscendC::MicroAPI::Cast<half, float, castTraitF32ToHalf>(yHalf, xNorm, validMask2);
+            AscendC::MicroAPI::Cast<O, half, castTraitPack2>(yOutput, yHalf, validMask2);
+        }
+        AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(addr, yOutput, validMask2);
     }
     AscendC::MicroAPI::StoreUnAlignPost(scaleAddr, ureg0, 0);
 }
@@ -118,13 +126,14 @@ __aicore__ inline void ComputeVF(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ 
     uint16_t VL = AscendC::VECTOR_REG_WIDTH / dtypeSize;
     uint32_t rowCount = col;
     uint16_t vfLoop = (rowCount + VL - 1) / VL;
-    const float alphaValue = static_cast<float>(1.0) / FP8_E4M3FN_MAX_VALUE;
 
+    constexpr float maxValue = std::is_same<O, fp8_e4m3fn_t>::value ? FP8_E4M3FN_MAX_VALUE : INT8_MAX_VALUE;
+    const float alphaValue = static_cast<float>(1.0) / maxValue;
     ComputeVFImpl<T, C, O>(xAddr, yAddr, scaleAddr, rowIndex, rowCount, dtypeSize, VL, vfLoop, alphaValue);
 }
 
 /**
- * @brief DynamicQuantQnVf 对row行进行dynamicquant, BF16 ---> FP8E4M3, 每一行出一个系数。
+ * @brief DynamicQuantPerTokenVf 对row行进行dynamicquant, BF16 ---> int8/FP8E4M3, 每一行出一个系数。
  * @param outputLocal 输出tensor [row , col]
  * @param scale 输出每行的反量化系数 [row]
  * @param inputLocal 输入tensor [row , col]
@@ -132,7 +141,7 @@ __aicore__ inline void ComputeVF(__ubuf__ T* xAddr, __ubuf__ O* yAddr, __ubuf__ 
  * @param col 待处理的列数
  */
 template<typename T, typename C, typename O>
-__aicore__ inline void DynamicQuantQnVf(const LocalTensor<O> &outputLocal, const LocalTensor<C> &scale,
+__aicore__ inline void DynamicQuantPerTokenVf(const LocalTensor<O> &outputLocal, const LocalTensor<C> &scale,
     const LocalTensor<T> &inputLocal, uint64_t row, uint64_t col)
 {
     auto xAddr = (__local_mem__ T*)inputLocal.GetPhyAddr();
@@ -349,7 +358,7 @@ __simd_vf__ void ComputeDataVF(__ubuf__ T* srcAddr, __ubuf__ uint16_t* halfScale
 }
 
 /**
- * @brief DynamicQuantCqVf 对row进行dynamicquant, BF16 ---> FP8E4M3, 每个BLOCK出一个系数。
+ * @brief DynamicQuantPerBlockMxfp8Vf 对row进行dynamicquant, BF16 ---> FP8E4M3, 每个BLOCK出一个系数。
  * @param outputLocal 输出tensor [row, col]
  * @param outputScale 输出每行的反量化系数 [row, col/32]
  * @param inputLocal 输入tensor [row, col]
@@ -363,7 +372,7 @@ __simd_vf__ void ComputeDataVF(__ubuf__ T* srcAddr, __ubuf__ uint16_t* halfScale
  Pi = cast_to_dst_type(Vi/mxscale, round_mode)
 **/
 template<typename T, typename U>
-__aicore__ inline void DynamicQuantCqVf(const LocalTensor<int8_t>& outputLocal, const LocalTensor<uint16_t>& outputScale,
+__aicore__ inline void DynamicQuantPerBlockMxfp8Vf(const LocalTensor<int8_t>& outputLocal, const LocalTensor<uint16_t>& outputScale,
     const LocalTensor<T>& inputLocal, const LocalTensor<uint8_t>& tmpLocal, uint32_t row, uint32_t col)
 {
     LocalTensor<uint16_t> maxExpLocal = tmpLocal.ReinterpretCast<uint16_t>();

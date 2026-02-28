@@ -60,7 +60,7 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, con
         LocalTensor<O> output = outputLocal.template ReinterpretCast<O>();
         WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
         AscendC::PipeBarrier<PIPE_V>();
-        DynamicQuantQnVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
+        DynamicQuantPerTokenVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
         AscendC::PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
         SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
