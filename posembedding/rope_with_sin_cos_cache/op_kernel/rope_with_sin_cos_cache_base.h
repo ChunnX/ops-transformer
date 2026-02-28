@@ -57,6 +57,7 @@ protected:
     uint64_t num_tokens_each_front_core;
     uint64_t num_tokens_each_tail_core;
     uint64_t is_neox_style;
+    uint64_t cacheMode;
 
     uint64_t loop_time_current_core{0};            // 当前核批处理数据轮数
     uint64_t num_tokens_each_loop_current_core{0}; // 当前核每轮处理的token数
@@ -94,6 +95,7 @@ __aicore__ inline void RopeWithSinCosCacheBase<T>::InitData(const RopeWithSinCos
     num_tokens_each_front_core = tilingData.num_tokens_each_front_core;
     num_tokens_each_tail_core = tilingData.num_tokens_each_tail_core;
     is_neox_style = tilingData.isNeoxStyle;
+    cacheMode = tilingData.cacheMode;
 
     loop_time_current_core =
         (blockIdx_ < front_core) ? tilingData.loop_time_each_front_core : tilingData.loop_time_each_tail_core;

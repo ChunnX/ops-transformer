@@ -25,12 +25,14 @@ constexpr uint32_t INPUT_QUERY_IN_INDEX = 1;
 constexpr uint32_t INPUT_KEY_IN_INDEX = 2;
 constexpr uint32_t INPUT_COSSINCACHE_INDEX = 3;
 
-constexpr uint32_t INPUT_MROPE_SECTION_INDEX = 0;
-constexpr uint32_t INPUT_QSTRIDE_INDEX = 1;
-constexpr uint32_t INPUT_KSTRIDE_INDEX = 2;
-constexpr uint32_t INPUT_IS_NEOXSTYLE_INDEX = 3;
-constexpr uint32_t INPUT_NUM_QHEADS_INDEX = 4;
-constexpr uint32_t INPUT_NUM_kHEADS_INDEX = 5;
+constexpr uint32_t INPUT_NUM_QHEADS_INDEX = 0;
+constexpr uint32_t INPUT_NUM_KHEADS_INDEX = 1;
+constexpr uint32_t INPUT_HEAD_SIZE_INDEX = 2;
+constexpr uint32_t INPUT_MROPE_SECTION_INDEX = 3;
+constexpr uint32_t INPUT_QSTRIDE_INDEX = 4;
+constexpr uint32_t INPUT_KSTRIDE_INDEX = 5;
+constexpr uint32_t INPUT_IS_NEOXSTYLE_INDEX = 6;
+constexpr uint32_t INPUT_CACHE_MODE_INDEX = 7;
 
 constexpr uint32_t INDEX_QUERYOUT_OUTPUT_ = 0;
 constexpr uint32_t INDEX_KEYOUT_OUTPUT = 1;
@@ -79,6 +81,7 @@ struct TilingParams {
     uint64_t num_kheads_each_loop = 0;
     uint64_t num_kheads_last_loop = 0;
     uint64_t tilingKey = 0;
+    uint64_t cacheMode = 0;
 };
 } // namespace
 
@@ -119,6 +122,7 @@ static void SetTiling(TilingParams& params, RopeWithSinCosCacheTilingData& tilin
     tiling.set_q_leading_dimension(params.q_leading_dimension);
     tiling.set_k_leading_dimension(params.k_leading_dimension);
     tiling.set_isNeoxStyle(params.isNeoxStyle);
+    tiling.set_cacheMode(params.cacheMode);
     tiling.set_front_core(params.front_core);
     tiling.set_tail_core(params.tail_core);
     tiling.set_num_tokens_front_core_each_loop(params.num_tokens_front_core_each_loop);
@@ -136,6 +140,41 @@ static void SetTiling(TilingParams& params, RopeWithSinCosCacheTilingData& tilin
     tiling.set_num_qheads_last_loop(params.num_qheads_last_loop);
     tiling.set_num_kheads_each_loop(params.num_kheads_each_loop);
     tiling.set_num_kheads_last_loop(params.num_kheads_last_loop);
+}
+
+static void PrintTilingData(const gert::TilingContext* context, RopeWithSinCosCacheTilingData& tiling)
+{
+    OP_LOGD(context->GetNodeName(), ">>>>>>>>>> Start to print RopeWithSinCosCache tiling data <<<<<<<<<<");
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: coreNumUse is %ld.", tiling.get_core_num_use());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num tokens is %ld.", tiling.get_num_tokens());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_q_heads is %ld.", tiling.get_num_q_heads());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_kv_heads is %ld.", tiling.get_num_kv_heads());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: head_size is %ld.", tiling.get_head_size());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: rotary_dim is %ld.", tiling.get_rotary_dim());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: mrope_section0 is %ld.", tiling.get_mrope_section0());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: mrope_section1 is %ld.", tiling.get_mrope_section1());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: mrope_section2 is %ld.", tiling.get_mrope_section2());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: q_leading_dimension is %ld.", tiling.get_q_leading_dimension());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: k_leading_dimension is %ld.", tiling.get_k_leading_dimension());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: isNeoxStyle is %ld.", tiling.get_isNeoxStyle());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: cacheMode is %ld.", tiling.get_cacheMode());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: front_core is %ld.", tiling.get_front_core());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: tail_core is %ld.", tiling.get_tail_core());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_tokens_front_core_each_loop is %ld.", tiling.get_num_tokens_front_core_each_loop());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_tokens_tail_core_each_loop is %ld.", tiling.get_num_tokens_tail_core_each_loop());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_tokens_each_front_core is %ld.", tiling.get_num_tokens_each_front_core());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_tokens_each_tail_core is %ld.", tiling.get_num_tokens_each_tail_core());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: loop_time_each_front_core is %ld.", tiling.get_loop_time_each_front_core());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: loop_time_each_tail_core is %ld.", tiling.get_loop_time_each_tail_core());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_tokens_front_core_last_loop is %ld.", tiling.get_num_tokens_front_core_last_loop());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_tokens_tail_core_last_loop is %ld.", tiling.get_num_tokens_tail_core_last_loop());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: loop_for_one_token is %ld.", tiling.get_loop_for_one_token());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: loop_along_qheads is %ld.", tiling.get_loop_along_qheads());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: loop_along_kheads is %ld.", tiling.get_loop_along_kheads());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_qheads_each_loop is %ld.", tiling.get_num_qheads_each_loop());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_qheads_last_loop is %ld.", tiling.get_num_qheads_last_loop());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_kheads_each_loop is %ld.", tiling.get_num_kheads_each_loop());
+    OP_LOGD(context->GetNodeName(), "RopeWithSinCosCache_tiling: num_kheads_last_loop is %ld.", tiling.get_num_kheads_last_loop());
 }
 
 static ge::graphStatus TilingKeyChose(const gert::TilingContext* context, TilingParams& params)
@@ -285,12 +324,15 @@ static ge::graphStatus TilingRopeWithSinCosCache(gert::TilingContext* context)
     auto* attrs = context->GetAttrs();
 
     const uint64_t* attrNumQHeads = attrs->GetAttrPointer<uint64_t>(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrNumQHeads);
     params.num_q_heads = static_cast<uint64_t>(*attrNumQHeads);
 
     const uint64_t* attrNumKVHeads = attrs->GetAttrPointer<uint64_t>(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrNumKVHeads);
     params.num_kv_heads = static_cast<uint64_t>(*attrNumKVHeads);
 
     const uint64_t* attrHeadSize = attrs->GetAttrPointer<uint64_t>(2);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrHeadSize);
     params.head_size = static_cast<uint64_t>(*attrHeadSize);
 
     const auto attrMRopeSection = attrs->GetAttrPointer<gert::ContinuousVector>(3);
@@ -302,17 +344,25 @@ static ge::graphStatus TilingRopeWithSinCosCache(gert::TilingContext* context)
     }
 
     const uint64_t* attrQStride = attrs->GetAttrPointer<uint64_t>(4);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrQStride);
     params.q_leading_dimension = static_cast<uint64_t>(*attrQStride);
 
     const uint64_t* attrKStride = attrs->GetAttrPointer<uint64_t>(5);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrKStride);
     params.k_leading_dimension = static_cast<uint64_t>(*attrKStride);
 
     const bool* attrIsNeoxStyle = attrs->GetAttrPointer<bool>(6);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrIsNeoxStyle);
     params.isNeoxStyle = static_cast<bool>(*attrIsNeoxStyle);
+
+    const uint64_t* attrCacheMode = attrs->GetAttrPointer<uint64_t>(INPUT_CACHE_MODE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrCacheMode);
+    params.cacheMode = static_cast<uint64_t>(*attrCacheMode);
 
     TilingKeyChose(context, params);
     TilingCompute(context, params);
     SetTiling(params, tiling);
+    PrintTilingData(context, tiling);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 

@@ -57,6 +57,7 @@ public:
         this->Attr("qStride").AttrType(OPTIONAL).Int(0);
         this->Attr("kStride").AttrType(OPTIONAL).Int(0);
         this->Attr("isNeoxStyle").AttrType(OPTIONAL).Bool(true);
+        this->Attr("cacheMode").AttrType(OPTIONAL).Int(0);
         
         OpAICoreConfig membaseCfg;
         membaseCfg.DynamicCompileStaticFlag(true)

@@ -32,23 +32,26 @@ OP_TYPE_REGISTER(RopeWithSinCosCache);
 const std::tuple<aclTensor*, aclTensor*> RoepWithSinCosCacheAICore(
     const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
     const aclIntArray* mropeSection, int64_t headSize, bool isNeoxStyle, int64_t qStride, int64_t kStride,
-    int64_t numQHeads, int64_t numKHeads, aclTensor* queryOut, aclTensor* keyOut, aclOpExecutor* executor)
+    int64_t numQHeads, int64_t numKHeads, int64_t cacheMode, aclTensor* queryOut, aclTensor* keyOut, aclOpExecutor* executor)
 {
     L0_DFX(
         RoepWithSinCosCacheAICore, positions, queryIn, keyIn, cosSinCache, mropeSection, headSize, isNeoxStyle, qStride,
-        kStride, numQHeads, numKHeads, queryOut, keyOut);
+        kStride, numQHeads, numKHeads, cacheMode, queryOut, keyOut);
     // 使用框架宏 ADD_TO_LAUNCHER_LIST_AICORE，将算子加入任务队列
     auto retAicore = ADD_TO_LAUNCHER_LIST_AICORE(
         RopeWithSinCosCache, OP_INPUT(positions, queryIn, keyIn, cosSinCache), OP_OUTPUT(queryOut, keyOut),
-        OP_ATTR(numQHeads, numKHeads, headSize, mropeSection, qStride, kStride, isNeoxStyle));
-    (void)retAicore;
+        OP_ATTR(numQHeads, numKHeads, headSize, mropeSection, qStride, kStride, isNeoxStyle, cacheMode));
+    if (retAicore != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "RoepWithSinCosCacheAICore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        return std::tuple<aclTensor*, aclTensor*>(nullptr, nullptr);
+    }   
     return std::tie(queryOut, keyOut);
 }
 
 const std::tuple<aclTensor*, aclTensor*> RopeWithSinCosCache(
     const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
     const aclIntArray* mropeSection, int64_t headSize, bool isNeoxStyle, int64_t qStride, int64_t kStride,
-    int64_t numQHeads, int64_t numKHeads, aclOpExecutor* executor)
+    int64_t numQHeads, int64_t numKHeads, int64_t cacheMode, aclOpExecutor* executor)
 {
     // 根据推导出的输出shape申请输出tensor
     auto queryOut = executor->AllocTensor(queryIn->GetViewShape(), queryIn->GetDataType(), queryIn->GetViewFormat());
@@ -56,6 +59,6 @@ const std::tuple<aclTensor*, aclTensor*> RopeWithSinCosCache(
 
     return RoepWithSinCosCacheAICore(
         positions, queryIn, keyIn, cosSinCache, mropeSection, headSize, isNeoxStyle, qStride, kStride, numQHeads,
-        numKHeads, queryOut, keyOut, executor);
+        numKHeads, cacheMode, queryOut, keyOut, executor);
 }
 } // namespace l0op

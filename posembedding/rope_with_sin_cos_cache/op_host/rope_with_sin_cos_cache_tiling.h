@@ -32,6 +32,7 @@ TILING_DATA_FIELD_DEF(uint64_t, mrope_section2);
 TILING_DATA_FIELD_DEF(uint64_t, q_leading_dimension);
 TILING_DATA_FIELD_DEF(uint64_t, k_leading_dimension);
 TILING_DATA_FIELD_DEF(uint64_t, isNeoxStyle);
+TILING_DATA_FIELD_DEF(uint64_t, cacheMode);
 TILING_DATA_FIELD_DEF(uint64_t, front_core);
 TILING_DATA_FIELD_DEF(uint64_t, tail_core);
 TILING_DATA_FIELD_DEF(uint64_t, num_tokens_each_front_core);
