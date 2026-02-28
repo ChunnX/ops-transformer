@@ -1109,16 +1109,16 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </thead>
         <tbody>
             <tr>
-                <td rowspan="3">Q_S&gt;1时</td>
+                <td rowspan="3">P_S1(pse shape第三维)&gt;1时</td>
                 <td rowspan="3">query的数据类型</td>
                 <td>FLOAT16</td>
                 <td>FLOAT16</td>
-                <td rowspan="3">(B,Q_N,Q_S,KV_S)、(1,Q_N,Q_S,KV_S)</td>
+                <td rowspan="3">(B,Q_N,P_S1,P_S2)、(1,Q_N,P_S1,P_S2)</td>
                 <td rowspan="3">
                 <ul>
                 <li>query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。</li>
-                <li>Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。prefix场景KV_S需大于等于actualSharedPrefixLen与key的S长度之和。</li>
-                <li>KV_S建议padding到32对齐，提升性能</li>
+                <li>P_S1需大于等于query的S长度，P_S2需大于等于key的S长度。prefix场景P_S2需大于等于actualSharedPrefixLen与key的S长度之和。</li>
+                <li>P_S2建议padding到32对齐，提升性能</li>
                 </ul>
                 </td>
             </tr>
@@ -1135,10 +1135,10 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td rowspan="2">query的数据类型</td>
                 <td>FLOAT16</td>
                 <td>FLOAT16</td>
-                <td rowspan="2">(B,Q_N,1,KV_S)、(1,Q_N,1,KV_S)</td>
+                <td rowspan="2">(B,Q_N,1,P_S2)、(1,Q_N,1,P_S2)</td>
                 <td rowspan="2">
                 <ul>
-                <li>KV_S建议padding到32对齐，提升性能</li>
+                <li>P_S2建议padding到32对齐，提升性能</li>
                 <li>仅支持D轴对齐，即D轴可以被16整除。</li>
                 </ul>
                 </td>
