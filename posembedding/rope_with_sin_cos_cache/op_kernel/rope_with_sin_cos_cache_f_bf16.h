@@ -360,6 +360,7 @@ __aicore__ inline void RopeWithSinCosCacheFP16<T>::Compute(uint64_t index, uint6
 
     // 处理key
     this->MTE3ToVSync();
+    this->VToMTE2Sync();
     DataCopy(
         inQQueBeforeCastLocal, key_in_GM[key_in_offset],
         {static_cast<uint16_t>(loopN), static_cast<uint16_t>(this->num_kv_heads * headBlockLen / 2),
@@ -577,6 +578,7 @@ __aicore__ inline void RopeWithSinCosCacheFP16<T>::ComputeAlongHeads(uint64_t in
     }
     //key
     this->MTE3ToVSync();
+    this->VToMTE2Sync();
     if (indexHeads < this->loop_along_kheads) {
         uint64_t loopNKhead = (indexHeads == this->loop_along_kheads - 1 && this->num_kheads_last_loop != 0) ?
                                   this->num_kheads_last_loop :

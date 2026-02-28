@@ -345,6 +345,7 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::Compute(uint64_t index, uint64
         {static_cast<uint16_t>(loopN), static_cast<uint16_t>(this->num_q_heads * headBlockLen), 0, 0});
     // key的处理
     this->MTE3ToVSync();
+    this->VToMTE2Sync();
     DataCopy(
         inLocal, key_in_GM[offsetk],
         {static_cast<uint16_t>(loopN), static_cast<uint16_t>(this->num_kv_heads * headBlockLen),
@@ -543,6 +544,7 @@ __aicore__ inline void RopeWithSinCosCacheF32<T>::ComputeAlongHeads(uint64_t ind
     }
     //key
     this->MTE3ToVSync();
+    this->VToMTE2Sync();
     if (indexHeads < this->loop_along_kheads) {
         uint64_t loopNKhead = (indexHeads == this->loop_along_kheads - 1 && this->num_kheads_last_loop != 0) ?
                                   this->num_kheads_last_loop :
