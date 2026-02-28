@@ -330,7 +330,7 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(Buffer<Bu
     fixpipe2GmParams.params.ndNum = 1;
     fixpipe2GmParams.params.srcNdStride = 0;
     fixpipe2GmParams.params.dstNdStride = 0;
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(mm2ResGm[gmOffset], mm2L0CTensor, fixpipe2GmParams); //TODO db?
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(mm2ResGm[gmOffset], mm2L0CTensor, fixpipe2GmParams);
     mm2L0CBuffer.Set<HardEvent::FIX_M>();
 };
 

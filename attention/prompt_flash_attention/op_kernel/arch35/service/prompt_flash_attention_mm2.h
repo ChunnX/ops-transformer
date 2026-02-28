@@ -28,7 +28,6 @@ public:
     __aicore__ inline void Init();
     __aicore__ inline void WaitIterateAll();
 
-    // PFATODO，tmpSoftmaxResUb->bmm2Scm的拷贝在vector1侧完成
     // 全量化、非量化、PA场景
     __aicore__ inline void IterateAll(LocalTensor<mmOutputType>& bmm2ResUb, LocalTensor<T>& tmpSoftmaxResUb,
         TSCM<QuePosition::VECIN, 1, 0x4>& bmm2Scm, GlobalTensor<KV_T>& keyGm, GlobalTensor<KV_T>& valueGm,
@@ -40,8 +39,8 @@ public:
 public:
     mmType mm;
 private:
-    GlobalTensor<int8_t> quant1ResGmDb[2];  // PFATODO 需要看量化方案
-    event_t nd2NZEvent; // PFATODO 需要将tmpSoftmaxResUb改为VECOUT
+    GlobalTensor<int8_t> quant1ResGmDb[2];
+    event_t nd2NZEvent;
     LocalTensor<KV_T> valueScm;
 };
 
@@ -158,7 +157,7 @@ __aicore__ inline void PromptFlashAttentionNormalMM2<PFAT, mmType>::IterateAll(
                 dataCopyParams1.blockLen = taskParam.singleProcessSOuterSize;
                 dataCopyParams1.srcStride = (PFAT::sOuter / 2 + 1) - taskParam.singleProcessSOuterSize;
                 dataCopyParams1.dstStride = PFAT::sOuter - taskParam.singleProcessSOuterSize;
-                SetFlag<HardEvent::V_MTE3>(this->nd2NZEvent);  // PFATODO tmpSoftmaxResUb需要改为 OutBuf后可以删除
+                SetFlag<HardEvent::V_MTE3>(this->nd2NZEvent);
                 WaitFlag<HardEvent::V_MTE3>(this->nd2NZEvent);
                 if (dataCopyParams1.blockLen) {
                     if constexpr (IsSameType<T, int8_t>::value ||
