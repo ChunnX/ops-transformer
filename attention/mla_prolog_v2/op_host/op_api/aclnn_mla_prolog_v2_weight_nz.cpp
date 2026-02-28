@@ -10,7 +10,7 @@
 #include <cstring>
 #include "graph/types.h"
 #include "aclnn_mla_prolog_v2_weight_nz.h"
-
+#include "opdev/platform.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
@@ -113,6 +113,17 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnMlaPrologV2WeightNzGetWorkspaceSize are no longer supported on Ascend950.");
+        return ACLNN_ERR_RUNTIME_ERROR;
+    }
+    static bool isFirstCall = true;
+    if (isFirstCall) {
+        OP_LOGW("aclnnMlaPrologV2WeightNzGetWorkspaceSize is scheduled to be deprecated in December 2026, "
+                "and will be replaced by the aclnnMlaPrologV3WeightNzGetWorkspaceSize. "
+                "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
+        isFirstCall = false;
+    }
     auto dequantScaleQNopeHolder = TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOut!");
@@ -131,6 +142,17 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
 aclnnStatus aclnnMlaPrologV2WeightNz(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                      const aclrtStream stream)
 {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnMlaPrologV2WeightNz are no longer supported on Ascend950.");
+        return ACLNN_ERR_RUNTIME_ERROR;
+    }
+    static bool isFirstCall = true;
+    if (isFirstCall) {
+        OP_LOGW("aclnnMlaPrologV2WeightNz is scheduled to be deprecated in December 2026, "
+                "and will be replaced by the aclnnMlaPrologV3WeightNz. "
+                "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
+        isFirstCall = false;
+    }
     return aclnnInnerMlaPrologV2(workspace, workspaceSize, executor, stream);
 }
 
