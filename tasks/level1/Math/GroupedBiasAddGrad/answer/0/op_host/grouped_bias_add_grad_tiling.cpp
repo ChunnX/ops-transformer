@@ -261,6 +261,23 @@ ge::graphStatus GroupedBiasAddGradTiling::PostTiling()
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     context_->SetTilingKey(GetTilingKey());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "usedCoreNum = " << splitCoreOp_.usedCoreNum << std::endl;
+    std::cout << "normalCoreNum = " << splitCoreOp_.normalCoreNum << std::endl;
+    std::cout << "normalCoreProcessNum = " << splitCoreOp_.normalCoreProcessNum << std::endl;
+    std::cout << "tailCoreProcessNum = " << splitCoreOp_.tailCoreProcessNum << std::endl;
+    std::cout << "wsUnitNum = " << splitCoreOp_.wsUnitNum << std::endl;
+    std::cout << "dimG = " << baseInfoOp_.dimG << std::endl;
+    std::cout << "dimC = " << baseInfoOp_.dimC << std::endl;
+    std::cout << "dimH = " << baseInfoOp_.dimH << std::endl;
+    std::cout << "dimGB = " << baseInfoOp_.dimGB << std::endl;
+    std::cout << "baseH = " << splitCoreOp_.baseH << std::endl;
+    std::cout << "baseC = " << splitCoreOp_.baseC << std::endl;
+    std::cout << "loopCNum = " << splitCoreOp_.loopCNum << std::endl;
+    std::cout << "groupIdxType = " << baseInfoOp_.groupIdxType << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

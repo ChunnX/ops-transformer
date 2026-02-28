@@ -385,6 +385,49 @@ void EmbeddingDenseGradV2Tiling::TilingDataPrint() const
     OP_LOGD(tilingContext_, "tailDeterminRepTime:     %lu", tailDeterminRepTime_);
     OP_LOGD(tilingContext_, "tailDeterminFormerNum:   %lu", tailDeterminFormerNum_);
     OP_LOGD(tilingContext_, "tailDeterminTailNum:     %lu", tailDeterminTailNum_);
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << coreNum_ << std::endl;
+    std::cout << "numWeights = " << numWeights_ << std::endl;
+    std::cout << "embeddingDim = " << embeddingDim_ << std::endl;
+    std::cout << "paddingIdx = " << paddingIdx_ << std::endl;
+    std::cout << "scaleGrad = " << scaleGrad_ << std::endl;
+    std::cout << "gradRow = " << gradRow_ << std::endl;
+    std::cout << "tailRow = " << tailRow_ << std::endl;
+    std::cout << "formerRow = " << formerRow_ << std::endl;
+    std::cout << "formerRowRepTime = " << formerRowRepTime_ << std::endl;
+    std::cout << "scaleWorkspaceLength = " << scaleWorkspaceLength_ << std::endl;
+    std::cout << "outStageWorkspaceLength = " << outStageWorkspaceLength_ << std::endl;
+    std::cout << "outIndexWorkspaceLength = " << outIndexWorkspaceLength_ << std::endl;
+    std::cout << "outCastedWorkspaceLength = " << outCastedWorkspaceLength_ << std::endl;
+    std::cout << "formerDimRepTime = " << formerDimRepTime_ << std::endl;
+    std::cout << "formerEmbeddingDim = " << formerEmbeddingDim_ << std::endl;
+    std::cout << "tailEmbeddingDim = " << tailEmbeddingDim_ << std::endl;
+    std::cout << "computeMask = " << computeMask_ << std::endl;
+    std::cout << "formerComputeRepTime = " << formerComputeRepTime_ << std::endl;
+    std::cout << "formerComputeFormerNum = " << formerComputeFormerNum_ << std::endl;
+    std::cout << "formerComputeTailNum = " << formerComputeTailNum_ << std::endl;
+    std::cout << "tailComputeRepTime = " << tailComputeRepTime_ << std::endl;
+    std::cout << "tailComputeFormerNum = " << tailComputeFormerNum_ << std::endl;
+    std::cout << "tailComputeTailNum = " << tailComputeTailNum_ << std::endl;
+    std::cout << "tailCoreRow = " << tailCoreRowNum_ << std::endl;
+    std::cout << "formerCoreRow = " << formerCoreRowNum_ << std::endl;
+    std::cout << "formerCoreRowRepTime = " << formerCoreRowRepTime_ << std::endl;
+    std::cout << "scaleMask = " << scaleMask_ << std::endl;
+    std::cout << "scaleRepTime = " << scaleRepTime_ << std::endl;
+    std::cout << "scaleFormerNum = " << scaleFormerNum_ << std::endl;
+    std::cout << "scaleTailNum = " << scaleTailNum_ << std::endl;
+    std::cout << "tailRowNum = " << tailRowNum_ << std::endl;
+    std::cout << "formerRowNum = " << formerRowNum_ << std::endl;
+    std::cout << "formerRowNumRepTime = " << formerRowNumRepTime_ << std::endl;
+    std::cout << "determinMask = " << determinMask_ << std::endl;
+    std::cout << "formerDeterminRepTime = " << formerDeterminRepTime_ << std::endl;
+    std::cout << "formerDeterminFormerNum = " << formerDeterminFormerNum_ << std::endl;
+    std::cout << "formerDeterminTailNum = " << formerDeterminTailNum_ << std::endl;
+    std::cout << "tailDeterminRepTime = " << tailDeterminRepTime_ << std::endl;
+    std::cout << "tailDeterminFormerNum = " << tailDeterminFormerNum_ << std::endl;
+    std::cout << "tailDeterminTailNum = " << tailDeterminTailNum_ << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 ge::graphStatus TilingEmbeddingDenseGradV2(gert::TilingContext* context)

@@ -89,6 +89,23 @@ void AddRmsNormDynamicQuantTilingHelper::SetTilingDataAndTilingKeyAndWorkSpace(A
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = this->sysWorkspaceSize_ + usrSize;
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "socCoreNums = " << this->socCoreNums_ << std::endl;
+    std::cout << "useCore = " << this->useCore_ << std::endl;
+    std::cout << "numFirstDim = " << this->numFirstDim_ << std::endl;
+    std::cout << "numLastDim = " << this->numLastDim_ << std::endl;
+    std::cout << "numLastDimAligned = " << this->numLastDimAligned_ << std::endl;
+    std::cout << "firstDimPerCore = " << this->firstDimPerCore_ << std::endl;
+    std::cout << "firstDimPerCoreTail = " << this->firstDimPerCoreTail_ << std::endl;
+    std::cout << "firstDimPerLoop = " << this->firstDimPerLoop_ << std::endl;
+    std::cout << "lastDimSliceLen = " << this->lastDimSliceLen_ << std::endl;
+    std::cout << "lastDimLoopNum = " << this->lastDimLoopNum_ << std::endl;
+    std::cout << "lastDimSliceLenTail = " << this->lastDimSliceLenTail_ << std::endl;
+    std::cout << "eps = " << this->eps_ << std::endl;
+    std::cout << "avgFactor = " << this->avgFactor_ << std::endl;
+    std::cout << "tilingKey = " << tilingKey << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     OP_LOGI(
         "SetTilingDataAndTilingKeyAndWorkSpace", "Tilingdata useCore_: %lu, smoothNum1_: %u, smoothNum2_: %u",
         this->useCore_, this->smoothNum1_, this->smoothNum2_);

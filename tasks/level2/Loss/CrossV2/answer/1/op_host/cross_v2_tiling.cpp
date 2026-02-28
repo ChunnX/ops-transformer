@@ -142,6 +142,16 @@ void SetTiling(
     OP_LOGD(context, "tileDataNum = %lu.", tilingData.tileDataNum);
     OP_LOGD(context, "tailDataNum = %lu.", tilingData.tailDataNum);
     OP_LOGD(context, "CrossV2 tiling end.");
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << coreNum << std::endl;
+    std::cout << "batchSize = " << tilingData.batchSize << std::endl;
+    std::cout << "stepSize = " << tilingData.stepSize << std::endl;
+    std::cout << "tileNum = " << tilingData.tileNum << std::endl;
+    std::cout << "tileNumPerBatch = " << tilingData.tileNumPerBatch << std::endl;
+    std::cout << "tileDataNum = " << tilingData.tileDataNum << std::endl;
+    std::cout << "tailDataNum = " << tilingData.tailDataNum << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 ge::graphStatus TilingFuncForCrossV2(gert::TilingContext* context)

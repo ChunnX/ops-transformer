@@ -73,6 +73,11 @@ inline static ge::graphStatus DiagV2SetTilingData(gert::TilingContext* context, 
     tilingData.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
     rawTilingData->SetDataSize(tilingData.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "tilingKey = " << tilingData.get_tilingKey() << std::endl;
+    std::cout << "matrixRowLength = " << tilingData.get_matrixRowLength() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

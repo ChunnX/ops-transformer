@@ -46,6 +46,22 @@ inline static ge::graphStatus GroupNormSiluSetTilingData(
     gert::TilingContext* context, GroupNormSiluTilingData& tilingData)
 {
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "numGroups = " << tilingData.get_numGroups() << std::endl;
+    std::cout << "epsilon = " << tilingData.get_epsilon() << std::endl;
+    std::cout << "activateSilu = " << tilingData.get_activateSilu() << std::endl;
+    std::cout << "hwNum = " << tilingData.get_hwNum() << std::endl;
+    std::cout << "realCoreNum = " << tilingData.get_realCoreNum() << std::endl;
+    std::cout << "realCoreNum = " << tilingData.get_realCoreNum() << std::endl;
+    std::cout << "numLastCore = " << tilingData.get_numLastCore() << std::endl;
+    std::cout << "realCoreNum = " << tilingData.get_realCoreNum() << std::endl;
+    std::cout << "processSize = " << tilingData.get_processSize() << std::endl;
+    std::cout << "numGroups = " << tilingData.get_numGroups() << std::endl;
+    std::cout << "numPerCore = " << tilingData.get_numPerCore() << std::endl;
+    std::cout << "realCoreNum = " << tilingData.get_realCoreNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }

@@ -475,6 +475,17 @@ ge::graphStatus LinSpaceMemBaseTilingClass::DoOpTiling()
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context_->GetNodeName(), "Tiling4LinSpace exit.");
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "realCoreNum = " << tilingData.get_realCoreNum() << std::endl;
+    std::cout << "numPerCore = " << tilingData.get_numPerCore() << std::endl;
+    std::cout << "tailNum = " << tilingData.get_tailNum() << std::endl;
+    std::cout << "tilingKey = " << tilingData.get_tilingKey() << std::endl;
+    std::cout << "start = " << tilingData.get_start() << std::endl;
+    std::cout << "stop = " << tilingData.get_stop() << std::endl;
+    std::cout << "num = " << tilingData.get_num() << std::endl;
+    std::cout << "scalar = " << tilingData.get_scalar() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

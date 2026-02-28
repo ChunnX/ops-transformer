@@ -168,6 +168,20 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "useCoreNum = " << useCoreNum << std::endl;
+    std::cout << "shapeB = " << shapeB << std::endl;
+    std::cout << "shapeM = " << shapeM << std::endl;
+    std::cout << "shapeN = " << shapeN << std::endl;
+    std::cout << "shapeNAlign = " << shapeNAlign << std::endl;
+    std::cout << "coreTaskNum = " << coreTaskNum << std::endl;
+    std::cout << "lastCoreTaskNum = " << lastCoreTaskNum << std::endl;
+    std::cout << "mNum = " << mNum << std::endl;
+    std::cout << "mLoopNum = " << mLoopNum << std::endl;
+    std::cout << "mNumTail = " << mNumTail << std::endl;
+    std::cout << "tilingKey = " << tilingKey << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

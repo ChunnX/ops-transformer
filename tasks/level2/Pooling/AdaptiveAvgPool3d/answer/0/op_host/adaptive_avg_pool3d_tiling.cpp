@@ -249,6 +249,27 @@ static ge::graphStatus KernelTiling(
 
     OP_LOGD(nodeName, "Tiling end.");
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "usedCoreNum = " << usedCoreNum << std::endl;
+    std::cout << "dimC = " << tiling.get_dimC() << std::endl;
+    std::cout << "cTileLength = " << tiling.get_cTileLength() << std::endl;
+    std::cout << "inD = " << tiling.get_inD() << std::endl;
+    std::cout << "inH = " << tiling.get_inH() << std::endl;
+    std::cout << "inW = " << tiling.get_inW() << std::endl;
+    std::cout << "outD = " << tiling.get_outD() << std::endl;
+    std::cout << "outH = " << tiling.get_outH() << std::endl;
+    std::cout << "outW = " << tiling.get_outW() << std::endl;
+    std::cout << "formerLength = " << tiling.get_formerLength() << std::endl;
+    std::cout << "formerNum = " << tiling.get_formerNum() << std::endl;
+    std::cout << "tailLength = " << tiling.get_tailLength() << std::endl;
+    std::cout << "tailNum = " << tiling.get_tailNum() << std::endl;
+    std::cout << "indexBufLen = " << tiling.get_indexBufLen() << std::endl;
+    std::cout << "windowWNum = " << tiling.get_windowWNum() << std::endl;
+    std::cout << "maxWindowWLength = " << tiling.get_maxWindowWLength() << std::endl;
+    std::cout << "inputTileNum = " << tiling.get_inputTileNum() << std::endl;
+    std::cout << "atomicAddNum = " << tiling.get_atomicAddNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

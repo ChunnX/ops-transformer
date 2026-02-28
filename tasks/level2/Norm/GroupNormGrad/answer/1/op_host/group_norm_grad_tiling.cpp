@@ -520,6 +520,36 @@ ge::graphStatus GroupNormGradTiling::SetKernelTiling()
     tilingData.set_dbeta_is_require(tilingParams->dbetaIsRequire);                   // 25
     tilingData.SaveToBuffer(
         tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "Tiling_key = " << tilingData.get_Tiling_key() << std::endl;
+    std::cout << "N = " << tilingData.get_N() << std::endl;
+    std::cout << "C = " << tilingData.get_C() << std::endl;
+    std::cout << "HXW = " << tilingData.get_HXW() << std::endl;
+    std::cout << "G = " << tilingData.get_G() << std::endl;
+    std::cout << "NXG = " << tilingData.get_NXG() << std::endl;
+    std::cout << "C_G = " << tilingData.get_C_G() << std::endl;
+    std::cout << "task_num_per_core = " << tilingData.get_task_num_per_core() << std::endl;
+    std::cout << "task_num_per_tail_core = " << tilingData.get_task_num_per_tail_core() << std::endl;
+    std::cout << "tail_core = " << tilingData.get_tail_core() << std::endl;
+    std::cout << "mode1_ub_cap_C_num = " << tilingData.get_mode1_ub_cap_C_num() << std::endl;
+    std::cout << "mode1_ub_iter_C_num = " << tilingData.get_mode1_ub_iter_C_num() << std::endl;
+    std::cout << "mode1_ub_tail_C_num = " << tilingData.get_mode1_ub_tail_C_num() << std::endl;
+    std::cout << "mode2_ub_capacity_ele = " << tilingData.get_mode2_ub_capacity_ele() << std::endl;
+    std::cout << "mode2_ub_iteration_num = " << tilingData.get_mode2_ub_iteration_num() << std::endl;
+    std::cout << "mode2_ub_tail_num = " << tilingData.get_mode2_ub_tail_num() << std::endl;
+    std::cout << "workSpaceSize = " << tilingData.get_workSpaceSize() << std::endl;
+    std::cout << "stage2CoreUsed = " << tilingData.get_stage2CoreUsed() << std::endl;
+    std::cout << "castEleNum = " << tilingData.get_castEleNum() << std::endl;
+    std::cout << "tailCastNum = " << tilingData.get_tailCastNum() << std::endl;
+    std::cout << "coreBatchParts = " << tilingData.get_coreBatchParts() << std::endl;
+    std::cout << "coreBatchPartsTailRepeat = " << tilingData.get_coreBatchPartsTailRepeat() << std::endl;
+    std::cout << "repeatTime4Stage2 = " << tilingData.get_repeatTime4Stage2() << std::endl;
+    std::cout << "dx_is_require = " << tilingData.get_dx_is_require() << std::endl;
+    std::cout << "dgamma_is_require = " << tilingData.get_dgamma_is_require() << std::endl;
+    std::cout << "dbeta_is_require = " << tilingData.get_dbeta_is_require() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     TilingDataPrint();
     OP_LOGD(tilingContext->GetNodeName(), "Tiling end.");

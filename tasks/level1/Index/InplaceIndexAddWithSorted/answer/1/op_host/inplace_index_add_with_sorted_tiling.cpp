@@ -310,6 +310,32 @@ void InplaceIndexAddWithSortedTiling::TilingDataSet()
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     size_t* currentWorkspace = tilingContext->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize;
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "usedCoreNum = " << usedCoreNum << std::endl;
+    std::cout << "enableAlpha = " << enableAlpha << std::endl;
+    std::cout << "eachIndexCount = " << eachIndexCount << std::endl;
+    std::cout << "lastIndexCount = " << lastIndexCount << std::endl;
+    std::cout << "batchNum = " << batchNum << std::endl;
+    std::cout << "eachBatchNum = " << eachBatchNum << std::endl;
+    std::cout << "lastBatchNum = " << lastBatchNum << std::endl;
+    std::cout << "inputCount = " << inputCount << std::endl;
+    std::cout << "indicesCount = " << indicesCount << std::endl;
+    std::cout << "updatesCount = " << updatesCount << std::endl;
+    std::cout << "updatesOneTime = " << updatesOneTime << std::endl;
+    std::cout << "maxSize = " << maxSize << std::endl;
+    std::cout << "eachNum = " << eachNum << std::endl;
+    std::cout << "eachLoop = " << eachLoop << std::endl;
+    std::cout << "eachTail = " << eachTail << std::endl;
+    std::cout << "varDimNum = " << varDimNum << std::endl;
+    std::cout << "eachUBIndexRound = " << eachUBIndexRound << std::endl;
+    std::cout << "eachUBIndexCount = " << eachUBIndexCount << std::endl;
+    std::cout << "eachUBIndexTail = " << eachUBIndexTail << std::endl;
+    std::cout << "lastUBIndexRound = " << lastUBIndexRound << std::endl;
+    std::cout << "lastUBIndexCount = " << lastUBIndexCount << std::endl;
+    std::cout << "lastUBIndexTail = " << lastUBIndexTail << std::endl;
+    std::cout << "tilingKey = " << tilingKey << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 void InplaceIndexAddWithSortedTiling::TilingDataPrint() const

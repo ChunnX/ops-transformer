@@ -344,6 +344,44 @@ ge::graphStatus MaxPool3DGradWithArgmaxTilingBase::GetWorkspaceSize()
     size_t sysWorkSpaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = usrWorkspaceSize + sysWorkSpaceSize;
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "totalCoreNum = " << maxPoolGradParams.totalCoreNum << std::endl;
+    std::cout << "usedCoreNum = " << tilingData.get_usedCoreNum() << std::endl;
+    std::cout << "ncDim = " << maxPoolGradParams.ncDim << std::endl;
+    std::cout << "diDim = " << tilingData.get_diDim() << std::endl;
+    std::cout << "hiDim = " << tilingData.get_hiDim() << std::endl;
+    std::cout << "wiDim = " << tilingData.get_wiDim() << std::endl;
+    std::cout << "doDim = " << tilingData.get_doDim() << std::endl;
+    std::cout << "hoDim = " << tilingData.get_hoDim() << std::endl;
+    std::cout << "woDim = " << tilingData.get_woDim() << std::endl;
+    std::cout << "kd = " << tilingData.get_kd() << std::endl;
+    std::cout << "kh = " << tilingData.get_kh() << std::endl;
+    std::cout << "kw = " << tilingData.get_kw() << std::endl;
+    std::cout << "sd = " << tilingData.get_sd() << std::endl;
+    std::cout << "sh = " << tilingData.get_sh() << std::endl;
+    std::cout << "sw = " << tilingData.get_sw() << std::endl;
+    std::cout << "padDTop = " << tilingData.get_padDTop() << std::endl;
+    std::cout << "padDBottom = " << tilingData.get_padDBottom() << std::endl;
+    std::cout << "padHTop = " << tilingData.get_padHTop() << std::endl;
+    std::cout << "padHBottom = " << tilingData.get_padHBottom() << std::endl;
+    std::cout << "padWTop = " << tilingData.get_padWTop() << std::endl;
+    std::cout << "padWBottom = " << tilingData.get_padWBottom() << std::endl;
+    std::cout << "baseNc = " << tilingData.get_baseNc() << std::endl;
+    std::cout << "baseDo = " << tilingData.get_baseDo() << std::endl;
+    std::cout << "baseHo = " << tilingData.get_baseHo() << std::endl;
+    std::cout << "baseWo = " << tilingData.get_baseWo() << std::endl;
+    std::cout << "ncTail = " << tilingData.get_ncTail() << std::endl;
+    std::cout << "doTail = " << tilingData.get_doTail() << std::endl;
+    std::cout << "hoTail = " << tilingData.get_hoTail() << std::endl;
+    std::cout << "woTail = " << tilingData.get_woTail() << std::endl;
+    std::cout << "ncCnt = " << tilingData.get_ncCnt() << std::endl;
+    std::cout << "doCnt = " << tilingData.get_doCnt() << std::endl;
+    std::cout << "hoCnt = " << tilingData.get_hoCnt() << std::endl;
+    std::cout << "woCnt = " << tilingData.get_woCnt() << std::endl;
+    std::cout << "totalCnt = " << tilingData.get_totalCnt() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

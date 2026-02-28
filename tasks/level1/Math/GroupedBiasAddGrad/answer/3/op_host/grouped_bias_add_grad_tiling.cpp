@@ -279,6 +279,22 @@ void GroupedBiasAddGradTiling::DumpTilingInfo() const
     info << "splitCoreOp_.wsUnitNum: " << splitCoreOp_.wsUnitNum << std::endl;
 
     OP_LOGI(nodeName_, "%s", info.str().c_str());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "usedCoreNum = " << splitCoreOp_.usedCoreNum << std::endl;
+    std::cout << "normalCoreNum = " << splitCoreOp_.normalCoreNum << std::endl;
+    std::cout << "normalCoreProcessNum = " << splitCoreOp_.normalCoreProcessNum << std::endl;
+    std::cout << "tailCoreProcessNum = " << splitCoreOp_.tailCoreProcessNum << std::endl;
+    std::cout << "wsUnitNum = " << splitCoreOp_.wsUnitNum << std::endl;
+    std::cout << "dimG = " << baseInfoOp_.dimG << std::endl;
+    std::cout << "dimC = " << baseInfoOp_.dimC << std::endl;
+    std::cout << "dimH = " << baseInfoOp_.dimH << std::endl;
+    std::cout << "dimGB = " << baseInfoOp_.dimGB << std::endl;
+    std::cout << "baseH = " << splitCoreOp_.baseH << std::endl;
+    std::cout << "baseC = " << splitCoreOp_.baseC << std::endl;
+    std::cout << "loopCNum = " << splitCoreOp_.loopCNum << std::endl;
+    std::cout << "groupIdxType = " << baseInfoOp_.groupIdxType << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 ge::graphStatus GroupedBiasAddGradTiling::RunGroupedBiasAddGradTiling()

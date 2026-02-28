@@ -146,6 +146,15 @@ ge::graphStatus HansDecodeTiling::SetTilingData()
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     size_t* currentWorkspace = tilingContext->GetWorkspaceSizes(1);
     currentWorkspace[0] = sysWorkspaceSize;
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "aivNum = " << aivNum << std::endl;
+    std::cout << "mantissaByteSize = " << mantissaSize * dtypeBytes << std::endl;
+    std::cout << "fixedByteSize = " << fixedSize * dtypeBytes << std::endl;
+    std::cout << "recoverExpByteSize = " << recoverSize << std::endl;
+    std::cout << "recoverByteSize = " << recoverSize * dtypeBytes << std::endl;
+    std::cout << "reshuff = " << reshuff << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

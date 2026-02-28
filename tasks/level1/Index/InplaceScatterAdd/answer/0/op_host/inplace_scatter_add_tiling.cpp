@@ -108,6 +108,19 @@ void InplaceScatterAddTilingOp::SetKernelTiling() {
 
   kernelTiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
   context->GetRawTilingData()->SetDataSize(kernelTiling.GetDataSize());
+
+  std::cout << "*******************START*******************" << std::endl;
+  std::cout << "frontM = " << tilingData.M << std::endl;
+  std::cout << "frontN = " << tilingData.N << std::endl;
+  std::cout << "frontK = " << tilingData.K << std::endl;
+  std::cout << "NAligned = " << tilingData.NAligned << std::endl;
+  std::cout << "frontCoreNum = " << tilingData.frontCoreNum << std::endl;
+  std::cout << "tailCoreNum = " << tilingData.tailCoreNum << std::endl;
+  std::cout << "frontCoreIndicesNum = " << tilingData.frontCoreIndicesNum << std::endl;
+  std::cout << "tailCoreIndicesNum = " << tilingData.tailCoreIndicesNum << std::endl;
+  std::cout << "ubSize = " << tilingData.ubSize << std::endl;
+  std::cout << "tilingKey = " << tilingData.tilingKey << std::endl;
+  std::cout << "*******************END*******************" << std::endl;
 }
 
 void InplaceScatterAddTilingOp::Init() {

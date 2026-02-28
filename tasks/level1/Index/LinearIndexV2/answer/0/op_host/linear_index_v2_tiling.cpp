@@ -193,6 +193,24 @@ ge::graphStatus LinearIndexV2Tiling::RunKernelTiling()
     workspaces[0] = workspaceSize_;
     TilingDataPrint();
     OP_LOGD(tilingContext_, "set tiling data end.");
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "usedCoreNum = " << usedCoreNum_ << std::endl;
+    std::cout << "tensorId = " << tensorId_ << std::endl;
+    std::cout << "formerCoreNum = " << formerCoreNum_ << std::endl;
+    std::cout << "formerCoreDataNum = " << formerCoreDataNum_ << std::endl;
+    std::cout << "tailCoreNum = " << tailCoreNum_ << std::endl;
+    std::cout << "tailCoreDataNum = " << tailCoreDataNum_ << std::endl;
+    std::cout << "formerCoreFormerDataNum = " << formerCoreParam_.formerDataNum << std::endl;
+    std::cout << "formerCoreTailDataNum = " << formerCoreParam_.tailDataNum << std::endl;
+    std::cout << "formerCoreFormerTime = " << formerCoreParam_.formerTime << std::endl;
+    std::cout << "formerCoreTailTime = " << formerCoreParam_.tailTime << std::endl;
+    std::cout << "tailCoreFormerDataNum = " << tailCoreParam_.formerDataNum << std::endl;
+    std::cout << "tailCoreTailDataNum = " << tailCoreParam_.tailDataNum << std::endl;
+    std::cout << "tailCoreFormerTime = " << tailCoreParam_.formerTime << std::endl;
+    std::cout << "tailCoreTailTime = " << tailCoreParam_.tailTime << std::endl;
+    std::cout << "tilingKey = " << tilingKey_ << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

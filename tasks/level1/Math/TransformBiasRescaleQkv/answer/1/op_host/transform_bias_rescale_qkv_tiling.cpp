@@ -175,6 +175,18 @@ void TransformBiasRescaleQkvTiling::SaveTilingData()
     tilingData.set_maxEleNumUB(MAX_ELEMENT_NUM_EACH_CORE);
     tilingData.SaveToBuffer(
         tilingContext->GetRawTilingData()->GetData(), tilingContext->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "qkvShapeSize = " << tilingData.get_qkvShapeSize() << std::endl;
+    std::cout << "needCoreNum = " << tilingData.get_needCoreNum() << std::endl;
+    std::cout << "batch = " << tilingData.get_batch() << std::endl;
+    std::cout << "token = " << tilingData.get_token() << std::endl;
+    std::cout << "dimension = " << tilingData.get_dimension() << std::endl;
+    std::cout << "numHeads = " << tilingData.get_numHeads() << std::endl;
+    std::cout << "dimPerHead = " << tilingData.get_dimPerHead() << std::endl;
+    std::cout << "maxEleNumUB = " << tilingData.get_maxEleNumUB() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     tilingContext->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     tilingContext->SetBlockDim(tilingInfo.needCoreNum);
 }

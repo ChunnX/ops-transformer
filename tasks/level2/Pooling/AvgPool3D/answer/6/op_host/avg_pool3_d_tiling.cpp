@@ -309,6 +309,58 @@ static ge::graphStatus KernelTiling(gert::TilingContext* context, TilingParams& 
     PrintTiling(context, tiling, tilingKey);
 
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "inN = " << tiling.get_inN() << std::endl;
+    std::cout << "inC = " << tiling.get_inC() << std::endl;
+    std::cout << "tileC = " << tiling.get_tileC() << std::endl;
+    std::cout << "inD = " << tiling.get_inD() << std::endl;
+    std::cout << "inH = " << tiling.get_inH() << std::endl;
+    std::cout << "inW = " << tiling.get_inW() << std::endl;
+    std::cout << "outD = " << tiling.get_outD() << std::endl;
+    std::cout << "outH = " << tiling.get_outH() << std::endl;
+    std::cout << "outW = " << tiling.get_outW() << std::endl;
+    std::cout << "kD = " << tiling.get_kD() << std::endl;
+    std::cout << "kH = " << tiling.get_kH() << std::endl;
+    std::cout << "kW = " << tiling.get_kW() << std::endl;
+    std::cout << "dD = " << tiling.get_dD() << std::endl;
+    std::cout << "dH = " << tiling.get_dH() << std::endl;
+    std::cout << "dW = " << tiling.get_dW() << std::endl;
+    std::cout << "pD = " << tiling.get_pD() << std::endl;
+    std::cout << "pH = " << tiling.get_pH() << std::endl;
+    std::cout << "pW = " << tiling.get_pW() << std::endl;
+    std::cout << "divisorOverride = " << tiling.get_divisorOverride() << std::endl;
+    std::cout << "countIncludePad = " << tiling.get_countIncludePad() << std::endl;
+    std::cout << "ceilMode = " << tiling.get_ceilMode() << std::endl;
+    std::cout << "formerLength = " << tiling.get_formerLength() << std::endl;
+    std::cout << "formerNum = " << tiling.get_formerNum() << std::endl;
+    std::cout << "tailLength = " << tiling.get_tailLength() << std::endl;
+    std::cout << "tailNum = " << tiling.get_tailNum() << std::endl;
+    std::cout << "indexBufLen = " << tiling.get_indexBufLen() << std::endl;
+    std::cout << "windowWNum = " << tiling.get_windowWNum() << std::endl;
+    std::cout << "tileInput = " << tiling.get_tileInput() << std::endl;
+    std::cout << "tileHW = " << tiling.get_tileHW() << std::endl;
+    std::cout << "atomicAddNum = " << tiling.get_atomicAddNum() << std::endl;
+    std::cout << "useCoreNum = " << tiling.get_useCoreNum() << std::endl;
+    std::cout << "ncFactor = " << tiling.get_ncFactor() << std::endl;
+    std::cout << "doFactor = " << tiling.get_doFactor() << std::endl;
+    std::cout << "hoFactor = " << tiling.get_hoFactor() << std::endl;
+    std::cout << "woFactor = " << tiling.get_woFactor() << std::endl;
+    std::cout << "ncOuter = " << tiling.get_ncOuter() << std::endl;
+    std::cout << "doOuter = " << tiling.get_doOuter() << std::endl;
+    std::cout << "hoOuter = " << tiling.get_hoOuter() << std::endl;
+    std::cout << "woOuter = " << tiling.get_woOuter() << std::endl;
+    std::cout << "ncTail = " << tiling.get_ncTail() << std::endl;
+    std::cout << "doTail = " << tiling.get_doTail() << std::endl;
+    std::cout << "hoTail = " << tiling.get_hoTail() << std::endl;
+    std::cout << "woTail = " << tiling.get_woTail() << std::endl;
+    std::cout << "blockFactor = " << tiling.get_blockFactor() << std::endl;
+    std::cout << "blockTail = " << tiling.get_blockTail() << std::endl;
+    std::cout << "totalIdx = " << tiling.get_totalIdx() << std::endl;
+    std::cout << "coreNums = " << tiling.get_coreNums() << std::endl;
+    std::cout << "usedCoreNum = " << tiling.get_usedCoreNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);

@@ -361,6 +361,24 @@ ge::graphStatus CTCLossV3Tiling::RunKernelTiling()
     tilingData.set_blank(blankAtr);
     tilingData.set_zeroInfinity(zeroInfinity);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "sliceLength = " << tilingData.get_sliceLength() << std::endl;
+    std::cout << "sliceLengthTail = " << tilingData.get_sliceLengthTail() << std::endl;
+    std::cout << "probSliceNum = " << tilingData.get_probSliceNum() << std::endl;
+    std::cout << "maxTargetLength = " << tilingData.get_maxTargetLength() << std::endl;
+    std::cout << "targetsDimLength = " << tilingData.get_targetsDimLength() << std::endl;
+    std::cout << "timeStep = " << tilingData.get_timeStep() << std::endl;
+    std::cout << "symbleSet = " << tilingData.get_symbleSet() << std::endl;
+    std::cout << "batchSize = " << tilingData.get_batchSize() << std::endl;
+    std::cout << "targetsDimNum = " << tilingData.get_targetsDimNum() << std::endl;
+    std::cout << "targetsNum = " << tilingData.get_targetsNum() << std::endl;
+    std::cout << "taskPerCore = " << tilingData.get_taskPerCore() << std::endl;
+    std::cout << "taskTailCore = " << tilingData.get_taskTailCore() << std::endl;
+    std::cout << "blank = " << tilingData.get_blank() << std::endl;
+    std::cout << "zeroInfinity = " << tilingData.get_zeroInfinity() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }

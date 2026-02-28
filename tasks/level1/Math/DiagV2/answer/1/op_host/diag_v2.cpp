@@ -141,6 +141,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
         tilingData.get_realCoreNum(), tilingData.get_numPerCore(), tilingData.get_tailNum(), tilingData.get_tilingKey(),
         tilingData.get_matrixRowLength());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "tilingKey = " << tilingData.get_tilingKey() << std::endl;
+    std::cout << "matrixRowLength = " << tilingData.get_matrixRowLength() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 }

@@ -110,6 +110,15 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = 0;
+    
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "totalLength = " << tiling.get_totalLength() << std::endl;
+    std::cout << "cof = " << tiling.get_cof() << std::endl;
+    std::cout << "usedDb = " << tiling.get_usedDb() << std::endl;
+    std::cout << "blockLength = " << tiling.get_blockLength() << std::endl;
+    std::cout << "tileNum = " << tiling.get_tileNum() << std::endl;
+    std::cout << "padLength = " << tiling.get_padLength() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

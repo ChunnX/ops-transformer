@@ -128,6 +128,16 @@ ge::graphStatus ChamferDistanceGradTiling::RunKernelTiling()
     currentWorkspace[0] = sysWorkspaceSize;
     TilingData.SaveToBuffer(
         TilingContext->GetRawTilingData()->GetData(), TilingContext->GetRawTilingData()->GetCapacity());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "batch_size = " << TilingData.get_batch_size() << std::endl;
+    std::cout << "num = " << TilingData.get_num() << std::endl;
+    std::cout << "ub_size = " << TilingData.get_ub_size() << std::endl;
+    std::cout << "task_per_core = " << TilingData.get_task_per_core() << std::endl;
+    std::cout << "core_used = " << TilingData.get_core_used() << std::endl;
+    std::cout << "task_tail_core = " << TilingData.get_task_tail_core() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     TilingContext->GetRawTilingData()->SetDataSize(TilingData.GetDataSize());
     TilingDataPrint();
     TilingContext->SetScheduleMode(BATCH_MODE);
