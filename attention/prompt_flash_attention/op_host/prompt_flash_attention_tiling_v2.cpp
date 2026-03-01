@@ -2572,10 +2572,6 @@ bool PromptFlashAttentionTilingV2::CheckMaskTypeAndShape(ContextParamsForPFATili
     // 1: last frist dim, 2: last second dim
     maskKVsSize = attenMaskShape->GetStorageShape().GetDim(attenMaskShape->GetStorageShape().GetDimNum() - 1);
     maskQsSize = attenMaskShape->GetStorageShape().GetDim(attenMaskShape->GetStorageShape().GetDimNum() - 2); // 2 for Q dim index
-    
-    if (enableIFAMask) {
-        maskQsSize = 1;
-    }
 
     tilingData.promptAttentionBaseParams.set_maskKVsSize(maskKVsSize);
     tilingData.promptAttentionBaseParams.set_maskQsSize(maskQsSize);
