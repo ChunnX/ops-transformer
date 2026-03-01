@@ -1131,7 +1131,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>FLOAT16</td>
             </tr>
             <tr>
-                <td rowspan="2">Q_S=1时</td>
+                <td rowspan="2">P_S1(pse shape第三维)=1时</td>
                 <td rowspan="2">query的数据类型</td>
                 <td>FLOAT16</td>
                 <td>FLOAT16</td>

@@ -1193,15 +1193,17 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     </table></div>
 
 - <a id="Mask"></a>Mask
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1480px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
+        <col style="width: 280px">
         <col style="width: 360px">
         </colgroup>
         <thead>
             <tr>
                 <th>sparseMode</th>
                 <th>含义</th>
+                <th>shape约束</th>
                 <th>备注</th>
             </tr>
         </thead>
@@ -1209,27 +1211,52 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <tr>
             <td>0</td>
             <td>defaultMask模式</td>
-            <td>如果attenmask未传入则不做mask操作，或者在左padding场景传入attenMask，忽略preTokens和nextTokens</td>
+            <td>(B,M_S1,M_S2)、(1,M_S1,M_S2)、(B,1,M_S1,M_S2)、(1,1,M_S1,M_S2)</td>
+            <td>
+            <ul>
+            <li>M_S1需大于等于query的S长度，M_S2需大于等于key的S长度。</li>
+            <li>如果attenmask未传入则不做mask操作，或者在左padding场景传入attenMask，忽略preTokens和nextTokens。</li>
+            </ul>
+            </td>
         </tr>
         <tr>
             <td>1</td>
             <td>allMask，必须传入完整的attenmask矩阵</td>
-            <td>忽略入参preTokens、nextTokens并按照相关规则赋值</td>
+            <td>(B,M_S1,M_S2)、(1,M_S1,M_S2)、(B,1,M_S1,M_S2)、(1,1,M_S1,M_S2)</td>
+            <td>
+            <ul>
+            <li>M_S1需大于等于query的S长度，M_S2需大于等于key的S长度。</li>
+            <li>忽略入参preTokens、nextTokens并按照相关规则赋值。</li>
+            </ul>
+            </td>
         </tr>
         <tr>
             <td>2</td>
             <td>leftUpCausal模式的mask，需要传入优化后的attenmask矩阵</td>
-            <td rowspan="2">忽略入参preTokens、nextTokens并按照相关规则赋值</br>
-                传入的attenMask为下三角矩阵，对角线全0。attenMask为nullptr或者传入的shape不正确报错。shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048。</td>
+            <td>(S,S)、(1,S,S)、(1,1,S,S)</td>
+            <td rowspan="2">
+            <ul>
+            <li>S的值需要固定为2048。</li>
+            <li>忽略入参preTokens、nextTokens并按照相关规则赋值。</li>
+            <li>传入的attenMask为下三角矩阵，对角线全0。attenMask为nullptr或者传入的shape不正确报错。</li>
+            </ul>
+            </td>
         </tr>
         <tr>
             <td>3</td>
             <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵</td>
+            <td>(S,S)、(1,S,S)、(1,1,S,S)</td>
         </tr>
         <tr>
             <td>4</td>
             <td>band模式的mask，需要传入优化后的attenmask矩阵</td>
-            <td>传入的attenMask为下三角矩阵，对角线全0。attenMask为nullptr或者传入的shape不正确报错。shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048。</td></td>
+            <td>(S,S)、(1,S,S)、(1,1,S,S)</td>
+            <td>
+            <ul>
+            <li>S的值需要固定为2048。</li>
+            <li>传入的attenMask为下三角矩阵，对角线全0。attenMask为nullptr或者传入的shape不正确报错。</li>
+            </ul>
+            </td>
         </tr>
         <tr>
         <td colspan="3"><ul>
