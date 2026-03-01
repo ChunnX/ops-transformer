@@ -91,11 +91,11 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gm
 #else
     REGISTER_TILING_DEFAULT(QuantAlltoAllvGroupedMatmulTilingData);
     using ComputeOpType = QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-        DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, TILINGKEY_GMM_WEIGHT_TRANSPOSE, TILINGKEY_MM_WEIGHT_TRANSPOSE,
+        DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
         false>; // isLocal=false
     using LocalComputeOpType =
         QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
-        float, DTYPE_GMM_Y, CubeFormat::ND, TILINGKEY_GMM_WEIGHT_TRANSPOSE, TILINGKEY_MM_WEIGHT_TRANSPOSE,
+        float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
         true>; // isLocal=true
     A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_WEIGHT, true>, ComputeOpType, LocalComputeOpType,
         QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, TILING_TYPE, TILINGKEY_MM>

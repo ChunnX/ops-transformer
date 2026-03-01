@@ -667,7 +667,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
                     "processing, transMmWeightOptional dim0 is %ld, and dim1 is %ld.",
                     mmWeightOptional->GetViewShape().GetDim(0), mmWeightOptional->GetViewShape().GetDim(1),
                     transMmWeightOptional->GetViewShape().GetDim(0), transMmWeightOptional->GetViewShape().GetDim(1));
-        auto mmWeightOptional = transMmWeightOptional;
+            mmWeightOptional = transMmWeightOptional;
         }
         
     }
