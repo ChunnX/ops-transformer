@@ -553,9 +553,7 @@ public:
     {
     }
 
-    template <bool RESET_FIRST = false>
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
-    template <bool RESET_FIRST = false>
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t compressoredScCnt);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
     __aicore__ inline void SetDealedSeqCnt(uint32_t dealedSeqCnt);
@@ -582,7 +580,6 @@ private:
 };
 
 template <typename COMP>
-template <bool RESET_FIRST>
 __aicore__ inline void CompressorVec1SliceIterator<COMP>::Reset(uint32_t bIdx, uint32_t sIdx)
 {
     sliceInfo_.bIdx = bIdx;
@@ -596,17 +593,14 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::Reset(uint32_t bIdx, u
     sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
     sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
     sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
-    if constexpr (RESET_FIRST) {
-        isFirst_ = true;
-    }
+    isFirst_ = true;
 }
 
 template <typename COMP>
-template <bool RESET_FIRST>
 __aicore__ inline void CompressorVec1SliceIterator<COMP>::Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt,
                                                                 uint32_t compressoredScCnt)
 {
-    Reset<RESET_FIRST>(bIdx, sIdx);
+    Reset(bIdx, sIdx);
     SetDealedSeqCnt(dealedSeqCnt);
     SetCompressoredScCnt(compressoredScCnt);
 }
