@@ -1141,7 +1141,7 @@ CompressorBlockVectorPerf<COMP>::SplitCoreV1(const Vec1RunInfo &info)
     CalcTaskDistribution(info, splitInfo);
 
     // 3. 刷新迭代器并获取当前核的起始位置状态
-    UpdateIteratorState(info, sliceIterator, splitInfo);
+    UpdateIteratorState(info, splitInfo);
 
     if (splitInfo.dealTcSize == 0) {
         return splitInfo;
