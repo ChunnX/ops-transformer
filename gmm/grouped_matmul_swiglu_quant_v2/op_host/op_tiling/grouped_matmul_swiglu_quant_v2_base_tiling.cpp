@@ -23,6 +23,8 @@ namespace GroupedMatmulSwigluQuantV2Tiling {
 
 constexpr int64_t ND_WEIGHT_MULTI_TENSOR_DIM = 2;
 constexpr int64_t NZ_WEIGHT_MULTI_TENSOR_DIM = 4;
+constexpr float EFFECTIVE_TASK_RATIO = 0.95f;
+constexpr int32_t MIN_BASE_M = 16;
 
 template <typename T>
 static inline auto AlignUp(T a, T base) -> T
@@ -31,6 +33,24 @@ static inline auto AlignUp(T a, T base) -> T
         return 0;
     }
     return (a + base - 1) / base * base;
+}
+
+template <typename T1, typename T2>
+auto CeilDiv(T1 a, T2 b) -> T1
+{
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
+}
+
+
+static inline uint32_t SixteenAlign(uint32_t a, bool up = false)
+{
+    if (up) {
+        a += 15U;
+    }
+    return a & ~15U;
 }
 
 int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA8W4(const uint64_t ubSize, const uint64_t n) const
@@ -143,11 +163,12 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     const int64_t *dequantModePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
     auto dequantMode = dequantModePtr != nullptr ? *dequantModePtr : 0;
     OP_CHECK_IF(!(dequantMode == 0 || dequantMode == 1),
-        OP_LOGE(context_->GetNodeName(), "dequantMode must be 0 or 1, but actual value is %ld.", dequantMode),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "dequantMode must be 0 or 1, but actual value is %ld.", dequantMode),
+                return ge::GRAPH_FAILED);
     const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
-    OP_CHECK_IF(!(groupListType_ == 0 || groupListType_ == 1),
+    OP_CHECK_IF(
+        !(groupListType_ == 0 || groupListType_ == 1),
         OP_LOGE(context_->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.", groupListType_),
         return ge::GRAPH_FAILED);
 
@@ -171,21 +192,35 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
 
     m_ = xTensor->GetStorageShape().GetDim(0);
     k_ = xTensor->GetStorageShape().GetDim(1);
-    if (wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_DIM_LIMIT) {
-        // ND SingleTensor [E, K, N]
-        n_ = wTensor->GetStorageShape().GetDim(DIM_2);
-    } else if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT) {
-        // NZ SingleTensor [E, N // 64, K // 16, 16, 64]
-        n_ = wTensor->GetStorageShape().GetDim(DIM_1) * wTensor->GetStorageShape().GetDim(DIM_4);
-    } else if (wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM) {
-        // ND MultiTensor [K, N]
-        n_ = wTensor->GetStorageShape().GetDim(DIM_1);
-    } else if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
-        // NZ MultiTensor [N // 64, K // 16, 16, 64]
-        n_ = wTensor->GetStorageShape().GetDim(DIM_0) * wTensor->GetStorageShape().GetDim(DIM_3);
+    auto wScaleDimNum = wScaleTensor->GetStorageShape().GetDimNum();
+    isWeightTrans_ = false;
+    if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT || wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
+        isNz_ = true;
+    }
+    const auto tuningConfigPtr = attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
+    tuningConfig_ = tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 1? 
+                    (reinterpret_cast<const int64_t*>(tuningConfigPtr->GetData()))[0] : 0;
+
+    if (isA4W4_) {
+        n_ = wScaleTensor->GetStorageShape().GetDim(wScaleDimNum - DIM_1);
+    } else {
+        if (wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_DIM_LIMIT) {
+            // ND SingleTensor [E, K, N]
+            n_ = wTensor->GetStorageShape().GetDim(DIM_2);
+        } else if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT) {
+            // NZ SingleTensor [E, N // 64, K // 16, 16, 64]
+            n_ = wTensor->GetStorageShape().GetDim(DIM_1) * wTensor->GetStorageShape().GetDim(DIM_4);
+        } else if (wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM) {
+            // ND MultiTensor [K, N]
+            n_ = wTensor->GetStorageShape().GetDim(DIM_1);
+        } else if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
+            // NZ MultiTensor [N // 64, K // 16, 16, 64]
+            n_ = wTensor->GetStorageShape().GetDim(DIM_0) * wTensor->GetStorageShape().GetDim(DIM_3);
+        }
     }
 
-    auto wScaleDimNum = wScaleTensor->GetStorageShape().GetDimNum();
+    isWeightTrans_ = *attr->GetAttrPointer<int64_t>(ATTR_INDEX_TRANSPOSE_WEIGHT);
+
     if (dequantMode == 1) { // perGroup量化模式：单tensor场景[E, KGroupCount, N]，多tensor场景[KGroupCount, N]
         quantGroupNum_ = wScaleTensor->GetStorageShape().GetDim(wScaleDimNum - DIM_2);
     } else { // perChannel量化模式
@@ -201,6 +236,96 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     }
 
     blockDim_ = compileInfoPtr->aicNum_;
+    return ge::GRAPH_SUCCESS;
+}
+
+int32_t GroupedMatmulSwigluQuantV2BaseTiling::FindBestSingleN(const uint32_t &aicNum, int64_t baseM, int64_t baseN) const
+{
+    uint64_t quantGroupNum = quantGroupNum_;
+    if (n_ < baseN || tuningConfig_ <= 0 || !(quantGroupNum == 1)) {
+        return baseN;
+    }
+    int32_t mDim = CeilDiv(tuningConfig_, baseM);
+    int32_t nDim = CeilDiv(n_, baseN);
+    int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
+    int32_t taskNumPerCore = CeilDiv(taskNum, aicNum);
+    // 每个核只需要做1个基本块的时候，任务量太少，无需处理
+    if (taskNumPerCore <= 1) {
+        return baseN;
+    }
+    int32_t curNDim = 0;
+    int32_t curTaskNum = 0;
+    int32_t bestSingleN = baseN;
+    float ratio = 0;
+    for (uint32_t i = 1; i <= aicNum; ++i) {
+        if (isNz_) {
+            bestSingleN = CeilDiv(static_cast<int32_t>(n_), i);
+            if (bestSingleN != n_ && bestSingleN % baseN != 0) {
+                continue;
+            }
+        } else {
+            // 暂时只NZ格式开启动态分块
+            return baseN;
+        }
+        curNDim = CeilDiv(n_, bestSingleN);
+        curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
+        ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), aicNum);
+        if (ratio >= EFFECTIVE_TASK_RATIO) {
+            return bestSingleN;
+        }
+    }
+    return baseN;
+}
+
+bool GroupedMatmulSwigluQuantV2BaseTiling::TryFullLoadA(int32_t baseM, int64_t baseN, int64_t baseK, uint64_t l1Size)
+{
+    // 暂时只支持A4W4
+    float sizeofweightDtype = 0.5f;
+    float sizeofxDtype = 0.5f;
+    auto matBl1Size = static_cast<int32_t>(tilingData_.mmTilingData.get_depthB1() * baseN * baseK * sizeofweightDtype);
+    auto remainL1Size = l1Size - matBl1Size - 8 * baseN;
+    int32_t newDepthA1 = CeilDiv(k_, baseK);
+    if (static_cast<int32_t>(newDepthA1 * baseM * baseK * sizeofxDtype) < static_cast<int32_t>(remainL1Size)) {
+        tilingData_.mmTilingData.set_stepKa(newDepthA1);
+        tilingData_.mmTilingData.set_depthA1(newDepthA1);
+        return true;
+    }
+    return false;
+}
+
+
+ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::DynamicTilingSingleN(gert::TilingContext *context, const uint32_t &aicNum,
+                                                int64_t baseM, int64_t baseN, int64_t baseK)
+{
+    //get info
+    auto platformInfoPtr = context->GetPlatformInfo();
+    OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    uint64_t l1Size = 0;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
+    tilingData_.gmmSwigluQuantV2BaseParams.set_singleN(0);
+  
+    if (n_ < baseN || tuningConfig_ <= 0 || !isA4W4_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    int32_t bestSingleN = FindBestSingleN(aicNum, baseM, baseN);
+    if (bestSingleN == baseN) { // 没找到更优的singleN
+        return ge::GRAPH_SUCCESS;
+    }
+    tilingData_.gmmSwigluQuantV2BaseParams.set_singleN(bestSingleN);
+    // 先不改看看baseM能否全载左矩阵
+    if (TryFullLoadA(baseM, baseN, baseK, l1Size)) {
+        return ge::GRAPH_SUCCESS;
+    }
+    // 可以尝试减小baseM来全载左矩阵
+    int32_t newBaseM = static_cast<int32_t>(SixteenAlign(tuningConfig_, true));
+    // 防止不均匀情况
+    newBaseM += MIN_BASE_M;
+    // 再看看能否全载左矩阵
+    if (newBaseM < baseM && TryFullLoadA(newBaseM, baseN, baseK, l1Size)) {
+        tilingData_.mmTilingData.set_baseM(newBaseM);
+        return ge::GRAPH_SUCCESS;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -254,6 +379,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::DoOpTiling()
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "mLimit_ is %ld must over then 0.", mLimit_),
                 return ge::GRAPH_FAILED);
     tilingData_.gmmSwigluQuantV2BaseParams.set_mLimit(mLimit_);
+
+    DynamicTilingSingleN(context_, blockDim_, A8W4_BASEM, A8W4_BASEN, A8W4_BASEK);
 
     if (isA8W4MSD_) {
         int workSpaceMTemp = mLimit_ * DOUBLE_WORKSPACE_SPLIT;
@@ -336,8 +463,11 @@ void GroupedMatmulSwigluQuantV2BaseTiling::SetTilingKeyAndScheMode()
     if (isA8W4MSD_) { // A8W4 MSD tiling_key
         tilingKey_ = A8W4_MSD_TILING_KEY_MODE;
         context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
-    } else if (isA4W4_) {
-        tilingKey_ = A4W4_TILING_KEY_MODE;
+    } else if (isA4W4_ && !isWeightTrans_) {
+        tilingKey_ = A4W4_WEIGHT_NOTRANS_TILING_KEY_MODE;
+        context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
+    } else if (isA4W4_ && isWeightTrans_) {
+        tilingKey_ = A4W4_WEIGHT_TRANS_TILING_KEY_MODE;
         context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     } else if (isSplitWorkSpace_) {
         tilingKey_ = SPLITWORKSPACE_TILING_KEY_MODE;

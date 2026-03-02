@@ -73,6 +73,25 @@ extern "C" __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, 
         GMMSwigluQuantPipelineSchedule<matmulType> op(mm, &gmmSwigluQuantV2BaseParams_, &gmmSwiglu_, &tPipe);
         op.Init(x, weight, weightScale, xScale, weightAssistanceMatrix, groupList, y, yScale, userWorkspace);
         op.Process();
+    } else if (TILING_KEY_IS(5)) {
+        KERNEL_TASK_TYPE(5, KERNEL_TYPE_MIX_AIC_1_2);
+        GET_TILING_DATA_MEMBER(GMMSwigluQuantV2TilingData, gmmSwigluQuantV2BaseParams, gmmSwigluQuantV2BaseParams_,
+                               tiling);
+        
+        GET_TILING_DATA_MEMBER(GMMSwigluQuantV2TilingData, gmmSwigluQuantV2, gmmSwiglu_, tiling);
+        GET_TILING_DATA_MEMBER(GMMSwigluQuantV2TilingData, mmTilingData, mmTilingData_, tiling);
+        using xType = MatmulType<TPosition::GM, CubeFormat::ND, int4b_t, false>;
+        using weightType = MatmulType<TPosition::GM, wFormat, int4b_t, true>;
+        using yType = MatmulType<TPosition::GM, CubeFormat::ND, half, false>;
+        using matmulType = MMImplTypeCustom<xType, weightType, yType>;
+        matmulType::MT mm;
+        if ASCEND_IS_AIC {
+            mm.SetSubBlockIdx(0);
+            mm.Init(&mmTilingData_);
+        }
+        GMMSwigluQuantPipelineSchedule<matmulType> op(mm, &gmmSwigluQuantV2BaseParams_, &gmmSwiglu_, &tPipe);
+        op.Init(x, weight, weightScale, xScale, weightAssistanceMatrix, groupList, y, yScale, userWorkspace);
+        op.Process();
     }
 #endif
     if (TILING_KEY_IS(3)) {

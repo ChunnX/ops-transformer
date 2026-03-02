@@ -290,6 +290,12 @@ protected:
         // 单tesnsor weight的NZshape期望为[E, N // 64, K // 16, 16, 64]
         op::Shape weightNZExpectShape = {e, static_cast<int64_t>(n / NZ_DIM_4_INT4), static_cast<int64_t>(k / NZ_DIM_3),
                                         NZ_DIM_3, NZ_DIM_4_INT4};
+        // 单tensor NZ转置
+        op::Shape weightNZTransposeExpectShape1 = {e, static_cast<int64_t>(k / NZ_DIM_4_INT4), static_cast<int64_t>(n / NZ_DIM_3),
+                                        NZ_DIM_4_INT4, NZ_DIM_3};
+        op::Shape weightNZTransposeExpectShape2 = {e, static_cast<int64_t>(k / NZ_DIM_4_INT4), static_cast<int64_t>(n / NZ_DIM_3),
+                                        NZ_DIM_3, NZ_DIM_4_INT4};
+
 
         // 辅助矩阵的shape期望为[E, N]
         op::Shape weightAssistMatrixExpectShape = {e, n};
@@ -302,7 +308,14 @@ protected:
         }
         op::Format weightViewFormat = w->GetViewFormat();
         if (IsPrivateFormat(weightViewFormat)) {
-            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(w, weightNZExpectShape, return false);
+            if (!(w->GetViewShape() == weightNZExpectShape || w->GetViewShape() == weightNZTransposeExpectShape1 || w->GetViewShape() == weightNZTransposeExpectShape2)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tensor for weight to have same size as %s %s or %s, but got %s.",
+                        op::ToString(weightNZExpectShape).GetString(),
+                        op::ToString(weightNZTransposeExpectShape1).GetString(),
+                        op::ToString(weightNZTransposeExpectShape2).GetString(),
+                        op::ToString(w->GetViewShape()).GetString());
+                return false;
+            }
         } else {
             OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(w, weightNDExpectShape, return false);
         }
@@ -444,16 +457,60 @@ protected:
         return true;
     }
 
+    bool IsTransposeLastTwoDims(const aclTensor *tensor)
+    {
+        auto shape = tensor->GetViewShape();
+        int64_t dim1 = shape.GetDimNum() - 1;
+        int64_t dim2 = shape.GetDimNum() - 2;
+        auto strides = tensor->GetViewStrides();
+        if (strides[dim2] == 1 && strides[dim1] == shape.GetDim(dim2)) {
+            int64_t tmpNxD = shape.GetDim(dim1) * shape.GetDim(dim2);
+            for (int64_t batchDim = shape.GetDimNum() - 3; batchDim >= 0; batchDim--) {
+                if (strides[batchDim] != tmpNxD) {
+                    return false;
+                }
+                tmpNxD *= shape.GetDim(batchDim);
+            }
+            return true;
+        }
+        return false;
+    }
+
     void UnpackInt32ToInt4(const aclTensor *&tensorS32, const std::string &tensorType)
     {
         OP_LOGD("Unpack %s from int32 to int4 start.", tensorType.c_str());
         auto tensorS4 = const_cast<aclTensor *>(tensorS32);
         op::Shape tensorShape = tensorS4->GetViewShape();
         auto viewShapeDim = tensorShape.GetDimNum();
-        tensorShape[viewShapeDim - 1] = tensorShape[viewShapeDim - 1] * INT4_PER_INT32;
+        op::Strides newStride = tensorS4->GetViewStrides();
+        bool transposeTensor = false;
+        auto changeDimIdx = viewShapeDim - 1;
+        // 轴大于等于2才判断是否转置
+        if (viewShapeDim >= 2 && IsTransposeLastTwoDims(tensorS4)) {
+            transposeTensor = true;
+            changeDimIdx = viewShapeDim - 2;
+        }
+        tensorShape[changeDimIdx] = tensorShape.GetDim(changeDimIdx) * INT4_PER_INT32;
+        bool isNz = tensorS4->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
         tensorS4->SetViewShape(tensorShape);
-        tensorS4->SetStorageShape(tensorShape);
         tensorS4->SetDataType(DataType::DT_INT4);
+        if (isNz){
+            OP_LOGD("Reset %s storageShape because tensor is NZ format.", tensorType.c_str());
+            auto storageShape = tensorS4->GetStorageShape();
+            auto storageShapeDim = storageShape.GetDimNum();
+            storageShape[storageShapeDim - 1] *= INT4_PER_INT32;
+            tensorS4->SetStorageShape(storageShape);
+        }
+        if (transposeTensor) {
+            OP_LOGD("Reset %s stride because tensor is transposed.", tensorType.c_str());
+            auto strideSize = newStride.size();
+            // 转置场景，B32承载B4时Strides缩小了8倍，需要调整回来
+            newStride[strideSize - 1] *= INT4_PER_INT32;
+            for(int64_t batchDim = strideSize - 3; batchDim >= 0; batchDim--) {
+                newStride[batchDim] *= INT4_PER_INT32;
+            }
+            tensorS4->SetViewStrides(newStride);
+        }
         OP_LOGD("Unpack %s from int32 to int4 finished.", tensorType.c_str());
     }
 
@@ -465,6 +522,8 @@ protected:
         }
         // A8W4或者A4W4场景 INT32为兼容torch_npu考虑，实际计算时，1个INT32数据会被视为8个INT4数据
         if (gmmDsqParams_.isA8W4 || gmmDsqParams_.isA4W4) {
+            bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
+            gmmDsqParams_.transposeWeight = transposeWeight;
             // 将INT32视为8个Int4数据，调整viewShape和dtype便于后续统一校验
             if (gmmDsqParams_.x->GetDataType() == DataType::DT_INT32) {
                 UnpackInt32ToInt4(gmmDsqParams_.x, "x");
@@ -474,6 +533,17 @@ protected:
                 for (size_t i = 0; i < wLength; i++) {
                     const aclTensor *w = (*gmmDsqParams_.weight)[i];
                     UnpackInt32ToInt4(w, "weight");
+                }
+            }
+            
+            if (transposeWeight == true){
+                const aclTensor* w = (*gmmDsqParams_.weight)[0];
+                bool isNZ = w->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+                if (!isNZ ){
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "In weight Transpose scenario.weight Format expect is FRACTAL_NZ when weight is transposed, but got [%s].", 
+                            op::ToString(w->GetStorageFormat()).GetString());
+                    return false;
                 }
             }
             if (((*gmmDsqParams_.weightScale)[0])->GetDataType() == DataType::DT_INT64) {

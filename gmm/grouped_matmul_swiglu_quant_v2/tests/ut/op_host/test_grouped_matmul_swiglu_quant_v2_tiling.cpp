@@ -781,3 +781,99 @@ TEST_F(GroupedMatmulSwigluQuantV2, test_corenum_checkfail_zero)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+TEST_F(GroupedMatmulSwigluQuantV2, test_w4a4_normal_case_1)
+{
+    optiling::GMMSwigluV2CompileInfo compileinfo = {192 * 1024 * 1024,
+                        24, 48, 128, 256};
+    int m = 1024;
+    int k = 2048;
+    int n = 7168;
+    int e = 16;
+
+    gert::StorageShape xShape = {{m, k}, {m, k}};
+    gert::StorageShape wShape = {{e, n / 64, k / 16, 16, 64}, {e, n / 64, k / 16, 16, 64}};
+    gert::StorageShape wScaleShape = {{e, n}, {e, n}};
+    gert::StorageShape xScaleShape = {{m}, {m}};
+    gert::StorageShape groupListShape = {{e}, {e}};
+
+    gert::TilingContextPara tilingContextPara("GroupedMatmulSwigluQuantV2",
+        {
+            {xShape, ge::DT_INT4, ge::FORMAT_ND},
+            {xScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
+            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
+            {{wShape}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},
+            {{wScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_INT4, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(0)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileinfo
+    );
+
+    int64_t expectTilingKey = 4;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(GroupedMatmulSwigluQuantV2, test_w4a4_wtrans_case_1)
+{
+    optiling::GMMSwigluV2CompileInfo compileinfo = {192 * 1024 * 1024,
+                        24, 48, 128, 256};
+    int m = 1024;
+    int k = 2048;
+    int n = 7168;
+    int e = 16;
+
+    gert::StorageShape xShape = {{m, k}, {m, k}};
+    gert::StorageShape wShape = {{e, k / 64, n / 16, 16, 64}, {e, k / 64, n / 16, 16, 64}};
+    gert::StorageShape wScaleShape = {{e, n}, {e, n}};
+    gert::StorageShape xScaleShape = {{m}, {m}};
+    gert::StorageShape groupListShape = {{e}, {e}};
+
+    gert::TilingContextPara tilingContextPara("GroupedMatmulSwigluQuantV2",
+        {
+            {xShape, ge::DT_INT4, ge::FORMAT_ND},
+            {xScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
+            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
+            {{wShape}, ge::DT_INT4, ge::FORMAT_FRACTAL_NZ},
+            {{wScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_INT4, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(0)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileinfo
+    );
+
+    int64_t expectTilingKey = 5;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}

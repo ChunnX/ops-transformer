@@ -114,7 +114,8 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::SetMNConfig(const int32_t spli
     mnConfig.baseM = gmmSwigluQuantV2BaseParams->baseM;
     mnConfig.baseN = gmmSwigluQuantV2BaseParams->baseN;
     mnConfig.singleM = gmmSwigluQuantV2BaseParams->baseM;
-    mnConfig.singleN = gmmSwigluQuantV2BaseParams->baseN;
+    mnConfig.singleN = gmmSwigluQuantV2BaseParams->singleN != 0 && gmmSwigluQuantV2BaseParams->quantGroupNum == 1? 
+                         gmmSwigluQuantV2BaseParams->singleN : gmmSwigluQuantV2BaseParams->baseN;                    
 }
 
 template <typename mmType>
@@ -129,7 +130,8 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::Process(WorkSpaceSplitConfig &
         mnConfig.baseM = gmmSwigluQuantV2BaseParams->baseM;
         mnConfig.baseN = gmmSwigluQuantV2BaseParams->baseN;
         mnConfig.singleM = gmmSwigluQuantV2BaseParams->baseM;
-        mnConfig.singleN = gmmSwigluQuantV2BaseParams->baseN;
+        mnConfig.singleN = gmmSwigluQuantV2BaseParams->singleN != 0 && gmmSwigluQuantV2BaseParams->quantGroupNum == 1? 
+                            gmmSwigluQuantV2BaseParams->singleN : gmmSwigluQuantV2BaseParams->baseN;
         mnConfig.k = gmmSwigluQuantV2BaseParams->K; // tilingData
         mnConfig.n = gmmSwigluQuantV2BaseParams->N; // tilingData
         mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN);
@@ -199,7 +201,10 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::MMCompute(uint32_t groupIdx, M
             xGM[mnConfig.xBaseOffset + mnConfig.mIdx * mnConfig.k * mnConfig.singleM + loopK * quantGroupSize]);
         if (gmmSwigluQuantV2BaseParams->isSingleTensor == 0) {
             weightGM.SetGlobalBuffer(GetTensorAddr<int4b_t>(groupIdx, weightTensorPtr));
-            if constexpr (mmType::BT::format == CubeFormat::NZ) {
+            if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == true) {
+                weightOffset = tailN * 64;
+                weightSlice = weightGM[weightOffset + loopK * quantGroupSize * gmmSwigluQuantV2BaseParams->N];
+            } else if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == false) {
                 weightOffset = tailN * gmmSwigluQuantV2BaseParams->K;
                 weightSlice = weightGM[weightOffset + loopK * quantGroupSize * 64];
             } else {
@@ -207,7 +212,11 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::MMCompute(uint32_t groupIdx, M
                 weightSlice = weightGM[weightOffset + loopK * quantGroupSize * gmmSwigluQuantV2BaseParams->N];
             }
         } else {
-            if constexpr (mmType::BT::format == CubeFormat::NZ) {
+            if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == true) {
+                weightOffset = static_cast<uint64_t>(groupIdx) * gmmSwigluQuantV2BaseParams->N * gmmSwigluQuantV2BaseParams->K +
+                               tailN * 64;
+                weightSlice = weightGM[weightOffset + loopK * quantGroupSize * gmmSwigluQuantV2BaseParams->N];
+            } else if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == false) {
                 weightOffset =
                     static_cast<uint64_t>(groupIdx) * gmmSwigluQuantV2BaseParams->N * gmmSwigluQuantV2BaseParams->K +
                     tailN * gmmSwigluQuantV2BaseParams->K;
@@ -222,7 +231,7 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::MMCompute(uint32_t groupIdx, M
         if (mnConfig.blockDimM == 1) {
             weightSlice.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         }
-        mm.SetTensorB(weightSlice);
+        mm.SetTensorB(weightSlice, mmType::BT::isTrans);
         if (gmmSwigluQuantV2BaseParams->isSingleTensor == 0) {
             weightScaleGM.SetGlobalBuffer(GetTensorAddr<uint64_t>(groupIdx, weightScaleTensorPtr));
             mm.SetQuantVector(weightScaleGM[loopK * gmmSwigluQuantV2BaseParams->N + tailN]);
@@ -231,8 +240,7 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::MMCompute(uint32_t groupIdx, M
                 weightScaleGM[groupIdx * gmmSwigluQuantV2BaseParams->N * gmmSwigluQuantV2BaseParams->quantGroupNum +
                               loopK * gmmSwigluQuantV2BaseParams->N + tailN]);
         }
-        mm.Iterate();
-        mm.GetTensorC(mmOutGM[mnConfig.workspaceOffset], loopK == 0 ? 0 : 1);
+        mm.IterateAll(mmOutGM[mnConfig.workspaceOffset], loopK == 0 ? 0 : 1);
     }
 }
 } // namespace GroupedMatmulDequantSwigluQuant

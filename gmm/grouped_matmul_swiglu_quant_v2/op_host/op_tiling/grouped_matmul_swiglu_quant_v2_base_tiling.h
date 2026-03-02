@@ -43,6 +43,10 @@ protected:
     ge::graphStatus ParseInputAndAttr();
     int64_t CalMaxRowInUbA8W4(const uint64_t ubSize, const uint64_t n) const;
     int64_t CalMaxRowInUb(const uint64_t ubSize, const uint64_t n) const;
+    int32_t FindBestSingleN(const uint32_t &aicNum, int64_t baseM, int64_t baseN) const;
+    bool TryFullLoadA(int32_t baseM, int64_t baseN, int64_t baseK, uint64_t l1Size);
+    ge::graphStatus DynamicTilingSingleN(gert::TilingContext *context, const uint32_t &aicNum,
+                    int64_t baseM, int64_t baseN, int64_t baseK);
 
 private:
     GMMSwigluQuantV2TilingData tilingData_;
@@ -59,8 +63,11 @@ private:
     int64_t smoothScaleDimNum_ = 0;
     int64_t usrWorkspaceLimit_ = 0;
     uint64_t workspaceSize_ = 0;
+    int64_t tuningConfig_ = 0;
     bool isA8W4MSD_ = false;
     bool isA4W4_ = false;
+    bool isNz_ = false;
+    bool isWeightTrans_ = false;
     bool isSplitWorkSpace_ = false;
 };
 

@@ -37,6 +37,7 @@ TILING_DATA_FIELD_DEF(int64_t, quantGroupNum);
 TILING_DATA_FIELD_DEF(int64_t, isSingleTensor);
 TILING_DATA_FIELD_DEF(int64_t, groupListType);
 TILING_DATA_FIELD_DEF(int64_t, smoothScaleDimNum);
+TILING_DATA_FIELD_DEF(int64_t, singleN);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV2BaseParamsOp, GMMSwigluQuantV2BaseParams)
 
@@ -111,6 +112,8 @@ constexpr uint32_t SMOOTH_SCALE_INDEX = 7;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 constexpr uint32_t ATTR_INDEX_DEQUANT_MODE = 0;
 constexpr uint32_t ATTR_INDEX_GROUPLIST_TYPE = 5;
+constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 6;
+constexpr uint32_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
 constexpr uint32_t DIM_0 = 0;
 constexpr uint32_t DIM_1 = 1;
 constexpr uint32_t DIM_2 = 2;
@@ -132,7 +135,8 @@ constexpr int64_t NZ_WEIGHT_DIM_LIMIT = 5;
 constexpr int64_t DOUBLE_ROW = 2;
 constexpr int64_t PERCHANNEL_WSCALE_DIM_LIMIT = 2;
 constexpr int64_t PERGROUP_WSCALE_DIM_LIMIT = 3;
-constexpr int64_t A4W4_TILING_KEY_MODE = 4;
+constexpr int64_t A4W4_WEIGHT_NOTRANS_TILING_KEY_MODE = 4;
+constexpr int64_t A4W4_WEIGHT_TRANS_TILING_KEY_MODE = 5;
 constexpr int64_t A8W8_FUSION_KEY_MODE = 3;
 constexpr int64_t A8W4_MSD_TILING_KEY_MODE = 2;
 constexpr int64_t SPLITWORKSPACE_TILING_KEY_MODE = 1;
