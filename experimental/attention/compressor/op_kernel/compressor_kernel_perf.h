@@ -24,7 +24,7 @@
 #include "arch32/compressor_block_cube_perf.h"
 #include "arch32/compressor_block_vec_perf.h"
 #else
-#include "arch35/compressor_block_cube.h"
+#include "arch35/compressor_block_cube_perf.h"
 #include "arch35/compressor_block_vec.h"
 #endif
 
@@ -300,7 +300,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
         }
     }
 
-    uint32_t aiCoreNum = GetBlockNum();
+    uint32_t aiCoreNum = constInfo.usedCoreNum;
     constInfo.dBaseSize = 64;
     uint32_t dBaseBlockNum = constInfo.headDim / constInfo.dBaseSize;
     if (sameSeqUsed && mSize <= (constInfo.mBaseSize * (aiCoreNum / dBaseBlockNum))) {
@@ -543,25 +543,19 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
-    CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
+    CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
     if (isNeedExcute) {
         // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u, cubeDbIdx:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize, info.cubeDbIdx);
         blockCube_.ComputeMm1(info);
     }
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
 }
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo &info) {
-#if (__CCE_AICORE__ == 220)
-    CrossCoreWaitFlag(SYNC_C1_V1_FLAG);
-#else
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_V>(SYNC_C1_V1_FLAG);
-#endif
     // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
 #if (__CCE_AICORE__ == 220)
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C1_FLAG);
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG);
 #else
     CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG);
 #endif
@@ -581,7 +575,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::AllocEventID()
     } else {
         blockVec_.AllocEventID();
 #if (__CCE_AICORE__ == 220)
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C1_FLAG);
+        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG);
 #else
         CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG);
 #endif
@@ -592,7 +586,7 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
 {
     if ASCEND_IS_AIC {
-        CrossCoreWaitFlag(SYNC_V1_C1_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
         blockCube_.FreeEventID(pipe_);
     } else {
         blockVec_.FreeEventID();
