@@ -24,7 +24,7 @@
 
 namespace optiling {
 namespace Mc2GroupedMatmul {
-BEGIN_TILING_DATA_DEF(GMMBaseParams)
+BEGIN_TILING_DATA_DEF(MC2GMMBaseParams)
 TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
 TILING_DATA_FIELD_DEF(uint32_t, activeType);
@@ -52,17 +52,17 @@ TILING_DATA_FIELD_DEF(uint64_t, isPreTiling);
 TILING_DATA_FIELD_DEF(uint32_t, withOffset);
 TILING_DATA_FIELD_DEF(uint32_t, isOutputDisableL2Cache);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMBaseParamsOp, GMMBaseParams)
+REGISTER_TILING_DATA_CLASS(GMMBaseParamsOp, MC2GMMBaseParams)
 
-BEGIN_TILING_DATA_DEF(GMMArray)
+BEGIN_TILING_DATA_DEF(CommonGMMArray)
 TILING_DATA_FIELD_DEF_ARR(int32_t, 128, mList); // 128 ：MAX_TENSOR_CONT
 TILING_DATA_FIELD_DEF_ARR(int32_t, 128, kList);
 TILING_DATA_FIELD_DEF_ARR(int32_t, 128, nList);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMArrayOp, GMMArray)
+REGISTER_TILING_DATA_CLASS(GMMArrayOp, CommonGMMArray)
 
 // for autotiling w4a8
-BEGIN_TILING_DATA_DEF(A8W4HPTiling)
+BEGIN_TILING_DATA_DEF(MC2A8W4HPTiling)
 TILING_DATA_FIELD_DEF(uint32_t, group_num);
 TILING_DATA_FIELD_DEF(int8_t, group_type);
 TILING_DATA_FIELD_DEF(uint32_t, required_core_num);
@@ -85,17 +85,17 @@ TILING_DATA_FIELD_DEF_ARR(uint32_t, 2, single_core_base_tiling);
 TILING_DATA_FIELD_DEF_ARR(uint32_t, 3, splitRecord);
 TILING_DATA_FIELD_DEF(uint64_t, workspaceOffset);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(A8W4HPTilingOp, A8W4HPTiling)
+REGISTER_TILING_DATA_CLASS(A8W4HPTilingOp, MC2A8W4HPTiling)
 
-BEGIN_TILING_DATA_DEF(GMMTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(GMMBaseParams, gmmBaseParams);
-TILING_DATA_FIELD_DEF_STRUCT(GMMArray, gmmArray);
+BEGIN_TILING_DATA_DEF(MC2GMMTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(MC2GMMBaseParams, gmmBaseParams);
+TILING_DATA_FIELD_DEF_STRUCT(CommonGMMArray, gmmArray);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
 // for autotiling
-TILING_DATA_FIELD_DEF_STRUCT(A8W4HPTiling, hpTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(MC2A8W4HPTiling, hpTilingData);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(Mc2GroupedMatmul, GMMTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2GroupedMatmul, MC2GMMTilingData)
 
 struct GMMCompileInfo {
     uint32_t aicNum;
@@ -111,7 +111,7 @@ struct GMMCompileInfo {
 
 class GMMTiling {
 public:
-    GMMTilingData tilingData;
+    MC2GMMTilingData tilingData;
     ge::graphStatus Init(const gert::TilingContext *context);
     ge::graphStatus RunFusionKernelTiling(gert::TilingContext *context);
     ge::graphStatus A8W4Tiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);

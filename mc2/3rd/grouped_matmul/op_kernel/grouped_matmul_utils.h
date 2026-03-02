@@ -291,7 +291,7 @@ __aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr) {
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ != 310
 __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset,
-    const GMMBaseParams *__restrict &gmmBaseParams, const GlobalTensor<int64_t> &groupListGm)
+    const MC2GMMBaseParams *__restrict &gmmBaseParams, const GlobalTensor<int64_t> &groupListGm)
 {
     int32_t splitValue = 0;
     if (likely(gmmBaseParams->groupType != -1)) { // -1: no  need to split

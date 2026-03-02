@@ -26,7 +26,7 @@
 #include "tiling/new_mc2_tiling_utils.h"
 #include "../grouped_mat_mul_allto_allv_tiling_base.h"
 #include "../../../op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
-#include "../../../op_kernel/arch35/grouped_mat_mul_allto_allv_tiling_key.h"
+#include "../../../op_kernel/grouped_mat_mul_allto_allv_tiling_key.h"
 #include "register/tilingdata_base.h"
 
 namespace optiling {

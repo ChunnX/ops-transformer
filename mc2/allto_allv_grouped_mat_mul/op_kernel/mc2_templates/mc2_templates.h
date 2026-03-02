@@ -16,6 +16,7 @@
 #define MC2_TEMPLATES_H
 
 #include "scheduler/a2av_gmm_scheduler.h"
+#include "scheduler/gmm_a2av_scheduler.h"
 #include "communication/hccl_a2av_op.h"
 #include "compute/quant_grouped_matmul.h"
 #include "common/a2av_common_tiling.h"

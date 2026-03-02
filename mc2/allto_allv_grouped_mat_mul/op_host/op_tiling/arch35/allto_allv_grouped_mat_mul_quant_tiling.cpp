@@ -108,14 +108,14 @@ ge::graphStatus AlltoAllvGmmQuantTiling::DoLibApiTiling()
         }
         maxMSize = std::max(mSize, maxMSize);
     }
-    if (mSize != 0) {
+    if (maxMSize != 0) {
         auto &gmmQuantTilingData = tilingData->gmmQuantTilingData;
         SetGMMQuantParams(gmmQuantTilingData);
         SetTilingArray(gmmQuantTilingData, maxMSize, n1_, h1_);
         SetTilingParams(gmmQuantTilingData, maxMSize, n1_, h1_);
         PrintGMMQuantTilingData(gmmQuantTilingData);
     }
-    if (mSize != 0) {
+    if (bs_ != 0) {
         auto &mmQuantTilingData = tilingData->mmQuantTilingData;
         SetGMMQuantParams(mmQuantTilingData);
         SetTilingArray(mmQuantTilingData, bs_, n2_, h2_);

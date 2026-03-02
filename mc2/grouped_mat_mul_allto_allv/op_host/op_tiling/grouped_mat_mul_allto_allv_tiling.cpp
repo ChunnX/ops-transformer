@@ -852,8 +852,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
         tilingkeyMmTrans = false;
     }
 
-    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, 
-                                    tilingkeyGmmTrans, tilingkeyMmTrans);
+    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, tilingkeyGmmTrans, tilingkeyMmTrans, false, false); // 非量化场景，后面两个模板参数默认为false
     return;
 }
 
