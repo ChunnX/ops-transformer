@@ -177,7 +177,7 @@ ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     if (coff == 2) {
-        workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim * 2;
+        workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
     }
     if (context_->templateId == TemplateId::PERF) {
         workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
@@ -196,9 +196,6 @@ ge::graphStatus CompressorTiling::SetScenarioInfo()
 ge::graphStatus CompressorTiling::SetTemplateId()
 {
     if (context_->templateId == TemplateId::EMPTY_X) {
-        return ge::GRAPH_SUCCESS;
-    }
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         return ge::GRAPH_SUCCESS;
     }
     // 设置高性能模板
