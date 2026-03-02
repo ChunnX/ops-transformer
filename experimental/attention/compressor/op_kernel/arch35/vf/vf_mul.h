@@ -36,13 +36,16 @@ __simd_vf__ void MulReduceSumbase32VFImpl(__ubuf__ T* kvAddr, __ubuf__ T* scoreA
     MicroAPI::MaskReg maskLHalf = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL32>();
     MicroAPI::MaskReg maskRHalf;
     MicroAPI::Not(maskRHalf,maskLHalf,mask);
+    uint32_t offset = 0;
     for(uint16_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
         MicroAPI::Duplicate(vregSum, 0, mask);
-        for(uint16_t rLoop = 0; rLoop < r; rLoop++) {
-            MicroAPI::LoadAlign(vreg0, kvAddr + rLoop * 2 * baseD);
-            MicroAPI::LoadAlign(vreg1, scoreAddr + rLoop * 2 * baseD);
+        constexpr uint32_t dealRowCount = 2;
+        for(uint16_t rLoop = 0; rLoop < coff *r; rLoop += dealRowCount) {
+            MicroAPI::LoadAlign(vreg0, kvAddr + offset);
+            MicroAPI::LoadAlign(vreg1, scoreAddr + offset);
             MicroAPI::Mul(vreg0, vreg0, vreg1, mask);
             MicroAPI::Add(vregSum, vregSum, vreg0, mask);
+            offset += dealRowCount *baseD;
         }
         MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskLHalf);
         MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum1, vregSum, maskRHalf);
@@ -118,7 +121,7 @@ __simd_vf__ void MulReduceSumbase128VFImpl(__ubuf__ T* kvAddr, __ubuf__ T* score
 
 
 template<typename T>
-__aicore__ inline void MulReduceSumbaseVF(LocalTensor<T> &kvLocal, LocalTensor<T> &scoreLocal, LocalTensor<T> &outputLocal,
+__aicore__ inline void MulReduceSumbaseVF(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal, const LocalTensor<T> &outputLocal,
     const uint16_t coff, const uint16_t r, uint32_t outIdx, const uint16_t baseD, const uint32_t baseS) 
 {
     uint32_t scLoopCnt = baseS / r;
@@ -126,7 +129,11 @@ __aicore__ inline void MulReduceSumbaseVF(LocalTensor<T> &kvLocal, LocalTensor<T
     __ubuf__ T * kvAddr = (__ubuf__ T *)kvLocal.GetPhyAddr();
     __ubuf__ T * scoreAddr = (__ubuf__ T *)scoreLocal.GetPhyAddr();
     __ubuf__ T * outputAddr = (__ubuf__ T *)outputLocal.GetPhyAddr()+outIdx;
-    if(baseD == baseD32) {
+    if (dDealSize == 8) {
+        statements
+    } else if (dDealSize == 16) {
+        statements
+    } else if (dDealSize == 32) {
         MulReduceSumbase32VFImpl(kvAddr, scoreAddr, outputAddr, coff, r, scLoopCnt, baseD);
     } else if(baseD == baseD64) {
         MulReduceSumbase64VFImpl(kvAddr, scoreAddr, outputAddr, coff, r, scLoopCnt, baseD);

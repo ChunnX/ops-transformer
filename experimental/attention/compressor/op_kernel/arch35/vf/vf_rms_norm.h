@@ -80,7 +80,7 @@ __simd_vf__ void RmsNormVFImpl(__ubuf__ T * inputBuf, __ubuf__ GammaType * gamma
           epsilon，防止除零极小数
  */
 template <typename T, typename GammaType>
-__aicore__ inline void RmsNormVF(LocalTensor<T> outputLocal, const LocalTensor<T> inputLocal, const LocalTensor<GammaType> gammaLocal,
+__aicore__ inline void RmsNormVF(const LocalTensor<T> outputLocal, const LocalTensor<T> inputLocal, const LocalTensor<GammaType> gammaLocal,
     float reciprocal, float epsilon, uint32_t row, uint32_t col) 
 {
     uint32_t cnt = row * col;

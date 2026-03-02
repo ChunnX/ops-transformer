@@ -25,7 +25,7 @@
 #include "arch32/compressor_block_vec_perf.h"
 #else
 #include "arch35/compressor_block_cube_perf.h"
-#include "arch35/compressor_block_vec.h"
+#include "arch35/compressor_block_vec_perf.h"
 #endif
 
 using namespace AscendC;
@@ -214,7 +214,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
     // 4. 初始化block层
     if ASCEND_IS_AIC {
 #if __CCE_AICORE__ == 310
-        blockCube_.InitParams(constInfo);
+        blockCube_.InitParams(constInfo, tools_);
 #else
         blockCube_.InitParams(constInfo, tools_);
 #endif
@@ -222,6 +222,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
             kvBlockTable, scoreBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockCube_.InitBuffers(pipe_);
 #if __CCE_AICORE__ == 310
+        blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
 #else
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
 #endif
@@ -556,7 +557,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo
 #if (__CCE_AICORE__ == 220)
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
 #else
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
 #endif
 }
 
@@ -579,7 +580,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::AllocEventID()
     }
 #else
     for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + i);
+        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
     }
 #endif
     }
