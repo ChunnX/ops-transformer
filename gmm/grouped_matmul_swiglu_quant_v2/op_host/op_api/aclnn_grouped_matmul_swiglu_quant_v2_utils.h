@@ -510,6 +510,24 @@ and greater or equal to 4, but actual value is %lu.",
         return true;
     }
 
+    bool CheckEmptyTensor() override
+    {
+        if (gmmDsqParams_.x->GetViewShape().GetDim(1) <= 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "When the M value is not 0, the K value in x should be positive, but actual value is %ld",
+                    gmmDsqParams_.x->GetViewShape().GetDim(1));
+            return false;
+        }
+        auto weightKIndex = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum() - LAST_SECOND_DIM_INDEX;
+        if (((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex) <= 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "When the N value is not 0, the K value in weight should be positive, but actual value is %ld",
+                    ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex));
+            return false;
+        }
+        return true;
+    }
+
     bool CheckInputOutDims() override
     {
         if (!CheckAttrs()) {

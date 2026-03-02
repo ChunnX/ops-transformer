@@ -819,6 +819,14 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
 
 static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(GroupedMatmulParams &params, aclOpExecutor *executor)
 {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        auto x1MDim = params.x1->GetViewShape().GetDim(0);
+        auto x2NIndex = params.x2->GetViewShape().GetDimNum() - (params.transposeX2 ? PENULTIMATE_DIM : 1);
+        auto x2NDim = params.x2->GetViewShape().GetDim(x2NIndex);
+        if (x1MDim == 0 || x2NDim == 0) {
+            return ACLNN_SUCCESS;
+        }
+    }
     auto ret = PreMatmulCalcProcess(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // shareInput格式转换
