@@ -910,8 +910,15 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
                 CopyToL1Nd2NzGS1Merge<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize,
                     constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
             } else {
-                uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-                    CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize, constInfo.mm1Ka);
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
+                    uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
+                         coordInfo[runInfo.taskIdMod3].s1Coord, 0);	 
+                    CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
+                        constInfo.mm1Ka);	 
+                } else { 
+                    CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
+                        constInfo.mm1Ka); 
+                }
             }
         } else {
             uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s1Coord, 0);
@@ -1087,8 +1094,18 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
         LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
         uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
             coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-        CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
-            constInfo.mm1Ka);
+        if constexpr(isInfer) {
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	  
+                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
+                    constInfo.mm1Ka);	 
+            } else { 
+                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
+                 constInfo.mm1Ka); 
+            }
+        } else {
+            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
+                constInfo.mm1Ka);
+        }
         mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非s2的第一次循环直接复用Q
         mm1B = l1QBuffers.GetPre();
@@ -1616,8 +1633,13 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
                     CopyToL1Nd2NzGS1Merge<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset], constInfo.s1Size, constInfo.gSize, realK,
                         constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
                 } else {
-                    CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset],
-                        runInfo.s1RealSize, realK, constInfo.mm1Ka);
+                    if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
+                        CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset], runInfo.s1RealSize, realK,	 
+                            constInfo.mm1Ka);	 
+                    } else { 
+                        CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[runInfo.queryOffset + gmKOffset], runInfo.s1RealSize, realK,
+                            constInfo.mm1Ka); 
+                    }
                 }
             } else {
                 CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset],
