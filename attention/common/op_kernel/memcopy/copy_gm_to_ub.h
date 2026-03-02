@@ -372,6 +372,7 @@ struct GmPseCoord {
     uint32_t s2DealSize = 0;
     uint64_t s1LeftPaddingSize = 0;
     uint64_t s2LeftPaddingSize = 0;
+    uint64_t actualBIdx = 0;
 };
 
 // 对齐暂不考虑TND
@@ -386,7 +387,7 @@ public:
             OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
             uint64_t s1Size = 0;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmPseCoord.bIdx);
+                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmPseCoord.actualBIdx);
             } else if (qsEqualOne) {
                 s1Size = 1U;
             } else {

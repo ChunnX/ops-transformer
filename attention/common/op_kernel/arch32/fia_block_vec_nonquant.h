@@ -544,7 +544,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                 .gS1DealSize = dealRowCount,
                 .s2DealSize = actualColumnCount,
                 .s1LeftPaddingSize = info.qPaddingBeginOffset,
-                .s2LeftPaddingSize = info.kvPaddingBeginOffset
+                .s2LeftPaddingSize = info.kvPaddingBeginOffset,
+                .actualBIdx = info.bIdx
             };
             bool qsEqualOne = (constInfo.qSeqSize == 1);
             copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
