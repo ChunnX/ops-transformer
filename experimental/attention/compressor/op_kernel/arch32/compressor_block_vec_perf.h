@@ -611,7 +611,7 @@ CompressorBlockVectorPerf<COMP>::DataCopyWithOutputQue(const GlobalTensor<O> dst
     if (copyRowCount == 0) {
         return;
     }
-    uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_16K / copyColCount * sizeof(O);
+    uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_16K / (copyColCount * sizeof(O));
     for (uint32_t rowCount = 0; rowCount < copyRowCount; rowCount += singleCopyRowCount) {
         uint64_t srcOffset = rowCount * srcSingleRowCount;
         uint64_t dstOffset = rowCount * dstSingleRowCount;
