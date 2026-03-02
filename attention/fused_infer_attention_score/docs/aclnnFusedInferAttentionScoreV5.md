@@ -722,7 +722,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>用户不特意指定时建议传入0，表示key/value和query的head个数相等。</li>
-            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景(D=64或者D=128)，和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; 其他场景仅支持numHeads与numKeyValueHeads的比值不能大于64</li>
+            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; 其他场景仅支持numHeads与numKeyValueHeads的比值不能大于64</li>
             <li>在BNSD、BSND、BNSD_BSND、BSND_BNSD、BNSD_NBSD、BSND_NBSD、TND、NTD、NTD_TND、TND_NTD场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常</li>
         </ul>
         </td>
@@ -1075,7 +1075,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </tr>
             <tr>
                 <td>N</td>
-                <td><ul><li>GQA非量化场景(D=64或者D=128)，和Prefill MLA非量化场景下N轴无限制</li>
+                <td><ul><li>GQA非量化场景和Prefill MLA非量化场景下N轴无限制</li>
                     <li>其余场景仅支持N轴小于等于256</li></ul>
                 </td>
             </tr>
@@ -1139,6 +1139,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <td rowspan="3">(B,Q_N,P_S1,P_S2)、(1,Q_N,P_S1,P_S2)</td>
                 <td rowspan="3">
                 <ul>
+                <li>仅FA训练支持pseType=1。</li>
                 <li>query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。</li>
                 <li>P_S1需大于等于query的S长度，P_S2需大于等于key的S长度。prefix场景P_S2需大于等于actualSharedPrefixLen与key的S长度之和。</li>
                 <li>P_S2建议padding到32对齐，提升性能</li>
@@ -1161,6 +1162,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <td rowspan="2">(B,Q_N,1,P_S2)、(1,Q_N,1,P_S2)</td>
                 <td rowspan="2">
                 <ul>
+                <li>仅FA训练支持pseType=1。</li>
                 <li>P_S2需大于等于key的S长度。prefix场景P_S2需大于等于actualSharedPrefixLen与key的S长度之和。</li>
                 <li>P_S2建议padding到32对齐，提升性能</li>
                 </ul>
@@ -1885,7 +1887,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <td>-</td>
         </tr>
         <tr>
-            <td rowspan="17">query d=512</td>
+            <td rowspan="18">query d=512</td>
             <td rowspan="6">通用场景</td>
             <td>query</td>
             <td>Q_N=[1,2,4,8,16,32,64,128]</td>
@@ -1980,7 +1982,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <td>-</td>
         </tr>
         <tr>
-            <td colspan="3">不支持左padding、tensorlist、pse、prefix、伪量化</td>
+            <td colspan="4">不支持左padding、tensorlist、pse、prefix、伪量化</td>
         </tr>
         <tr>
             <td rowspan="6">query d=128</td>
