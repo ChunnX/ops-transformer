@@ -385,7 +385,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
     bool curGroupStartFlag = false;
     uint32_t quota = constInfo.coreGroupNum * constInfo.mBaseSize;
 
-    for (uint32_t i = batchInfo.bIdx; i < constInfo.batchSize; ++i) {
+    for (; batchInfo.bIdx < constInfo.batchSize;) {
         uint32_t curDealSeq = 0;
         uint32_t curDealTcNUm = 0;
         uint32_t curDealCompressedTcNum = 0;
