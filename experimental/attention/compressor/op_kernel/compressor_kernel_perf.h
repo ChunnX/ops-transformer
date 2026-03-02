@@ -157,6 +157,7 @@ private:
     uint32_t cubeLoop = 0;
     uint32_t vec1Loop = 0;
     uint32_t vec2Loop = 0;
+    bool isFirstUpdateCurGroup = true;
 };
 
 template <typename COMP>
@@ -355,14 +356,14 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateCurGroup(BasicBlockInfo
                                 BatchInfo batchInfo, uint32_t &curGroupQuota, uint32_t curDealSeq)
 {
     // 更新当前组的信息
-    
+    if (curGroupQuota == 0 && !isFirstUpdateCurGroup) {
+        return;
+    }
+    isFirstUpdateCurGroup = false;
     basicBlockInfo.bIdx = batchInfo.bIdx;
     uint32_t curGroupDealSeq = curGroupQuota < curDealSeq ? curGroupQuota : curDealSeq;
     basicBlockInfo.sIdx = batchInfo.sIdx + curGroupDealSeq;
     basicBlockInfo.dealSeqCnt += curGroupDealSeq;
-    if (curGroupQuota <= 0) {
-        return;
-    }
     curGroupQuota -= curGroupDealSeq;
     // 结尾需要跳batch，需要考虑在当前组起始为末尾，或者当前组起始大于整个M轴
     if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.batchSize - 1) && basicBlockInfo.sIdx == batchInfo.seqCnt) {
@@ -380,6 +381,7 @@ template <typename COMP>
 __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchInfo &batchInfo)
 {
     BasicBlockInfo basicBlockInfo{};
+    isFirstUpdateCurGroup = true;
     uint32_t curGroupQuota = constInfo.mBaseSize * constInfo.curGroupIdx;       // m轴当前组起始
     bool curGroupStartFlag = false;
     uint32_t quota = constInfo.coreGroupNum * constInfo.mBaseSize;
