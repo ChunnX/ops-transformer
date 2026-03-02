@@ -369,7 +369,6 @@ private:
         SetFlag<HardEvent::MTE2_S>(eventIdMTE2ToS);
 
         if (IsSameType<XTYPE, int32_t>::value && this->hasAS == true) {
-            // todo asUb拷贝入,datapad参数
             DataCopyExtParams dataCopyParamsAs;
             DataCopyPadExtParams<float> padParamsAs;
             dataCopyParamsAs.blockCount = 1;
