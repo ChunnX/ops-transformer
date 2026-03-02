@@ -173,7 +173,7 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         int64_t blockNumsB16 = BLOCK_BYTE_SIZE / sizeof(OUTDTYPE);
         dAlignToBlock = AlignTo(d, blockNums);
         dAlignToBlockB16 = AlignTo(d, blockNumsB16);
-        actual_seq_qlen_addr = actual_seq_qlen; // todo
+        actual_seq_qlen_addr = actual_seq_qlen;
 
         dxGm.SetGlobalBuffer((__gm__ T1 *)dx);
         dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
