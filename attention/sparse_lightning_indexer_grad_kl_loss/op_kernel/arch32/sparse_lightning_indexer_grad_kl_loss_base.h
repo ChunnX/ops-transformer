@@ -38,6 +38,7 @@ public:
     using T = float;
     using Q_T = typename SLIT::inputQT;
     using KV_T = typename SLIT::inputKT;
+    using W_T = typename SLIT::inputWT;
     using OUT_T = typename SLIT::outputT;
     using Q_ROPE_T = Q_T;
     using K_ROPE_T = KV_T;
@@ -95,7 +96,8 @@ private:
     SLITMatmulService<SLIT> matmulService;
 
     // input GM
-    GlobalTensor<Q_T> queryGm, queryIndexGm, weightGm;
+    GlobalTensor<Q_T> queryGm, queryIndexGm;
+    GlobalTensor<W_T> weightGm;
     GlobalTensor<KV_T> keyGm, keyIndexGm;
     GlobalTensor<Q_ROPE_T> queryRopeGm;
     GlobalTensor<K_ROPE_T> keyRopeGm;
@@ -103,7 +105,8 @@ private:
     GlobalTensor<int32_t> topKIndexGm;
     GlobalTensor<int64_t> actualSeqLengthsQueryGm, actualSeqLengthsKeyGm;
     // output GM
-    GlobalTensor<OUT_T> dQueryIndexGm, dKeyIndexGm, dWeightGm;
+    GlobalTensor<OUT_T> dQueryIndexGm, dKeyIndexGm;
+    GlobalTensor<W_T> dWeightGm;
     GlobalTensor<T> lossGm;
     // workspace
     GlobalTensor<KV_T> gatherPRes, gatherSYRes;
@@ -149,7 +152,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
     keyGm.SetGlobalBuffer((__gm__ KV_T *)key);
     queryIndexGm.SetGlobalBuffer((__gm__ Q_T *)queryIndex);
     keyIndexGm.SetGlobalBuffer((__gm__ KV_T *)keyIndex);
-    weightGm.SetGlobalBuffer((__gm__ Q_T *)weight);
+    weightGm.SetGlobalBuffer((__gm__ W_T *)weight);
     topKIndexGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     softmaxMaxGm.SetGlobalBuffer((__gm__ T *)softmaxMax);
     softmaxSumGm.SetGlobalBuffer((__gm__ T *)softmaxSum);
@@ -171,7 +174,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
     // init output global buffer
     dQueryIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dQueryIndex);
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKeyIndex);
-    dWeightGm.SetGlobalBuffer((__gm__ OUT_T *)dWeight);
+    dWeightGm.SetGlobalBuffer((__gm__ W_T *)dWeight);
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
     lossGm.SetValue(0, 0.0F);
     AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(lossGm);

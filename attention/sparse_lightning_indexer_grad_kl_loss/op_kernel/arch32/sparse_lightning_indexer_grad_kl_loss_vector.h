@@ -35,6 +35,7 @@ public:
     using T = float;
     using Q_T = typename SLIT::inputQT;
     using KV_T = typename SLIT::inputKT;
+    using W_T = typename SLIT::inputWT;
     using OUT_T = typename SLIT::outputT;
     using Q_ROPE_T = Q_T;
     using K_ROPE_T = KV_T;
@@ -67,9 +68,9 @@ public:
     // =============== vector 1 functions ==============
     __aicore__ inline void InitVector1GM(const GlobalTensor<MM12_OUT_T> &bmm1Res,
                                     const GlobalTensor<T> &softmaxMax, const GlobalTensor<T> &softmaxSum,
-                                    const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<Q_T> &weight,
+                                    const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<W_T> &weight,
                                     const GlobalTensor<T> psySync, GlobalTensor<T> &loss,
-                                    GlobalTensor<OUT_T> &dWeight, GlobalTensor<T> &reluGm,
+                                    GlobalTensor<W_T> &dWeight, GlobalTensor<T> &reluGm,
                                     GlobalTensor<KV_T> &reluGradRes, GlobalTensor<int64_t> &actualSeqLengthsQueryGm,
                                     GlobalTensor<int64_t> &actualSeqLengthsKeyGm, const GlobalTensor<T> &lossRes);
     __aicore__ inline void ProcessVector1(SLIGradKLLossRunInfo &runInfo);
@@ -137,11 +138,11 @@ private:
     GlobalTensor<T> softmaxMaxGm; 
     GlobalTensor<T> softmaxSumGm;
     GlobalTensor<MM12_OUT_T> bmm2ResGm;
-    GlobalTensor<Q_T> weightGm;
+    GlobalTensor<W_T> weightGm;
     GlobalTensor<T> psySyncGm, psySyncOtherGm;
     GlobalTensor<T> tempGm;
     GlobalTensor<T> lossGm;
-    GlobalTensor<OUT_T> dWeightGm;
+    GlobalTensor<W_T> dWeightGm;
     GlobalTensor<T> reluGm;
     GlobalTensor<KV_T> reluGradResGm;
 
@@ -212,7 +213,7 @@ private:
     LocalTensor<KV_T> reluGradpongBuf;
     LocalTensor<T> weightTensor;
     LocalTensor<uint8_t> tmpUb;
-    LocalTensor<KV_T> dwOutTensor;
+    LocalTensor<W_T> dwOutTensor;
 
     // =============== Event_id variable ==============
     static constexpr event_t EVENT_ID0 = (event_t)0;
@@ -282,9 +283,9 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector0GM(
 template <typename SLIT> 
 __aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector1GM(const GlobalTensor<MM12_OUT_T> &bmm1Res,
                                                         const GlobalTensor<T> &softmaxMax, const GlobalTensor<T> &softmaxSum,
-                                                        const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<Q_T> &weight,
+                                                        const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<W_T> &weight,
                                                         const GlobalTensor<T> psySync, GlobalTensor<T> &loss,
-                                                        GlobalTensor<OUT_T> &dWeight, GlobalTensor<T> &reluGm,
+                                                        GlobalTensor<W_T> &dWeight, GlobalTensor<T> &reluGm,
                                                         GlobalTensor<KV_T> &reluGradRes, GlobalTensor<int64_t> &actualSeqLengthsQueryGm,
                                                         GlobalTensor<int64_t> &actualSeqLengthsKeyGm, const GlobalTensor<T> &lossRes)
 {
@@ -328,16 +329,18 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(this->v1TmpTBuf, ubAllocPolicy.v1TmpUbSize);
     pipe->InitBuffer(this->lossSumTBuf, ubAllocPolicy.lossSumUbSize);
     pipe->InitBuffer(this->weightTBuf, ubAllocPolicy.weightUbSize);
-    pipe->InitBuffer(this->weightInTBuf, ubAllocPolicy.weightInUbSize);
     pipe->InitBuffer(this->dwTBuf, ubAllocPolicy.dwUbSize);
     pipe->InitBuffer(this->maskBuf, ubAllocPolicy.maskUbSize);
     pipe->InitBuffer(this->scatterAddBuf, ubAllocPolicy.scatterAddUbSize);
 
+    if constexpr (!IsSameType<W_T, float>::value) {
+        pipe->InitBuffer(this->weightInTBuf, ubAllocPolicy.weightInUbSize);
+        weightInUb = weightInTBuf.Get<W_T>();
+    }
     gatherKeyUb = gatherTbuf.Get<KV_T>();
     gatherKeyIndexUb = gatherKeyUb[SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_9K * 2];
 
     weightUb = weightTBuf.Get<T>();
-    weightInUb = weightInTBuf.Get<KV_T>();
     reluResUb = mm2TBuf.Get<T>();
     reduceSumTmpBuffer = sharedTBuf.GetWithOffset<uint8_t>(8*1024, 8*1024);
     reduceSumYResTmpBuffer = sharedTBuf.GetWithOffset<T>(topKSize, 2*8*1024);
@@ -354,7 +357,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitBuffers(TPipe *pipe)
     reluGradpongBuf = mm2TBuf.template Get<KV_T>();
     weightTensor = weightTBuf.template Get<T>();
     tmpUb = sharedTBuf.template Get<uint8_t>();
-    dwOutTensor = this->dwTBuf.template Get<KV_T>();
+    dwOutTensor = this->dwTBuf.template Get<W_T>();
 }
 
 template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::AllocEventID()
@@ -1061,14 +1064,19 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::PreloadWeight(SLIGradKLLoss
     }
     int64_t weightDBOffset = runInfo.taskIdMod2 * constInfo.gSizeQueryIndexAlign16;
     // weight 可以常驻, 所以直接搬运, 减少搬运切片
-
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2Weight[runInfo.taskIdMod2]);
-    AscendC::DataCopy(weightInUb[weightDBOffset], weightGm[weightOffset], constInfo.gSizeQueryIndexAlign16);
+    if constexpr (!IsSameType<W_T, float>::value) {
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2Weight[runInfo.taskIdMod2]);
+        AscendC::DataCopy(weightInUb[weightDBOffset], weightGm[weightOffset], constInfo.gSizeQueryIndexAlign16);
+    } else {
+        AscendC::DataCopy(weightUb[weightDBOffset], weightGm[weightOffset], constInfo.gSizeQueryIndexAlign16);
+    }
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerPreW);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerPreW);
-    AscendC::Cast(weightUb[weightDBOffset], weightInUb[weightDBOffset], AscendC::RoundMode::CAST_NONE, constInfo.gSizeQueryIndex);
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2Weight[runInfo.taskIdMod2]);
-    PipeBarrier<PIPE_V>();
+    if constexpr (!IsSameType<W_T, float>::value) {
+        AscendC::Cast(weightUb[weightDBOffset], weightInUb[weightDBOffset], AscendC::RoundMode::CAST_NONE, constInfo.gSizeQueryIndex);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2Weight[runInfo.taskIdMod2]);
+        PipeBarrier<PIPE_V>();
+    }
 }
 
 template <typename SLIT> 
@@ -1270,13 +1278,18 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIGradK
     WaitFlag<HardEvent::MTE3_MTE2>(eventIdmte3ToMte2DwDqDkPingPong[1]);
 
     // 只有一轮计算，计算完直接可以拷贝到GM输出
-    PipeBarrier<PIPE_V>();
-    Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
-    SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
-    WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
-
+    if constexpr (!IsSameType<W_T, float>::value) {
+        PipeBarrier<PIPE_V>();
+        Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
+        SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+        WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+    } else {
+        SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+        WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+        dwOutTensor = reduceSumResTensor;
+    }
     // 拷出到GM
-    DataCopyParams dataCopyParams(1, gSizePerVec * sizeof(KV_T), 0, 1);
+    DataCopyParams dataCopyParams(1, gSizePerVec * sizeof(W_T), 0, 1);
     if constexpr (LAYOUT_T == SLILayout::BSND) {
         DataCopyPad(dWeightGm[runInfo.bIdx * (constInfo.s1Size * constInfo.gSizeQueryIndex) +
             runInfo.s1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset], dwOutTensor, dataCopyParams);
@@ -1403,13 +1416,19 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIG
     }
 
     if (kLoopIdx == runInfo.kLoopTimes - 1) {
-        PipeBarrier<PIPE_V>();
-        Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
-        SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
-        WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+        if constexpr (!IsSameType<W_T, float>::value) {
+            PipeBarrier<PIPE_V>();
+            Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
+            SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+            WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+        } else {
+            SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+            WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
+            dwOutTensor = reduceSumResTensor;
+        }
 
         // 拷出到GM
-        DataCopyParams dataCopyParams(1, gSizePerVec * sizeof(KV_T), 0, 1);
+        DataCopyParams dataCopyParams(1, gSizePerVec * sizeof(W_T), 0, 1);
         if constexpr (LAYOUT_T == SLILayout::BSND) {
             DataCopyPad(dWeightGm[runInfo.bIdx * (constInfo.s1Size * constInfo.gSizeQueryIndex) +
                 runInfo.s1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset], dwOutTensor, dataCopyParams);

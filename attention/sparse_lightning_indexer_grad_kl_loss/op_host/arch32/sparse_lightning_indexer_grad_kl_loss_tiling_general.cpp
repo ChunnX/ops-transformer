@@ -349,10 +349,10 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDtype()
     bool same16 = false; // 判断输入为fp16或者部分16的是否一致
     bool same32 = false; // 判断输入为int32或者fp32的类型是否正确
     if (queryDtype == ge::DT_FLOAT16 && keyDtype == ge::DT_FLOAT16 && queryIndexDtype == ge::DT_FLOAT16 && 
-                            keyIndexDtype == ge::DT_FLOAT16 && weightsDtype == ge::DT_FLOAT16) {
+        keyIndexDtype == ge::DT_FLOAT16 && (weightsDtype == ge::DT_FLOAT16 || weightsDtype == ge::DT_FLOAT)) {
         same16 = true;
     } else if (queryDtype == ge::DT_BF16 && keyDtype == ge::DT_BF16 && queryIndexDtype == ge::DT_BF16 && 
-                            keyIndexDtype == ge::DT_BF16 && weightsDtype == ge::DT_BF16) {
+               keyIndexDtype == ge::DT_BF16 && (weightsDtype == ge::DT_BF16 || weightsDtype == ge::DT_FLOAT)) {
         same16 = true;
     } else {
         OP_LOGW(context_, "InputDtype is not same.: queryDtype[%s], keyDtype[%s], queryIndexDtype[%s], keyIndexDtype[%s], weightsDtype[%s]",
@@ -406,8 +406,8 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify T1 is failed, the value of query[0], query_index[0], weights[0], softmax_max[1] \
                  and softmax_sum[1] are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.", queryShape[0], queryIndexShape[0], weightsShape[0], softmaxMaxShape[1], softmaxSumShape[1]), return false);
         // 验证N Query数字是否正确
-        OP_CHECK_IF(queryShape[1] != NQUERY_SIZE_64 && queryShape[1] != NQUERY_SIZE_128,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {64, 128}, but the value of query[1] is (%ld)", queryShape[1]), return false);        
+        OP_CHECK_IF(queryShape[1] != NQUERY_SIZE_32 && queryShape[1] != NQUERY_SIZE_64 && queryShape[1] != NQUERY_SIZE_128,
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {32, 64, 128}, but the value of query[1] is (%ld)", queryShape[1]), return false);        
         // 验证N Index数字是否正确
         OP_CHECK_IF(queryIndexShape[1] != NQUERYINDEX_SIZE_8 && queryIndexShape[1] != NQUERYINDEX_SIZE_16 && queryIndexShape[1] != NQUERYINDEX_SIZE_32 && queryIndexShape[1] != NQUERYINDEX_SIZE_64,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {8, 16, 32, 64}, but the value of query_index[1] is (%ld).", queryIndexShape[1]), return false);
@@ -488,8 +488,8 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
         OP_CHECK_IF(keyIndexShape[1] != s2Len,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify shape S2 is failed, the value of key[1] and key_index[1] are respectively (%ld), (%ld). Their values should be equal.", keyShape[1], keyIndexShape[1]), return false);
         // 验证N Query数字是否正确
-        OP_CHECK_IF(queryShape[2] != NQUERY_SIZE_64 && queryShape[2] != NQUERY_SIZE_128,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {64, 128}, but the value of query[2] is (%ld)", queryShape[2]), return false);        
+        OP_CHECK_IF(queryShape[2] != NQUERY_SIZE_32 && queryShape[2] != NQUERY_SIZE_64 && queryShape[2] != NQUERY_SIZE_128,
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {32, 64, 128}, but the value of query[2] is (%ld)", queryShape[2]), return false);        
         // 验证N Index数字是否正确
         OP_CHECK_IF(queryIndexShape[2] != NQUERYINDEX_SIZE_8 && queryIndexShape[2] != NQUERYINDEX_SIZE_16 && queryIndexShape[2] != NQUERYINDEX_SIZE_32 && queryIndexShape[2] != NQUERYINDEX_SIZE_64,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {8, 16, 32, 64}, but the value of query_index[2] is (%ld).", queryIndexShape[2]), return false);        

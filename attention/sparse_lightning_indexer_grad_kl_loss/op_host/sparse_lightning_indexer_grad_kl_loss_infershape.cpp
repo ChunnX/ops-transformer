@@ -112,9 +112,10 @@ ge::graphStatus InferDataTypeSparseLightningIndexerGradKLLoss(gert::InferDataTyp
         return ge::GRAPH_FAILED;
     } 
     const auto inputDataType = context->GetInputDataType(queryEnum);
+    const auto inputWeightDataType = context->GetInputDataType(weightEnum);
     context->SetOutputDataType(dQueryIndexEnum, inputDataType);
     context->SetOutputDataType(dKeyIndexEnum, inputDataType);
-    context->SetOutputDataType(dWeightEnum, inputDataType);
+    context->SetOutputDataType(dWeightEnum, inputWeightDataType);
     context->SetOutputDataType(lossEnum, DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }

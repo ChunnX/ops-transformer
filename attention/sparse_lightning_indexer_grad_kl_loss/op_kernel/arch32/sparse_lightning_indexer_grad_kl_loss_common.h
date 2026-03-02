@@ -80,7 +80,7 @@ struct GatherParams {
 /** @name 模版类型定义
  *  @{
  */
-template <typename InputQT, typename InputKT, typename OutT,
+template <typename InputQT, typename InputKT, typename InputWT, typename OutT,
           SLITopKRange TopKRange,
 	      SLILayout LayoutQT = SLILayout::TND,
           SLILayout LayoutKT = SLILayout::TND,
@@ -90,6 +90,7 @@ template <typename InputQT, typename InputKT, typename OutT,
 struct SLIType {
     using inputQT = InputQT;
     using inputKT = InputKT;
+    using inputWT = InputWT;
     using outputT = OutT;
     static constexpr SLITopKRange topKRange = TopKRange;
     static constexpr SLILayout inputQLayout = LayoutQT;
