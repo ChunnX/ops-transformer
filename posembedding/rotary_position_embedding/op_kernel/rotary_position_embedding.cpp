@@ -14,12 +14,17 @@
  */
 #include "rotate_half.h"
 #include "rotate_half_bf16.h"
+
+#if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
 #include "rotate_interleaved_split_s.h"
 #include "rotate_interleaved_split_bs.h"
 #include "rotate_interleaved_split_bsn.h"
 #include "rotate_interleaved_split_s_pad.h"
 #include "rotate_interleaved_split_bs_pad.h"
 #include "rotate_interleaved_split_bsn_pad.h"
+using namespace RotateInterleavedN;
+#endif
+
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
 #include "rotate_matrix.h"
 using namespace RotateMatrix;
@@ -28,14 +33,13 @@ using namespace matmul;
 
 using namespace AscendC;
 using namespace RotateHalfN;
-using namespace RotateInterleavedN;
 
 extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR rotate,
                                                                 GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
 {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     GET_TILING_DATA(tilingData, tiling);
     GM_ADDR usrWorkspace = AscendC::GetUserWorkspace(workspace);
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
 
     // mode: rotate_half
     if (TILING_KEY_IS(1011)) {
@@ -86,7 +90,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         RotateHalfBf16<half, float> rotateHalfOp;
         rotateHalfOp.Init(x, cos, sin, y, tilingData);
         rotateHalfOp.Process();
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if !(((defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) || (defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)))
     } else if (TILING_KEY_IS(1013)) {
         RotateHalfBf16<bfloat16_t, float> rotateHalfOp;
         rotateHalfOp.Init(x, cos, sin, y, tilingData);
@@ -115,6 +119,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
     }
 
     // mode: rotate_interleaved
+#if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
     if (TILING_KEY_IS(2000)) {
         TPipe pipe;
         InterleavedSplitS<half> interleavedSplitS;
@@ -218,6 +223,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         interleavedSplitBSNPad.Init(x, cos, sin, y, tilingData, &pipe);
         interleavedSplitBSNPad.Process();
     }
+#endif
     
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
     if (TILING_KEY_IS(3011)) {

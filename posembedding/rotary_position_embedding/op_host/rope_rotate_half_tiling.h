@@ -34,6 +34,7 @@ protected:
     bool IsCapable() override
     {
         if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B ||
+             socVersion_ == platform_ascendc::SocVersion::ASCEND310P ||
              socVersion_ == platform_ascendc::SocVersion::KIRINX90 ||
              socVersion_ == platform_ascendc::SocVersion::KIRIN9030) && inputMode_ != MODE_ROTATE_INTERLEAVED) {
             return true;
