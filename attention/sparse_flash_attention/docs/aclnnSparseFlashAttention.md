@@ -324,7 +324,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>sparse_mode为3时，代表rightDownCausal模式的mask，对应以右下顶点往左上为划分线的下三角场景。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -338,7 +338,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>仅支持默认值2^63-1。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -352,7 +352,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>仅支持默认值2^63-1。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -366,7 +366,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>仅支持传入2，表示MLA-absorb模式。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -414,7 +414,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>不支持空tensor。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>FLOAT</td>
       <td>ND</td>
       <td>
           <ul>
@@ -433,7 +433,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>不支持空tensor。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>FLOAT</td>
       <td>ND</td>
       <td>
           <ul>
