@@ -158,7 +158,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>yRef</td>
       <td>输入输出</td>
       <td>Device侧的aclTensor，对应公式中的输入输出y。</td>
-      <td>-</td>
+      <td>当x1的M轴或者x2的N轴为0时，yRef为空tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>3(g，M，N)</td>

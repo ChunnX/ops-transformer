@@ -262,7 +262,7 @@ aclnnStatus aclnnGroupedMatmulV3(
     - weight支持FLOAT16、BFLOAT16、FLOAT32、INT8
     - biasOptional支持FLOAT16、BFLOAT16、FLOAT32、INT32
     - y支持FLOAT16、BFLOAT16、FLOAT32、INT8
-    - 不支持scaleOptional、offsetOptional
+    - 不支持offsetOptional
     - groupType支持m轴分组和不分组，仅非量化支持k轴分组。
     - 输入参数x、weight，输出参数y在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor，在量化场景支持最多1个tensor。
 
@@ -432,18 +432,14 @@ aclnnStatus aclnnGroupedMatmulV3(
   <summary>量化场景约束</summary>
 
   - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional
+  - 仅支持单单单场景
 
-  - 不为空的参数支持的数据类型组合要满足下表：
+  - 不为空的参数支持的数据类型和维度组合要满足下表（其中g为matmul组数即分组数）：
 
-      |groupType| x       | weight  | biasOptional | scaleOptional | out     |
-      |:-------:|:-------:|:-------:| :------      |:-------       | :------ |
-      |0|INT8     |INT8     |INT32/null    | UINT64/INT64  |INT8|
+      |groupType| x dtype     | x shape | weight dtype |weight shape| biasOptional dtype |biasOptional shape| scaleOptional dtpye |scaleOptional shape| out dtpye    |out shape|
+      |:-------:|:-------:|:-------:|:-------:|:-------:| :------      | :------      |:-------       | :------ |:-------       | :------ |
+      |0|INT8     |(M,K)|INT8     |(g,K,N)/(g,N,K)|INT32/null    | (g,N)|UINT64/INT64  |(g,N)/null|INT8|(M,N)|
 
-  - scaleOptional要满足下表（其中g为matmul组数即分组数）：
-
-      |groupType| 使用场景 | shape限制 |
-      |:---------:|:---------:| :------ |
-      |0|weight单tensor|每个tensor 2维， shape为（g, N）|
   </details>
 
   <details>

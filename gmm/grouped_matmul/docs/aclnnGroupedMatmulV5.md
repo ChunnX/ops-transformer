@@ -136,7 +136,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>一般情况下，长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
           <td>FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<sup>2</sup>、INT64<sup>2</sup></td>
           <td>ND</td>
-          <td>1-3</td>
+          <td>1-4</td>
           <td>√</td>
       </tr>
       <tr>
@@ -176,7 +176,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           <td>一般情况下，只支持1维且长度与x的M相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
           <td>FLOAT、FLOAT8_E8M0<sup>2</sup></td>
           <td>ND</td>
-          <td>1-2</td>
+          <td>1-3</td>
           <td>√</td>
       </tr>
       <tr>
@@ -839,7 +839,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         <a id="动态量化（mx量化）场景约束"></a>
 
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、 activationInputOptional
-    - 计算公式中量化block size为：gsM = gsN = 1，gsK = 32。mx量化是特殊的pergroup量 化。
+    - 计算公式中量化block size为：gsM = gsN = 1，gsK = 32。mx量化是特殊的pergroup量化。
     - 不为空的参数支持的数据类型组合要满足下表：
 
         |groupType| x       | weight  | biasOptional | scaleOptional |  perTokenScaleOptional |out     |
