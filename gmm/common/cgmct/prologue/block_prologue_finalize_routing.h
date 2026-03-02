@@ -15,7 +15,11 @@
 
 #ifndef BLOCK_PROLOGUE_FINALIZE_ROUTING_H
 #define BLOCK_PROLOGUE_FINALIZE_ROUTING_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "../utils/common_utils.h"
 #include "../utils/device_utils.h"
 #include "../utils/status_utils.h"

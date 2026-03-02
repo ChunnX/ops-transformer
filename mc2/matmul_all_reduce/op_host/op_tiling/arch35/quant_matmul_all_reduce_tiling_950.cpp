@@ -30,17 +30,11 @@ constexpr uint64_t PERTILE_FP32_WORKSPACE_CNT = 2;
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
 constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
-constexpr uint64_t GROUP_MAX_BIT_SIZE = 0xFFFFFFFFFFFF;
 constexpr uint64_t PERTILE_TILELEN = 128;
 constexpr uint64_t DOUBLE_BUFFER = 2;
 constexpr uint64_t QUANT_MODE_FP8 = 2;
 constexpr uint32_t ALIGN_DATA_SIZE = 32;
 constexpr uint64_t CCU_ALLTOALL_MAX_DATACNT = 200 * 1024 * 1024;
-
-static const std::initializer_list<std::tuple<int, int, int>> MXFP_GROUPSIZE_SUPPORT_LIST = {
-    std::make_tuple(0, 0, 32), std::make_tuple(1, 1, 32)};
-static const std::initializer_list<std::tuple<int, int, int>> PERBLOCK_GROUPSIZE_SUPPORT_LIST = {
-    std::make_tuple(128, 128, 128)};
 
 namespace {
 const gert::Shape defaultShape = gert::Shape();
@@ -614,13 +608,6 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckCommQuantScale()
     return ge::GRAPH_SUCCESS;
 }
 
-bool CheckGroupSizeVaild(
-    std::tuple<int, int, int> groupSizeMNK, std::initializer_list<std::tuple<int, int, int>> supportGroupSizeList)
-{
-    return std::find(supportGroupSizeList.begin(), supportGroupSizeList.end(), groupSizeMNK) !=
-           supportGroupSizeList.end();
-}
-
 ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
 {
     OP_TILING_CHECK(
@@ -630,10 +617,22 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeM = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
-    std::tuple<uint64_t, uint64_t, uint64_t> groupSizeMNK(groupSizeM, groupSizeN, groupSizeK);
+    mc2tiling::Mc2MatmulShapeInfo shapeInfo = {
+        mmrCtxInfo_.x1_shape,
+        mmrCtxInfo_.x2_shape,
+        mmrCtxInfo_.pertoken_scale_shape,
+        mmrCtxInfo_.dequant_scale_shape,
+        false,
+        args_.isBTrans,
+        opName_
+    };
+
     if (isPerBlock_) {
-        OP_TILING_CHECK(
-            !(CheckGroupSizeVaild(groupSizeMNK, PERBLOCK_GROUPSIZE_SUPPORT_LIST)),
+        OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
+            CUBE_INNER_ERR_REPORT(opName_, "Failed to execute inferGroupSize."),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((groupSizeM != SUPPORTED_BLOCK_SIZE) || (groupSizeN != SUPPORTED_BLOCK_SIZE) ||
+                        (groupSizeK != SUPPORTED_BLOCK_SIZE),
             CUBE_INNER_ERR_REPORT(
                 opName_,
                 "GroupSizeM, groupSizeN and groupSizeK should be 128 in perblock scene,"
@@ -641,11 +640,15 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
                 groupSizeM, groupSizeN, groupSizeK),
             return ge::GRAPH_FAILED);
     } else if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
-        OP_TILING_CHECK(
-            !(CheckGroupSizeVaild(groupSizeMNK, MXFP_GROUPSIZE_SUPPORT_LIST)),
+        shapeInfo.isMxfp = true;
+        OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
+            CUBE_INNER_ERR_REPORT(opName_, "Failed to execute inferGroupSize."),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((groupSizeM != MX_GROUP_SIZE_M) || (groupSizeN != MX_GROUP_SIZE_N) ||
+                        (groupSizeK != MX_GROUP_SIZE_K),
             CUBE_INNER_ERR_REPORT(
                 opName_,
-                "GroupSizeM, groupSizeN and groupSizeK should be surported in mxfp scene,"
+                "GroupSizeM, groupSizeN and groupSizeK should be [1, 1, 32] in mxfp scene,"
                 " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu].",
                 groupSizeM, groupSizeN, groupSizeK),
             return ge::GRAPH_FAILED);
@@ -696,7 +699,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
     if (scenario_ == AllReduceScenario::MXFP4) {
         uint64_t x1K = GetKValue();
         OP_TILING_CHECK(
-            Ops::Base::CeilDiv(x1K, MX_FP4_GROUP_SIZE) % 2 != 0,
+            Ops::Base::CeilDiv(x1K, MX_GROUP_SIZE_K) % 2 != 0,
             VECTOR_INNER_ERR_REPORT_TILING(
                 context_->GetNodeName(), "In the dequant MXfp4 scenario, k=%lu ceil dev 32 must be even.", x1K),
             return ge::GRAPH_FAILED);
@@ -829,7 +832,9 @@ ge::graphStatus QuantTilingTransferHelperA5::GetShapeAttrsInfo()
 
     if ((tilingProcesser_.scenario_ == AllReduceScenario::MXFP4) ||
         (tilingProcesser_.scenario_ == AllReduceScenario::MXFP8)) {
-        inputParams_.groupSizeK = MX_GROUP_SIZE;
+        inputParams_.groupSizeM = MX_GROUP_SIZE_M;
+        inputParams_.groupSizeN = MX_GROUP_SIZE_N;
+        inputParams_.groupSizeK = MX_GROUP_SIZE_K;
     }
 
     if (tilingProcesser_.isPerBlock_) {

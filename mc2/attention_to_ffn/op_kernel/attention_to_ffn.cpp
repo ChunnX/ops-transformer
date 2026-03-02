@@ -13,7 +13,11 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "attention_to_ffn.h"
 #include "attention_to_ffn_tiling.h"
 #include "attention_to_ffn_tiling_key.h"

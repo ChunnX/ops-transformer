@@ -15,7 +15,11 @@
 #ifndef MATMUL_ALL_REDUCE_WEIGHT_QUANT_ADAPTIVE_SPLIT_H
 #define MATMUL_ALL_REDUCE_WEIGHT_QUANT_ADAPTIVE_SPLIT_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_constant.h"

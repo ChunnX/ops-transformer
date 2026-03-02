@@ -16,7 +16,12 @@
 #define PROMPT_FLASH_ATTENTION_ZERO_OUTPUT_H
 
 #include "kernel_tiling/kernel_tiling.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 
@@ -59,6 +64,10 @@ __aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Process() {
         }
     }
 
+    auto mte3ToV = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    SetFlag<HardEvent::MTE3_V>(mte3ToV);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToV);
+
     int64_t coreNum = GetBlockNum() * GetTaskRation();
     if (coreNum != 0 && tmp_block_idx < coreNum) {
         int64_t singleCoreLseSize = initParams.totalSoftMaxLseOutputSize / coreNum;
@@ -70,5 +79,8 @@ __aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Process() {
                 singleCoreLseSize, 3e+99); // 3e+99:set the value of invalid batch to inf
         }
     }
+
+    SetFlag<HardEvent::MTE3_V>(mte3ToV);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToV);
 }
 #endif  // PROMPT_FLASH_ATTENTION_ZERO_OUTPUT_H

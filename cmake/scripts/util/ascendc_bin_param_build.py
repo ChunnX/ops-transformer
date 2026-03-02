@@ -384,6 +384,7 @@ grep -q \"None of the given tiling keys are in the supported list\"; then\n"
 
         build_cmd_var = "#!/bin/bash\n"
         build_cmd_var += f'echo "[{self.soc}] Generating {bin_file} ..."\n'
+        build_cmd_var += f"start_time=$(date +%s.%N)\n"
         plog_level = os.environ.get("ASCEND_GLOBAL_LOG_LEVEL")
         plog_stdout = os.environ.get("ASCEND_SLOG_PRINT_TO_STDOUT")
         if plog_level is None:
@@ -410,11 +411,20 @@ grep -q \"None of the given tiling keys are in the supported list\"; then\n"
             op_super_config_str = ' '.join([str(_key) for _key in list(self.op_super_config)])
             build_cmd_var += f' {op_super_config_str}'
 
-        build_cmd_var += ")\n"
-        build_cmd_var += "\n"
+        build_cmd_var += ")\n\n"
     
         check_result = self._generate_check_result(enable_tiling_keys, bin_file)
         build_cmd_var += check_result
+        build_cmd_var += f'end_time=$(date +%s.%N)\n'
+        build_cmd_var += f'duration=$(awk "BEGIN {{ print $end_time - $start_time }}")\n'
+        build_bin_path = os.path.dirname(self.out_path)
+        build_cmd_var += f'kernel_path=$(find "{build_bin_path}" -type f -name "{bin_file}.o" -print | head -n 1)\n'
+        build_cmd_var += f'kernel_size=$(stat -c%s "$kernel_path")\n'
+        build_cmd_var += (
+            f'echo "Build [{self.soc}] op_name [{self.op_file}] index [{str(index)}] bin_file [{bin_file}] '
+            f'duration [$duration] size [$kernel_size] start_time [$start_time] end_time [$end_time]" '
+            f'>> {self.op_file}-{str(index)}.txt\n'
+        )
         build_cmd_var += f'echo "[{self.soc}] Generating {bin_file} Done"\n'
 
         with os.fdopen(os.open(compile_file, const_var.WFLAGS, const_var.WMODES), 'w') as fd:

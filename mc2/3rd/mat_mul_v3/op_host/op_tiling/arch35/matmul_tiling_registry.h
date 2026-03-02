@@ -27,6 +27,7 @@
 
 #include "matmul_base_tiling.h"
 #include "matmul_tiling_cfg.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 struct Mc2MMRegisterCfg {

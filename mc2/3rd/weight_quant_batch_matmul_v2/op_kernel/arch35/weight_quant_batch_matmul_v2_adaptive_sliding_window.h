@@ -19,7 +19,11 @@
 #include "weight_quant_batch_matmul_v2_asw_block.h"
 #include "../weight_quant_batch_matmul_v2_common.h"
 #include "../weight_quant_batch_matmul_v2_constant.h"
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../tool.h"
 

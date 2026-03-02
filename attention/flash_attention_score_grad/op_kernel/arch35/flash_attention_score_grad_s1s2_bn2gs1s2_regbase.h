@@ -16,7 +16,11 @@
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BN2GS1S2_REGBASE_H_
 
 #include <algorithm>
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "matmul_modules/fag_custom_matmul_policy.h"
 #include "vector_api/cast_softmax_grad.h"

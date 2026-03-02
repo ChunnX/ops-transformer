@@ -15,7 +15,12 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_BASIC_API_V1_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_BASIC_API_V1_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#include "kernel_operator_intf.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../tool.h"
 

@@ -545,7 +545,9 @@ namespace SplitFuse {
                 } else if (maskType != 0U && sparseMode == 4U) {
                     int32_t leftPointPreToken = kvSeqlen;
                     int32_t leftPointNextToken = 0;
-                    if (preToken != SPARSE_MODE_INT_MAX) {
+                    if (preToken < 0 && preToken * (-1) >= qSeqlen) {
+ 	  	                startIdx = kvSeqlen / MAX_KV_STACK_LEN + 1;
+ 	  	            } else if (preToken != SPARSE_MODE_INT_MAX) {
                         leftPointPreToken = kvSeqlen - qSeqlen - preToken;
                         preTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointPreToken;
                         preTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointPreToken;
@@ -554,7 +556,9 @@ namespace SplitFuse {
                     } else {
                         startIdx = 0;
                     }
-                    if (nextToken != SPARSE_MODE_INT_MAX) {
+                    if (nextToken < 0 && nextToken * (-1) >= kvSeqlen) {
+ 	                    kvSLoopNumTotal = 0;
+ 	  	            } else if (nextToken != SPARSE_MODE_INT_MAX) {
                         leftPointNextToken = kvSeqlen - qSeqlen + nextToken;
                         nextTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointNextToken;
                         nextTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken;
@@ -928,6 +932,7 @@ namespace SplitFuse {
                                 delEndRow,
                                 qSeqlen,
                                 qSBlockIdx,
+                                curQNBlockTile,
                                 splitParams);
                         } else {
                             epilogueRescaleO(
@@ -948,7 +953,8 @@ namespace SplitFuse {
                                 delStartRow,
                                 delEndRow,
                                 qSeqlen,
-                                qSBlockIdx);
+                                qSBlockIdx,
+                                curQNBlockTile);
                         }
 #endif
                     }

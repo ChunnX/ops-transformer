@@ -13,7 +13,11 @@
  */
 #ifndef MOE_DISTRIBUTE_COMBINE_A2_H
 #define MOE_DISTRIBUTE_COMBINE_A2_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/reduce/sum.h"
 #include "utils/std/algorithm.h"
 #include "kernel_tiling/kernel_tiling.h"

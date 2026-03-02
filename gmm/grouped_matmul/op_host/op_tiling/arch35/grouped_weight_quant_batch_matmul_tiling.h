@@ -59,6 +59,8 @@ constexpr uint32_t SCALE_FACTOR_N_BIT = 24;
 constexpr int32_t B16_DATA_SIZE = 2;
 constexpr int32_t B8_DATA_SIZE = 1;
 
+constexpr uint32_t MX_GROUP_SIZE = 32;
+
 struct TailBlockResplitParam {
     uint32_t mainBlockSize = 0;
     uint64_t mainBlockCount = 0;
@@ -218,6 +220,7 @@ public:
 
 protected:
     bool SetShapeList(const gert::TilingContext *context);
+    bool CheckEmptyTensor(const gert::TilingContext *context);
     bool CheckTensorListSize(const gert::TilingContext *context);
     bool CheckTensorDtype(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const ge::DataType &tensorDtype, const std::string &tensorType) const;
@@ -234,10 +237,8 @@ protected:
                           const std::string &tensorType) const;
     bool CheckDimValue(const gert::TilingContext *context, size_t idx) const;
     bool CheckWeightInnerAxisEven(const gert::TilingContext *context, size_t idx) const;
-    bool CheckXAndWeightShape(const gert::TilingContext *context) const;
     bool CheckEveryTensor(const gert::TilingContext *context) const;
     bool CheckGroupList(const gert::TilingContext *context) const;
-    bool CheckRequiredInputs(const gert::TilingContext *context) const;
     bool AnalyzeAttr(const gert::TilingContext *context);
     bool AnalyzeInput(const gert::TilingContext *context);
     bool CalcResplitTiling(const gert::TilingContext *context);
@@ -246,6 +247,8 @@ protected:
     void SetTilingKey(gert::TilingContext *context);
     bool SetCustomParam(gert::TilingContext *context);
     bool IsA16W4ND() const;
+    bool IsMxA8W4() const;
+    bool CheckPerTokenScale(const gert::TilingContext* context) const;
     bool CheckUnsupportDataFlow(const gert::TilingContext *context) const;
     bool CheckAntiQuantDtype(const gert::TilingContext *context) const;
     bool CheckBiasDtype(const gert::TilingContext *context) const;

@@ -79,6 +79,10 @@ explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
     {
         commTypeInfo_.commDtypeSize = dTypeSize;
     }
+    uint64_t GetCommDTypeSize()
+    {
+        return commTypeInfo_.commDtypeSize;
+    }
     void SetCommTimeFactor(double factor)
     {
         commTimeFactor_ = factor;
@@ -99,7 +103,7 @@ explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
 
     // 性能拟合函数
     double CommTime(uint64_t mSize) const;
-    uint64_t InverseCommTime(double targetTime) const;
+    virtual uint64_t InverseCommTime(double targetTime) const;
     void FindStepSize();
 };
 

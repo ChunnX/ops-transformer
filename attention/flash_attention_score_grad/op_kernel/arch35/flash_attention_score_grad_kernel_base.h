@@ -1055,9 +1055,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsVa
                 }
 
                 UpdateToken(runInfo, bIdx);
-                int64_t s2SparseLeft = Max(CUBE_BASEM * s1oDimIdx - actualCalcS1Token, 0);
+                uint64_t s2SparseLeft = Max(CUBE_BASEM * s1oDimIdx - actualCalcS1Token, 0);
                 s2SparseLeft = s2SparseLeft >> 6 << 6;
-                int64_t s2SparseRight = AlignTo64(
+                uint64_t s2SparseRight = AlignTo64(
                     Min(CUBE_BASEM * (s1oDimIdx + 1), constInfo.commonConstInfo.s1Size) + actualCalcS2Token);
                 s2SparseRight = Min(s2SparseRight, actualS2Len);
                 bool isValid = s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft;
@@ -1115,9 +1115,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsVa
                 constInfo.sparseMode == PREFIX_COMPRESS) {
                 return CheckIsValidBlock(runInfo, index, s1oDimIdx, s2oDimIdx, taskId);
             } else {
-                int64_t s2SparseLeft = Max(CUBE_BASEM * s1oDimIdx - constInfo.s1Token, 0);
+                uint64_t s2SparseLeft = Max(CUBE_BASEM * s1oDimIdx - constInfo.s1Token, 0);
                 s2SparseLeft = s2SparseLeft >> 6 << 6;
-                int64_t s2SparseRight =
+                uint64_t s2SparseRight =
                     AlignTo64(Min(CUBE_BASEM * (s1oDimIdx + 1), constInfo.commonConstInfo.s1Size) + constInfo.s2Token);
                 s2SparseRight = Min(s2SparseRight, constInfo.commonConstInfo.s2Size);
                 if constexpr (IS_BN2_MULTIBLK) {
@@ -1159,7 +1159,6 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsValidForDeter(FagRunInfo &runInfo, int64_t taskId, int64_t index)
 {
-   
     int64_t gDimTail = index % constInfo.s1oS2o;
     int64_t s2oDimIdx = gDimTail / constInfo.s1Outer;
     int64_t s1oDimIdx = gDimTail % constInfo.s1Outer;
@@ -1170,9 +1169,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsVa
             constInfo.sparseMode == PREFIX_COMPRESS) {
             return CheckIsValidBlockForDeter(runInfo, index, s1oDimIdx, s2oDimIdx, taskId);
         } else {
-            int64_t s2SparseLeft = Max(CUBE_BASEM * s1oDimIdx - constInfo.s1Token, 0);
+            uint64_t s2SparseLeft = Max(CUBE_BASEM * s1oDimIdx - constInfo.s1Token, 0);
             s2SparseLeft = s2SparseLeft >> 6 << 6;
-            int64_t s2SparseRight =
+            uint64_t s2SparseRight =
                 AlignTo64(Min(CUBE_BASEM * (s1oDimIdx + 1), constInfo.commonConstInfo.s1Size) + constInfo.s2Token);
             s2SparseRight = Min(s2SparseRight, constInfo.commonConstInfo.s2Size);
             if constexpr (IS_BN2_MULTIBLK) {
@@ -1515,14 +1514,14 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
                 } else {
                     gDimTail = gDimTail - rectangleNum;
                     sqrt_delta = sqrt(((constInfo.s1Outer << 1) - 1) * (((constInfo.s1Outer << 1) - 1)) +
-                                      ((constInfo.s1Outer - 1 - gDimTail) << 3));
+                                      ((constInfo.s1Outer - 1 - gDimTail) << kShiftToMultiplyByEight));
                     s2Idx = Ceil<int64_t>(((constInfo.s1Outer << 1) - 1) - sqrt_delta, NUM_TWO);
                     s1Idx = gDimTail - ((((constInfo.s1Outer << 1) - 1 - s2Idx) * s2Idx) >> 1);
                     s2Idx = s2Idx + constInfo.s2Outer - constInfo.s1Outer + 1;
                 }
             } else {
                 sqrt_delta = sqrt(((constInfo.s1Outer << 1) - 1) * (((constInfo.s1Outer << 1) - 1)) +
-                                  ((constInfo.s1Outer - 1 - gDimTail) << 3));
+                                  ((constInfo.s1Outer - 1 - gDimTail) << kShiftToMultiplyByEight));
                 s2Idx = Ceil<int64_t>(((constInfo.s1Outer << 1) - 1) - sqrt_delta, NUM_TWO);
                 s1Idx = gDimTail - ((((constInfo.s1Outer << 1) - 1 - s2Idx) * s2Idx) >> 1);
             }

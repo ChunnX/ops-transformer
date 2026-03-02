@@ -101,12 +101,18 @@ enum class HCCLType {
     RING_RANK4_310P,
 };
 
+enum class TopoType {
+    STANDARD_CARD,
+    SERVER,
+};
+
 struct HCCLInfo {
     uint64_t rankDim;
     uint64_t commDtypeSize; // data type size in hccl
     uint64_t commMatrixLen; // equal to kValue in gather, equal to nValue in reduce
     KernelType kernelType;
     HCCLType commMethod;
+    TopoType topoType;
     uint64_t maxStepSize; // number of steps in a full round of communication
 };
 
@@ -144,4 +150,9 @@ struct TileArguments {
     uint64_t maxTileCnt;
 };
 
+struct TilingBestBaseBlock {
+    uint32_t baseM = 256; // 256: init value for baseM
+    uint32_t baseN = 256; // 256: init value for baseN
+    uint32_t baseK = 128; // 128: init value for baseK
+};
 #endif // __FORMULAIC_TILING_DATATYPE_H__

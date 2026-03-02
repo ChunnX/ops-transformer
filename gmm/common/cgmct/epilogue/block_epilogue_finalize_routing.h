@@ -16,7 +16,11 @@
 #ifndef BLOCK_EPILOGUE_FINALIZE_ROUTING_H
 #define BLOCK_EPILOGUE_FINALIZE_ROUTING_H
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "../utils/common_utils.h"
 #include "../utils/device_utils.h"
 #include "../utils/status_utils.h"

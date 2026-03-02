@@ -569,21 +569,17 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::FinalSortByKGroup()
         int32_t mrgLen = min(i + 1, CONSTANT_FOUR);
 #endif
         if (mrgLen > 1) {
+            offset[0] = tmpLocal.GetValue(i * 2) * perGroupExpertCountAlign_ * 2;
+            offset[1] = tmpLocal.GetValue((i - 1) * 2) * perGroupExpertCountAlign_ * 2;
             if (mrgLen == CONSTANT_FOUR) {
-                offset[0] = tmpLocal.GetValue(i * 2) * perGroupExpertCountAlign_ * 2;
-                offset[1] = tmpLocal.GetValue((i - 1) * 2) * perGroupExpertCountAlign_ * 2;
                 offset[CONSTANT_TWO] = tmpLocal.GetValue((i - 2) * 2) * perGroupExpertCountAlign_ * 2;
                 offset[CONSTANT_THREE] = tmpLocal.GetValue((i - 3) * 2) * perGroupExpertCountAlign_ * 2;
             } else if (mrgLen == CONSTANT_THREE) {
-                offset[0] = tmpLocal.GetValue(i * 2) * perGroupExpertCountAlign_ * 2;
-                offset[1] = tmpLocal.GetValue((i - 1) * 2) * perGroupExpertCountAlign_ * 2;
                 offset[CONSTANT_TWO] = tmpLocal.GetValue((i - 2) * 2) * perGroupExpertCountAlign_ * 2;
                 offset[CONSTANT_THREE] = 0;
                 params.elementLengths[CONSTANT_THREE] = 0;
                 params.validBit = 0b111;
             } else {
-                offset[0] = tmpLocal.GetValue(i * 2) * perGroupExpertCountAlign_ * 2;
-                offset[1] = tmpLocal.GetValue((i - 1) * 2) * perGroupExpertCountAlign_ * 2;
                 offset[CONSTANT_TWO] = 0;
                 offset[CONSTANT_THREE] = 0;
                 params.elementLengths[CONSTANT_TWO] = 0;

@@ -15,7 +15,11 @@
 #ifndef MM_ALLREDUCE_ADD_RMS_NORM_910_GENERAL_H
 #define MM_ALLREDUCE_ADD_RMS_NORM_910_GENERAL_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #if __has_include("../../matmul_all_reduce/op_kernel/common.h")
 #include "../../matmul_all_reduce/op_kernel/common.h"

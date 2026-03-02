@@ -16,7 +16,11 @@
 #ifndef MOE_UPDATE_EXPERT_H
 #define MOE_UPDATE_EXPERT_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_update_expert_tiling.h"

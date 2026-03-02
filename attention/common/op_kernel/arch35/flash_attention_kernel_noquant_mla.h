@@ -359,10 +359,10 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
         this->pseInfo.pseS1Size = inputParamsRegbase.pseS1Size;
         this->pseInfo.pseS2Size = inputParamsRegbase.pseS2Size;
         this->pseInfo.pseEncodeType = (uint32_t)inputParamsRegbase.pseEncodeType;
-        this->pseInfo.pseStride = pseInfo.pseLayoutType == pse1S2 ? 0 : s2BaseSize;
+        this->pseInfo.pseStride = (pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) ? 0 : s2BaseSize;
         this->pseInfo.qStartIdx = inputParamsRegbase.qStartIdx;
         this->pseInfo.kvStartIdx = inputParamsRegbase.kvStartIdx;
-        if (inputParamsRegbase.pseShapeType == pse1S2) {
+        if (inputParamsRegbase.pseShapeType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) {
             constInfo.gS2 = constInfo.gSize * constInfo.s2Size;
         }
     }
@@ -371,6 +371,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
         this->attenMaskInfo.nextTokens = inputParamsRegbase.nextTokens;
         this->attenMaskInfo.compressMode = inputParamsRegbase.attenMaskCompressMode;
         this->attenMaskInfo.attenMaskShapeType = inputParamsRegbase.attenMaskShapeType;
+        this->attenMaskInfo.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
         this->attenMaskInfo.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
         this->attenMaskInfo.bandIndex = inputParamsRegbase.bandIndex;
     }

@@ -87,7 +87,7 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
         sparseValuesShape->SetDimNum(1);
         sparseValuesShape->SetDim(0, 0);
     }
-    OP_LOGE(context->GetNodeName(), "LightningIndexer InferShape end.");
+    OP_LOGI(context->GetNodeName(), "LightningIndexer InferShape end.");
 
     return ge::GRAPH_SUCCESS;
 }
@@ -96,13 +96,13 @@ static ge::graphStatus InferDataTypeLightningIndexer(gert::InferDataTypeContext 
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexer", "InferDataTypeContext is nullptr!"),
                return ge::GRAPH_FAILED);
-    OP_LOGE(context->GetNodeName(), "Enter LightningIndexer InferDataType impl.");
+    OP_LOGI(context->GetNodeName(), "Enter LightningIndexer InferDataType impl.");
     // default set q's dtype as fia's output type
     ge::DataType outputType = ge::DT_INT32;
     // attention_out, outidx:0
     context->SetOutputDataType(0, outputType);
     context->SetOutputDataType(1, context->GetInputDataType(QUERY_INDEX));
-    OP_LOGE(context->GetNodeName(), "LightningIndexer InferDataType end.");
+    OP_LOGI(context->GetNodeName(), "LightningIndexer InferDataType end.");
     return GRAPH_SUCCESS;
 }
 

@@ -10,7 +10,11 @@
 
 #ifndef RMS_NORM_BASE_H_
 #define RMS_NORM_BASE_H_
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "../../norm_common/op_kernel/reduce_common.h"
 
 namespace RmsNorm {

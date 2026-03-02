@@ -18,7 +18,9 @@
 #include "../tile_copy_policy.h"
 #include "../../utils/layout_utils.h"
 #include "../../utils/tensor_utils.h"
+#if ASC_DEVKIT_MAJOR >= 9
 #include "std/algorithm.h"
+#endif
 
 namespace Cgmct {
 namespace Gemm {

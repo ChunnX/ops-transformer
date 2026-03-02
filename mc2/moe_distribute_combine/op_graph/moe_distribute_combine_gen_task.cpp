@@ -13,8 +13,6 @@
  * \brief
  */
 #include <vector>
-#include <set>
-#include <string>
 
 #ifdef BUILD_OPEN_PROJECT
 #include "mc2_gen_task_ops_utils.h"

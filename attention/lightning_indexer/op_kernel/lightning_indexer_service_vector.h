@@ -33,13 +33,30 @@ constexpr uint32_t EVENTID_V_TO_MTE2_PING = 0;
 constexpr uint32_t EVENTID_V_TO_MTE2_PONG = 1;
 constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
 
+// 主模板：Q_T必选，W_T可选（默认void），无论W_T传什么，默认weightsType=Q_T
+template<typename Q_T, typename W_T = void>
+struct LightningIndexerTypeTraits
+{
+    using weightsType = Q_T;   // 默认：weightsType绑定Q_T
+};
+
+// 偏特化1：固定第二个参数W_T=float，Q_T保留泛型
+template<typename Q_T>
+struct LightningIndexerTypeTraits<Q_T, float>
+{
+    using weightsType = float;  // W_T=float时，强制weightsType为float
+};
+
 template <typename LIT>
 class LIVector {
 public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
+    static constexpr bool DT_W_FLAG = LIT::weightsTypeFlag;
+    using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     static constexpr LI_LAYOUT LAYOUT_T = LIT::layout;
+    using W_T = typename LightningIndexerTypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     // MM输出数据类型, 当前只支持float
     using MM1_OUT_T = float;
@@ -51,7 +68,7 @@ public:
     __aicore__ inline void InitParams(const struct LICommon::ConstInfo &constInfo,
                                       const LITilingData *__restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
-                                                GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<K_T> weightsGm,
+                                                GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
                                                 GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
@@ -62,7 +79,7 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<float> vec1ResGm;
     GlobalTensor<int64_t> vec1ParamGm;
-    GlobalTensor<K_T> weightsGm;
+    GlobalTensor<W_T> weightsGm;
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
     // =================================常量区=================================
@@ -187,7 +204,7 @@ __aicore__ inline void LIVector<LIT>::InitParams(const struct LICommon::ConstInf
 template <typename LIT>
 __aicore__ inline void
 LIVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
-                                    GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<K_T> weightsGm,
+                                    GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
                                     GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm)
 {
     this->mm1ResGm = mm1ResGm;
@@ -311,8 +328,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 LocalTensor<float> dbTmpUb = tmpUb_[pingpong * (groupInner_ * s2BaseSize_ + s2BaseSize_)];
                 LocalTensor<float> weightsInUb = dbTmpUb[procGnum * s2BaseSize_];
                 WaitFlag<HardEvent::V_MTE2>(pingpong);
-                LocalTensor<K_T> weightsInTUb = weightsInUb.template ReinterpretCast<K_T>();
-                if constexpr (!IsSameType<K_T, float>::value) {
+                LocalTensor<W_T> weightsInTUb = weightsInUb.template ReinterpretCast<W_T>();
+                if constexpr (!IsSameType<W_T, float>::value) {
                     weightsInTUb = weightsInTUb[groupInner_];
                 }
                 LIServiceVec::CopyIn(dbTmpUb, weightsInTUb, mm1ResGm, weightsGm,

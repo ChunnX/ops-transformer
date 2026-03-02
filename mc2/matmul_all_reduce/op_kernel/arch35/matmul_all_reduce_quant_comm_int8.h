@@ -16,7 +16,11 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_COMM_INT8_H
 #define MATMUL_ALL_REDUCE_QUANT_COMM_INT8_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
 

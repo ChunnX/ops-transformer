@@ -6,7 +6,7 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
@@ -43,9 +43,11 @@
   $$
 
   $$
-  permuteTokens[sortedIndicesOut[i]]=tokens[i//topK]
+  permuteTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
   $$
   
+  如果probs不是none
+
   $$
   permuteProbsOutOptional=probsOptional.T.masked\_select(routingMap.T)
   $$
@@ -65,7 +67,7 @@
   $$
   
   $$
-  permutedTokensOut = tokens.index\_select(0, sorted\_indices)
+  permutedTokensOut = tokens.index\_select(0, sortedIndicesOut)
   $$
 
   如果probs不是none
@@ -445,7 +447,7 @@ int main() {
     void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
     ret = aclnnMoeTokenPermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteWithRoutingMapfailed. ERROR: %d\n", ret); return ret);

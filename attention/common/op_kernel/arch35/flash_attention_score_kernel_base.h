@@ -19,7 +19,11 @@
 #include "flash_attention_score_block_vec_train.h"
 #include "flash_attention_score_block_vec_infer.h"
 #include "flash_attention_score_common_regbase.h"
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "attenmask.h"
 
 // 线上编包
@@ -496,10 +500,10 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
             pseInfo.pseS1Size = inputParamsRegbase.pseS1Size;
             pseInfo.pseS2Size = inputParamsRegbase.pseS2Size;
             pseInfo.pseEncodeType = (uint32_t)inputParamsRegbase.pseEncodeType;
-            pseInfo.pseStride = pseInfo.pseLayoutType == pse1S2 ? 0 : s2BaseSize;
+            pseInfo.pseStride = (pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) ? 0 : s2BaseSize;
             pseInfo.qStartIdx = inputParamsRegbase.qStartIdx;
             pseInfo.kvStartIdx = inputParamsRegbase.kvStartIdx;
-            if (inputParamsRegbase.pseShapeType == pse1S2) {
+            if (inputParamsRegbase.pseShapeType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) {
                 constInfo.gS2 = constInfo.gSize * constInfo.s2Size;
             }
         }

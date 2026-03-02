@@ -16,9 +16,14 @@
 #ifndef MLA_COMMON_H
 #define MLA_COMMON_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
 #include "adv_api/filter/dropout.h"
+#include "adv_api/select/selectwithbytesmask.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"

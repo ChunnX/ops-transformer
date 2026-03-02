@@ -28,7 +28,7 @@ protected:
 };
 
 // BNSD
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_0)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_0)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -70,7 +70,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_0)
 }
 
 // BSH
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_1)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_1)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -112,7 +112,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_1)
 }
 
 // BSND
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_2)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_2)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -154,7 +154,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_2)
 }
 
 // TND
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_3)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_3)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -199,7 +199,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_3)
 }
 
 // BNSD_BSND
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_4)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -208,9 +208,9 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
     gert::TilingContextPara tilingContextPara(
         "PromptFlashAttention",
         {
-            {{{8, 20, 65, 48}, {8, 20, 65, 48}}, ge::DT_BF16, ge::FORMAT_ND},  // query input0
-            {{{8, 20, 65, 48}, {8, 20, 65, 48}}, ge::DT_BF16, ge::FORMAT_ND},  // key input1
-            {{{8, 20, 65, 48}, {8, 20, 65, 48}}, ge::DT_BF16, ge::FORMAT_ND},  // value input2
+            {{{8, 20, 65, 50}, {8, 20, 65, 50}}, ge::DT_BF16, ge::FORMAT_ND},  // query input0
+            {{{8, 20, 65, 50}, {8, 20, 65, 50}}, ge::DT_BF16, ge::FORMAT_ND},  // key input1
+            {{{8, 20, 65, 50}, {8, 20, 65, 50}}, ge::DT_BF16, ge::FORMAT_ND},  // value input2
             {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},    // pse_shift input3
             {{{2048, 2048}, {2048, 2048}}, ge::DT_UINT8, ge::FORMAT_ND},    // atten_mask input4
             {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},    // actual_seq_lengths_q
@@ -222,7 +222,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}    // quant_offset2 input9
         },
         {
-            {{{8, 65, 20, 48}, {8, 65, 20, 48}}, ge::DT_BF16, ge::FORMAT_ND}
+            {{{8, 65, 20, 50}, {8, 65, 20, 50}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20)},
@@ -241,7 +241,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_4)
 }
 
 // k = 0/v = 0/out = 0
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_5)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_5)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -282,7 +282,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_5)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_6)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_6)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -324,7 +324,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_6)
 }
 
 // DT_HIFLOAT8
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_7)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_7)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -366,7 +366,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_7)
 }
 
 // num_heads < 0 || num_key_value_heads < 0
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_8)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -408,7 +408,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8)
 }
 
 // sparse_mode = 0
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8_1)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_9)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -450,7 +450,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_8_1)
 }
 
 //  enableIFA = true
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_10)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
@@ -492,7 +492,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9)
 }
 
 //  enableIFA = true
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_tiling_9_1)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_950_tiling_11)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};

@@ -44,8 +44,8 @@ static const std::string ATTEN_OUT_NAME = "attention_out";
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16}},
-    {KEY_NAME,                    {ge::DT_INT8}},
-    {VALUE_NAME,                  {ge::DT_INT8}},
+    {KEY_NAME,                    {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
+    {VALUE_NAME,                  {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
     {ATTEN_OUT_NAME,              {ge::DT_FLOAT16, ge::DT_BF16}},
     {SPARSE_INDICES_NAME,         {ge::DT_INT32}}
 };
@@ -61,6 +61,8 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
     {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
     {ge::DT_INT8, "DT_INT8"},                     // int8 type
     {ge::DT_INT16, "DT_INT16"},                   // int16 type
     {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
@@ -384,7 +386,7 @@ void QSFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
         accumOutSize = FDParamNums * headDimAlign_;
         logSumExpSize = 2 * FDParamNums * (BYTE_BLOCK / sfaaInfo_->blockTypeSize); // log和sum的存储空间一致，共需要2份内存
         workspaceSize_ += (accumOutSize + logSumExpSize) * sfaaInfo_->blockTypeSize;
-        if (sfaaInfo_->socVersion == platform_ascendc::SocVersion::ASCEND310P) {
+        if (sfaaInfo_->npuArch == NpuArch::DAV_2002) { // 310P
             workspaceSize_ += static_cast<size_t>(actCoreNum) * 32; // 每个核SyncAll软同步需要32Byte记录状态
         }
     }
@@ -1081,11 +1083,18 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
         OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
         return ge::GRAPH_FAILED);
 
-    std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
-    OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-        OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
-        return ge::GRAPH_FAILED);
-
+    if (isA5_) {
+        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 48, 64, 128};
+        OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
+            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 48, 64, 128, but got %u", gSize_),
+            return ge::GRAPH_FAILED);
+    } else {
+        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
+        OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
+            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
+            return ge::GRAPH_FAILED);
+    }
+    
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
         OP_LOGE(opName_, "q_head_dim only support 576, but got %u", qHeadDim_),
         return ge::GRAPH_FAILED);
@@ -1117,6 +1126,21 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
             QSFADataTypeToSerialString(ge::DT_BF16).c_str(), QSFADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
             QSFADataTypeToSerialString(inputQType_).c_str()),
         return ge::GRAPH_FAILED);
+    
+    if (isA5_) {
+        OP_CHECK_IF(inputKvType_ != ge::DT_FLOAT8_E4M3FN && inputKvType_ != ge::DT_HIFLOAT8,
+            OP_LOGE(opName_, "key and value dtype only support %s and %s, but got %s",
+                QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN).c_str(), QSFADataTypeToSerialString(ge::DT_HIFLOAT8).c_str(),
+                QSFADataTypeToSerialString(inputKvType_).c_str()),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(inputKvType_ != ge::DT_INT8,
+            OP_LOGE(opName_, "key and value dtype only support %s, but got %s",
+                QSFADataTypeToSerialString(ge::DT_INT8).c_str(),
+                QSFADataTypeToSerialString(inputKvType_).c_str()),
+            return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1214,7 +1238,8 @@ void QSFATilingCheck::Init()
     opName_ = sfaaInfo_.opName;
     platformInfo_ = sfaaInfo_.platformInfo;
     opParamInfo_ = sfaaInfo_.opParamInfo;
-    socVersion_ = sfaaInfo_.socVersion;
+    npuArch_ = sfaaInfo_.npuArch;
+    isA5_ = sfaaInfo_.isA5;
 
     bSize_ = sfaaInfo_.bSize;
     n1Size_ = sfaaInfo_.n1Size;
@@ -1396,9 +1421,10 @@ ge::graphStatus QSFAInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0,
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    isA5_ = (npuArch_ == NpuArch::DAV_3510);
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
 
@@ -1722,7 +1748,8 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.opName = opName_;
     sfaaInfo.platformInfo = platformInfo_;
     sfaaInfo.opParamInfo = opParamInfo_;
-    sfaaInfo.socVersion = socVersion_;
+    sfaaInfo.npuArch = npuArch_;
+    sfaaInfo.isA5 = isA5_;
 
     sfaaInfo.bSize = bSize_;
     sfaaInfo.n1Size = n1Size_;

@@ -22,22 +22,12 @@
 #include "opdev/platform.h"
 #include "hccl_util.h"
 
+// 量化与非量化共用的方法和常量、枚举值
 namespace matmul_allto_all_check {
-
 using namespace op;
 
-// 需要使用的常量定义
-static constexpr int64_t NEG_ONE = -1;
-static constexpr int64_t NEG_TWO = -2;
-static constexpr size_t ONE_DIM = 1;
-static constexpr size_t TWO_DIMS = 2U;
-static constexpr int64_t ZERO = 0;
-static constexpr size_t MAX_GROUP_LEN = 128U;
-static constexpr int64_t KVALUE_MIN = 1;
-static constexpr int64_t KVALUE_MAX = 65535;
-
-// 检查AlltoAll和Permute数据交换的方向参数, 可以为空和{-1,-2}, 不允许为其他值
-bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional)
+// 校验AlltoAll和Permute数据交换的方向参数, 可以为空和{-1,-2}, 不允许为其他值
+bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional, bool isMatmulAlltoAll)
 {
     // alltoAllAxesOptional为空时会兼容性处理，不报错
     if (alltoAllAxesOptional == nullptr) {
@@ -52,20 +42,33 @@ bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional)
     }
     int64_t data1 = (*alltoAllAxesOptional)[0];
     int64_t data2 = (*alltoAllAxesOptional)[1];
-    OP_API_CHECK((data1 != NEG_ONE), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "The 0-axis of alltoAllAxesOptional should be -1, but it is: %ld.", data1);
-      return false;
-    });
-    OP_API_CHECK((data2 != NEG_TWO), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "The 1-axis of alltoAllAxesOptional should be -2, but it is: %ld.", data2);
-      return false;
-    });
+    if (isMatmulAlltoAll) {
+        OP_API_CHECK((data1 != NEG_ONE), {
+          OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+          "The 0-axis of alltoAllAxesOptional should be -1, but it is: %ld.", data1);
+          return false;
+        });
+        OP_API_CHECK((data2 != NEG_TWO), {
+          OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+          "The 1-axis of alltoAllAxesOptional should be -2, but it is: %ld.", data2);
+          return false;
+        });
+    } else {
+        OP_API_CHECK((data1 != NEG_TWO), {
+          OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+          "The 0-axis of alltoAllAxesOptional should be -2, but it is: %ld.", data1);
+          return false;
+        });
+        OP_API_CHECK((data2 != NEG_ONE), {
+          OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+          "The 1-axis of alltoAllAxesOptional should be -1, but it is: %ld.", data2);
+          return false;
+        });
+    }
     return true;
 }
 
-// 检查输入的转置配置，x1不允许转置
+// 校验输入的转置配置，x1不允许转置
 bool CheckTransposeX1(bool transposeX1)
 {
     OP_API_CHECK(transposeX1, {
@@ -75,7 +78,7 @@ bool CheckTransposeX1(bool transposeX1)
     return true;
 }
 
-// 检查通信域名的字符串长度是否符合要求
+// 校验通信域名的字符串长度是否符合要求
 bool CheckGroupLength(const char *group)
 {
     if (group == nullptr) {
@@ -91,14 +94,13 @@ bool CheckGroupLength(const char *group)
     return true;
 }
 
-// 校验输入属性shape
-bool CheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
+// 校验MatmulAlltoAll和QuantMatmulAlltoAll输入属性shape
+bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
                 bool transposeX2, const aclTensor* output)
 {
     OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
     OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
     OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
-
     auto kdimX1 = x1->GetViewShape().GetDim(1);
     auto kdimX2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     if (kdimX1 != kdimX2) {
@@ -111,7 +113,6 @@ bool CheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasO
         "The k-axis should be in range[1, 65535], but it is: %ld.", kdimX1);
         return false;
     }
-
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     if (biasOptional != nullptr){
         OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
@@ -122,43 +123,50 @@ bool CheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasO
             return false;
         }
     }
-
     return true;
 }
 
-// 处理支持转置的tensor物理排布不连续问题
-aclTensor *TransX2Tensor(const aclTensor *x2)
+// 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
+bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
+                    bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional)
 {
-    uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDim(storageShapeDimNum);
-    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
-        storageDim[i] = x2->GetStorageShape().GetDim(i);
+    // 校验维度
+    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
+    if (alltoAllOutOptional != nullptr) {
+        OP_CHECK_WRONG_DIMENSION(alltoAllOutOptional, TWO_DIMS, return false);
     }
-
-    uint64_t viewShapeDimNum = x2->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim;
-    viewDim.resize(viewShapeDimNum);
-    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
-        viewDim[i] = x2->GetViewShape().GetDim(i);
+    // 校验bias的维度和shape
+    auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
+    if (biasOptional != nullptr){
+        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
+        auto biasDim = biasOptional->GetViewShape().GetDim(0);
+        if (biasDim != nVal) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "The n-axis of x2 and bias should be same, but x2's n-axis is: %ld and bias's n-axis is: %ld.", nVal, biasDim);
+            return false;
+        }
     }
-    // transpose the viewshape last two dimensions
-    viewDim[0] = x2->GetViewShape().GetDim(1);
-    viewDim[1] = x2->GetViewShape().GetDim(0);
+    return true;
+}
 
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(x2, &dataType);
-    std::vector<int64_t> stride(viewShapeDimNum);
-    auto transStride = x2->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
-    // transpose the two dimensions
-    stride[0] = transStride[1];
-    stride[1] = transStride[0];
-
-    auto offset = x2->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_ND;
-
-    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
-                           storageShapeDimNum, x2->GetTensor()->GetAddr());
+// 检查groupSize是否合法，仅在组量化（MX）场景下需要取值，其它场景默认为0
+bool CheckGroupSizeValid(int64_t groupSize, int64_t x1QuantMode, int64_t x2QuantMode) {
+    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
+        if (groupSize != MX_QUANT_GROUP_SIZE) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                "In the MX quantization scenario, groupSize should be 4295032864, but now it is %ld.", groupSize);
+            return false;
+        }
+    } else {
+        if (groupSize != ZERO) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                    "This is not MX quantization scenario, the groupSize is a reserved parameter that should be 0, but it is %ld.", groupSize);
+            return false;
+        }
+    }
+    return true;
 }
 
 // 检查tensor是否连续
@@ -185,7 +193,7 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor) {
 bool CheckX2Valid(const aclTensor* x2) {
     if (x2 == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x2 should not be null.");
-        return false;
+        CHECK_RET(x2 == nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
   	if (x2->IsEmpty()) {
     	OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input x2 do not support empty tensor.");
@@ -193,5 +201,68 @@ bool CheckX2Valid(const aclTensor* x2) {
   	}
     OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
     return true;
+}
+
+// 检查是否有alltoallout输出
+bool IsAll2AllOut(const aclTensor *alltoAllOut)
+{
+    OP_CHECK_NULL(alltoAllOut, return false);
+    if (alltoAllOut->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "alltoAllOutOptional do not support empty tensor.");
+        return false;
+    }
+    return true;
+}
+
+// 检查预留参数是否为合法值，若为预设之外的值会提示Warning
+bool CheckReservedParams(const aclTensor *commScaleOptional, const aclTensor* x1OffsetOptional,
+                         const aclTensor* x2OffsetOptional, int64_t commQuantMode, int64_t commQuantDtype) {
+    if (commScaleOptional != nullptr) {
+        OP_LOGW("commScaleOptional is a reserved param, it should be null.");
+    }
+    if (x1OffsetOptional != nullptr) {
+        OP_LOGW("x1OffsetOptional is a reserved param, it should be null.");
+    }
+    if (x2OffsetOptional != nullptr) {
+        OP_LOGW("x2OffsetOptional is a reserved param, it should be null.");
+    }
+    if (static_cast<QuantModeType>(commQuantMode) != QuantModeType::NO_QUANT) {
+        OP_LOGW("commQuantMode is a reserved param, it should be 0, indicates no quantization mode.");
+    }
+    if (commQuantDtype != ACL_DT_UNDEFINED) {
+        OP_LOGW("commQuantDtype is a reserved param, it should be -1, indicates undefined type.");
+    }
+    return true;
+}
+
+// 处理支持转置的tensor物理排布不连续问题
+aclTensor *TransX2Tensor(const aclTensor *x2)
+{
+    uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDim(storageShapeDimNum);
+    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
+        storageDim[i] = x2->GetStorageShape().GetDim(i);
+    }
+    uint64_t viewShapeDimNum = x2->GetViewShape().GetDimNum();
+    std::vector<int64_t> viewDim;
+    viewDim.resize(viewShapeDimNum);
+    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
+        viewDim[i] = x2->GetViewShape().GetDim(i);
+    }
+    // transpose the viewshape last two dimensions
+    viewDim[0] = x2->GetViewShape().GetDim(1);
+    viewDim[1] = x2->GetViewShape().GetDim(0);
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    aclGetDataType(x2, &dataType);
+    std::vector<int64_t> stride(viewShapeDimNum);
+    auto transStride = x2->GetViewStrides();
+    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    // transpose the two dimensions
+    stride[0] = transStride[1];
+    stride[1] = transStride[0];
+    auto offset = x2->GetViewOffset();
+    aclFormat format = aclFormat::ACL_FORMAT_ND;
+    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
+                           storageShapeDimNum, x2->GetTensor()->GetAddr());
 }
 } // namespace matmul_allto_all_check

@@ -14,8 +14,12 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_BASE_MLA_H
 #define PROMPT_FLASH_ATTENTION_BASE_MLA_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 constexpr int32_t TMP_SIZET = 16384;               // 128 * 256 * 2
 constexpr int32_t BLOCK_QK = 128;

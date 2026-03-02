@@ -15,7 +15,11 @@
 #ifndef VF_COMMON_UTILS_H
 #define VF_COMMON_UTILS_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 namespace AscendC {
 using namespace MicroAPI;

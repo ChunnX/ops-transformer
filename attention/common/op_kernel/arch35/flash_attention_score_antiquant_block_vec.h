@@ -305,7 +305,7 @@ ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::GetExtremeValue(
     T &negativeScalar, T &positiveScalar)
 {
-    uint32_t tmp1 = NEGATIVE_MIN_VAULE_FP32;
+    uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
     negativeScalar = *((float *)&tmp1);
     if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
         if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
@@ -1153,7 +1153,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(
         for (uint32_t i = 0; i < runInfo.vec2S1RealSize; i++) {
             float maxValue = maxTensor.GetValue(i);
             uint32_t checkValue = *(uint32_t*)&maxValue;
-            if (checkValue == NEGATIVE_MIN_VAULE_FP32) {
+            if (checkValue == NEGATIVE_MIN_VALUE_FP32) {
                 isRowInvalidNeedUpdate = true;
                 break;
             }
@@ -1593,7 +1593,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InvalidLine
         SoftMaxShapeInfo softmaxShapeInfo{
             static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1),
             static_cast<uint32_t>(runInfo.halfS1RealSize), static_cast<uint32_t>(1)};
-        bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VAULE_FP32, softmaxShapeInfo);
+        bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VALUE_FP32, softmaxShapeInfo);
         if (!res) {
             constInfo.softMaxCheckRes = false;
         } else {

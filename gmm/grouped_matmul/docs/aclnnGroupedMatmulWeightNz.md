@@ -423,7 +423,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - 上表数据类型列中的角标“2”代表该系列支持的数据类型。
         - `x`支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、INT8。
-        - `weight`支持FLOAT16、BFLOAT16、FLOAT4_E2M1、INT8、INT4。支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，x2不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
+        - `weight`支持FLOAT16、BFLOAT16、FLOAT4_E2M1、INT8、INT4。支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
         - `scaleOptional`支持UINT64/INT64/BFLOAT16/FLOAT32。`offsetOptional`、`antiquantOffsetOptional`暂不支持。
         - `groupType`支持m轴分组，仅非量化支持不分组。
         - `quantGroupSize`暂不支持。
@@ -575,7 +575,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 <summary><term>Ascend 950PR/Ascend 950DT</term></summary>
 
   - 公共约束
-    - 如果传入groupListOptional，当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列，且长度不能为1；groupListType为2时，groupListOptional的第二列数据必须为非负数列，且长度不能为1。
+    - groupListType：支持取值0、1。当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
@@ -597,14 +597,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:-------:|:-------:|:-------------------:|:-------:|:--------------------:|:-----------:|:---------------------:|:------------:|:-------:|:---------------------------:|:------------:|:---------------------------:|:------------------:|:--------:|
       |0   |BFLOAT16      |null          |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |BFLOAT16/FLOAT32/null     |BFLOAT16 |null             |(g, K, N)   |(g, K/groupSize, N) |null   |(g, N) |
       |0   |FLOAT16       |null          |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |null             |(g, K, N)   |(g, K/groupSize, N) |null   |(g, N) |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |(M, K/groupSize) |(g, N, K)   |(g, N, K/groupSize) |null   |(g, N) |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize) |(g, N, K)   |(g, N, K/groupSize) |null   |(g, N) |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |(M, K/groupSize/2, 2) |(g, N, K)   |(g, N, K/groupSize/2, 2) |null   |(g, N) |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize/2, 2) |(g, N, K)   |(g, N, K/groupSize/2, 2) |null   |(g, N) |
       |0   |INT8          |FLOAT32       |INT4            |FLOAT16     |FLOAT32 |null |FLOAT32/null              |BFLOAT16 |(M)              |(g, K, N)   |(g, K/groupSize, N) |(g, N) |(g, N) |
       |0   |INT8          |FLOAT32       |INT4            |FLOAT16     |FLOAT32 |null |FLOAT32/null              |FLOAT16  |(M)              |(g, K, N)   |(g, K/groupSize, N) |(g, N) |(g, N) |
       |0   |BFLOAT16      |null          |FLOAT32         |FLOAT8_E8M0 |null    |null |BFLOAT16/FLOAT32/null     |BFLOAT16 |null             |(g, K, N/8) |(g, K/groupSize, N) |null   |(g, N) |
       |0   |FLOAT16       |null          |FLOAT32         |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |null             |(g, K, N/8) |(g, K/groupSize, N) |null   |(g, N) |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT32         |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |(M, K/groupSize) |(g, N, K/8) |(g, N, K/groupSize) |null   |(g, N) |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT32         |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize) |(g, N, K/8) |(g, N, K/groupSize) |null   |(g, N) |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT32         |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |(M, K/groupSize/2, 2) |(g, N, K/8) |(g, N, K/groupSize/2, 2) |null   |(g, N) |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT32         |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize/2, 2) |(g, N, K/8) |(g, N, K/groupSize/2, 2) |null   |(g, N) |
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |BFLOAT16 |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |FLOAT16  |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
     - 约束说明：

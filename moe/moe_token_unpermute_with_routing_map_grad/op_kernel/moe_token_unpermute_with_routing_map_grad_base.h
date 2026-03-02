@@ -38,6 +38,7 @@ public:
         const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data);
     __aicore__ inline int32_t AlignUp(int32_t a, int32_t b);
     __aicore__ inline int32_t CeilDiv(int32_t a, int32_t b);
+    __aicore__ inline int32_t SafeDiv(int32_t a, int32_t b);
     __aicore__ inline void BinaryAddFunc(
         LocalTensor<float> tmpBuffer, int32_t hiddensizeLen, int32_t threshold, int32_t offset);
     __aicore__ inline void ReduceSumFunc(
@@ -105,9 +106,18 @@ template <typename PermutedTokenT, typename IdxT, typename ProbsT>
 __aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::CeilDiv(int32_t a, int32_t b)
 {
     if (unlikely(b == 0)) {
-        return a;
+        return 0;
     }
     return (a + b - 1) / b;
+}
+
+template <typename PermutedTokenT, typename IdxT, typename ProbsT>
+__aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::SafeDiv(int32_t a, int32_t b)
+{
+    if (unlikely(b == 0)) {
+        return 0;
+    }
+    return a / b;
 }
 
 __aicore__ inline void SToMTE2Sync()

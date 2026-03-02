@@ -185,6 +185,9 @@ constexpr int64_t S1_VEC2_MULTIPLIER_2_HOST_TILING = 2;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
+constexpr uint32_t BATCH_LIMIT_128 = 128;
+constexpr uint32_t BATCH_LIMIT_300 = 300;
+
 inline int32_t ConvertValueToIndexMM(int32_t val, int32_t idxBound)
 {
     return (val > PP_MM[idxBound]) ? idxBound : (val / PP_INDEX - 1);
@@ -2166,11 +2169,6 @@ bool PromptFlashAttentionTiling::CheckPAWhenBaseApi(ContextParamsForPFATiling& c
         b, maxBlockNumPerBatch, blockTableDim1, blockTableDim2),
         return false);
     int32_t keyDim1 = keyShape->GetStorageShape().GetDim(FIRST_DIM);
-    OP_CHECK_IF((keyDim1 < blockNumValid),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-        "the first dim of key(%d) should not less than valid block num(%ld) when PA enable",
-        keyDim1, blockNumValid),
-        return false);
     PABlockNumSum = keyDim1;
     tmpS2 = maxBlockNumPerBatch * tempBlockSize;
     return true;
@@ -2313,13 +2311,6 @@ bool PromptFlashAttentionTiling::CheckPATypeAndShape(ContextParamsForPFATiling& 
         "block table shape should be [%d, >=%d], now is [%d, %d] when PA enable",
         b, maxBlockNumPerBatch, blockTableDim1, blockTableDim2),
         return false);
-
-    OP_CHECK_IF((keyDim1 < blockNumValid),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-        "the first dim of key(%d) should not less than valid block num(%ld) when PA enable",
-        keyDim1, blockNumValid),
-        return false);
-
     PABlockNumSum = keyDim1;
     tmpS2 = maxBlockNumPerBatch * tempBlockSize;
     return true;
@@ -4349,9 +4340,10 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
         "batch size(%u) should not be larger than 128 when input layout is SH!", b),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF((curShortSocName == platform_ascendc::SocVersion::ASCEND310P && b > 128U),
+    size_t batchLimit = (curShortSocName == platform_ascendc::SocVersion::ASCEND310P && inputLayout == InputLayout::BSH) ? BATCH_LIMIT_300 : BATCH_LIMIT_128;
+    OP_CHECK_IF((curShortSocName == platform_ascendc::SocVersion::ASCEND310P && b > batchLimit),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-        "ascend310p platform do not support batch size(%u) more than 128.", b),
+        "ascend310p platform do not support batch size(%u) more than %zu.", b, batchLimit),
         return ge::GRAPH_FAILED);
 
     bool iskvdiff = (seqInnerSize != s);
@@ -4965,10 +4957,10 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
 
     // Currently, there will be no D splitting scenario, and split D = 0 is default when splitting.
     if (tilingMod == TilingMod::CVSAME) {
-        OP_CHECK_IF(lenDims > 128,
+        OP_CHECK_IF(lenDims > batchLimit,
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "when D axis size(%u) is unaligend with 32 bytes, batch size(%zu) can not larger than 128.", hDivN, lenDims),
-            return ge::GRAPH_FAILED);
+            "when D axis size(%u) is unaligend with 32 bytes, batch size(%zu) can not larger than %zu.",
+            hDivN, lenDims, batchLimit), return ge::GRAPH_FAILED);
         auto ret = AdjustCVTiling(hDivN, *n, middleActualSeqLengths, ubSize, l1Size, l0CSize, maskElemSize,
             sOuterFactor, sInnerFactor, tilingData);
         OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,

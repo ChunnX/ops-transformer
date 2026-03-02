@@ -360,7 +360,7 @@ public:
         GemmCoord actualBlockShape,
         uint32_t qSBlockSize, uint32_t qNBlockSize,
         uint32_t isFirstStackTile, uint32_t isLastStackTile, uint32_t curStackTileMod,
-        int32_t delStartRow, int32_t delEndRow, uint32_t qSeqlen, uint32_t qSBlockIdx)
+        int32_t delStartRow, int32_t delEndRow, uint32_t qSeqlen, uint32_t qSBlockIdx, uint32_t curQNBlockTile)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t embedV = actualBlockShape.n();

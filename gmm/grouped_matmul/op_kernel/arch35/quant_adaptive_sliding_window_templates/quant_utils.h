@@ -15,7 +15,11 @@
 #ifndef ASCENDC_QUANT_UTILS_H
 #define ASCENDC_QUANT_UTILS_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 
 #define LOCAL_TEMPLATE_CLASS_PARAMS                                                                              \

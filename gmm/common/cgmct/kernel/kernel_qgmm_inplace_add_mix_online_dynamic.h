@@ -15,7 +15,11 @@
 
 #ifndef MATMUL_KERNEL_KERNEL_QGMM_INPLACE_ADD_MIX_ONLINE_DYNAMIC_H
 #define MATMUL_KERNEL_KERNEL_QGMM_INPLACE_ADD_MIX_ONLINE_DYNAMIC_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 

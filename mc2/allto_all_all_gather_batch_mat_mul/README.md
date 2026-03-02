@@ -17,15 +17,19 @@
 
 计算公式：
 计算逻辑如下，其中y1、y2、y3为输出
+
 $$
 x1 = AllToAll(x)
 $$
+
 $$
 y2 = AllGather(x1)
 $$
+
 $$
 y3 = BatchMatMul(y2, weight, bias)
 $$
+
 $$
 y1 = 激活函数(y3)
 $$

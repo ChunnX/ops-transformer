@@ -15,7 +15,11 @@
 
 #include "all_gather_matmul_v2_tiling_key.h"
 #include "lib/matmul_intf.h"
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "all_gather_matmul_aiv_mode.h"
 #include "all_gather_matmul_aiv_mode_tiling.h"
 

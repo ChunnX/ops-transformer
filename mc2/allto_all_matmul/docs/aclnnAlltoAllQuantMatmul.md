@@ -18,6 +18,7 @@
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - **动态量化场景：**
+
       $$
       commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
       permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
@@ -26,7 +27,9 @@
       output = output_{quant} \times x1_{scale} \times x2_{scale} \\
       output = output + bias
       $$
+
     - **全量化场景：**
+
       $$
       commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
       permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
@@ -37,6 +40,7 @@
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - **动态量化场景：**
+    
       $$
       commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
       permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
@@ -46,7 +50,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用 “aclnnAlltoAllQuantMatmulGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAlltoAllQuantMatmul”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnAlltoAllQuantMatmulGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAlltoAllQuantMatmul”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(
@@ -340,7 +344,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -411,7 +415,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
 
 * **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -434,6 +438,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
       * 目前支持左矩阵perToken量化和perToken动态量化，x1QuantMode=3或7；右矩阵perChannel量化，x2QuantMode=2。
     * 类型约束：
       * x1、alltoAllOutOptional的数据类型必须一致。
+      * 若x1、x2、alltoallout输入int32类型，则视作8个int4打包，会被重新解释为int4。
       * x1QuantDtype仅支持配置2（表示aclDataType.ACL_INT8）。
       * A16W8和A16W4时，smoothQuant场景，x1ScaleOptional与x1的数据类型必须一致。
       * A16W8时，x1、x2、biasOptional和output支持的数据类型组合有：

@@ -65,7 +65,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化, 参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化, 参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -116,7 +116,7 @@ int main() {
   // 创建x1 aclTensor
   ret = CreateAclTensor(x1HostData, x1Shape, &x1Addr, aclDataType::ACL_FLOAT, &x1);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建x2Optional aclScalar
+  // 创建x2Optional aclTensor
   ret = CreateAclTensor(x2OptionalHostData, x2OptionalShape, &x2OptionalAddr, aclDataType::ACL_FLOAT, &x2Optional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建bias aclTensor
@@ -150,7 +150,7 @@ int main() {
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
       ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
   // 调用aclnnMoeFinalizeRoutingV2第二段接口
   ret = aclnnMoeFinalizeRoutingV2(workspaceAddr, workspaceSize, executor, stream);

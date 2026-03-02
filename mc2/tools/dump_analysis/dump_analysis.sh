@@ -27,13 +27,18 @@ function help {
     echo "参数列表"
     echo "TARGET_DIR(必填):指向dump数据的路径,例:xxx/xxx/data-dump/"
     echo "TOOL_PATH(必填):指向装包路径下tools目录所在的路径,例:xxx/xxx/pkg/8cann-8.x.0/"
-    echo "SOC_VERSION(必填):所需要分析的数据的芯片版本,910_93 or 910_95"
+    echo "SOC_VERSION(必填):所需要分析的数据的芯片版本,910_93 or 950"
     echo "BS(必填):所需要分析的数据使用的BS(BS>0)"
     echo "K(必填):所需要分析的数据使用的K(K>0)"
     echo "SHARE_EXPERT_CARD_COUNT(选填):所需要分析的数据输入的共享专家卡数(SHARE_EXPERT_CARD_COUNT>0),不填默认为0"
     echo "SHARE_EXPERT_NUM(选填):所需要分析的数据输入的共享专家数(SHARE_EXPERT_NUM>0),不填默认为0"
     exit 0
 }
+#获取sh脚本的文件路径
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+SOC_VERSION_950="950"
+SOC_VERSION_910_93="910_93"
+
 #入参
 for arg in "$@"; do
     if [[ "$arg" = "-h" || "$arg" = "-help" ]]; then
@@ -89,7 +94,8 @@ if [ ! -n "$SOC_VERSION" ]; then
     echo "error:SOC_VERSION undefind"
     judge=1
 fi
-if [ "$SOC_VERSION" != '910_93' ] && [ "$SOC_VERSION" != '910_95' ]; then
+
+if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ]; then
     echo "error:SOC_VERSION:$SOC_VERSION 为非法输入"
     judge=1
 fi
@@ -146,7 +152,7 @@ echo "-----------------------------"
 
 #开始解析
 file_num=$(ls $TARGET_DIR | wc -l)
-if [ "$SOC_VERSION" = "910_93" ]; then
+if [ "$SOC_VERSION" = "$SOC_VERSION_910_93" ]; then
     echo "进入 A3 处理流程"
     if ls "$TARGET_DIR/exception_info."* >/dev/null 2>&1; then
         echo "开始解析:单卡dump数据"
@@ -158,7 +164,7 @@ if [ "$SOC_VERSION" = "910_93" ]; then
                     exit 1
                 fi
                 python3 $TOOL_PATH/tools/msaicerr/msaicerr.py -d "$file_dump"
-                python3 dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR $SOC_VERSION
+                python3 $SCRIPT_DIR/dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR $SOC_VERSION
                 echo "单卡数据解析完成"
                 echo "--------------------------------------------"
             else
@@ -179,7 +185,7 @@ if [ "$SOC_VERSION" = "910_93" ]; then
                     fi
                     echo "开始解析 $i 卡数据"
                     python3 $TOOL_PATH/tools/msaicerr/msaicerr.py -d "$file_dump"
-                    python3 dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
+                    python3 $SCRIPT_DIR/dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
                     echo "$i 卡数据解析完成"
                     echo "--------------------------------------------"
                 else
@@ -198,7 +204,7 @@ if [ "$SOC_VERSION" = "910_93" ]; then
                     exit 1
                 fi
                 python3 $TOOL_PATH/tools/msaicerr/msaicerr.py -d "$file_dump"
-                python3 dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR/0/ $SOC_VERSION
+                python3 $SCRIPT_DIR/dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR/0/ $SOC_VERSION
                 echo "单卡数据解析完成"
                 echo "--------------------------------------------"
             else
@@ -209,7 +215,7 @@ if [ "$SOC_VERSION" = "910_93" ]; then
     else
         echo "error:路径 $TARGET_DIR 下没有dump数据"
     fi
-elif [ "$SOC_VERSION" = "910_95" ]; then
+elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
     echo "进入 A5 处理流程"
     if ls "$TARGET_DIR/mc2_exception_info"* >/dev/null 2>&1; then
         echo "开始解析:单卡dump数据"
@@ -220,7 +226,7 @@ elif [ "$SOC_VERSION" = "910_95" ]; then
                     echo "error:SHARE_EXPERT_CARD_COUNT($SHARE_EXPERT_CARD_COUNT) should <= all_care_num(1)"
                     exit 1
                 fi
-                python3 dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR $SOC_VERSION
+                python3 $SCRIPT_DIR/dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR $SOC_VERSION
                 echo "单卡数据解析完成"
                 echo "--------------------------------------------"
             else
@@ -240,7 +246,7 @@ elif [ "$SOC_VERSION" = "910_95" ]; then
                         exit 1
                     fi
                     echo "开始解析 $i 卡数据"
-                    python3 dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
+                    python3 $SCRIPT_DIR/dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
                     echo "$i 卡数据解析完成"
                     echo "--------------------------------------------"
                 else
@@ -258,7 +264,7 @@ elif [ "$SOC_VERSION" = "910_95" ]; then
                     echo "error:SHARE_EXPERT_CARD_COUNT($SHARE_EXPERT_CARD_COUNT) should <= all_care_num(1)"
                     exit 1
                 fi
-                python3 dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR/0/ $SOC_VERSION
+                python3 $SCRIPT_DIR/dump_analysis.py $BS $K $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR/0/ $SOC_VERSION
                 echo "单卡数据解析完成"
                 echo "--------------------------------------------"
             else

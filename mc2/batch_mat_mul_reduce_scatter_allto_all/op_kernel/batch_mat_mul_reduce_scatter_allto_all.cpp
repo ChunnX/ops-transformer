@@ -13,7 +13,11 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "batch_mat_mul_reduce_scatter_allto_all.h"
 #include "batch_mat_mul_reduce_scatter_allto_all_shard_zero.h"
 #include "batch_mat_mul_reduce_scatter_allto_all_tiling_key.h"

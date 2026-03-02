@@ -25,33 +25,33 @@
 
     - 情形1：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant计算，接着与x3进行Add操作，最后做AllReduce计算。
 
-  $$
-  output= AllReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
-  $$
+      $$
+      output= AllReduce(dequantScale*(x1_{int8}@x2_{int8} + bias_{int32}) + x3)
+      $$
 
     - 情形2：对量化后的入参x1、x2进行MatMul计算后，接着进行dequant和pertoken计算，接着与x3进行Add操作，最后做AllReduce计算。
 
-  $$
-  output= AllReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
-  $$
+      $$
+      output= AllReduce(dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional)
+      $$
 
     - 情形3：对量化后的入参x1、x2进行MatMul、dequant和pertoken计算，接着与x3进行Add操作，再对输出进行perchannel量化，然后进行AllToAll通信，对第一次通讯结果进行ReduceSum计算，接着进行AllGather通信，最后对第二次通信结果进行dequant，得到最终输出。
 
-  $$
-  matmulAddOutPut = (dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
-  $$
+      $$
+      matmulAddOutPut = (dequantScale * pertokenScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
+      $$
 
-  $$
-  alltoallOutPut_{int8} = AllToAll(matmulAddOutPut / commQuantScale1Optional);
-  $$
+      $$
+      alltoallOutPut_{int8} = AllToAll(matmulAddOutPut / commQuantScale1Optional);
+      $$
 
-  $$
-  reduceSumOutPut_{int8} = (add(alltoallOutPut_{int8}) * (commQuantScale1Optional / commQuantScale2Optional));
-  $$
+      $$
+      reduceSumOutPut_{int8} = (add(alltoallOutPut_{int8}) * (commQuantScale1Optional / commQuantScale2Optional));
+      $$
 
-  $$
-  outPut = (AllGather(reduceSumOutPut_{int8}) * commQuantScale2Optional);
-  $$
+      $$
+      outPut = (AllGather(reduceSumOutPut_{int8}) * commQuantScale2Optional);
+      $$
 
 ## 函数原型
 
@@ -352,7 +352,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 ## 约束说明
 
 - 确定性计算：
-  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnQuantMatmulAllReduceV3`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnQuantMatmulAllReduceV3`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduceV3`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为2维或者3维，且不为空Tensor，其shape为(b, s, k)或者(m, k)。x2必须是2维，且不为空Tensor。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。

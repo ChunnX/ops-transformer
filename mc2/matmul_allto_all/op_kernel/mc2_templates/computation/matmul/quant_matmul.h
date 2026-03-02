@@ -15,80 +15,78 @@
 
 #ifndef MC2_QUANT_MATMUL_H
 #define MC2_QUANT_MATMUL_H
+#include "matmul_base.h"
 
 namespace MC2KernelTemplate {
-struct QuantExtraData {
-    uint64_t a_offset;
-    uint64_t b_offset;
-    uint64_t c_offset;
-    uint64_t x1_scale_offset;
-    GM_ADDR x1_scale;
-    GM_ADDR x2_scale;
-    GM_ADDR x2_offset;
+struct KCQuantMMAdditionalData {
+    GM_ADDR x1Scale;
+    GM_ADDR x2Scale;
+    GM_ADDR x2Offset;
+    uint64_t x1ScaleOffset;
 };
 
-template <typename MMKernel, typename ExtraDataType, typename TilingDataType>
-class QuantMatmul {
+// 量化场景的相关逻辑实现
+template <typename MMTilingType, typename MMType>
+class MC2KCQuantMMWrapper {
 protected:
-    __aicore__ inline void Init();
+    MC2MMContext<KCQuantMMAdditionalData, MMTilingType> MMcontext_;
+    MMType MMImpl_;
+    AscendC::TPipe* tPipePtr_;
+
 public:
-    __aicore__ inline QuantMatmul(AscendC::TPipe* tPipe): tPipe_(tPipe) {};
-    __aicore__ inline void Process(bool hasNext);
-    __aicore__ inline void Update(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, ExtraDataType* extraData, TilingDataType* tilingData);
+    __aicore__ inline MC2KCQuantMMWrapper(AscendC::TPipe* tPipe) : tPipePtr_(tPipe) {};
+    // 初始化方法
+    __aicore__ inline void Init();
+    // 获取数据上下文引用
+    __aicore__ inline MC2MMContext<KCQuantMMAdditionalData, MMTilingType>* GetContextPtr();
+    // 执行一次计算的方法
+    __aicore__ inline void Process(uint32_t taskIndex);
+    // 结束方法
     __aicore__ inline void End();
-private:
-    MMKernel mmOp_;
-    BaseGmAddrs baseAddrs_;
-    ExtraDataType extraData_;
-    AscendC::TPipe* tPipe_;
-    TilingDataType* tilingData_;
 };
 
-template <typename MMKernel, typename ExtraDataType, typename TilingDataType>
-__aicore__ inline void QuantMatmul<MMKernel, ExtraDataType, TilingDataType>::Init() 
+template <typename MMTilingType, typename MMType>
+inline __aicore__ void MC2KCQuantMMWrapper<MMTilingType, MMType>::Init() {}
+
+template <typename MMTilingType, typename MMType>
+inline __aicore__ MC2MMContext<KCQuantMMAdditionalData, MMTilingType> *
+MC2KCQuantMMWrapper<MMTilingType, MMType>::GetContextPtr()
 {
-    tPipe_->Reset();
-    mmOp_.Init(baseAddrs_.aGM, baseAddrs_.bGM, extraData_.x2_scale, extraData_.x2_offset, baseAddrs_.biasGM, extraData_.x1_scale, baseAddrs_.cGM, nullptr, tilingData_, tPipe_);
+    return &MMcontext_;
 }
 
-template <typename MMKernel, typename ExtraDataType, typename TilingDataType>
-__aicore__ inline void QuantMatmul<MMKernel, ExtraDataType, TilingDataType>::Process(bool isFirst){
-    
-    if (!isFirst) {
-        baseAddrs_.aGM = (GM_ADDR)((uint64_t)baseAddrs_.aGM + extraData_.a_offset);
-        baseAddrs_.bGM = (GM_ADDR)((uint64_t)baseAddrs_.bGM + extraData_.b_offset);
-        baseAddrs_.cGM = (GM_ADDR)((uint64_t)baseAddrs_.cGM + extraData_.c_offset);
-        extraData_.x1_scale = (GM_ADDR)((uint64_t)extraData_.x1_scale + extraData_.x1_scale_offset);
-    }
-    Init();
-    mmOp_.Process();
-}
-
-template <typename MMKernel, typename ExtraDataType, typename TilingDataType>
-__aicore__ inline void QuantMatmul<MMKernel, ExtraDataType, TilingDataType>::Update(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, ExtraDataType* extraData, TilingDataType* tilingData) 
-{    
-    baseAddrs_.aGM = aGM;
-    baseAddrs_.bGM = bGM;
-    baseAddrs_.cGM = cGM;
-    baseAddrs_.biasGM = biasGM;
-    if (extraData != nullptr) {
-        extraData_.a_offset = extraData->a_offset;
-        extraData_.b_offset = extraData->b_offset;
-        extraData_.c_offset = extraData->c_offset;
-        extraData_.x1_scale_offset = extraData->x1_scale_offset;
-        extraData_.x1_scale = extraData->x1_scale;
-        extraData_.x2_scale = extraData->x2_scale;
-        extraData_.x2_offset = extraData->x2_offset;
-    }
-    if (tilingData != nullptr) {
-        tilingData_ = tilingData;
-    }
-}
-
-template <typename MMKernel, typename ExtraDataType, typename TilingDataType>
-__aicore__ inline void QuantMatmul<MMKernel, ExtraDataType, TilingDataType>::End()
+template <typename MMTilingType, typename MMType>
+inline __aicore__ void MC2KCQuantMMWrapper<MMTilingType, MMType>::Process(uint32_t taskIndex)
 {
+    GM_ADDR aGM = MMcontext_.baseData.aGM + taskIndex * MMcontext_.baseData.aOffset;
+    GM_ADDR bGM = MMcontext_.baseData.bGM + taskIndex * MMcontext_.baseData.bOffset;
+    GM_ADDR cGM = MMcontext_.baseData.cGM + taskIndex * MMcontext_.baseData.cOffset;
+    GM_ADDR x1Scale = MMcontext_.additionalData.x1Scale + taskIndex * MMcontext_.additionalData.x1ScaleOffset;
+    tPipePtr_->Reset();
+    MMImpl_.Init(aGM, bGM, MMcontext_.additionalData.x2Scale,
+        MMcontext_.additionalData.x2Offset, MMcontext_.baseData.biasGM, x1Scale,
+        cGM, nullptr, MMcontext_.tilingDataPtr, tPipePtr_);
+    MMImpl_.Process();
 }
-};
+
+template <typename MMTilingType, typename MMType>
+inline __aicore__ void MC2KCQuantMMWrapper<MMTilingType, MMType>::End() {}
+
+// 计算节点的上下文数据类型声明
+#ifndef DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_QUANT
+#define DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_QUANT(ContextType) \
+    using ContextType = MC2MMContext<KCQuantMMAdditionalData, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams>
+#endif
+
+// 使用QuantBatchMatmulV3算子作为计算节点的计算实现，是否转置的参数通过算子的模板参数获取
+#ifndef DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_QUANT
+#define DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_QUANT(ComputationType, MMDtypeX1, MMDtypeX2) \
+    using ComputationType = MC2KCQuantMMWrapper<\
+        DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams,\
+        Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel<MMDtypeX1, MMDtypeX2, float, float, float,\
+            DTYPE_Y, CubeFormat::ND, CubeFormat::ND, CubeFormat::ND, false, X2TRANSPOSE, float, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock>\
+        >
+#endif
+}; // namespace MC2KernelTemplate
 #endif
 

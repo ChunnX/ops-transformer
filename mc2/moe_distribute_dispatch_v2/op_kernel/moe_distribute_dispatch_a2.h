@@ -16,7 +16,11 @@
 #ifndef MOE_DISTRIBUTE_DISPATCH_A2_H
 #define MOE_DISTRIBUTE_DISPATCH_A2_H
 #include <climits>
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "utils/std/algorithm.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_tiling.h"

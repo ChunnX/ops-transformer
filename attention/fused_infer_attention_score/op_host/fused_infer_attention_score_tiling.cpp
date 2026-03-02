@@ -964,17 +964,6 @@ ge::graphStatus CheckSparseModeParams(const gert::TilingContext *context, int64_
             minS = std::min(minS, currS);
             minKV = std::min(minKV, currKV);
         }
-        OP_CHECK_IF((preToken < 0) && (preToken * (-1) >= minS),
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "preTokens absolute value should be smaller than actual length of q in band mode,"
-                "preTokens = %ld, actual length of q = %ld", preToken, minS),
-            return ge::GRAPH_FAILED);
-        
-        OP_CHECK_IF((nextToken < 0) && (nextToken * (-1) >= minKV),
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "nextTokens absolute value should be smaller than actual length of k and v in band mode,"
-                "nextTokens = %ld, actual length of  k and v  = %ld", nextToken, minKV),
-            return ge::GRAPH_FAILED);
         
         OP_CHECK_IF((preToken < 0) && (nextToken < 0),
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
@@ -1383,8 +1372,8 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
     bool isRopeSplitMla = (qRope != nullptr) && (kRope != nullptr);
     bool sparseModeSupported = (sparseMode == 0) || (sparseMode == 3) || (sparseMode == 4);
     bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
-    bool mhaConditions = isMha && (tempAttnMaskShape == nullptr) &&
-        (qDataType == ge::DT_FLOAT16) && (innerPrecise == 1) && !isPageAttention;
+    bool mhaConditions = isMha && !((qDataType == ge::DT_BF16) && (innerPrecise == 1)) && 
+        (tempAttnMaskShape == nullptr);
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
 
     bool usingFAI = false;

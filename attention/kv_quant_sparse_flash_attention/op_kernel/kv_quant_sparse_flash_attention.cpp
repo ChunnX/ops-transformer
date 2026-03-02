@@ -15,7 +15,11 @@
 
 #include "kernel_operator.h"
 #include "kv_quant_sparse_flash_attention_template_tiling_key.h"
+#if (__CCE_AICORE__ == 310)
+#include "arch35/kv_quant_sparse_flash_attention_kernel_mla.h"
+#else
 #include "kv_quant_sparse_flash_attention_kernel_mla.h"
+#endif
 
 using namespace AscendC;
 
@@ -42,7 +46,19 @@ kv_quant_sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
-
+#if (__CCE_AICORE__ == 310)
+    if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN &&
+                  ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
+        QSFA_OP_IMPL(KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, bfloat16_t, fp8_e4m3fn_t,
+            bfloat16_t, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
+            TEMPLATE_MODE);
+    } else if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 &&
+                  ORIG_DTYPE_ATTENTION_OUT == DT_BF16) { 
+        QSFA_OP_IMPL(KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, bfloat16_t, hifloat8_t,
+            bfloat16_t, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
+            TEMPLATE_MODE);
+    }
+#else
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
         QSFA_OP_IMPL(KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, half, int8_t,
@@ -53,4 +69,5 @@ kv_quant_sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
             bfloat16_t, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
             TEMPLATE_MODE);
     }
+#endif
 }

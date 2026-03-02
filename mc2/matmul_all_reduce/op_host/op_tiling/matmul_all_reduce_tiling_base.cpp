@@ -1187,7 +1187,7 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
         return false);
     if (isMXfp4) {
         OP_TILING_CHECK(
-            (Ops::Base::CeilDiv(kValue, MX_FP4_GROUP_SIZE) % 2) != 0,
+            (Ops::Base::CeilDiv(kValue, MX_GROUP_SIZE_K) % 2) != 0,
             VECTOR_INNER_ERR_REPORT_TILING(
                 opName_, "Ceil(k, 32) must be even in MXfp4 scene, but got scale K: %lu.", kValue),
             return false);

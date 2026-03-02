@@ -15,8 +15,12 @@
 #ifndef INCRE_FLASH_ATTENTION_ALLVEC_NEW
 #define INCRE_FLASH_ATTENTION_ALLVEC_NEW
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/activation/softmaxflashv2.h"
 #include "adv_api/math/log.h"
 #include "adv_api/select/selectwithbytesmask.h"

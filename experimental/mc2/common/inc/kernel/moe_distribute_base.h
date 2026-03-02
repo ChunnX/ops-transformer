@@ -16,7 +16,11 @@
 #ifndef MOE_DISTRIBUTE_BASE_H
 #define MOE_DISTRIBUTE_BASE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/hccl/hccl.h"
 #include "moe_distribute_comm_ctx.h"
 

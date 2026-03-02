@@ -18,19 +18,19 @@
 - **算子功能**：完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算**。
 
 - **计算公式**：
-- 路由专家：
+    - 路由专家：
 
-  $$
-  ataOut = AlltoAllv(gmmX) \\
-  permuteOut = Permute(ataOut) \\
-  gmmY = permuteOut \times gmmWeight
-  $$
+    $$
+    ataOut = AlltoAllv(gmmX) \\
+    permuteOut = Permute(ataOut) \\
+    gmmY = permuteOut \times gmmWeight
+    $$
 
-- 共享专家：
+    - 共享专家：
 
-  $$
-  mmY = mmX \times mmWeight
-  $$
+    $$
+    mmY = mmX \times mmWeight
+    $$
 
 ## 函数原型
 
@@ -296,7 +296,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
   - BSK：本卡发送的token数，是sendCounts参数累加之和，取值范围(0, 52428800)。
   - H1：表示路由专家hidden size隐藏层大小，取值范围(0, 65536)。
   - H2：表示共享专家hidden size隐藏层大小，取值范围(0, 12288]。
-  - e：表示单卡上专家个数，e<=32，e * epWorldSize最大支持256。
+  - e：表示单卡上专家个数，取值范围(0, 32]，e * epWorldSize最大支持256。
   - N1：表示路由专家的head_num，取值范围(0, 65536)。
   - N2：表示共享专家的head_num，取值范围(0, 65536)。
   - BS：batch sequence size。

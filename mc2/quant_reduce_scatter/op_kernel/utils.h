@@ -22,22 +22,6 @@
 #include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
 namespace AscendC {
-constexpr static int64_t MAX_RANK_NUM = 64;  // 支持的最大卡数
-struct HcclA5OpResParam {
-    uint64_t workSpace; // client 和server 之间通信的地址
-    uint64_t workSpaceSize; // client和server之间通信空间的大小
-    uint32_t rankId; // 当前卡rankId
-    uint32_t rankDim; // 卡总数
-    uint64_t winSzie; 
-    uint64_t windowsIn[MAX_RANK_NUM];
-    uint64_t windowsOut[MAX_RANK_NUM];     // MAX_RANK_NUM 最大到32
-
-    // for ccu
-    uint64_t xnAddr; // Xn寄存器起始地址
-    uint64_t ckeAddr; // CKE寄存器起始地址
-    uint64_t msAddr; // MS地址，预留
-    uint64_t msSize; // 可写的MS个数，预留
-};
 
 // 向上取整除法：计算a除以b的向上取整结果
 __aicore__ inline uint64_t CeilDiv(uint64_t a, uint32_t b)

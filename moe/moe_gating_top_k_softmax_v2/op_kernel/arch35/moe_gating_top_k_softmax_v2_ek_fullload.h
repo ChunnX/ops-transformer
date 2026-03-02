@@ -147,14 +147,12 @@ private:
             repeatParams.srcRepStride = (colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(U);
             int32_t mask = colCount - FLOAT_MASK * (repeatTimesOneRow - 1);
             if ((colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(float) <= REPEAT_MAX) {
-                Cast(
-                    dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES],
+                Cast(dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES],
                     src[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES], RoundMode::CAST_NONE, mask, rowCount,
                     repeatParams);
             } else {
                 for (int32_t i = 0; i < rowCount; i++) {
-                    Cast(
-                        dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES + i * colCountAlign],
+                    Cast(dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES + i * colCountAlign],
                         src[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES + i * colCountAlign],
                         RoundMode::CAST_NONE, mask, 1, {1, 1, 1, 1});
                 }
@@ -165,8 +163,7 @@ private:
                 repeatParams.srcBlkStride = 1;
                 repeatParams.dstRepStride = (colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(float);
                 repeatParams.srcRepStride = (colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(U);
-                Cast(
-                    dst[i * (COUNTINUOUS_DATA / FLOAT_BYTES)], src[i * (COUNTINUOUS_DATA / FLOAT_BYTES)],
+                Cast(dst[i * (COUNTINUOUS_DATA / FLOAT_BYTES)], src[i * (COUNTINUOUS_DATA / FLOAT_BYTES)],
                     RoundMode::CAST_NONE, FLOAT_MASK, rowCount, repeatParams);
             }
 

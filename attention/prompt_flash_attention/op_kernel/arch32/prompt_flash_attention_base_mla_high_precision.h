@@ -14,8 +14,12 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_BASE_MLA_HIGH_PRECISION_H
 #define PROMPT_FLASH_ATTENTION_BASE_MLA_HIGH_PRECISION_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 constexpr int32_t ZERO_PRECISION = 0;
 constexpr int32_t ONE_PRECISION = 1;

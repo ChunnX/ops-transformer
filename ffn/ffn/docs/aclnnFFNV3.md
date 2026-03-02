@@ -13,7 +13,6 @@
 |<term>Atlas 推理系列加速卡产品</term>|      √     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-产品形态详细说明请参见[昇腾产品形态说明](https://www.hiascend.com/document/redirect/CannCommunityProductForm)。
 
 ## 功能说明
 
@@ -25,11 +24,13 @@
     $$
     y=activation(x * W1 + b1) * W2 + b2
     $$
+
   - **量化场景：**
 
     $$
     y=((activation((x * W1 + b1) * deqScale1) * scale + offset) * W2 + b2) * deqScale2
     $$
+
   - **伪量化场景：**
 
     $$
@@ -39,45 +40,15 @@
   **说明：**
   FFN在无专家或单个专家场景是否有性能收益需要根据实际测试情况判断，当整网中FFN结构对应的小算子vector耗时超过30us，且在FFN结构中占比10%以上时，可以尝试使用该融合算子，若实际测试性能劣化则不使用。
 
-## 实现原理
 
-图1 FFN float16推理计算流程图
-
-![FFN图](../../../docs/zh/figures/FFN.png)
-
-FFN主要由两个matmul和一个激活函数组成，按遍历专家的方式进行计算，计算过程分为3步：
-
-1. temp1 = Matmul(x[offset], weight1[i]) + bias1[i]，执行第i个专家的第一个matmul，该计算在Cube上进行，计算结果保存在临时内存中；其中bias1为可选参数；offset在循环开始初始化为0，循环末尾更新为offset=offset+tokens[i]，再进入下一轮循环，tokens[i]为分配给第i个专家的token数量；x[offset]表示分配给第i个专家的token在输入x中的起始位置；
-2. temp2 = Activate(temp1)，执行第i个专家的激活函数，该计算在Vector上进行，计算结果保存在临时内存中，其中Activate激活函数类型参考activation参数说明；
-3. y[offset] = Matmul(temp2, weight2[i]) + bias2[i]，执行第i个专家的第二个matmul，该计算在Cube上进行，计算结果保存在该融合算子分配的输出内存中；其中bias2为可选参数；其中y[offset]表示分配给第i个专家的token在输出y中的起始位置；
-
-如下代码示例给出小算子和FFN融合算子的对应关系：
-
-```python
-# 小算子
-offset = 0
-for i in range(expert_num):
-    Matmul(x[offset], weight1[i], bias1[i])
-    temp2 = Activate(temp1)  # Activate根据实际需要调用对应的激活函数
-    y[offset] = Matmul(temp2, weight2[i]) + bias2[i]
-    offset += tokens[i]
-# 融合算子
-y = FFN(x, weight1, weight2, tokens, bias1, bias2, activateType)  # 具体参数顺序参考接口原型
-```
-
-## 算子执行接口
+## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFFNV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNV3”接口执行计算。
 
 * `aclnnStatus aclnnFFNV3GetWorkspaceSize(const aclTensor* x, const aclTensor* weight1, const aclTensor* weight2, const aclTensor* expertTokensOptional, const aclTensor* bias1Optional, const aclTensor* bias2Optional, const aclTensor* scaleOptional, const aclTensor* offsetOptional, const aclTensor* deqScale1Optional, const aclTensor* deqScale2Optional, const aclTensor* antiquantScale1Optional, const aclTensor* antiquantScale2Optional, const aclTensor* antiquantOffset1Optional, const aclTensor* antiquantOffset2Optional, const char* activation, int64_t innerPrecise, bool tokensIndexFlag, const aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor)`
 * `aclnnStatus aclnnFFNV3(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)`
 
-**说明**：
-
-- 算子执行接口对外屏蔽了算子内部实现逻辑以及不同代际NPU的差异，且开发者无需编译算子，实现了算子的精简调用。
-- 若开发者不使用算子执行接口的调用算子，也可以定义基于Ascend IR的算子描述文件，通过ATC工具编译获得算子om文件，然后加载模型文件执行算子，详细调用方法可参见《应用开发指南》的[单算子调用 > 单算子模型执行](https://hiascend.com/document/redirect/CannCommunityCppOpcall)章节。
-
-### aclnnFFNV3GetWorkspaceSize
+## aclnnFFNV3GetWorkspaceSize
 
   **说明：** 下述参数说明中涉及到的变量说明
 
@@ -151,29 +122,83 @@ y = FFN(x, weight1, weight2, tokens, bias1, bias2, activateType)  # 具体参数
       - <term>Atlas 推理系列加速卡产品</term>：数据类型支持FLOAT16。
   - workspaceSize（uint64\_t\*，出参）：返回用户需要在Device侧申请的workspace大小。
   - executor（aclOpExecutor\*\*，出参）：返回op执行器，包含了算子计算流程。
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  ```
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
-  - 返回161001（ACLNN_ERR_PARAM_NULLPTR）：如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。
-  - 返回161002（ACLNN_ERR_PARAM_INVALID）：x、weight1、weight2、activation、expertTokensOptional、bias1Optional、bias2Optional、y的数据类型和数据格式不在支持的范围内。
-  ```
 
-### aclnnFFNV3
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 294px">
+  <col style="width: 134px">
+  <col style="width: 722px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>x、weight1、weight2、activation、expertTokensOptional、bias1Optional、bias2Optional、y的数据类型和数据格式不在支持的范围内。</td>
+    </tr>
+  </tbody>
+  </table>
+
+## aclnnFFNV3
 
 - **参数说明：**
 
-  - workspace（void\*，入参）：在Device侧申请的workspace内存地址。
-  - workspaceSize（uint64\_t，入参）：在Device侧申请的workspace大小，由第一段接口aclnnFFNV3GetWorkspaceSize获取。
-  - executor（aclOpExecutor\*，入参）：op执行器，包含了算子计算流程。
-  - stream（aclrtStream，入参）：指定执行任务的Stream。
+  <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+  <col style="width: 167px">
+  <col style="width: 134px">
+  <col style="width: 848px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnFFNV3GetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnFFNV3默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 所有场景下需满足K1=N2, K1<65536, K2<65536, M轴在32Byte对齐后小于INT32的最大值。
@@ -203,33 +228,6 @@ y = FFN(x, weight1, weight2, tokens, bias1, bias2, activateType)  # 具体参数
   - 只支持无专家场景。
   - 需满足N1=K2。
 
-## 算子原型
-
-```c++
-REG_OP(FFN)
-    .INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_BF16}))
-    .INPUT(weight1, TensorType({DT_INT8, DT_FLOAT16, DT_BF16, DT_INT4}))
-    .INPUT(weight2, TensorType({DT_INT8, DT_FLOAT16, DT_BF16, DT_INT4}))
-    .OPTIONAL_INPUT(expert_tokens, TensorType({DT_INT64}))
-    .OPTIONAL_INPUT(bias1, TensorType({DT_INT32, DT_FLOAT16, DT_FLOAT}))
-    .OPTIONAL_INPUT(bias2, TensorType({DT_INT32, DT_FLOAT16, DT_FLOAT}))
-    .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))
-    .OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))
-    .OPTIONAL_INPUT(deq_scale1, TensorType({DT_UINT64, DT_BF16, DT_INT64, DT_FLOAT}))
-    .OPTIONAL_INPUT(deq_scale2, TensorType({DT_UINT64, DT_BF16, DT_INT64, DT_FLOAT}))
-    .OPTIONAL_INPUT(antiquant_scale1, TensorType({DT_FLOAT16, DT_BF16}))
-    .OPTIONAL_INPUT(antiquant_scale2, TensorType({DT_FLOAT16, DT_BF16}))
-    .OPTIONAL_INPUT(antiquant_offset1, TensorType({DT_FLOAT16, DT_BF16}))
-    .OPTIONAL_INPUT(antiquant_offset2, TensorType({DT_FLOAT16, DT_BF16}))
-    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))
-    .REQUIRED_ATTR(activation, String)
-    .ATTR(inner_precise, Int, 0)
-    .ATTR(output_dtype, Int, -1)
-    .ATTR(tokens_index_flag, Bool, false)
-    .OP_END_FACTORY_REG(FFN)
-```
-
-参数解释请参见**算子执行接口**。
 
 ## 调用示例
 

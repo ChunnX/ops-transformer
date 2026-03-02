@@ -14,7 +14,7 @@
 #include "tiling_case_executor.h"
 
 using namespace std;
-// 构造芯片版本
+// 构造版本
 std::string MlaPrologV2_tiling_A2SocInfo = 
     "{\n"
     "  \"hardware_info\": {\n"
@@ -36,7 +36,7 @@ std::string MlaPrologV2_tiling_A2SocInfo =
     "  }\n"
     "}";
 
-// 构造芯片版本
+// 构造版本
 std::string MlaPrologV2_tiling_A3SocInfo = 
     "{\n"
     "  \"hardware_info\": {\n"

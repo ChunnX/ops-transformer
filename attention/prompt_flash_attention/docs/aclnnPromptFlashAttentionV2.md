@@ -1,6 +1,6 @@
 # aclnnPromptFlashAttentionV2
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/prompt_flash_attention)
+**该接口后续版本会废弃，请使用最新接口[aclnnPromptFlashAttentionV3](./aclnnPromptFlashAttentionV3.md)。
 
 ## 产品支持情况
 
@@ -485,7 +485,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
     
   - Atlas 推理系列加速卡产品：
-      - 支持B轴小于等于128；
+      - 在inputLayout为BSH时，支持B轴小于等于300，其余情况B轴小于等于128；
       - 支持N轴小于等于256；
       - 支持S轴小于等于65535(64k), Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；
       - 支持D轴小于等于512。

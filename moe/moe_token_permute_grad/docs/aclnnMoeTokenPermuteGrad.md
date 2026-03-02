@@ -113,7 +113,7 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
   <tr>
       <td>paddedMode</td>
       <td>输入</td>
-      <td>-</td>
+      <td>是否开启paddedMode模式</td>
       <td>true表示开启paddedMode，false表示关闭paddedMode，目前仅支持false</td>
       <td>bool</td>
       <td>-</td>
@@ -252,6 +252,7 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
 #include "aclnnop/aclnn_moe_token_permute_grad.h"
 #include <iostream>
 #include <vector>
+#include <cstdio>
 
 #define CHECK_RET(cond, return_expr)                                           \
   do {                                                                         \
@@ -352,11 +353,11 @@ int main() {
   aclTensor *permuted_output_grad = nullptr;
 
   ret = CreateAclTensor(permuted_output_grad_Data, permuted_output_grad_Shape,
-                        &permuted_output_grad_Addr, aclDataType::ACL_BF16,
+                        &permuted_output_grad_Addr, aclDataType::ACL_FLOAT,
                         &permuted_output_grad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  std::vector<float> sortedIndicesData = {0, 1};
+  std::vector<int> sortedIndicesData = {0, 1};
   std::vector<int64_t> sortedIndicesShape = {2};
   void *sortedIndicesAddr = nullptr;
   aclTensor *sortedIndices = nullptr;
@@ -370,7 +371,7 @@ int main() {
   void *outAddr = nullptr;
   aclTensor *out = nullptr;
 
-  ret = CreateAclTensor(outData, outShape, &outAddr, aclDataType::ACL_BF16,
+  ret = CreateAclTensor(outData, outShape, &outAddr, aclDataType::ACL_FLOAT,
                         &out);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 

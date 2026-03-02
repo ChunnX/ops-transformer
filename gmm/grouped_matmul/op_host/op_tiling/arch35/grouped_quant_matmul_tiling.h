@@ -71,6 +71,8 @@ constexpr uint32_t BF16_WORKSIZE = 2;
 constexpr uint32_t FP32_WORKSIZE = 4;
 constexpr uint64_t DB_REQUIRED_BYTES_SIZE = 14;
 constexpr uint32_t SYS_WORKSPACE_SIZES = 16 * 1024 * 1024;
+
+constexpr uint32_t CORE_RATIO = 2;
 } // namespace GmmConstant
 
 enum class QuantMode : uint32_t {
@@ -218,6 +220,7 @@ private:
     bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
     bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
  	bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape);
+    virtual bool CheckCoreNum() const;
 
     GroupedMatmulTilingData::GMMQuantTilingData tilingData_;
     bool isWeightNz_ = false;

@@ -15,7 +15,11 @@
 
 #ifndef KERNEL_GMM_FINALIZE_ROUTING_H
 #define KERNEL_GMM_FINALIZE_ROUTING_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 

@@ -14,7 +14,11 @@
 #include "../iterator/tail_resplit_iterator.h"
 #include "../utils/device_utils.h"
 #include "../utils/math_utils.h"
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 #define BLOCK_N 32
 #define BLOCK_M 1

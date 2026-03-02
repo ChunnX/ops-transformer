@@ -74,6 +74,7 @@ private:
     bool AnalyzeInputsPertoken();
     ge::graphStatus DoOpTilingPertoken();
     void PrintPertokenQuantParams();
+    bool CheckCoreNum() const override;
     GMMSwigluQuantTilingDataParams tilingData_;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};

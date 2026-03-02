@@ -141,7 +141,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Process()
     ctrlParam.processId = 0;
     for (uint32_t groupIdx = 0, startBasicBlockId = 0; groupIdx < gmmBaseTiling_->groupNum; ++groupIdx) {
         ctrlParam.mSize = GetSplitValueFromGroupList(groupIdx);
-        if (ctrlParam.mSize > 0) {
+        if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
             /*
              * 1.在mSize小于mmTiling_.baseM或者mSize大于mmTiling_.baseM * 4时，mL1Size设置为mmTiling_.baseM
              * 2.在mSize大于mmTiling_.baseM且小于等于mmTiling_.baseM * 2时，mL1Size使用mSize / 2向上取整

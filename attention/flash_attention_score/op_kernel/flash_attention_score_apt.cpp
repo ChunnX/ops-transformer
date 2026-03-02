@@ -13,7 +13,11 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "arch35/flash_attention_score_empty_tensor_regbase.h"
 #include "arch35/flash_attention_score_template_tiling_key.h"
 #include "arch35/flash_attention_score_entry_regbase.h"

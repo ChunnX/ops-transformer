@@ -14,7 +14,11 @@
  */
 #define K_MAX_SHAPE_DIM 0
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "grouped_mat_mul_all_reduce_utils.h"
 #include "grouped_mat_mul_all_reduce.h"
 

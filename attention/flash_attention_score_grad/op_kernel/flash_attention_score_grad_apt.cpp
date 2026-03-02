@@ -19,7 +19,11 @@
 #define KFC_L1_RESERVER_SIZE 0 // only support Gm in and Gm out
 #endif
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 using namespace AscendC;
 
 #include "arch35/flash_attention_score_grad_entry_regbase.h"
@@ -50,17 +54,17 @@ __global__ __aicore__ void flash_attention_score_grad(
         const FlashAttentionScoreGradEmptyTensorTilingDataRegbase *__restrict empty_tensor_tiling_data = &tiling_data_in;
         #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
             FlashAttentionScoreGradEmptyTensorRegbase<half> op;
-            op.Init(dq, dk, dv, dpse, empty_tensor_tiling_data);
+            op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
             op.Process();
         #endif
         #if (ORIG_DTYPE_QUERY == DT_FLOAT)
             FlashAttentionScoreGradEmptyTensorRegbase<float> op;
-            op.Init(dq, dk, dv, dpse, empty_tensor_tiling_data);
+            op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
             op.Process();
         #endif
         #if (ORIG_DTYPE_QUERY == DT_BF16)
             FlashAttentionScoreGradEmptyTensorRegbase<bfloat16_t> op;
-            op.Init(dq, dk, dv, dpse, empty_tensor_tiling_data);
+            op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
             op.Process();
         #endif
         return;

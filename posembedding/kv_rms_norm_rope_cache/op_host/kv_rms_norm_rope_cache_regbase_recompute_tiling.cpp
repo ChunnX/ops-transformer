@@ -83,6 +83,29 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckCacheIsQuant(ge::DataType& c
     return false;
 }
 
+// 输入shape为非空
+ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputShapeIsEmpty(){
+    for (int i = KV_INDEX; i <= C_KV_OFFSET_IDX; ++i) {
+        if (i >= K_ROPE_SCALE_IDX) {
+            auto optionalParamShape = context_->GetOptionalInputShape(i);
+            if (optionalParamShape != nullptr) {
+                OP_CHECK_IF(optionalParamShape->GetStorageShape().GetShapeSize() == 0,
+                    OP_LOGE(context_->GetNodeName(), "The optional input of index = %d, can not be empty tensor.", i),
+                     return ge::GRAPH_FAILED);
+            }
+        }
+        else {
+            auto inputParam = context_->GetInputShape(i);
+            OP_CHECK_NULL_WITH_CONTEXT(context_, inputParam);
+            gert::Shape inputParamShape = inputParam->GetStorageShape();
+            OP_CHECK_IF(inputParamShape.GetShapeSize() == 0,
+                OP_LOGE(context_->GetNodeName(), "The input of index = %d, can not be empty tensor.", i),
+                    return ge::GRAPH_FAILED);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
 {
     // kv dtype
@@ -192,6 +215,10 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     auto scale2Shape = context_->GetOptionalInputShape(C_KV_SCALE_IDX);
     auto offset1Shape = context_->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
     auto offset2Shape = context_->GetOptionalInputShape(C_KV_OFFSET_IDX);
+
+    OP_CHECK_IF(CheckInputShapeIsEmpty() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "The input param can not be empty"), return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(
         !CheckScaleOffsetShape(scale1Shape, dk_, kScaleType_),
         OP_LOGE(context_->GetNodeName(), "k_rope_scale shape invalid."), return ge::GRAPH_FAILED);

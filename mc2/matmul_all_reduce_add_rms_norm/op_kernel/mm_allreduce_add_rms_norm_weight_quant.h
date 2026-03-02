@@ -15,7 +15,11 @@
 #ifndef MM_ALLREDUCE_ADD_RMS_NORM_WEIGHT_QUANT_H
 #define MM_ALLREDUCE_ADD_RMS_NORM_WEIGHT_QUANT_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "../matmul_all_reduce/common.h"
 #include "../matmul_all_reduce/arch32/matmul_all_reduce_weight_quant.h"

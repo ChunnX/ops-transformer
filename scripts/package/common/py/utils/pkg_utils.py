@@ -12,7 +12,7 @@
 
 """基础构件。"""
 
-import os 
+import os
 from functools import partial
 from itertools import chain, tee
 from operator import methodcaller
@@ -42,6 +42,10 @@ class PackageConfigError(PackageError):
 
 class BlockConfigError(PackageError):
     """块配置错误异常。"""
+
+
+class MultiPkgSoftlinkError(PackageError):
+    """多个pkg_softlink元素报错。"""
 
 
 class ParseOsArchError(PackageError):

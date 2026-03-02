@@ -25,7 +25,7 @@
 |    接口名   |   说明     | 确定性说明（A2/A3） |
 | ----------- | ------------------- | --------- |
 |[aclnnAllGatherMatmul](../../mc2/all_gather_matmul/docs/aclnnAllGatherMatmul.md)|完成AllGather通信与MatMul计算融合。|默认确定性实现|
-|[aclnnAllGatherMatmulV2](../../mc2/all_gather_matmul_v2/doc/aclnnAllGatherMatmulV2.md)|aclnnAllGatherMatmulV2接口是对aclnnAllGatherMatmul接口的功能拓展。|默认确定性实现|
+|[aclnnAllGatherMatmulV2](../../mc2/all_gather_matmul_v2/docs/aclnnAllGatherMatmulV2.md)|aclnnAllGatherMatmulV2接口是对aclnnAllGatherMatmul接口的功能拓展。|默认确定性实现|
 |[aclnnAlltoAllAllGatherBatchMatMul](../../mc2/allto_all_all_gather_batch_mat_mul/docs/aclnnAlltoAllAllGatherBatchMatMul.md)|完成AllToAll、AllGather集合通信与BatchMatMul计算融合、并行。|默认确定性实现|
 |[aclnnAlltoAllMatmul](../../mc2/allto_all_matmul/docs/aclnnAlltoAllMatmul.md)|完成AlltoAll通信与MatMul计算融合。|默认确定性实现||
 |[aclnnAlltoAllQuantMatmul](../../mc2/allto_all_matmul/docs/aclnnAlltoAllQuantMatmul.md)|完成AlltoAll通信、量化计算、MatMul计算和反量化计算的融合。|默认确定性实现||
@@ -39,6 +39,8 @@
 |[aclnnDequantRopeQuantKvcache](../../posembedding/dequant_rope_quant_kvcache/docs/aclnnDequantRopeQuantKvcache.md)|对输入张量进行dequant后，对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，并进行量化。|默认确定性实现|
 |[aclnnDistributeBarrier](../../mc2/distribute_barrier/docs/aclnnDistributeBarrier.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现|
 |[aclnnDistributeBarrierV2](../../mc2/distribute_barrier/docs/aclnnDistributeBarrierV2.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现|
+|[aclnnDenseLightningIndexerGradKLLoss](../../attention/dense_lightning_indexer_grad_kl_loss/docs/aclnnDenseLightningIndexerGradKLLoss.md)|dense场景LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，支持配置开启|
+|[aclnnDenseLightningIndexerSoftmaxLse](../../attention/dense_lightning_indexer_softmax_lse/docs/aclnnDenseLightningIndexerSoftmaxLse.md)|dense场景DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。|默认确定性实现|
 |[aclnnFFN](../../ffn/ffn/docs/aclnnFFN.md)|该FFN算子提供MoeFFN和FFN的计算功能。|默认非确定性实现，支持配置开启|
 |[aclnnFFNV2](../../ffn/ffn/docs/aclnnFFNV2.md)|该FFN算子提供MoeFFN和FFN的计算功能。|默认非确定性实现，支持配置开启|
 |[aclnnFFNV3](../../ffn/ffn/docs/aclnnFFNV3.md)|该FFN算子提供MoeFFN和FFN的计算功能。|默认非确定性实现，支持配置开启|
@@ -51,7 +53,7 @@
 |[aclnnFlashAttentionScoreGradV4](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionScoreGradV4.md)|训练场景下计算注意力的反向输出，即[FlashAttentionScoreV4](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV4.md)的反向计算。该接口query、key、value参数支持多个长度相等或者长度不相等的sequence。|默认非确定性实现，支持配置开启|
 |[aclnnFlashAttentionUnpaddingScoreGrad](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGrad.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScore](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScore.md)的反向计算。|默认非确定性实现，支持配置开启|
 |[aclnnFlashAttentionUnpaddingScoreGradV2](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV2.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV2](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV2.md)的反向计算。|默认非确定性实现，支持配置开启|
-|[aclnnFlashAttentionUnpaddingScoreGradV3](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV3.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3.md)的反向计算。该接口相较于[aclnnFlashAttentionUnpaddingScoreGradV2](./aclnnFlashAttentionUnpaddingScoreGradV2.md)接口，新增queryRope、keyRope、dqRope和dkRope参数。|默认非确定性实现，支持配置开启|
+|[aclnnFlashAttentionUnpaddingScoreGradV3](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV3.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3.md)的反向计算。该接口相较于[aclnnFlashAttentionUnpaddingScoreGradV2](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV2.md)接口，新增queryRope、keyRope、dqRope和dkRope参数。|默认非确定性实现，支持配置开启|
 |[aclnnFlashAttentionUnpaddingScoreGradV4](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV4.md)|训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启|
 |[aclnnFlashAttentionUnpaddingScoreGradV5](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGradV5.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。增加`sinkInOptional`可选输入。|默认非确定性实现，支持配置开启|
 |[aclnnFlashAttentionVarLenScore](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScore.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现|
@@ -59,9 +61,6 @@
 |[aclnnFlashAttentionVarLenScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现|
 |[aclnnFlashAttentionVarLenScoreV4](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现|
 |[aclnnFlashAttentionVarLenScoreV5](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV5.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。|默认确定性实现|
-|[aclnnFusedInferAttentionScore](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScore.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现|
-|[aclnnFusedInferAttentionScoreV2](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV2.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现|
-|[aclnnFusedInferAttentionScoreV3](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV3.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现|
 |[aclnnFusedInferAttentionScoreV4](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV4.md)|适配Decode & Prefill场景的FlashAttention算子。|默认确定性实现|
 |[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现|
 |[aclnnGatherPaKvCache](../../attention/gather_pa_kv_cache/docs/aclnnGatherPaKvCache.md)|根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。|默认确定性实现|
@@ -81,9 +80,6 @@
 |[aclnnGroupedMatmulSwigluQuantV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantV2.md)|融合GroupedMatmul 、dequant、swiglu和quant。|默认确定性实现|
 |[aclnnGroupedMatmulSwigluQuantWeightNZ](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuantWeightNZ.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现|
 |[aclnnGroupedMatmulWeightNz](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulWeightNz.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同，输入权重Weight会被强制视为NZ格式。|默认确定性实现|
-|[aclnnIncreFlashAttention](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttention.md)|在全量推理的基础上实现增量推理。|默认确定性实现|
-|[aclnnIncreFlashAttentionV2](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV2.md)|兼容[aclnnIncreFlashAttention](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttention.md)接口功能，在其基础上新增量化特性。|默认确定性实现|
-|[aclnnIncreFlashAttentionV3](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV3.md)|兼容[aclnnIncreFlashAttentionV2](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV2.md)接口功能，在其基础上新增位置编码，page attention，KV cache反量化特性。|默认确定性实现|
 |[aclnnIncreFlashAttentionV4](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV4.md)|在全量推理场景的FlashAttention算子的基础上实现增量推理。|默认确定性实现|
 |[aclnnInplaceAttentionWorkerScheduler](../../attention/attention_worker_scheduler/docs/aclnnInplaceAttentionWorkerScheduler.md)|Attention和FFN分离部署场景下，Attention侧数据扫描算子。该算子接收来自FFNToAttention算子的输出数据，并对数据进行逐步扫描，确保数据准备就绪。|默认确定性实现|
 |[aclnnInplaceFfnWorkerScheduler](../../ffn/ffn_worker_scheduler/docs/aclnnInplaceFfnWorkerScheduler.md)|Attention和FFN分离场景下，FFN侧数据扫描算子。该算子接收AttentionToFFN算子发送的数据，进行扫描并完成数据整理。|默认确定性实现|
@@ -122,12 +118,12 @@
 |[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)|MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取TopK操作；如果renorm=1，先对x的输出做TopK操作，再进行Softmax操作。|默认确定性实现|
 |[aclnnMoeInitRouting](../../moe/moe_init_routing/docs/aclnnMoeInitRouting.md)|MoE的routing计算，根据aclnnMoeGatingTopKSoftmax的计算结果做Routing处理。|默认确定性实现|
 |[aclnnMoeInitRoutingV2](../../moe/moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)|该算子对应MoE中的Routing计算，以MoeGatingTopKSoftmax算子的输出x和expert_idx作为输入，并输出Routing矩阵expanded_x等结果供后续计算使用。|默认确定性实现|
-|[aclnnMoeInitRoutingV3](../../moe/moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)|MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化和动态量化模式。|默认确定性实现|
+|[aclnnMoeInitRoutingV3](../../moe/moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)|MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化和动态量化模式。|默认确定性实现|
 |[aclnnMoeInitRoutingQuant](../../moe/moe_init_routing_quant/docs/aclnnMoeInitRoutingQuant.md)|MoE的Routing计算，根据aclnnMoeGatingTopKSoftmax的计算结果做Routing处理，并对结果进行量化。|默认确定性实现|
 |[aclnnMoeInitRoutingQuantV2](../../moe/moe_init_routing_quant_v2/docs/aclnnMoeInitRoutingQuantV2.md)|MoE的Routing计算，根据aclnnMoeGatingTopKSoftmaxV2的计算结果做Routing处理。|默认确定性实现|
 |[aclnnMoeInitRoutingV2Grad](../../moe/moe_init_routing_v2_grad/docs/aclnnMoeInitRoutingV2Grad.md)|[aclnnMoeInitRoutingV2](../../moe/moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)的反向传播，完成Tokens的加权求和。|默认确定性实现|
 |[aclnnMoeTokenPermute](../../moe/moe_token_permute/docs/aclnnMoeTokenPermute.md)|MoE的permute计算，根据索引indices将tokens广播并排序。|默认确定性实现|
-|[aclnnMoeTokenPermuteGrad](../../moe/moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad.md)|[aclnnMoeTokenPermute](./aclnnMoeTokenPermute.md)的反向传播计算。|默认确定性实现|
+|[aclnnMoeTokenPermuteGrad](../../moe/moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad.md)|[aclnnMoeTokenPermute](../../moe/moe_token_permute/docs/aclnnMoeTokenPermute.md)的反向传播计算。|默认确定性实现|
 |[aclnnMoeTokenPermuteWithEp](../../moe/moe_token_permute_with_ep/docs/aclnnMoeTokenPermuteWithEp.md)|MoE的permute计算，根据索引indices将tokens和可选probs广播后排序并按照rangeOptional中范围切片。|默认确定性实现|
 |[aclnnMoeTokenPermuteWithEpGrad](../../moe/moe_token_permute_with_ep_grad/docs/aclnnMoeTokenPermuteWithEpGrad.md)|[aclnnMoeTokenPermuteWithEp](../../moe/moe_token_permute_with_ep/docs/aclnnMoeTokenPermuteWithEp.md)的反向传播计算。|默认确定性实现|
 |[aclnnMoeTokenPermuteWithRoutingMap](../../moe/moe_token_permute_with_routing_map/docs/aclnnMoeTokenPermuteWithRoutingMap.md)|MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMaps将tokens和可选probsOptional广播后排序|默认确定性实现|
@@ -149,8 +145,6 @@
 |[aclnnNsaSelectedAttention](../../attention/nsa_selected_attention/docs/aclnnNsaSelectedAttention.md)|训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。|默认确定性实现|
 |[aclnnNsaSelectedAttentionGrad](../../attention/nsa_selected_attention_grad/docs/aclnnNsaSelectedAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启|
 |[aclnnNsaSelectedAttentionInfer](../../attention/nsa_selected_attention_infer/docs/aclnnNsaSelectedAttentionInfer.md)|Native Sparse Attention推理过程中，Selected Attention的计算。|默认确定性实现|
-|[aclnnPromptFlashAttention](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttention.md)|全量推理场景的FlashAttention算子。|默认确定性实现|
-|[aclnnPromptFlashAttentionV2](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV2.md)|全量推理场景的FlashAttention算子。|默认确定性实现|
 |[aclnnPromptFlashAttentionV3](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md)|全量推理场景的FlashAttention算子。|默认确定性实现|
 |[aclnnQkvRmsNormRopeCache](../../posembedding/qkv_rms_norm_rope_cache/docs/aclnnQkvRmsNormRopeCache.md)|输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出qOut、kCache、vCache、qBeforeQuant(可选)、kBeforeQuant(可选)、vBeforeQuant(可选)。|默认确定性实现|
 |[aclnnQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduce.md)|对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。|默认非确定性实现，支持配置开启|
@@ -178,4 +172,12 @@
 
 |    废弃接口   |   说明     |
 | --------------- | ----------------------- |
+|[aclnnFusedInferAttentionScore](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScore.md)|此接口后续版本会废弃，请使用最新接口[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)。 |
+|[aclnnFusedInferAttentionScoreV2](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV2.md)|此接口后续版本会废弃，请使用最新接口[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)。 |
+|[aclnnFusedInferAttentionScoreV3](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV3.md)|此接口后续版本会废弃，请使用最新接口[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)。 |
 |[aclnnGroupedMatMulAllReduce](../../mc2/grouped_mat_mul_all_reduce/docs/aclnnGroupedMatMulAllReduce.md)|此接口后续版本会废弃，请勿使用该接口。|
+|[aclnnIncreFlashAttention](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttention.md)|此接口后续版本会废弃，请使用最新接口[aclnnIncreFlashAttentionV4](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV4.md)。 |
+|[aclnnIncreFlashAttentionV2](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV2.md)|此接口后续版本会废弃，请使用最新接口[aclnnIncreFlashAttentionV4](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV4.md)。 |
+|[aclnnIncreFlashAttentionV3](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV3.md)|此接口后续版本会废弃，请使用最新接口[aclnnIncreFlashAttentionV4](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV4.md)。 |
+|[aclnnPromptFlashAttention](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttention.md)|此接口后续版本会废弃，请使用最新接口[aclnnPromptFlashAttentionV3](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md)。 |
+|[aclnnPromptFlashAttentionV2](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV2.md)|此接口后续版本会废弃，请使用最新接口[aclnnPromptFlashAttentionV3](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md)。 |

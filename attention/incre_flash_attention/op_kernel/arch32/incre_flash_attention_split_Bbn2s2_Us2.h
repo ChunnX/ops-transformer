@@ -17,8 +17,12 @@
 
 #define KVINT4_HALF_BYTE 2
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/quantization/ascend_quant.h"
 #include "adv_api/math/log.h"
 #include "kernel_operator_list_tensor_intf.h"

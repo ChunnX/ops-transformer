@@ -15,7 +15,11 @@
 #ifndef INFER_FLASH_ATTENTION_KVCACHE_H
 #define INFER_FLASH_ATTENTION_KVCACHE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "infer_flash_attention_comm.h"
 #include "infer_flash_attention_sparse.h"
@@ -81,50 +85,50 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
     __gm__ int64_t* actualSeqQlenAddr, int64_t actualSeqMin)
 {
     if (constInfo.isActualLenDimsNull) {
-        int64_t actualS1Size = constInfo.s1Size;
+        int64_t actualMSize = constInfo.s1Size;
         if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
-            actualS1Size = constInfo.gS1;
+            actualMSize = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = constInfo.s1Size;
         }
         if (constInfo.isGqa) {
-            actualS1Size = constInfo.gS1;
+            actualMSize = constInfo.gS1;
         }
-        return actualS1Size;
+        return actualMSize;
     }
     
-    int64_t actualS1Size = 0;
+    int64_t actualMSize = 0;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             runParam.actualSeqLengthOfMlaPerBatch = 
                 (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
-            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
+            actualMSize = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             runParam.actualSeqLengthOfMlaPerBatch = (bIdx == 0) ? actualSeqQlenAddr[0] :
                 actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
-            actualS1Size = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
+            actualMSize = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            actualS1Size = constInfo.gS1;
+            actualMSize = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = 
                 (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
         }
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || 
                          layout == LayOutTypeEnum::LAYOUT_NTD) {
-        actualS1Size = (bIdx == 0) ? actualSeqQlenAddr[0] :
+        actualMSize = (bIdx == 0) ? actualSeqQlenAddr[0] :
             actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
         if (constInfo.isGqa) {
-            actualS1Size *= constInfo.gSize;
+            actualMSize *= constInfo.gSize;
         }
     } else {
-        actualS1Size = (constInfo.actualSeqLenSize == actualSeqMin) ? 
+        actualMSize = (constInfo.actualSeqLenSize == actualSeqMin) ? 
             actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
         if (constInfo.isGqa) {
-            actualS1Size *= constInfo.gSize;
+            actualMSize *= constInfo.gSize;
         }
     }
     
-    return actualS1Size;
+    return actualMSize;
 }
 
 TEMPLATE_INTF
@@ -139,7 +143,8 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr<isInfer>& runParam,
             runParam.s2InCurrentBatch;
     } else {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
-            actualS2Size = actualSeqKvlenAddr[bIdx];
+            actualS2Size = (isPa && constInfo.actualSeqLenKVSize == actualSeqKVMin) ? 
+                actualSeqKvlenAddr[0] : actualSeqKvlenAddr[bIdx];
             if ((bIdx > 0) && (!isPa)) {
                 actualS2Size -= actualSeqKvlenAddr[bIdx - 1];
             }
@@ -168,7 +173,7 @@ __aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
                 runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch) ?
                 runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch :
                 runParam.actualS1Size;
-        } else if (constInfo.isGqa && constInfo.s1Size == 1 && layout != LayOutTypeEnum::LAYOUT_BNSD) {
+        } else if (constInfo.isGqa && constInfo.s1Size == 1) {
             runParam.actualS1Size = (runParam.actualS1Size >
                 (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize) ?
                 (runParam.actualS2Size + runParam.preTokensPerBatch) * constInfo.gSize :
@@ -281,7 +286,7 @@ __aicore__ inline void GetKeyCoreOffsetParam(RunParamStr<isInfer>& runParam,
             keyInnerOffsetSize = 0;
         }
         runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * constInfo.dSize;
-    // 遗留问题：TND PA
+
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         if constexpr (!isPa) {
             keyInnerOffsetSize = (bIdx == 0) ? 0 : actualSeqKvlenAddr[bIdx - 1] * constInfo.n2D;
@@ -359,7 +364,6 @@ __aicore__ inline void GetValueCoreOffsetParam(RunParamStr<isInfer>& runParam, c
             prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.n2Dv;
             runParam.prefixCoreOffset = prefixInnerOffsetSize + runParam.n2oIdx * constInfo.dSizeV;
         } else {
-            // 除TND外的其他布局，例如BSH，BNSD，BSND等
             uint64_t headStrideV = 0;
             headStrideV = constInfo.kvPrefixSize * constInfo.dSizeV;
             prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.dSizeV;
@@ -616,8 +620,8 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
     // 使用转换后的左上角的pretoken nexttoken
-    if (runParam.nextTokensPerBatch < 0 && runParam.sOuterOffset < ((runParam.nextTokensPerBatch * (-1)) /
-        runParam.halfS1RealSize * runParam.halfS1RealSize)) {
+    if (runParam.s1RealSize == 0 || (runParam.nextTokensPerBatch < 0 && runParam.sOuterOffset < ((runParam.nextTokensPerBatch * (-1)) /
+        runParam.halfS1RealSize * runParam.halfS1RealSize))) {
         return true;
     }
 

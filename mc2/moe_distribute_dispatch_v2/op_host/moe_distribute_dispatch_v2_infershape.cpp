@@ -277,6 +277,8 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     } else {
         if (*tpWorldSize == DIM_TWO)  {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
+        } else if (expertScalesShape != nullptr) {
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }

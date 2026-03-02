@@ -289,7 +289,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
 ## 约束说明
 
 - 确定性计算：
-  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：`aclnnQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduce`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。

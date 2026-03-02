@@ -167,7 +167,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | kNopeClipAlphaOptional     | 输入      | 表示对kvCache做clip操作时的缩放因子，Device侧的aclTensor。  | - 在半量化和int8全量化的pertile场景下shape为1，其余场景可不填，不支持空Tensor | FLOAT  | - | ND | (1)    |×   |
   | rmsnormEpsilonCq           | 输入      | 计算$c^Q$的RmsNorm公式中的$\epsilon$参数，Host侧参数。        | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型 | DOUBLE         | - | -          | - |-   |
   | rmsnormEpsilonCkv          | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\epsilon$参数，Host侧参数。   | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型   | DOUBLE         | - | -          | -  |-   |
-  | cacheModeOptional          | 输入      | 表示kvCache的模式，Host侧参数。| - 用户未特意指定时，建议传入"PA_BSND" <br> - 仅支持char*类型 <br> - 可选值为："PA_BSND"、 "PA_NZ"、 "PA_BLK_BSND"、 "PA_BLK_NZ"、 "BSND"、 "TND" <br> - A2、A3支持所有可选值，A5当前仅支持"PA_BSND"和"PA_NZ" | CHAR*          | CHAR* | -          | - |-   |
+  | cacheModeOptional          | 输入      | 表示kvCache的模式，Host侧参数。| - 用户未特意指定时，建议传入"PA_BSND" <br> - 仅支持char*类型 <br> - 可选值为："PA_BSND"、 "PA_NZ"、 "PA_BLK_BSND"、 "PA_BLK_NZ"、 "BSND"、 "TND" | CHAR*          | CHAR* | -          | - |-   |
   | queryNormFlag     | 输入      | 表示是否输出query_norm，Host侧参数。  | - False表示不输出query_norm，true表示输出queryNormOptional，默认值为false | BOOL  | BOOL| -- | --    |-   |
   | weightQuantMode     | 输入      | 表示weight_dq、weight_uq_qr、weight_uk、weight_dkv_kr的量化模式，Host侧参数。  | - 0表示非量化，1表示weight_uq_qr量化，2表示weight_dq、weight_uq_qr、weight_dkv_kr量化，3表示weight_dq、weight_uq_qr、weight_dkv_kr mxfp8量化，默认值为0 | INT  | INT| -- | --    |-   |
   | kvCacheQuantMode     | 输入      | 表示kv_cache的量化模式，Host侧参数。  | - 0表示非量化，1表示per-tensor量化，2表示per-channel量化，3-表示per-tile量化，默认值为0| INT64  | INT64| -- | --    |-   |
@@ -224,14 +224,14 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   |--------------|--------------------------------|------------------------------------------------------------------------------|
   | B            | Batch（输入样本批量大小）      | 取值范围：0~65536                                                           |
   | S            | Seq-Length（输入样本序列长度） | 取值范围：不限制                                                              |
-  | He           | Head-Size（隐藏层大小）        | A2、A3取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192 <br> A5取值固定为：7168           |
+  | He           | Head-Size（隐藏层大小）        | A2、A3、A5取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192  |
   | Hcq          | q 低秩矩阵维度                 | 取值固定为：1536                                                           |
   | N            | Head-Num（多头数）             | 取值范围：1、2、4、8、16、32、64、128                                       |
   | Hckv         | kv 低秩矩阵维度                | 取值固定为：512                                                             |
   | D            | qk 不含位置编码维度            | 取值固定为：128                                                             |
   | Dr           | qk 位置编码维度                | 取值固定为：64                                                              |
   | Nkv          | kv 的 head 数                  | 取值固定为：1                                                               |
-  | BlockNum     | PagedAttention 场景下的块数    | 1. 当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 `(B*S)/BlockSize` 向上取整的结果。<br> 2. 当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于`B` * `(S / BlockSize)`向上取整的结果（即`B * Ceil(S/BlockSize)`）。注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。 |
+  | BlockNum     | PagedAttention 场景下的块数    | 1. 当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 `(B*S)/BlockSize` 向上取整的结果。<br> 2. 当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于`B` * `(S / BlockSize)`向上取整的结果（即`B * Ceil(S/BlockSize)`）。注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。举例：actualSeqLenOptional数值为[47，151，261，422]，blocksize=128，那么Batch中的长度分别为[47，104，110，161] ，此时BlockNum=Ceil（47/128）+ Ceil（104/128）+ Ceil（110/128）+ Ceil（161/128）=5|
   | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br>                                              |
   | T            | BS 合轴后的大小                | 取值范围：不限制；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 |
   | Dtile        | kvCache的D维度的大小           | - Per-tile量化场景下，取值固定为656 <br> - 其他场景下，取值固定为Hckv（512）                                                       |

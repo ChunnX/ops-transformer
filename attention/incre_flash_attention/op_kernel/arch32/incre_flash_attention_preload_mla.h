@@ -16,8 +16,13 @@
 #ifndef INCRE_FLASH_ATTENTION_PRELOAD_MLA
 #define INCRE_FLASH_ATTENTION_PRELOAD_MLA
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#include "adv_api/activation/softmax.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -2723,9 +2728,6 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::ProcessVec1Inne
         }
 
         if constexpr (FLASH_DECODE) {
-            uint32_t outIdx = info.loop % (PRE_LOAD_NUM_MLA);
-            auto sumTensor = softmaxSumUb[outIdx * BUFFER_SIZE_BYTE_2K / sizeof(T)];
-            auto maxTensor = softmaxMaxUb[outIdx * BUFFER_SIZE_BYTE_2K / sizeof(T)];
             ComputeLogSumExpAndCopyToGm(info, sumTensor, maxTensor);
             return;
         }

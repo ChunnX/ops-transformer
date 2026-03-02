@@ -121,10 +121,10 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
     } else {
         indicesNumEachCore = this->rowIdMapTailCore;
     }
-    indicesLoopTimes = (indicesNumEachCore + this->indicesReserveNum - 1) / this->indicesReserveNum;
+    indicesLoopTimes = this->CeilDiv(indicesNumEachCore, this->indicesReserveNum);
     indicesLastLoop = indicesNumEachCore - this->indicesReserveNum * (indicesLoopTimes - 1);
-    topKInIndicesLastLoopTimes = (indicesLastLoop + this->topK - 1) / this->topK;
-    topKInIndicesEachLoopTimes = (this->indicesReserveNum + this->topK - 1) / this->topK;
+    topKInIndicesLastLoopTimes = this->CeilDiv(indicesLastLoop, this->topK);
+    topKInIndicesEachLoopTimes = this->CeilDiv(this->indicesReserveNum, this->topK);
 
     tmpBufferProbGradReduceSumFp32 = tmpBufferProbGradReduceSum.Get<float>();
     tmpBufferUnpermutedFp32 = tmpBufferUnpermutedCast.Get<float>();
@@ -145,10 +145,10 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
     for (int64_t indicesLoop = 0; indicesLoop < indicesLoopTimes;
          indicesLoop++) { // (token * topK) / indicesNumPerLoop 循环
         int64_t indicesNumLoop = indicesLoop == indicesLoopTimes - 1 ? indicesLastLoop : this->indicesReserveNum;
-        int64_t topKInIndicesLoopTimes = indicesNumLoop / this->topK;
+        int64_t topKInIndicesLoopTimes = this->SafeDiv(indicesNumLoop, this->topK);
         int64_t indicesLoopOffset = indicesLoop * this->indicesReserveNum;
         int64_t loopOffset = this->rowIdMapStartOffset + indicesLoopOffset;
-        int64_t tokenLoopBaseOffset = indicesLoopOffset / this->topK;
+        int64_t tokenLoopBaseOffset = this->SafeDiv(indicesLoopOffset, this->topK);
         for (int64_t i = 0; i < indicesNumLoop; i++) { // indices gm数据存储到数组上，每次搬运indicesNumLoop个
             indicesArray[i] = this->sortedTwiceIndexGm.GetValue(loopOffset + i);
         }
@@ -156,7 +156,7 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
             indicesLoop == indicesLoopTimes - 1 ? topKInIndicesLastLoopTimes : topKInIndicesEachLoopTimes;
         int64_t probIndex = 0;
         for (int64_t topKLoop = 0; topKLoop < topKInIndices; topKLoop++) {
-            int64_t tokenIndex = (loopOffset / this->topK + topKLoop);
+            int64_t tokenIndex = this->SafeDiv(loopOffset, this->topK) + topKLoop;
             int64_t routingMapOffset = tokenIndex * this->numExpert;
             copyParams.blockLen = (uint32_t)this->numExpert;
             DataCopyPad(tmpBufferRoutingMap, this->routingMapGm[routingMapOffset], copyParams, routingMapPadParams);

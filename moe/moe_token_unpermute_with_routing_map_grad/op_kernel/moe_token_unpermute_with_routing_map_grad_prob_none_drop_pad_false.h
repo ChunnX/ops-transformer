@@ -60,7 +60,7 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNoneDropPadFalse<P
     for (int64_t indicesLoopTime = 0; indicesLoopTime < outNumCurrentCore;
          indicesLoopTime++) { // 外循环是根据x的数量循环
         int64_t rowIdMapLoopOffset = this->rowIdMapStartOffset + indicesLoopTime;
-        int64_t tokenId = rowIdMapLoopOffset / this->topK;
+        int64_t tokenId = this->SafeDiv(rowIdMapLoopOffset, this->topK);
         int64_t permuteTokenId = this->sortedTwiceIndexGm.GetValue(rowIdMapLoopOffset);
         SToMTE2Sync();
         for (int64_t hiddenLoop = 0; hiddenLoop < this->hiddenSizeLoopTimes; hiddenLoop++) {

@@ -15,7 +15,14 @@
 
 ## 功能说明
 
-当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 计算公式：
+
+$$
+rsOut = ReduceScatterV(expandX)\\
+ataOut = AllToAllV(rsOut)\\
+xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
+$$
 
 >注意该接口必须与`aclnnMoeDistributeDispatch`配套使用，相当于按`MoeDistributeDispatch`算子收集数据的路径原路返回。
 
@@ -206,7 +213,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>EP通信域名称（专家并行通信域）。</td>
     <td>字符串长度范围为[1, 128)，不能和groupTp相同。</td>
     <td>STRING</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -216,7 +223,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>EP通信域大小。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -224,9 +231,9 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>epRankId</td>
     <td>输入</td>
     <td>EP域本卡Id。</td>
-    <td>取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+    <td><ul><li>取值范围[0, epWorldSize)</li><li>同一个EP通信域中各卡的epRankId不重复。</li></ul></td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -236,7 +243,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>MoE专家数量。</td>
     <td>取值范围(0, 512]，且满足moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0。</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -246,7 +253,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>TP通信域名称（数据并行通信域）。</td>
     <td>不能和groupEp相同。</td>
     <td>STRING</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -256,7 +263,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>TP通信域大小。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -266,7 +273,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>TP域本卡Id。</td>
     <td>同一个TP通信域中各卡的tpRankId不重复。</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -276,7 +283,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>表示共享专家卡分布类型。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -286,7 +293,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>表示共享专家数量（一个共享专家可复制部署到多个卡上）。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -296,7 +303,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>表示共享专家卡数量。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -306,7 +313,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>EP域全局的batch size大小。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -316,7 +323,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>用于指定输出x的数据类型，预留参数，当前版本不支持，传0即可。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -326,7 +333,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>通信量化类型。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -336,7 +343,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>group List格式。</td>
     <td>预留参数，当前版本不支持，传0即可。</td>
     <td>INT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -356,7 +363,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
     <td>UINT64</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -366,7 +373,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>返回op执行器，包含了算子的计算流程。</td>
     <td>-</td>
     <td>aclOpExecutor*</td>
-    <td>ND</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -375,43 +382,43 @@ aclnnStatus aclnnMoeDistributeCombine(
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - 不支持共享专家场景。
-        - epSendCounts 的shape为 (moeExpertNum + 2 * globalBs * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBs * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，当globalBs=0时按Bs * epWorldSize计算。
+        - `epSendCounts`的shape为(moeExpertNum + 2 * globalBs * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBs * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，当globalBs=0时按Bs * epWorldSize计算。
         - 当前不支持TP域通信。
-        - expandScales 要求为1D Tensor，shape为 (A, )。
-        - epWorldSize 取值支持16、32、64。
-        - moeExpertNum 还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
-        - groupTp 当前版本不支持，传空字符即可。
-        - tpWorldSize、tpRankId、expertShardType、sharedExpertNum、sharedExpertRankNum当前版本不支持，传0即可。
-        - 各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize 或 256 * epWorldSize（maxBs为单rank BS最大值，建议按maxBs * epWorldSize传入）。
-        - commQuantMode 取值范围0或2，0表示通信不量化，2表示通信int8量化（2仅当HCCL_INTRA_PCIE_ENABLE=1、HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持）。
+        - `expandScales`要求为1D Tensor，shape为 (A, )。
+        - `epWorldSize`取值支持16、32、64。
+        - `moeExpertNum`还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
+        - `groupTp`当前版本不支持，传空字符即可。
+        - `tpWorldSize`、`tpRankId`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`当前版本不支持，传0即可。
+        - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize 或 256 * epWorldSize（maxBs为单rank BS最大值，建议按maxBs * epWorldSize传入）。
+        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化（2仅当HCCL_INTRA_PCIE_ENABLE=1、HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持）。
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
-        - 有TP域通信时 tpSendCounts 为1D Tensor，shape为 (tpWorldSize, )。
-        - expandScales 为预留参数，当前版本不支持，传空指针即可。
-        - epWorldSize 取值支持8、16、32、64、128、144、256、288。
-        - groupTp 字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-        - tpWorldSize 取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - tpRankId 取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
-        - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - sharedExpertNum 当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
-        - sharedExpertRankNum 当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
-        - 各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
-        - commQuantMode 取值范围0或2，0表示通信不量化，2表示通信int8量化。
+        - `epSendCounts`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
+        - 有TP域通信时`tpSendCounts`为1D Tensor，shape为 (tpWorldSize, )。
+        - `expandScales`为预留参数，当前版本不支持，传空指针即可。
+        - `epWorldSize`取值支持8、16、32、64、128、144、256、288。
+        - `groupTp`字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
+        - `tpWorldSize`取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
+        - `tpRankId`取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+        - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+        - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
+        - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
+        - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
+        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
+        - `epSendCounts`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
         - 当前不支持TP域通信。
-        - expandScales 为预留参数，当前版本不支持，传空指针即可。
-        - epWorldSize 取值支持2、4、8、16、32、64、128、144、256、288。
-        - groupTp 当前版本不支持，传空字符即可。
-        - tpWorldSize 当前版本不支持，传1即可。
-        - tpRankId 当前版本不支持，传0即可。
-        - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - sharedExpertNum 当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
-        - sharedExpertRankNum 当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
-        - 各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
-        - commQuantMode 当前版本仅支持0，0表示通信不量化。
+        - `expandScales`为预留参数，当前版本不支持，传空指针即可。
+        - `epWorldSize`取值支持2、4、8、16、32、64、128、144、256、288。
+        - `groupTp`当前版本不支持，传空字符即可。
+        - `tpWorldSize`当前版本不支持，传1即可。
+        - `tpRankId`当前版本不支持，传0即可。
+        - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+        - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
+        - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
+        - 各rank Bs一致时，`globalBs` = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
+        - `commQuantMode`当前版本仅支持0，0表示通信不量化。
 
 - **返回值**
 

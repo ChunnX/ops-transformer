@@ -18,7 +18,11 @@
 
 using namespace AscendC;
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "adv_api/hccl/hccl.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "matmul_allto_all_tiling.h"

@@ -122,6 +122,7 @@ protected:
     bool CheckQueryOutParamsConsistency(const ContextParamsForPFATiling& contextKeyParams,
         const gert::StorageShape* queryShape, const gert::StorageShape* outShape) const;
     bool CheckKVDataType(ContextParamsForPFATiling& contextKeyParams);
+    bool CheckRopeDataType(ContextParamsForPFATiling& contextKeyParams);
     bool CheckKeyValueParamsConsistency(ContextParamsForPFATiling& contextKeyParams,
         const gert::StorageShape* keyShape, const gert::StorageShape* valueShape);
     bool SetAndCheckHeadNumRatio(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, PromptFlashAttentionTilingData& tilingData);
@@ -147,7 +148,7 @@ protected:
         const int32_t* blockSize, const gert::StorageShape* blockTableShape, PromptFlashAttentionTilingData& tilingData);
     bool CheckMaskShape(ContextParamsForPFATiling& contextKeyParams, const int32_t* sparseMode, int64_t& attenMaskBatch,
         int64_t& attenMaskS1, int64_t& attenMaskS2, bool& checkMask, const uint32_t sQ, const uint32_t sK,
-        const uint32_t batchSize, std::string& strMaskShape,const gert::StorageShape* attenMaskShape,  size_t attenMaskDim);
+        const uint32_t batchSize, std::string& strMaskShape);
     void SetSparseModeData(ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* attenMaskShape,
         const int32_t* sparseMode, const int64_t* preTokens, const int64_t* nextTokens);
     bool CheckMaskShapeCrossSparse(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingData& tilingData,

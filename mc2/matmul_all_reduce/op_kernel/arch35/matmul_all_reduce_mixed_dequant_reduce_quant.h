@@ -16,7 +16,11 @@
 #ifndef MATMUL_ALL_REDUCE_MIXED_DEQUANT_REDUCE_QUANT_H
 #define MATMUL_ALL_REDUCE_MIXED_DEQUANT_REDUCE_QUANT_H
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "matmul_all_reduce_dynamic_quant_pertile_utils.h"
 #include "../common.h"
 

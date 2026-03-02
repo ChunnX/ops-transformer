@@ -375,7 +375,8 @@ bool GroupedQbmmTiling::CheckFp4Shape() const
                 return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2"),
+                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2, \
+but actual is 2."),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(
@@ -599,6 +600,25 @@ bool GroupedQbmmTiling::AnalyzeInputs()
         }
     }
     SetKernelType();
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);   
+    return true;
+}
+
+bool GroupedQbmmTiling::CheckCoreNum() const
+{
+    auto aicNum = context_->GetCompileInfo<GMMCompileInfo>()->aicNum;
+    auto aivNum = context_->GetCompileInfo<GMMCompileInfo>()->aivNum;
+    if (inputParams_.groupType == SPLIT_K) {
+        OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
+                   OP_LOGE(inputParams_.opName, "When group type is 2 (mix template), aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                   return false);
+    }
+    if (inputParams_.kernelType == 1 || inputParams_.kernelType == 2) {
+        OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
+                   OP_LOGE(inputParams_.opName, "Current scene, aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                   return false);
+    }
     return true;
 }
 

@@ -10,8 +10,12 @@
 
 #ifndef UNPAD_FLASH_ATTENTION_COMMON_H
 #define UNPAD_FLASH_ATTENTION_COMMON_H
+#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "common.h"
 #include "iterator.h"
 #include "gm_to_l1_iterator.h"
@@ -30,8 +34,6 @@ using namespace AscendC;
 
 #ifdef __CCE_KT_TEST__
 #define __aicore__
-#else
-#define __aicore__ [aicore]
 #endif
 
 constexpr int32_t FLOAT_VECTOR_SIZE = 64;

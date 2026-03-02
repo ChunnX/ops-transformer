@@ -147,6 +147,21 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
     }
 
     SetKernelType();
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);   
+    return true;
+}
+
+bool QuantGroupedInplaceAddTiling::CheckCoreNum() const
+{
+    auto aicNum = context_->GetCompileInfo<GMMCompileInfo>()->aicNum;
+    auto aivNum = context_->GetCompileInfo<GMMCompileInfo>()->aivNum;
+    OP_CHECK_IF(aicNum == 0,
+               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+               return false);
+    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
+               OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+               return false);
     return true;
 }
 
