@@ -16,8 +16,12 @@
 #define MOE_V3_GATHER_hif8_PERTENSOR_QUANT_H_REGBASE
 
 #include "moe_v3_common.h"
-#include "kernel_operator.h"
 #include "op_kernel/load_store_utils.h"
+#if ASC_DEVKITMAJOE >= 9
+#include "kernel_vec_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;

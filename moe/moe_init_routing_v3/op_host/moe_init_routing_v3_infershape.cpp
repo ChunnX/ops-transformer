@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <set>
 #include "register/op_def_registry.h"
 #include "log/log.h"
 #include "util/math_util.h"
@@ -59,8 +60,20 @@ enum QuantMode : int8_t {
     DYNAMIC_QUANT = 1,
     MXQUANT_FP8_E5M2 = 2,
     MXQUANT_FP8_E4M3FN = 3,
+    HIF8_CAST = 6,
     HIF8_PERTENSOR = 7,
     HIF8_PERTOKEN = 8
+};
+
+const std::set<int64_t> validQuantModes = {
+    QuantMode::NON_QUANT,
+    QuantMode::STATIC_QUANT,
+    QuantMode::DYNAMIC_QUANT,
+    QuantMode::MXQUANT_FP8_E5M2,
+    QuantMode::MXQUANT_FP8_E4M3FN,
+    QuantMode::HIF8_CAST,
+    QuantMode::HIF8_PERTENSOR,
+    QuantMode::HIF8_PERTOKEN
 };
 
 enum ExpertTokenNumType : int8_t {
@@ -238,9 +251,10 @@ static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
         return ge::GRAPH_FAILED;
     }
     quantMode = *quantModePtr;
-    if (quantMode < QuantMode::NON_QUANT || quantMode > QuantMode::HIF8_PERTOKEN) {
-        OP_LOGE(context, "The quant_mode should be in [%d, %d]. But it is %d.", QuantMode::NON_QUANT,
-                QuantMode::NON_QUANT, QuantMode::HIF8_PERTOKEN, quantMode);
+    if (validQuantModes.count(quantMode) == 0) {
+        OP_LOGE(context, "The quant_mode should be in [%d, %d], %d, %d or %d. But it is %d.", QuantMode::NON_QUANT,
+                QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR,
+                QuantMode::HIF8_PERTOKEN, quantMode);
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context, "End to do GetAndCheckQuantMode.");
@@ -287,10 +301,11 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                 OP_LOGE(context, "The scale cannot be none when quant_mode is %ld.", quantMode),
                 return ge::GRAPH_FAILED);
 
-    //  When quant_mode is NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN, scale can be none.
+    //  When quant_mode is NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN/HIF8_CAST/HIF8_PERTOKEN, scale can be none.
     OP_CHECK_IF((nullptr == scaleShape &&
                  (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
-                  QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode || QuantMode::HIF8_PERTOKEN == quantMode)),
+                  QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
+                  QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode)),
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
@@ -698,8 +713,9 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     int64_t quantMode = static_cast<int64_t>(-1);
     const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
     if (nullptr == quantModePtr) {
-        OP_LOGE(context, "The quant_mode should be in range [%d, %d]. But it is none.", QuantMode::NON_QUANT,
-                QuantMode::MXQUANT_FP8_E4M3FN);
+        OP_LOGE(context, "The quant_mode should be in range [%d, %d], %d, %d or %d. But it is none.",
+            QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR,
+                QuantMode::HIF8_PERTOKEN);
         return ge::GRAPH_FAILED;
     }
     quantMode = *quantModePtr;
@@ -712,37 +728,27 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
             OP_LOGE(context, "When quant_mode=%ld, xDtype cannot be int_8.", quantMode);
             return ge::GRAPH_FAILED;
         }
+    } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode
+        || QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode
+        || QuantMode::HIF8_PERTENSOR == quantMode) {
+        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
+            OP_LOGE(
+                context,
+                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
+                quantMode, xDtype);
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         expandedXDtype = ge::DT_INT8;
     } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode) {
-        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(
-                context,
-                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-                quantMode, xDtype);
-            return ge::GRAPH_FAILED;
-        }
         expandedXDtype = (QuantMode::MXQUANT_FP8_E5M2 == quantMode) ? ge::DT_FLOAT8_E5M2 : ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
-    } else if (QuantMode::HIF8_PERTENSOR == quantMode) {
-        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(
-                context,
-                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-                quantMode, xDtype);
-            return ge::GRAPH_FAILED;
-        }
+    } else if (QuantMode::HIF8_CAST == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
-    } else if (QuantMode::HIF8_PERTOKEN == quantMode) {
-        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(
-                context,
-                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-                quantMode, xDtype);
-            return ge::GRAPH_FAILED;
-        }
-        expandedXDtype = ge::DT_HIFLOAT8;
-        expandedScaleDtype = ge::DT_FLOAT;
     }
+
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X, expandedXDtype);
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_ROW_IDX, ge::DT_INT32);
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPERT_TOKEN_CUMSUM_OR_COUNT, ge::DT_INT64);

@@ -43,6 +43,7 @@ private:
     TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> expandedRowIdxCopyInQueue_;
 
     GlobalTensor<T> xGm_;
+    GlobalTensor<uint8_t> xUint8tGm_;
     GlobalTensor<float> xGscaleGm_;
     GlobalTensor<int32_t> sortedExpertIdxGm_;
     GlobalTensor<T> expandedXGm_;
@@ -120,9 +121,12 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
     indicesLoops_ = Ceil(curCoreIndicesElements_, curCorePerLoopIndicesElements_);
     curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
 
-    xGm_.SetGlobalBuffer((__gm__ T *)x, n_ * cols_);
     xGscaleGm_.SetGlobalBuffer((__gm__ float *)scale, n_);
-
+    if constexpr (IsSameType<T, hifloat8_t>::value) {
+        xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x, n_ * cols_);
+    } else {
+        xGm_.SetGlobalBuffer((__gm__ T *)x, n_ * cols_);
+    }
     expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
                                  curCoreIndicesElements_ * cols_);
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale + blockIdx_ * perCoreIndicesElements_,
@@ -159,11 +163,19 @@ __aicore__ inline void MoeGatherOut<T>::CopyExpertIn(int64_t curExpertLoopOffset
 template <typename T>
 __aicore__ inline void MoeGatherOut<T>::CopyXIn(int64_t xSrcOffset, int64_t scaleSrcOffset, int64_t curLoopCols)
 {
-    LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
-    DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-    DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
-    DataCopyPad(xLocal, xGm_[xSrcOffset], copyParams0, padParams0);
-    xCopyInQueue_.EnQue(xLocal);
+    if constexpr (IsSameType<T, hifloat8_t>::value) {
+        LocalTensor<uint8_t> xLocal = xCopyInQueue_.AllocTensor<uint8_t>();
+        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
+        DataCopyPadExtParams<uint8_t> padParams0{false, 0, 0, 0};
+        DataCopyPad(xLocal, xUint8tGm_[xSrcOffset], copyParams0, padParams0);
+        xCopyInQueue_.EnQue(xLocal);
+    } else {
+        LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
+        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+        DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
+        DataCopyPad(xLocal, xGm_[xSrcOffset], copyParams0, padParams0);
+        xCopyInQueue_.EnQue(xLocal);
+    }
 }
 
 template <typename T>
