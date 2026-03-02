@@ -66,8 +66,20 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("drop_and_pad").AttrType(OPTIONAL).Bool(false);
         this->Attr("restore_shape").AttrType(OPTIONAL).ListInt({});
-        this->AICore().AddConfig("ascend910b");
-        this->AICore().AddConfig("ascend910_93");
+        
+        OpAICoreConfig membaseCfg;
+        membaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "moe_token_unpermute_with_routing_map");
+        this->AICore().AddConfig("ascend910b", membaseCfg);
+        this->AICore().AddConfig("ascend910_93", membaseCfg);
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "moe_token_unpermute_with_routing_map");
+        this->AICore().AddConfig("ascend950", regbaseCfg);
 
         OpAICoreConfig config_kirin;
         config_kirin.DynamicCompileStaticFlag(true)
