@@ -1057,7 +1057,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec1BaseBlock(
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::CalcGroupInfo(const Vec1RunInfo &info, Vec1SplitInfo &splitInfo)
 {
-    uint32_t aiCoreNum = GetBlockNum() * 2;
+    uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
     splitInfo.dBaseSize = constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, info.dealTcNum)));
     splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_BLOCK_ELEMENT_NUM);
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
@@ -1386,10 +1386,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::SplitCoreV2(const Compre
             v2TcEndIdx = i + 1;
             GetScIdxInfo(info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
                          OutputSStartIdx, OutputSize);
-            printf("[SplitCoreV2] bStart:%u, bCompressedId:%u, dealScSize:%u, v2TcStartIdx:%u, v2TcEndIdx:%u, "
-                   "OutputBStartIdx:%u, OutputSStartIdx:%u, OutputSize:%u\n",
-                   info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
-                   OutputSStartIdx, OutputSize);
+            // printf("[SplitCoreV2] bStart:%u, bCompressedId:%u, dealScSize:%u, v2TcStartIdx:%u, v2TcEndIdx:%u, "
+            //        "OutputBStartIdx:%u, OutputSStartIdx:%u, OutputSize:%u\n",
+            //        info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
+            //        OutputSStartIdx, OutputSize);
             return;
         }
     }

@@ -29,17 +29,18 @@ constexpr uint32_t HALFCORED = 128;
 
 
 */
-template<typename T>
-__simd_vf__ void AddVFImpl(__ubuf__ T* inputAddr, __ubuf__ T* apeAddr, const uint16_t coreSplitD, const uint16_t loopCnt)
+template <typename T>
+__simd_vf__ void AddVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, const uint16_t coreSplitD,
+                           const uint16_t loopCnt)
 {
     MicroAPI::RegTensor<T> vreg0;
     MicroAPI::RegTensor<T> vregape0;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    for(uint16_t loop = 0; loop < loopCnt; loop++) {
+    for (uint16_t loop = 0; loop < loopCnt; loop++) {
         MicroAPI::LoadAlign(vreg0, inputAddr + loop * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(vregape0, apeAddr + loop* FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape0, apeAddr + loop * FLOAT_REP_SIZE);
         MicroAPI::Add(vreg0, vreg0, vregape0, mask);
-        MicroAPI::StoreAlign(inputAddr + loop*FLOAT_REP_SIZE, vreg0, mask);
+        MicroAPI::StoreAlign(inputAddr + loop * FLOAT_REP_SIZE, vreg0, mask);
     }
 }
 
@@ -54,13 +55,13 @@ __simd_vf__ void AddVFImpl(__ubuf__ T* inputAddr, __ubuf__ T* apeAddr, const uin
  * @param coreSplitS 核间d轴切分大小
  */
 template <typename T>
-__aicore__ inline void AddVF(LocalTensor<T> &scoreLocal, LocalTensor<T> &apeLocal,
-    uint16_t apeIdx, const uint16_t coff, const uint16_t coreSplitD, uint32_t coreSplitS) 
+__aicore__ inline void AddVF(LocalTensor<T> &scoreLocal, LocalTensor<T> &apeLocal, uint16_t apeIdx, const uint16_t coff,
+                             const uint16_t coreSplitD, uint32_t coreSplitS)
 {
-    uint16_t loopCnt = coff *coreSplitD*coreSplitS/FLOAT_REP_SIZE;
+    uint16_t loopCnt = coff * coreSplitD * coreSplitS / FLOAT_REP_SIZE;
 
-    __ubuf__ T * scoreAddr = (__ubuf__ T *)scoreLocal.GetPhyAddr();
-    __ubuf__ T * apeAddr = (__ubuf__ T *)apeLocal.GetPhyAddr() + apeIdx;
+    __ubuf__ T *scoreAddr = (__ubuf__ T *)scoreLocal.GetPhyAddr();
+    __ubuf__ T *apeAddr = (__ubuf__ T *)apeLocal.GetPhyAddr() + apeIdx;
 
     AddVFImpl<T>(scoreAddr, apeAddr, coreSplitD, loopCnt);
 }
