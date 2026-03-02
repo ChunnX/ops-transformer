@@ -3942,13 +3942,13 @@ void PromptFlashAttentionTilingV2::UpdateTilingKeyConfig(ContextParamsForPFATili
         }        
     } else if (sOuter == 128 && sInner == 128 && dSize == 192 && dVsize == 128) { // 192, 128: head size
         config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == 128 && sInner == 128 && dSize == 256 && dVsize == 128) { // 128: head size
+    } else if (sOuter == 128 && sInner == 128 && dSize == 256 && dVsize == 128) { // 128, 256: head size
         config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
     } else if (sOuter == 128 && sInner == 128 && dSize == 256 && dVsize == 256) { // 256, 128: head size
         config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
     } else if (sOuter == 128 && sInner == 128 && dSize == 512 && dVsize == 512) { // 512, 128: head size
         config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-    } else if (sOuter == 128 && sInner == 256 && dSize == 64 && dVsize == 64) { // 64, 256: head size
+    } else if (sOuter == 128 && sInner == 256 && dSize == 64 && dVsize == 64) { // 64, 256, 128: head size
         config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
     } else if (sOuter == 64 && sInner == 128 && dSize == 576 && dVsize == 512) { // 64, 128, 576, 512: head size
         config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
@@ -4081,7 +4081,7 @@ void PromptFlashAttentionTilingV2::UpdateTilingKeyPFAMatMulType(PromptFlashAtten
         return;
     }
     auto dSize = tilingData.promptAttentionBaseParams.get_qkHeadSize();
-    if (dSize == 512) {
+    if (dSize == 512) { // 512: qk head size
         if (enablePA) {
             pFAMatMulType = PFAMatMulType_MM_PA_D512;
         } else {
@@ -4144,14 +4144,14 @@ size_t PromptFlashAttentionTilingV2::GetPFAWorkSpaceSize(PromptFlashAttentionTil
         if (isMaxWorkspace) { // 计算maxWorkSpaceSize时默认开启FD且使用最大核数进行归约
             uint64_t headDimAlign = AlignUp(tilingData.promptAttentionBaseParams.get_vHeadSize(), BYTE_BLOCK);
             accumOutSize = aicNum * headDimAlign * sizeof(float);
-            logSumExpSize = aicNum * BYTE_BLOCK * 2;
+            logSumExpSize = aicNum * BYTE_BLOCK * 2; // 2: Each AI core needs 2 byte blocks for storing log-sum-exp intermediate results (fixed multiplier factor)
         } else if (enableFlashDecode) {
             auto batchSize = tilingData.promptAttentionBaseParams.get_batchSize();
             auto headNumSize = tilingData.promptAttentionBaseParams.get_headNumSize();
             uint64_t headDimAlign = AlignUp(tilingData.promptAttentionBaseParams.get_vHeadSize(), BYTE_BLOCK);
             uint32_t kvSplitPart = faTilingAdapter.inputParamsRegbase.get_kvSplitPart();
             accumOutSize = batchSize * gSize * headNumSize * kvSplitPart * headDimAlign * sizeof(float);
-            logSumExpSize = batchSize * gSize * headNumSize * kvSplitPart * BYTE_BLOCK * 2;
+            logSumExpSize = batchSize * gSize * headNumSize * kvSplitPart * BYTE_BLOCK * 2; // 2: fixed multiplier factor
         }
 
         int64_t bmm2Bytes = 0;
