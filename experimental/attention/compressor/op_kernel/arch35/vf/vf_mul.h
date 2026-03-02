@@ -23,6 +23,15 @@ constexpr uint32_t baseD32 = 32;
 constexpr uint32_t baseD64 = 64;
 constexpr uint32_t baseD128= 128;
 
+template<size_t N>
+struct RegTensorArray {
+    MicroAPI::RegTensor<T> reg[N];
+    
+    // 提供像数组一样的访问方式
+    inline MicroAPI::RegTensor<T>& operator[](size_t i) { return reg[i]; }
+    inline const MicroAPI::RegTensor<T>& operator[](size_t i) const { return reg[i]; }
+};
+
 template<typename T>
 __simd_vf__ void MulReduceSumbase32VFImpl(__ubuf__ T* kvAddr, __ubuf__ T* scoreAddr, __ubuf__ T* outputAddr,
     const uint16_t coff, const uint16_t r, const uint16_t scLoopCnt, const uint16_t baseD) 
@@ -51,6 +60,36 @@ __simd_vf__ void MulReduceSumbase32VFImpl(__ubuf__ T* kvAddr, __ubuf__ T* scoreA
         MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum1, vregSum, maskRHalf);
         MicroAPI::Add(vregSum0, vregSum0, vregSum1, maskLHalf);
         MicroAPI::StoreAlign(outputAddr + scLoop*baseD, vregSum0, maskLHalf);
+    }
+}
+
+template<uint16_t baseD, typename T>
+__simd_vf__ void MulReduceSumbaseLargeVFImpl(__ubuf__ T* kvAddr, __ubuf__ T* scoreAddr, __ubuf__ T* outputAddr,
+    const uint16_t coff, const uint16_t r, const uint16_t scLoopCnt) 
+{
+    constexpr size_t arrayNum = baseD / baseD64;
+    RegTensorArray<arrayNum> vreg0;
+    RegTensorArray<arrayNum> vreg1;
+    RegTensorArray<arrayNum> vregMul;
+    RegTensorArray<arrayNum> vregSum;
+    MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    uint32_t offset = 0;
+    for(uint16_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
+        for (size_t i = 0; i < arrayNum; i++) {
+            MicroAPI::Duplicate(vregSum[i], 0, mask);
+        }
+        for(uint16_t rLoop = 0; rLoop < coff*r; rLoop++) {
+            for (size_t i = 0; i < arrayNum; i++) {
+                MicroAPI::LoadAlign(vreg0[i], kvAddr + offset + i * baseD64);
+                MicroAPI::LoadAlign(vreg1[i], scoreAddr + offset + i * baseD64);
+                MicroAPI::Mul(vregMul[i], vreg0[i], vreg1[i], mask);
+                MicroAPI::Add(vregSum[i], vregSum[i], vregMul[i], mask);
+            }
+            offset += baseD;
+        }
+        for (size_t i = 0; i < arrayNum; i++) {
+            MicroAPI::StoreAlign(outputAddr + scLoop * baseD + i * baseD64, vregSum[i], mask);
+        }
     }
 }
 
