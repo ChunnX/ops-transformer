@@ -126,8 +126,7 @@ private:
 
     // 常量
     static constexpr uint64_t SYNC_MODE2 = 2;
-    static constexpr uint32_t SYNC_C1_V1_FLAG = 6;
-    static constexpr uint32_t SYNC_V1_C1_FLAG = 7;
+    static constexpr uint32_t SYNC_V1_C1_FLAG = 6;
 
     // ==============================TilingData&TPipe==============================
     TPipe* pipe_;
@@ -543,7 +542,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
+    CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + info.cubeDbIdx);
     if (isNeedExcute) {
         // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u, cubeDbIdx:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize, info.cubeDbIdx);
         blockCube_.ComputeMm1(info);
@@ -555,9 +554,9 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo
     // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
 #if (__CCE_AICORE__ == 220)
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG);
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
 #else
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG);
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
 #endif
 }
 
@@ -575,9 +574,13 @@ __aicore__ inline void CompressorKernelPerf<COMP>::AllocEventID()
     } else {
         blockVec_.AllocEventID();
 #if (__CCE_AICORE__ == 220)
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG);
+    for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
+        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
+    }
 #else
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG);
+    for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
+        CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + i);
+    }
 #endif
     }
 }
@@ -586,7 +589,9 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
 {
     if ASCEND_IS_AIC {
-        CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG);
+        for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
+            CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + i);
+        }
         blockCube_.FreeEventID(pipe_);
     } else {
         blockVec_.FreeEventID();

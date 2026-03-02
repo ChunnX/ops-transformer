@@ -218,6 +218,10 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
         innerSplitParams_->mBaseSize = 256; // 256:核间切分，M轴基本块大小
         innerSplitParams_->dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
     }
+    // a5 由于loc更大, mBaseSize x 2
+    if (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) { 
+         innerSplitParams_->mBaseSize *= 2;
+     }
     return ge::GRAPH_SUCCESS;
 }
 
