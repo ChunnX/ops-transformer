@@ -586,12 +586,17 @@ protected:
             if (transposeWeight == true){
                 const aclTensor* w = (*gmmDsqParams_.weight)[0];
                 bool isNZ = w->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
-                if (!isNZ ){
+                if (!isNZ) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                             "In weight Transpose scenario.weight Format expect is FRACTAL_NZ when weight is transposed, but got [%s].", 
                             op::ToString(w->GetStorageFormat()).GetString());
                     return false;
                 }
+                if (!gmmDsqParams_.isA4W4) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "In weight Transpose scenario, only A4W4 is supported, but current scenario is A8W4.");
+                    return false;
+                } 
             }
             if (((*gmmDsqParams_.weightScale)[0])->GetDataType() == DataType::DT_INT64) {
                 size_t weightScaleLength = gmmDsqParams_.weightScale->Size();
