@@ -115,6 +115,8 @@ private:
     // mmad <> fixpipe EventID
     static constexpr uint32_t L0C_EVENT0 = EVENT_ID0;   // 每块L0C单独分配EVENT_ID
     static constexpr uint32_t L0C_EVENT1 = EVENT_ID1;
+    static constexpr uint32_t L0C_EVENT2 = EVENT_ID2;
+    static constexpr uint32_t L0C_EVENT3 = EVENT_ID3;
     uint32_t l0cBufId = 0;
 
     // =================================Loop======================================
@@ -200,6 +202,8 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::AllocEventID(TPipe *pipe)
 
     SetFlag<HardEvent::FIX_M>(L0C_EVENT0);
     SetFlag<HardEvent::FIX_M>(L0C_EVENT1);
+    SetFlag<HardEvent::FIX_M>(L0C_EVENT2);
+    SetFlag<HardEvent::FIX_M>(L0C_EVENT3);
 }
 
 template <typename COMP>
@@ -218,6 +222,8 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::FreeEventID(TPipe *pipe)
 
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT0);
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
+    WaitFlag<HardEvent::FIX_M>(L0C_EVENT2);
+    WaitFlag<HardEvent::FIX_M>(L0C_EVENT3);
 }
 
 template <typename COMP>
