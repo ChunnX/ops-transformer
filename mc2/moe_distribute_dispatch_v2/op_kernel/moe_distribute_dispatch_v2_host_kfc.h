@@ -759,7 +759,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     // uint32_t axisHCommu = hScaleIdxSize_ / sizeof(ExpandXOutType); // 有效搬运长度
     blockCntPerTokenToExpert_ = Ceil(hScaleIdxSize_ / sizeof(ExpandXOutType), SPLIT_BLOCK_DATA_SIZE); //框内块数
-    hCommuSize_ = blockCntPerTokenToExpert_ * SPLIT_BLOCK_SIZE; //拼接flag后的字节数
+    hCommuSize_ = blockCntPerTokenToExpert_ * SERVER_STATE_ALIGN; //拼接flag后的字节数
     axisHCommu_ = hCommuSize_ / sizeof(ExpandXOutType);
 
     floatDataCopyParams_ = {1U, sizeof(float), 0U, 0U, 0U};
@@ -2097,7 +2097,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTyp
     uint32_t compareCount = Ceil(flagNum, COMPARE_COUNT_PER_BLOCK) * COMPARE_COUNT_PER_BLOCK;
     uint32_t compResultU64Num = Ceil(flagNum, 64); // 64：按照64bit位进行划分
     DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(flagNum), static_cast<uint32_t>(sizeof(float)),
-        static_cast<uint32_t>(SPLIT_BLOCK_SIZE - sizeof(float)), 0, 0};
+        static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(float)), 0, 0};
     DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
     GlobalTensor<float> dataFlagGlobal;
     GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcExpDataIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
@@ -2193,7 +2193,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             expertLeftNumTensor_(index) -= arriveCount;
             if (expertLeftNumTensor_(index) == 0) {
                 uint32_t cleanUpNum = expertFinishNumTensor_(index) * blockCntPerTokenToExpert_;
-                DataCopyExtParams cleanUoParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U, SPLIT_BLOCK_SIZE - sizeof(int32_t), 0U};
+                DataCopyExtParams cleanUoParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U, SERVER_STATE_ALIGN - sizeof(int32_t), 0U};
                 LocalTensor<int32_t> cleanTensor = tBuf.GetWithOffset<int32_t>(UB_ALIGN / sizeof(int32_t), 0); // 在0偏移位置存放比较结果
                 cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(wAddr));
                 SyncFunc<AscendC::HardEvent::MTE3_V>();
