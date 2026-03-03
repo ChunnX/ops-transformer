@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：更新KCache中指定位置的key。
+- 算子功能：更新KCache中指定位置的key。
 
 - 计算公式：
   - 场景一：
@@ -23,6 +23,7 @@
     slotMapping:[batch * seq_len]
     cacheMode:"Norm"
     ```  
+
     $$
     keyCache = slotMapping(key)
     $$
@@ -37,6 +38,7 @@
     seqLensOptional:[batch]
     cacheMode:"Norm"
     ```
+
     $$
     \begin{aligned}
     keyCache =\ & slotMapping(key[: compressSeqOffset], \\
@@ -54,6 +56,7 @@
     seqLensOptional:[batch]
     cacheMode:"Norm"
     ```
+
     $$
     keyCache = slotMapping(key[seqLens - compressLens : seqLens])
     $$
@@ -73,6 +76,7 @@
       <th>输入/输出/属性</th>
       <th>描述</th>
       <th>数据类型</th>
+      <th>数据格式</th>
     </tr></thead>
   <tbody>
     <tr>
@@ -80,47 +84,53 @@
       <td>输入</td>
       <td>待更新的key值，公式中的key。</td>
       <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2</td>
+      <td>ND</td>
     </tr>
     <tr>
       <td>keyCacheRef</td>
       <td>输入/输出</td>
       <td>需要更新的keyCache，公式中的keyCache。</td>
       <td>与key一致。</td>
+      <td>ND</td>
     </tr>
     <tr>
       <td>slotMapping</td>
       <td>输入</td>
       <td>key的每个token在cache中的存储偏移，公式中的slotMapping。</td>
       <td>INT32、INT64</td>
+      <td>ND</td>
     </tr>
     <tr>
       <td>compressLensOptional</td>
-      <td>输入</td>
+      <td>可选输入</td>
       <td>压缩量，公式中的compressLens。</td>
       <td>与slotMapping一致。</td>
+      <td>ND</td>
     </tr>
     <tr>
       <td>compressSeqOffsetOptional</td>
-      <td>输入</td>
+      <td>可选输入</td>
       <td>每个batch中每个head的压缩起点，公式中的compressSeqOffset。</td>
       <td>与slotMapping一致。</td>
+      <td>ND</td>
     </tr>
     <tr>
       <td>seqLensOptional</td>
-      <td>输入</td>
+      <td>可选输入</td>
       <td>每个batch的实际seqLens，公式中的seqLens。</td>
       <td>与slotMapping一致。</td>
+      <td>ND</td>
     </tr>
     <tr>
       <td>cacheMode</td>
       <td>输入</td>
       <td>keyCacheRef的内存排布格式。</td>
       <td>STRING</td>
+      <td>-</td>
     </tr>
   </tbody></table>
 
 ## 约束说明
-- 确定性计算：aclnnScatterPaCache默认为确定性实现，暂不支持非确定性实现，[确定性计算](common/确定性计算.md)配置也不会生效。
 - 参数说明中shape使用的变量说明如下：
   - batch：当前输入的序列数量（一次处理的样本数），取值为正整数。
   - seq_len：序列的长度，取值为正整数。
@@ -129,9 +139,10 @@
   - num_blocks：keyCache中预分配的块总数，用于存储所有序列的key数据，取值为正整数。
   - block_size：每个缓存块包含的token数量，取值为正整数。
 - 输入值域限制：seqLensOptional和compressLensOptional里面的每个元素值必须满足公式：reduceSum(seqLensOptional[i] - compressLensOptional[i] + 1) <= num_blocks * block_size（对应场景二、三）。
+- 输入数据类型限制：HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2仅支持key是3维的场景（对应场景一）。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnn_ScatterPaCache](./examples/test_aclnn_scatter_pa_cache.cpp) | 通过[aclnnScatterPaCache](./docs/aclnnScatterPaCache.md)调用ScatterPaCache算子 |
+| aclnn | [test_aclnn_ScatterPaCache](./examples/test_aclnn_scatter_pa_cache.cpp) | 通过[aclnnScatterPaCache](./docs/aclnnScatterPaCache.md)调用ScatterPaCache算子 |

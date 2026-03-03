@@ -1,5 +1,7 @@
 # aclnnScatterPaCache
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/scatter_pa_cache)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -13,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：更新KCache中指定位置的key。
+- 算子功能：更新KCache中指定位置的key。
 
 - 计算公式：
   - 场景一：
@@ -23,6 +25,7 @@
     slotMapping:[batch * seq_len]
     cacheMode:"Norm"
     ```  
+
     $$
     keyCache = slotMapping(key)
     $$
@@ -37,6 +40,7 @@
     seqLensOptional:[batch]
     cacheMode:"Norm"
     ```
+
     $$
     \begin{aligned}
     keyCache =\ & slotMapping(key[: compressSeqOffset], \\
@@ -54,6 +58,7 @@
     seqLensOptional:[batch]
     cacheMode:"Norm"
     ```
+
     $$
     keyCache = slotMapping(key[seqLens - compressLens : seqLens])
     $$
@@ -62,7 +67,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnScatterPaCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnScatterPaCache”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnScatterPaCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnScatterPaCache”接口执行计算。
 
 ```c++
 aclnnStatus aclnnScatterPaCacheGetWorkspaceSize(
@@ -87,46 +92,212 @@ aclnnStatus aclnnScatterPaCache(
 
 ## aclnnScatterPaCacheGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
-  | 参数名 | 输入/输出<div style="width: 70px"> | 描述 | 使用说明 | 数据类型 | 数据格式<div style="width: 70px"> | 维度(shape)<div style="width: 80px"> | 非连续tensor <div style="width: 90px">|
-  |------|------|------|------|------|------|------|------|
-  | <term>key</term>  |  输入 | 待更新的key值，公式中的key。 |<ul><li>支持空tensor。</li><li>HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2仅支持key是3维的场景。</li><li>shape满足[batch * seq_len, num_head, k_head_size]或[batch, seq_len, num_head, k_head_size]，FLOAT4_E2M1、FLOAT4_E1M2情况下，k_head_size必须是偶数。</li><ul> | FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2 | ND | 3-4 | × |
-  | keyCacheRef |    输入输出   | 需要更新的keyCache，公式中的keyCache。 | <ul><li>支持空tensor。</li><li>当key是3维时，shape满足[num_blocks, block_size, num_head, k_head_size]，当key是4维时，shape满足[num_blocks, block_size, 1, k_head_size]。</li><ul> | 与key一致。 | ND | 4 | × |
-  | slotMapping | 输入 | key的每个token在cache中的存储偏移，公式中的slotMapping。 | <ul><li>支持空tensor。</li><li>当key是3维时，shape满足[batch * seq_len]，当key是4维时，shape满足[batch, num_head]。</li><li>值范围为[0, num_blocks * block_size-1]，且元素值不能重复，重复时不保证正确性。</li><ul> | INT32、INT64 | ND | 1-2 | × |
-  | compressLensOptional | 输入 | 压缩量，公式中的compressLens。 | <ul><li>支持空tensor。</li><li>当key是4维且compressSeqOffsetOptional不为空指针时，shape满足[batch, num_head]，当key是4维且compressSeqOffsetOptional为空指针时，shape满足[batch * num_head]。</li><li>场景一传空指针。</li><ul> | 与slotMapping一致。 | ND | 1-2 | × |
-  | compressSeqOffsetOptional | 输入 | 每个batch中每个head的压缩起点，公式中的compressSeqOffset。| <ul><li>支持空tensor。</li><li>shape满足[batch * num_head]。</li><li>场景一和场景三传空指针。</li><ul> | 与slotMapping一致。 | ND | 1 | × |
-  | seqLensOptional | 输入 | 每个batch的实际seqLens，公式中的seqLens。 | <ul><li>支持空tensor。</li><li>shape满足[batch]。</li><li>场景一传空指针。</li><ul> | 与slotMapping一致。 | ND | 1 | × |
-  | cacheMode | 输入 | keyCacheRef的内存排布格式。 | <ul><li>预留参数，当前数据格式只支持ND，该参数不生效。</li><ul> | - | - | - | - |
-  | workspaceSize | 输出 | 返回需要在Device侧申请的workspace大小。 | - | - | - | - | - |
-  | executor | 输出 | 返回op执行器，包含了算子计算流程。 | - | - | - | - | - |
+  </style>
+  <table class="tg" style="undefined;table-layout: fixed; width: 1548px"><colgroup>
+  <col style="width: 265px">
+  <col style="width: 86px">
+  <col style="width: 269px">
+  <col style="width: 462px">
+  <col style="width: 172px">
+  <col style="width: 111px">
+  <col style="width: 87px">
+  <col style="width: 96px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th class="tg-0pky">参数名</th>
+      <th class="tg-0pky">输入/输出</th>
+      <th class="tg-0pky">描述</th>
+      <th class="tg-0pky">使用说明</th>
+      <th class="tg-0pky">数据类型</th>
+      <th class="tg-0pky">数据格式</th>
+      <th class="tg-0pky">维度(shape)</th>
+      <th class="tg-0pky">非连续tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td class="tg-0pky">key(aclTensor*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">待更新的key值，公式中的key。</td>
+      <td class="tg-0pky"><ul><li>支持空tensor。</li><li>HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2仅支持key是3维的场景。</li><li>shape满足[batch * seq_len, num_head, k_head_size]或[batch, seq_len, num_head, k_head_size]，FLOAT4_E2M1、FLOAT4_E1M2情况下，k_head_size必须是偶数。</li><ul></td>
+      <td class="tg-0pky">FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">3-4</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">keyCacheRef(aclTensor*)</td>
+      <td class="tg-0pky">输入/输出</td>
+      <td class="tg-0pky">需要更新的keyCache，公式中的keyCache。</td>
+      <td class="tg-0pky"><ul><li>支持空tensor。</li><li>当key是3维时，shape满足[num_blocks, block_size, num_head, k_head_size]，当key是4维时，shape满足[num_blocks, block_size, 1, k_head_size]。</li><ul></td>
+      <td class="tg-0pky">与key一致。</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">4</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">slotMapping(aclTensor*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">key的每个token在cache中的存储偏移，公式中的slotMapping。</td>
+      <td class="tg-0pky"><ul><li>支持空tensor。</li><li>当key是3维时，shape满足[batch * seq_len]，当key是4维时，shape满足[batch, num_head]。</li><li>值范围为[0, num_blocks * block_size-1]，且元素值不能重复，重复时不保证正确性。</li><ul></td>
+      <td class="tg-0pky">INT32、INT64</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">1-2</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">compressLensOptional(aclTensor*)</td>
+      <td class="tg-0pky">可选输入</td>
+      <td class="tg-0pky">压缩量，公式中的compressLens。</td>
+      <td class="tg-0pky"><ul><li>支持空tensor。</li><li>当key是4维且compressSeqOffsetOptional不为空指针时，shape满足[batch, num_head]，当key是4维且compressSeqOffsetOptional为空指针时，shape满足[batch * num_head]。</li><li>场景一传空指针。</li><ul></td>
+      <td class="tg-0pky">与slotMapping一致。</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">1-2</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">compressSeqOffsetOptional(aclTensor*)</td>
+      <td class="tg-0pky">可选输入</td>
+      <td class="tg-0pky">每个batch中每个head的压缩起点，公式中的compressSeqOffset。</td>
+      <td class="tg-0pky"><ul><li>支持空tensor。</li><li>shape满足[batch * num_head]。</li><li>场景一和场景三传空指针。</li><ul></td>
+      <td class="tg-0pky">与slotMapping一致。</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">1</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">seqLensOptional(aclTensor*)</td>
+      <td class="tg-0pky">可选输入</td>
+      <td class="tg-0pky">每个batch的实际seqLens，公式中的seqLens。</td>
+      <td class="tg-0pky"><ul><li>支持空tensor。</li><li>shape满足[batch]。</li><li>场景一传空指针。</li><ul></td>
+      <td class="tg-0pky">与slotMapping一致。</td>
+      <td class="tg-0pky">ND</td>
+      <td class="tg-0pky">1</td>
+      <td class="tg-0pky">x</td>
+    </tr>
+    <tr>
+      <td class="tg-0pky">cacheMode(char*)</td>
+      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">keyCacheRef的内存排布格式。</td>
+      <td class="tg-0pky">预留参数，当前数据格式只支持ND，该参数不生效。</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">-</td>
+    </tr>
+    <tr>
+      <td class="tg-0lax">workspaceSize(uint64_t*)</td>
+      <td class="tg-0lax">输出</td>
+      <td class="tg-0lax">返回需要在Device侧申请的workspace大小。</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+    </tr>
+    <tr>
+      <td class="tg-0lax">executor(aclOpExecutor**）</td>
+      <td class="tg-0lax">输出</td>
+      <td class="tg-0lax">返回op执行器，包含了算子计算流程。</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+      <td class="tg-0lax">-</td>
+    </tr>
+  </tbody></table>
 
-- **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+- **返回值**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  |返回值|错误码|描述|
-  |------|------|------|
-  |ACLNN_ERR_PARAM_NULLPTR|161001|1. key、keyCacheRef、slotMapping存在空指针。|
-  |ACLNN_ERR_PARAM_INVALID|161002|1. key、slotMapping、compressLensOptional、compressSeqOffsetOptional或seqLensOptional的数据类型不在支持的范围之内。<br>2. key或keyCacheRef的数据类型不匹配。<br>3. slotMapping、compressLensOptional、compressSeqOffsetOptional或seqLensOptional的数据类型不匹配。<br>4. key、slotMapping、compressLensOptional、compressSeqOffsetOptional或seqLensOptional的shape维度不在支持的范围之内。|
+
+  <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
+  <col style="width: 302px">
+  <col style="width: 119px">
+  <col style="width: 731px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入的key、keyCacheRef、slotMapping是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
+      <td>参数key的数据类型不在支持的范围之内。</td>
+    </tr>
+    <tr>
+      <td>key、keyCacheRef的数据类型不一致。</td>
+    </tr>
+    <tr>
+      <td>slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型不一致。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>561002</td>
+      <td>key的维数不等于3维或4维。</td>
+    </tr>
+  </tbody>
+  </table>
 
 ## aclnnScatterPaCache
 
-- **参数说明：**
-  |参数名|输入/输出|描述|
-  |------|------|------|
-  |workspace|输入|在Device侧申请的workspace内存地址。|
-  |workspaceSize|输入|在Device侧申请的workspace大小，由第一段接口aclnnScatterPaCacheGetWorkspaceSize获取。|
-  |executor|输入|op执行器，包含了算子计算流程。|
-  |stream|输入|指定执行任务的Stream。|
+- **参数说明**
 
-- **返回值：**
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnScatterPaCacheGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+- **返回值**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-- 确定性计算：aclnnScatterPaCache默认为确定性实现，暂不支持非确定性实现，[确定性计算](common/确定性计算.md)配置也不会生效。
+
+- 确定性计算：aclnnScatterPaCache默认确定性实现。
 - 参数说明中shape使用的变量说明如下：
   - batch：当前输入的序列数量（一次处理的样本数），取值为正整数。
   - seq_len：序列的长度，取值为正整数。
@@ -138,7 +309,7 @@ aclnnStatus aclnnScatterPaCache(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](common/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Ascend 950PR/Ascend 950DT</term> ：
 
