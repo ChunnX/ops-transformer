@@ -1734,8 +1734,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitCntFlag(GlobalTensor<uint32_t> &statusWinGMTensor) {
-{   
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SetStatus() //框间状态区接收 + 框内状态区发送
+{
+    InitStatusTensor();
+
+    GlobalTensor<uint32_t> statusWinGMTensor;
+    statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
     while(true) { //确保等到
         uint32_t arriveCount = 0;
         CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, cntBlockCnt);
@@ -1744,16 +1748,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             break;
         }
     }
-}
-
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SetStatus() //框间状态区接收 + 框内状态区发送
-{
-    InitStatusTensor();
-
-    GlobalTensor<uint32_t> statusWinGMTensor;
-    statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
-    WaitCntFlag(statusWinGMTensor, cntLocal);
 
     SplitToCore(expertNumInServer_ * serverNum_, aivNum_, startPosId_, endPosId_, sendPosNum_);
     if (startPosId_ >= expertNumInServer_ * serverNum_) {
@@ -1764,7 +1758,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t expertIndex = posIndex % expertNumInServer_;
         uint32_t srcServerIndex = posIndex / expertNumInServer_;
         uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120;
-        statusTensor_((posIndex - startPosId_) * 8) = cntLocal(posIndex);
+        statusTensor_((posIndex - startPosId_) * 8) = cntLocal(srcPos);
     }
 
     SyncFunc<AscendC::HardEvent::S_MTE3>(); 
@@ -2094,7 +2088,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline uint32_t MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWithFlag(uint32_t srcExpDataIdx,
+__aicore__ inline uint32_t MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWithFlagInServer(uint32_t srcExpDataIdx,
     int32_t beginIdx, int32_t copyCnt)
 {
     uint64_t rsvdCnt = 0;
@@ -2188,7 +2182,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         srcExpRankId = expertMapTensor_(index);
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
-        arriveCount = CheckDataArriveWithFlag(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
+        arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (arriveCount == copyCnt) {
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
