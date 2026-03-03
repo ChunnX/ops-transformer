@@ -61,6 +61,7 @@ __aicore__ inline void InitKVLeftPaddingSize(RunParamStr<isInfer>& runParam, con
     }
 }
 
+static constexpr uint32_t DIM_NUM2 = 2;
 TEMPLATE_INTF
 __aicore__ inline void GetKVSeqLengthForTensorList(RunParamStr<isInfer>& runParam,
     const ConstInfo<isInfer, hasRope>& constInfo, int32_t bIdx, GlobalTensor<INPUT_T>& keyGm)
@@ -72,7 +73,7 @@ __aicore__ inline void GetKVSeqLengthForTensorList(RunParamStr<isInfer>& runPara
         kvTensorDesc.SetShapeAddr(&dimInfo[0]);
         keyListTensorDesc.GetDesc(kvTensorDesc, bIdx);
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            runParam.s2InCurrentBatch = kvTensorDesc.GetShape(2);
+            runParam.s2InCurrentBatch = kvTensorDesc.GetShape(DIM_NUM2);
         } else {
             runParam.s2InCurrentBatch = kvTensorDesc.GetShape(1);
         }
