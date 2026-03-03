@@ -507,7 +507,7 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
         uint32_t row = tcDealSize == 1 ? sliceInfo.validSeqCnt:
                                           (constInfo_.cmpRatio - sliceInfo.headHolderSeqCnt);
         // Add(scoreLocal[scoreOffset], scoreLocal[scoreOffset], apeUb[apeOffset], rCnt);
-        AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], row, singleRowElemNum, singleRowElemNum);
+        AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], coff_ * row, dDealSize, dDealSize);
         scoreOffset += row * singleRowElemNum;
         tcDealSize -= 1;
     }
@@ -520,7 +520,7 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
         uint32_t row = constInfo_.cmpRatio - sliceInfo.tailHolderSeqCnt;
         uint32_t tailScoreOffset = scoreOffset + tcDealSize * constInfo_.cmpRatio * singleRowElemNum;
         // Add(scoreLocal[tailScoreOffset], scoreLocal[tailScoreOffset], apeUb[apeOffset], rCnt);
-        AddVF(scoreLocal[tailScoreOffset], apeUb[apeOffset], row, singleRowElemNum, singleRowElemNum);
+        AddVF(scoreLocal[tailScoreOffset], apeUb[apeOffset], coff_ * row, dDealSize, dDealSize);
     }
     if (tcDealSize == 0) {
         return;
@@ -528,7 +528,7 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
     uint32_t row = constInfo_.cmpRatio;
     for (uint32_t r = 0; r < tcDealSize; r++) {
         // Add(scoreLocal[scoreOffset + r * rCnt], scoreLocal[scoreOffset + r * rCnt], apeUb, rCnt);
-        AddVF(scoreLocal[scoreOffset + r * row * singleRowElemNum], apeUb, row, singleRowElemNum, singleRowElemNum);
+        AddVF(scoreLocal[scoreOffset + r * row * singleRowElemNum], apeUb, coff_ * row, dDealSize, dDealSize);
     }
 }
 
