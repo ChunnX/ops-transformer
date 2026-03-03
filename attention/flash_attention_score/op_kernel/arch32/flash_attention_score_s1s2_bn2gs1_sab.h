@@ -823,10 +823,32 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
                                                         bmm1Format, mmPolicyType, hasRope>::Process()
 {
     // 确定核内切分起点
-    int64_t multiCoreInnerOffset = this->cubeBlockIdx * this->tilingData->multiCoreParams.splitFactorSize;
-    int64_t multiCoreInnerLimit = multiCoreInnerOffset + this->tilingData->multiCoreParams.splitFactorSize;
-    if (this->tilingData->multiCoreParams.totalSize < multiCoreInnerLimit) {
-        multiCoreInnerLimit = this->tilingData->multiCoreParams.totalSize;
+    int64_t actualUsedAicNum = this->tilingData->multiCoreParams.coreNum / 2;
+    int64_t baseSplitSize = this->tilingData->multiCoreParams.splitFactorSize;
+    int64_t totalSize = this->tilingData->multiCoreParams.totalSize;
+
+    int64_t largerCoreNum = totalSize % actualUsedAicNum;
+    int64_t multiCoreInnerOffset;
+    int64_t multiCoreInnerLimit;
+
+    if (largerCoreNum == 0) {
+        // 能整除的情况
+        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize;
+        multiCoreInnerLimit = multiCoreInnerOffset + baseSplitSize;
+    } else if (this->cubeBlockIdx < largerCoreNum) {
+        // 前 largerCoreNum 个核
+        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize;
+        multiCoreInnerLimit = multiCoreInnerOffset + baseSplitSize;
+    } else {
+        // 后面的核
+        int64_t numSmallCoresBefore = this->cubeBlockIdx - largerCoreNum;
+        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize - numSmallCoresBefore;
+        multiCoreInnerLimit = multiCoreInnerOffset + (baseSplitSize - 1);
+    }
+
+    // 边界检查
+    if (totalSize < multiCoreInnerLimit) {
+        multiCoreInnerLimit = totalSize;
     }
     // 计算sparse场景下s1的循环范围
     this->GetS1LoopRange(multiCoreInnerOffset, multiCoreInnerLimit);

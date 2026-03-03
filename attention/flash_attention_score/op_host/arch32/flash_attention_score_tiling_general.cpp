@@ -3513,7 +3513,11 @@ protected:
         multiCoreParams.set_splitFactorSize(CeilDivision(totalSize, actualUsedAicNum));
         multiCoreParams.set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize()));
         actualUsedAicNum = CeilDivision(totalSize, multiCoreParams.get_splitFactorSize());
-        multiCoreParams.set_coreNum(static_cast<int32_t>(actualUsedAicNum * AIV_AIC_NUM_RATIO));
+        if (totalSize > aicNum){
+            multiCoreParams.set_coreNum(static_cast<int32_t>(aicNum * AIV_AIC_NUM_RATIO));
+        }else{
+            multiCoreParams.set_coreNum(static_cast<int32_t>(actualUsedAicNum * AIV_AIC_NUM_RATIO));
+        }
     }
 
     bool IsSpecialShape()
