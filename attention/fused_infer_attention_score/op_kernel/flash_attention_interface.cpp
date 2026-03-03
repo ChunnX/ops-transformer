@@ -32,6 +32,7 @@ namespace SplitFuse {
         GM_ADDR q,
         GM_ADDR k,
         GM_ADDR v,
+        GM_ADDR pseShift,
         GM_ADDR mask,
         GM_ADDR blockTables,
         GM_ADDR o,
@@ -79,8 +80,9 @@ namespace SplitFuse {
         using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
         using PType = Gemm::GemmType<ElementP, LayoutP>;
         using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
+        using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
         using EpilogueOnlineSoftmax =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType>;
+            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType, pseShiftType>;
 
         using L1TileShapePV = GemmShape<128, 128, 256>;
         using L0TileShapePV = GemmShape<128, 128, 128>;
@@ -110,7 +112,7 @@ namespace SplitFuse {
                                                    PagedCacheFlag, maskCategory, inLayout>;
         using FAInferKernel = std::conditional_t<IS_FD, FAInferKernel_FD, FAInferKernel_NonFD>;
 
-        FAIKernelParams params{q, k, v, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
+        FAIKernelParams params{q, k, v, pseShift, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
         FAInferKernel flashAttnInfer;
         flashAttnInfer(params);
     }

@@ -27,6 +27,7 @@ template <
     class InputType_,
     class MaskType_,
     class SinkType_,
+    class FullType_,
     LseMode LSE_MODE_,
     SinkMode SINK_MODE_,
     MaskMode MASK_MODE_>
@@ -35,7 +36,8 @@ class BlockEpilogue<
     OutputType_,
     InputType_,
     MaskType_,
-    SinkType_>
+    SinkType_,
+    FullType_>
 {
 public:
     using DispatchPolicy = EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, MASK_MODE_, half>;
@@ -44,10 +46,11 @@ public:
     using ElementInput = typename InputType_::Element;
     using ElementMask = typename MaskType_::Element;
     using ElementSink = typename SinkType_::Element;
-
+    using ElementFull = typename FullType_::Element;
     using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = typename InputType_::Layout;
     using LayoutMask = typename MaskType_::Layout;
+    using LayoutFull = typename FullType_::Layout;
 
     static constexpr LseMode LSE_MODE = DispatchPolicy::LSE_MODE;
     static constexpr SinkMode SINK_MODE = DispatchPolicy::SINK_MODE;
