@@ -914,177 +914,177 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
     MaskReg pregHHalf;
     MaskReg pregAll;
     pregAll = CreateMask<T, MaskPattern::ALL>();
-    pregLHalf = CreateMask<T, MaskPattern::VL32>();
+    pregLHalf = CreateMask<T, MaskPattern::VL8>();
     Not(pregHHalf, pregLHalf, pregAll);
     RegTensor<float> max0, max1, max2, max3;
     RegTensor<float> src00, src10, src20, src30, src01, src11, src21, src31;
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31;
 
     __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize * 2;
+    __ubuf__ float *srcUb01 = outputAddr + RowSize * 8;
     __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 2;
+    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 8;
     __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 2;
+    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 8;
     __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 2;
+    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 8;
 
     __ubuf__ float *inputAddr0 = inputAddr;
     __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
     __ubuf__ float *inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
     __ubuf__ float *inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
 
-    for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
-        Duplicate(max0, minValue);
-        Duplicate(max1, minValue);
-        Duplicate(max2, minValue);
-        Duplicate(max3, minValue);
-        Duplicate(max00, minValue);
-        Duplicate(max10, minValue);
-        Duplicate(max20, minValue);
-        Duplicate(max30, minValue);
-        Duplicate(max01, minValue);
-        Duplicate(max11, minValue);
-        Duplicate(max21, minValue);
-        Duplicate(max31, minValue);
+    // for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 16); ++loopSc) {
+    //     Duplicate(max0, minValue);
+    //     Duplicate(max1, minValue);
+    //     Duplicate(max2, minValue);
+    //     Duplicate(max3, minValue);
+    //     Duplicate(max00, minValue);
+    //     Duplicate(max10, minValue);
+    //     Duplicate(max20, minValue);
+    //     Duplicate(max30, minValue);
+    //     Duplicate(max01, minValue);
+    //     Duplicate(max11, minValue);
+    //     Duplicate(max21, minValue);
+    //     Duplicate(max31, minValue);
 
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum00, 0, pregAll);
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum10, 0, pregAll);
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum20, 0, pregAll);
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum30, 0, pregAll);
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum01, 0, pregAll);
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum11, 0, pregAll);
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum21, 0, pregAll);
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum31, 0, pregAll);
-        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 4); ++loopM) {
-            LoadAlign(src00, srcUb00 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src01, srcUb01 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum00, 0, pregAll);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum10, 0, pregAll);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum20, 0, pregAll);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum30, 0, pregAll);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum01, 0, pregAll);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum11, 0, pregAll);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum21, 0, pregAll);
+    //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum31, 0, pregAll);
+    //     for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 4); ++loopM) {
+    //         LoadAlign(src00, srcUb00 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(src01, srcUb01 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(src10, srcUb10 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src11, srcUb11 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(src10, srcUb10 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(src11, srcUb11 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(src20, srcUb20 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src21, srcUb21 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(src20, srcUb20 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(src21, srcUb21 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(src30, srcUb30 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src31, srcUb31 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(src30, srcUb30 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(src31, srcUb31 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
 
-            Max(max00, max00, src00, pregAll);
-            Max(max01, max01, src01, pregAll);
-            Max(max10, max10, src10, pregAll);
-            Max(max11, max11, src11, pregAll);
-            Max(max20, max20, src20, pregAll);
-            Max(max21, max21, src21, pregAll);
-            Max(max30, max30, src30, pregAll);
-            Max(max31, max31, src31, pregAll);
-        }
-        Max(max0, max00, max01, pregAll);
-        Max(max1, max10, max11, pregAll);
-        Max(max2, max20, max21, pregAll);
-        Max(max3, max30, max31, pregAll);
+    //         Max(max00, max00, src00, pregAll);
+    //         Max(max01, max01, src01, pregAll);
+    //         Max(max10, max10, src10, pregAll);
+    //         Max(max11, max11, src11, pregAll);
+    //         Max(max20, max20, src20, pregAll);
+    //         Max(max21, max21, src21, pregAll);
+    //         Max(max30, max30, src30, pregAll);
+    //         Max(max31, max31, src31, pregAll);
+    //     }
+    //     Max(max0, max00, max01, pregAll);
+    //     Max(max1, max10, max11, pregAll);
+    //     Max(max2, max20, max21, pregAll);
+    //     Max(max3, max30, max31, pregAll);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
-        Max(max0, max00, max01, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
+    //     Max(max0, max00, max01, pregLHalf);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max10, max1, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max11, max1, pregHHalf);
-        Max(max1, max10, max11, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max10, max1, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max11, max1, pregHHalf);
+    //     Max(max1, max10, max11, pregLHalf);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max20, max2, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max21, max2, pregHHalf);
-        Max(max2, max20, max21, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max20, max2, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max21, max2, pregHHalf);
+    //     Max(max2, max20, max21, pregLHalf);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max30, max3, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max31, max3, pregHHalf);
-        Max(max3, max30, max31, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max30, max3, pregLHalf);
+    //     Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max31, max3, pregHHalf);
+    //     Max(max3, max30, max31, pregLHalf);
 
-        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
-            LoadAlign(vregF32_00, srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_01, (srcUb00 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //     for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
+    //         LoadAlign(vregF32_00, srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregF32_01, (srcUb00 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(vregF32_10, srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_11, (srcUb10 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregF32_10, srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregF32_11, (srcUb10 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(vregF32_20, srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_21, (srcUb20 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregF32_20, srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregF32_21, (srcUb20 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(vregF32_30, srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_31, (srcUb30 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregF32_30, srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregF32_31, (srcUb30 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
             
-            FusedExpSub(vregExp00, vregF32_00, max0, pregLHalf);
-            FusedExpSub(vregExp01, vregF32_01, max0, pregLHalf);
-            FusedExpSub(vregExp10, vregF32_10, max1, pregLHalf);
-            FusedExpSub(vregExp11, vregF32_11, max1, pregLHalf);
-            FusedExpSub(vregExp20, vregF32_20, max2, pregLHalf);
-            FusedExpSub(vregExp21, vregF32_21, max2, pregLHalf);
-            FusedExpSub(vregExp30, vregF32_30, max3, pregLHalf);
-            FusedExpSub(vregExp31, vregF32_31, max3, pregLHalf);
+    //         FusedExpSub(vregExp00, vregF32_00, max0, pregLHalf);
+    //         FusedExpSub(vregExp01, vregF32_01, max0, pregLHalf);
+    //         FusedExpSub(vregExp10, vregF32_10, max1, pregLHalf);
+    //         FusedExpSub(vregExp11, vregF32_11, max1, pregLHalf);
+    //         FusedExpSub(vregExp20, vregF32_20, max2, pregLHalf);
+    //         FusedExpSub(vregExp21, vregF32_21, max2, pregLHalf);
+    //         FusedExpSub(vregExp30, vregF32_30, max3, pregLHalf);
+    //         FusedExpSub(vregExp31, vregF32_31, max3, pregLHalf);
             
-            Add(vregSum00, vregExp00, vregSum00, pregLHalf);
-            Add(vregSum01, vregExp01, vregSum01, pregLHalf);
-            Add(vregSum10, vregExp10, vregSum10, pregLHalf);
-            Add(vregSum11, vregExp11, vregSum11, pregLHalf);
-            Add(vregSum20, vregExp20, vregSum20, pregLHalf);
-            Add(vregSum21, vregExp21, vregSum21, pregLHalf);
-            Add(vregSum30, vregExp30, vregSum30, pregLHalf);
-            Add(vregSum31, vregExp31, vregSum31, pregLHalf);
+    //         Add(vregSum00, vregExp00, vregSum00, pregLHalf);
+    //         Add(vregSum01, vregExp01, vregSum01, pregLHalf);
+    //         Add(vregSum10, vregExp10, vregSum10, pregLHalf);
+    //         Add(vregSum11, vregExp11, vregSum11, pregLHalf);
+    //         Add(vregSum20, vregExp20, vregSum20, pregLHalf);
+    //         Add(vregSum21, vregExp21, vregSum21, pregLHalf);
+    //         Add(vregSum30, vregExp30, vregSum30, pregLHalf);
+    //         Add(vregSum31, vregExp31, vregSum31, pregLHalf);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp00, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp01, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp10, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp11, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp20, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp21, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp30, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
-                vregExp31, pregLHalf);
-        }
-        Add(vregSum00, vregSum00, vregSum01, pregLHalf);
-        Add(vregSum10, vregSum10, vregSum11, pregLHalf);
-        Add(vregSum20, vregSum20, vregSum21, pregLHalf);
-        Add(vregSum30, vregSum30, vregSum31, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp00, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp01, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp10, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp11, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp20, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp21, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp30, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+    //             vregExp31, pregLHalf);
+    //     }
+    //     Add(vregSum00, vregSum00, vregSum01, pregLHalf);
+    //     Add(vregSum10, vregSum10, vregSum11, pregLHalf);
+    //     Add(vregSum20, vregSum20, vregSum21, pregLHalf);
+    //     Add(vregSum30, vregSum30, vregSum31, pregLHalf);
 
-        LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-        for (uint16_t loopM = 0; loopM < ReduceSize; ++loopM) {
-            LoadAlign(vregExp00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregExp10, srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregExp20, srcUb20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregExp30, srcUb30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+    //     LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+    //     for (uint16_t loopM = 0; loopM < ReduceSize; ++loopM) {
+    //         LoadAlign(vregExp00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregExp10, srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregExp20, srcUb20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+    //         LoadAlign(vregExp30, srcUb30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            Div(vregStore0, vregExp00, vregSum00, pregLHalf);
-            Div(vregStore1, vregExp10, vregSum10, pregLHalf);
-            Div(vregStore2, vregExp20, vregSum20, pregLHalf);
-            Div(vregStore3, vregExp30, vregSum30, pregLHalf); 
+    //         Div(vregStore0, vregExp00, vregSum00, pregLHalf);
+    //         Div(vregStore1, vregExp10, vregSum10, pregLHalf);
+    //         Div(vregStore2, vregExp20, vregSum20, pregLHalf);
+    //         Div(vregStore3, vregExp30, vregSum30, pregLHalf); 
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
-                vregStore0, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
-                vregStore1, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
-                vregStore2, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
-                vregStore3, pregLHalf);
-        }
-    }
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
+    //             vregStore0, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
+    //             vregStore1, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
+    //             vregStore2, pregLHalf);
+    //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
+    //             vregStore3, pregLHalf);
+    //     }
+    // }
     // 尾块处理
-    for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize % 4); ++loopSc) {
+    for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize % 16); ++loopSc) {
         Duplicate(max0, minValue);
         Duplicate(max00, minValue);
         Duplicate(max01, minValue);
 
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum00, 0, pregAll);
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum01, 0, pregAll);
-        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 4); ++loopM) {
-            LoadAlign(src00, srcUb00 + loopM * RowSize * 4 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
-            LoadAlign(src01, srcUb01 + loopM * RowSize * 4 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 16); ++loopM) {
+            LoadAlign(src00, srcUb00 + loopM * RowSize * 16 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+            LoadAlign(src01, srcUb01 + loopM * RowSize * 16 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
 
             Max(max00, max00, src00, pregAll);
             Max(max01, max01, src01, pregAll);
@@ -1165,20 +1165,20 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
     MaskReg pregHHalf;
     MaskReg pregAll;
     pregAll = CreateMask<T, MaskPattern::ALL>();
-    pregLHalf = CreateMask<T, MaskPattern::VL32>();
+    pregLHalf = CreateMask<T, MaskPattern::VL16>();
     Not(pregHHalf, pregLHalf, pregAll);
     RegTensor<float> max0, max1, max2, max3;
     RegTensor<float> src00, src10, src20, src30, src01, src11, src21, src31;
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31;
 
     __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize * 2;
+    __ubuf__ float *srcUb01 = outputAddr + RowSize * 4;
     __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 2;
+    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 4;
     __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 2;
+    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 4;
     __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 2;
+    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 4;
 
     __ubuf__ float *inputAddr0 = inputAddr;
     __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
@@ -1207,61 +1207,61 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum11, 0, pregAll);
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum21, 0, pregAll);
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum31, 0, pregAll);
-        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 4); ++loopM) {
-            LoadAlign(src00, srcUb00 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src01, srcUb01 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
+            LoadAlign(src00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(src01, srcUb01 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(src10, srcUb10 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src11, srcUb11 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(src10, srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(src11, srcUb11 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(src20, srcUb20 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src21, srcUb21 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(src20, srcUb20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(src21, srcUb21 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(src30, srcUb30 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(src31, srcUb31 + loopM * RowSize * 4 + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(src30, srcUb30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(src31, srcUb31 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            Max(max00, max00, src00, pregAll);
-            Max(max01, max01, src01, pregAll);
-            Max(max10, max10, src10, pregAll);
-            Max(max11, max11, src11, pregAll);
-            Max(max20, max20, src20, pregAll);
-            Max(max21, max21, src21, pregAll);
-            Max(max30, max30, src30, pregAll);
-            Max(max31, max31, src31, pregAll);
+            Max(max00, max00, src00, pregLHalf);
+            Max(max01, max01, src01, pregLHalf);
+            Max(max10, max10, src10, pregLHalf);
+            Max(max11, max11, src11, pregLHalf);
+            Max(max20, max20, src20, pregLHalf);
+            Max(max21, max21, src21, pregLHalf);
+            Max(max30, max30, src30, pregLHalf);
+            Max(max31, max31, src31, pregLHalf);
         }
         Max(max0, max00, max01, pregAll);
         Max(max1, max10, max11, pregAll);
         Max(max2, max20, max21, pregAll);
         Max(max3, max30, max31, pregAll);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
-        Max(max0, max00, max01, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
+        // Max(max0, max00, max01, pregLHalf);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max10, max1, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max11, max1, pregHHalf);
-        Max(max1, max10, max11, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max10, max1, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max11, max1, pregHHalf);
+        // Max(max1, max10, max11, pregLHalf);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max20, max2, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max21, max2, pregHHalf);
-        Max(max2, max20, max21, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max20, max2, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max21, max2, pregHHalf);
+        // Max(max2, max20, max21, pregLHalf);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max30, max3, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max31, max3, pregHHalf);
-        Max(max3, max30, max31, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max30, max3, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max31, max3, pregHHalf);
+        // Max(max3, max30, max31, pregLHalf);
 
         for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
-            LoadAlign(vregF32_00, srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_01, (srcUb00 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_01, srcUb01 + + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(vregF32_10, srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_11, (srcUb10 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_10, srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_11, srcUb11 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(vregF32_20, srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_21, (srcUb20 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_20, srcUb20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_21, srcUb21 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
 
-            LoadAlign(vregF32_30, srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
-            LoadAlign(vregF32_31, (srcUb30 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_30, srcUb30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
+            LoadAlign(vregF32_31, srcUb31 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4);
             
             FusedExpSub(vregExp00, vregF32_00, max0, pregLHalf);
             FusedExpSub(vregExp01, vregF32_01, max0, pregLHalf);
@@ -1281,21 +1281,21 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum30, vregExp30, vregSum30, pregLHalf);
             Add(vregSum31, vregExp31, vregSum31, pregLHalf);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp00, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb01 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp01, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp10, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb11 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp11, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp20, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb21 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp21, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp30, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb31 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4),
                 vregExp31, pregLHalf);
         }
         Add(vregSum00, vregSum00, vregSum01, pregLHalf);
@@ -1333,22 +1333,22 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
 
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum00, 0, pregAll);
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum01, 0, pregAll);
-        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 4); ++loopM) {
-            LoadAlign(src00, srcUb00 + loopM * RowSize * 4 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
-            LoadAlign(src01, srcUb01 + loopM * RowSize * 4 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
+            LoadAlign(src00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+            LoadAlign(src01, srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
 
-            Max(max00, max00, src00, pregAll);
-            Max(max01, max01, src01, pregAll);
+            Max(max00, max00, src00, pregLHalf);
+            Max(max01, max01, src01, pregLHalf);
         }
         Max(max0, max00, max01, pregAll);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
-        Max(max0, max00, max01, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
+        // Max(max0, max00, max01, pregLHalf);
 
         for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
-            LoadAlign(vregF32_00, srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
-            LoadAlign(vregF32_01, (srcUb00 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+            LoadAlign(vregF32_00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+            LoadAlign(vregF32_01, srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
             
             FusedExpSub(vregExp00, vregF32_00, max0, pregLHalf);
             FusedExpSub(vregExp01, vregF32_01, max0, pregLHalf);
@@ -1356,11 +1356,12 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum00, vregExp00, vregSum00, pregLHalf);
             Add(vregSum01, vregExp01, vregSum01, pregLHalf);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp00, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp01, pregLHalf);
         }
+
         Add(vregSum00, vregSum00, vregSum01, pregLHalf);
 
         LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
