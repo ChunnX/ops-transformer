@@ -648,9 +648,9 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
                     .n2Idx = info.n2Idx,
                     .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
-                    .dIdx = kL1 * 256U, // D方向上切32
+                    .dIdx = kL1 * 256U, // D方向上切256
                     .s2DealSize = nL1Size,
-                    .dDealSize = 256U // D方向上切32
+                    .dDealSize = 256U // D方向上切256
                 };
                 if (PAGE_ATTENTION) {
                     copyKKropePAGmToL1(dstTensor, dstRopeTensor, keyGmTensor, keyRopeGmTensor, gmCoord, gmCoordKRope);

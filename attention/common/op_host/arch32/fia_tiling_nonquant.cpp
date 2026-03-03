@@ -210,7 +210,7 @@ bool FiaTilingNonQuant::DealSameSeqEachBatch() const
     }
 }
 
-void FiaTilingNonQuant::ZeroTensorProcess() const
+void FiaTilingNonQuant::EmptyTensorProcess() const
 {
     if (fiaInfo_->s2Size == 0) {
         /*
@@ -246,7 +246,7 @@ void FiaTilingNonQuant::InitParams()
     numBlocks_ = aicNum_; // Tiling下沉首次Tiling也会校验numBlocks_是否为0，为避免拦截报错，将numBlocks_设置为aicNum_，实际不生效
 
     headDimAlign_ = Align(fiaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
-    ZeroTensorProcess();
+    EmptyTensorProcess();
 }
 
 void FiaTilingNonQuant::CalcInnerSize(uint32_t s2Size)

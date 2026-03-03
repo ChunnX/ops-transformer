@@ -561,7 +561,6 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     constInfo.headS2Split = false;
     constInfo.tailS2Split = false;
 
-    // xxx
     constInfo.coreStartKVSplitPos = s2SplitStartIdxOfCore[aiCoreIdx];
 }
 
