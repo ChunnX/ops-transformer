@@ -69,6 +69,7 @@ constexpr uint32_t B64_PER_BLOCK = 4;
 constexpr uint64_t SERVER_STATE_ALIGN = 512UL;
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t COMPARE_COUNT_PER_BLOCK = 256U;
+constexpr uint32_t SIZE_ALIGN_256 = 256U;
 
 #define TemplateDispatchKFCTypeClass                                                                                           \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
@@ -124,7 +125,7 @@ private:
     __aicore__ inline void SendToServer();
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
     __aicore__ inline void ProcessToken(
-            GlobalTensor<ExpandXOutType>& outTokenGT, uint32_t tokenIndex, uint32_t topKIndex,
+            GM_ADDR rankGM, uint32_t tokenIndex, uint32_t topKIndex,
             DataCopyPadParams& padParams, DataCopyParams& scaleInParams, uint32_t expertIndex,
             LocalTensor<XType>& tokenData, uint32_t srcRankIndex, float expertScale);
     __aicore__ inline void SendToExpert(uint32_t rcvCnt);
@@ -142,6 +143,8 @@ private:
                                                     const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void WaitDispatch();
     __aicore__ inline bool IsInSameServer(uint32_t targetRankId);
+    __aicore__ inline void CopyTokenToExpert(LocalTensor<ExpandXOutType> &xOutTensor,
+                                              GM_ADDR rankGM);
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
     __aicore__ inline void DoWindowCopy(LocalTensor<int32_t> &outLocal);
     __aicore__ inline void UpdateTokenNumsOut();
@@ -273,6 +276,7 @@ private:
 
     TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
+    TBuf<> tokenNumBuf_;
     TBuf<> gatherMaskOutBuf_; // gather mask输出buf
     TBuf<> sumCoreBuf_;
     TBuf<> sumLocalBuf_;
@@ -1766,7 +1770,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t expertIndex = posIndex % expertNumInServer_;
         uint32_t srcServerIndex = posIndex / expertNumInServer_;
         uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120;
-        statusTensor_((posIndex - startPosId) * 8) = cntLocal(srcPos);
+        statusTensor_((posIndex - startPosId) * 8) = statusWinGMTensor(srcPos);
     }
 
     SyncFunc<AscendC::HardEvent::S_MTE3>(); 
