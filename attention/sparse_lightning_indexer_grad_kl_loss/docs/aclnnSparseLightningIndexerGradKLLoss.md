@@ -342,7 +342,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>输出</td>
             <td>Weights的梯度。</td>
             <td>-</td>
-            <td>FLOAT16、BFLOAT16</td>
+            <td>FLOAT16、BFLOAT16、FLOAT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx1)、(T1,Nidx1)</td>
             <td>x</td>
