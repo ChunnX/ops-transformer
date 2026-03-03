@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ extern "C" __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, 
             mm.Init(&mmTilingData_);
         }
         GMMSwigluQuantPipelineSchedule<matmulType> op(mm, &gmmSwigluQuantV2BaseParams_, &gmmSwiglu_, &tPipe);
-        op.Init(x, weight, weightScale, xScale, weightAssistanceMatrix, groupList, y, yScale, userWorkspace);
+        op.Init(x, weight, weightScale, xScale, weightAssistanceMatrix, groupList, smoothScale, y, yScale, userWorkspace);
         op.Process();
     } else if (TILING_KEY_IS(5)) {
         KERNEL_TASK_TYPE(5, KERNEL_TYPE_MIX_AIC_1_2);
@@ -90,7 +90,7 @@ extern "C" __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, 
             mm.Init(&mmTilingData_);
         }
         GMMSwigluQuantPipelineSchedule<matmulType> op(mm, &gmmSwigluQuantV2BaseParams_, &gmmSwiglu_, &tPipe);
-        op.Init(x, weight, weightScale, xScale, weightAssistanceMatrix, groupList, y, yScale, userWorkspace);
+        op.Init(x, weight, weightScale, xScale, weightAssistanceMatrix, groupList, smoothScale, y, yScale, userWorkspace);
         op.Process();
     }
 #endif

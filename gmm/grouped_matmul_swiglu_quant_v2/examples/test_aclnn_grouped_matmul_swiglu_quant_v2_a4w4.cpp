@@ -104,6 +104,7 @@ int main() {
     std::vector<std::vector<int64_t>> weightScaleShape = {{E, N}};
     std::vector<int64_t> xScaleShape = {M};
     std::vector<int64_t> groupListShape = {E};
+    std::vector<int64_t> smoothScaleShape = {E};
     std::vector<int64_t> outputShape = {M, N / 2};
     std::vector<int64_t> outputScaleShape = {M};
 
@@ -112,6 +113,7 @@ int main() {
     void* weightScaleDeviceAddr[1];
     void* xScaleDeviceAddr = nullptr;
     void* groupListDeviceAddr = nullptr;
+    void* smoothScaleDeviceAddr = nullptr;
     void* outputDeviceAddr = nullptr;
     void* outputScaleDeviceAddr = nullptr;
 
@@ -120,6 +122,7 @@ int main() {
     aclTensorList* weightScale = nullptr;
     aclTensor* xScale = nullptr;
     aclTensor* groupList = nullptr;
+    aclTensor* smoothScale = nullptr;
     aclTensor* output = nullptr;
     aclTensor* outputScale = nullptr;
 
@@ -128,6 +131,7 @@ int main() {
     std::vector<uint64_t> weightScaleHostData(E * N, 0x3f000000);
     std::vector<float> xScaleHostData(M, 0.00314);
     std::vector<int64_t> groupListHostData = {1, 2, 2, 3};
+    std::vector<float> smoothScaleHostData(E, 2.0f);
     std::vector<int8_t> outputHostData(M * N / 2, 0);
     std::vector<float> outputScaleHostData(M, 0);
 
@@ -146,6 +150,9 @@ int main() {
     // 创建groupList aclTensor
     ret = CreateAclTensor(groupListHostData, groupListShape, &groupListDeviceAddr, aclDataType::ACL_INT64, aclFormat::ACL_FORMAT_ND, &groupList);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    // 创建smoothScale aclTensor (E, N/2)
+    ret = CreateAclTensor(smoothScaleHostData, smoothScaleShape, &smoothScaleDeviceAddr, aclDataType::ACL_FLOAT, aclFormat::ACL_FORMAT_ND, &smoothScale);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建output aclTensor
     ret = CreateAclTensor(outputHostData, outputShape, &outputDeviceAddr, aclDataType::ACL_INT8, aclFormat::ACL_FORMAT_ND, &output);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -155,7 +162,6 @@ int main() {
 
     // 新增V2参数
     aclTensor* bias = nullptr;
-    aclTensor* smoothScale = nullptr;
     int64_t dequantMode = 0;
     int64_t dequantDtype = 28;
     int64_t quantMode = 0;
@@ -212,6 +218,7 @@ int main() {
     aclDestroyTensorList(weightScale);
     aclDestroyTensor(xScale);
     aclDestroyTensor(groupList);
+    aclDestroyTensor(smoothScale);
     aclDestroyTensor(output);
     aclDestroyTensor(outputScale);
 
@@ -227,6 +234,7 @@ int main() {
     aclrtFree(weightScaleDeviceAddr);
     aclrtFree(xScaleDeviceAddr);
     aclrtFree(groupListDeviceAddr);
+    aclrtFree(smoothScaleDeviceAddr);
     aclrtFree(outputDeviceAddr);
     aclrtFree(outputScaleDeviceAddr);
     if (workspaceSize > 0) {

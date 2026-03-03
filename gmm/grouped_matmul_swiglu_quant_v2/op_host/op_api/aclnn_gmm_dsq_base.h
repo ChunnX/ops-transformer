@@ -47,6 +47,8 @@ constexpr size_t QUANTSCALEOUT_DIM_LIMIT = 1UL;
 constexpr size_t INT4_PER_INT32 = 8UL;
 constexpr size_t NZ_ALIGN_K = 16UL;
 constexpr size_t NZ_ALIGN_N = 32UL;
+constexpr size_t SMOOTH_SCALE_1D_DIM_LIMIT = 1UL;
+constexpr size_t SMOOTH_SCALE_2D_DIM_LIMIT = 2UL;
 
 const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
 const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
@@ -58,6 +60,7 @@ const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType:
 const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
 const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 const std::initializer_list<DataType> WEIGHT_ASSIST_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+const std::initializer_list<DataType> SMOOTH_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 
 class GroupedMatmulSwigluQuantBaseHandler : public GroupedMatmulSwigluQuantHandler {
 protected:
@@ -280,6 +283,11 @@ protected:
                     interfaceName_.c_str(), k, K_LIMIT_A8W8);
             return false;
         }
+        if (gmmDsqParams_.smoothScale != nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "%s, smoothScale must be nullptr in A8W8 scenario.", interfaceName_.c_str());
+            return false;
+        }
         return true;
     }
 
@@ -348,6 +356,28 @@ protected:
             }
         }
 
+        return true;
+    }
+
+    bool CheckSmoothScaleA4W4(int64_t e, int64_t nAfterHalve)
+    {
+        if (gmmDsqParams_.smoothScale == nullptr) {
+            return true;
+        }
+        OP_CHECK_DTYPE_NOT_SUPPORT(gmmDsqParams_.smoothScale, SMOOTH_SCALE_DTYPE_SUPPORT_LIST, return false);
+        size_t dimNum = gmmDsqParams_.smoothScale->GetViewShape().GetDimNum();
+        if (dimNum == SMOOTH_SCALE_1D_DIM_LIMIT) {
+            op::Shape expectShape = {e};
+            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.smoothScale, expectShape, return false);
+        } else if (dimNum == SMOOTH_SCALE_2D_DIM_LIMIT) {
+            op::Shape expectShape = {e, nAfterHalve};
+            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.smoothScale, expectShape, return false);
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "%s, smoothScale dimNum should be 1 or 2 in A4W4 scenario, but got %lu.",
+                    interfaceName_.c_str(), dimNum);
+            return false;
+        }
         return true;
     }
 
@@ -451,6 +481,15 @@ protected:
                     "%s A8W4 or A4W4, The current version does not support the scenario."
                     "The tail axis dimension of input0(x) is %ld, which need lower than %ld.",
                     interfaceName_.c_str(), k, K_LIMIT_A8W4);
+            return false;
+        }
+        if (gmmDsqParams_.isA4W4) {
+            if (!CheckSmoothScaleA4W4(e, nAfterHalve)) {
+                return false;
+            }
+        } else if (gmmDsqParams_.isA8W4 && gmmDsqParams_.smoothScale != nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "%s, smoothScale must be nullptr in A8W4 scenario.", interfaceName_.c_str());
             return false;
         }
         (void)KGroupSize;
