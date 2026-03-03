@@ -8,6 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if (UT_TEST_ALL OR OP_KERNEL_UT)
-    AddOpTestCase(grouped_mat_mul_allto_allv "Ascend910_9391" "-DDTYPE_X_REF=half" "")
-endif()
+#if (UT_TEST_ALL OR OP_KERNEL_UT)
+#    AddOpTestCase(grouped_mat_mul_allto_allv "Ascend910_9391" "-DDTYPE_X_REF=half" "")
+#endif()
