@@ -424,7 +424,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::AddApeToScore(LocalTensor<T>
 {
     for(uint16_t i = 0; i < tcDealSize; i++){
         LocalTensor<T> dstLocal = scoreLocal[i * dDealSize * constInfo_.cmpRatio * ((uint32_t)COMP::coff)];
-        AddVF(dstLocal, apeUb, 0, ((uint32_t)COMP::coff), dDealSize, constInfo_.cmpRatio);
+        AddVF(dstLocal, apeUb, constInfo_.cmpRatio * ((uint32_t)COMP::coff), dDealSize, dDealSize);
     }
 }
 
