@@ -188,7 +188,7 @@ private:
     __aicore__ inline void DealVec2BaseBlock(const Compressor::Vec2RunInfo &info, uint32_t startRow,
                                              uint32_t dealRowCount);
     __aicore__ inline void MultRowRmsNorm(const LocalTensor<T> &normResUb, const LocalTensor<T> &vec1ResUb,
-                                          const LocalTensor<T> &normWeightUb, const LocalTensor<T> &tempLocal,
+                                          const LocalTensor<X_T> &normWeightUb, const LocalTensor<T> &tempLocal,
                                           uint32_t dealRowCount);
     __aicore__ inline void SingleCalRope(const LocalTensor<X_T> &outputUb, const LocalTensor<T> &normResUb,
                                          uint32_t rowCnt, uint32_t curDealScSize, uint32_t globalScStart);
@@ -245,7 +245,7 @@ private:
     LocalTensor<T> mm1ResTensor;
     LocalTensor<T> leftStateTensor;
     LocalTensor<T> rightStateTensor;
-    LocalTensor<T> normWeightUb;
+    LocalTensor<X_T> normWeightUb;
     LocalTensor<T> apeUb;
     LocalTensor<uint32_t> gatherOffsetCastUb;
     // 临时tbuf
@@ -310,14 +310,14 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(normWeightBuf, BUFFER_SIZE_BYTE_4K);
     pipe->InitBuffer(gatherOffsetBuf, BUFFER_SIZE_BYTE_1K);
     pipe->InitBuffer(apeBuf, BUFFER_SIZE_BYTE_32K);
-    normWeightUb = normWeightBuf.Get<T>();
+    normWeightUb = normWeightBuf.Get<X_T>();
     apeUb = apeBuf.Get<T>();
     LocalTensor<X_T> normweightInUb = inputQue1.AllocTensor<X_T>();
     LocalTensor<int32_t> gatherOffsetUb = gatherOffsetBuf.Get<int32_t>();
     DataCopy(normweightInUb, normWeightGm_, constInfo_.headDim); // 获取normWeight，常驻
     inputQue1.EnQue(normweightInUb);
     inputQue1.DeQue<X_T>();
-    Cast(normWeightUb, normweightInUb, RoundMode::CAST_NONE, constInfo_.headDim);
+    DataCopy(normWeightUb, normweightInUb, constInfo_.headDim);
     inputQue1.FreeTensor(normweightInUb);
     // if constexpr (COMP::rotaryMode == Compressor::ROTARY_MODE::INTERLEAVE) {
     //     SetGatherSrcOffset<float>(gatherOffsetUb, constInfo_.ropeHeadDim);
@@ -1277,7 +1277,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec2BaseBlock(const 
 template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::MultRowRmsNorm(const LocalTensor<T> &normResUb, const LocalTensor<T> &vec1ResUb,
-                                                const LocalTensor<T> &normWeightUb, const LocalTensor<T> &tempLocal,
+                                                const LocalTensor<X_T> &normWeightUb, const LocalTensor<T> &tempLocal,
                                                 uint32_t dealRowCount)
 {
     // RmsNormParam rmsNormParams;
