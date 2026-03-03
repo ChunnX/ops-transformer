@@ -17,30 +17,39 @@
 #define VF_ADD_H
 
 #include "kernel_operator.h"
+#include <cstdint>
 using namespace AscendC;
 constexpr uint32_t FLOAT_REP_SIZE = 64;
 constexpr uint32_t BTYEALIGNSIZE = 32;
 constexpr uint32_t REGSIZE = 256;
 constexpr uint32_t HALFCORED = 128;
 
-/*apeOffset —— ape的偏移
-  loopCnt —— r行循环次数
-  count —— regtensor上的元素数
-
-
-*/
 template <typename T>
-__simd_vf__ void AddVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, const uint16_t coreSplitD,
-                           const uint16_t loopCnt)
+__simd_vf__ void AddContiguousVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t col)
 {
     MicroAPI::RegTensor<T> vreg0;
     MicroAPI::RegTensor<T> vregape0;
-    MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    for (uint16_t loop = 0; loop < loopCnt; loop++) {
-        MicroAPI::LoadAlign(vreg0, inputAddr + loop * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(vregape0, apeAddr + loop * FLOAT_REP_SIZE);
+    uint32_t totalCnt = row * col;
+    for (uint32_t offset = 0; offset < totalCnt; offset += FLOAT_REP_SIZE) {
+        MicroAPI::MaskReg mask = MicroAPI::UpdatePredicate<T>(totalCnt);
+        MicroAPI::LoadAlign(vreg0, inputAddr + offset);
+        MicroAPI::LoadAlign(vregape0, apeAddr + offset);
         MicroAPI::Add(vreg0, vreg0, vregape0, mask);
-        MicroAPI::StoreAlign(inputAddr + loop * FLOAT_REP_SIZE, vreg0, mask);
+        MicroAPI::StoreAlign(inputAddr + offset, vreg0, mask);
+    }
+}
+
+template <typename T>
+__simd_vf__ void AddFragmentedVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t col, uint32_t actualCol)
+{
+    MicroAPI::RegTensor<T> vreg0;
+    MicroAPI::RegTensor<T> vregape0;
+    MicroAPI::MaskReg mask = MicroAPI::UpdateMask<T>(col);
+    for (uint32_t rowIdx = 0; rowIdx < row; rowIdx++) {
+        MicroAPI::LoadAlign(vreg0, inputAddr + rowIdx * actualCol);
+        MicroAPI::LoadAlign(vregape0, apeAddr + rowIdx * actualCol);
+        MicroAPI::Add(vreg0, vreg0, vregape0, mask);
+        MicroAPI::StoreAlign(inputAddr + rowIdx * actualCol, vreg0, mask);
     }
 }
 
@@ -55,15 +64,17 @@ __simd_vf__ void AddVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, const uin
  * @param coreSplitS 核间d轴切分大小
  */
 template <typename T>
-__aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeLocal, uint16_t apeIdx, const uint16_t coff,
-                             const uint16_t coreSplitD, uint32_t coreSplitS)
+__aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeLocal,
+                             uint32_t row, uint32_t col, uint32_t actualCol)
 {
-    uint16_t loopCnt = coff * coreSplitD * coreSplitS / FLOAT_REP_SIZE;
-
     __ubuf__ T *scoreAddr = (__ubuf__ T *)scoreLocal.GetPhyAddr();
-    __ubuf__ T *apeAddr = (__ubuf__ T *)apeLocal.GetPhyAddr() + apeIdx;
+    __ubuf__ T *apeAddr = (__ubuf__ T *)apeLocal.GetPhyAddr();
 
-    AddVFImpl<T>(scoreAddr, apeAddr, coreSplitD, loopCnt);
+    if (col == actualCol) {
+        AddContiguousVFImpl<T>(scoreAddr, apeAddr, row, col);
+    } else {
+        AddFragmentedVFImpl<T>(scoreAddr, apeAddr, row, col, actualCol);
+    }
 }
 
 #endif

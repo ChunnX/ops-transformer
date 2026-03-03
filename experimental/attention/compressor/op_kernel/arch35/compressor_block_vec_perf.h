@@ -507,7 +507,7 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
         uint32_t rCnt = tcDealSize == 1 ? sliceInfo.validSeqCnt * singleRowElemNum :
                                           (constInfo_.cmpRatio - sliceInfo.headHolderSeqCnt) * singleRowElemNum;
         // Add(scoreLocal[scoreOffset], scoreLocal[scoreOffset], apeUb[apeOffset], rCnt);
-        AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], 0, coff_, dDealSize, constInfo_.cmpRatio);
+        AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], rCnt, dDealSize, dDealSize);
         scoreOffset += rCnt;
         tcDealSize -= 1;
     }
@@ -520,7 +520,7 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
         uint32_t rCnt = (constInfo_.cmpRatio - sliceInfo.tailHolderSeqCnt) * singleRowElemNum;
         uint32_t tailScoreOffset = scoreOffset + tcDealSize * constInfo_.cmpRatio * singleRowElemNum;
         // Add(scoreLocal[tailScoreOffset], scoreLocal[tailScoreOffset], apeUb[apeOffset], rCnt);
-        AddVF(scoreLocal[tailScoreOffset], apeUb[apeOffset], 0, coff_, dDealSize, constInfo_.cmpRatio);
+        AddVF(scoreLocal[tailScoreOffset], apeUb[apeOffset], rCnt, dDealSize, dDealSize);
     }
     if (tcDealSize == 0) {
         return;
@@ -528,7 +528,7 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
     uint32_t rCnt = constInfo_.cmpRatio * singleRowElemNum;
     for (uint32_t r = 0; r < tcDealSize; r++) {
         // Add(scoreLocal[scoreOffset + r * rCnt], scoreLocal[scoreOffset + r * rCnt], apeUb, rCnt);
-        AddVF(scoreLocal[scoreOffset + r * rCnt], apeUb, 0, coff_, dDealSize, constInfo_.cmpRatio);
+        AddVF(scoreLocal[scoreOffset + r * rCnt], apeUb, rCnt, dDealSize, dDealSize);
     }
 }
 
@@ -537,24 +537,25 @@ __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::AddSingleApeToScore(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeUb,
                                                      const Vec1SliceInfo &sliceInfo, uint32_t dDealSize)
 {
-    // uint32_t SingleRowElemNum = dDealSize * coff_;
-    // uint32_t dealRowCount = min(sliceInfo.sIdx, constInfo_.cmpRatio);
-    // uint64_t scoreOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
-    // uint64_t apeOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
-    // for (uint32_t dOffset = 0; dOffset < dDealSize; dOffset += FP32_BLOCK_ELEMENT_NUM) {
-    //     uint32_t curAddColCount = min(dDealSize - dOffset, FP32_BLOCK_ELEMENT_NUM);
-    //     Add(scoreLocal[scoreOffset + dOffset], scoreLocal[scoreOffset + dOffset], apeUb[apeOffset + dOffset],
-    //         curAddColCount, dealRowCount,
-    //         {1, 1, 1, static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),
-    //          static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),
-    //          static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM)});
-    // }
     uint32_t SingleRowElemNum = dDealSize * coff_;
     uint32_t dealRowCount = min(sliceInfo.sIdx, constInfo_.cmpRatio);
     uint64_t scoreOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
     uint64_t apeOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
-    uint32_t rCnt = constInfo_.cmpRatio * SingleRowElemNum;
-    AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], 0, coff_, dDealSize, dealRowCount);
+    for (uint32_t dOffset = 0; dOffset < dDealSize; dOffset += FP32_BLOCK_ELEMENT_NUM) {
+        uint32_t curAddColCount = min(dDealSize - dOffset, FP32_BLOCK_ELEMENT_NUM);
+        AddVF(scoreLocal[scoreOffset + dOffset], apeUb[apeOffset + dOffset], dealRowCount, dDealSize, SingleRowElemNum);
+        // Add(scoreLocal[scoreOffset + dOffset], scoreLocal[scoreOffset + dOffset], apeUb[apeOffset + dOffset],
+        //     curAddColCount, dealRowCount,
+        //     {1, 1, 1, static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),
+        //      static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),
+        //      static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM)});
+    }
+    // uint32_t SingleRowElemNum = dDealSize * coff_;
+    // uint32_t dealRowCount = min(sliceInfo.sIdx, constInfo_.cmpRatio);
+    // uint64_t scoreOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
+    // uint64_t apeOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
+    // uint32_t rCnt = constInfo_.cmpRatio * SingleRowElemNum;
+    // AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], 0, coff_, dDealSize, dealRowCount);
 }
 
 template <typename COMP>
@@ -972,7 +973,7 @@ CompressorBlockVectorPerf<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLocal,
     // for (uint32_t r = 0; r < tcDealSize; r++) {
     //     ColumnSum(dstLocal[r * dDealSize], kvLocal[r * rCnt], tmpUb[r * rCnt], ReduceSize, dDealSize);
     // }
-    MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, coff_, constInfo_.cmpRatio, 0, dDealSize, tcDealSize * constInfo_.cmpRatio);
+    MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, coff_, constInfo_.cmpRatio, dDealSize, tcDealSize);
 }
 
 template <typename COMP>

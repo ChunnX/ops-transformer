@@ -815,7 +815,7 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::KvMulReduceScore(
     LocalTensor<T> &kvLocal, LocalTensor<T>& scoreLocal, LocalTensor<T> &dstLocal,uint32_t tcDealSize, uint32_t dDealSize)
 {
-    MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, (uint32_t)COMP::coff, constInfo_.cmpRatio, 0, dDealSize, tcDealSize * constInfo_.cmpRatio);
+    MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, (uint32_t)COMP::coff, constInfo_.cmpRatio, dDealSize, tcDealSize);
 }
 
 template <typename COMP>
