@@ -616,7 +616,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
     -   T(B*S)：取值范围为1\~1M。
-    -   B：取值范围为1\~2M。带prefixOptional的时候B最大支持1K。
+    -   B：取值范围为1\~20000。带prefixOptional的时候B最大支持1K。
     -   N：取值范围为1\~256。
     -   S：取值范围为1\~1M。
     -   D：取值范围为1\~768。
