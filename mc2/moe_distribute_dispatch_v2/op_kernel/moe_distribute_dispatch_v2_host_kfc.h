@@ -116,7 +116,7 @@ private:
                                                               uint32_t aivNum);
     __aicore__ inline void WaitStatusFlag(uint32_t serverIdx, uint32_t &tokenCnt);
     __aicore__ inline void WaitToken(uint32_t tokenCnt, uint32_t serverIdx, uint32_t startTokenIdx, TBuf<> &tBuf);
-    __aicore__ inline void CheckDataArriveWithFlag(uint32_t beginIdx, uint32_t serverIdx, uint32_t &arriveCount);
+    __aicore__ inline void CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal, uint32_t &arriveCount, uint32_t flagNum);
     __aicore__ inline void CopyInAndOut(LocalTensor<float> xOutFp32Tensor, LocalTensor<int32_t> xOutInt32Tensor,
                                         GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
     __aicore__ inline void SetServerFlag();
@@ -1392,7 +1392,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         GlobalTensor<uint32_t> dataFlagGlobal;
         // token的起始地址
         GM_ADDR wAddr =
-            GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + beginIdx * sendTokenLengthAlign_;
+            GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
         dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
         CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_);
 
@@ -1582,7 +1582,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToExpert(LocalTensor<ExpandXOutType> &xOutTensor,
-                                                                       ADDR rankGM) //框内插入32B flag
+                                                                       GM_ADDR rankGM) //框内插入32B flag
 {
     GlobalTensor<XType> dataDstWinGMTensor;
     GlobalTensor<uint32_t> flagDstWinGMTensor;
@@ -1600,7 +1600,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToExpert(L
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ProcessToken(
-            ADDR rankGM, uint32_t tokenIndex, uint32_t topKIndex,
+            GM_ADDR rankGM, uint32_t tokenIndex, uint32_t topKIndex,
             DataCopyPadParams& padParams, DataCopyParams& scaleInParams, uint32_t expertIndex,
             LocalTensor<XType>& tokenData, uint32_t srcRankIndex, float expertScale)
 {
@@ -1740,6 +1740,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SetStatus() //框间状态区接收 + 框内状态区发送
 {
+    int32_t cntBlockCnt = 3; //todo
     InitStatusTensor();
 
     GlobalTensor<uint32_t> statusWinGMTensor;
@@ -1752,22 +1753,25 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             break;
         }
     }
-
-    SplitToCore(expertNumInServer_ * serverNum_, aivNum_, startPosId_, endPosId_, sendPosNum_);
-    if (startPosId_ >= expertNumInServer_ * serverNum_) {
+    
+    uint32_t startPosId;
+    uint32_t endPosId;
+    uint32_t sendPosNum;
+    SplitToCore(expertNumInServer_ * serverNum_, aivNum_, startPosId, endPosId, sendPosNum);
+    if (startPosId >= expertNumInServer_ * serverNum_) {
         return;
     }
 
-    for (uint32_t posIndex = startPosId_; posIndex < endPosId_; posIndex ++) {
+    for (uint32_t posIndex = startPosId; posIndex < endPosId; posIndex ++) {
         uint32_t expertIndex = posIndex % expertNumInServer_;
         uint32_t srcServerIndex = posIndex / expertNumInServer_;
         uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120;
-        statusTensor_((posIndex - startPosId_) * 8) = cntLocal(srcPos);
+        statusTensor_((posIndex - startPosId) * 8) = cntLocal(srcPos);
     }
 
     SyncFunc<AscendC::HardEvent::S_MTE3>(); 
     GlobalTensor<int32_t> rankGMTensor;
-    for (uint32_t posIndex = startPosId_; posIndex < endPosId_; posIndex ++) {
+    for (uint32_t posIndex = startPosId; posIndex < endPosId; posIndex ++) {
         uint32_t expertIndex = posIndex % expertNumInServer_;
         uint32_t srcServerIndex = posIndex / expertNumInServer_;
         uint32_t srcRankId = srcServerIndex * serverRankSize_ + epRankId_ % serverRankSize_;
@@ -1781,7 +1785,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GM_ADDR rankGM =
             (__gm__ uint8_t *)(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset); // 计算地址偏移
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
-        DataCopy<int32_t>(rankGMTensor, statusTensor_[(posIndex - startPosId_) * 8], 8UL);
+        DataCopy<int32_t>(rankGMTensor, statusTensor_[(posIndex - startPosId) * 8], 8UL);
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
