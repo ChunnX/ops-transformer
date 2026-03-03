@@ -921,13 +921,13 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31;
 
     __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize * 8;
+    __ubuf__ float *srcUb01 = outputAddr + RowSize * 4;
     __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 8;
+    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 4;
     __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 8;
+    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 4;
     __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 8;
+    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 4;
 
     __ubuf__ float *inputAddr0 = inputAddr;
     __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
@@ -1075,29 +1075,30 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
     //     }
     // }
     // 尾块处理
-    for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize % 16); ++loopSc) {
+    // 尾块处理
+    for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize % 4); ++loopSc) {
         Duplicate(max0, minValue);
         Duplicate(max00, minValue);
         Duplicate(max01, minValue);
 
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum00, 0, pregAll);
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vregSum01, 0, pregAll);
-        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 16); ++loopM) {
-            LoadAlign(src00, srcUb00 + loopM * RowSize * 16 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
-            LoadAlign(src01, srcUb01 + loopM * RowSize * 16 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+        for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
+            LoadAlign(src00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+            LoadAlign(src01, srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
 
-            Max(max00, max00, src00, pregAll);
-            Max(max01, max01, src01, pregAll);
+            Max(max00, max00, src00, pregLHalf);
+            Max(max01, max01, src01, pregLHalf);
         }
         Max(max0, max00, max01, pregAll);
 
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
-        Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
-        Max(max0, max00, max01, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max00, max0, pregLHalf);
+        // Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(max01, max0, pregHHalf);
+        // Max(max0, max00, max01, pregLHalf);
 
         for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize / 2); ++loopM) {
-            LoadAlign(vregF32_00, srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
-            LoadAlign(vregF32_01, (srcUb00 + RowSize) + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+            LoadAlign(vregF32_00, srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
+            LoadAlign(vregF32_01, srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
             
             FusedExpSub(vregExp00, vregF32_00, max0, pregLHalf);
             FusedExpSub(vregExp01, vregF32_01, max0, pregLHalf);
@@ -1105,11 +1106,12 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
             Add(vregSum00, vregExp00, vregSum00, pregLHalf);
             Add(vregSum01, vregExp01, vregSum01, pregLHalf);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp00, pregLHalf);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp01, pregLHalf);
         }
+
         Add(vregSum00, vregSum00, vregSum01, pregLHalf);
 
         LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
