@@ -504,11 +504,11 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
     uint32_t tcDealSize = sliceInfo.dealTcSize;
     if (sliceInfo.headHolderSeqCnt > 0) {
         uint32_t apeOffset = sliceInfo.headHolderSeqCnt * singleRowElemNum;
-        uint32_t rCnt = tcDealSize == 1 ? sliceInfo.validSeqCnt * singleRowElemNum :
-                                          (constInfo_.cmpRatio - sliceInfo.headHolderSeqCnt) * singleRowElemNum;
+        uint32_t row = tcDealSize == 1 ? sliceInfo.validSeqCnt:
+                                          (constInfo_.cmpRatio - sliceInfo.headHolderSeqCnt);
         // Add(scoreLocal[scoreOffset], scoreLocal[scoreOffset], apeUb[apeOffset], rCnt);
-        AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], rCnt, dDealSize, dDealSize);
-        scoreOffset += rCnt;
+        AddVF(scoreLocal[scoreOffset], apeUb[apeOffset], row, singleRowElemNum, singleRowElemNum);
+        scoreOffset += row * singleRowElemNum;
         tcDealSize -= 1;
     }
     if (tcDealSize == 0) {
@@ -517,18 +517,18 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
     if (sliceInfo.tailHolderSeqCnt > 0) {
         tcDealSize -= 1;
         uint32_t apeOffset = 0;
-        uint32_t rCnt = (constInfo_.cmpRatio - sliceInfo.tailHolderSeqCnt) * singleRowElemNum;
+        uint32_t row = constInfo_.cmpRatio - sliceInfo.tailHolderSeqCnt;
         uint32_t tailScoreOffset = scoreOffset + tcDealSize * constInfo_.cmpRatio * singleRowElemNum;
         // Add(scoreLocal[tailScoreOffset], scoreLocal[tailScoreOffset], apeUb[apeOffset], rCnt);
-        AddVF(scoreLocal[tailScoreOffset], apeUb[apeOffset], rCnt, dDealSize, dDealSize);
+        AddVF(scoreLocal[tailScoreOffset], apeUb[apeOffset], row, singleRowElemNum, singleRowElemNum);
     }
     if (tcDealSize == 0) {
         return;
     }
-    uint32_t rCnt = constInfo_.cmpRatio * singleRowElemNum;
+    uint32_t row = constInfo_.cmpRatio;
     for (uint32_t r = 0; r < tcDealSize; r++) {
         // Add(scoreLocal[scoreOffset + r * rCnt], scoreLocal[scoreOffset + r * rCnt], apeUb, rCnt);
-        AddVF(scoreLocal[scoreOffset + r * rCnt], apeUb, rCnt, dDealSize, dDealSize);
+        AddVF(scoreLocal[scoreOffset + r * row * singleRowElemNum], apeUb, row, singleRowElemNum, singleRowElemNum);
     }
 }
 
