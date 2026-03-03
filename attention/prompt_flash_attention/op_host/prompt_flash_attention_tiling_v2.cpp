@@ -1678,7 +1678,7 @@ bool PromptFlashAttentionTilingV2::CheckPFAMerge(ContextParamsForPFATiling& cont
         return false;
     }
 
-    if (queryShapeInfo.s > 256U && (queryShapeInfo.d % 64) != 0) {
+    if (queryShapeInfo.d > 256U && (queryShapeInfo.d % 64) != 0) {
         return false;
     }
 
