@@ -13,6 +13,15 @@ import sys
 import re
 
 
+black_list = ['moe_gather_v2',
+              'moe_inplace_index_add',
+              'moe_inplace_index_add_with_sorted',
+              'moe_masked_scatter']
+op_level_list = ['moe_token_permute_with_routing_map',
+                 'moe_token_permute_with_routing_map_grad',
+                 'moe_token_unpermute_with_routing_map']
+
+
 def get_sh_files(gen_dir):
     """获取目录中所有 .sh 文件名（不包含路径）"""
     sh_files = []
@@ -55,8 +64,16 @@ def grouped(gen_path, soc, group_size):
 
     all_rows = []
     for op_name, count in op_counts.items():
+        if op_name in black_list:
+            continue
         for i in range(count):
-            row_string = f"{op_name},{count}-{i}"
+            if op_name in op_level_list:
+                if op_name in all_rows:
+                    continue
+                else:
+                    row_string = f"{op_name}"
+            else:
+                row_string = f"{op_name},{count}-{i}"
             all_rows.append(row_string)
 
     for idx, row in enumerate(all_rows):
