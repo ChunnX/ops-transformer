@@ -31,7 +31,7 @@ __simd_vf__ void AddContiguousVFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr,
     MicroAPI::RegTensor<T> vregape0;
     uint32_t totalCnt = row * col;
     for (uint32_t offset = 0; offset < totalCnt; offset += FLOAT_REP_SIZE) {
-        MicroAPI::MaskReg mask = MicroAPI::UpdatePredicate<T>(totalCnt);
+        MicroAPI::MaskReg mask = MicroAPI::UpdateMask<T>(totalCnt);
         MicroAPI::LoadAlign(vreg0, inputAddr + offset);
         MicroAPI::LoadAlign(vregape0, apeAddr + offset);
         MicroAPI::Add(vreg0, vreg0, vregape0, mask);

@@ -16,7 +16,6 @@
 #ifndef VF_MUL_H
 #define VF_MUL_H
 #include "kernel_operator.h"
-#include "../../compressor_comm.h"
 using namespace AscendC;
 
 constexpr uint32_t FLOATBYTE = 4;
@@ -37,59 +36,37 @@ __simd_vf__ void MulReduceSumbase8VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreAd
     MicroAPI::RegTensor<T> vreg1;
     MicroAPI::RegTensor<T> vregSum;
     MicroAPI::RegTensor<T> vregSum0;
-    MicroAPI::RegTensor<T> vregSum1;
-    MicroAPI::RegTensor<T> vregSum2;
-    MicroAPI::RegTensor<T> vregSum3;
-    MicroAPI::RegTensor<T> vregSum4;
-    MicroAPI::RegTensor<T> vregSum5;
-    MicroAPI::RegTensor<T> vregSum6;
-    MicroAPI::RegTensor<T> vregSum7;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg mask0 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL8>();
-    MicroAPI::MaskReg mask1;
-    MicroAPI::MaskReg mask2;
-    MicroAPI::MaskReg mask3;
-    MicroAPI::MaskReg mask4;
-    MicroAPI::MaskReg mask5;
-    MicroAPI::MaskReg mask6;
-    MicroAPI::MaskReg mask7;
-    MicroAPI::ShiftLeft(mask1, mask0, 8, mask);
-    MicroAPI::ShiftLeft(mask2, mask0, 16, mask);
-    MicroAPI::ShiftLeft(mask3, mask0, 24, mask);
-    MicroAPI::ShiftLeft(mask4, mask0, 32, mask);
-    MicroAPI::ShiftLeft(mask5, mask0, 40, mask);
-    MicroAPI::ShiftLeft(mask6, mask0, 48, mask);
-    MicroAPI::ShiftLeft(mask7, mask0, 56, mask);
+    MicroAPI::MaskReg maskL32 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL32>();
+    MicroAPI::MaskReg maskL16 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL16>();
+    MicroAPI::MaskReg maskL8 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL8>();
+    MicroAPI::MaskReg maskH32;
+    MicroAPI::MaskReg maskH48;
+    MicroAPI::MaskReg maskH56;
+    MicroAPI::Not(maskH48, maskL16, mask);
+    MicroAPI::Not(maskH32, maskL32, mask);
+    MicroAPI::Not(maskH56, maskL8, mask);
     for (uint32_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
         MicroAPI::Duplicate(vregSum, 0, mask);
-        for (uint32_t rLoop = 0; rLoop < CeilDivT(coff * cmpRatio, 8); rLoop++) {
+        for (uint32_t rLoop = 0; rLoop < (coff * cmpRatio + 7) / 8; rLoop++) {
             MicroAPI::LoadAlign(vreg0, kvAddr + rLoop * baseD64);
             MicroAPI::LoadAlign(vreg1, scoreAddr + rLoop * baseD64);
             MicroAPI::Mul(vreg0, vreg0, vreg1, mask);
             MicroAPI::Add(vregSum, vregSum, vreg0, mask);
         }
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, mask0);
-        if (coff * cmpRatio > 2) {
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum1, vregSum, mask1);
-            MicroAPI::Add(vregSum0, vregSum0, vregSum1, mask0);
+        if (coff * cmpRatio > 8) {
+            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskH32);
+            MicroAPI::Add(vregSum, vregSum, vregSum0, maskL32);
         }
         if (coff * cmpRatio > 4) {
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum2, vregSum, mask2);
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum3, vregSum, mask3);
-            MicroAPI::Add(vregSum2, vregSum2, vregSum3, mask0);
-            MicroAPI::Add(vregSum0, vregSum0, vregSum2, mask0);
+            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskH48);
+            MicroAPI::Add(vregSum, vregSum, vregSum0, maskL16);
         }
-        if (coff * cmpRatio > 8) {
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum4, vregSum, mask4);
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum5, vregSum, mask5);
-            MicroAPI::Add(vregSum4, vregSum4, vregSum5, mask0);
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum6, vregSum, mask6);
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum7, vregSum, mask7);
-            MicroAPI::Add(vregSum6, vregSum6, vregSum7, mask0);
-            MicroAPI::Add(vregSum4, vregSum4, vregSum6, mask0);
-            MicroAPI::Add(vregSum0, vregSum0, vregSum4, mask0);
+        if (coff * cmpRatio > 2) {
+            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskH56);
+            MicroAPI::Add(vregSum, vregSum, vregSum0, maskL8);
         }
-        MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, mask0);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio, vregSum, maskL8);
     }
 }
 
@@ -102,37 +79,30 @@ __simd_vf__ void MulReduceSumbase16VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreA
     MicroAPI::RegTensor<T> vreg1;
     MicroAPI::RegTensor<T> vregSum;
     MicroAPI::RegTensor<T> vregSum0;
-    MicroAPI::RegTensor<T> vregSum1;
-    MicroAPI::RegTensor<T> vregSum2;
-    MicroAPI::RegTensor<T> vregSum3;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg mask0 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL16>();
-    MicroAPI::MaskReg mask1;
-    MicroAPI::MaskReg mask2;
-    MicroAPI::MaskReg mask3;
-    MicroAPI::ShiftLeft(mask1, mask0, 16, mask);
-    MicroAPI::ShiftLeft(mask2, mask0, 32, mask);
-    MicroAPI::ShiftLeft(mask3, mask0, 48, mask);
+    MicroAPI::MaskReg maskL32 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL32>();
+    MicroAPI::MaskReg maskL16 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL16>();
+    MicroAPI::MaskReg maskH32;
+    MicroAPI::MaskReg maskH48;
+    MicroAPI::Not(maskH48, maskL16, mask);
+    MicroAPI::Not(maskH32, maskL32, mask);
     for (uint32_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
         MicroAPI::Duplicate(vregSum, 0, mask);
-        for (uint32_t rLoop = 0; rLoop < CeilDivT(coff * cmpRatio, 4); rLoop++) {
+        for (uint32_t rLoop = 0; rLoop < (coff * cmpRatio + 3) / 4; rLoop++) {
             MicroAPI::LoadAlign(vreg0, kvAddr + rLoop * baseD64);
             MicroAPI::LoadAlign(vreg1, scoreAddr + rLoop * baseD64);
             MicroAPI::Mul(vreg0, vreg0, vreg1, mask);
             MicroAPI::Add(vregSum, vregSum, vreg0, mask);
         }
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, mask0);
-        if (coff * cmpRatio > 2) {
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum1, vregSum, mask1);
-            MicroAPI::Add(vregSum0, vregSum0, vregSum1, mask0);
-        }
         if (coff * cmpRatio > 4) {
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum2, vregSum, mask2);
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum3, vregSum, mask3);
-            MicroAPI::Add(vregSum2, vregSum2, vregSum3, mask0);
-            MicroAPI::Add(vregSum0, vregSum0, vregSum2, mask0);
+            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskH32);
+            MicroAPI::Add(vregSum, vregSum, vregSum0, maskL32);
         }
-        MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, mask0);
+        if (coff * cmpRatio > 2) {
+            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskH48);
+            MicroAPI::Add(vregSum, vregSum, vregSum0, maskL16);
+        }
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio, vregSum, maskL16);
     }
 }
 
@@ -147,23 +117,23 @@ __simd_vf__ void MulReduceSumbase32VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreA
     MicroAPI::RegTensor<T> vregSum0;
     MicroAPI::RegTensor<T> vregSum1;
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg maskLHalf = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL32>();
-    MicroAPI::MaskReg maskRHalf;
-    MicroAPI::Not(maskRHalf, maskLHalf, mask);
+    MicroAPI::MaskReg maskL32 = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL32>();
+    MicroAPI::MaskReg maskH32;
+    MicroAPI::Not(maskH32, maskL32, mask);
     for (uint32_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
         MicroAPI::Duplicate(vregSum, 0, mask);
-        for (uint32_t rLoop = 0; rLoop < CeilDivT(coff * cmpRatio, 2); rLoop++) {
+        for (uint32_t rLoop = 0; rLoop < (coff * cmpRatio + 1) / 2; rLoop++) {
             MicroAPI::LoadAlign(vreg0, kvAddr + rLoop * baseD64);
             MicroAPI::LoadAlign(vreg1, scoreAddr + rLoop * baseD64);
             MicroAPI::Mul(vreg0, vreg0, vreg1, mask);
             MicroAPI::Add(vregSum, vregSum, vreg0, mask);
         }
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskLHalf);
+        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, vregSum, maskL32);
         if (coff * cmpRatio > 2) {
-            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum1, vregSum, maskRHalf);
-            MicroAPI::Add(vregSum0, vregSum0, vregSum1, maskLHalf);
+            MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum1, vregSum, maskH32);
+            MicroAPI::Add(vregSum0, vregSum0, vregSum1, maskL32);
         }
-        MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, maskLHalf);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio, vregSum0, maskL32);
     }
 }
 
@@ -187,7 +157,7 @@ __simd_vf__ void MulReduceSumbase64VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreA
             MicroAPI::Add(vregSum, vregSum, vregMul, mask);
             offset += baseD;
         }
-        MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio, vregSum, mask);
     }
 }
 
@@ -218,10 +188,10 @@ __simd_vf__ void MulReduceSumbase128VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
             MicroAPI::Mul(vregMul1, vreg01, vreg11, mask);
             MicroAPI::Add(vregSum0, vregSum0, vregMul0, mask);
             MicroAPI::Add(vregSum1, vregSum1, vregMul1, mask);
-            offset += 2 * baseD;
+            offset += baseD;
         }
-        MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, mask);
-        MicroAPI::StoreAlign(outputAddr + baseD64 + scLoop * baseD, vregSum1, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio, vregSum0, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + baseD64, vregSum1, mask);
     }
 }
 
@@ -269,13 +239,13 @@ __simd_vf__ void MulReduceSumbase256VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
             MicroAPI::Add(vregSum0, vregSum0, vregMul0, mask);
             MicroAPI::Add(vregSum1, vregSum1, vregMul1, mask);
             MicroAPI::Add(vregSum2, vregSum2, vregMul2, mask);
-            MicroAPI::Add(vregSum3, vregSum4, vregMul3, mask);
-            offset += 4 * baseD;
+            MicroAPI::Add(vregSum3, vregSum3, vregMul3, mask);
+            offset += baseD;
         }
-        MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, mask);
-        MicroAPI::StoreAlign(outputAddr + baseD64 + scLoop * baseD, vregSum1, mask);
-        MicroAPI::StoreAlign(outputAddr + 2 * baseD64 + scLoop * baseD, vregSum2, mask);
-        MicroAPI::StoreAlign(outputAddr + 3 * baseD64 + scLoop * baseD, vregSum3, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio, vregSum0, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + baseD64, vregSum1, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 2 * baseD64, vregSum2, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 3 * baseD64, vregSum3, mask);
     }
 }
 
@@ -360,16 +330,16 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
             MicroAPI::Add(vregSum5, vregSum5, vregMul5, mask);
             MicroAPI::Add(vregSum6, vregSum6, vregMul6, mask);
             MicroAPI::Add(vregSum7, vregSum7, vregMul7, mask);
-            offset += 4 * baseD;
+            offset += baseD;
         }
-        MicroAPI::StoreAlign(outputAddr + scLoop * baseD, vregSum0, mask);
-        MicroAPI::StoreAlign(outputAddr + baseD64 + scLoop * baseD, vregSum1, mask);
-        MicroAPI::StoreAlign(outputAddr + 2 * baseD64 + scLoop * baseD, vregSum2, mask);
-        MicroAPI::StoreAlign(outputAddr + 3 * baseD64 + scLoop * baseD, vregSum3, mask);
-        MicroAPI::StoreAlign(outputAddr + 4 * baseD64 + scLoop * baseD, vregSum4, mask);
-        MicroAPI::StoreAlign(outputAddr + 5 * baseD64 + scLoop * baseD, vregSum5, mask);
-        MicroAPI::StoreAlign(outputAddr + 6 * baseD64 + scLoop * baseD, vregSum6, mask);
-        MicroAPI::StoreAlign(outputAddr + 7 * baseD64 + scLoop * baseD, vregSum7, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio, vregSum0, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + baseD64, vregSum1, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 2 * baseD64, vregSum2, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 3 * baseD64, vregSum3, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 4 * baseD64, vregSum4, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 5 * baseD64, vregSum5, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 6 * baseD64, vregSum6, mask);
+        MicroAPI::StoreAlign(outputAddr + scLoop * coff * cmpRatio + 7 * baseD64, vregSum7, mask);
     }
 }
 
@@ -384,14 +354,14 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
 
 //当前仅支持coff * cmpRatio为2的幂的情况
 template <typename T>
-__aicore__ inline void MulReduceSumbaseVF(LocalTensor<T> &kvLocal, LocalTensor<T> &scoreLocal,
-                                          LocalTensor<T> &outputLocal, const uint32_t coff, const uint32_t cmpRatio,
+__aicore__ inline void MulReduceSumbaseVF(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
+                                          const LocalTensor<T> &outputLocal, const uint32_t coff, const uint32_t cmpRatio,
                                           const uint32_t baseD, const uint32_t scLoopCnt)
 {
 
     __ubuf__ T *kvAddr = (__ubuf__ T *)kvLocal.GetPhyAddr();
     __ubuf__ T *scoreAddr = (__ubuf__ T *)scoreLocal.GetPhyAddr();
-    __ubuf__ T *outputAddr = (__ubuf__ T *)outputLocal.GetPhyAddr() + outIdx;
+    __ubuf__ T *outputAddr = (__ubuf__ T *)outputLocal.GetPhyAddr();
     if (baseD == baseD8) {
         MulReduceSumbase8VFImpl(kvAddr, scoreAddr, outputAddr, coff, cmpRatio, scLoopCnt, baseD);
     } else if (baseD == baseD16) {
