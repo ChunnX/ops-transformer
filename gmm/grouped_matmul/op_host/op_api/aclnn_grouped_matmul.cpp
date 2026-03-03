@@ -1866,6 +1866,39 @@ static aclnnStatus CheckZeroShape(gmm::GroupedMatmulParams &params, uint64_t *wo
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus CheckZeroShapeSplitK(gmm::GroupedMatmulParams &params, uint64_t *workspaceSize) {
+    // all M or N be zero, get true
+    bool zeroM = false;
+    bool zeroN = false;
+    // current view_shape transpose is always false false
+    for (size_t i = 0; i < params.x->Size(); ++i) {
+      // return ACLNN_SUCCESS,后续校验报错即可
+      CHECK_COND((*params.x)[i] != nullptr, ACLNN_SUCCESS, "GroupedMatmul x tensor should not be null");
+      auto xShape = (*params.x)[i]->GetViewShape();
+      size_t xDimNum = xShape.GetDimNum();
+      // return ACLNN_SUCCESS,后续校验报错即可
+      CHECK_COND(xDimNum == gmm::MIN_FM_DIM, ACLNN_SUCCESS,
+                "When groupType = 2 GroupedMatmul x dim num should be 2, but actual is %zu.", xDimNum);
+      zeroM = zeroM || (xShape.GetDim(1) == 0);
+    }
+    for (size_t i = 0; i < params.weight->Size(); ++i) {
+      // return ACLNN_SUCCESS,后续校验报错即可
+      CHECK_COND((*params.weight)[i] != nullptr, ACLNN_SUCCESS,
+                "GroupedMatmul weight tensor should not be null");
+      auto wShape = (*params.weight)[i]->GetViewShape();
+      // return ACLNN_SUCCESS,后续校验报错即可
+      CHECK_COND(wShape.GetDimNum() == gmm::MIN_FM_DIM, ACLNN_SUCCESS,
+                "When groupType = 2 GroupedMatmul weight dim num should be 2, but actual %zu.", wShape.GetDimNum());
+      zeroN = zeroN || (wShape.GetDim(wShape.GetDimNum() - 1) == 0);
+    }
+    if (zeroM || zeroN) {
+        *workspaceSize = 0UL;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+
 static void SetAntiQuantParamsTensorEmptyDAV3510(gmm::GroupedMatmulParams &params, aclOpExecutor *executor)
 {
     DataType weightDtype = (*params.weight)[0]->GetDataType();
@@ -2182,9 +2215,16 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
   SetTransposedTensorListContiguous(params, executorPtr);
   CHECK_COND(ParamsDataContiguous(params, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
              "ParamsDataContiguous failed.");
-  if (CheckZeroShape(params, workspaceSize) != ACLNN_SUCCESS) {
-    uniqueExecutor.ReleaseTo(executor);
-    return ACLNN_SUCCESS;}
+  if (params.groupType == gmm::SPLIT_K) {
+    if (CheckZeroShapeSplitK(params, workspaceSize) != ACLNN_SUCCESS) {
+      uniqueExecutor.ReleaseTo(executor);
+      return ACLNN_SUCCESS;}
+  } else {
+    if (CheckZeroShape(params, workspaceSize) != ACLNN_SUCCESS) {
+      uniqueExecutor.ReleaseTo(executor);
+      return ACLNN_SUCCESS;}
+  }
+
   op::Shape nzShape = (*params.weight)[0]->GetStorageShape();
   if (params.apiVersion == gmm::GMMApiVersion::WeightNz ||
       (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
@@ -2304,8 +2344,10 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(const aclTensorList 
   bool isSingleWeight = (weight->Size() == 1 && groupType != gmm::NO_SPLIT);
   bool transposeX = false;
   bool transposeWeight = false;
-  CHECK_COND(CheckEmptyTensor(x, weight) == ACLNN_SUCCESS,
-             ACLNN_ERR_PARAM_INVALID, "CheckEmptyTensor failed!");
+  if(groupType != gmm::SPLIT_K) {
+    CHECK_COND(CheckEmptyTensor(x, weight) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID, "CheckEmptyTensor failed!");
+  }
   CHECK_COND(CheckTransposeStatus(x, weight, transposeX, transposeWeight, groupType) == ACLNN_SUCCESS,
              ACLNN_ERR_PARAM_INVALID, "CheckTransposeStatus failed!");
   gmm::GroupedMatmulParams gmmParams{x, weight, biasOptional, groupListOptional, groupTensorOptional, scaleOptional,

@@ -1387,9 +1387,15 @@ ge::graphStatus GMMTiling::GMMSetMMTiling(const gert::TilingContext* context, co
   mm.SetShape(mInMM, baseN_, maxK_);
   mm.SetFixSplit(baseM_, baseN_, baseK_);
   mm.SetBufferSpace(compileInfoPtr->l1Size, compileInfoPtr->l0CSize, ubSize_);
-  OP_CHECK_IF(mm.GetTiling(tilingData.mmTilingData) == -1,
-             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "matmul getTiling failed."),
-             return ge::GRAPH_FAILED);
+  if(groupType_ == SPLIT_K && maxK_ == 0) {
+    //切K场景K轴为0时不需要使用高阶API，无需tiling，kernel需要做清零处理，此处无需tiling
+    OP_LOGD("GMM SplitK,and K == 0, no need tiling");
+  } else {
+    OP_CHECK_IF(mm.GetTiling(tilingData.mmTilingData) == -1,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "matmul getTiling failed."),
+            return ge::GRAPH_FAILED);
+  }
+
 
   uint32_t mmStepKa = 1;
   uint32_t mmStepKb = 1;
