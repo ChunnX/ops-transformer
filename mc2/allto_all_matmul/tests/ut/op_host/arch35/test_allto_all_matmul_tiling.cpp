@@ -1073,6 +1073,21 @@ static AlltoAllMatmulTestParam testCases[] = {
     "group", 2, 0, 0, 6, 6, 0, 0, 0, false, false, 0, true,
     "3510",
     ge::GRAPH_FAILED, 51UL, "", {109941760}, 0},
+
+    {"alltoall_matmul_mx_case_illegal_x1_k_not_divide_by_64",
+    {57086, 96}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND,
+    {9216, 192}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND,
+    {}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {57086, 2, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND,
+    {9216, 3, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND,
+    {}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {28543, 9216}, ge::DT_FLOAT16, ge::FORMAT_ND,
+    {28543, 3072}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND,
+    "group", 2, 0, 0, 6, 6, 0, 0, 0, false, true, 0, true,
+    "3510",
+    ge::GRAPH_FAILED, 51UL, "", {109941760}, 0},
 };
 
 // setup & teardown
