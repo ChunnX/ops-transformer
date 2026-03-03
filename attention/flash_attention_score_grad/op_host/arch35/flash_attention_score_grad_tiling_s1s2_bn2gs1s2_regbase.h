@@ -221,7 +221,7 @@
      uint64_t qSize;
      uint64_t kSize;
      uint64_t vSize;
-     int64_t dropMaskSize;
+     uint64_t dropMaskSize;
      uint8_t dropMaskOuter;
  
      int64_t blockStarts[CORE_LIST_NUM];
@@ -362,7 +362,7 @@
      std::tuple<uint32_t, uint32_t, uint32_t> FuzzyForBestSplit();
      virtual ge::graphStatus GetSparseBlockInfo();
      void DoPreTiling();
-     int64_t DoPreSfmgTiling();
+     uint64_t DoPreSfmgTiling();
      void DoPostTiling();
      void DetermineMode();
      ge::graphStatus CheckAttenMaskShape();

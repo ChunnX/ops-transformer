@@ -53,9 +53,9 @@ public:
     GlobalTensor<float> dqkvWorkspace[3];
     GlobalTensor<float> deterGm[2];
     uint32_t vBlockIdx;
-    uint32_t loop;
-    uint32_t inputTotalSize;
-    uint32_t qPostTailNum;
+    uint64_t loop;
+    uint64_t inputTotalSize;
+    uint64_t qPostTailNum;
 };
 
 FAG_POST_FUNCTION_TEMPLATE
@@ -112,8 +112,6 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FU
         uint64_t blockCore = loop * REGBASE_POST_BASE;
         uint64_t begin = vBlockIdx * blockCore;
         uint64_t end = begin + blockCore;
-        uint32_t s1BaseTailSize = tilingData->s1s2BNGS1S2BaseParams.s1 % POST_S_BASE;   // 128
-        uint32_t s2BaseTailSize = tilingData->s1s2BNGS1S2BaseParams.s2 % POST_S_BASE;   // 128
 
         if (end > inputTotalSize) {
             end = inputTotalSize;
@@ -123,9 +121,9 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FU
         for (uint64_t pingIdx = begin; pingIdx < end; pingIdx = pingIdx + (REGBASE_POST_BASE << 1)) {
             LocalTensor<float> vecInPing = inQueuePing.AllocTensor<float>();
             uint64_t pongIdx = pingIdx + REGBASE_POST_BASE;
-            uint32_t pingSize = pongIdx < inputTotalSize ? REGBASE_POST_BASE : qPostTailNum;
+            uint64_t pingSize = pongIdx < inputTotalSize ? REGBASE_POST_BASE : qPostTailNum;
             uint64_t dqPongGmOffset = dqPingGmOffset + VALUE_DIM * POST_S_BASE; // 96*128
-            uint32_t seqPingSize = pingSize / (ROPE_DIM + VALUE_DIM);
+            uint64_t seqPingSize = pingSize / (ROPE_DIM + VALUE_DIM);
             DataCopy(vecInPing, dqkvWorkspace[qkvIdx][pingIdx], (pingSize + 7) >> 3 << 3);
             inQueuePing.EnQue(vecInPing);
             inQueuePing.DeQue<float>();
@@ -134,8 +132,8 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FU
             }
             LocalTensor<OUTDTYPE> vecOutPing = outQueuePing.AllocTensor<OUTDTYPE>();
             Cast(vecOutPing, vecInPing, RoundMode::CAST_ROUND, pingSize);
-            uint32_t pongSize;
-            uint32_t seqPongSize;
+            uint64_t pongSize;
+            uint64_t seqPongSize;
             LocalTensor<float> vecInPong;
             bool neeedPong = loop > 1 && pongIdx < end;
             if (neeedPong) {

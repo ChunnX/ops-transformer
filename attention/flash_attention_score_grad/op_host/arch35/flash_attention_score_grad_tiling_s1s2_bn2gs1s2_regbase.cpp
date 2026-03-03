@@ -310,13 +310,13 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::ProcessDropoutInfo
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "FAG invalid dropMask dtype[%s], only support uint8.",
                 ge::TypeUtils::DataTypeToSerialString(dropMaskDType).c_str()),
             return ge::GRAPH_FAILED);
-        int64_t dropMaskDim = dropMaskShape->GetStorageShape().GetDimNum();
-        int64_t dropMaskShapeSize = 1;
-        for (int64_t i = 0; i < dropMaskDim; ++i) {
-            int64_t dimValue = dropMaskShape->GetStorageShape().GetDim(i);
+        uint64_t dropMaskDim = dropMaskShape->GetStorageShape().GetDimNum();
+        uint64_t dropMaskShapeSize = 1;
+        for (uint64_t i = 0; i < dropMaskDim; ++i) {
+            uint64_t dimValue = dropMaskShape->GetStorageShape().GetDim(i);
             dropMaskShapeSize *= dimValue;
         }
-        auto shapeSize = AlignUp(fBaseParams.dropMaskSize, static_cast<int64_t>(BIT_NUMS)) / BIT_NUMS;
+        auto shapeSize = AlignUp(fBaseParams.dropMaskSize, static_cast<uint64_t>(BIT_NUMS)) / BIT_NUMS;
         if (dropMaskShapeSize < shapeSize) {
             OP_LOGE(context_, "FAG input dropMask shapeSize is invalid, it should not be less than %ld, but got %ld.",
                 shapeSize, dropMaskShapeSize);
@@ -2526,7 +2526,7 @@ bool FlashAttentionScoreGradTilingUs1s2Bs2Regbase::CheckExceedL2Cache()
     return isExceed;
 }
 
-int64_t FlashAttentionScoreGradTilingUs1s2Bs2Regbase::DoPreSfmgTiling()
+uint64_t FlashAttentionScoreGradTilingUs1s2Bs2Regbase::DoPreSfmgTiling()
 {
     uint32_t valueDAlign = fBaseParams.sfmgdInner;
  
@@ -2601,29 +2601,29 @@ int64_t FlashAttentionScoreGradTilingUs1s2Bs2Regbase::DoPreSfmgTiling()
 
 void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::DoPreTiling()
 {
-    uint32_t inputBufferLen = PRE_BUFFER_SIZE; // x / 8 + 2 * x + 32 = fBaseParams.ubSize
-    int64_t singleUBProcessNum = static_cast<int64_t>(CAST_BUFFER_LEN) / 2;
+    uint64_t inputBufferLen = PRE_BUFFER_SIZE; // x / 8 + 2 * x + 32 = fBaseParams.ubSize
+    uint64_t singleUBProcessNum = static_cast<uint64_t>(CAST_BUFFER_LEN) / 2;
 
-    int64_t maskSize = AlignTo(fBaseParams.dropMaskSize, static_cast<int64_t>(BOOL_BLOCK_NUMS));
-    int64_t singleCoreNum = AlignTo(CeilDivideBy(maskSize, static_cast<int64_t>(fBaseParams.blockOuter)),
-                                     static_cast<int64_t>(BOOL_BLOCK_NUMS));
-    int64_t maskUsedCoreNum = 0;
+    uint64_t maskSize = AlignTo(fBaseParams.dropMaskSize, static_cast<uint64_t>(BOOL_BLOCK_NUMS));
+    uint64_t singleCoreNum = AlignTo(CeilDivideBy(maskSize, static_cast<uint64_t>(fBaseParams.blockOuter)),
+                                     static_cast<uint64_t>(BOOL_BLOCK_NUMS));
+    uint64_t maskUsedCoreNum = 0;
     if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
-        maskUsedCoreNum = static_cast<int64_t>(DoPreSfmgTiling());
+        maskUsedCoreNum = static_cast<uint64_t>(DoPreSfmgTiling());
     } else {
-        maskUsedCoreNum = static_cast<int64_t>(CeilDivideBy(maskSize, singleCoreNum));
+        maskUsedCoreNum = static_cast<uint64_t>(CeilDivideBy(maskSize, singleCoreNum));
     }
     OP_LOGI("DoPreTiling", "maskUsedCoreNum = %ld", maskUsedCoreNum);
 
-    int64_t tailCoreNum = maskSize - (maskUsedCoreNum - 1) * singleCoreNum;
-    tailCoreNum = AlignTo(tailCoreNum, static_cast<int64_t>(BOOL_BLOCK_NUMS));
+    uint64_t tailCoreNum = maskSize - (maskUsedCoreNum - 1) * singleCoreNum;
+    tailCoreNum = AlignTo(tailCoreNum, static_cast<uint64_t>(BOOL_BLOCK_NUMS));
 
-    int64_t singleCoreUBLoop = static_cast<int64_t>(CeilDivideBy(singleCoreNum, singleUBProcessNum));
-    int64_t tailCoreUBLoop = static_cast<int64_t>(CeilDivideBy(tailCoreNum, singleUBProcessNum));
+    uint64_t singleCoreUBLoop = static_cast<uint64_t>(CeilDivideBy(singleCoreNum, singleUBProcessNum));
+    uint64_t tailCoreUBLoop = static_cast<uint64_t>(CeilDivideBy(tailCoreNum, singleUBProcessNum));
 
-    int64_t singleCoreUBLastLoopNum =
-        static_cast<int64_t>(singleCoreNum - (singleCoreUBLoop - 1) * singleUBProcessNum);
-    int64_t tailCoreUBLastLoopNum = static_cast<int64_t>(tailCoreNum - (tailCoreUBLoop - 1) * singleUBProcessNum);
+    uint64_t singleCoreUBLastLoopNum =
+        static_cast<uint64_t>(singleCoreNum - (singleCoreUBLoop - 1) * singleUBProcessNum);
+    uint64_t tailCoreUBLastLoopNum = static_cast<uint64_t>(tailCoreNum - (tailCoreUBLoop - 1) * singleUBProcessNum);
 
     preTilingData_->set_maskCoreNum(maskUsedCoreNum);
     preTilingData_->set_castBufferLen(CAST_BUFFER_LEN);
@@ -2636,20 +2636,20 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::DoPreTiling()
     preTilingData_->set_maskTailCoreLoop(tailCoreUBLoop);
     preTilingData_->set_maskTailCoreLastLoopNum(tailCoreUBLastLoopNum);
 
-    uint32_t qPreBlockFactor = (static_cast<uint32_t>(fBaseParams.qSize) + maskUsedCoreNum - 1) / maskUsedCoreNum;
-    uint32_t qPreBlockTotal = (static_cast<uint32_t>(fBaseParams.qSize) + qPreBlockFactor - 1) / qPreBlockFactor;
-    uint32_t qPreTailNumTmp = static_cast<uint32_t>(fBaseParams.qSize) % qPreBlockFactor;
-    uint32_t qPreTailNum = qPreTailNumTmp == static_cast<uint32_t>(0) ? qPreBlockFactor : qPreTailNumTmp;
+    uint64_t qPreBlockFactor = (static_cast<uint64_t>(fBaseParams.qSize) + maskUsedCoreNum - 1) / maskUsedCoreNum;
+    uint64_t qPreBlockTotal = (static_cast<uint64_t>(fBaseParams.qSize) + qPreBlockFactor - 1) / qPreBlockFactor;
+    uint64_t qPreTailNumTmp = static_cast<uint64_t>(fBaseParams.qSize) % qPreBlockFactor;
+    uint64_t qPreTailNum = qPreTailNumTmp == static_cast<uint64_t>(0) ? qPreBlockFactor : qPreTailNumTmp;
 
-    uint32_t kPreBlockFactor = (static_cast<uint32_t>(fBaseParams.kSize) + maskUsedCoreNum - 1) / maskUsedCoreNum;
-    uint32_t kPreBlockTotal = (static_cast<uint32_t>(fBaseParams.kSize) + kPreBlockFactor - 1) / kPreBlockFactor;
-    uint32_t kPreTailNumTmp = static_cast<uint32_t>(fBaseParams.kSize) % kPreBlockFactor;
-    uint32_t kPreTailNum = kPreTailNumTmp == static_cast<uint32_t>(0) ? kPreBlockFactor : kPreTailNumTmp;
+    uint64_t kPreBlockFactor = (static_cast<uint64_t>(fBaseParams.kSize) + maskUsedCoreNum - 1) / maskUsedCoreNum;
+    uint64_t kPreBlockTotal = (static_cast<uint64_t>(fBaseParams.kSize) + kPreBlockFactor - 1) / kPreBlockFactor;
+    uint64_t kPreTailNumTmp = static_cast<uint64_t>(fBaseParams.kSize) % kPreBlockFactor;
+    uint64_t kPreTailNum = kPreTailNumTmp == static_cast<uint64_t>(0) ? kPreBlockFactor : kPreTailNumTmp;
 
-    uint32_t vPreBlockFactor = (static_cast<uint32_t>(fBaseParams.vSize) + maskUsedCoreNum - 1) / maskUsedCoreNum;
-    uint32_t vPreBlockTotal = (static_cast<uint32_t>(fBaseParams.vSize) + vPreBlockFactor - 1) / vPreBlockFactor;
-    uint32_t vPreTailNumTmp = static_cast<uint32_t>(fBaseParams.vSize) % vPreBlockFactor;
-    uint32_t vPreTailNum = vPreTailNumTmp == static_cast<uint32_t>(0) ? vPreBlockFactor : vPreTailNumTmp;
+    uint64_t vPreBlockFactor = (static_cast<uint64_t>(fBaseParams.vSize) + maskUsedCoreNum - 1) / maskUsedCoreNum;
+    uint64_t vPreBlockTotal = (static_cast<uint64_t>(fBaseParams.vSize) + vPreBlockFactor - 1) / vPreBlockFactor;
+    uint64_t vPreTailNumTmp = static_cast<uint64_t>(fBaseParams.vSize) % vPreBlockFactor;
+    uint64_t vPreTailNum = vPreTailNumTmp == static_cast<uint64_t>(0) ? vPreBlockFactor : vPreTailNumTmp;
 
     uint64_t maskPreBlockTotal = fBaseParams.dropMaskSize;
     preTilingData_->set_qPreBlockFactor(qPreBlockFactor);
@@ -2668,28 +2668,28 @@ void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::DoPreTiling()
 
 void FlashAttentionScoreGradTilingUs1s2Bs2Regbase::DoPostTiling()
 {
-    uint32_t postUbBaseSize = fBaseParams.hasRope ? ROPE_POST_BASE * FP16_BYTES : REGBASE_POST_BASE * FP16_BYTES;
-    uint32_t qPostBaseNum = fBaseParams.hasRope ? ROPE_POST_BASE : REGBASE_POST_BASE;
-    uint32_t qPostBlockTotal = static_cast<uint32_t>(fBaseParams.qSize);
-    uint32_t qPostTailNumTmp = qPostBlockTotal % qPostBaseNum;
-    uint32_t qPostTailNum = qPostTailNumTmp == static_cast<uint32_t>(0) ? qPostBaseNum : qPostTailNumTmp;
-    uint32_t qPostBlockOuterTotal = (qPostBlockTotal + qPostBaseNum - static_cast<uint32_t>(1)) / qPostBaseNum;
-    uint32_t qPostBlockFactor = (qPostBlockOuterTotal + fBaseParams.blockOuter * AICV_RATIO_DEFAULT - 1) / (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
+    uint64_t postUbBaseSize = fBaseParams.hasRope ? ROPE_POST_BASE * FP16_BYTES : REGBASE_POST_BASE * FP16_BYTES;
+    uint64_t qPostBaseNum = fBaseParams.hasRope ? ROPE_POST_BASE : REGBASE_POST_BASE;
+    uint64_t qPostBlockTotal = static_cast<uint64_t>(fBaseParams.qSize);
+    uint64_t qPostTailNumTmp = qPostBlockTotal % qPostBaseNum;
+    uint64_t qPostTailNum = qPostTailNumTmp == static_cast<uint64_t>(0) ? qPostBaseNum : qPostTailNumTmp;
+    uint64_t qPostBlockOuterTotal = (qPostBlockTotal + qPostBaseNum - static_cast<uint64_t>(1)) / qPostBaseNum;
+    uint64_t qPostBlockFactor = (qPostBlockOuterTotal + fBaseParams.blockOuter * AICV_RATIO_DEFAULT - 1) / (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
 
-    uint32_t kPostBaseNum = postUbBaseSize / FP16_BYTES;
-    uint32_t kPostBlockTotal = static_cast<uint32_t>(fBaseParams.kSize);
-    uint32_t kPostTailNumTmp = kPostBlockTotal % kPostBaseNum;
-    uint32_t kPostTailNum = kPostTailNumTmp == static_cast<uint32_t>(0) ? kPostBaseNum : kPostTailNumTmp;
-    uint32_t kPostBlockOuterTotal = (kPostBlockTotal + kPostBaseNum - static_cast<uint32_t>(1)) / kPostBaseNum;
-    uint32_t kPostBlockFactor =
+    uint64_t kPostBaseNum = postUbBaseSize / FP16_BYTES;
+    uint64_t kPostBlockTotal = static_cast<uint64_t>(fBaseParams.kSize);
+    uint64_t kPostTailNumTmp = kPostBlockTotal % kPostBaseNum;
+    uint64_t kPostTailNum = kPostTailNumTmp == static_cast<uint64_t>(0) ? kPostBaseNum : kPostTailNumTmp;
+    uint64_t kPostBlockOuterTotal = (kPostBlockTotal + kPostBaseNum - static_cast<uint64_t>(1)) / kPostBaseNum;
+    uint64_t kPostBlockFactor =
         (kPostBlockOuterTotal + fBaseParams.blockOuter * AICV_RATIO_DEFAULT - 1) / (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
 
-    uint32_t vPostBaseNum = postUbBaseSize / FP16_BYTES;
-    uint32_t vPostBlockTotal = static_cast<uint32_t>(fBaseParams.vSize);
-    uint32_t vPostTailNumTmp = vPostBlockTotal % vPostBaseNum;
-    uint32_t vPostTailNum = vPostTailNumTmp == static_cast<uint32_t>(0) ? vPostBaseNum : vPostTailNumTmp;
-    uint32_t vPostBlockOuterTotal = (vPostBlockTotal + vPostBaseNum - static_cast<uint32_t>(1)) / vPostBaseNum;
-    uint32_t vPostBlockFactor =
+    uint64_t vPostBaseNum = postUbBaseSize / FP16_BYTES;
+    uint64_t vPostBlockTotal = static_cast<uint64_t>(fBaseParams.vSize);
+    uint64_t vPostTailNumTmp = vPostBlockTotal % vPostBaseNum;
+    uint64_t vPostTailNum = vPostTailNumTmp == static_cast<uint64_t>(0) ? vPostBaseNum : vPostTailNumTmp;
+    uint64_t vPostBlockOuterTotal = (vPostBlockTotal + vPostBaseNum - static_cast<uint64_t>(1)) / vPostBaseNum;
+    uint64_t vPostBlockFactor =
         (vPostBlockOuterTotal + fBaseParams.blockOuter * AICV_RATIO_DEFAULT - 1) / (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
 
     postTilingData_->set_postUbBaseSize(postUbBaseSize);
