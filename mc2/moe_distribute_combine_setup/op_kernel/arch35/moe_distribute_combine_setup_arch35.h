@@ -21,7 +21,11 @@
 #include "../../common/inc/kernel/mc2_kernel_utils.h"
 #endif
 
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_base.h"
 #include "../moe_distribute_combine_setup_tiling_data.h"
