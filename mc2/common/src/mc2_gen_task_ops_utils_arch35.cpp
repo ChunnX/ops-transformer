@@ -108,7 +108,7 @@ ge::Status Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(const gert::ExeRes
                                                               std::vector<std::vector<uint8_t>> &tasks)
 {
     if (context == nullptr) {
-        OPS_LOG_E(context->GetNodeName(), "Failed to get context.");
+        OPS_LOG_E("Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack", "Failed to get context.");
         return ge::GRAPH_FAILED;
     }
     

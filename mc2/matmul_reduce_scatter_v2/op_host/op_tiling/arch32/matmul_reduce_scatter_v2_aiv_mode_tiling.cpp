@@ -1207,7 +1207,6 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
             return ge::GRAPH_FAILED);
     }
 
-
     OP_LOGI("Leave MatmulReduceScatterV2AivMode tiling func.");
     return ge::GRAPH_SUCCESS;
 }

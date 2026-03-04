@@ -113,7 +113,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
+ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
 {
     if (tileMValue_ * args_.mValue * sizeof(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
         return ge::GRAPH_SUCCESS;

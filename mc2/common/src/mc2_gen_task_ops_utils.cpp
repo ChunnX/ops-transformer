@@ -94,7 +94,7 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(const gert::ExeResGener
                                                          const ge::AscendString &reuse_key)
 {
     if (context == nullptr) {
-        OPS_LOG_E(context->GetNodeName(), "Failed to get context.");
+        OPS_LOG_E("Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc", "Failed to get context.");
         return ge::GRAPH_FAILED;
     }
     gert::StreamInfo stream_info;
@@ -219,7 +219,7 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(const gert::ExeResGenerationC
                                                    std::vector<std::vector<uint8_t>> &tasks)
 {
     if (context == nullptr) {
-        OPS_LOG_E(context->GetNodeName(), "Failed to get context.");
+        OPS_LOG_E("Mc2GenTaskOpsUtils::CommonKFCMc2GenTask", "Failed to get context.");
         return ge::GRAPH_FAILED;
     }
     int64_t aicore_idx = 0; // 新定义下aicoreTask的vector 成员变量数为1，有且仅有一个aicoreTask

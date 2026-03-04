@@ -28,7 +28,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-#include "mc2_tiling_common_var.h"
+#include "tiling/mc2_tiling_common_var.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"

@@ -12,8 +12,6 @@
  * \file mc2_fit_based_balance_tiling.cpp
  * \brief
  */
-#include <cmath>
-
 #include "mc2_log.h"
 #include "tiling/mc2_fit_based_balance_tiling.h"
 
