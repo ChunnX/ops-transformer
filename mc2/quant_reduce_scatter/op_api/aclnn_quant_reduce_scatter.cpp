@@ -38,12 +38,12 @@ enum class NnopbaseHcclServerType : uint32_t {
 
 static constexpr size_t HCCL_GROUP_NAME_LENGTH_MAX = 128U; // group长度小于128字符
 
-// 根据API定义，列出T-G量化所能支持的所有dtype
-const std::initializer_list<op::DataType> X_DTYPE_TG_SUPPORT_LIST = {
+// 根据API定义，列出K-G量化所能支持的所有dtype
+const std::initializer_list<op::DataType> X_DTYPE_KG_SUPPORT_LIST = {
     op::DataType::DT_INT8, op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT8_E4M3FN,
     op::DataType::DT_FLOAT8_E5M2
 };
-const std::initializer_list<op::DataType> SCALES_DTYPE_TG_SUPPORT_LIST = {
+const std::initializer_list<op::DataType> SCALES_DTYPE_KG_SUPPORT_LIST = {
     op::DataType::DT_FLOAT
 };
 
@@ -69,9 +69,9 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* scales, const aclT
 }
 
 // 检查x、scales、output的数据类型是否在算子的支持列表之内
-static bool CheckTGAllDtypesValid(const aclTensor* x, const aclTensor* scales, const aclTensor* output)
+static bool CheckKGAllDtypesValid(const aclTensor* x, const aclTensor* scales, const aclTensor* output)
 {
-    if (CheckType(x->GetDataType(), X_DTYPE_TG_SUPPORT_LIST) && CheckType(scales->GetDataType(), SCALES_DTYPE_TG_SUPPORT_LIST) &&
+    if (CheckType(x->GetDataType(), X_DTYPE_KG_SUPPORT_LIST) && CheckType(scales->GetDataType(), SCALES_DTYPE_KG_SUPPORT_LIST) &&
         CheckType(output->GetDataType(), OUTPUT_DTYPE_SUPPORT_LIST)) {
             return true;
     } else {
@@ -92,10 +92,10 @@ static bool CheckMXAllDtypesValid(const aclTensor* x, const aclTensor* scales, c
 static bool CheckAllDtypesValid(const aclTensor* x, const aclTensor* scales, const aclTensor* output)
 {
     bool isAllDtypesValid = false;
-    isAllDtypesValid = CheckTGAllDtypesValid(x, scales, output) || CheckMXAllDtypesValid(x, scales, output);
+    isAllDtypesValid = CheckKGAllDtypesValid(x, scales, output) || CheckMXAllDtypesValid(x, scales, output);
     if (!isAllDtypesValid) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "In TG quantMode, x support [DT_INT8/DT_HIFLOAT8/DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT]"
+            "In KG quantMode, x support [DT_INT8/DT_HIFLOAT8/DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT]"
             "and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."
             "In MX quantMode, x support [DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT8_E8M0]"
             "and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."

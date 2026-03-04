@@ -23,9 +23,9 @@ namespace VectorComputeImpl {
 
 using namespace AscendC;
 // 后缀_BYTES 表示单位为字节大小B, _NUM 表示单位为个
-constexpr static uint32_t PT_SCALE_TRANS_NUM = 8U;  // PT量化时， scale 为 fp32, 32B对齐时单次转换32 / 4 = 8个
+constexpr static uint32_t KG_SCALE_TRANS_NUM = 8U;  // KG量化时， scale 为 fp32, 32B对齐时单次转换32 / 4 = 8个
 constexpr static uint32_t MX_SCALE_TRANS_NUM = 32U; // MX量化时，scale 为 fp8_e8m0, 32B对齐时单次转换32 / 1 = 32个
-constexpr static uint32_t PER_GROUP_SIZE = 128U;    // PT量化时，128个x数据共有一个scale
+constexpr static uint32_t PER_GROUP_SIZE = 128U;    // KG量化时，128个x数据共有一个scale
 constexpr static uint32_t MX_SIZE = 32U;            // MX量化时，32个x数据共有一个scale
 constexpr static uint32_t TWO_DIMS = 2U;            // 用于scale反量化时boardcast的数组维度
 
@@ -67,8 +67,8 @@ __aicore__ inline void VectorCompute<TemplateType>::InitBuffer(TPipe *tPipe)
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         tPipe->InitBuffer(tempBf16ScaleBuf_, MX_SCALE_TRANS_NUM * sizeof(bfloat16_t));
         tPipe->InitBuffer(castScaleBuf_, MX_SCALE_TRANS_NUM * sizeof(float));
-    } else { // PT量化
-        tPipe->InitBuffer(castScaleBuf_, PT_SCALE_TRANS_NUM * sizeof(float));
+    } else { // KG量化
+        tPipe->InitBuffer(castScaleBuf_, KG_SCALE_TRANS_NUM * sizeof(float));
     }
 }
 
@@ -93,7 +93,7 @@ __aicore__ inline void VectorCompute<TemplateType>::SetBlockSize(uint32_t elemen
  * 
  * 同时处理缩放因子的转换和广播：
  * - 对于fp8_e8m0缩放因子：fp8_e8m0 → bfloat16 → float32 → MX量化将scale广播成32
- * - 对于其他缩放因子：直接转换为float32 → PT量化将scale广播成128
+ * - 对于其他缩放因子：直接转换为float32 → KG量化将scale广播成128
  * 
  * @tparam TemplateType 模板类型，用于支持不同的数据类型
  * 
@@ -155,9 +155,9 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
         BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
     } else {
         castLocalScale = scaleTensor.template ReinterpretCast<float>();
-        // PT量化将scale广播成128
-        const uint32_t broadcastDst[TWO_DIMS]{PT_SCALE_TRANS_NUM, PER_GROUP_SIZE};
-        const uint32_t broadcastSrc[TWO_DIMS]{PT_SCALE_TRANS_NUM, 1};
+        // KG量化将scale广播成128
+        const uint32_t broadcastDst[TWO_DIMS]{KG_SCALE_TRANS_NUM, PER_GROUP_SIZE};
+        const uint32_t broadcastSrc[TWO_DIMS]{KG_SCALE_TRANS_NUM, 1};
         BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
     }
 }

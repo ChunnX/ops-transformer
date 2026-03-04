@@ -42,12 +42,12 @@ enum class NnopbaseHcclServerType : uint32_t {
 
 static constexpr size_t HCCL_GROUP_NAME_LENGTH_MAX = 128U; // group长度小于128字符
 
-// T-G量化支持的Dtype
-static const std::initializer_list<op::DataType> X_DTYPE_TG_SUPPORT_LIST = {
+// K-G量化支持的Dtype
+static const std::initializer_list<op::DataType> X_DTYPE_KG_SUPPORT_LIST = {
     op::DataType::DT_INT8, op::DataType::DT_HIFLOAT8,
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2
 };
-static const std::initializer_list<op::DataType> SCALES_DTYPE_TG_SUPPORT_LIST = {
+static const std::initializer_list<op::DataType> SCALES_DTYPE_KG_SUPPORT_LIST = {
     op::DataType::DT_FLOAT
 };
 
@@ -74,12 +74,12 @@ static bool  QuantAllReduceCheckNotNull(const aclTensor* x, const aclTensor* sca
     return true;
 }
 
-// 检查T-G量化方案中x、scales、output的数据类型是否在算子的支持列表内
-static bool  QuantAllReduceCheckTGAllDtypesValid(const aclTensor* x, const aclTensor* scales,
+// 检查K-G量化方案中x、scales、output的数据类型是否在算子的支持列表内
+static bool  QuantAllReduceCheckKGAllDtypesValid(const aclTensor* x, const aclTensor* scales,
                                                  const aclTensor* output)
 {
-    if (CheckType(x->GetDataType(), X_DTYPE_TG_SUPPORT_LIST) &&             \
-        CheckType(scales->GetDataType(), SCALES_DTYPE_TG_SUPPORT_LIST) &&   \
+    if (CheckType(x->GetDataType(), X_DTYPE_KG_SUPPORT_LIST) &&             \
+        CheckType(scales->GetDataType(), SCALES_DTYPE_KG_SUPPORT_LIST) &&   \
         CheckType(output->GetDataType(), OUTPUT_DTYPE_SUPPORT_LIST)) {
         return true;
     } else {
@@ -105,13 +105,13 @@ static bool  QuantAllReduceCheckAllDtypesValid(const aclTensor* x, const aclTens
                                                const aclTensor* output)
 {
     bool isAllDtypesValid = false;
-    isAllDtypesValid = (QuantAllReduceCheckTGAllDtypesValid(x, scales, output) || \
+    isAllDtypesValid = (QuantAllReduceCheckKGAllDtypesValid(x, scales, output) || \
                         QuantAllReduceCheckMXAllDtypesValid(x, scales, output));
     if (!isAllDtypesValid) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In TG quantMode, x support [DT_INT8/DT_HIFLOAT8/DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT]"
+                "In KG quantMode, x support [DT_INT8/DT_HIFLOAT8/DT_FLOAT8_E5M2/DT_FLOAT8_E4M3FN], scales support [DT_FLOAT]"
                 "and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."
-                "In MX quantMode, x support [DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT8_E8M0]"
+                "In MX quantMode, x support [DT_FLOAT8_E5M2/DT_FLOAT8_E4M3FN], scales support [DT_FLOAT8_E8M0]"
                 "and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."
                 "Input tensors x: %s, scales: %s and output: %s are not simultaneously supported.",
                 op::ToString(x->GetDataType()).GetString(),
