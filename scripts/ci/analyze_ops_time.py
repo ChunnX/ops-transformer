@@ -16,6 +16,7 @@ import csv
 import glob
 import logging
 from pathlib import Path
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +51,13 @@ def parse_txt_content(content):
     }
 
 
+def remove_apt_suffix(op_name):
+    """If op_name end with '_apt' remove it"""
+    if op_name.endswith('_apt'):
+        return op_name[:-4]
+    return op_name
+
+
 def extract_capital_name_from_binfile(bin_file):
     """Extract capital_name from bin_file format {capital_name}_hashkey"""
     # Match pattern: any characters before the first underscore
@@ -71,7 +79,7 @@ def count_sh_files(base_dir, capital_name, op_name):
     return len(matching_files)
 
 
-def find_txt_files():
+def find_txt_files(filter_names: list = None):
     """Find all txt files in specified directory structure"""
     txt_files = []
     
@@ -87,22 +95,18 @@ def find_txt_files():
         gen_dir = os.path.join(base_dir, soc_dir, 'gen')
         # Find all txt files in gen directory
         for file in os.listdir(gen_dir):
-            if file.endswith('.txt'):
-                txt_files.append(os.path.join(gen_dir, file))
+            match_txt = re.match(r'([^-]+)-(\d+)\.txt', file)
+            if match_txt:
+                op_name = match_txt.group(1)
+                if op_name not in filter_names or filter_names is None:
+                    txt_files.append(os.path.join(gen_dir, file))
     
     return txt_files
 
 
-def main():
-    # Get all txt files in current directory
-    txt_files = find_txt_files()
-    
-    if not txt_files:
-        logger.info("No txt files found")
-        return
-    
+def process_txt_file(txt_files, merge_names):
     data_list = []
-    
+    merge_dict = defaultdict(lambda: {'duration': 0})
     for txt_file in txt_files:
         try:
             # Extract op_name and index from filename
@@ -112,7 +116,7 @@ def main():
             if not filename_match:
                 logger.warning(f"Filename format mismatch: {filename}")
                 continue
-            
+
             # Read file content
             with open(txt_file, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
@@ -135,21 +139,50 @@ def main():
             
             # Count total number of {capital_name}-{op_name}-{index}.sh files
             ops_kernel_num = count_sh_files(base_dir, capital_name, parsed_data['op_name'])
-            new_kernel_name = f"{parsed_data['op_name']},{ops_kernel_num}-{parsed_data['index']}"   
+            new_kernel_name = f"{remove_apt_suffix(parsed_data['op_name'])},{ops_kernel_num}-{parsed_data['index']}"   
             
             # Build data row
-            data_row = {
-                'op_name': new_kernel_name,
-                'duration': parsed_data['duration'],
-                'size': parsed_data['size'],
-                'soc': parsed_data['soc'],
-            }
-            
-            data_list.append(data_row)
-            
+            if parsed_data['op_name'] in merge_names:
+                key = (parsed_data['soc'], parsed_data['op_name'])
+                merge_dict[key]['duration'] += float(parsed_data['duration'])
+                merge_dict[key]['size'] = parsed_data['size']
+                merge_dict[key]['soc'] = parsed_data['soc']
+            else:
+                data_row = {
+                    'op_name': new_kernel_name,
+                    'duration': parsed_data['duration'],
+                    'size': parsed_data['size'],
+                    'soc': parsed_data['soc'],
+                }
+                data_list.append(data_row)     
         except Exception as e:
             logger.error(f"Error processing file {txt_file}: {e}")
             continue
+    return data_list, merge_dict
+
+
+def main():
+    filter_names = ["moe_gather_v2", "moe_inplace_index_add", "moe_inplace_index_add_with_sorted", "moe_masked_scatter"]
+    merge_names = ["moe_token_permute_with_routing_map", "moe_token_permute_with_routing_map_grad", 
+                   "moe_token_unpermute_with_routing_map"]
+    # Get all txt files in current directory
+    txt_files = find_txt_files(filter_names)
+    
+    if not txt_files:
+        logger.info("No txt files found")
+        return
+    
+    data_list, merge_dict = process_txt_file(txt_files, merge_names)
+
+    # Append merged rows
+    for (soc, op_name), values in merge_dict.items():
+        merged_row = {
+            'op_name': f"{remove_apt_suffix(op_name)},1-0",
+            'duration': values['duration'],
+            'size': values['size'],
+            'soc': soc
+        }
+        data_list.append(merged_row)
     
     # Sort by op_name
     data_list.sort(key=lambda x: x['op_name'])
@@ -157,7 +190,7 @@ def main():
     # Write to CSV file
     if data_list:
         soc_version = data_list[0]['soc']
-        csv_filename = f'ops_cost_{soc_version}.csv'
+        csv_filename = os.path.join('.', 'build', f'ops_cost_{soc_version}.csv')
         fieldnames = ['op_name', 'duration', 'size', 'soc']
         
         with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
