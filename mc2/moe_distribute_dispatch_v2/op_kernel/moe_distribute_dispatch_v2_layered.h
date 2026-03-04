@@ -130,8 +130,8 @@ private:
     __aicore__ inline void CalExpCntAndOffset(uint32_t realBS, uint32_t currServerExpBegin, uint32_t currServerExpEnd, 
                                                 LocalTensor<int32_t> tokenTopKInfoI32Lt);
     __aicore__ inline void CalInnerCntxAndOffset(uint32_t realBS, LocalTensor<int32_t> tokenTopKInfoI32Lt);
-    __aicore__ inline void TransInnerToExpandIdxOutGM(uint32_t realBS, uint32_t curServerId);
-    __aicore__ inline void TransOuterToExpandIdxOutGM();
+    __aicore__ inline void TransInnerToEpRecvCountsOutGM(uint32_t realBS, uint32_t curServerId);
+    __aicore__ inline void TransOuterToEpRecvCountsOutGM();
     __aicore__ inline void CalOuterCntAndOffset();
     __aicore__ inline void SendTokenToIpc(uint32_t expStartId, uint32_t expEndId, uint32_t formServerId, LocalTensor<uint8_t> tokenStructU8Lt, 
                                         LocalTensor<int32_t> tokenStructI32Lt, bool justExpInfo);
@@ -290,7 +290,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     serverNum_ = worldSize_ / SERVER_RANK_SIZE;
 
     //Combine info offset init
-    combineInnerCntOffset_ = 0UL;
+    combineInnerCntOffset_ = localMoeExpertNum_ * serverNum_ * SERVER_RANK_SIZE * sizeof(int32_t);
     combineInnerCntIndexOffset_ = combineInnerCntOffset_ + globalBs_ * serverNum_ * sizeof(int16_t);
     combineOuterCntOffset_ = combineInnerCntIndexOffset_ + globalBs_ * axisK_ * serverNum_ * sizeof(int32_t);
     combineOuterCntIndexOffset_ = combineOuterCntOffset_ + axisBS_ * sizeof(int32_t);
@@ -694,7 +694,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     LocalTensor<int16_t> zeroTemp = tBuf_.GetWithOffset<int16_t>(copyTokenNum * sizeof(int16_t), 0);
     Duplicate<int16_t>(zeroTemp, 0, RoundUp(copyTokenNum, B16_PER_BLOCK));
     GlobalTensor<int16_t> combineInnerCntGMTensor;
-    combineInnerCntGMTensor.SetGlobalBuffer((__gm__ int16_t*)(expandIdxOutGM_ + combineInnerCntOffset_ +
+    combineInnerCntGMTensor.SetGlobalBuffer((__gm__ int16_t*)(epRecvCountsOutGM_ + combineInnerCntOffset_ +
                                     globalBs_* curServerId * sizeof(int16_t)));
     DataCopyExtParams innerCntWriteCountsParams{1, static_cast<uint32_t>(copyTokenNum * sizeof(int16_t)), 0, 0, 0};
     SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -754,7 +754,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     //计算innerCnt和InnerOffset
     CalInnerCntxAndOffset(realBS, tokenTopKInfoI32Lt);
     //将inner表搬运至GM
-    TransInnerToExpandIdxOutGM(realBS, curServerId);
+    TransInnerToEpRecvCountsOutGM(realBS, curServerId);
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -827,11 +827,11 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::TransInnerToExpandIdxOutGM(
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::TransInnerToEpRecvCountsOutGM(
     uint32_t realBS, uint32_t curServerId)
 {
     GlobalTensor<int16_t> combineInnerCntGMTensor;
-    combineInnerCntGMTensor.SetGlobalBuffer((__gm__ int16_t*)(expandIdxOutGM_ + combineInnerCntOffset_ +
+    combineInnerCntGMTensor.SetGlobalBuffer((__gm__ int16_t*)(epRecvCountsOutGM_ + combineInnerCntOffset_ +
         globalBs_* curServerId * sizeof(int16_t)));
     uint32_t copyTokenNum = (realBS + aivNum_) < globalBs_ ? (realBS + aivNum_) : globalBs_;
     DataCopyExtParams innerCntWriteCountsParams{1, static_cast<uint16_t>(copyTokenNum * sizeof(int16_t)), 0, 0, 0};
@@ -839,23 +839,23 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyPad(combineInnerCntGMTensor, innerCntLt_, innerCntWriteCountsParams);
 
     GlobalTensor<int32_t> combineInnerOffsetGMTensor;
-    combineInnerOffsetGMTensor.SetGlobalBuffer((__gm__ int32_t*)(expandIdxOutGM_ + combineInnerCntIndexOffset_ +
+    combineInnerOffsetGMTensor.SetGlobalBuffer((__gm__ int32_t*)(epRecvCountsOutGM_ + combineInnerCntIndexOffset_ +
         globalBs_* axisK_ * curServerId * sizeof(int32_t)));
     DataCopyExtParams innerOffsetWriteCountsParams{1, static_cast<uint32_t>(realBS * axisK_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPad(combineInnerOffsetGMTensor, innerOffsetLt_, innerOffsetWriteCountsParams);
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::TransOuterToExpandIdxOutGM()
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::TransOuterToEpRecvCountsOutGM()
 {
     GlobalTensor<int32_t> combineOuterCntGMTensor;
-    combineOuterCntGMTensor.SetGlobalBuffer((__gm__ int32_t*)(expandIdxOutGM_ + combineOuterCntOffset_));
+    combineOuterCntGMTensor.SetGlobalBuffer((__gm__ int32_t*)(epRecvCountsOutGM_ + combineOuterCntOffset_));
     DataCopyExtParams outerCntWriteCountsParams{1, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0, 0, 0};
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(combineOuterCntGMTensor, outerCntLt_, outerCntWriteCountsParams);
 
     GlobalTensor<int32_t> combineOuterOffsetGMTensor;
-    combineOuterOffsetGMTensor.SetGlobalBuffer((__gm__ int32_t*)(expandIdxOutGM_ + combineOuterCntIndexOffset_));
+    combineOuterOffsetGMTensor.SetGlobalBuffer((__gm__ int32_t*)(epRecvCountsOutGM_ + combineOuterCntIndexOffset_));
     DataCopyExtParams outerOffsetWriteCountsParams{1, static_cast<uint32_t>(axisBS_ * axisK_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPad(combineOuterOffsetGMTensor, outerOffsetLt_, outerOffsetWriteCountsParams);
 }
@@ -953,7 +953,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     //计算Outer表
     CalOuterCntAndOffset();
     //搬运Outer表至GM
-    TransOuterToExpandIdxOutGM();
+    TransOuterToEpRecvCountsOutGM();
 }
 
 template <TemplateMC2TypeV2LayeredClass>

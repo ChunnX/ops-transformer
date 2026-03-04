@@ -326,16 +326,17 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::InitLayeredAddr(GM_ADDR expandIdx)
+__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::InitLayeredAddr(GM_ADDR sendCount)
 {
-    uint64_t offset_inner_offset = static_cast<uint64_t>(globalBs_ * serverNum_ / DOUBLE_TYPE);
+    uint64_t send_counts_inner_offset = static_cast<uint64_t>(worldSize_ * localMoeExpertNum_);
+    uint64_t offset_inner_offset = send_counts_inner_offset + static_cast<uint64_t>(globalBs_ * serverNum_ / DOUBLE_TYPE);
     uint64_t send_counts_outer_offset = offset_inner_offset + static_cast<uint64_t>(globalBs_ * axisK_ * serverNum_);
     uint64_t offset_outer_offset = send_counts_outer_offset + static_cast<uint64_t>(axisBS_);
 
-    countInnerGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(expandIdx));
-    offsetInnerGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expandIdx) + offset_inner_offset);
-    countOuterGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expandIdx) + send_counts_outer_offset);
-    offsetOuterGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expandIdx) + offset_outer_offset);
+    countInnerGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(sendCount) + send_counts_inner_offset * 2);
+    offsetInnerGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sendCount) + offset_inner_offset);
+    countOuterGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sendCount) + send_counts_outer_offset);
+    offsetOuterGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sendCount) + offset_outer_offset);
 
     PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < SERVER_RANK_SIZE; i++) {
@@ -399,7 +400,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
         DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
             readStateGlobal_);
     }
-    InitLayeredAddr(expandIdx);
+    InitLayeredAddr(sendCount);
 }
 
 template <TemplateMC2TypeV2LayeredClass>
