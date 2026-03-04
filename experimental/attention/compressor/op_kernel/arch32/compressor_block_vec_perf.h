@@ -222,7 +222,6 @@ private:
     uint32_t mmResColSize_ = 128;
     int64_t vec1ResGmStart = 0U;
     uint32_t OutputBStartIdx, OutputSStartIdx, OutputSize;
-    uint32_t mmResBaseOffset_ = 0;
     CompressorTools<COMP> tools_;
     ConstInfo constInfo_ = {};
     MSplitInfo mSplitInfo = {};
@@ -484,7 +483,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CopyInApe(const LocalTen
     uint32_t dstSingleRowCount = dDealSize;
     uint32_t srcSingleRowCount = constInfo_.headDim;
 
-    uint32_t gmOffset = dStartIdx;
+    uint64_t gmOffset = dStartIdx;
     DataCopyAlignGmToUb(apeUbTmp, apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount);
     inputQue1.EnQue(apeUbTmp);
     inputQue1.DeQue<T>();
@@ -498,11 +497,11 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
                                                const Vec1SliceInfo &sliceInfo, uint32_t dDealSize)
 {
     uint32_t singleRowElemNum = dDealSize * coff_;
-    uint32_t scoreOffset = sliceInfo.dealedSeqCnt * singleRowElemNum;
+    uint64_t scoreOffset = sliceInfo.dealedSeqCnt * singleRowElemNum;
 
     uint32_t tcDealSize = sliceInfo.dealTcSize;
     if (sliceInfo.headHolderSeqCnt > 0) {
-        uint32_t apeOffset = sliceInfo.headHolderSeqCnt * singleRowElemNum;
+        uint64_t apeOffset = sliceInfo.headHolderSeqCnt * singleRowElemNum;
         uint32_t rCnt = tcDealSize == 1 ? sliceInfo.validSeqCnt * singleRowElemNum :
                                           (constInfo_.cmpRatio - sliceInfo.headHolderSeqCnt) * singleRowElemNum;
         Add(scoreLocal[scoreOffset], scoreLocal[scoreOffset], apeUb[apeOffset], rCnt);
@@ -514,7 +513,7 @@ CompressorBlockVectorPerf<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
     }
     if (sliceInfo.tailHolderSeqCnt > 0) {
         tcDealSize -= 1;
-        uint32_t apeOffset = 0;
+        uint64_t apeOffset = 0;
         uint32_t rCnt = (constInfo_.cmpRatio - sliceInfo.tailHolderSeqCnt) * singleRowElemNum;
         uint32_t tailScoreOffset = scoreOffset + tcDealSize * constInfo_.cmpRatio * singleRowElemNum;
         Add(scoreLocal[tailScoreOffset], scoreLocal[tailScoreOffset], apeUb[apeOffset], rCnt);
@@ -651,13 +650,13 @@ CompressorBlockVectorPerf<COMP>::PadAlign(const LocalTensor<T> dstLocal, const L
     uint32_t copyColCount = dDealSize;
     uint32_t srcSingleRowCount = srcSingleRowElemNum;
     uint32_t dstSingleRowCount = srcSingleRowElemNum; // left和right在seq方向是交错存储的
-    uint32_t srcLocalOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum;
+    uint64_t srcLocalOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum;
 
-    uint32_t dstUbOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * dstSingleRowCount;
+    uint64_t dstUbOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * dstSingleRowCount;
     if constexpr (COMP::coff == COFF::OVERLAP) {
         // 左侧
-        uint32_t preSrcLocalOffset = srcLocalOffset;
-        uint32_t preDstUbOffset = dstUbOffset + (sliceInfo.headHolderSeqCnt + constInfo_.cmpRatio) * dstSingleRowCount;
+        uint64_t preSrcLocalOffset = srcLocalOffset;
+        uint64_t preDstUbOffset = dstUbOffset + (sliceInfo.headHolderSeqCnt + constInfo_.cmpRatio) * dstSingleRowCount;
         DataCopyAlignUbToUb(dstLocal[preDstUbOffset], srcLocal[preSrcLocalOffset],
                             copyRowCount - min(copyRowCount, constInfo_.cmpRatio), copyColCount, srcSingleRowCount,
                             dstSingleRowCount);
@@ -727,7 +726,7 @@ CompressorBlockVectorPerf<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLoca
     uint32_t copyColCount = dDealSize;
     uint32_t srcSingleRowCount = srcSingleRowElemNum;
     uint32_t dstSingleRowCount = dDealSize;
-    uint32_t srcGmOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum * coff_ + dStartIdx;
+    uint64_t srcGmOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum * coff_ + dStartIdx;
     DataCopyAlignGmToUb(dstLocal, srcGm[srcGmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount);
 }
 

@@ -652,9 +652,17 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
         do {
             uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
             if (sliceInfo_.bSeqUsed < seqLength) {
-                sliceInfo_.dealedSeqCnt += seqLength - sliceInfo_.bSeqUsed;
-                needDealTcSize_ -= CeilDivT(sliceInfo_.bStartPos + seqLength, cmpRatio) -
-                                   CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, cmpRatio);
+                uint32_t tcGap = CeilDivT(sliceInfo_.bStartPos + seqLength, cmpRatio) -
+                                 CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, cmpRatio);
+                if (needDealTcSize_ < tcGap) {
+                    uint32_t headSeqCnt = sliceInfo_.sIdx - Trunc(sliceInfo_.sIdx, cmpRatio);
+                    sliceInfo_.dealedSeqCnt += needDealTcSize_ * cmpRatio - headSeqCnt;
+                    sliceInfo_.sIdx += needDealTcSize_ * cmpRatio - headSeqCnt;
+                    needDealTcSize_ = 0;
+                    break;
+                }
+                sliceInfo_.dealedSeqCnt += seqLength - sliceInfo_.sIdx;
+                needDealTcSize_ -= tcGap;
             }
             sliceInfo_.bIdx++;
             if (sliceInfo_.bIdx == batch_size_) {
@@ -686,7 +694,7 @@ __aicore__ inline bool CompressorVec1SliceIterator<COMP>::IsEnd()
 
 template <typename COMP>
 __aicore__ inline Vec1SliceInfo &CompressorVec1SliceIterator<COMP>::GetSlice()
-{    
+{
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (sliceInfo_.bSeqUsed < sliceInfo_.sIdx) {
         sliceInfo_.headHolderSeqCnt = 0;
@@ -712,9 +720,10 @@ __aicore__ inline Vec1SliceInfo &CompressorVec1SliceIterator<COMP>::GetSlice()
             (sliceInfo_.headHolderSeqCnt + min(sliceInfo_.validSeqCnt, sliceInfo_.bSeqUsed - sliceInfo_.sIdx)) /
             cmpRatio;
     }
-   
+
     sliceInfo_.isFirst = isFirst_;
-    sliceInfo_.isLast = sliceInfo_.bSeqUsed > sliceInfo_.sIdx &&
+    sliceInfo_.isLast =
+        sliceInfo_.bSeqUsed > sliceInfo_.sIdx &&
         CeilDivT(sliceInfo_.headHolderSeqCnt + sliceInfo_.bSeqUsed - sliceInfo_.sIdx, cmpRatio) >= needDealTcSize_;
 
     return sliceInfo_;
@@ -741,6 +750,6 @@ __aicore__ inline StatisticInfo &CompressorVec1SliceIterator<COMP>::FullIterator
     }
     return statisticInfo_;
 }
-}
+} // namespace Compressor
 
 #endif
