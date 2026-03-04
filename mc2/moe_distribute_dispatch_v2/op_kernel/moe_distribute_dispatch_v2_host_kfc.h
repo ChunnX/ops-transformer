@@ -168,6 +168,7 @@ private:
     __aicore__ inline void SetExpertTokenNums();
     __aicore__ inline void CalCumSum(uint32_t coreUseNum);
     __aicore__ inline void WaitCumSumFlag();
+    __aicore__ inline void SetValidExpertInfo(uint32_t expInfoSize, uint32_t &validNum);
     // __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
     //                                                   const int32_t curRankId);
     // __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
@@ -283,6 +284,9 @@ private:
     LocalTensor<uint32_t> expertOffsetCntTensor_;
     LocalTensor<bool> expertMaskInputTensor_;
     LocalTensor<uint32_t> flagTensor_;
+    LocalTensor<float> statusCleanFp32Tensor_;
+    LocalTensor<uint32_t> expertFinishNumTensor_;
+    LocalTensor<uint32_t> expertLeftNumTensor_;
 
     TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
@@ -408,7 +412,6 @@ private:
     uint32_t gatherCount_{0};
     uint32_t expertTokenNumsType_{1};
     uint32_t stateOffset_{0};
-    uint32_t recStatusNumPerCore_{0};
     int32_t expertIdsCnt_{0};
     int32_t tokenQuantAlign_{0};
     uint32_t sendXTypeElemAlign_{0};
@@ -1272,7 +1275,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] endServerId:", endServerId);
     //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] serverCnt:", serverCnt);
 
-    
+     
     for (uint32_t dstServerInd = startServerId; dstServerInd < endServerId; ++dstServerInd) {
         uint32_t tokenCnt;
         ////LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] curServerId:", dstServerInd);
