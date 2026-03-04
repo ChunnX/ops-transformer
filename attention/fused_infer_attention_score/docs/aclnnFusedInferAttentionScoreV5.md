@@ -1505,12 +1505,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                     <ul>
                         <li>支持key、value dtype为FLOAT16/BFLOAT16/INT8/INT4(INT32)/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1</li>
                         <li>在非量化场景下，当query的inputLayout为BNSD、TND、BSH、BSND时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum,  KV_N, blocksize, D）和NZ（blocknum，KV_N，D/16，blocksize，16）三种格式；</li>
-                        <li>在全量化场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N,
+                        <li>在MLA全量化场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N,
  	                        blocksize, D）和NZ（blocknum，KV_N，D/16，blocksize，16）三种格式；</li>
-                        <li>在全量化场景下，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH和NZ两种格式</li>
+                        <li>在MLA全量化场景下，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH和NZ两种格式</li>
                         <li>伪量化场景下，当kv cache为五维时，kv cache排布为（blocknum，KV_N，D/16，blocksize，16）；同时，当key、value dtype为INT32时，kv
                             cache排布为（blocknum，KV_N，D/2，blocksize，2）</li>
-                        <li>Q_S>1时，支持query和kv cache全部为INT8/HIFLOAT8/FLOAT8_E4M3FN</li>
+                        <li>GQA全量化场景不支持PagedAttention</li>
                 </td>
                 <td>
                 <ul>
@@ -1570,47 +1570,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </tr>
         </thead>
         <tbody>
-            <tr>
-                <td rowspan="10">输入INT8，输出为INT8/FP8的场景</td>
-                <td>query</td>
-                <td>类型为INT8</td>
-            </tr>
-            <tr>
-                <td>key</td>
-                <td>类型为INT8</td>
-            </tr>
-            <tr>
-                <td>value</td>
-                <td>类型为INT8</td>
-            </tr>
-            <tr>
-                <td>deqScale1</td>
-                <td rowspan="3">需要同时存在。</td>
-            </tr>
-            <tr>
-                <td>quantScale1</td>
-            </tr>
-            <tr>
-                <td>deqScale2</td>
-            </tr>
-            <tr>
-                <td>quantScale2</td>
-                <td>类型为FLOAT32/BFLOAT16,支持 per-tensor/per-channel 两种格式。
-                </td>
-            </tr>
-            <tr>
-                <td>quantOffset2</td>
-                <td>可选参数，若传入 quantOffset2 ，需保证其类型和shape信息与quantScale2 一致。不传时默认为nullptr,表示为0。
-                </td>
-            </tr>
-            <tr>
-                <td>attentionOut</td>
-                <td>类型为INT8/FP8(FLOAT8_E4M3FN/HIFLOAT8)。</td>
-            </tr>
-            <tr>
-                <td>inputLayout</td>
-                <td>仅支持BSH、BNSD、BSND、BNSD_BSND。</td>
-            </tr>
             <tr>
                 <td rowspan="10">输入INT8，输出为FLOAT16的场景</td>
                 <td>query</td>
