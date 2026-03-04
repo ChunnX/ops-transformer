@@ -1601,9 +1601,9 @@ __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToExpert(LocalTensor<ExpandXOutType> &xOutTensor,
                                                                        GM_ADDR rankGM) //框内插入32B flag
 {
-    GlobalTensor<XType> dataDstWinGMTensor;
+    GlobalTensor<ExpandXOutType> dataDstWinGMTensor;
     GlobalTensor<uint32_t> flagDstWinGMTensor;
-    dataDstWinGMTensor.SetGlobalBuffer((__gm__ XType *)rankGM);
+    dataDstWinGMTensor.SetGlobalBuffer((__gm__ ExpandXOutType *)rankGM);
     flagDstWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)rankGM);
     //SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     DataCopyExtParams dataCopyOutParams = {static_cast<uint16_t>(blockCntPerTokenToExpert_), SPLIT_BLOCK_DATA_SIZE, 0U,
