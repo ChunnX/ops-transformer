@@ -37,7 +37,7 @@ struct MoeDistributeDispatchV2Info {
     bool hasElasticInfo;                 // has elasticinfo or not
     bool isPerformance;                  // whether performance or not
     bool isQuant;                        // whether quant or not
-    bool reserved0;
+    bool isMc2Context;
     bool reserved1;
     bool reserved2;
     uint64_t totalUbSize;                // epWorldSize

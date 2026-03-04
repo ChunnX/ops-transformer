@@ -52,7 +52,7 @@ __aicore__ inline void ExecMoeDistributeCombineV2(GM_ADDR expandX, GM_ADDR exper
 {
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
     MoeDistributeCombineV2<CombineMC2TypeFunc> op;
-    op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, nullptr, nullptr,
+    op.Init(nullptr, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, nullptr, nullptr,
             scales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, 
             constExpertAlpha2, constExpertV, performanceInfo, nullptr, nullptr, XOut, workspaceGM, pipePtr, &tilingData);
     op.Process();
