@@ -47,7 +47,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 3. [算子开发](docs/zh/develop/aicore_develop_guide.md)：基于项目工程**开发新算子**指南，从零学习创建算子工程、实现Tiling和Kernel核心交付件等。
 4. [算子调试调优](docs/zh/debug/op_debug_prof.md)：提供常见的算子**调试和调优**方法，如DumpTensor、msProf、Simulator等。
 
-除了上述指南，还提供了其他文档介绍，例如算子调用方式和流程、算子基本概念等，全量文档介绍请访问[docs](docs/README.md)。
+除了上述指南，还提供了其他文档例如[算子调用方式](docs/zh/invocation/op_invocation.md)、术语概念、build参数介绍等，全量文档请访问[docs](docs/README.md)。
 
 ## 🔍目录结构
 
