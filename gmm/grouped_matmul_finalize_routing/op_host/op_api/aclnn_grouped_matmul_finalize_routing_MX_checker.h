@@ -116,7 +116,6 @@ public:
     {
         auto xDimNumber = gmmParams_.x1->GetViewShape().GetDimNum();
         auto wDimNumber = gmmParams_.x2->GetViewShape().GetDimNum();
-        auto xScaleDimNumber = gmmParams_.pertokenScaleOptional->GetViewShape().GetDimNum();
         auto wScaleDimNumber = gmmParams_.scale->GetViewShape().GetDimNum();
         auto grouplistDimNumber = gmmParams_.groupList->GetViewShape().GetDimNum();
         auto logitDimNumber = gmmParams_.logit->GetViewShape().GetDimNum();
@@ -128,8 +127,9 @@ public:
                    "The dim num of x should be equal 2, current dim is %lu.", xDimNumber);
         CHECK_COND(wDimNumber == THERE_DIM, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of w should be equal 3, current dim is %lu.", wDimNumber);
-        CHECK_COND(xScaleDimNumber == xscaleExpectDim, ACLNN_ERR_PARAM_INVALID,
-                   "The dim num of pertokenscale should be equal %lu, current dim is %lu.", xscaleExpectDim,xScaleDimNumber);
+        CHECK_COND(wScaleDimNumber == weightscaleExpectDim, ACLNN_ERR_PARAM_INVALID,
+                   "The dim num of scale should be equal %lu, current dim is %lu.", weightscaleExpectDim,
+                   wScaleDimNumber);
         CHECK_COND(grouplistDimNumber == ONE_DIM, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of grouplist should be equal 1, current dim is %lu.", grouplistDimNumber);
         CHECK_COND(logitDimNumber == ONE_DIM, ACLNN_ERR_PARAM_INVALID,
@@ -139,9 +139,10 @@ public:
         CHECK_COND(outDimNumber == TWO_DIM, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of out should be equal 1, current dim is %lu.", outDimNumber);
         if (gmmParams_.pertokenScaleOptional != nullptr) {
-            CHECK_COND(wScaleDimNumber == weightscaleExpectDim, ACLNN_ERR_PARAM_INVALID,
-                       "The dim num of scale should be equal %lu, current dim is %lu.", weightscaleExpectDim,
-                       wScaleDimNumber);
+            auto xScaleDimNumber = gmmParams_.pertokenScaleOptional->GetViewShape().GetDimNum();
+            CHECK_COND(xScaleDimNumber == xscaleExpectDim, ACLNN_ERR_PARAM_INVALID,
+                       "The dim num of pertokenscale should be equal %lu, current dim is %lu.", xscaleExpectDim,
+                       xScaleDimNumber);
         }
         if (gmmParams_.bias != nullptr) {
             auto baisDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
@@ -358,7 +359,8 @@ public:
     bool CheckFormat()
     {
         if (op::IsPrivateFormat(gmmParams_.x1->GetStorageFormat()) ||
-            op::IsPrivateFormat(gmmParams_.pertokenScaleOptional->GetStorageFormat())) {
+            (gmmParams_.pertokenScaleOptional != nullptr &&
+             op::IsPrivateFormat(gmmParams_.pertokenScaleOptional->GetStorageFormat()))) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x and pertokenScaleOptional must be ND format, but got: %s, %s.",
                     op::ToString(gmmParams_.x1->GetStorageFormat()).GetString(),
                     op::ToString(gmmParams_.pertokenScaleOptional->GetStorageFormat()).GetString());
