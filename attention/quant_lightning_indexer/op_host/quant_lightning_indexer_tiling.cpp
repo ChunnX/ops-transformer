@@ -102,11 +102,9 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) && 
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+        OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
@@ -266,7 +264,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         !(inputQueryScaleType_ == inputKeyScaleType_),
         OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
         return ge::GRAPH_FAILED);
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
                OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."), return ge::GRAPH_FAILED);
         
@@ -444,7 +442,7 @@ ge::graphStatus QLIInfoParser::GetGSize()
     }
     gSize_ = n1Size_ / n2Size_;
 
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(gSize_ != G_SIZE_LIMIT_950 && gSize_ != G_SIZE_LIMIT,
                OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64 or 24.", n1Size_, n2Size_),
                return ge::GRAPH_FAILED);
@@ -727,7 +725,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.opName = opName_;
     QLIInfo.platformInfo = platformInfo_;
     QLIInfo.opParamInfo = opParamInfo_;
-    QLIInfo.socVersion = socVersion_;
+    QLIInfo.npuArch = npuArch_;
 
     QLIInfo.bSize = bSize_;
     QLIInfo.n1Size = n1Size_;
