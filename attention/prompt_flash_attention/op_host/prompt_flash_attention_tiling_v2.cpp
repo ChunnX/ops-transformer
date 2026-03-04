@@ -902,69 +902,53 @@ bool PromptFlashAttentionTilingV2::SetAndCheckHeadNumRatio(ContextParamsForPFATi
     return true;
 }
 
-bool PromptFlashAttentionTilingV2::CheckPostQuantShape(const ContextParamsForPFATiling& contextKeyParams, uint32_t quantD,
-    const gert::StorageShape* quantOffset2Shape, const ge::DataType quantScale2Type, size_t quantScale2Dim, int64_t quantScale2ShapeSize,
-    const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo) const 
+bool PromptFlashAttentionTilingV2::CheckPostQuantShape(const ContextParamsForPFATiling &contextKeyParams,
+                                                       const gert::StorageShape *quantScale2Shape,
+                                                       const gert::StorageShape *quantOffset2Shape,
+                                                       const PFAShapeInfo &queryShapeInfo,
+                                                       const PFAShapeInfo &valueShapeInfo) const
 {
-    // dtype verification
-    OP_CHECK_IF((quantOffset2Shape != nullptr) && (quantScale2Type != contextKeyParams.quantOffset2Type),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "post quant scale dtype(%s) and offset dtype(%s) must be consistent.",
-            GetPfaDataTypeStr(quantScale2Type).c_str(), GetPfaDataTypeStr(contextKeyParams.quantOffset2Type).c_str()),
-        return false);
-    
-    OP_CHECK_IF((quantScale2Type != ge::DT_BF16) && (quantScale2Type != ge::DT_FLOAT),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "post quant scale dtype(%s) only support bf16 and fp32.",
-            GetPfaDataTypeStr(quantScale2Type).c_str()),
-        return false);
-
-    if (inputType == ge::DT_BF16) {
-        OP_CHECK_IF(quantScale2Type != ge::DT_FLOAT && quantScale2Type != ge::DT_BF16,
-            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "invalid post quant scale dtype(%s), when q is %s, only support float32 and bf16",
-            GetPfaDataTypeStr(quantScale2Type).c_str(), GetPfaDataTypeStr(inputType).c_str()),
-            return false);
-    } else {
-        OP_CHECK_IF(quantScale2Type != ge::DT_FLOAT,
-            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "invalid post quant scale dtype(%s), when q is %s, only support float32",
-            GetPfaDataTypeStr(quantScale2Type).c_str(), GetPfaDataTypeStr(inputType).c_str()),
-            return false);
-    }
-    // shape verification
     if (quantOffset2Shape != nullptr) {
-        size_t quantOffset2Dim = quantOffset2Shape->GetStorageShape().GetDimNum();
-        OP_CHECK_IF(quantScale2Dim != quantOffset2Dim, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "quant_scale2 dim num(%ld) do not equal quant_offset2 dim num(%ld).",
-            quantScale2Dim, quantOffset2Dim),
-            return false);
-        int64_t quantOffset2ShapeSize = quantOffset2Shape->GetStorageShape().GetShapeSize();
-        OP_CHECK_IF(quantScale2ShapeSize != quantOffset2ShapeSize, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-            "quant_scale2 dimension multiply result(%ld) do not equal quant_offset2 dimension multiply result(%ld).",
-            quantScale2ShapeSize, quantOffset2ShapeSize),
-            return false);
+        OP_CHECK_IF(quantScale2Shape->GetStorageShape() != quantOffset2Shape->GetStorageShape(),
+                    OP_LOGE(contextKeyParams.opName, "quantScale2 and quantOffset2 should have same shape."),
+                    return false);
     }
-
+    std::string layoutString(contextKeyParams.layout);
+    size_t quantScale2Dim = quantScale2Shape->GetStorageShape().GetDimNum();
+    int64_t quantScale2ShapeSize = quantScale2Shape->GetStorageShape().GetShapeSize();
     uint64_t quantScale2ShapeSizePerChannel = static_cast<uint64_t>(queryShapeInfo.n) * static_cast<uint64_t>(valueShapeInfo.d);
+    bool isSupportedLayout = layoutString == "BSH" || layoutString == "BSND" || layoutString == "BNSD" || layoutString == "BNSD_BSND";
     if (quantScale2Dim == 1) {
-        if (static_cast<uint64_t>(quantScale2ShapeSize) == quantScale2ShapeSizePerChannel) {
-            // per-channel quant scale/offset shape is [H].
+        if(quantScale2ShapeSize == quantScale2ShapeSizePerChannel && isSupportedLayout){
+            //supportLayout + post quant perChannel场景 支持 shape [H]
             return true;
         } else {
-            OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != 1U),
-                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-                    "for post quant per-tensor, quant scale/offset only support [1], now is [%d]", quantScale2ShapeSize),
-                return false);
+            OP_CHECK_IF(quantScale2ShapeSize != 1,
+                    OP_LOGE(contextKeyParams.opName,
+                            "For post quant per-tensor, quantScale2 and quantOffset2 shape only support [1]."),
+                    return false);
         }
     } else {
-        OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel),
-            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-                "for post quant per-channel, quant scale/offset dim multiply result only support qN * vD(%u * %u = %lu), now is (%ld).",
-                queryShapeInfo.n, valueShapeInfo.d, quantScale2ShapeSizePerChannel, quantScale2ShapeSize),
-            return false);
+        if (isSupportedLayout) {
+            OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel),
+                        OP_LOGE(contextKeyParams.opName,
+                                "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply "
+                                "result only support qN * vD(%u * %u = %lu), now is (%ld).",
+                                layoutString.c_str(), queryShapeInfo.n, valueShapeInfo.d,
+                                quantScale2ShapeSizePerChannel, quantScale2ShapeSize),
+                        return false);
+        } else {
+            OP_CHECK_IF(quantScale2Shape->GetStorageShape() != gert::Shape({queryShapeInfo.n, valueShapeInfo.d}),
+                        OP_LOGE(contextKeyParams.opName,
+                                "For post quant per-channel, when layout is %s, "
+                                "quantScale2/quantOffset2 expect shape is [%u, %u].",
+                                layoutString.c_str(), queryShapeInfo.n, valueShapeInfo.d),
+                        return false);
+        }
     }
     return true;
 }
+
 
 bool PromptFlashAttentionTilingV2::CheckPerTensorQuantParams(const ContextParamsForPFATiling& contextKeyParams,
     const PFAShapeInfo& queryShapeInfo) const {
@@ -1168,13 +1152,7 @@ bool PromptFlashAttentionTilingV2::CheckPostQuantParams(const ContextParamsForPF
     const gert::StorageShape* quantScale2Shape = contextKeyParams.scale2Shape;
     const gert::StorageShape* quantOffset2Shape = contextKeyParams.offset2Shape;
     const ge::DataType quantScale2Type = contextKeyParams.quantScale2Type;
-    uint32_t h = queryShapeInfo.h;
-    uint32_t n = queryShapeInfo.n;
-
     int64_t quantScale2ShapeSize = 0;
-    size_t quantScale2Dim = 0;
-    uint32_t quantD = 0;
-    uint32_t queryD = h / n;
 
     OP_CHECK_IF(outputType != ge::DT_INT8 && outputType != ge::DT_FLOAT8_E4M3FN && outputType != ge::DT_HIFLOAT8,
                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
@@ -1185,15 +1163,37 @@ bool PromptFlashAttentionTilingV2::CheckPostQuantParams(const ContextParamsForPF
     OP_CHECK_IF(quantScale2Shape == nullptr, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
         "quant_scale2_shape is nullptr in post quant scenario."),
         return false);
-    quantScale2Dim = quantScale2Shape->GetStorageShape().GetDimNum();
     quantScale2ShapeSize = quantScale2Shape->GetStorageShape().GetShapeSize();
-    quantD = quantScale2ShapeSize / n;
     OP_CHECK_IF(quantScale2ShapeSize == 0, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
         "quant_scale2 is empty tensor in post quant scenario."),
         return false);
+    
+    OP_CHECK_IF((quantOffset2Shape != nullptr) && (quantScale2Type != contextKeyParams.quantOffset2Type),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "post quant scale dtype(%s) and offset dtype(%s) must be consistent.",
+            GetPfaDataTypeStr(quantScale2Type).c_str(), GetPfaDataTypeStr(contextKeyParams.quantOffset2Type).c_str()),
+        return false);
+    
+    OP_CHECK_IF((quantScale2Type != ge::DT_BF16) && (quantScale2Type != ge::DT_FLOAT),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "post quant scale dtype(%s) only support bf16 and fp32.",
+            GetPfaDataTypeStr(quantScale2Type).c_str()),
+        return false);
+    
+    if (inputType == ge::DT_BF16) {
+        OP_CHECK_IF(quantScale2Type != ge::DT_FLOAT && quantScale2Type != ge::DT_BF16,
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "invalid post quant scale dtype(%s), when q is %s, only support float32 and bf16",
+            GetPfaDataTypeStr(quantScale2Type).c_str(), GetPfaDataTypeStr(inputType).c_str()),
+            return false);
+    } else {
+        OP_CHECK_IF(quantScale2Type != ge::DT_FLOAT,
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "invalid post quant scale dtype(%s), when q is %s, only support float32",
+            GetPfaDataTypeStr(quantScale2Type).c_str(), GetPfaDataTypeStr(inputType).c_str()),
+            return false);
+    }
 
-    OP_CHECK_IF(!CheckPostQuantShape(contextKeyParams, quantD, quantOffset2Shape, quantScale2Type, 
-    quantScale2Dim, quantScale2ShapeSize, queryShapeInfo, valueShapeInfo),
+    OP_CHECK_IF(!CheckPostQuantShape(contextKeyParams, quantScale2Shape, quantOffset2Shape, queryShapeInfo, valueShapeInfo),
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "post quant params check failed!"),
         return false);
     return true;

@@ -2175,22 +2175,36 @@ ge::graphStatus IFATilingV2::ProcessQuant2Attribute(const gert::Tensor *qtScale2
 
   // per-tensor or per-channel verification
   uint64_t quantScale2ShapeSizePerChannel = static_cast<uint64_t>(numHeads_) * static_cast<uint64_t>(headDim_);
+  std::string layoutString = ifaContext_->layOut;
+  bool isSupportedLayout = layoutString == "BSH" || layoutString == "BSND" || layoutString == "BNSD" || layoutString == "BNSD_BSND";
+
   if (quantScale2Dim == 1) {
-      if (static_cast<uint64_t>(quantScale2ShapeSize) == quantScale2ShapeSizePerChannel) {
+      if (static_cast<uint64_t>(quantScale2ShapeSize) == quantScale2ShapeSizePerChannel && isSupportedLayout) {
         // per-channel quant scale/offset shape is [H].
         isPostQuantPerChnl_ = true;
       } else {
         OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != 1U),
             OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName,
-                "for post quant per-tensor, quant scale/offset only support [1], now is [%d]", quantScale2ShapeSize),
+                "For post quant per-tensor, quantScale2/quantOffset2 only support [1], now is [%d]", quantScale2ShapeSize),
             return ge::GRAPH_FAILED);
       }
   } else {
-      OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel),
-          OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName,
-              "for post quant per-channel, quant scale/offset dim multiply result only support qN * vD(%u * %u = %lu), now is (%ld).",
-              numHeads_ , headDim_ , quantScale2ShapeSizePerChannel, quantScale2ShapeSize),
-          return ge::GRAPH_FAILED);
+      if (isSupportedLayout) {
+          OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel),
+                      OP_LOGE(ifaContext_->opName,
+                              "For post quant per-channel,  when layout is %s, quantScale2/quantOffset2 dim multiply "
+                              "result only support qN * vD(%u * %u = %lu), now is (%ld).",
+                              layoutString.c_str(), numHeads_, headDim_, quantScale2ShapeSizePerChannel,
+                              quantScale2ShapeSize),
+                      return ge::GRAPH_FAILED);
+      } else {
+          OP_CHECK_IF(qtScale2->GetStorageShape() != gert::Shape({numHeads_, headDim_}),
+                      OP_LOGE(ifaContext_->opName,
+                              "For post quant per-channel, when layout is %s, "
+                              "quantScale2/quantOffset2 expect shape is [%u, %u].",
+                              layoutString.c_str(), numHeads_, headDim_),
+                      return ge::GRAPH_FAILED);
+      }
       isPostQuantPerChnl_ = true;
   }
 
@@ -2233,16 +2247,9 @@ ge::graphStatus IFATilingV2::ProcessQuant2() {
           optiling::v2::GetPfaDataTypeStr(quantScale2Type).c_str(), optiling::v2::GetPfaDataTypeStr(quantOffset2Type).c_str()),
           return ge::GRAPH_FAILED);
 
-    size_t quantOffset2Dim = qtOffset2->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(quantScale2Dim != quantOffset2Dim, OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName,
-        "quant_scale2 dim num(%ld) do not equal quant_offset2 dim num(%ld).",
-        quantScale2Dim, quantOffset2Dim),
-        return ge::GRAPH_FAILED);
-    int64_t quantOffset2ShapeSize = qtOffset2->GetShapeSize();
-    OP_CHECK_IF(quantScale2ShapeSize != quantOffset2ShapeSize, OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName,
-        "quant_scale2 dimension multiply result(%ld) do not equal quant_offset2 dimension multiply result(%ld).",
-        quantScale2ShapeSize, quantOffset2ShapeSize),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qtScale2->GetStorageShape() != qtOffset2->GetStorageShape(),
+                OP_LOGE(ifaContext_->opName, "quantScale2 and quantOffset2 should have same shape."),
+                return ge::GRAPH_FAILED);
   }
   OP_CHECK_IF(ProcessQuant2Attribute(qtScale2) != ge::GRAPH_SUCCESS,
       OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName, "post quant attribute process failed!"),

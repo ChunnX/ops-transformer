@@ -304,7 +304,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32、BFLOAT16</td>
         <td>ND</td>
-        <td>输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]</td>
+        <td>见<a href="#INT8">INT8/FP8量化相关入参数量与输入、输出数据格式的综合限制</a></td>
         <td>-</td>
     </tr>
     <tr>
@@ -1640,9 +1640,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <td>支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型
                     <ul>
                         <li>当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32。</li>
-                        <li>per-channel 格式：当输出layout为BSH时，要求 quantScale2
-                            所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2
-                            shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。</li>
+                        <li>per-channel 格式：当layout为BSH、BSND、BNSD、BNSD_BSND时，要求 quantScale2
+                            所有维度的乘积等于N*D(H)；其他layout要求shape为[N,D]。</li>
+                        <li>per-tensor 格式：仅支持shape为[1]。</li>
                     </ul>
                 </td>
             </tr>

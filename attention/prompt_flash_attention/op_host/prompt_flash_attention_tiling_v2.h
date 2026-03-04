@@ -126,9 +126,9 @@ protected:
         const gert::StorageShape* keyShape, const gert::StorageShape* valueShape);
     bool SetAndCheckHeadNumRatio(ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo, PromptFlashAttentionTilingData& tilingData);
     bool CheckInputDimAndHeadNum(ContextParamsForPFATiling& contextKeyParams, const uint32_t nQ, const uint32_t nKV);
-    bool CheckPostQuantShape(const ContextParamsForPFATiling& contextKeyParams, uint32_t quantD,
-        const gert::StorageShape* quantOffset2Shape, const ge::DataType quantScale2Type, size_t quantScale2Dim, int64_t quantScale2ShapeSize,
-        const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
+    bool CheckPostQuantShape(const ContextParamsForPFATiling &contextKeyParams,
+                             const gert::StorageShape *quantScale2Shape, const gert::StorageShape *quantOffset2Shape,
+                             const PFAShapeInfo &queryShapeInfo, const PFAShapeInfo &valueShapeInfo) const;
     bool CheckPostQuantParams(const ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
     bool CheckPerTensorQuantParams(const ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo) const;
     bool CheckPerblockQuantParams(const ContextParamsForPFATiling& contextKeyParams, const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& keyShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
