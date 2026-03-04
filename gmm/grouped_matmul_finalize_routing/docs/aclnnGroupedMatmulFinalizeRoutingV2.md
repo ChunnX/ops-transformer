@@ -108,7 +108,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>-</td>
       <td>INT64</td>
       <td>ND</td>
-      <td>shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致</td>
+      <td>shape支持三维，维度为(e, 1, n)，e、n和x2的e、n一致</td>
       <td>-</td>
     </tr>
     <tr>
@@ -118,7 +118,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>shape支持二维，维度为(e, n)，e、n和w的e、n一致</td>
+      <td>shape支持二维，维度为(e, n)，e、n和x2的e、n一致</td>
       <td>-</td>
     </tr>
     <tr>
@@ -128,7 +128,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致</td>
+      <td>shape支持三维，维度为(e, 1, n)，e、n和x2的e、n一致</td>
       <td>-</td>
     </tr>
     <tr>
@@ -158,7 +158,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>shape支持一维，维度为(m)，m和x的m一致</td>
+      <td>shape支持一维，维度为(m)，m和x1的m一致</td>
       <td>-</td>
     </tr>
     <tr>
@@ -168,7 +168,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td></td>
       <td>INT64</td>
       <td>ND</td>
-      <td>shape支持一维，维度为(e)，e和w的e一致</td>
+      <td>shape支持一维，维度为(e)，e和x2的e一致</td>
       <td>-</td>
     </tr>
     <tr>
@@ -178,7 +178,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td></td>
       <td>BF16</td>
       <td>ND</td>
-      <td>shape支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和w的n一致。</td>
+      <td>shape支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和x2的n一致。</td>
       <td>-</td>
     </tr>
     <tr>
@@ -188,7 +188,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>shape支持一维，维度为(m)，m和x的m一致</td>
+      <td>shape支持一维，维度为(m)，m和x1的m一致</td>
       <td>-</td>
     </tr>
     <tr>
@@ -198,7 +198,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td></td>
       <td>INT64</td>
       <td>ND</td>
-      <td>shape支持一维，维度为(m)，m和x的m一致</td>
+      <td>shape支持一维，维度为(m)，m和x1的m一致</td>
       <td>-</td>
     </tr>
     <tr>
