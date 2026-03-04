@@ -46,8 +46,10 @@ constexpr uint32_t STATE_OFFSET = 32U; // 状态空间偏移地址
 constexpr uint8_t COMM_NUM = 2;        // 通信域大小
 constexpr uint8_t COMM_EP_IDX = 0;
 constexpr uint8_t COMM_TP_IDX = 1;
-constexpr uint64_t WIN_STATE_OFFSET = 500UL * 1024UL;
-constexpr uint64_t STATE_WIN_OFFSET = 950UL * 1024UL;
+constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL;
+constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
+constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL; // 768 + 100
+constexpr uint64_t CUMSUM_FLAG_OFFSET = 876UL * 1024UL; // 868 + 8
 constexpr uint64_t TIMEOUT_DETECTION_THRESHOLD = 50000UL;
 constexpr uint64_t CYCLES_PER_US = 50UL;
 constexpr uint64_t TIMEOUT_DETECTION_TX_UNITS = 8UL;
@@ -159,6 +161,8 @@ private:
                                                          const int32_t curRankId);
     __aicore__ inline GM_ADDR GetBaseWindInAddrByServer(__gm__ HcclOpParam *addr, const int32_t serverId,
                                                         const int32_t curRankId);
+    __aicore__ inline void GatherSumRecvCnt(LocalTensor<float> &gatherMaskOutTensor, LocalTensor<uint32_t> &gatherTmpTensor,
+                                            LocalTensor<float> &statusSumOutTensor);
     // __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
     //                                                   const int32_t curRankId);
     // __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
@@ -239,6 +243,7 @@ private:
     GlobalTensor<uint32_t> selfhcclDataStatusTensor_;
     GlobalTensor<uint64_t> dataBatchWriteInfoTensor_;
     GlobalTensor<uint32_t> bufferChosenGlobal_;
+    GlobalTensor<float> selfRankWinInGMTensor_;
 
     LocalTensor<ExpandXOutType> xTmpTensor_;
     LocalTensor<XType> recvTmpTensor_;
@@ -418,6 +423,8 @@ private:
     uint32_t scaleInBytes_{0};
     uint32_t scaleOutBytes_{0};
     uint32_t scalesCount_{0};
+    uint32_t aivUsedCumSum_{0}; //todo：初始化
+    uint32_t aivUsedDispatch_{0};
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
@@ -815,9 +822,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LogInfo(__LINE__, "Init start");
     InitRecieveTilingContext(expandXOut, workspaceGM, pipe, tilingData);
     statusDataSpaceGm_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
+    selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(statusDataSpaceGm_));
     //LogInfo(__LINE__, "statusDataSpaceGm_ ");
     selfDataStatusGMTensor_.SetGlobalBuffer(
-        (__gm__ uint32_t *)(statusDataSpaceGm_ + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+        (__gm__ uint32_t *)(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     //LogInfo(__LINE__, "selfDataStatusGMTensor_ over");
     TBuf<> dataStateBuf;
     //LogInfo(__LINE__, "dataStateBuf over");
@@ -1856,7 +1864,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     float sumOfRecvCnt = statusSumOutTensor.ReinterpretCast<float>().GetValue(0);
 
     // 把当前核的所有专家recv cnt之和写到状态区
-    uint32_t newAivId = aivId_ - aivUsedAllToAll_;
     // 每个核把sumOfRecvCnt重复写 aivUsedCumSum_ 份
     LocalTensor<float> sumCoreFP32Tensor = sumCoreBuf_.Get<float>();
     uint64_t maskArrayCount[2] = {0x0101010101010101, 0};
@@ -1867,7 +1874,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<float>(sumCoreFP32Tensor, static_cast<float>(1.0), maskArrayFlag, repeatTimes, 1, 8);
     DataCopyParams sumIntriParams{static_cast<uint16_t>(aivUsedCumSum_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(selfRankWinInGMTensor_[(CUMSUM_CAL_OFFSET + newAivId * aivUsedCumSum_ * UB_ALIGN) / sizeof(float)], sumCoreFP32Tensor, sumIntriParams);
+    DataCopy(selfRankWinInGMTensor_[(CUMSUM_CAL_OFFSET + aivId_ * aivUsedCumSum_ * UB_ALIGN) / sizeof(float)], sumCoreFP32Tensor, sumIntriParams);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1959,8 +1966,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     // check flag 用于 aivUsedCumSum_ 软同步并计算 aivUsedCumSum_ 个核各自的recvCount
     LocalTensor<int32_t> outCountLocal;
-    uint32_t newAivId = aivId_ - aivUsedAllToAll_;
-    GetCumSum(outCountLocal, newAivId);
+    GetCumSum(outCountLocal, aivId_);
     // 计算epRecvCnt
     uint32_t preSum = outCountLocal.GetValue(0);
     uint32_t curCnt = preSum;
@@ -1989,7 +1995,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // 每次处理256字节，1、8分别为dst、src相邻迭代间地址步长
     Duplicate<int32_t>(syncOnCoreTensor, static_cast<int32_t>(1), SIZE_ALIGN_256 / sizeof(int32_t), repeatTimes, 1, 8);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(selfRankWinInGMTensor_[(CUMSUM_FLAG_OFFSET + newAivId * UB_ALIGN) / sizeof(float)], syncOnCoreFP32Tensor, sumIntriParams);  // 软同步
+    DataCopy(selfRankWinInGMTensor_[(CUMSUM_FLAG_OFFSET + aivId_ * UB_ALIGN) / sizeof(float)], syncOnCoreFP32Tensor, sumIntriParams);  // 软同步
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2281,7 +2287,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if ASCEND_IS_AIV {
         if (aivId_ < aivUsedCumsum_) { //cnt计算 + cumsum
             CalCumSum();
-        } else if(aivId_ < aivUsedCumsum_ + aivUsedDispatch){ //框间dispatch + 发送
+        } else if(aivId_ < aivUsedCumsum_ + aivUsedDispatch_) { //框间dispatch + 发送
             DispatchBetweenServer();
             CommunicateBetweenServer(0, serverNum_, aivNum_);
         } else { //框内接收 + 框内发送
