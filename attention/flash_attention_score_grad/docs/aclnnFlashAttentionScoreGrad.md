@@ -313,7 +313,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       <tr>
         <td>preTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算 ，表示slides window的左边界。</td>
+        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -323,7 +323,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       <tr>
         <td>nextTokens</td>
         <td>输入</td>
-        <td>用于稀疏计算，表示slides window的右边界。</td>
+        <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -487,7 +487,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。
 - query、keyIn、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
-- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如不使用该参数可传入nullptr。

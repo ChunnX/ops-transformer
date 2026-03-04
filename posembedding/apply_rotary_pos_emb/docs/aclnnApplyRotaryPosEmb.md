@@ -274,8 +274,7 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 
 ## 约束说明
 
-- 确定性计算：
-  - aclnnApplyRotaryPosEmb默认确定性实现。
+- 确定性计算：aclnnApplyRotaryPosEmb默认确定性实现。
 
 - <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - layout为1时，queryRef、keyRef、cos、sin输入shape的前2维（B、S）必须相等；layout为4时，第1维（T）必须相等。

@@ -248,7 +248,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
       <tr>
         <td>preTokens</td>
         <td>可选输入</td>
-        <td>用于稀疏计算 ，表示slides window的左边界。</td>
+        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -258,7 +258,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
       <tr>
         <td>nextTokens</td>
         <td>可选输入</td>
-        <td>用于稀疏计算，表示slides window的右边界。</td>
+        <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -478,7 +478,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
   - N：取值范围为1\~256。
   - S：取值范围为1\~1M。
   - D：取值范围为1\~768。
-- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
@@ -501,7 +501,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
 - 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - band场景，preTokens和nextTokens之间必须要有交集。
 - prefixOptional稀疏计算场景即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
-- realShiftOptional Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
+- realShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
 
 ## 调用示例
 

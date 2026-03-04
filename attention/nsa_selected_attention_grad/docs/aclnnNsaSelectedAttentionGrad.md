@@ -1,4 +1,4 @@
-# NsaSelectedAttentionGrad
+# aclnnNsaSelectedAttentionGrad
 
 ## 产品支持情况
 
@@ -18,7 +18,7 @@
 
 - 计算公式：
 
-  根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
+  根据传入的topkIndices对key和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
 
   $$
   selectedKey = Gather(key, topkIndices[i]),0<=i<selectedBlockCount \\
@@ -82,7 +82,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
 
 - **参数说明**
 
-  `<table style="undefined;table-layout: fixed; width: 1565px">
+  <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
     <col style="width: 135px">
@@ -113,7 +113,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>-</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
-      <td>3-4</td>
+      <td>3</td>
       <td>√</td>
     </tr>
     <tr>
@@ -133,7 +133,47 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>-</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
-      <td>3-4</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>attentionOut</td>
+      <td>输入</td>
+      <td>注意力正向计算的最终输出。</td>
+      <td>-</td>
+      <td>BFLOAT16、FLOAT16</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>attentionOutGrad</td>
+      <td>输入</td>
+      <td>公式中的dY。</td>
+      <td>-</td>
+      <td>BFLOAT16、FLOAT16</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>softmaxMax</td>
+      <td>输入</td>
+      <td>Softmax计算的Max中间结果。</td>
+      <td>用于反向计算。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>softmaxSum</td>
+      <td>输入</td>
+      <td>Softmax计算的Sum中间结果。</td>
+      <td>用于反向计算。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>3</td>
       <td>√</td>
     </tr>
     <tr>
@@ -237,36 +277,6 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>softmaxMaxOut</td>
-      <td>输出</td>
-      <td>Softmax计算的Max中间结果。</td>
-      <td>用于反向计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>softmaxSumOut</td>
-      <td>输出</td>
-      <td>Softmax计算的Sum中间结果。</td>
-      <td>用于反向计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>attentionOut</td>
-      <td>输出</td>
-      <td>计算公式的最终输出。</td>
-      <td>-</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
       <td>workspaceSize</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
@@ -317,10 +327,10 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
     <tr>
       <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="3">161002</td>
-      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
+      <td>query、key、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据格式不在支持的范围内。</td>
+      <td>query、key、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据格式不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -389,8 +399,8 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   - S：取值范围为1\~128K。对于key、value的S 必须大于等于selectedBlockSize * selectedBlockCount, 且必须为selectedBlockSize的整数倍。
   - D：取值范围为192或128，支持K和V的D（HeadDim）不相等。
   - selectedBlockSize支持<=128且满足16的整数倍。
-  - selectBlockCount：支持[1~128]。 总计选择的大小`selectBlockCount * selctBlockSize` < 128*64(8K)
-  - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectBlockCount * selctBlockSize`
+  - selectedBlockCount：支持[1~128]。 总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
+  - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectedBlockCount * selectedBlockSize`
 - 关于softmaxMax与softmaxSum参数shape的约束：\[T1, N1, 8\]。
 - 关于topkIndices参数shape的约束：[T1, N2, selectedBlockCount]。
 

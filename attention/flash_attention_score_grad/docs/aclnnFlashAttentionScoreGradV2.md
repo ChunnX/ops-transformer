@@ -13,14 +13,14 @@
 
 ## 功能说明
 
-- 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV2](../../flash_attention_score/docs/aclnnFlashAttentionScoreV2.md)的反向计算。**该接口相较于[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)接口，新增psetype参数**：
+- 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV2](../../flash_attention_score/docs/aclnnFlashAttentionScoreV2.md)的反向计算。**该接口相较于[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)接口，新增pseType参数**：
 
-  - psetype=1时，与[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现相同。
-  - psetype=其他取值时，需要先mul再add。
+  - pseType=1时，与[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现相同。
+  - pseType=其他取值时，需要先mul再add。
 
 - 计算公式：
 
-  已知注意力的正向计算公式为（psetype=1时，与[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)计算公式相同，psetype=其他取值公式如下）：
+  已知注意力的正向计算公式为（pseType=1时，与[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)计算公式相同，pseType=其他取值公式如下）：
 
   $$
   Y=Dropout(Softmax(Mask(\frac{QK^T}{\sqrt{d}}+pse),atten\_mask),keep\_prob)V
@@ -278,26 +278,6 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
         <td>-</td>
       </tr>
       <tr>
-        <td>actualSeqQLenOptional</td>
-        <td>可选输入</td>
-        <td>表示每个Batch的query序列长度。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>ND</td>
-        <td>0、1</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>actualSeqKvLenOptional</td>
-        <td>可选输入</td>
-        <td>表示每个Batch的kv序列长度。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>ND</td>
-        <td>0、1</td>
-        <td>-</td>
-      </tr>
-      <tr>
         <td>dqOut</td>
         <td>输出</td>
         <td>公式中的dQ，query的梯度。</td>
@@ -534,7 +514,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
     -   D：取值范围为1\~768。
     -   KeepProb: 取值范围为(0, 1].
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
-- pseShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
@@ -558,8 +538,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
 - headNum的取值必须和传入的Query中的N值保持一致。
 - band场景，preTokens和nextTokens之间必须要有交集。
 - prefixOptional稀疏计算场景即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
-- pseShiftOptional Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
-
+- pseShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
 
 ## 调用示例
 
