@@ -72,6 +72,7 @@ constexpr uint64_t SERVER_STATE_ALIGN = 512UL;
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t COMPARE_COUNT_PER_BLOCK = 256U;
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
+constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 
 #define TemplateDispatchKFCTypeClass                                                                                           \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
@@ -163,6 +164,10 @@ private:
                                                         const int32_t curRankId);
     __aicore__ inline void GatherSumRecvCnt(LocalTensor<float> &gatherMaskOutTensor, LocalTensor<uint32_t> &gatherTmpTensor,
                                             LocalTensor<float> &statusSumOutTensor);
+    __aicore__ inline void CalRecvAndSetFlag();
+    __aicore__ inline void SetExpertTokenNums();
+    __aicore__ inline void CalCumSum(uint32_t coreUseNum);
+    __aicore__ inline void WaitCumSumFlag();
     // __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
     //                                                   const int32_t curRankId);
     // __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
@@ -411,6 +416,8 @@ private:
     uint32_t rscvStatusNum_{0};
     uint32_t remainderRankNum_{0};
     uint32_t startStatusIndex_{0};
+    uint32_t endStatusIndex_{0};
+    uint32_t recStatusNumPerCore_{0};
     uint32_t sendToSharedExpTokenCnt_{0};
     uint32_t maxSize_{0};
     uint32_t bufferNum_{0};
@@ -558,21 +565,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommBetweenServerInfo()
 {
-    //LogInfo(__LINE__, "start InitCommBetweenServerInfo");
-    recStatusNumPerCore_ = rscvStatusNum_ / aivNum_; // 每个aiv需要处理的专家数
-    //LogInfo(__LINE__, "recStatusNumPerCore_", recStatusNumPerCore_);
-    remainderRankNum_ = rscvStatusNum_ % aivNum_;
-    //LogInfo(__LINE__, "remainderRankNum_", remainderRankNum_);
-    startStatusIndex_ = recStatusNumPerCore_ * aivId_; // + sharedExpertRankNum_, 每个aiv发送的
-    //LogInfo(__LINE__, "startStatusIndex_", startStatusIndex_);
-    if (aivId_ < remainderRankNum_) {                  // 前remainderRankNum个aiv需要多发1个卡的数据
-        recStatusNumPerCore_ += 1;
-        startStatusIndex_ += aivId_;
-    } else {
-        startStatusIndex_ += remainderRankNum_;
-    }
-    //LogInfo(__LINE__, "recStatusNumPerCore_ after if", recStatusNumPerCore_);
-    //LogInfo(__LINE__, "startStatusIndex_ after if", startStatusIndex_);
     statusBufCntAlign_ = Ceil(Ceil(expertNumInServer_ * serverNum_, aivNum_), 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     //LogInfo(__LINE__,"statusBufCntAlign_",statusBufCntAlign_);
     uint32_t statusBufSize = statusBufCntAlign_ * UB_ALIGN;
