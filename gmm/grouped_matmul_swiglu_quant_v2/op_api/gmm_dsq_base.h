@@ -594,7 +594,7 @@ protected:
                 }
                 if (!gmmDsqParams_.isA4W4) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                            "In weight Transpose scenario, only A4W4 is supported, but current scenario is A8W4.");
+                            "In weight Transpose scenario, only A4W4 is supported.");
                     return false;
                 } 
             }
