@@ -169,6 +169,9 @@ private:
     __aicore__ inline void CalCumSum(uint32_t coreUseNum);
     __aicore__ inline void WaitCumSumFlag();
     __aicore__ inline void SetValidExpertInfo(uint32_t expInfoSize, uint32_t &validNum);
+    __aicore__ inline uint32_t CheckDataArriveWithFlagInServer(uint32_t srcExpDataIdx, int32_t beginIdx, int32_t copyCnt);
+    __aicore__ inline void CopyOut(LocalTensor<int32_t> xOutInt32Tensor, GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
+    __aicore__ inline void WaitAndFormatOutput(TBuf<> tBuf, uint32_t validNum);
     // __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
     //                                                   const int32_t curRankId);
     // __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
@@ -288,6 +291,7 @@ private:
     LocalTensor<uint32_t> expertFinishNumTensor_;
     LocalTensor<uint32_t> expertLeftNumTensor_;
     LocalTensor<int32_t> sendCntTensor_;
+    LocalTensor<uint32_t> expertMapTensor_;
 
     TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
