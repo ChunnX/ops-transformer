@@ -4081,6 +4081,11 @@ void PromptFlashAttentionTilingV2::UpdateTilingKeyPFAMatMulType(PromptFlashAtten
         return;
     }
     auto dSize = tilingData.promptAttentionBaseParams.get_qkHeadSize();
+    if (dSize <= 64) dSize = 64; // 64: adjust qk headsize
+    else if (dSize <= 128) dSize = 128; // 128: adjust qk headsize
+    else if (dSize <= 256) dSize = 256; // 256: adjust qk headsize
+    else if (dSize <= 512) dSize = 512; // 512: adjust qk headsize
+    else if (dSize <= 576) dSize = 576; // 576: adjust qk headsize
     if (dSize == 512) { // 512: qk head size
         if (enablePA) {
             pFAMatMulType = PFAMatMulType_MM_PA_D512;
