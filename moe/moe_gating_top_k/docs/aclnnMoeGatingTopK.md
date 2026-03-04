@@ -16,40 +16,84 @@
 ## 功能说明
 
 - 算子功能：MoE计算中，对输入x做Sigmoid或者SoftMax计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
-- 计算公式：
-
-  对输入做Sigmoid或者SoftMax：
-
-  $$
-  if normType==1:
-      normOut=Sigmoid(x)
-  else:
-      normOut=SoftMax(x)
-  $$
-
-  如果bias不为空：
-
-    $$
-    normValue = normOut + bias
-    $$
-
-  对计算结果按照groupCount进行分组，每组按照groupSelectMode取max或topk2的sum值对group进行排序，取前kGroup个组：
-
-    $$
-    groupOut, groupId = TopK(ReduceSum(TopK(Split(normValue, groupCount), k=2, dim=-1), dim=-1),k=kGroup)
-    $$
-
-    根据上一步的groupId获取normValue中对应的元素，将数据再做TopK，得到expertIdxOut的结果：
+- 计算公式：                                                                                                                           
+   
+  **Step 1: 归一化**                                                                                                                 
+                
+  根据 normType 对输入 x 做归一化：
 
   $$
-  y,expertIdxOut=TopK(normOut[groupId, :],k=k)
+  normOut = \begin{cases}
+      SoftMax(x), & normType = 0 \\
+      Sigmoid(x), & normType = 1
+  \end{cases}
   $$
 
-  对y按照输入的routedScalingFactor和eps参数进行计算，得到yOut的结果：
-  
+  **Step 2: 加偏置**
+
+  若 bias 不为空，加偏置得到用于选择的值：
+
   $$
-  yOut = y / (ReduceSum(y, dim=-1)+eps)*routedScalingFactor
+  normValue = normOut + bias
   $$
+
+  否则 $normValue = normOut$。
+
+  **Step 3: 分组筛选**（仅 groupCount > 1 时执行）
+
+  将 normValue 按 groupCount 分组，根据 groupSelectMode 计算每组得分：
+
+  $$
+  groupedValue = Reshape(normValue,\ [batch,\ groupCount,\ -1])
+  $$
+
+  $$
+  groupScore = \begin{cases}
+      ReduceMax(groupedValue,\ dim=-1), & groupSelectMode = 0 \\
+      ReduceSum(TopK(groupedValue,\ k=2,\ dim=-1),\ dim=-1), & groupSelectMode = 1
+  \end{cases}
+  $$
+
+  选取得分最高的 kGroup 个组，将未选中组的对应位置置为 $-\infty$：
+
+  $$
+  groupIdx = TopK(groupScore,\ k=kGroup).indices
+  $$
+
+  $$
+  normValue = Mask(groupedValue,\ groupIdx,\ fillValue=-\infty)
+  $$
+
+  **Step 4: Top-K 专家选择**
+
+  对 normValue 取 Top-K 得到专家索引，这里只需要expertIdxOut：
+
+  $$
+  y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
+  $$
+
+
+  **Step 5: Renorm 与缩放**
+
+  normType=1 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
+
+  $$
+  if\ (normType = 1)\ or\ (normType = 0\ and\ renorm = 1):
+  $$
+
+  $$
+  \quad yOut = \frac{normOut}{ReduceSum(normOut,\ dim=-1) + eps}
+  $$
+
+  最终输出：
+
+  $$
+  yOut = yOut \times routedScalingFactor
+  $$
+
+  **Step 6: 可选输出**
+
+  若 outFlag 为 True，第三个输出为 normOut；否则为空。
 
 ## 函数原型
 
