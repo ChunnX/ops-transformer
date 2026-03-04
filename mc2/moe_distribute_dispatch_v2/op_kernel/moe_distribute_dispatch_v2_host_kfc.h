@@ -1603,7 +1603,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToExpert(L
 {
     GlobalTensor<XType> dataDstWinGMTensor;
     GlobalTensor<uint32_t> flagDstWinGMTensor;
-    dataDstWinGMTensor.SetGlobalBuffer((__gm__ ExpandXOutType *)rankGM);
+    dataDstWinGMTensor.SetGlobalBuffer((__gm__ XType *)rankGM);
     flagDstWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)rankGM);
     //SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     DataCopyExtParams dataCopyOutParams = {static_cast<uint16_t>(blockCntPerTokenToExpert_), SPLIT_BLOCK_DATA_SIZE, 0U,
