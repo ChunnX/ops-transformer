@@ -287,6 +287,7 @@ private:
     LocalTensor<float> statusCleanFp32Tensor_;
     LocalTensor<uint32_t> expertFinishNumTensor_;
     LocalTensor<uint32_t> expertLeftNumTensor_;
+    LocalTensor<int32_t> sendCntTensor_;
 
     TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
@@ -435,6 +436,10 @@ private:
     uint32_t scalesCount_{0};
     uint32_t aivUsedCumSum_{0}; //todo：初始化
     uint32_t aivUsedDispatch_{0};
+    uint32_t startId_{0};
+    uint32_t endId_{0};
+    uint32_t sendNum_{0};
+    uint32_t statusCntAlign_{0};
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
