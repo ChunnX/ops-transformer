@@ -261,6 +261,31 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::ProcessQuantInfo()
                 ge::TypeUtils::DataTypeToSerialString(queryDType).c_str());
         return ge::GRAPH_FAILED;
     }
+    // hifp8 shape whitelist
+    if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
+        const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
+        OP_CHECK_IF(inputLayout == nullptr,
+            OP_LOGE(context_, "Scenario HIFP8, inputLayout is null."),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(strcmp(inputLayout, "BSND") != 0,
+            OP_LOGE(context_, "Scenario HIFP8, inputLayout must be BSND."),
+            return ge::GRAPH_FAILED);
+        if (!((fBaseParams.b == 1 && fBaseParams.s1 == 54000 && fBaseParams.n1 == 5 && fBaseParams.d == 128 &&
+            fBaseParams.s2 == 54000 && fBaseParams.n2 == 5 && fBaseParams.d1 == 128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == 9360 && fBaseParams.n1 == 40 && fBaseParams.d == 128 &&
+            fBaseParams.s2 == 9360 && fBaseParams.n2 == 40 && fBaseParams.d1 == 128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == 54000 && fBaseParams.n1 == 10 && fBaseParams.d == 128 &&
+            fBaseParams.s2 == 54000 && fBaseParams.n2 == 10 && fBaseParams.d1 == 128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == 9360 && fBaseParams.n1 == 80 && fBaseParams.d == 128 &&
+            fBaseParams.s2 == 9360 && fBaseParams.n2 == 80 && fBaseParams.d1 == 128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == 57600 && fBaseParams.n1 == 5 && fBaseParams.d == 128 &&
+            fBaseParams.s2 == 57600 && fBaseParams.n2 == 5 && fBaseParams.d1 == 128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == 7200 && fBaseParams.n1 == 40 && fBaseParams.d == 128 &&
+            fBaseParams.s2 == 512 && fBaseParams.n2 == 40 && fBaseParams.d1 == 128))) {
+            OP_LOGE(context_, "Scenario HIFP8, query & key shape only support{[1, 54000, 5, 128], [1, 54000, 5, 128]}, {[1, 9360, 40, 128], [1, 9360, 40, 128]}, {[1, 54000, 10, 128], [1, 54000, 10, 128]}, {[1, 9360, 80, 128], [1, 9360, 80, 128]}, {[1, 57600, 5, 128], [1, 57600, 5, 128]}, {[1, 7200, 40, 128], [1, 512, 40, 128]}.");
+            return ge::GRAPH_FAILED;
+        }
+    }
     fBaseParams.outDtype = fBaseParams.inputDtype;
     if (context_->GetAttrs()->GetAttrNum() > OUTDTYPE_ATTR_IDX &&
         (fBaseParams.queryType == ge::DT_HIFLOAT8)) {
@@ -539,9 +564,6 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::QuantScaleShapeVal
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(fBaseParams.n1 != fBaseParams.n2,
             OP_LOGE(context_, "Scenario HIFP8, Nq and Nkv must be equal."),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(fBaseParams.layoutType != INPUT_FORMAT_BS2N2GD,
-            OP_LOGE(context_, "Scenario HIFP8, layout must be BSND."),
             return ge::GRAPH_FAILED);
         auto deqScaleDsShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_DS_IDX));
         auto deqScalePShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_P_IDX));

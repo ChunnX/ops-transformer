@@ -301,7 +301,7 @@ public:
     uint8_t reserved1; // tilingData需要8字节对齐
     uint8_t reserved2; // tilingData需要8字节对齐
     uint8_t reserved3; // tilingData需要8字节对齐
-    uint32_t reserved4; // tilingData需要8字节对齐
+
     // softmax grad
     uint32_t sfmgUsedCoreNum;
     uint32_t sfmgDyBufferLen;
