@@ -444,6 +444,7 @@ private:
     uint32_t endId_{0};
     uint32_t sendNum_{0};
     uint32_t statusCntAlign_{0};
+    uint32_t tBufRealSize_{0};
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
@@ -2176,6 +2177,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(expandIdxGMTensor_[dstPosition * EXPAND_IDX_INFO], xOutInt32Tensor[tokenQuantAlign_],
                 expandIdxCopyParams);
     if(!isShareExpertRankFlag_) {
+        LocalTensor<float> xOutFloatTensor;
         xOutFloatTensor = xOutInt32Tensor.template ReinterpretCast<float>();
         DataCopyPad(expandScalesOutGMTensor_[dstPosition], xOutFloatTensor[expertScaleAlign_],
                 dataCopyexpandScaleParams); //拷贝expert专家系数
@@ -2289,9 +2291,9 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Process()
 {   
     if ASCEND_IS_AIV {
-        if (aivId_ < aivUsedCumsum_) { //cnt计算 + cumsum
+        if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
-        } else if(aivId_ < aivUsedCumsum_ + aivUsedDispatch_) { //框间dispatch + 发送
+        } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
             DispatchBetweenServer();
             CommunicateBetweenServer(0, serverNum_, aivNum_);
         } else { //框内接收 + 框内发送
