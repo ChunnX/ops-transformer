@@ -23,15 +23,15 @@
 #include "moe_distribute_dispatch_v2_layered.h"
 #include "moe_distribute_dispatch_v2_tiling_key.h"
 
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_dispatch_arch35.h"
 #else
 #include "moe_distribute_dispatch_a2.h"
 #include "moe_distribute_dispatch_a2_layered.h"
 #include "moe_distribute_dispatch_a2_layered_aicpu.h"
-#endif // defined(__DAV_C310__)
+#endif // __NPU_ARCH__ == 3510
 
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 using namespace MoeDistributeDispatchA5Impl;
 #else
 using namespace MoeDistributeDispatchA2Impl;
@@ -51,14 +51,14 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
 REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
 #else
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A2", MoeDistributeDispatchA2TilingData);
 #endif
     TPipe pipe;
     
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {

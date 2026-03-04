@@ -15,7 +15,7 @@
 
 #ifndef BLOCK_EPILOGUE_FINALIZE_ROUTING_H
 #define BLOCK_EPILOGUE_FINALIZE_ROUTING_H
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else

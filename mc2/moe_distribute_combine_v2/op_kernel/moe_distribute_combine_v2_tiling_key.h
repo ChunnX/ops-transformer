@@ -37,7 +37,7 @@ ASCENDC_TPL_ARGS_DECL(MoeDistributeCombineV2,
                         TILINGKEY_TPL_A2, TILINGKEY_TPL_A3, TILINGKEY_TPL_A5),
 );
 ASCENDC_TPL_SEL( 
-#ifdef __DAV_C310__
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     // A5 - kernel侧
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_TP, 0),

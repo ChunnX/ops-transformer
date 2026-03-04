@@ -219,7 +219,7 @@ struct MC2GmAddrs {
 struct QuantGmAddrs {
     GM_ADDR antiquantScaleGM;
     GM_ADDR antiquantOffsetGM;
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     GM_ADDR offsetGM;
 #endif
     GM_ADDR dequantGM;
@@ -234,7 +234,7 @@ struct ArnGmAddrs {
 };
 
 struct MC2TilingHeader {
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Mc2InitTiling mc2InitTiling;
  	Mc2CcTiling mc2CcTiling;
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8)) ||               \

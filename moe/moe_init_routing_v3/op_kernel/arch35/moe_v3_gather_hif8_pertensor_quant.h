@@ -233,7 +233,7 @@ template <typename T>
 __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx,
                                                             GM_ADDR expandedX, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
-#if (__NPU_ARCH__ == 3101)
+#if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 #endif
 

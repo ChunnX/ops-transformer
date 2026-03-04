@@ -127,7 +127,7 @@ __aicore__ inline void MoeV2SortMultiCore<T>::UBSortCompute(int64_t progress, in
     }
 
     LocalTensor<float> concatLocal;
-#if !defined(__DAV_C310__) && !defined(__DAV_C220__)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) && !defined(__DAV_C220__)
     LocalTensor<float> tempTensor = tempBuffer.Get<float>(GetSortLen<float>(sortNum));
     Concat(concatLocal, expertForSourceRowLocalFp32, tempTensor, sortNum / ONE_REPEAT_SORT_NUM);
 #else
@@ -394,7 +394,7 @@ __aicore__ inline void MoeV2SortMultiCore<T>::Init(GM_ADDR expertIdx, GM_ADDR ex
     }
     pipe->InitBuffer(sortDataCopyOutQueue, bufferNum, bufferSize);
     pipe->InitBuffer(sortedBuffer, bufferSize);
-#if !defined(__DAV_C310__) && !defined(__DAV_C220__)
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) && !defined(__DAV_C220__)
     pipe->InitBuffer(tempBuffer, bufferSize);
 #endif
 }

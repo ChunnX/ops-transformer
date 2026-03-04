@@ -21,9 +21,9 @@
 #include "moe_distribute_combine_setup_tiling_data.h"
 #include "moe_distribute_combine_setup_tiling_key.h"
 
-#ifdef __DAV_C310__
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_combine_setup_arch35.h"
-#endif // __DAV_C310__
+#endif // __NPU_ARCH__ == 3510
 
 using namespace AscendC;
 using namespace MoeDistributeCombineSetupImpl;

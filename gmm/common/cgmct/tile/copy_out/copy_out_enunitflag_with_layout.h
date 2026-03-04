@@ -176,7 +176,7 @@ struct Copy<
     __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait>& dstND, AscendC::LocalTensor<SrcTrait>& src,
                                       const Coord& coord)
     {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         using SrcT = typename SrcTrait::LiteType;
         using DstT = typename DstTrait::LiteType;
 
@@ -238,7 +238,7 @@ struct Copy<
     __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait>& dst, AscendC::LocalTensor<SrcTrait>& src,
                                       const Coord& coord)
     {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         using SrcT = typename SrcTrait::LiteType;
         using DstT = typename DstTrait::LiteType;
 

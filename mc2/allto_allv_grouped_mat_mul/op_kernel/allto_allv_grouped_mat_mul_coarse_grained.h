@@ -71,7 +71,7 @@ private:
 
     // alltoall 流程数据结构
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-#if defined(__DAV_C310__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
 #else
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;

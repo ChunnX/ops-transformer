@@ -434,7 +434,7 @@ __aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> perf
 }
 
 namespace Mc2Kernel {
-#ifdef __DAV_C310__ // A5 implmentation
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A5 implmentation
 using HcclOpParam = HcclCombinOpParam;
 
 __aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam * winContext)
@@ -504,6 +504,6 @@ __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winC
     }
     return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext->remoteRes[rankId].nextDevicePtr))->windowsExp);
 }
-#endif // __DAV_C310__
+#endif // __NPU_ARCH__ == 3510
 } // Mc2Kernel
 #endif // MOE_DISTRIBUTE_BASE_H
