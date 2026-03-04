@@ -2119,18 +2119,18 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTyp
     uint32_t compareCount = Ceil(flagNum, COMPARE_COUNT_PER_BLOCK) * COMPARE_COUNT_PER_BLOCK;
     uint32_t compResultU64Num = Ceil(flagNum, 64); // 64：按照64bit位进行划分
     DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(flagNum), static_cast<uint32_t>(sizeof(float)),
-        static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(float)), 0, 0};
-    DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
-    GlobalTensor<float> dataFlagGlobal;
+        static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
+    DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U};
+    GlobalTensor<uint32_t> dataFlagGlobal;
     GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcExpDataIdx * expertPerSizeOnWin_ + // 拿到第一个起始位置
         beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;
-    dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(wAddr));
+    dataFlagGlobal.SetGlobalBuffer((__gm__ uint32_t *)(wAddr));
     DataCopyPad(flagRecvTensor_, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
          {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt); 
     PipeBarrier<PIPE_V>();
-    CompareScalar(flagCompResultU8_, flagGatherOutTensor_, float(1), AscendC::CMPMODE::EQ, compareCount);
+    CompareScalar(flagCompResultU8_, flagGatherOutTensor_, uint32_t(1), AscendC::CMPMODE::EQ, compareCount);
     SyncFunc<AscendC::HardEvent::V_S>();
 
     for (uint32_t i = 0; i < compResultU64Num; i++) { 
@@ -2193,8 +2193,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t flagMaxRecvNum = (blockCntPerTokenToExpert_ * maxCopyTokenCnt * UB_ALIGN) / sizeof(uint32_t);
     uint32_t gatherOutSize = Ceil(blockCntPerTokenToExpert_ * maxCopyTokenCnt * sizeof(uint32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     GlobalTensor<int32_t> cleanGlobal;
-    flagGatherOutTensor_ = tBuf.GetWithOffset<float>(gatherOutSize / sizeof(float), 0); // buf复用
-    flagRecvTensor_ = tBuf.GetWithOffset<float>(flagMaxRecvNum, gatherOutSize);  // buf复用
+    flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
+    flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
     while (true) {
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
