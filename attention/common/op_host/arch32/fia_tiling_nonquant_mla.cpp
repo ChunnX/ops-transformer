@@ -80,12 +80,8 @@ ge::graphStatus FiaTilingNonQuantMla::GetPlatformInfo()
 
 bool FiaTilingNonQuantMla::IsCapable()
 {
-    if (fiaInfo_ == nullptr) {
-        return false;
-    }
-
-    // 不支持空Tensor
-    if (fiaInfo_->emptyTensorFlag) {
+    // 不支持解析为空或空Tensor
+    if ((fiaInfo_ == nullptr) || (fiaInfo_->emptyTensorFlag)) {
         return false;
     }
 

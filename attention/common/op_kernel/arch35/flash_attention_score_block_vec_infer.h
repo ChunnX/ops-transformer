@@ -523,20 +523,12 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
     if (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
-        if (constInfo.isGqa) {
-            intriParams1.dstStride = 0;
-        } else {
-            intriParams1.dstStride = sizeof(float) * (constInfo.n2G - 1);
-        }
+        intriParams1.dstStride = constInfo.isGqa ? 0 : sizeof(float) * (constInfo.n2G - 1);
     } else {
         intriParams1.dstStride = 0;
     }
     if constexpr (isMlaFullQuant || isMlaNoQuant) {
-        if (layout == LayOutTypeEnum::LAYOUT_BSH) {
-            intriParams1.dstStride = sizeof(float) * (constInfo.s1Size - 1);
-        } else {
-            intriParams1.dstStride = 0;
-        }
+        intriParams1.dstStride = (layout == LayOutTypeEnum::LAYOUT_BSH) ? sizeof(float) * (constInfo.s1Size - 1) : 0;
     }
     if (isMlaNoQuant && layout == LayOutTypeEnum::LAYOUT_BSH && constInfo.gSize < 32) { // 32:gSize限制
         int64_t currRowOffset = runInfo.sOuterOffset % constInfo.n2G;
@@ -939,8 +931,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInf
             }
         } else {
             uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + runInfo.sOuterOffset * constInfo.dSizeV;
-            uint64_t perChannelQuantOffset = constInfo.isGqa ?
-                                                 perChannelQuantGQAOffset :
+            uint64_t perChannelQuantOffset = constInfo.isGqa ? perChannelQuantGQAOffset :
                                                  runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
             uint32_t gSplitSize = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
                                                               (2048U / ((uint32_t)dSizeAligned64 * sizeof(float)));
@@ -963,9 +954,8 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInf
             }
         }
     } else {
-        PostQuantPerTensorImpl<T, OUTPUT_T, true>(
-            attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, runInfo.vec2S1RealSize,
-            constInfo.dSizeV, dSizeAligned64);
+        PostQuantPerTensorImpl<T, OUTPUT_T, true>(attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, 
+                                                 runInfo.vec2S1RealSize, constInfo.dSizeV, dSizeAligned64);
     }
 }
 

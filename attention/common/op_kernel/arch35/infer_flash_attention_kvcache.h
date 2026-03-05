@@ -363,18 +363,15 @@ __aicore__ inline void GetValueCoreOffsetParam(RunParamStr<isInfer>& runParam, c
         runParam.keyCoreOffset = runParam.valueCoreOffset;
     }
 
-    if constexpr (enableKVPrefix) {
-        uint64_t prefixInnerOffsetSize = 0;
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-            // 前缀区域从 batch 的左padding 后开始；与 value 一致但 bIdx 固定为 0
-            prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.n2Dv;
-            runParam.prefixCoreOffset = prefixInnerOffsetSize + runParam.n2oIdx * constInfo.dSizeV;
-        } else {
-            uint64_t headStrideV = 0;
-            headStrideV = constInfo.kvPrefixSize * constInfo.dSizeV;
-            prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.dSizeV;
-            runParam.prefixCoreOffset = prefixInnerOffsetSize + runParam.n2oIdx * headStrideV;
-        }
+    if constexpr (enableKVPrefix && layout == LayOutTypeEnum::LAYOUT_BSH) {
+        // 前缀区域从 batch 的左padding 后开始；与 value 一致但 bIdx 固定为 0
+        uint64_t prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.n2Dv;
+        runParam.prefixCoreOffset = prefixInnerOffsetSize + runParam.n2oIdx * constInfo.dSizeV;
+    } else if constexpr (enableKVPrefix) {
+        uint64_t headStrideV = 0;
+        headStrideV = constInfo.kvPrefixSize * constInfo.dSizeV;
+        uint64_t prefixInnerOffsetSize = runParam.kvLeftPaddingSize * constInfo.dSizeV;
+        runParam.prefixCoreOffset = prefixInnerOffsetSize + runParam.n2oIdx * headStrideV;
     }
 }
 
