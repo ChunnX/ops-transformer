@@ -1400,14 +1400,9 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CalcGlobalScStart(uint32
                                                                           uint64_t &globalScStart)
 {
     for (uint32_t bIdx = bStart; bIdx < bEnd; ++bIdx) {
-        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-            curActSeqLength_ = GetSeqLength(bIdx);
-            curStartPos_ = GetStartPos(bIdx);
-            globalScStart += GetScSize();
-        } else {
-            curActSeqLength_ = constInfo_.sSize;
-            globalScStart += CeilDivT(curActSeqLength_, constInfo_.cmpRatio);
-        }
+        curActSeqLength_ = GetSeqLength(bIdx);
+        curStartPos_ = GetStartPos(bIdx);
+        globalScStart += GetScSize();
     }
     globalScStart -= scStart;
     globalScStart += scEnd;

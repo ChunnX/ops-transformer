@@ -62,6 +62,7 @@ struct BatchInfo {
     uint32_t compressedTcNum = 0;
     uint32_t remSeqCnt = 0;
     uint32_t seqCnt = 0;
+    uint32_t seqUsedCnt = 0;
     uint32_t headHolderSeq = 0;
     uint32_t bStartPos = 0;
     uint32_t bIdx = 0;
@@ -125,7 +126,10 @@ private:
     using VEC1_OUT_T = T;
 
     // 常量
+    static constexpr uint64_t SYNC_MODE0 = 0;
     static constexpr uint64_t SYNC_MODE2 = 2;
+    static constexpr uint32_t SYNC_C1_FLAG = 3;
+    static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
     static constexpr uint32_t SYNC_V1_C1_FLAG = 6;
 
     // ==============================TilingData&TPipe==============================
@@ -191,7 +195,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
 
     // 剔除尾部的无效batch
     for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.GetSeqUsed(constInfo.batchSize - 1);
+        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.batchSize - 1);
         if (bSeqUsed > 0) {
             break;
         }
@@ -267,9 +271,9 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
     uint32_t mSize = 0;
     uint32_t minMBaseSize = 0;
     bool sameSeqUsed = true;
-    uint32_t firstBatchSeqUsed = tools_.GetSeqUsed(0);
+    uint32_t firstBatchSeqUsed = tools_.GetSeqLength(0);
     for (uint32_t i = 0; i < constInfo.batchSize; i++) {
-        uint32_t bSeqUsed = tools_.GetSeqUsed(i);
+        uint32_t bSeqUsed = tools_.GetSeqLength(i);
         uint32_t bStartPos = tools_.GetStartPos(i);
         // 获取m大小
         mSize += bSeqUsed;
@@ -306,15 +310,15 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
     if (sameSeqUsed && mSize <= (constInfo.mBaseSize * (aiCoreNum / dBaseBlockNum))) {
         if constexpr (COMP::coff == COFF::OVERLAP) {
             if (constInfo.headDim == 128) {
-                dBaseBlockNum = 4;
-            } else if (constInfo.headDim == 512) {
                 dBaseBlockNum = 8;
+            } else if (constInfo.headDim == 512) {
+                dBaseBlockNum = 16;
             }
         } else {
             if (constInfo.headDim == 128) {
-                dBaseBlockNum = 4;
-            } else if (constInfo.headDim == 512) {
                 dBaseBlockNum = 8;
+            } else if (constInfo.headDim == 512) {
+                dBaseBlockNum = 16;
             }
         }
         // 核数足够时, 修改才生效
@@ -335,18 +339,23 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
     for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
-        batchInfo.seqCnt = tools_.GetSeqUsed(batchInfo.bIdx);
+        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
         if (batchInfo.seqCnt > 0) {
             break;
         }
     }
     batchInfo.remSeqCnt = batchInfo.seqCnt;
+    if (tools_.isExistSeqUsed_) {
+        batchInfo.seqUsedCnt = tools_.GetSeqUsed(batchInfo.bIdx);
+    } else {
+        batchInfo.seqUsedCnt = batchInfo.seqCnt;
+    }
     if (batchInfo.bIdx < constInfo.batchSize) {
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
         batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
-        batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
+        batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
     }
 }
 
@@ -369,7 +378,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateCurGroup(BasicBlockInfo
     if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.batchSize - 1) && basicBlockInfo.sIdx == batchInfo.seqCnt) {
         basicBlockInfo.sIdx = 0;
         for (basicBlockInfo.bIdx++; basicBlockInfo.bIdx < constInfo.batchSize; ++basicBlockInfo.bIdx) {
-            uint32_t seqCnt = tools_.GetSeqUsed(basicBlockInfo.bIdx);
+            uint32_t seqCnt = tools_.GetSeqLength(basicBlockInfo.bIdx);
             if (seqCnt > 0) {
                 break;
             }
@@ -388,7 +397,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
 
     for (; batchInfo.bIdx < constInfo.batchSize;) {
         uint32_t curDealSeq = 0;
-        uint32_t curDealTcNUm = 0;
+        uint32_t curDealTcNum = 0;
         uint32_t curDealCompressedTcNum = 0;
         // 无法处理完当前整个batch
         // printf("[SkipOneLoop] quota:%u, remSeqCnt:%u\n", quota, batchInfo.remSeqCnt);
@@ -399,26 +408,25 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
                 // TODO 下面两处检视一下容易减翻
                 curDealSeq = quota - delta;
                 quota -= curDealSeq;
-                curDealTcNUm = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
-                curDealCompressedTcNum = curDealTcNUm;
+                curDealTcNum = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
+                curDealCompressedTcNum = min(curDealTcNum, batchInfo.compressedTcNum);
                 // 更新当前组所需信息
                 UpdateCurGroup(basicBlockInfo, batchInfo, curGroupQuota, curDealSeq);
                 // 更新batch信息
                 batchInfo.remSeqCnt = batchInfo.remSeqCnt - curDealSeq;
                 batchInfo.sIdx = batchInfo.sIdx + curDealSeq;
-                batchInfo.compressedTcNum -= curDealTcNUm;
-                batchInfo.tcNum -= curDealTcNUm;
+                batchInfo.compressedTcNum -= curDealCompressedTcNum;
+                batchInfo.tcNum -= curDealTcNum;
                 // 更新loop信息
-                basicBlockInfo.dealTcNum += curDealTcNUm;
-                basicBlockInfo.compressedTcNum += curDealTcNUm;
+                basicBlockInfo.dealTcNum += curDealTcNum;
+                basicBlockInfo.compressedTcNum += curDealCompressedTcNum;
             }
             break;
         } else {
             // 处理整个batch
             quota -= batchInfo.remSeqCnt;
             curDealSeq = batchInfo.remSeqCnt;
-            curDealTcNUm = batchInfo.tcNum;
-            curDealCompressedTcNum = batchInfo.compressedTcNum;
+            curDealTcNum = batchInfo.tcNum;
             // 更新当前组所需信息
             UpdateCurGroup(basicBlockInfo, batchInfo, curGroupQuota, curDealSeq);
             // 更新batch和loop信息
@@ -548,16 +556,24 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &inf
         // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u, cubeDbIdx:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize, info.cubeDbIdx);
         blockCube_.ComputeMm1(info);
     }
+    CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_C1_FLAG);
+    CrossCoreWaitFlag(SYNC_C1_FLAG);
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG + info.cubeDbIdx);
 }
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo &info) {
-    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
+#if (__CCE_AICORE__ == 220)
+    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
+#else
+    CrossCoreWaitFlag<SYNC_MODE2, PIPE_V>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
+#endif
+    printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
 #if (__CCE_AICORE__ == 220)
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
 #else
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
 #endif
 }
 
@@ -580,7 +596,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::AllocEventID()
     }
 #else
     for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
+        CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + i);
     }
 #endif
     }
@@ -689,9 +705,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
 
         if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0, isNeedExcuteC1);
-            SyncAll<false>();
         } else {
-            SyncAll<false>();
             ComputeVec1(vec1Info);
             UpdateVec2Info(vec2Info, i, vec1Info);
 
