@@ -198,11 +198,12 @@ function(add_compile_cmd_target)
 
     if(ADD_OPS_COMPILE_OPTION_V2)
         set(OP_DEBUG_CONFIG_OPTION --opc-config-file ${ASCEND_CUSTOM_OPC_OPTIONS})
+        set(OP_TILING_KEY_OPTION --kernel_template_input ${KERNEL_TEMPLATE_INPUT})
     else()
         if(OP_DEBUG_CONFIG)
             set(OP_DEBUG_CONFIG_OPTION --op-debug-config ${OP_DEBUG_CONFIG})
         endif()
-        set(OP_TILING_KEY_OPTION --tiling-keys ${ASCEND_CUSTOM_TILING_KEYS})
+        set(OP_TILING_KEY_OPTION --kernel_template_input ${ASCEND_CUSTOM_TILING_KEYS})
     endif()
 
     set(_OUT_DIR           ${ASCEND_BINARY_OUT_DIR}/${CMD_COMPUTE_UNIT})
@@ -217,18 +218,21 @@ function(add_compile_cmd_target)
             ${base_aclnn_binary_dir}/aic-${CMD_COMPUTE_UNIT}-ops-info.ini
             ${GEN_OUT_DIR}
             ${CMD_COMPUTE_UNIT}
+            ${BISHENG_FLAGS}
             ${OP_TILING_KEY_OPTION}
             ${OP_DEBUG_CONFIG_OPTION}
         COMMAND ${HI_PYTHON} ${ASCENDC_CMAKE_UTIL_DIR}/ascendc_bin_param_build.py
             ${base_aclnn_binary_dir}/inner/aic-${CMD_COMPUTE_UNIT}-ops-info.ini
             ${GEN_OUT_DIR}
             ${CMD_COMPUTE_UNIT}
+            ${BISHENG_FLAGS}
             ${OP_TILING_KEY_OPTION}
             ${OP_DEBUG_CONFIG_OPTION}
         COMMAND ${HI_PYTHON} ${ASCENDC_CMAKE_UTIL_DIR}/ascendc_bin_param_build.py
             ${base_aclnn_binary_dir}/exc/aic-${CMD_COMPUTE_UNIT}-ops-info.ini
             ${GEN_OUT_DIR}
             ${CMD_COMPUTE_UNIT}
+            ${BISHENG_FLAGS}
             ${OP_TILING_KEY_OPTION}
             ${OP_DEBUG_CONFIG_OPTION}
         COMMAND bash ${SED_SCRIPT} ${GEN_OUT_DIR}
@@ -318,7 +322,7 @@ function(add_ops_tiling_keys)
         list(JOIN OP_COMPILE_TILING_KEYS "," STRING_TILING_KEYS)
         add_ops_compile_options(
                 OP_NAME ${OP_COMPILE_OP_NAME}
-                OPTIONS --tiling_key=${STRING_TILING_KEYS}
+                OPTIONS --kernel_template_input=${STRING_TILING_KEYS}
         )
     else()
         file(APPEND ${ASCEND_CUSTOM_TILING_KEYS}

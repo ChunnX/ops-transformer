@@ -19,7 +19,7 @@ eigen:
   version: 5.0.0
   type: run
 makeself:
-  version: v2.5.0
+  version: release-2.5.0-patch1.0
   type: build
 json:
   version: v3.11.3
@@ -27,6 +27,6 @@ json:
 protobuf:
   version: v25.1
   type: run
-securec:
-  version: v1.1.10
+libboundscheck:
+  version: v1.1.16
   type: run
