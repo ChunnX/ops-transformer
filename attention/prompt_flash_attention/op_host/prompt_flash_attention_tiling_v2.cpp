@@ -2413,7 +2413,7 @@ bool PromptFlashAttentionTilingV2::CheckPATypeAndShape(ContextParamsForPFATiling
                 "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when Full Quant and PA enable",
                 *blockSize, BLOCK_SIZE_BASE, BLOCK_SIZE_BASE, BLOCK_SIZE_MAX),
             return false);
-    } else {
+    } else {            
         OP_CHECK_IF((!enableIFAMLA && !enableIFA && !(queryShapeInfo.s == 1 && enableAlibiPse) && (*blockSize % BLOCK_SIZE_BASE_FOR_NO_QUANT != 0 || *blockSize < BLOCK_SIZE_BASE_FOR_NO_QUANT || *blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT)),
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
                 "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant",
@@ -2434,6 +2434,37 @@ bool PromptFlashAttentionTilingV2::CheckPATypeAndShape(ContextParamsForPFATiling
                 "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant",
                 *blockSize, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_MAX_FOR_NO_QUANT),
             return false);
+    }
+    //非量化场景
+    if(!enableIFAMLAFullQuant && !enablePertensorQuant){
+        if (enableIFAMLA || enablePFARope || enablePFAMLA){
+            OP_CHECK_IF((*blockSize % BLOCK_SIZE_BASE_FOR_NO_QUANT != 0 || *blockSize < BLOCK_SIZE_BASE_FOR_NO_QUANT || *blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant mla",
+                *blockSize, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_MAX_FOR_NO_QUANT),
+            return false);
+        }else if (queryShapeInfo.d == 64 || queryShapeInfo.d == 128){
+            OP_CHECK_IF((*blockSize % BLOCK_SIZE_BASE_FOR_NO_QUANT != 0 || *blockSize < BLOCK_SIZE_BASE_FOR_NO_QUANT || *blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT),
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant with d[%d] is 64/128",
+                *blockSize, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_MAX_FOR_NO_QUANT, queryShapeInfo.d),
+            return false);
+        }else{
+            if (queryShapeInfo.s > 1){
+                OP_CHECK_IF((*blockSize % BLOCK_SIZE_BASE != 0 || *blockSize < BLOCK_SIZE_BASE || *blockSize > BLOCK_SIZE_MAX),
+                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                    "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant with qs[%d] is greater than 1",
+                    *blockSize, BLOCK_SIZE_BASE, BLOCK_SIZE_BASE, BLOCK_SIZE_MAX, queryShapeInfo.s),
+                return false);
+            }else{
+                OP_CHECK_IF((*blockSize % BLOCK_SIZE_BASE_FOR_NO_QUANT != 0 || *blockSize < BLOCK_SIZE_BASE_FOR_NO_QUANT || *blockSize > BLOCK_SIZE_MAX),
+                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                    "block size(%d) should be a multiple of %d, and should be in range of [%d, %d] when PA enable and no quant with qs[%d] is 1",
+                    *blockSize, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_BASE_FOR_NO_QUANT, BLOCK_SIZE_MAX, queryShapeInfo.s),
+                return false);
+            }
+        }
+        
     }
 
     if (isMaxWorkspace) {
