@@ -15,6 +15,7 @@ project(cann_ops-transformer)
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
+
 option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
 option(ENABLE_CCACHE              "Enable ccache capability"        ON)
@@ -44,6 +45,25 @@ set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;k
 set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
 set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch38 arch32 arch32)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
+
+# 获取基础 CANN 路径
+if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)
+    set(ASCEND_CANN_PACKAGE_PATH  ${CUSTOM_ASCEND_CANN_PACKAGE_PATH})
+elseif (DEFINED ENV{ASCEND_HOME_PATH})
+    set(ASCEND_CANN_PACKAGE_PATH  $ENV{ASCEND_HOME_PATH})
+elseif (DEFINED ENV{ASCEND_OPP_PATH})
+    get_filename_component(ASCEND_CANN_PACKAGE_PATH "$ENV{ASCEND_OPP_PATH}/.." ABSOLUTE)
+else()
+    set(ASCEND_CANN_PACKAGE_PATH  "/usr/local/Ascend/latest")
+endif ()
+message(STATUS "ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH}")
+include(cmake/func.cmake)
+
+include(version.cmake)
+if (BUILD_OPEN_PROJECT)
+    check_pkg_build_deps(${CANN_VERSION_PACKAGES})
+endif()
+add_version_info_targets()
 
 foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
   list(FIND SOC_VERSION_LIST ${SOC_VERSION} INDEX)
@@ -100,18 +120,11 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/config.cmake)
-include(cmake/func.cmake)
 include(cmake/third_party/json.cmake)
 if (ENABLE_TEST)
     include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
 endif()
 include(${OPS_ADV_CMAKE_DIR}/ut.cmake)
-
-include(version.cmake)
-if (BUILD_OPEN_PROJECT)
-    check_pkg_build_deps(${CANN_VERSION_PACKAGES})
-endif()
-add_version_info_targets()
 
 if (BUILD_OPEN_PROJECT)
     include(cmake/intf.cmake)

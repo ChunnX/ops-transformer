@@ -21,8 +21,9 @@ function(cpack_empty_package)
   endif ()
 
   # CPack config
-  install(FILES ${CMAKE_SOURCE_DIR}/version.info
+  install(FILES ${CMAKE_BINARY_DIR}/version.ops-transformer.info
       DESTINATION share/info/ops_transformer
+      RENAME version.info
   )
   install(FILES ${CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/help.info
       DESTINATION share/info/ops_transformer/script
