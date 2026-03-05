@@ -367,7 +367,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td><ul>
           <li>首轴长度需与weight的首轴维度相等，尾轴长度需要与weight还原为ND格式的尾轴相同。</li>
           <li>目前仅支持tensorlist长度为1。</li>
-          <li>不支持空tensorlist。</li>
         </ul></td>
         <td>FLOAT8_E8M0、UINT64、FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
@@ -401,7 +400,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td>xScale</td>
         <td rowspan="1">输入</td>
         <td>表示左矩阵的的量化因子，公式中的xScale。</td>
-        <td>不支持空tensor。</td>
         <td>FLOAT8_E8M0、FLOAT</td>
         <td>ND</td>
         <td>1、3</td>
@@ -551,8 +549,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       - 支持dequantDtype参数：MX量化场景支持取值0，Pertoken场景支持取值为0、1、27。
       - 支持quantMode参数：MX量化场景支持取值2，Pertoken场景支持取值为0。
       - 仅支持dequantMode和quantMode相同取值。
-      - x支持M为0的空Tensor。
-      - weight支持N为0的空Tensor。
+      - x和xScale支持M为0的空Tensor。
+      - weight和weightScale支持N为0的空Tensor。
 
 
 - **返回值**
