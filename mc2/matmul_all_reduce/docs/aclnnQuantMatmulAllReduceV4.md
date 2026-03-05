@@ -20,7 +20,9 @@
   - <term>Ascend 950PR/Ascend 950DT</term>：新增perblock、pertile、mxfp量化方式。新增x1，x2输入支持dtype为`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、HIFLOAT8、`FLOAT4_E2M1`。
 - **计算公式**：
 
-  - 公式1：commQuantScale1Optional, commQuantScale2Optional不为空时:
+  - 公式1，使能低bit通信场景的公式2或公式3场景：
+  
+    x1，x2为INT8，commQuantScale1Optional, commQuantScale2Optional不为空时:
 
     $$
     matmulAddOutput = (x2ScaleOptional * x1ScaleOptional * (x1_{int8}@x2_{int8} + biasOptional_{int32}) + x3Optional);
@@ -38,77 +40,96 @@
     output = (AllGather(reduceSumOutput_{int8}) * commQuantScale2Optional);
     $$
 
-  - 公式2：x1，x2为INT8，无x1ScaleOptional，x2Scale为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
+  - 公式2，perchannel量化 && pertensor量化：
+  
+    x1，x2为INT8，无x1ScaleOptional，x2ScaleOptional为INT64/UINT64，可选biasOptional为INT32，out为BFLOAT16/FLOAT16：
 
     $$
     output = AllReduce((x1@x2 + biasOptional) * x2ScaleOptional + x3Optional)
     $$
 
-  - 公式3：x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
+  - 公式3，pertoken-perchannel量化 && pertoken-pertensor量化：
+    
+    x1，x2为INT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32/BFLOAT16，可选biasOptional为INT32, out为FLOAT16/BFLOAT16：
 
     $$
     output = AllReduce((x1@x2 + biasOptional) * x2ScaleOptional * x1ScaleOptional + x3Optional)
     $$
 
-  - 公式4：x1，x2为`FLOAT4_E2M1`/`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为`FLOAT8_E8M0`，x2Scale为`FLOAT8_E8M0`，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
+  - 公式4，MXFP量化：
+    
+    x1，x2为`FLOAT4_E2M1`/`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为`FLOAT8_E8M0`，x2ScaleOptional为`FLOAT8_E8M0`，可选biasOptional为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
     output = AllReduce((x1* x1ScaleOptional)@(x2* x2ScaleOptional) + biasOptional + x3Optional)
     $$
+  - 公式5，perchannel量化 && pertensor量化：
 
-  - 公式5：x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
+    x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x2ScaleOptional为UINT/INT64，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
+
+  $$
+  output = AllReduce((x1@x2 + biasOptional) * x2ScaleOptional  + x3Optional)
+  $$
+
+  - 公式6，pertoken-perchannel量化 && pertoken-pertensor量化：
+  
+    x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2ScaleOptional为FLOAT32，可选bias为FLOAT32, out为FLOAT16/BFLOAT16/FLOAT32：
 
     $$
     output = AllReduce((x1@x2 + biasOptional) * x2ScaleOptional * x1ScaleOptional + x3Optional)
     $$
 
-  - 公式6：x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
+  - 公式7，perblock-perblock量化：
+  
+    x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`/HIFLOAT8，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，无biasOptional。当x1为(a0, a1)，x2为(b0, b1)时x1ScaleOptional为(ceildiv(a0，128), ceildiv(a1，128))x2Scale为(ceildiv(b0，128), ceildiv(b1，128)), out为FLOAT16/BFLOAT16/FLOAT32:
 
     $$
-    output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3)
+    output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3Optional)
     $$
 
-   - 公式7：x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，当commQuantMode为1时，out为FLOAT16/BFLOAT16/FLOAT32:
+   - 公式8，使能低bit通信，pertile量化：
 
-      $$
-      matmulAddOutput_{fp32} = (x2ScaleOptional * x1ScaleOptional * (x1_{fp8}@x2_{fp8} + biasOptional_{fp32}) + x3Optional);
-      $$
+      x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，commQuantMode为1，out为FLOAT16/BFLOAT16/FLOAT32:
 
-      $$
-      scaleOut_{fp32} = (matmulAddOutput_{fp32} / (reduceMax(abs(matmulAddOutput_{fp32})) / FP32\_MAX));
-      $$
+    $$
+    matmulAddOutput_{fp32} = (x2ScaleOptional * x1ScaleOptional * (x1_{fp8}@x2_{fp8} + biasOptional_{fp32}) + x3Optional);
+    $$
 
-      $$
-      quantOutput_{fp8} = (append((matmulAddOutput_{fp32} * scaleOut{fp32})@scaleOut_{fp32}));
-      $$
+    $$
+    scaleOut_{fp32} = (matmulAddOutput_{fp32} / (reduceMax(abs(matmulAddOutput_{fp32})) / FP32\_MAX));
+    $$
 
-      $$
-      alltoallOutput_{fp8} = (AllToAll(quantOut_{fp8}));
-      $$
+    $$
+    quantOutput_{fp8} = (append((matmulAddOutput_{fp32} * scaleOut{fp32})@scaleOut_{fp32}));
+    $$
 
-      $$
-      dequantOutput_{fp32} = (alltoallOutput_{fp8} / scaleOut_{fp32});
-      $$
+    $$
+    alltoallOutput_{fp8} = (AllToAll(quantOut_{fp8}));
+    $$
 
-      $$
-      reduceSumOutput_{fp32} = (reduceSum(dequantOutput_{fp32}));
-      $$
+    $$
+    dequantOutput_{fp32} = (alltoallOutput_{fp8} / scaleOut_{fp32});
+    $$
 
-      $$
-      preAllGatherQuantScale_{fp32} = (reduceSumOutput_{fp32} / (reduceMax(abs(reduceSumOutput_{fp32})) / FP8\_MAX));
-      $$
+    $$
+    reduceSumOutput_{fp32} = (reduceSum(dequantOutput_{fp32}));
+    $$
 
-      $$
-      preAllGatherQuantOutput_{fp8} = (append((reduceSumOutput_{fp32} * preAllGatherQuantScale_{fp32})@preAllGatherQuantScale_{fp32}));
-      $$
+    $$
+    preAllGatherQuantScale_{fp32} = (reduceSumOutput_{fp32} / (reduceMax(abs(reduceSumOutput_{fp32})) / FP8\_MAX));
+    $$
 
-      $$
-      allGatherOutput_{fp8} = (AllGather(preAllGatherQuantOutput_{fp8}));
-      $$
+    $$
+    preAllGatherQuantOutput_{fp8} = (append((reduceSumOutput_{fp32} * preAllGatherQuantScale_{fp32})@preAllGatherQuantScale_{fp32}));
+    $$
 
-      $$
-      output = (cast(allGatherOutput_{fp32} / preAllGatherQuantScale_{fp32}));
-      $$
+    $$
+    allGatherOutput_{fp8} = (AllGather(preAllGatherQuantOutput_{fp8}));
+    $$
+
+    $$
+    output = (cast(allGatherOutput_{fp32} / preAllGatherQuantScale_{fp32}));
+    $$
 
 ## 函数原型
 
@@ -201,7 +222,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>x3Optional</td>
           <td>输入</td>
           <td>MatMul计算后的add计算，即计算公式中的x3Optional。</td>
-          <td><ul><li>低比特通信场景下仅支持输出为BFLOAT16场景，且仅支持非空输入，要求维度与output的维度一致。</li></ul></td>
+          <td><ul><li>低比特通信场景下仅支持输出为BFLOAT16场景，且仅支持非空输入，要求数据类型、维度与output的维度一致。</li></ul></td>
           <td>FLOAT16、BFLOAT16、FLOAT32</td>
           <td>ND</td>
           <td>2-3</td>
@@ -221,7 +242,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>x2ScaleOptional</td>
           <td>输入</td>
           <td>MatMul计算后的去量化系数，即计算公式中的x2Scale。</td>
-          <td><ul><li>shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。</li><li>输出为BFLOAT16时，直接将BFLOAT16类型的dequantScale传入本接口。</li><li>输出为FLOAT16且输入为INT8时，x1ScaleOptional不为空，可直接将FLOAT32类型的x2Scale传入本接口，如果x1ScaleOptional为空，则需提前调用TransQuantParamV2算子的aclnn接口来将x2Scale转成INT64/UINT64数据类型。数据类型为FLOAT8_E8M0时，仅支持转置，shape为[n, ceilDiv(k, 64), 2], x2为FLOAT4_E2M1时，必须保证ceilDiv(k, 32)为偶数。perblock场景下，x2的shape为[ceilDiv(k, 128), ceilDiv(n, 128)]，x2转置时，x2Scale的shape为[ceilDiv(n, 128), ceilDiv(k, 128)]。</li></ul></td>
+          <td><ul><li>shape在pertensor场景为(1)，perchannel场景为(n)/(1, n)。</li><li>输入为int8且输出为BFLOAT16时，直接将BFLOAT16类型的x2ScaleOptional传入本接口。</li><li>输出为FLOAT16且输入为INT8时，x1ScaleOptional不为空，可直接将FLOAT32类型的x2ScaleOptional传入本接口，如果x1ScaleOptional为空，则需提前调用TransQuantParamV2算子的aclnn接口来将x2ScaleOptional转成INT64/UINT64数据类型。<li>数据类型为FLOAT8_E8M0时，仅支持转置，shape为[n, ceilDiv(k, 64), 2]。</li> <li>x2为FLOAT4_E2M1时，必须保证ceilDiv(k, 32)为偶数.</li><li>perblock场景下，x2的shape为[ceilDiv(k, 128), ceilDiv(n, 128)]，x2转置时，x2ScaleOptional的shape为[ceilDiv(n, 128), ceilDiv(k, 128)]。</li></ul></td>
           <td>INT64、UINT64、FLOAT32、BFLOAT16、FLOAT8_E8M0</td>
           <td>ND</td>
           <td>1-3</td>
@@ -231,7 +252,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>commQuantScale1Optional</td>
           <td>输入</td>
           <td>MatMul+Add计算后的perchannel量化系数，即计算公式中的commQuantScale1Optional。</td>
-          <td><ul><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -241,7 +262,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>commQuantScale2Optional</td>
           <td>输入</td>
           <td>AllGather计算后的perchannel量化系数，即计算公式中的commQuantScale2Optional。</td>
-          <td><ul><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -291,7 +312,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>groupSize</td>
           <td>输入</td>
           <td>用于表示反量化中x1Scale/x2Scale输入的一个数在其所在的对应维度方向上可以用于该方向x1/x2输入的多少个数的反量化。</td>
-          <td><ul><li>groupSize输入由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。当前groupSizeM，groupSizeN，groupSizeK仅支持128。</li></ul></td>
+          <td><ul><li>groupSize输入由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</li><li>perblock场景仅支持groupSizeM，groupSizeN，groupSizeK = 128,128,128</li><li>MXFP场景仅支持groupSizeM，groupSizeN，groupSizeK = 1,1,32</li><li>支持参数自动推导，任一参数输入0时，算子自动推导该参数值，全部输入0时，自动推导全部参数值</li></ul></td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -339,22 +360,6 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
         </tr>
       </tbody>
     </table>
-
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - x1、x2支持INT8
-    - biasOptional支持INT32
-    - x3支持FLOAT16、BFLOAT16
-    - x1ScaleOptional支持INT64、UINT64、FLOAT32、BFLOAT16
-    - x2ScaleOptional支持FLOAT32
-    - output支持FLOAT16、BFLOAT16
-  - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：
-    - x1、x2支持INT8、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、HIFLOAT8、`FLOAT4_E2M1`
-    - biasOptional支持INT32、FLOAT32
-    - x3支持FLOAT16、BFLOAT16、FLOAT32
-    - x1ScaleOptional支持FLOAT32、FLOAT8_E8M0
-    - x2ScaleOptional支持INT64、UINT64、FLOAT32、BFLOAT16、`FLOAT8_E8M0`
-    - output支持FLOAT16、BFLOAT16、FLOAT32
-
 
 - **返回值**
 
@@ -444,13 +449,12 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 - m大小不超过2147483647，x1与x2的最后一维大小不超过65535，x1的最后一维指k，x2的最后一维指转置时的k或非转置时的n。
 - 传入的x1、x2、x2Scale或者output不为空指针。
 - x1和x2、dequantScale、output、bias（非空场景）、x3（非空场景）的数据类型和数据格式需要在支持的范围之内。
-- 当x1,x2的输入类型为INT8时，若输出output类型为FLOAT16，当x1ScaleOptional为空时，x2Scale的类型为INT64、UINT64，当x1ScaleOptional不为空时，x2Scale的类型为FLOAT32；若输出output类型为BFLOAT16，x2Scale的类型为BFLOAT16，x3的类型为BFLOAT16。
 - 传入的commQuantScale1与commQuantScale2需要同时为空指针或同时不为空指针，若传入的commQuantScale1与commQuantScale2同时不为空指针，两个量化参数shape需保持一致，类型需与算子输出类型保持一致，且每张卡输入保持一致。
 - 仅支持hccs链路all mesh组网。
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - 一个模型中的通算融合MC2算子，仅支持相同通信域。
-- INT8和FP8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议使能INT8或FP8低bit通信，即不建议输入commQuantScale1和commQuantScale2，且commQuantMode输入0。
+- INT8和FP8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议使能INT8或FP8低bit通信，即不建议输入commQuantScale1和commQuantScale2，且commQuantMode输入0。（注：INT8低bit通信指输入为int8且使能commQuantScale1Optional、commQuantScale2Optional；FP8低bit通信指输入为FLOAT8_E4M3FN/FLOAT8_E5M2且使能commQuantMode=1。）
 - 空tensor支持度：
   - 不支持空tensor。
 - groupSize相关约束:
@@ -460,6 +464,264 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
     $$
 
+输入和输出支持以下数据类型组合
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    <table>
+    <thead>
+        <tr>
+        <th>x1</th>
+        <th>x2</th>
+        <th>biasOptional</th>
+        <th>x3Optional</th>
+        <th>x1ScaleOptional</th>
+        <th>x2ScaleOptional</th>
+        <th>commQuantScale1Optional</th>
+        <th>commQuantScale2Optional</th>
+        <th>output</th>
+        <th>限制</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+        <td>INT8</td>
+        <td>INT8</td>
+        <td>null、INT32</td>
+        <td>null、FLOAT16</td>
+        <td>null</td>
+        <td>INT64、UINT64</td>
+        <td>null、FLOAT16</td>
+        <td>null、FLOAT16</td>
+        <td>FLOAT16</td>
+        <td>commQuantScale1Optional，commQuantScale2Optional同时为空或不为空</td>
+        </tr>
+        <tr>
+        <td>INT8</td>
+        <td>INT8</td>
+        <td>null、INT32</td>
+        <td>null、FLOAT16</td>
+        <td>FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>null、FLOAT16</td>
+        <td>null、FLOAT16</td>
+        <td>FLOAT16</td>
+        <td>commQuantScale1Optional，commQuantScale2Optional同时为空或不为空</td>
+        </tr>
+        <tr>
+        <td>INT8</td>
+        <td>INT8</td>
+        <td>null、INT32</td>
+        <td>null、BFLOAT16</td>
+        <td>null、FLOAT32</td>
+        <td>BFLOAT16</td>
+        <td>null、BFLOAT16</td>
+        <td>null、BFLOAT16</td>
+        <td>BFLOAT16</td>
+        <td>commQuantScale1Optional，commQuantScale2Optional同时为空或不为空</td>
+        </tr>
+    </tbody>
+    </table>
+
+- <term>Ascend 950PR/Ascend 950DT</term>：
+    
+    int8输入时，支持pertoken-perchannel量化 && pertensor-perchannel量化
+    <table>
+    <thead>
+        <tr>
+        <th>x1</th>
+        <th>x2</th>
+        <th>biasOptional</th>
+        <th>x3Optional</th>
+        <th>x1ScaleOptional</th>
+        <th>x2ScaleOptional</th>
+        <th>commQuantScale1Optional</th>
+        <th>commQuantScale2Optional</th>
+        <th>output</th>
+        <th>限制</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+        <td>INT8</td>
+        <td>INT8</td>
+        <td>null、INT32</td>
+        <td>null、FLOAT16</td>
+        <td>null</td>
+        <td>INT64、UINT64</td>
+        <td>null、FLOAT16</td>
+        <td>null、FLOAT16</td>
+        <td>FLOAT16</td>
+        <td>commQuantScale1Optional，commQuantScale2Optional同时为空或不为空</td>
+        </tr>
+        <tr>
+        <td>INT8</td>
+        <td>INT8</td>
+        <td>null、INT32</td>
+        <td>null、FLOAT16</td>
+        <td>FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>null、FLOAT16</td>
+        <td>null、FLOAT16</td>
+        <td>FLOAT16</td>
+        <td>commQuantScale1Optional，commQuantScale2Optional同时为空或不为空</td>
+        </tr>
+        <tr>
+        <td>INT8</td>
+        <td>INT8</td>
+        <td>null、INT32</td>
+        <td>null、BFLOAT16</td>
+        <td>null、FLOAT32</td>
+        <td>BFLOAT16</td>
+        <td>null、BFLOAT16</td>
+        <td>null、BFLOAT16</td>
+        <td>BFLOAT16</td>
+        <td>commQuantScale1Optional，commQuantScale2Optional同时为空或不为空</td>
+        </tr>
+    </tbody>
+    </table>
+
+    pertoken-perchannel量化 && pertoken-pertensor量化 && perblock-perblock量化
+    <table>
+    <thead>
+        <tr>
+        <th>x1</th>
+        <th>x2</th>
+        <th>biasOptional</th>
+        <th>x3Optional</th>
+        <th>x1ScaleOptional</th>
+        <th>x2ScaleOptional</th>
+        <th>output</th>
+        <th>限制</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+        <td>FLOAT8_E4M3FN</td>
+        <td>FLOAT8_E4M3FN</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>B-B量化场景仅支持biasOptional为null</td>
+        </tr>
+        <tr>
+        <td>FLOAT8_E5M2</td>
+        <td>FLOAT8_E5M2</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>B-B量化场景仅支持biasOptional为null</td>
+        </tr>
+        <tr>
+        <td>HIFLOAT8</td>
+        <td>HIFLOAT8</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>B-B量化场景仅支持biasOptional为null</td>
+        </tr>
+    </tbody>
+    </table>
+
+    perchannel量化 && pertensor量化
+    <table>
+    <thead>
+        <tr>
+        <th>x1</th>
+        <th>x2</th>
+        <th>biasOptional</th>
+        <th>x3Optional</th>
+        <th>x1ScaleOptional</th>
+        <th>x2ScaleOptional</th>
+        <th>output</th>
+        <th>限制</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+        <td>FLOAT8_E4M3FN</td>
+        <td>FLOAT8_E4M3FN</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>null</td>
+        <td>UINT64</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>-</td>
+        </tr>
+        <tr>
+        <td>FLOAT8_E5M2</td>
+        <td>FLOAT8_E5M2</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>null</td>
+        <td>UINT64</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>-</td>
+        </tr>
+        <tr>
+        <td>HIFLOAT8</td>
+        <td>HIFLOAT8</td>
+        <td>FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>null</td>
+        <td>UINT64</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>-</td>
+        </tr>
+    </tbody>
+    </table>
+
+    MXFP量化
+    <table>
+    <thead>
+        <tr>
+        <th>x1</th>
+        <th>x2</th>
+        <th>biasOptional</th>
+        <th>x3Optional</th>
+        <th>x1ScaleOptional</th>
+        <th>x2ScaleOptional</th>
+        <th>output</th>
+        <th>限制</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+        <td>FLOAT4_E2M1</td>
+        <td>FLOAT4_E2M1</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT8_E8M0</td>
+        <td>FLOAT8_E8M0</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>-</td>
+        </tr>
+        <tr>
+        <td>FLOAT8_E4M3FN</td>
+        <td>FLOAT8_E4M3FN</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT8_E8M0</td>
+        <td>FLOAT8_E8M0</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>-</td>
+        </tr>
+        <tr>
+        <td>FLOAT8_E5M2</td>
+        <td>FLOAT8_E5M2</td>
+        <td>null、FLOAT32</td>
+        <td>null、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT8_E8M0</td>
+        <td>FLOAT8_E8M0</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>-</td>
+        </tr>
+    </tbody>
+    </table>
 
 ## 调用示例
 
