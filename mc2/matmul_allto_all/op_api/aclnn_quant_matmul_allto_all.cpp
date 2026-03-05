@@ -159,17 +159,19 @@ static bool Check3DScaleShape(const aclTensor* x1, const aclTensor* x2, const ac
 // 校验输入Scaleshape
 static bool CheckScaleShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale, const aclTensor* x2Scale,
                             int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX2) {
-    bool ScaleShapeValid = false;
-    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
+    bool scaleShapeValid = true;
+    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
+        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         OP_API_CHECK(!transposeX2, {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In the mx quantization scenario, x2 must be transposed.");
             return false;
         });
-        ScaleShapeValid = Check3DScaleShape(x1, x2, x1Scale, x2Scale, transposeX2);
-    } else {
-        ScaleShapeValid = Check1DScaleShape(x1, x2, x1Scale, x2Scale, transposeX2);
+        scaleShapeValid = Check3DScaleShape(x1, x2, x1Scale, x2Scale, transposeX2);
+    } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::PERTOKEN_QUANT &&
+               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
+        scaleShapeValid = Check1DScaleShape(x1, x2, x1Scale, x2Scale, transposeX2);
     }
-    return ScaleShapeValid;
+    return scaleShapeValid;
 }
 
 // 910B数据类型校验
@@ -260,13 +262,15 @@ static bool CheckDtypesValid(const aclTensor* x1, const aclTensor* x2,
                              const aclTensor* biasOptional, const aclTensor* output) {
     bool isAllDtypesValid = false;
     // 根据量化场景和芯片型号进入不同分支判断
-    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::PERTOKEN_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
+    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::PERTOKEN_QUANT &&
+        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         if(op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B) {
             isAllDtypesValid = CheckKCBiasDtypesValid(x1, x2, x1Scale, x2Scale, biasOptional, output);
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             isAllDtypesValid = CheckKCQuantDtypesValidA5(x1, x2, x1Scale, x2Scale, biasOptional, output);
         }
-    } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
+    } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
+               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         isAllDtypesValid = CheckMXQuantDtypesValidA5(x1, x2, x1Scale, x2Scale, biasOptional, output);
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,

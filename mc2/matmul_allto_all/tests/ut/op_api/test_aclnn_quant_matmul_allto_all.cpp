@@ -21,6 +21,8 @@
 using namespace op;
 using namespace std;
 
+constexpr int64_t MX_GROUP_SIZE = 4295032864;
+
 class TestAclnnQuantMatmulAlltoAll : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -37,10 +39,8 @@ protected:
 };
 
 struct QuantMatmulAlltoAllAclnnTestParam {
-    // 用例名
-    string caseName;
-    // 通信域卡数，ut测试默认为2
-    int worldSize;
+    string caseName; // 用例名
+    int worldSize; // 通信域卡数，ut测试默认为2
     // 数据形状
     int64_t x1Quantmode; // x1量化模式
     int64_t x2Quantmode; // x2量化模式
@@ -48,14 +48,14 @@ struct QuantMatmulAlltoAllAclnnTestParam {
     vector<int64_t> x2Shape; // x2数据shape，正常为（H1，H2）
     vector<int64_t> biasShape; // bias数据shape，正常为（H2）
     vector<int64_t> x1ScaleShape; // x1scales数据shape，正常为（BS），mx量化为（BS，ceil(H1/64)，2）
-    vector<int64_t> x2ScaleShape; // x2scales数据shape，正常为（H2），mx量化为（ceil(H1/64)，H2，2）
+    vector<int64_t> x2ScaleShape; // x2scales数据shape，正常为（H2），mx量化为（H2，ceil(H1/64)，2）
     vector<int64_t> outputShape; // output数据shape，正常为（BS * world_size，H2 / world_size）
     // 数据类型
     aclDataType x1Dtype; // x1数据dtype，仅支持float8_e5m2和float8_e4m3fn
     aclDataType x2Dtype; // x2数据dtype，仅支持float8_e5m2和float8_e4m3fn
     aclDataType biasDtype; // bias数据dtype，仅支持float32
-    aclDataType x1ScaleDtype; // x1scales数据dtype，仅支持float32
-    aclDataType x2ScaleDtype; // x2scales数据dtype，仅支持float32
+    aclDataType x1ScaleDtype; // x1scales数据dtype，仅支持float32和float8_e8m0
+    aclDataType x2ScaleDtype; // x2scales数据dtype，仅支持float32和float8_e8m0
     aclDataType outputDtype; // 输出数据dtype，支持bfloat16、float16和float32
     // 数据格式
     aclFormat x1Format; // x1数据format，仅支持ND
@@ -69,7 +69,7 @@ struct QuantMatmulAlltoAllAclnnTestParam {
     vector<int64_t> alltoAllAxesOptional; // alltoall数据交换的方向，只能为空或者[-1,-2]
     char* group; // 通信域标识，字符串，长度要求（0，128）
     bool transposeX1; // x1是否转置，现不支持为true
-    bool transposeX2; // x2是否转置，为true时x2shape为（H2，H1）
+    bool transposeX2; // x2是否转置，为true时x2shape为（H2，H1），mx量化时必须配置为true
     aclnnStatus aclnnStatusUt; //期望状态
 };
 
@@ -438,35 +438,255 @@ static QuantMatmulAlltoAllAclnnTestParam KCQuant_cases_params[] = {
 // MX量化UT用例表
 static QuantMatmulAlltoAllAclnnTestParam MXQuant_cases_params[] = {
     // 正常用例
-    {"QMMAA_MX-bf16-success-001", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
-        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+    {"QMMAA_MX-succ1", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        4295032864, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // 输入fp8_e4m3fn，输出bf16
-    {"QMMAA_MX-fp16-success-002", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e5m2 + bia为空 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ2", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e5m2 + bia为空 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ3", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e5m2 + bia为空 + y输出bf16 + x2转置
+    {"QMMAA_MX-succ4", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e5m2 + bia为fp32 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ5", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e5m2 + bia为fp32 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ6", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e5m2 + bia为fp32 + y输出bf16 + x2转置
+    {"QMMAA_MX-succ7", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e4m3fn + bia为fp32 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ8", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e4m3fn + bia为fp32 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ9", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e4m3fn + bia为fp32 + y输出bf16 + x2转置
+    {"QMMAA_MX-succ10", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e4m3fn + bia为空 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ11", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e4m3fn + bia为空 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ12", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e5m2/fp8_e4m3fn + bia为空 + y输出bf16 + x2转置
+    {"QMMAA_MX-succ13", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e5m2 + bia为fp32 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ14", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e5m2 + bia为fp32 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ15", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e5m2 + bia为fp32 + y输出bf16 + x2转置
+    {"QMMAA_MX-succ16", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e5m2 + bia为空 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ17", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e5m2 + bia为空 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ18", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e5m2 + bia为空 + y输出bf16 + x2转置
+    {"QMMAA_MX-succ19", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e4m3fn + bia为fp32 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ20", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        4295032864, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // 输入fp8_e4m3fn，输出fp16
-    {"QMMAA_MX-fp32-success-003", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
-        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e4m3fn + bia为fp32 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ21", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        4295032864, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // 输入fp8_e4m3fn，输出bf16
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e4m3fn + bia为fp32 + y输出bf16 + x2转置
+    {"QMMAA_MX-succ22", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e4m3fn + bia为空 + y输出fp32 + x2转置
+    {"QMMAA_MX-succ23", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e4m3fn + bia为空 + y输出fp16 + x2转置
+    {"QMMAA_MX-succ24", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_SUCCESS}, // x1/x2输入fp8_e4m3fn/fp8_e4m3fn + bia为空 + y输出bf16 + x2转置
     // 异常用例
-    {"QMMAA_MX-x1Scale_shape-error-001", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 8, 2}, {256, 2, 2}, {512, 128},
-        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+    {"QMMAA_MX-error1", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT16, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        4295032864, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // x1Scale的shape，ceil(k/64)的维度和x2的不对齐
-    {"QMMAA_MX-x2Scale_shape-error-002", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 4}, {512, 128},
-        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1数据类型非法
+    {"QMMAA_MX-error2", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT16, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        4295032864, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // x2Scale的shape，lastdim不等于2
-    {"QMMAA_MX-groupSize_invalid-error-003", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
-        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2数据类型非法
+    {"QMMAA_MX-error3", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        55778, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // groupSize不是MX量化需要的值
-    {"QMMAA_MX-x2nottrans-error-003", 2, 6, 6, {256, 128}, {128, 256}, {256}, {256, 2, 2}, {2, 256, 2}, {512, 128},
-        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：bias数据类型非法
+    {"QMMAA_MX-error4", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        4295032864, {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID} // x2非转置
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1Scale数据类型非法
+    {"QMMAA_MX-error5", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2Scale数据类型非法
+    {"QMMAA_MX-error6", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：output数据类型非法
+    {"QMMAA_MX-error7", 2, 6, 6, {0, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1为空tensor，第一维度为0
+    {"QMMAA_MX-error8", 2, 6, 6, {256, 0}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1为空tensor，第二维度为0
+    {"QMMAA_MX-error9", 2, 6, 6, {256, 128}, {0, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2为空tensor，第一维度为0
+    {"QMMAA_MX-error10", 2, 6, 6, {256, 128}, {256, 0}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2为空tensor，第二维度为0
+    {"QMMAA_MX-error11", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_FRACTAL_Z, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1数据格式非法
+    {"QMMAA_MX-error12", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_Z, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2数据格式非法
+    {"QMMAA_MX-error13", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_Z, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：bias数据格式非法
+    {"QMMAA_MX-error14", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_Z, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1Scale数据格式非法
+    {"QMMAA_MX-error15", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_Z, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2Scale数据格式非法
+    {"QMMAA_MX-error16", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_Z,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：output数据格式非法
+    {"QMMAA_MX-error17", 2, 6, 6, {256, 128, 256}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1维度不为2D
+    {"QMMAA_MX-error18", 2, 6, 6, {256, 128}, {256}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2维度不为2D
+    {"QMMAA_MX-error19", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {2, 2, 512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：output维度不为2D
+    {"QMMAA_MX-error20", 2, 6, 6, {256, 128}, {256, 128}, {256, 2}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：bias维度不为1D
+    {"QMMAA_MX-error21", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1Scale维度不为3D
+    {"QMMAA_MX-error22", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {2, 256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2Scale维度不为3D
+    {"QMMAA_MX-error23", 2, 6, 6, {256, 65536}, {256, 65536}, {256}, {256, 1024, 2}, {256, 1024, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1的k超过[1,65535]
+    {"QMMAA_MX-error24", 2, 6, 6, {256, -128}, {256, -128}, {256}, {256, -2, 2}, {256, -2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2的k超过[1,65535]
+    {"QMMAA_MX-error25", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 3}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1Scale最后一个维度的值不为2
+    {"QMMAA_MX-error26", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 4}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2Scale最后一个维度的值不为2
+    {"QMMAA_MX-error27", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2, 9}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：alltoAllAxesOptional取值非法
+    {"QMMAA_MX-error28", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：group为空
+    {"QMMAA_MX-error29", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：group长度超过127
+    {"QMMAA_MX-error30", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", true, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：transposeX1为true
+    {"QMMAA_MX-error31", 2, 6, 6, {256, 128}, {128, 256}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID}, // 异常场景：transposeX2为false
+    {"QMMAA_MX-error32", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        0, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：groupSize取值非法
+    {"QMMAA_MX-error33", 2, 6, 6, {256, 129}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1和x2的k轴不匹配
+    {"QMMAA_MX-error34", 2, 6, 6, {256, 128}, {256, 128}, {259}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：bias的shape和x2不匹配
+    {"QMMAA_MX-error35", 2, 6, 6, {256, 128}, {256, 128}, {256}, {257, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1Scale的shape和x1不匹配（m）
+    {"QMMAA_MX-error36", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {258, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x2Scale的shape和x2不匹配（n）
+    {"QMMAA_MX-error37", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 4, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：x1Scale的k和x2Scale的k不匹配
+    {"QMMAA_MX-error38", 2, 4, 9, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", false, true, ACLNN_ERR_PARAM_INVALID} // 异常场景：quantmode组合非法，不是（6,6）
 };
 
 static void TestQuantOneParamCase(const QuantMatmulAlltoAllAclnnTestParam& param)
