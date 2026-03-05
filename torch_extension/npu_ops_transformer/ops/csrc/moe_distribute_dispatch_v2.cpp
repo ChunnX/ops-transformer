@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file abs.cpp
+ * \file moe_distribute_dispatch_v2.cpp
  * \brief
  */
 
@@ -23,9 +23,7 @@ const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 
 /**
- * @brief ACLNN Warpper for aclnnAbs
- * @param x Input Tensor (on NPU)
- * @return Result Tensor
+ * @brief ACLNN Warpper for aclnnMoeDistributeDispatchV2
  */
 tensor_list npu_moe_distribute_dispatch_v2(const at::Tensor &x, const at::Tensor &expert_ids,
                                            std::string group_ep, int64_t ep_world_size, int64_t ep_rank_id,
