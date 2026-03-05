@@ -68,7 +68,7 @@ static constexpr uint32_t VERSION_SIZE = 32;
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
 
-bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
+static bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
 {
     char versionValVersion[VERSION_SIZE];
     // rtGetSocSpec获取成功返回值是0，获取失败返回非0

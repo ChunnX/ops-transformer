@@ -78,5 +78,5 @@ __global__ __aicore__ void moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR
         elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM, tilingGM, &pipe);
     }
 #endif
-} 
+}
 }

@@ -302,7 +302,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     // 检查hcclwinsize是否越界
     totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
     totalWinSizeTp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeTp);
-    if (isMc2Context_) {
+    if (tilingData->moeDistributeDispatchV2Info.isMc2Context) {
+        isMc2Context_ = true;
         mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
     } else {
         winContext_[COMM_EP_IDX] = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
