@@ -9,12 +9,12 @@
  */
 
 /* !
- * \file aclnn_moe_distribute_combine_add_rms_norm_base.h
+ * \file moe_distribute_combine_add_rms_norm_base.h
  * \brief
  */
 
-#ifndef ACLNN_MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_BASE_
-#define ACLNN_MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_BASE_
+#ifndef MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_BASE_
+#define MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_BASE_
 
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
@@ -64,4 +64,4 @@ ACLNN_API aclnnStatus aclnnMoeDistributeCombineAddRmsNormBase(void *workspace, u
 #ifdef __cplusplus
 }
 #endif
-#endif //ACLNN_MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_BASE_
+#endif //MOE_DISTRIBUTE_COMBINE_ADD_RMS_NORM_BASE_

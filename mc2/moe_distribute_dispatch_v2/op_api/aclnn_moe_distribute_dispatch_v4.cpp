@@ -15,7 +15,7 @@
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_dispatch_v3.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "aclnn_moe_distribute_dispatch_v2_base.h"
+#include "moe_distribute_dispatch_v2_base.h"
 
 using namespace Ops::Transformer;
 using namespace op;

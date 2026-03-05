@@ -9,11 +9,11 @@
  */
 
 /* !
- * \file aclnn_distribute_barrier_base.h
+ * \file distribute_barrier_base.h
  * \brief
  */
-#ifndef ACLNN_DISTRIBUTE_BARRIER_BASE_H_
-#define ACLNN_DISTRIBUTE_BARRIER_BASE_H_
+#ifndef DISTRIBUTE_BARRIER_BASE_H_
+#define DISTRIBUTE_BARRIER_BASE_H_
 
 #include <string>
 
@@ -43,4 +43,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnDistributeBarrierBase(vo
 #ifdef __cplusplus
 }
 #endif
-#endif  // ACLNN_DISTRIBUTE_BARRIER_BASE_H_
+#endif  // DISTRIBUTE_BARRIER_BASE_H_

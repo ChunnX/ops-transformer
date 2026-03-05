@@ -9,12 +9,12 @@
  */
 
 /* !
- * \file aclnn_moe_distribute_combine_v2_base.h
+ * \file moe_distribute_combine_v2_base.h
  * \brief
  */
 
-#ifndef ACLNN_MOE_DISTRIBUTE_COMBINE_V2_BASE_
-#define ACLNN_MOE_DISTRIBUTE_COMBINE_V2_BASE_
+#ifndef MOE_DISTRIBUTE_COMBINE_V2_BASE_
+#define MOE_DISTRIBUTE_COMBINE_V2_BASE_
 
 #include <string>
 #include "aclnn/aclnn_base.h"
@@ -57,4 +57,4 @@ ACLNN_API aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 #ifdef __cplusplus
 }
 #endif
-#endif //ACLNN_MOE_DISTRIBUTE_COMBINE_V2_BASE_
+#endif //MOE_DISTRIBUTE_COMBINE_V2_BASE_

@@ -9,12 +9,12 @@
  */
 
 /* !
- * \file aclnn_moe_distribute_dispatch_v2_base.h
+ * \file moe_distribute_dispatch_v2_base.h
  * \brief
  */
 
-#ifndef ACLNN_MOE_DISTRIBUTE_DISPATCH_V2_BASE_
-#define ACLNN_MOE_DISTRIBUTE_DISPATCH_V2_BASE_
+#ifndef MOE_DISTRIBUTE_DISPATCH_V2_BASE_
+#define MOE_DISTRIBUTE_DISPATCH_V2_BASE_
 
 #include <string>
 
@@ -61,4 +61,4 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 #ifdef __cplusplus
 }
 #endif
-#endif //ACLNN_MOE_DISTRIBUTE_DISPATCH_V2_BASE_
+#endif //MOE_DISTRIBUTE_DISPATCH_V2_BASE_
