@@ -173,6 +173,12 @@ void AdaptiveMaxPool3DGradNormalTiling::PrintNormalTilingData()
         "TilingData singleCoreNc: %lu, singleCoreDo: %lu, singleCoreHo: %lu, singleCoreWo: %lu.",
         tilingData.get_singleCoreNc(), tilingData.get_singleCoreDo(), tilingData.get_singleCoreHo(),
         tilingData.get_singleCoreWo());
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "singleCoreNc = " << tilingData.get_singleCoreNc() << std::endl;
+    std::cout << "singleCoreDo = " << tilingData.get_singleCoreDo() << std::endl;
+    std::cout << "singleCoreHo = " << tilingData.get_singleCoreHo() << std::endl;
+    std::cout << "singleCoreWo = " << tilingData.get_singleCoreWo() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 ge::graphStatus AdaptiveMaxPool3DGradNormalTiling::DoOpTiling()

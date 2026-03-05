@@ -143,6 +143,17 @@ static ge::graphStatus Tiling4QuantizeAddLayerNorm(gert::TilingContext* context)
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "numCore = " << numCore << std::endl;
+    std::cout << "numFirstDim = " << numRow << std::endl;
+    std::cout << "numLastDim = " << numCol << std::endl;
+    std::cout << "firstDimPerCore = " << rowFactor << std::endl;
+    std::cout << "firstDimPerCoreTail = " << rowTail << std::endl;
+    std::cout << "firstDimPerTime = " << 1 << std::endl;
+    std::cout << "aveFactor = " << tempAve << std::endl;
+    std::cout << "eps = " << eps << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     size_t usrSize = numCore * numCol * sizeof(float) *
                      4; // useCore * column_size * sizeof(float32) * count(beta, gamma, scales, offsets)
     size_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();

@@ -360,6 +360,38 @@ ge::graphStatus AvgPool3dGradTiling::SetKernelTiling()
     tilingContext_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     tilingContext_->SetScheduleMode(BATCH_MODE);
     TilingDataPrint();
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNum = " << coreNum_ << std::endl;
+    std::cout << "N = " << N_ << std::endl;
+    std::cout << "C = " << C_ << std::endl;
+    std::cout << "inN = " << inDHW_.n << std::endl;
+    std::cout << "inD = " << inDHW_.d << std::endl;
+    std::cout << "inH = " << inDHW_.h << std::endl;
+    std::cout << "inW = " << inDHW_.w << std::endl;
+    std::cout << "outN = " << outDHW_.n << std::endl;
+    std::cout << "outD = " << outDHW_.d << std::endl;
+    std::cout << "outH = " << outDHW_.h << std::endl;
+    std::cout << "outW = " << outDHW_.w << std::endl;
+    std::cout << "kD = " << kDHW_.d << std::endl;
+    std::cout << "kH = " << kDHW_.h << std::endl;
+    std::cout << "kW = " << kDHW_.w << std::endl;
+    std::cout << "dD = " << dDHW_.d << std::endl;
+    std::cout << "dH = " << dDHW_.h << std::endl;
+    std::cout << "dW = " << dDHW_.w << std::endl;
+    std::cout << "padD = " << padDHW_.d << std::endl;
+    std::cout << "padH = " << padDHW_.h << std::endl;
+    std::cout << "padW = " << padDHW_.w << std::endl;
+    std::cout << "countIncludePad = " << countIncludePad_ << std::endl;
+    std::cout << "isOverlap = " << isOverlap_ << std::endl;
+    std::cout << "normalCoreCNum = " << normalCoreCNum_ << std::endl;
+    std::cout << "lastCoreCNum = " << lastCoreCNum_ << std::endl;
+    std::cout << "cTotal = " << cTotal_ << std::endl;
+    std::cout << "cAlign = " << cAlign_ << std::endl;
+    std::cout << "cCount = " << cCount_ << std::endl;
+    std::cout << "cNum = " << cNum_ << std::endl;
+    std::cout << "cLine = " << cLine_ << std::endl;
+    std::cout << "cTail = " << cTail_ << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 

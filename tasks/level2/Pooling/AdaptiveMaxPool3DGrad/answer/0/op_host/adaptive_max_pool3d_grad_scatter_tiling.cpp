@@ -63,6 +63,12 @@ void AdaptiveMaxPool3DGradScatterTiling::SetScatterTilingData()
 void AdaptiveMaxPool3DGradScatterTiling::PrintScatterTilingData()
 {
     PrintScatterTilingDataCommon(context_->GetNodeName(), tilingData);
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "ncRound = " << tilingData.get_ncRound() << std::endl;
+    std::cout << "ncRoundTail = " << tilingData.get_ncRoundTail() << std::endl;
+    std::cout << "totalRound = " << tilingData.get_totalRound() << std::endl;
+    std::cout << "preCoreNum = " << tilingData.get_preCoreNum() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
 }
 
 ge::graphStatus AdaptiveMaxPool3DGradScatterTiling::DoOpTiling()

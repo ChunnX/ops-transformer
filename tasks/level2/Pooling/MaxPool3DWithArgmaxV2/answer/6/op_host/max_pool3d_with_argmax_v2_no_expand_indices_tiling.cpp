@@ -326,6 +326,50 @@ ge::graphStatus MaxPool3DWithArgmaxV2NoExpandIndicesTiling::PostTiling()
     context_->SetBlockDim(tiling.get_coreNums());
     tiling.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+
+    std::cout << "*******************START*******************" << std::endl;
+    std::cout << "coreNums = " << tiling.get_coreNums() << std::endl;
+    std::cout << "nc = " << tiling.get_nc() << std::endl;
+    std::cout << "dx = " << tiling.get_dx() << std::endl;
+    std::cout << "hx = " << tiling.get_hx() << std::endl;
+    std::cout << "wx = " << tiling.get_wx() << std::endl;
+    std::cout << "dy = " << tiling.get_dy() << std::endl;
+    std::cout << "hy = " << tiling.get_hy() << std::endl;
+    std::cout << "wy = " << tiling.get_wy() << std::endl;
+    std::cout << "kd = " << tiling.get_kd() << std::endl;
+    std::cout << "kh = " << tiling.get_kh() << std::endl;
+    std::cout << "kw = " << tiling.get_kw() << std::endl;
+    std::cout << "sd = " << tiling.get_sd() << std::endl;
+    std::cout << "sh = " << tiling.get_sh() << std::endl;
+    std::cout << "sw = " << tiling.get_sw() << std::endl;
+    std::cout << "pf = " << tiling.get_pf() << std::endl;
+    std::cout << "pb = " << tiling.get_pb() << std::endl;
+    std::cout << "pt = " << tiling.get_pt() << std::endl;
+    std::cout << "pd = " << tiling.get_pd() << std::endl;
+    std::cout << "pl = " << tiling.get_pl() << std::endl;
+    std::cout << "pr = " << tiling.get_pr() << std::endl;
+    std::cout << "ncFactor = " << tiling.get_ncFactor() << std::endl;
+    std::cout << "ncTail = " << tiling.get_ncTail() << std::endl;
+    std::cout << "ncOuter = " << tiling.get_ncOuter() << std::endl;
+    std::cout << "dyFactor = " << tiling.get_dyFactor() << std::endl;
+    std::cout << "dyTail = " << tiling.get_dyTail() << std::endl;
+    std::cout << "dyOuter = " << tiling.get_dyOuter() << std::endl;
+    std::cout << "hyFactor = " << tiling.get_hyFactor() << std::endl;
+    std::cout << "hyTail = " << tiling.get_hyTail() << std::endl;
+    std::cout << "hyOuter = " << tiling.get_hyOuter() << std::endl;
+    std::cout << "wyFactor = " << tiling.get_wyFactor() << std::endl;
+    std::cout << "wyTail = " << tiling.get_wyTail() << std::endl;
+    std::cout << "wyOuter = " << tiling.get_wyOuter() << std::endl;
+    std::cout << "blockFactor = " << tiling.get_blockFactor() << std::endl;
+    std::cout << "blockTail = " << tiling.get_blockTail() << std::endl;
+    std::cout << "totalIdx = " << tiling.get_totalIdx() << std::endl;
+    std::cout << "inputBufferSize = " << tiling.get_inputBufferSize() << std::endl;
+    std::cout << "outputMaxBufferSize = " << tiling.get_outputMaxBufferSize() << std::endl;
+    std::cout << "outputIndiceBufferSize = " << tiling.get_outputIndiceBufferSize() << std::endl;
+    std::cout << "indiceTempBufferSize = " << tiling.get_indiceTempBufferSize() << std::endl;
+    std::cout << "maskBufferSize = " << tiling.get_maskBufferSize() << std::endl;
+    std::cout << "*******************END*******************" << std::endl;
+
     return ge::GRAPH_SUCCESS;
 }
 

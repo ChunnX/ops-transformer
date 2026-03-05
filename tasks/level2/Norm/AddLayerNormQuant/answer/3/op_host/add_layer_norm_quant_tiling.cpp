@@ -356,9 +356,30 @@ static ge::graphStatus Tiling4AddLayerNormQuantMembase(gert::TilingContext* cont
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
 
     std::cout << "*******************START*******************" << std::endl;
+    std::cout << "numCore = " << tiling.get_numCore() << std::endl;
+    std::cout << "numFirstDim = " << tiling.get_numFirstDim() << std::endl;
+    std::cout << "numLastDim = " << tiling.get_numLastDim() << std::endl;
+    std::cout << "numLastDimAlign = " << tiling.get_numLastDimAlign() << std::endl;
+    std::cout << "numLastDimAlign32 = " << tiling.get_numLastDimAlign32() << std::endl;
+    std::cout << "firstDimPerCore = " << tiling.get_firstDimPerCore() << std::endl;
+    std::cout << "firstDimPerCoreTail = " << tiling.get_firstDimPerCoreTail() << std::endl;
+    std::cout << "firstDimPerTime = " << tiling.get_firstDimPerTime() << std::endl;
+    std::cout << "firstDimPerTimeTail = " << tiling.get_firstDimPerTimeTail() << std::endl;
+    std::cout << "rowTailPerBlock = " << tiling.get_rowTailPerBlock() << std::endl;
+    std::cout << "rowTailLastBlock = " << tiling.get_rowTailLastBlock() << std::endl;
+    std::cout << "lastDimPerTime = " << tiling.get_lastDimPerTime() << std::endl;
+    std::cout << "colMoveCnt = " << tiling.get_colMoveCnt() << std::endl;
+    std::cout << "colTail = " << tiling.get_colTail() << std::endl;
+    std::cout << "gmOffset = " << tiling.get_gmOffset() << std::endl;
+    std::cout << "aveFactor = " << tiling.get_aveFactor() << std::endl;
+    std::cout << "eps = " << tiling.get_eps() << std::endl;
+    std::cout << "isXOut = " << tiling.get_isXOut() << std::endl;
     std::cout << "scaleOffsetMode = " << tiling.get_scaleOffsetMode() << std::endl;
     std::cout << "isPerTensor = " << tiling.get_isPerTensor() << std::endl;
-    std::cout << "isPerTensor = " << tiling.get_isPerTensor() << std::endl;
+    std::cout << "workspaceSize = " << tiling.get_workspaceSize() << std::endl;
+    std::cout << "mulLoopFp32 = " << tiling.get_mulLoopFp32() << std::endl;
+    std::cout << "mulTailFp32 = " << tiling.get_mulTailFp32() << std::endl;
+    std::cout << "dstRepStrideFp32 = " << tiling.get_dstRepStrideFp32() << std::endl;
     std::cout << "*******************END*******************" << std::endl;
 
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
