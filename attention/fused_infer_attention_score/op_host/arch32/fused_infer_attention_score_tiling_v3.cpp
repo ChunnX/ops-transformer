@@ -1013,7 +1013,7 @@ bool CheckSpecConditions(const gert::TilingContext *context)
     if (isLearnableSink && isLayoutSupported) {
         int64_t tempQHeadDim = tempQ->GetStorageShape().GetDim(DIM_2);
         auto sinkDataType = context->GetOptionalInputDesc(LEARNABLE_SINK_INDEX)->GetDataType();
-        if (tempQHeadDim == 64 && sinkDataType == ge::DT_BF16) {
+        if (tempQHeadDim == 64 && sinkDataType == ge::DT_BF16) { // 64: qD need 64, condition to set sinkflag to disable
             isLearnableSinkFlag = false;
         }
     }
