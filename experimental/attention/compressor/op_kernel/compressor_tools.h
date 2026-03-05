@@ -43,10 +43,10 @@ public:
 
 public:
     ToolsParams toolParams_{};
+    bool isExistSeqUsed_ = false;
 
 private:
     bool isExistStartPos_ = false;
-    bool isExistSeqUsed_ = false;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> startPosGm_;
