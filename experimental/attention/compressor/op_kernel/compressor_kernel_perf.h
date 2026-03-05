@@ -404,7 +404,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
         if (quota < batchInfo.remSeqCnt) {
             // 向下对齐r，
             if (quota > constInfo.cmpRatio - batchInfo.headHolderSeq) {
-                uint32_t delta = (batchInfo.bStartPos + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
+                uint32_t delta = (batchInfo.bStartPos + batchInfo.sIdx + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
                 // TODO 下面两处检视一下容易减翻
                 curDealSeq = quota - delta;
                 quota -= curDealSeq;
@@ -705,8 +705,10 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
 
         if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0, isNeedExcuteC1);
+            SyncAll<false>();
         } else {
             ComputeVec1(vec1Info);
+            SyncAll<false>();
             UpdateVec2Info(vec2Info, i, vec1Info);
 
             if (IsNeedSyncAll(i)) {
