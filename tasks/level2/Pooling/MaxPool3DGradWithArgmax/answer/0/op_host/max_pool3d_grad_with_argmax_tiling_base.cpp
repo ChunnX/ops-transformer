@@ -406,6 +406,7 @@ ge::graphStatus MaxPool3DGradWithArgmaxTilingBase::GetWorkspaceSize()
     std::cout << "hoCnt = " << tilingData.get_hoCnt() << std::endl;
     std::cout << "woCnt = " << tilingData.get_woCnt() << std::endl;
     std::cout << "totalCnt = " << tilingData.get_totalCnt() << std::endl;
+    std::cout << "totalUBSize = " << tilingData.get_totalUBSize() << std::endl;
     std::cout << "*******************END*******************" << std::endl;
 
     return ge::GRAPH_SUCCESS;

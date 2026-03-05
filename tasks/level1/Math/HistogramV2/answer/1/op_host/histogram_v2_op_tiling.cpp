@@ -231,22 +231,21 @@ void HistogramV2Tiling::TilingDataPrint() const
     OP_LOGD(tilingContext, "tailTileLeftDataLengthAligned: %ld.", tailTileLeftDataLengthAligned);
 
     std::cout << "*******************START*******************" << std::endl;
-    std::cout << "coreNum = " << coreNum << std::endl;
-    std::cout << "totalLength = " << totalLength << std::endl;
-    std::cout << "bins = " << bins << std::endl;
-    std::cout << "formerNum = " << formerNum << std::endl;
-    std::cout << "formerLength = " << formerLength << std::endl;
-    std::cout << "formerLengthAligned = " << formerLengthAligned << std::endl;
-    std::cout << "tailLength = " << tailLength << std::endl;
-    std::cout << "tailLengthAligned = " << tailLengthAligned << std::endl;
-    std::cout << "formerTileNum = " << formerTileNum << std::endl;
-    std::cout << "formerTileDataLength = " << formerTileDataLength << std::endl;
-    std::cout << "formerTileLeftDataLength = " << formerTileLeftDataLength << std::endl;
-    std::cout << "formerTileLeftDataLengthAligned = " << formerTileLeftDataLengthAligned << std::endl;
-    std::cout << "tailTileNum = " << tailTileNum << std::endl;
-    std::cout << "tailTileDataLength = " << tailTileDataLength << std::endl;
-    std::cout << "tailTileLeftDataLength = " << tailTileLeftDataLength << std::endl;
-    std::cout << "tailTileLeftDataLengthAligned = " << tailTileLeftDataLengthAligned << std::endl;
+    std::cout << "bins = " << tilingData.get_bins() << std::endl;
+    std::cout << "ubBinsLength = " << tilingData.get_ubBinsLength() << std::endl;
+    std::cout << "formerNum = " << tilingData.get_formerNum() << std::endl;
+    std::cout << "formerLength = " << tilingData.get_formerLength() << std::endl;
+    std::cout << "formerLengthAligned = " << tilingData.get_formerLengthAligned() << std::endl;
+    std::cout << "tailLength = " << tilingData.get_tailLength() << std::endl;
+    std::cout << "tailLengthAligned = " << tilingData.get_tailLengthAligned() << std::endl;
+    std::cout << "formerTileNum = " << tilingData.get_formerTileNum() << std::endl;
+    std::cout << "formerTileDataLength = " << tilingData.get_formerTileDataLength() << std::endl;
+    std::cout << "formerTileLeftDataLength = " << tilingData.get_formerTileLeftDataLength() << std::endl;
+    std::cout << "formerTileLeftDataLengthAligned = " << tilingData.get_formerTileLeftDataLengthAligned() << std::endl;
+    std::cout << "tailTileNum = " << tilingData.get_tailTileNum() << std::endl;
+    std::cout << "tailTileDataLength = " << tilingData.get_tailTileDataLength() << std::endl;
+    std::cout << "tailTileLeftDataLength = " << tilingData.get_tailTileLeftDataLength() << std::endl;
+    std::cout << "tailTileLeftDataLengthAligned = " << tilingData.get_tailTileLeftDataLengthAligned() << std::endl;
     std::cout << "*******************END*******************" << std::endl;
 }
 
