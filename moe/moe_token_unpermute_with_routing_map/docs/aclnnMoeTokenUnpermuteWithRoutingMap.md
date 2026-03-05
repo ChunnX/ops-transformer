@@ -35,7 +35,7 @@
   capacity = sortedIndices.size(0) // numExperts
   $$
 
-  (1)probs不为None，paddedMode为true时：
+  （1）probs不为None，paddedMode为true时：
 
   $$
   permuteProbs  [i//capacity,sortedIndices[i]]=probs[i]
@@ -57,7 +57,7 @@
   unpermutedTokens[permuteTokenId[i]] += permutedTokens[outIndex[i]]
   $$
 
-  (2)probs不为None，paddedMode为false时（T为转置操作）:
+  （2）probs不为None，paddedMode为false时（T为转置操作）：
 
   $$
   permuteProbs = probs.T.maskedSelect(routingMap.T)
@@ -76,7 +76,7 @@
   $$
 
 
-  (3)probs为None,paddedMode为true时:
+  （3）probs为None，paddedMode为true时：
 
   $$
   permuteTokenId, outIndex= sortedIndices.sort(dim=-1)
@@ -86,7 +86,7 @@
   unpermutedTokens[permuteTokenId[i]] += permutedTokens[outIndex[i]]
   $$
 
-  (4)probs为None,paddedMode为false时:
+  （4）probs为None，paddedMode为false时：
 
   $$
   unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
@@ -124,15 +124,15 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
   
 - **参数说明**
       
-  <table style="undefined;table-layout: fixed; width: 1615px"><colgroup>
-  <col style="width: 221px">
-  <col style="width: 121px">
-  <col style="width: 281px">
-  <col style="width: 281px">
-  <col style="width: 188px">
-  <col style="width: 188px">
-  <col style="width: 188px">
-  <col style="width: 147px">
+  <table style="undefined;table-layout: fixed; width: 1595px"><colgroup>
+  <col style="width: 220px">
+  <col style="width: 120px">
+  <col style="width: 280px">
+  <col style="width: 300px">
+  <col style="width: 170px">
+  <col style="width: 120px">
+  <col style="width: 240px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -147,57 +147,57 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
     </tr></thead>
   <tbody>
     <tr>
-      <td>permutedTokens</td>
+      <td>permutedTokens（aclTensor*）</td>
       <td>输入</td>
       <td>表示输入token。</td>
       <td>Shape中的capacity表示每个专家能够处理的token个数。</td>
       <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>paddedMode为false：(tokens_num * topK_num,  hidden_size），<br>paddedMode为true：(experts_num* capacity,  hidden_size）。</td>
+      <td>paddedMode为false：(tokens_num * topK_num,  hidden_size）<br>paddedMode为true：(experts_num* capacity,  hidden_size）</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>sortedIndices</td>
+      <td>sortedIndices（aclTensor*）</td>
       <td>输入</td>
       <td>表示输入输出梯度的映射关系。</td>
-      <td>paddedMode为false时要求索引取值范围[0，tokens_num * topK_num - 1]，<br>paddedMode为true时索引取值范围[0，tokens_num - 1]。</td>
+      <td>paddedMode为false时要求索引取值范围[0，tokens_num * topK_num - 1]。<br>paddedMode为true时索引取值范围[0，tokens_num - 1]。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>paddedMode为false时：(tokens_num * topK_num)，<br>paddedMode为true时：(experts_num * capacity)。</td>
+      <td>paddedMode为false时：(tokens_num * topK_num)<br>paddedMode为true时：(experts_num * capacity)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>routingMapOptional</td>
+      <td>routingMapOptional（aclTensor*）</td>
       <td>输入</td>
       <td>计算公式中的routingMapOptional，代表对应位置的Token是否被对应专家处理。</td>
-      <td>当输入probsOptional为空指针时不需要此输入，应该传入空指针。当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false。</td>
+      <td>当输入probsOptional为空指针时不需要此输入，应该传入空指针。<br>当数据类型为INT8，取值支持0、1。<br>当数据类型为bool，取值支持true、false。</td>
       <td>INT8、BOOL</td>
       <td>ND</td>
       <td>(tokens_num, experts_num)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>probsOptional</td>
+      <td>probsOptional（aclTensor*）</td>
       <td>输入</td>
       <td>计算公式中的probsOptional，代表对应位置的Token被对应专家处理后的结果在最终结果中的权重。</td>
       <td>数据类型与permutedTokens相同或者当permutedTokens是BFLOAT16时probsOptional支持FLOAT。</td>
       <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>与routingMapOptional一致。</td>
+      <td>与routingMapOptional一致</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>paddedMode</td>
+      <td>paddedMode（bool）</td>
       <td>输入</td>
       <td>表示填充模式是否开启。</td>
-      <td>true表示开启paddedMode，false表示关闭paddedMode。</td>
+      <td>true表示开启paddedMode。<br>false表示关闭paddedMode。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>restoreShapeOptional</td>
+      <td>restoreShapeOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>表示unpermutedTokens的shape。</td>
       <td>size大小为2。</td>
@@ -207,7 +207,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>-</td>
     </tr>
     <tr>
-      <td>unpermutedTokens</td>
+      <td>unpermutedTokens（aclTensor*）</td>
       <td>输出</td>
       <td>正向输出结果，计算公式中的unpermutedTokens。</td>
       <td>-</td>
@@ -217,27 +217,27 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>√</td>
     </tr>
     <tr>
-      <td>outIndex</td>
+      <td>outIndex（aclTensor*）</td>
       <td>输出</td>
       <td>表示输出的索引值，计算公式中的outIndex。</td>
-      <td>当paddedMode为false时，索引取值范围[0，tokens_num * topK_num - 1]。当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
+      <td>当paddedMode为false时，索引取值范围[0，tokens_num * topK_num - 1]。<br>当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>paddedMode为false：(tokens_num * topK_num)，<br>paddedMode为true：(experts_num* capacity)。</td>
+      <td>paddedMode为false：(tokens_num * topK_num)<br>paddedMode为true：(experts_num* capacity)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>permuteTokenId</td>
+      <td>permuteTokenId（aclTensor*）</td>
       <td>输出</td>
       <td>计算公式中的permuteTokenId。</td>
       <td>索引取值范围[0，tokens_num - 1]。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>paddedMode为false：(tokens_num * topK_num)，<br>paddedMode为true：(experts_num* capacity)。</td>
+      <td>paddedMode为false：(tokens_num * topK_num)<br>paddedMode为true：(experts_num* capacity)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>permuteProbs</td>
+      <td>permuteProbs（aclTensor*）</td>
       <td>输出</td>
       <td>计算公式中的permuteProbs，表示输出经过排序后的probs。</td>
       <td>与probsOptional相同。</td>
@@ -247,7 +247,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>√</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -257,7 +257,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>

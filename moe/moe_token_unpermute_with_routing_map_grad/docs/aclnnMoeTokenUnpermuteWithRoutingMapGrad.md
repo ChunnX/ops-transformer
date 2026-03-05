@@ -33,7 +33,7 @@
   probsGradExpertOrder = \sum_{j=0}^{hidden\_size}(permutedProbsGrad_{i,j})
   $$
 
-    - dropAndPad为false时
+    - dropAndPad为false时：
   
   $$
   probsGradOut = masked\_scatter(routingMapOptional^T,probsGradExpertOrder)
@@ -47,7 +47,7 @@
   permutedTokensGradOut = permutedProbs.unsqueeze(-1) * permutedTokensGrad
   $$
 
-    - dropAndPad为true时
+    - dropAndPad为true时：
   
   $$
   probsGradOut[permuteTokenId[i], outIndex[i]/capacity] = probsGradExpertOrder[outIndex[i]]
@@ -75,6 +75,7 @@
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMapGrad”接口执行计算。
+
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize(
     const aclTensor*   unpermutedTokensGrad,
@@ -103,15 +104,15 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1643px"><colgroup>
-    <col style="width: 213px">
-    <col style="width: 121px">
-    <col style="width: 269px">
-    <col style="width: 320px">
-    <col style="width: 171px">
-    <col style="width: 117px">
-    <col style="width: 280px">
-    <col style="width: 146px">
+  <table style="undefined;table-layout: fixed; width: 1635px"><colgroup>
+    <col style="width: 230px">
+    <col style="width: 120px">
+    <col style="width: 290px">
+    <col style="width: 300px">
+    <col style="width: 170px">
+    <col style="width: 120px">
+    <col style="width: 260px">
+    <col style="width: 145px">
     </colgroup>
     <thead style="font-size: 13px;">
     <tr>
@@ -126,7 +127,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     </tr></thead>
   <tbody>
     <tr>
-    <td>unpermutedTokensGrad</td>
+    <td>unpermutedTokensGrad（aclTensor*）</td>
     <td>输入</td>
     <td>计算公式中的unpermutedTokensGrad，代表正向输出unpermutedTokens的梯度。</td>
     <td>-</td>
@@ -136,7 +137,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>√</td>
     </tr>
     <tr>
-    <td>outIndex</td>
+    <td>outIndex（aclTensor*）</td>
     <td>输入</td>
     <td>计算公式中的outIndex，代表输出位置索引。</td>
     <td><ul><li>dropAndPad为false时，取值范围为[0,tokens_num*topK_num-1]。</li><li>dropAndPad为true时，取值范围为[0,experts_num*capacity-1]。</li></ul></td>
@@ -146,7 +147,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>√</td>
     </tr>
     <tr>
-    <td>permuteTokenId</td>
+    <td>permuteTokenId（aclTensor*）</td>
     <td>输入</td>
     <td>计算公式中的permuteTokenId，代表输入permutedTokens每个位置对应的Token序号。</td>
     <td>取值范围[0,tokens_num-1]。</td>
@@ -156,7 +157,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>√</td>
     </tr>
     <tr>
-    <td>routingMapOptional</td>
+    <td>routingMapOptional（aclTensor*）</td>
     <td>可选输入</td>
     <td>当输入probsOptional为空指针时不需要此输入，应该传入空指针。计算公式中的routingMapOptional，代表对应位置的Token是否被对应专家处理。</td>
     <td><ul><li>数据类型为INT8时，取值支持0、1。</li><li>数据类型为BOOL时，取值支持true、false。</li></ul></td>
@@ -166,7 +167,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>√</td>
     </tr>
     <tr>
-    <td>permutedTokensOptional</td>
+    <td>permutedTokensOptional（aclTensor*）</td>
     <td>可选输入</td>
     <td>当输入probsOptional为空指针时不需要此输入，应该传入空指针。</td>
     <td>数据类型与unpermutedTokensGrad相同。</td>
@@ -176,7 +177,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>√</td>
     </tr>
     <tr>
-    <td>probsOptional</td>
+    <td>probsOptional（aclTensor*）</td>
     <td>可选输入</td>
     <td>当不需要时为空指针。</td>
     <td>数据类型与unpermutedTokensGrad相同或者当unpermutedTokensGrad是BFLOAT16时probsOptional支持FLOAT。</td>
@@ -186,7 +187,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>√</td>
     </tr>
     <tr>
-    <td>dropAndPad</td>
+    <td>dropAndPad（bool）</td>
     <td>属性</td>
     <td>true表示开启dropAndPad，false表示关闭dropAndPad。</td>
     <td>-</td>
@@ -196,7 +197,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>-</td>
     </tr>
     <tr>
-    <td>restoreShapeOptional</td>
+    <td>restoreShapeOptional（aclIntArray*）</td>
     <td>属性</td>
     <td>INT64类型的aclIntArray。dropAndPad为true时代表unpermutedTokensGrad的shape。</td>
     <td>-</td>
@@ -206,7 +207,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>-</td>
     </tr>
     <tr>
-    <td>permutedTokensGradOut</td>
+    <td>permutedTokensGradOut（aclTensor*）</td>
     <td>输出</td>
     <td>计算公式中的permutedTokensGradOut，代表输入permutedTokens的梯度。</td>
     <td>数据类型与unpermutedTokensGrad相同。</td>
@@ -216,7 +217,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>×</td>
     </tr>
     <tr>
-    <td>probsGradOutOptional</td>
+    <td>probsGradOutOptional（aclTensor*）</td>
     <td>可选输出</td>
     <td>未输入probsOptional时为空指针。输入probs的梯度。</td>
     <td>数据类型与probsOptional相同。</td>
@@ -226,7 +227,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>×</td>
     </tr>
     <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize（uint64_t*）</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -236,7 +237,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
     <td>-</td>
     </tr>
     <tr>
-    <td>executor</td>
+    <td>executor（aclOpExecutor**）</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子计算流程。</td>
     <td>-</td>
@@ -254,10 +255,10 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
   
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-  <col style="width: 250px">
-  <col style="width: 130px">
-  <col style="width: 650px">
+  <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+  <col style="width: 291px">
+  <col style="width: 135px">
+  <col style="width: 723px">
   </colgroup>
   <thead style="font-size: 13px;">
     <tr>
@@ -309,10 +310,11 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGrad(
 ## aclnnMoeTokenUnpermuteWithRoutingMapGrad
 
 - **参数说明：**
-  <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
-  <col style="width: 250px">
-  <col style="width: 130px">
-  <col style="width: 650px">
+
+  <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+  <col style="width: 184px">
+  <col style="width: 134px">
+  <col style="width: 833px">
   </colgroup>
   <thead style="font-size: 13px;">
   <tr>

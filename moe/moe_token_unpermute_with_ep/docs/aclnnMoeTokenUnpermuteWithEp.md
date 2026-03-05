@@ -21,33 +21,33 @@
 
 - **计算公式：**
 
-$$
-sortedIndices = sortedIndices[rangeOptional[0]<=i<rangeOptional[1]]
-$$
+  $$
+  sortedIndices = sortedIndices[rangeOptional[0]<=i<rangeOptional[1]]
+  $$
 
-（1）probs非None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., topK\_num - 1}$，$k \in {0, 1, 2, ..., num\_tokens * topK\_num}$：
+  （1）probs非None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., topK\_num - 1}$，$k \in {0, 1, 2, ..., num\_tokens * topK\_num}$：
 
-$$
-permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
-$$
+    $$
+    permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
+    $$
 
-$$
-permutedTokens_{k} = permutedTokens_{k} * probs_{i,j}
-$$
+    $$
+    permutedTokens_{k} = permutedTokens_{k} * probs_{i,j}
+    $$
 
-$$
-out_{i} = \sum_{k=i*topK\_num}^{(i+1)*topK\_num - 1 } permutedTokens_{k}
-$$
+    $$
+    out_{i} = \sum_{k=i*topK\_num}^{(i+1)*topK\_num - 1 } permutedTokens_{k}
+    $$
 
-（2）probs为None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., topK\_num - 1}$：
+  （2）probs为None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., topK\_num - 1}$：
 
-$$
-permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
-$$
+    $$
+    permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
+    $$
 
-$$
-out_{i} = \sum_{k=i*topK\_num}^{(i+1)*topK\_num - 1 } permutedTokens_{k}
-$$
+    $$
+    out_{i} = \sum_{k=i*topK\_num}^{(i+1)*topK\_num - 1 } permutedTokens_{k}
+    $$
 
 ## 函数原型
 
@@ -113,7 +113,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>sortedIndices</td>
       <td>输入</td>
       <td>表示需要计算的数据在permutedTokens中的位置。</td>
-      <td>shape支持1D维度, 要求元素值大于等于0小于2134372523，num_tokens为原tokens的数目，不支持空Tensor。</td>
+      <td>shape支持1D维度，要求元素值大于等于0小于2134372523，num_tokens为原tokens的数目，不支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>（num_tokens * topK_num）</td>
@@ -124,9 +124,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>可选输入</td>
       <td>表示输入tokens对应的专家概率。</td>
       <td>
-      • shape支持2D维度, num_tokens为原tokens的数目；<br>
-      • 传入非空并合法的Tensor时，permutedTokens中的输入数据与probsOptional相乘<br>
-      • 传入空时，permutedTokens中的输入数据不进行乘法。</td>
+      shape支持2D维度，num_tokens为原tokens的数目。<br>
+      传入非空并合法的Tensor时，permutedTokens中的输入数据与probsOptional相乘。<br>
+      传入空时，permutedTokens中的输入数据不进行乘法。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>（num_tokens，topK_num）</td>
@@ -156,7 +156,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>paddedMode</td>
       <td>输入</td>
       <td>-</td>
-      <td>true表示开启paddedMode，false表示关闭paddedMode,目前仅支持false。</td>
+      <td>true表示开启paddedMode。<br>false表示关闭paddedMode。<br>目前仅支持false。</td>
       <td>bool</td>
       <td>-</td>
       <td>-</td>
@@ -166,7 +166,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>restoreShapeOptional</td>
       <td>输入</td>
       <td>-</td>
-      <td>paddedMode=true时生效，否则不会对其进行操作,目前仅支持nullptr。</td>
+      <td>paddedMode=true时生效，否则不会对其进行操作，目前仅支持nullptr。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -180,8 +180,8 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>
-        • paddedMode=false时：（num_tokens，hidden_size）<br>
-        • paddedMode=true时：与restoreShapeOptional保持一致
+        paddedMode=false时：（num_tokens，hidden_size）<br>
+        paddedMode=true时：与restoreShapeOptional保持一致
       </td>
       <td>√</td>
   </tr>
