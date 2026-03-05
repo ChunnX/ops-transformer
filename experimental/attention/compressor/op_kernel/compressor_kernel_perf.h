@@ -563,18 +563,10 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &inf
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo &info) {
-#if (__CCE_AICORE__ == 220)
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
-#else
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_V>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
-#endif
-    printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
+    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
-#if (__CCE_AICORE__ == 220)
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
-#else
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
-#endif
 }
 
 template <typename COMP>
@@ -590,15 +582,9 @@ __aicore__ inline void CompressorKernelPerf<COMP>::AllocEventID()
         blockCube_.AllocEventID(pipe_);
     } else {
         blockVec_.AllocEventID();
-#if (__CCE_AICORE__ == 220)
     for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
         CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
     }
-#else
-    for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_V>(SYNC_V1_C1_FLAG + i);
-    }
-#endif
     }
 }
 
