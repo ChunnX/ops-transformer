@@ -51,6 +51,10 @@ aclnnStatus aclnnPromptFlashAttentionV3GetWorkspaceSize(
     const aclTensor *attentionOut,
     uint64_t *workspaceSize,
     aclOpExecutor **executor) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+            return ACLNN_ERR_RUNTIME_ERROR;
+        }
         return InnerPromptFlashAttentionGetWorkspaceSize(query, key, value, pseShift, attenMask,
                                                               actualSeqLengths, actualSeqLengthsKv,
                                                               deqScale1, quantScale1, deqScale2,
@@ -65,6 +69,10 @@ aclnnStatus aclnnPromptFlashAttentionV3(
     uint64_t workspaceSize,
     aclOpExecutor *executor,
     const aclrtStream stream) { // V3 call aclnn inner
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+            return ACLNN_ERR_RUNTIME_ERROR;
+        }
         return InnerPromptFlashAttention(workspace, workspaceSize, executor, stream);
     }
 
