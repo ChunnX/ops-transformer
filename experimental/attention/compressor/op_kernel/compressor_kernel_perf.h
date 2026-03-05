@@ -658,7 +658,14 @@ __aicore__ inline void CompressorKernelPerf<COMP>::UpdateVec2Info(
         vec2Info.sStart = info.sStart;
         // 将sStart转成bCompressedId
         uint32_t startPos = tools_.GetStartPos(info.bStart);
-        vec2Info.bCompressedId = (startPos + info.sStart) / constInfo.cmpRatio - startPos / constInfo.cmpRatio;
+        if (tools_.isExistSeqUsed_) {
+            uint32_t seqUsed = tools_.GetSeqUsed(info.bStart);
+            if (vec2Info.sStart >= seqUsed) {
+                vec2Info.bStart++;
+                vec2Info.sStart = 0;
+            }
+        }
+        vec2Info.bCompressedId = (startPos + vec2Info.sStart) / constInfo.cmpRatio - startPos / constInfo.cmpRatio;
 
         vec2Info.dealScSize = 0;
     } else if ((curBasicBlockIdx + 1) % constInfo.nSize == 0) {
