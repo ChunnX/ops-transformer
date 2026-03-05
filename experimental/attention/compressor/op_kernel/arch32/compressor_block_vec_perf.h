@@ -536,8 +536,8 @@ CompressorBlockVectorPerf<COMP>::AddSingleApeToScore(const LocalTensor<T> &score
     uint32_t dealRowCount = min(sliceInfo.sIdx, constInfo_.cmpRatio);
     uint64_t scoreOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
     uint64_t apeOffset = (constInfo_.cmpRatio - dealRowCount) * SingleRowElemNum;
-    for (uint32_t dOffset = 0; dOffset < dDealSize; dOffset += FP32_BLOCK_ELEMENT_NUM) {
-        uint32_t curAddColCount = min(dDealSize - dOffset, FP32_BLOCK_ELEMENT_NUM);
+    for (uint32_t dOffset = 0; dOffset < dDealSize; dOffset += FP32_REPEAT_ELEMENT_NUM) {
+        uint32_t curAddColCount = min(dDealSize - dOffset, FP32_REPEAT_ELEMENT_NUM);
         Add(scoreLocal[scoreOffset + dOffset], scoreLocal[scoreOffset + dOffset], apeUb[apeOffset + dOffset],
             curAddColCount, dealRowCount,
             {1, 1, 1, static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),

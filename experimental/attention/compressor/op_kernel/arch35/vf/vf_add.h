@@ -217,6 +217,62 @@ __simd_vf__ void AddFragmented256VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAd
     }
 }
 
+template <typename T>
+__simd_vf__ void AddFragmented512VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t col, uint32_t actualCol)
+{
+    MicroAPI::RegTensor<T> vreg0;
+    MicroAPI::RegTensor<T> vreg1;
+    MicroAPI::RegTensor<T> vreg2;
+    MicroAPI::RegTensor<T> vreg3;
+    MicroAPI::RegTensor<T> vreg4;
+    MicroAPI::RegTensor<T> vreg5;
+    MicroAPI::RegTensor<T> vreg6;
+    MicroAPI::RegTensor<T> vreg7;
+    MicroAPI::RegTensor<T> vregape0;
+    MicroAPI::RegTensor<T> vregape1;
+    MicroAPI::RegTensor<T> vregape2;
+    MicroAPI::RegTensor<T> vregape3;
+    MicroAPI::RegTensor<T> vregape4;
+    MicroAPI::RegTensor<T> vregape5;
+    MicroAPI::RegTensor<T> vregape6;
+    MicroAPI::RegTensor<T> vregape7;
+    MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    for (uint64_t offset = 0; offset < row * actualCol; offset += actualCol) {
+        MicroAPI::LoadAlign(vreg0, inputAddr + offset);
+        MicroAPI::LoadAlign(vreg1, inputAddr + offset + FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vreg2, inputAddr + offset + 2 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vreg3, inputAddr + offset + 3 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vreg4, inputAddr + offset + 4 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vreg5, inputAddr + offset + 5 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vreg6, inputAddr + offset + 6 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vreg7, inputAddr + offset + 7 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape0, apeAddr + offset);
+        MicroAPI::LoadAlign(vregape1, apeAddr + offset + FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape2, apeAddr + offset + 2 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape3, apeAddr + offset + 3 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape4, apeAddr + offset + 4 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape5, apeAddr + offset + 5 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape6, apeAddr + offset + 6 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(vregape7, apeAddr + offset + 7 * FLOAT_REP_SIZE);
+        MicroAPI::Add(vreg0, vreg0, vregape0, mask);
+        MicroAPI::Add(vreg1, vreg1, vregape1, mask);
+        MicroAPI::Add(vreg2, vreg2, vregape2, mask);
+        MicroAPI::Add(vreg3, vreg3, vregape3, mask);
+        MicroAPI::Add(vreg4, vreg4, vregape4, mask);
+        MicroAPI::Add(vreg5, vreg5, vregape5, mask);
+        MicroAPI::Add(vreg6, vreg6, vregape6, mask);
+        MicroAPI::Add(vreg7, vreg7, vregape7, mask);
+        MicroAPI::StoreAlign(inputAddr + offset, vreg0, mask);
+        MicroAPI::StoreAlign(inputAddr + offset + FLOAT_REP_SIZE, vreg1, mask);
+        MicroAPI::StoreAlign(inputAddr + offset + 2 * FLOAT_REP_SIZE, vreg2, mask);
+        MicroAPI::StoreAlign(inputAddr + offset + 3 * FLOAT_REP_SIZE, vreg3, mask);
+        MicroAPI::StoreAlign(inputAddr + offset + 4 * FLOAT_REP_SIZE, vreg4, mask);
+        MicroAPI::StoreAlign(inputAddr + offset + 5 * FLOAT_REP_SIZE, vreg5, mask);
+        MicroAPI::StoreAlign(inputAddr + offset + 6 * FLOAT_REP_SIZE, vreg6, mask);
+        MicroAPI::StoreAlign(inputAddr + offset + 7 * FLOAT_REP_SIZE, vreg7, mask);
+    }
+}
+
 /**
  * @brief AddVF 输入与apt相加
  * @param rightLocal 输出tensor []
@@ -251,6 +307,8 @@ __aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor
             AddFragmented128VFImpl<T>(scoreAddr, apeAddr, row, col, actualCol);
         } else if (col == 256) {
             AddFragmented256VFImpl<T>(scoreAddr, apeAddr, row, col, actualCol);
+        } else if (col == 512) {
+            AddFragmented512VFImpl<T>(scoreAddr, apeAddr, row, col, actualCol);
         }
     }
 }

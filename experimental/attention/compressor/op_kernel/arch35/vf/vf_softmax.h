@@ -1062,13 +1062,13 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31;
 
     __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize * 4;
+    __ubuf__ float *srcUb01 = outputAddr + RowSize * (ReduceSize / 2);
     __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 4;
+    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * (ReduceSize / 2);
     __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 4;
+    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * (ReduceSize / 2);
     __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 4;
+    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * (ReduceSize / 2);
 
     __ubuf__ float *inputAddr0 = inputAddr;
     __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
@@ -1601,10 +1601,10 @@ __aicore__ inline void SoftmaxDnVF(const LocalTensor<T>& dstTensor, const LocalT
         SoftmaxDndBase128<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
     } else if (dDealSize == 256) {
-        SoftmaxDndBase512<T>(inputAddr, outputAddr, RowSize,
+        SoftmaxDndBase256<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
     } else if (dDealSize == 512) {
-        SoftmaxDndBase256<T>(inputAddr, outputAddr, RowSize,
+        SoftmaxDndBase512<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
     }
 }
