@@ -106,6 +106,12 @@ if (ENABLE_TEST)
 endif()
 include(${OPS_ADV_CMAKE_DIR}/ut.cmake)
 
+include(version.cmake)
+if (BUILD_OPEN_PROJECT)
+    check_pkg_build_deps(${CANN_VERSION_PACKAGES})
+endif()
+add_version_info_targets()
+
 if (BUILD_OPEN_PROJECT)
     include(cmake/intf.cmake)
     add_definitions(-DBUILD_OPEN_PROJECT)
@@ -423,6 +429,7 @@ if (BUILD_OPS_RTY_KERNEL)
             $<BUILD_INTERFACE:intf_pub>
     )
     add_dependencies(ops_aclnn opbuild_gen_default opbuild_gen_inner)
+    add_dependencies(ops-transformer version_ops-transformer_info)
 
     set_source_files_properties(${generate_proto_srcs}
             PROPERTIES GENERATED TRUE
