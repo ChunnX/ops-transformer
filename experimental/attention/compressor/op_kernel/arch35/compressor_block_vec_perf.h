@@ -1266,12 +1266,6 @@ CompressorBlockVectorPerf<COMP>::MultRowRmsNorm(const LocalTensor<T> &normResUb,
                                                 const LocalTensor<T> &normWeightUb, const LocalTensor<T> &tempLocal,
                                                 uint32_t dealRowCount)
 {
-    // RmsNormParam rmsNormParams;
-    // rmsNormParams.reciprocal = constInfo_.reciprocalD;
-    // rmsNormParams.epsilon = constInfo_.normEps;
-    // rmsNormParams.row = dealRowCount;
-    // rmsNormParams.col = constInfo_.headDim;
-    // RmsNorm(normResUb, vec1ResUb, normWeightUb, tempLocal, rmsNormParams);
     uint32_t row = 1;
     uint32_t col = constInfo_.headDim;
     float reciprocal = 1.0f / col;
@@ -1286,43 +1280,6 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::CalRope(const LocalTensor<X_T> &outputUb,
                                                                 const LocalTensor<T> &normResUb, uint32_t dealRowCount)
 {
-    // uint32_t bStartIdx = OutputBStartIdx;
-    // uint32_t sStartIdx = OutputSStartIdx;
-    // uint64_t globalScStart = 0;
-    // CalcGlobalScStart(0, 0, bStartIdx, sStartIdx, globalScStart);
-    // uint32_t totalSize = dealRowCount * constInfo_.headDim;
-    // uint32_t dealScSize = dealRowCount;
-    // uint32_t curDealScSize = 0;
-
-    // if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-    //     // TH 模式逻辑：一次性执行核心计算，再空转更新 Index
-    //     curDealScSize = dealRowCount;
-    //     SingleCalRope(outputUb, normResUb, 0, curDealScSize, globalScStart); // rowOffset 传 0
-
-    //     while (dealScSize > 0) {
-    //         UpdateOutputIdx(bStartIdx, sStartIdx, dealScSize, curDealScSize);
-    //     }
-    // } else {
-    //     // BSH 模式逻辑：分块（循环）执行核心计算
-    //     uint32_t ubProcessedCount = 0;
-    //     uint32_t preOutputBStartIdx = 0;
-    //     uint32_t preOutputSStartIdx = 0;
-
-    //     while (dealScSize > 0) {
-    //         preOutputBStartIdx = bStartIdx;
-    //         preOutputSStartIdx = sStartIdx;
-    //         UpdateOutputIdx(bStartIdx, sStartIdx, dealScSize, curDealScSize);
-
-    //         if (curDealScSize > 0) {
-    //             uint32_t rowCnt = dealRowCount - dealScSize - curDealScSize;
-    //             SingleCalRope(outputUb, normResUb, rowCnt, curDealScSize, globalScStart);
-    //         }
-    //         CalcGlobalScStart(preOutputBStartIdx, preOutputSStartIdx, bStartIdx, sStartIdx, globalScStart);
-    //         ubProcessedCount += curDealScSize;
-    //     }
-    // }
-    // Cast(outputUb, normResUb, RoundMode::CAST_RINT, totalSize);
-    // PipeBarrier<PIPE_V>();
     uint32_t normNum = constInfo_.headDim - constInfo_.ropeHeadDim;
     // RopeVF返回类型为X_T，rope部分直接拷贝至outputUb，nope部分单独cast成X_T到outputUb
     uint64_t mask = REPEAT_BLOCK_BYTE / sizeof(T); // 每个迭代处理64个元素
