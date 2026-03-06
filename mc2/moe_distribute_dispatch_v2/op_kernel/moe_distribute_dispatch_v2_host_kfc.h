@@ -1789,7 +1789,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t startPosId;
     uint32_t endPosId;
     uint32_t sendPosNum;
-    SplitToCore(expertNumInServer_ * serverNum_, aivNum_, startPosId, endPosId, sendPosNum);
+    SplitToCore(expertNumInServer_ * serverNum_, aivUsedCumSum_, startPosId, endPosId, sendPosNum);
     if (startPosId >= expertNumInServer_ * serverNum_) {
         return;
     }
@@ -2090,9 +2090,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //cnt框间接收 + 框内发送
     SetStatus();
     
-    // SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
-    // tpipe_->Reset();
-    // BufferInit();
+    SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
+    tpipe_->Reset();
+    BufferInit();
     // WaitDispatch();
     // CalRecvAndSetFlag();
     // // 使用newAivId为0的核进行计算
