@@ -1033,6 +1033,13 @@ bool PromptFlashAttentionTilingV2::CheckPerblockQuantParams(const ContextParamsF
     constexpr uint32_t fp8QBlockSize = 128U; // 128 is SOuterSize
     constexpr uint32_t fp8KVBlockSize = 256U; // 256 is SInnerSize
     std::string layoutStr(contextKeyParams.layout);
+    if (enablePseShift) {
+        OP_CHECK_IF(*contextKeyParams.pseType == 0, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "Pse is not supported in per-block quant scenario!"), return false);
+    }
+    OP_CHECK_IF(enableAlibiPse, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+        "AlibiPse is not supported in per-block quant scenario!"),
+        return false);
     // When PA and tensorlist are enable, they may affect the shape parsing of query, key and value,
     OP_CHECK_IF(enablePA, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
         "PA is not supported in per-block quant scenario!"),
@@ -1100,10 +1107,6 @@ bool PromptFlashAttentionTilingV2::CheckPerblockQuantParams(const ContextParamsF
         OP_CHECK_IF((innerPrecise == MSD_HIGH_PERFORMANCE_EXPEND_NUM) || (innerPrecise == MSD_HIGH_PRECISION_EXPEND_NUM),
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "innerPrecise [%d] is currently not supported.(Value 2 or 3 is not supported).", innerPrecise), return false);
-        if (enablePseShift) {
-            OP_CHECK_IF(*contextKeyParams.pseType == 0, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-                "Pse is not supported in per-block quant scenario!"), return false);
-        }
     } else {
         OP_CHECK_IF((dequeryDim != 4) || (dekeyDim != 4) || (devalueDim != 4),   // 4 is the number of dimensions of the dequant scale.
             OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
