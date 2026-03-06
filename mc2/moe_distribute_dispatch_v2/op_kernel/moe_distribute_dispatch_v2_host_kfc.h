@@ -1822,6 +1822,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             (__gm__ uint8_t *)(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset); // 计算地址偏移
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(posIndex - startPosId) * 8], 8UL);
+        LOG_INFO("[srcRankId]",srcRankId);
+        LOG_INFO("[dstRankId]",dstRankId);
+        LOG_INFO("[statusTensor_]",statusTensor_,{8,8});
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
@@ -1974,6 +1977,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
     int count = 0;
+    LOG_INFO("startStatusIndex_ * STATE_OFFSET / sizeof(float)", startStatusIndex_ * STATE_OFFSET / sizeof(float));
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
         LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
@@ -1983,7 +1987,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         sumOfFlag = statusSumOutTensor.GetValue(0);
         LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
-        if(count == 10000) {
+        if(count == 1000) {
             LOG_INFO("waitDispatch error count");
             break;
         }
@@ -2102,6 +2106,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SetStatus();
     
     SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
+    Log_Info("startStatusIndex_", startStatusIndex_);
+    Log_Info("endStatusIndex_", endStatusIndex_);
+    Log_Info("recStatusNumPerCore_", recStatusNumPerCore_);
     tpipe_->Reset();
     BufferInit();
     WaitDispatch();
