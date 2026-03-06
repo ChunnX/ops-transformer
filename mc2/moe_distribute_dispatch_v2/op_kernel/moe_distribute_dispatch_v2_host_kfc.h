@@ -2090,15 +2090,15 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //cnt框间接收 + 框内发送
     SetStatus();
     
-    SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
-    tpipe_->Reset();
-    BufferInit();
-    WaitDispatch();
-    CalRecvAndSetFlag();
-    // 使用newAivId为0的核进行计算
-    if (aivId_ == 0) {
-        SetExpertTokenNums();
-    }
+    // SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
+    // tpipe_->Reset();
+    // BufferInit();
+    // WaitDispatch();
+    // CalRecvAndSetFlag();
+    // // 使用newAivId为0的核进行计算
+    // if (aivId_ == 0) {
+    //     SetExpertTokenNums();
+    // }
 }
 
 template <TemplateDispatchKFCTypeClass>
