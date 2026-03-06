@@ -26,7 +26,7 @@ namespace ge {
  * @li cos: A tensor for rotary position embedding cos. Must be one of the following types: float16, float32, bfloat16.
  * @li sin: A tensor for rotary position embedding sin. Must be one of the following types: float16, float32, bfloat16.
  * @par Attributes:
- * @li layout: Optional.Explanation input format. 1-"BSND" 2-"SBND" 3-"BNSD". Defaults to 1.
+ * @li layout: Optional.Explanation input format. 1-"BSND" 2-"SBND" 3-"BNSD", 4-"TND". Defaults to 1.
  * @li rotary_mode: Optional.Explanation rotary mode. Support "half","interleave","quarter". Defaults to "half".
  * @par Outputs:
  * @li query: A tensor for transformer query. Has the same shape as "query".
@@ -51,7 +51,7 @@ namespace ge {
     - support rotary_mode: not support.
  * @li Ascend 950 AI Processor
     - support types: float16, float32, bfloat16.
-    - support layout: 1, 2, 3.
+    - support layout: 1, 2, 3, 4.
     - support rotary_mode: "half","interleave","quarter".
  */
 REG_OP(ApplyRotaryPosEmb)
