@@ -2364,8 +2364,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             // WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        // PipeBarrier<PIPE_ALL>();
+        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
