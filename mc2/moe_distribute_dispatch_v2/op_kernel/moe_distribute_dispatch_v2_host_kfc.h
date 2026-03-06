@@ -83,8 +83,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog;
 
 using namespace MoeDispatchLog_NEW;
-#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
@@ -1800,7 +1800,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120; todo:间隔取偏移量
         uint32_t srcPos = posIndex;
         statusTensor_((posIndex - startPosId) * 8) = statusWinGMTensor(srcPos);
+        LOG_INFO("srcPos",srcPos);
+        LOG_INFO("statusWinGMTensor(srcPos)",statusWinGMTensor(srcPos));
     }
+    LOG_INFO("[statusTensor_]",statusTensor_,{8,8});
 
     SyncFunc<AscendC::HardEvent::S_MTE3>(); 
     GlobalTensor<int32_t> rankGMTensor;
@@ -2335,6 +2338,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Process()
 {   
     if ASCEND_IS_AIV {
+        LOG_INFO("GetSystemCycle()", GetSystemCycle());
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
