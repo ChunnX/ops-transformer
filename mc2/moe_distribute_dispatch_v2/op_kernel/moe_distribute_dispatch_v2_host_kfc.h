@@ -1124,7 +1124,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("start SendToServer");
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
-    SplitToCore(totalSendCnt, aivNum_, startTokenId, endTokenId, sendTokenNum, true);
+    SplitToCore(totalSendCnt, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum, true);
     if (startTokenId >= totalSendCnt || sendTokenNum == 0) {
         return;
     }
@@ -1194,7 +1194,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     uint32_t totalSeverCnt = serverNum_;
     uint32_t startServerNum, endServerNum, sendServerNum;
-    SplitToCore(totalSeverCnt, aivNum_, startServerNum, endServerNum, sendServerNum, true);
+    SplitToCore(totalSeverCnt, aivUsedDispatch_, startServerNum, endServerNum, sendServerNum, true);
     if(startServerNum >= totalSeverCnt || sendServerNum == 0){
         return;
     }
@@ -2343,9 +2343,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             CalCumSum();
         } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
             // DispatchBetweenServer();
-            // CommunicateBetweenServer(0, serverNum_, aivNum_);
+            // CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
         } else { //框内接收 + 框内发送
-            // WaitWindow(aivNum_);
+            // WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
         // PipeBarrier<PIPE_ALL>();
