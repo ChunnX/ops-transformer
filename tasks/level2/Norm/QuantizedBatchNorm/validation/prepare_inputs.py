@@ -50,3 +50,13 @@ def get_init_inputs(param, device=None):
     eps = float(param.get('epsilon', 1e-5))
     
     return [num_features, eps]
+
+
+def custom_check_precision(param, outputs, outputs_new):
+    """Quantized output: allow atol=1 for rounding difference."""
+    out = outputs[0].int() if outputs[0].dtype in (torch.int8, torch.uint8) else outputs[0]
+    out_new = outputs_new[0].int() if outputs_new[0].dtype in (torch.int8, torch.uint8) else outputs_new[0]
+    abs_diff = torch.abs(out - out_new)
+    rel_diff = abs_diff.float() / (torch.abs(out).float() + 1e-7)
+    is_pass = 1 if torch.all(abs_diff <= 1) else 0
+    return is_pass, abs_diff.flatten(), rel_diff.flatten()

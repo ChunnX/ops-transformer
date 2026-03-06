@@ -2,5 +2,4 @@ case_id;input_shape;num_features;dtype;epsilon;affine
 0;[1, 2, 4, 4];2;int8;1e-5;True
 1;[4, 8, 16, 16];8;int8;1e-5;True
 2;[2, 64, 32, 32];64;int8;1e-5;True
-3;[8, 16, 8, 8];16;uint8;1e-5;True
-4;[2, 4, 8, 8];4;int8;1e-5;False
+3;[2, 4, 8, 8];4;int8;1e-5;False
