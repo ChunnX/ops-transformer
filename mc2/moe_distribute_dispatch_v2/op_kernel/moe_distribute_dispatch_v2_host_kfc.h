@@ -1979,6 +1979,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
+        LOG_INFO("sumOfFlag:", sumOfFlag);
     }
     // 清状态
     WaitDispatchClearStatus();
@@ -2096,7 +2097,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
     tpipe_->Reset();
     BufferInit();
-    // WaitDispatch();
+    WaitDispatch();
     // CalRecvAndSetFlag();
     // // 使用newAivId为0的核进行计算
     // if (aivId_ == 0) {
