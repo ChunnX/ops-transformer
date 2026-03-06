@@ -700,8 +700,8 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Process()
             ComputeMm1(extraInfo0, isNeedExcuteC1);
             SyncAll<false>();
         } else {
-            ComputeVec1(vec1Info);
             SyncAll<false>();
+            ComputeVec1(vec1Info);
             UpdateVec2Info(vec2Info, i, vec1Info);
 
             if (IsNeedSyncAll(i)) {
