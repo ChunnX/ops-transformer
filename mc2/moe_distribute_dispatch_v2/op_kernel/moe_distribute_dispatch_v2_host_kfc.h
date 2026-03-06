@@ -892,15 +892,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void
-MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SplitToCore(
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
     uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront)
 {
     sendTokenNum = curSendCnt / curUseAivNum;                // 每个aiv需要发送的token数
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum;  // 余数
     uint32_t newAivId;  
-    if (aivId_ < aivUsedCumsum_) {
+    if (aivId_ < aivUsedCumSum_) {
         newAivId = aivId_;
     } else if (aivId_ < aivUsedCumSum_ + aivUsedDispatch_) {
         newAivId = aivId_ - aivUsedCumSum_;
