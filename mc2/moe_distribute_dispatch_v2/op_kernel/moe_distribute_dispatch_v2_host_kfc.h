@@ -20,6 +20,8 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "adv_api/reduce/reduce.h"
+#include "adv_api/math/xor.h"
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
@@ -100,7 +102,7 @@ public:
 private:
 
     __aicore__ inline void InitTemp();
-
+    __aicore__ inline void CalExpertTotalSendCnt();
     __aicore__ inline void DispatchBetweenServer();
     __aicore__ inline void CommunicateBetweenServer(uint32_t beginServerId, uint32_t serverNum, uint32_t aivNum);
     __aicore__ inline void WaitWindow(uint32_t aivNumForWait);
@@ -302,7 +304,8 @@ private:
     LocalTensor<uint32_t> expertLeftNumTensor_;
     LocalTensor<int32_t> sendCntTensor_;
     LocalTensor<uint32_t> expertMapTensor_;
-    LocalTensor<int32_t> expertTotalCnt_;
+    LocalTensor<int32_t> tokenNumToExpertTensor_;
+
 
     TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
@@ -472,6 +475,45 @@ private:
     MoeDispatchLog_NEW::Log logger;
 };
 
+template <TemplateDispatchKFCTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertTotalSendCnt() 
+{
+    uint64_t maskCnt = 0;
+    uint32_t compareCount = 0;
+    uint32_t maskSizePerExpert = 0;
+    uint32_t calCnt = moeExpertNum_;
+    uint32_t startExpertId, endExpertId, sendExpertNum;
+    uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
+    LocalTensor<uint8_t> expertMaskTensorU8 = subExpBuf_.Get<uint8_t>();
+    LocalTensor<uint32_t> expertMaskTensorU32 = subExpBuf_.Get<uint32_t>();
+    LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();;
+    SplitToCore(calCnt, aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum);
+    if(startExpertId >= endExpertId || sendExpertNum == 0){
+        return;
+    }
+    compareCount = Ceil(mask * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
+    maskSizePerExpert = Ceil(compareCount / BITS_PER_BYTE, UB_ALIGN) * UB_ALIGN; // 为了匹配CompareScalar接口1bit一共8位
+    
+    // if(isExpertMaskFlag_) { //TODO:需要去放在某个地方
+    //     uint64_t rsvdCnt = 0;
+    //     uint32_t mask = expertIdsCnt_;
+    //     LocalTensor<int32_t> tmpExpertIdsTensor = subExpBuf_.Get<int32_t>();
+    //     DataCopyPad(tmpExpertIdsTensor, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams);
+    //     SyncFunc<AscendC::HardEvent::MTE2_V>();
+    //     GatherMask(expertIdsTensor_, tmpExpertIdsTensor, gatherMaskTensor_, true, mask, {1, 1, 1, 0}, rsvdCnt);
+    // }
+
+    for (int32_t expertIndex = 0; expertIndex < sendExpertNum; expertIndex++) {
+        int32_t dstExpertId = expertIndex + startExpertId;
+        CompareScalar(expertMaskTensorU8[maskSizePerExpert * expertIndex], expertIdsTensor_, dstExpertId, CMPMODE::EQ, compareCount);
+        PipeBarrier<PIPE_V>();
+        GatherMask(gatherTempTensor, expertIdsTensor_, expertMaskTensorU32[maskSizePerExpert * expertIndex / sizeof(uint32_t)],
+            true, mask, {1, 1, 0, 0}, maskCnt); // 是否可以简化计算
+        SyncFunc<AscendC::HardEvent::V_S>();
+        tokenNumToExpertTensor_.SetValue(expertIndex, static_cast<uint32_t>(maskCnt)); //todo :性能优化，大量使用SetValue
+    }
+    LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1,calCnt});
+}
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitRecieveTilingContext(
@@ -1184,7 +1226,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         expertOffsetCntTensor_(index) = exprtOffset;
         expertOffsetTemp(expertId) = exprtOffset + 1;
         if (aivId_ < aivUsedCumSum_) {
-            expertTotalCnt_(expertId) = exprtOffset + 1;
+            tokenNumToExpertTensor_(expertId) = exprtOffset + 1;
         }
     }
     //LogInfo(__LINE__,"ExpertOffsetCal end");
@@ -2094,13 +2136,15 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
         return;
     }
-    expertTotalCnt_ = dstExpBuf_.GetWithOffset<int32_t>(moeExpertNum_, 0);
-    Duplicate(expertTotalCnt_, 0, moeExpertNum_);
-    ExpertOffsetCal();
+    tokenNumToExpertTensor_ = dstExpBuf_.GetWithOffset<int32_t>(moeExpertNum_, 0);
+    Duplicate(tokenNumToExpertTensor_, 0, moeExpertNum_);
+    PipeBarrier<PIPE_V>();
+    CalExpertTotalSendCnt();
+    // ExpertOffsetCal();
     GlobalTensor<int32_t> sendCntTensor;
     sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_)));
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(moeExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPad(sendCntTensor, expertTotalCnt_, dataCopyOutParams);
+    DataCopyPad(sendCntTensor, tokenNumToExpertTensor_, dataCopyOutParams);
     PipeBarrier<PIPE_MTE3>();
 
     //cnt框间接收 + 框内发送
