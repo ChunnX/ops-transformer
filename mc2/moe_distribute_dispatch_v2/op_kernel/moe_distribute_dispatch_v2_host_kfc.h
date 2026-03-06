@@ -1799,7 +1799,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t srcServerIndex = posIndex / expertNumInServer_;
         //uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120; todo:间隔取偏移量
         uint32_t srcPos = posIndex;
-        statusTensor_((posIndex - startPosId) * 8) = statusWinGMTensor(srcPos);
+        statusTensor_((posIndex - startPosId) * 8 + 1) = statusWinGMTensor(srcPos);
         LOG_INFO("srcPos",srcPos);
         LOG_INFO("statusWinGMTensor(srcPos)",statusWinGMTensor(srcPos));
     }
