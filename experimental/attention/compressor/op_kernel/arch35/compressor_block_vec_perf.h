@@ -312,7 +312,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(apeBuf, BUFFER_SIZE_BYTE_32K);
     normWeightUb = normWeightBuf.Get<T>();
     apeUb = apeBuf.Get<T>();
-    LocalTensor<X_T> normweightInUb = inputQue1.AllocTensor<X_T>();
+    LocalTensor<X_T> normweightInUb = inputQue2.AllocTensor<X_T>();
     DataCopy(normweightInUb, normWeightGm_, constInfo_.headDim); // 获取normWeight，常驻
     inputQue2.EnQue(normweightInUb);
     inputQue2.DeQue<X_T>();
