@@ -1973,13 +1973,20 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
+    int count = 0;
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
+        LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
         LOG_INFO("sumOfFlag:", sumOfFlag);
+        count ++;
+        if(count == 10000) {
+            LOG_INFO("waitDispatch error count");
+            break;
+        }
     }
     // 清状态
     WaitDispatchClearStatus();
