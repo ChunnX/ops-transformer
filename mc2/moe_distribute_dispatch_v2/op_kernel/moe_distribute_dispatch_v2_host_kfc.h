@@ -181,14 +181,24 @@ private:
     {
         uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
         //return GetBaseWindOutAddrByServer(winContext_[ctxIdx], serverId, curRankId);
-        return gmTemp + serverId * 4UL * 1024 * 1024;
+        return gmTemp + 2 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
     }
 
     __aicore__ inline GM_ADDR GetReceiveAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
     {
         uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
         //return GetBaseWindInAddrByServer(winContext_[ctxIdx], serverId, curRankId);
-        return gmTemp + serverId * 4UL * 1024 * 1024;
+        return gmTemp + 2 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
+    }
+
+    __aicore__ inline GM_ADDR GetSendStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
+    {
+        return gmTemp;
+    }
+
+    __aicore__ inline GM_ADDR GetReceiveStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
+    {
+        return gmTemp;
     }
 
     // __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
@@ -292,6 +302,7 @@ private:
     LocalTensor<uint32_t> expertLeftNumTensor_;
     LocalTensor<int32_t> sendCntTensor_;
     LocalTensor<uint32_t> expertMapTensor_;
+    LocalTensor<int32_t> expertTotalCnt_;
 
     TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
@@ -876,6 +887,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitMaskInfo();
     InitDispatchBetweenServerInfo();
     //LogInfo(__LINE__, "Init end: ");
+    aivUsedCumSum_ = 2; //TODO:
+    aivUsedDispatch_ = (aivNum_ -aivUsedCumSum_) / 2;
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1169,6 +1182,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t exprtOffset = expertOffsetTemp(expertId);
         expertOffsetCntTensor_(index) = exprtOffset;
         expertOffsetTemp(expertId) = exprtOffset + 1;
+        if (aivId_ < aivUsedCumSum_) {
+            expertTotalCnt_(expertId) = exprtOffset + 1;
+        }
     }
     //LogInfo(__LINE__,"ExpertOffsetCal end");
 }
@@ -1760,15 +1776,15 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitStatusTensor();
 
     GlobalTensor<uint32_t> statusWinGMTensor;
-    statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
-    while(true) { //确保等到
-        uint32_t arriveCount = 0;
-        CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, cntBlockCnt);
+    statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
+    // while(true) { //确保等到
+    //     uint32_t arriveCount = 0;
+    //     CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, cntBlockCnt);
 
-        if (arriveCount == 1) {
-            break;
-        }
-    }
+    //     if (arriveCount == 1) {
+    //         break;
+    //     }
+    // }  //todo :后续改
     
     uint32_t startPosId;
     uint32_t endPosId;
@@ -2041,6 +2057,34 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     //todo：cnt计算
     //todo：cnt框间发送（调用hccl接口
+
+    activeMaskBsCnt_ = axisBS_;
+    sendToMoeExpTokenCnt_ = axisBS_ * axisK_;
+
+    SetServerFlag();
+    
+    if (isTokenMaskFlag_) { // 1维
+        //LogInfo(__LINE__, "isTokenMaskFlag_ is true");
+        TokenActiveMaskCal();
+    }
+
+    if (isExpertMaskFlag_) { // 2维
+        //LogInfo(__LINE__, "isExpertMaskFlag_ is true");
+        ExpertActiveMaskCal();
+    }
+
+    if (activeMaskBsCnt_ == 0) {
+        //LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
+        return;
+    }
+    expertTotalCnt_ = dstExpBuf_.GetWithOffSet<int32_t>(moeExpertNum_, 0);
+    Duplicate(expertTotalCnt_, 0, moeExpertNum_);
+    ExpertOffsetCal();
+    GlobalTensor<int32_t> sendCntTensor;
+    sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, ServerId_)));
+    DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(moeExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(sendCntTensor, expertTotalCnt_, dataCopyOutParams);
+    PipeBarrier<PIPE_MTE3>();
 
     //cnt框间接收 + 框内发送
     SetStatus();
