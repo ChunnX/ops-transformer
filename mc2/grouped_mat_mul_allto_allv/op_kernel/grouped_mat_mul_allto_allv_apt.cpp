@@ -24,8 +24,8 @@
     #include "../../allto_allv_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
     #endif
 #else
-    #if __has_include("../../allto_allv_grouped_mat_mul/mc2_templates/mc2_templates.h")
-    #include "../../allto_allv_grouped_mat_mul/mc2_templates/mc2_templates.h"
+    #if __has_include("../allto_allv_grouped_mat_mul/mc2_templates/mc2_templates.h")
+    #include "../allto_allv_grouped_mat_mul/mc2_templates/mc2_templates.h"
     #else
     #include "../../allto_allv_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
     #endif
