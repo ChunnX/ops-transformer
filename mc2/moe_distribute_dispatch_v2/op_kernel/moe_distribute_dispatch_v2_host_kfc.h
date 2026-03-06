@@ -893,20 +893,22 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
-MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum,
-                                                                 uint32_t &startTokenId, uint32_t &endTokenId,
-                                                                 uint32_t &sendTokenNum, bool isFront)
+MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SplitToCore(
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
+    uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront)
 {
-    sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
-    uint32_t remainderTokenNum = curSendCnt % curUseAivNum; // 余数
-    uint32_t newAivId;
-    if (isFront) {
+    sendTokenNum = curSendCnt / curUseAivNum;                // 每个aiv需要发送的token数
+    uint32_t remainderTokenNum = curSendCnt % curUseAivNum;  // 余数
+    uint32_t newAivId;  
+    if (aivId_ < aivUsedCumsum_) {
         newAivId = aivId_;
+    } else if (aivId_ < aivUsedCumSum_ + aivUsedDispatch_) {
+        newAivId = aivId_ - aivUsedCumSum_;
     } else {
-        newAivId = aivId_ - moeUsedAivNum_; // 由于是后面的核作为发送的共享专家，因此需要换算
+        newAivId = aivId_ - (aivUsedCumSum_ + aivUsedDispatch_);
     }
-    startTokenId = sendTokenNum * newAivId; // 每个aiv发送时的起始rankid
-    if (newAivId < remainderTokenNum) {     // 前remainderRankNum个aiv需要多发1个卡的数据
+    startTokenId = sendTokenNum * newAivId;  // 每个aiv发送时的起始rankid
+    if (newAivId < remainderTokenNum) {      // 前remainderRankNum个aiv需要多发1个卡的数据
         sendTokenNum += 1;
         startTokenId += newAivId;
     } else {
