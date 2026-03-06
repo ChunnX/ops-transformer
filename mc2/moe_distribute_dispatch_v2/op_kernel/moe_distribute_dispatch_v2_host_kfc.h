@@ -1235,8 +1235,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         return;
     }
 
-    // ExpertOffsetCal();
-    // SendToServer();
+    ExpertOffsetCal();
+    SendToServer();
     // SyncAll<true>();
 }
 
