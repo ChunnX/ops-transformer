@@ -2113,11 +2113,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->Reset();
     BufferInit();
     WaitDispatch();
-    // CalRecvAndSetFlag();
-    // // 使用newAivId为0的核进行计算
-    // if (aivId_ == 0) {
-    //     SetExpertTokenNums();
-    // }
+    CalRecvAndSetFlag();
+    // 使用newAivId为0的核进行计算
+    if (aivId_ == 0) {
+        SetExpertTokenNums();
+    }
 }
 
 template <TemplateDispatchKFCTypeClass>
