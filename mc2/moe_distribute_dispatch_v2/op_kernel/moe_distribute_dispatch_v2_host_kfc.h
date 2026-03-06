@@ -2338,14 +2338,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
-            DispatchBetweenServer();
-            CommunicateBetweenServer(0, serverNum_, aivNum_);
+            // DispatchBetweenServer();
+            // CommunicateBetweenServer(0, serverNum_, aivNum_);
         } else { //框内接收 + 框内发送
-            WaitWindow(aivNum_);
+            // WaitWindow(aivNum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        // PipeBarrier<PIPE_ALL>();
+        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
