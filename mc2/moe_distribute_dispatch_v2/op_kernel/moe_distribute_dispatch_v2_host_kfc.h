@@ -488,6 +488,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<uint32_t> expertMaskTensorU32 = subExpBuf_.Get<uint32_t>();
     LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();;
     SplitToCore(calCnt, aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum);
+    LOG_INFO("expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
     if(startExpertId >= endExpertId || sendExpertNum == 0){
         return;
     }
@@ -513,6 +514,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         tokenNumToExpertTensor_.SetValue(expertIndex, static_cast<uint32_t>(maskCnt)); //todo :性能优化，大量使用SetValue
     }
     LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1,calCnt});
+    GlobalTensor<int32_t> sendCntTensor;
+    sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_)));
+    DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(sendCntTensor[startExpertId], tokenNumToExpertTensor_, dataCopyOutParams);
+    PipeBarrier<PIPE_MTE3>();
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2120,6 +2126,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     activeMaskBsCnt_ = axisBS_;
     sendToMoeExpTokenCnt_ = axisBS_ * axisK_;
 
+    DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
+
     SetServerFlag();
     
     if (isTokenMaskFlag_) { // 1维
@@ -2136,16 +2146,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
         return;
     }
+
     tokenNumToExpertTensor_ = dstExpBuf_.GetWithOffset<int32_t>(moeExpertNum_, 0);
     Duplicate(tokenNumToExpertTensor_, 0, moeExpertNum_);
     PipeBarrier<PIPE_V>();
     CalExpertTotalSendCnt();
     // ExpertOffsetCal();
-    GlobalTensor<int32_t> sendCntTensor;
-    sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_)));
-    DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(moeExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPad(sendCntTensor, tokenNumToExpertTensor_, dataCopyOutParams);
-    PipeBarrier<PIPE_MTE3>();
 
     //cnt框间接收 + 框内发送
     SetStatus();
