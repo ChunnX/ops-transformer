@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_prompt_flash_attention_v3.h"
-#include "aclnn_prompt_flash_attention_inner.h"
+#include "prompt_flash_attention_inner.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/pad.h"
 #include "aclnn_kernels/reshape.h"

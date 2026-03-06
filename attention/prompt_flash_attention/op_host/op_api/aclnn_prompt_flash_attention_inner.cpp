@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_prompt_flash_attention_inner.h"
+#include "prompt_flash_attention_inner.h"
 #include "prompt_flash_attention.h"
 #include "opdev/common_types.h"
 #include "opdev/fast_vector.h"
