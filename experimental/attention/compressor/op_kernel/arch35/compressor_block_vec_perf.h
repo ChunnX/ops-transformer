@@ -641,13 +641,12 @@ CompressorBlockVectorPerf<COMP>::DataCopyWithInputQue(const LocalTensor<O> &dstL
 
         LocalTensor<O> inputUb = inputQue2.AllocTensor<O>();
 
-        DataCopyAlignGmToUb(inputUb, srcGm[srcOffset], curCopyRowCount, copyColCount, copyColCount, srcSingleRowCount);
+        DataCopyAlignGmToUb(inputUb, srcGm[srcOffset], curCopyRowCount, copyColCount, srcSingleRowCount, copyColCount);
 
         inputQue2.EnQue(inputUb);
         inputQue2.DeQue<O>();
 
-        DataCopyAlignUbToUb(dstLocal[dstOffset], inputUb, curCopyRowCount, copyColCount, dstSingleRowCount,
-                            copyColCount);
+        DataCopyAlignUbToUb(dstLocal[dstOffset], inputUb, curCopyRowCount, copyColCount, copyColCount, dstSingleRowCount);
 
         inputQue2.FreeTensor(inputUb);
     }
