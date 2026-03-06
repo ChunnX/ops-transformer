@@ -2077,11 +2077,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         //LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
         return;
     }
-    expertTotalCnt_ = dstExpBuf_.GetWithOffSet<int32_t>(moeExpertNum_, 0);
+    expertTotalCnt_ = dstExpBuf_.GetWithOffset<int32_t>(moeExpertNum_, 0);
     Duplicate(expertTotalCnt_, 0, moeExpertNum_);
     ExpertOffsetCal();
     GlobalTensor<int32_t> sendCntTensor;
-    sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, ServerId_)));
+    sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_)));
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(moeExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(sendCntTensor, expertTotalCnt_, dataCopyOutParams);
     PipeBarrier<PIPE_MTE3>();
