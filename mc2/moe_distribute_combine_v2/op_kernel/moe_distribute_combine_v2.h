@@ -254,6 +254,7 @@ private:
     TBuf<> validBsIndexTBuf_;
     TBuf<> xActMaskSumTBuf_;
     TBuf<> stateBuf_;
+    TBuf<> stateSumBuf_;
     TBuf<> stateResetBuf_;
     TBuf<> expertMaskBuf_;
     TBuf<> performanceInfoBuf_;
@@ -706,6 +707,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AlltoAllBuffI
         // H取最大值时，根据ReduceSum接口公式计算所需空间至少为64 * 2 = 128个元素
     }
     tpipe_->InitBuffer(stateBuf_, (flagRcvCount_) * STATE_OFFSET);
+    tpipe_->InitBuffer(stateSumBuf_, UB_ALIGN);
     tpipe_->InitBuffer(stateResetBuf_, (flagRcvCount_) * STATE_OFFSET);      // 清理状态区
     stateResetTensor_ = stateResetBuf_.Get<float>();
     Duplicate<float>(stateResetTensor_, (float)0.0, static_cast<uint32_t>(flagRcvCount_ * FLOAT_PER_UB_ALIGN));
@@ -1016,15 +1018,16 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::WaitDispatch(
     float localState = 0;
     SumParams sumParams{1, copyCount, copyCount};
     LocalTensor<float> stateTensor = stateBuf_.Get<float>();
+    LocalTensor<float> stateSumTensor = stateSumBuf_.Get<float>();
     SyncFunc<AscendC::HardEvent::S_MTE2>();
     DataCopy<float>(stateTensor, stateGMTensor, copyCount);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     if (isPerformanceFlag_) {
  	    PerformanceInfoPerToken(tokenIndex, performanceTimeStart, beginIndex, stateTensor);
  	}
-    Sum(stateTensor, stateTensor, sumParams);
+    Sum(stateSumTensor, stateTensor, sumParams);
     SyncFunc<AscendC::HardEvent::V_S>();
-    localState = stateTensor(0);
+    localState = stateSumTensor(0);
     if (((minTarget < localState) && (localState < maxTarget))) {
         // 计算地址偏移，清状态
         GM_ADDR stateGM = GetWinStateAddrByRankId(epRankIdOriginal_, EP_DOMAIN) + tokenIndex * flagRcvCount_ * stateOffset_;
