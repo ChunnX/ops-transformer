@@ -69,7 +69,7 @@ public:
                                                  uint32_t actualColumnCount);
     __aicore__ inline void ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
                                           uint32_t columnCount);
-    __aicore__ inline void ProcessLSE(const RunInfo &info, const MSplitInfo &mSplitInfo);
+    __aicore__ inline void ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -217,10 +217,11 @@ __aicore__ inline void SWAVectorBlock<SAST>::InitParams(const struct ConstInfo &
 }
 
 template <typename SAST>
-__aicore__ inline void SWAVectorBlock<SAST>::InitVec1GlobalTensor(
-    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
-    GlobalTensor<int32_t> actualSeqLengthsQGm, GlobalTensor<int32_t> actualSeqLengthsKVGm,
-    GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
+__aicore__ inline void
+SWAVectorBlock<SAST>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
+                                           GlobalTensor<int32_t> actualSeqLengthsQGm,
+                                           GlobalTensor<int32_t> actualSeqLengthsKVGm,
+                                           GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -360,7 +361,7 @@ SWAVectorBlock<SAST>::SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInf
 }
 
 template <typename SAST>
-__aicore__ inline void SWAVectorBlock<SAST>::ProcessLSE(const RunInfo &info, const MSplitInfo &mSplitInfo)
+__aicore__ inline void SWAVectorBlock<SAST>::ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -497,7 +498,7 @@ __aicore__ inline void SWAVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
 
         // move lse for flash decode or FA
         if (constInfo.returnSoftmaxLse && info.s2Idx == info.curSInnerLoopTimes - 1) {
-            ProcessLSE(info, mSplitInfo);
+            ProcessLse(info, mSplitInfo);
         }
     }
 }

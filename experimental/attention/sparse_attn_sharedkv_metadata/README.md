@@ -187,7 +187,7 @@
     <tr>
       <td>device</td>
       <td>可选属性</td>
-      <td>npu的ID，当输入`Tensor`均没有传入时，此字段必填，用于获取设备信息。</td>
+      <td>用于获取设备信息。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
@@ -205,3 +205,4 @@
 
 -   该接口支持推理场景下使用。
 -   该接口支持aclgraph模式。
+-   Tensor不能全传None。

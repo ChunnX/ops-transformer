@@ -9,7 +9,7 @@
 ### 参数限制
 
 - **数据格式**:
-  - **query_layout**：BSND、TND、PA_BSND
+  - **query_layout**：BSND、TND
   - **key_layout**: PA_BSND
 
 ### 环境配置

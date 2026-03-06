@@ -75,6 +75,7 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT = EVENT_ID7;
     static constexpr uint32_t V_MTE2_EVENT1 = EVENT_ID2;
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
+    static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
 
 private:
     __aicore__ inline void GetKeyScale(const QLICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
@@ -128,6 +129,7 @@ private:
     int32_t kCacheBlockSize_ = 0;
     int32_t maxBlockNumPerBatch_ = 0;
     uint32_t topkCount_ = 0;
+    uint32_t topkCountAlign256_ = 0; // topkCount对齐到256(直方图需要)，支持topk泛化
     uint32_t trunkLen_ = 0;
 
     struct QLICommon::ConstInfo constInfo_;
@@ -149,13 +151,13 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     vec1OutUB_ = outBuf_.Get<SCORE_T>();//out
 
     // Topk
-    pipe->InitBuffer(mrgValueBuf_, (topkCount_ + trunkLen_) * sizeof(SCORE_T));     // 大小：(Topk + 每次排序长度) * sizeof(SCORE_T)
+    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     
-    pipe->InitBuffer(indicesOutBuf_, (topkCount_ + 64) * sizeof(uint32_t));                    // 大小：topkCount_ * 4
+    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(scoreOutBuf_, topkCount_ * sizeof(SCORE_T));                    // 大小：topkCount_ * sizeof(SCORE_T)
+    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T));                   // 大小：topkCountAlign256_ * sizeof(SCORE_T)
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
@@ -186,7 +188,8 @@ __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::Const
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     blockId_ = GetBlockIdx();
     trunkLen_ = TRUNK_LEN_16K;
-    topkCount_ =constInfo.sparseCount;
+    topkCount_ = constInfo.sparseCount;
+    topkCountAlign256_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
     topkOp_.Init(topkCount_, trunkLen_);
 }
 
@@ -454,18 +457,33 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
                     uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len ? validS2Len % trunkLen_ : trunkLen_;
                     uint32_t offset = vecOffset * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + loopIdx * trunkLen_;
-                    AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, topkCount_);
+                    AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, topkCountAlign256_);
+                    // topk如果没有对齐到256，则把topkCountAlign256_ - topkCount_部分刷0
+                    if (topkCountAlign256_ != topkCount_) {
+                        uint64_t mask[1];
+                        mask[0] = ~0;
+                        mask[0] = mask[0] << (topkCount_ % 64);
+                        PipeBarrier<PIPE_V>();
+                        // 把topkCount_对齐到64刷0，此处由于duplicate的限制mask[0]刷64个数
+                        Duplicate(mrgValueLocal_[topkCount_ / 64 * 64], zero, mask, 1, 1, 0);
+                        PipeBarrier<PIPE_V>();
+                        // 把topk剩余对齐到256的部分刷0
+                        Duplicate(mrgValueLocal_[topkCount_ / 64 * 64 + 64], zero, topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
+                        SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                        WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                    }
                     copyInParams.blockLen = validTrunkLen * sizeof(SCORE_T); // byte
-                    if (validTrunkLen < trunkLen_) {
-                        Duplicate(mrgValueLocal_[topkCount_ + validTrunkLen / 256 * 256], zero, QLICommon::Align(validTrunkLen, (uint32_t)256) - validTrunkLen / 256 * 256);
+                    // TOPK 直方图一次必须计算256，输入处理数据需要和256对齐
+                    if ((topkCountAlign256_ + validTrunkLen) % 256 != 0) {
+                        Duplicate(mrgValueLocal_[topkCountAlign256_ + validTrunkLen / 256 * 256], zero, QLICommon::Align(validTrunkLen, (uint32_t)256) - validTrunkLen / 256 * 256);
                         SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                         WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                     }
                     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
-                    AscendC::DataCopyPad(mrgValueLocal_[topkCount_], scoreGm[offset], copyInParams, padParams);
+                    AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_], scoreGm[offset], copyInParams, padParams);
                     SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                     WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                    topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, QLICommon::Align(topkCount_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum);
+                    topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum);
                     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                 }
             }

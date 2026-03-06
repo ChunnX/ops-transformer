@@ -29,7 +29,7 @@
 |max_seqlen_q|可选属性|表示所有Batch中q的最大有效token数。|INT32|-|
 |max_seqlen_kv|可选属性|表示所有Batch中ori_kv的最大有效token数。|INT32|-|
 |ori_topk|可选属性|预留参数，当前不生效，表示通过QLI算法从ori_kv中筛选出的关键稀疏token的个数。|INT32|-|
-|cmp_topk|可选属性|表示通过QLI算法从cmp_kv中筛选出的关键稀疏token的个数。|INT32|-|
+|cmp_topk|可选属性|表示通过QLI算法从cmp_kv中筛选出的关键稀疏token的个数，目前仅支持512。|INT32|-|
 |tile_size|可选属性|表示量化粒度，必须能被rope_head_dim整除，默认值为None，当前仅支持64。|INT32|-|
 |rope_head_dim|可选属性|默认值为0，当前仅支持64。|INT32|-|
 |cmp_ratio|可选属性|表示对ori_kv的压缩率，数据范围支持4/128，默认值为None。|INT32|-|
@@ -41,10 +41,11 @@
 |layout_kv|可选属性|用于标识输入ori_kv和cmp_kv的数据排布格式，仅支持传入默认值PA_ND（PageAttention）。|STRING|-|
 |has_ori_kv|可选属性|用于标识是否含有ori_kv。|BOOL|-|
 |has_cmp_kv|可选属性|用于标识是否含有cmp_kv。|BOOL|-|
-|device|可选属性|用于获取设备信息，当输入tensor均没有传入时，此字段必填|STRING|-|
+|device|可选属性|用于获取设备信息。|STRING|-|
 |metadata|输出|包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引的列表，shape固定为1024。|INT32|-|
 
 ## 约束说明
 
 -   该接口支持推理场景下使用。
 -   该接口支持aclgraph模式。
+-   Tensor不能全传None。

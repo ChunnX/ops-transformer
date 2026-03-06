@@ -231,8 +231,8 @@ public:
 private:
     bool Prepare(CpuKernelContext &ctx);
     bool ParamsCheck();
-    void GetQueryBatchSize(uint32_t &bSize);
-    void GetKvBatchSize(uint32_t &bSize);
+    int32_t GetQueryBatchSize();
+    int32_t GetKvBatchSize();
     bool CheckSingleParam();
     bool CheckExistence();
     bool CheckConsistency();
@@ -298,17 +298,17 @@ private:
     Tensor *metaData_ = nullptr;
 
     // attributes
-    uint32_t batchSize_ = 0;
-    uint32_t querySeqSize_ = 0;
-    uint32_t queryHeadNum_ = 0;
-    uint32_t kvSeqSize_ = 0;
-    uint32_t kvHeadNum_ = 0;
-    uint32_t headDim_ = 0;
-    uint32_t oriTopK_ = 0;
-    uint32_t cmpTopK_ = 0;
+    int32_t batchSize_ = 0;
+    int32_t querySeqSize_ = 0;
+    int32_t queryHeadNum_ = 0;
+    int32_t kvSeqSize_ = 0;
+    int32_t kvHeadNum_ = 0;
+    int32_t headDim_ = 0;
+    int32_t oriTopK_ = 0;
+    int32_t cmpTopK_ = 0;
     int32_t cmpRatio_ = -1;
-    uint32_t oriMaskMode_ = 4;
-    uint32_t cmpMaskMode_ = 3;
+    int32_t oriMaskMode_ = 4;
+    int32_t cmpMaskMode_ = 3;
     int64_t winLeft_ = 127;
     int64_t winRight_ = 0;
     std::string layoutQuery_ = "BSND";
@@ -325,7 +325,6 @@ private:
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 0;
     uint32_t s2BaseSize_ = 0;
-    uint32_t gS1BaseSizeOfFd_ = 0;
     bool isS1G_ = true;
     bool isCFA = false;
     bool isSCFA = false;

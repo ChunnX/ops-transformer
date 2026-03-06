@@ -348,7 +348,7 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
     uint32_t ka = 0, kb = 0;
 
     // L1 切n切k
-    for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) { // 切s
+    for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) {
         if (nL1 == (nL1Loops - 1)) {
             // 尾块重新计算size
             nL1Size = nSize - (nL1Loops - 1) * N_SPLIT_SIZE;
@@ -446,7 +446,6 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                              nd2nzPara);
                 }
             }
-            int tmp = kb * L1_BLOCK_OFFSET;
             SetFlag<HardEvent::MTE2_MTE1>(mte21KVIds[kb]);
             WaitFlag<HardEvent::MTE2_MTE1>(mte21KVIds[kb]);
             mL1Size = M_SPLIT_SIZE;

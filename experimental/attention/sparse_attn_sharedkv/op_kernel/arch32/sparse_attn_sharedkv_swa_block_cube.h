@@ -368,7 +368,7 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
 
             if (info.isOri) {
                 if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
-                    uint32_t curS2Offset = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
+                    uint32_t curS2Offset = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint + nL1 * N_SPLIT_SIZE;
                     uint32_t copyFinishRowCnt = 0;
                     LocalTensor<KV_T> kTensor;
                     uint32_t copyRowCnt = 0;
