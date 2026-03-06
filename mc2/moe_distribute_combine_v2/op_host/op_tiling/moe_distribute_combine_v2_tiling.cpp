@@ -1123,6 +1123,32 @@ static bool CheckSharedAttrs(const char *nodeName, const MoeDistributeCombineV2T
     return true;
 }
 
+static bool CheckCommAlgAttrs(const char *nodeName, const MoeDistributeCombineV2TilingData &tilingData, bool isLayered)
+{
+    bool hasElasticInfo = tilingData.moeDistributeCombineV2Info.hasElasticInfo;
+    uint32_t zeroExpertNum = tilingData.moeDistributeCombineV2Info.zeroExpertNum;
+    uint32_t copyExpertNum = tilingData.moeDistributeCombineV2Info.copyExpertNum;
+    uint32_t constExpertNum = tilingData.moeDistributeCombineV2Info.constExpertNum;
+    int32_t zeroComputeExpertNum = zeroExpertNum + copyExpertNum + constExpertNum;
+    bool isExpertMask = tilingData.moeDistributeCombineV2Info.isExpertMask;
+    bool isPerformance = tilingData.moeDistributeCombineV2Info.isPerformance;
+
+    // 校验动态缩容和分层不能同时启用
+    OP_TILING_CHECK((isLayered && hasElasticInfo), OP_LOGE(nodeName, "Cannot support elasticInfo when comm_alg = hierarchy"), 
+        return false);
+    // 校验特殊专家和分层不能同时启用
+    OP_TILING_CHECK((isLayered && (zeroComputeExpertNum > 0)), OP_LOGE(nodeName, "Cannot support zeroComputeExpert when comm_alg = hierarchy"), 
+        return false);
+    // 校验二维Mask和分层不能同时启用
+    OP_TILING_CHECK((isLayered && isExpertMask), OP_LOGE(nodeName, "Cannot support 2D xActiveMask when comm_alg = hierarchy"), 
+        return false);
+    // 校验isPerformance和分层不能同时启用
+    OP_TILING_CHECK((isLayered && isPerformance), OP_LOGE(nodeName, "Cannot support isPerformance when comm_alg = hierarchy"), 
+        return false);
+
+    return true;
+}
+
 static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
     const char *nodeName, uint32_t &localMoeExpertNum, bool isActiveMask, const CombineV2Config& config, bool isLayered)
 {
@@ -1133,7 +1159,8 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
 
     OP_TILING_CHECK(!CheckSharedAttrs(nodeName, tilingData),
         OP_LOGE(nodeName, "Check shared expert related attributes failed."), return false);
-
+    OP_TILING_CHECK(!CheckCommAlgAttrs(nodeName, tilingData, isLayered),
+        OP_LOGE(nodeName, "Check comm_alg related attributes failed."), return false);
     // 校验moe专家数量能否均分给多机
     OP_TILING_CHECK(moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0,
         OP_LOGE(nodeName, "moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), "
