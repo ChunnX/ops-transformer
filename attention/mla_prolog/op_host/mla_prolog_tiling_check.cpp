@@ -89,11 +89,19 @@ NpuArch MlaPrologTilingCheck::GetCurNpuArch() const
 bool MlaPrologTilingCheck::CheckAttrsRange() const
 {
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U, 3U};
-        OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
-            OP_LOGE(context_.opName, "WeightQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.weightQuantMode),
-                return false);
-                
+
+        if (GetCurNpuArch() == NpuArch::DAV_3510) {
+            const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U, 3U};
+            OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
+                OP_LOGE(context_.opName, "WeightQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.weightQuantMode),
+                    return false);
+        } else {
+            const std::set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U};
+            OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
+                OP_LOGE(context_.opName, "WeightQuantMode must be within {0, 1, 2}, actually is %d.", *context_.weightQuantMode),
+                    return false);
+        }
+
         const std::set<uint32_t> supportedKvQuantMode {0U, 1U, 2U, 3U};
         OP_CHECK_IF(supportedKvQuantMode.find(*context_.kvQuantMode) == supportedKvQuantMode.end(),
             OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.kvQuantMode),
@@ -914,9 +922,17 @@ bool MlaPrologTilingCheck::CheckCacheIndex() const
 bool MlaPrologTilingCheck::CheckKvCache() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) != 0){
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
+        } else {
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        } 
     } else {
-        return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) != 0){
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
+        } else {
+            return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
+        }
     }
 }
 
@@ -987,7 +1003,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
         if (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BSND, CACHE_MODE_LEN) != 0 &&
             std::strncmp(context_.cacheMode, CACHE_MODE_PA_NZ, CACHE_MODE_LEN) != 0) {
             OP_LOGE(context_.opName,
-                "%s only support cacheMode {BSND, TND}, actually is %s.",
+                "%s only support cacheMode {PA_BSND, PA_NZ}, actually is %s.",
                 context_.opType,
                 context_.cacheMode);
             return ge::GRAPH_FAILED;
