@@ -96,6 +96,9 @@ protected:
     // attr param
     uint32_t sparseMode;
     uint32_t dqPostAbsorb;
+    uint32_t layout{0};
+    int32_t dimS1{0};          // BSH格式：固定的Q序列长度
+ 	int32_t dimS2{0};          // BSH格式：固定的K序列长度
     int32_t enableCausalOpt;
 
     bool tndSoftmaxIn;
@@ -166,6 +169,11 @@ __aicore__ void VecOpDet<FAGT>::Init(
     dqPostAbsorb = tilingData->basicDetTensorTilingData.dqPostAbsorb;
     actual_seq_qlen_addr = actual_seq_qlen;
     actual_seq_kvlen_addr = actual_seq_kvlen;
+    layout = tilingData->basicDetTensorTilingData.layout;
+    if (layout == BSNGD) {  // BSH格式
+            dimS1 = tilingData->basicDetTensorTilingData.s1;
+            dimS2 = tilingData->basicDetTensorTilingData.s2;
+        }
 
     pipe->InitBuffer(unifiedBuffer, TOTAL_SIZE);
 
@@ -243,13 +251,20 @@ template <typename FAGT>
 __aicore__ inline void VecOpDet<FAGT>::GetSeqQlenKvlenByBidx(
     int64_t bIdx, SEQLEN_TYPE &actualSeqQlen, SEQLEN_TYPE &actualSeqKvlen)
 {
-    if (unlikely(bIdx == 0)) {
-        actualSeqQlen = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[0];
-        actualSeqKvlen = ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[0];
-    } else {
-        actualSeqQlen = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[bIdx] - ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[bIdx - 1];
-        actualSeqKvlen =
-            ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[bIdx] - ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[bIdx - 1];
+    
+    if (layout == BSNGD){
+        actualSeqQlen = dimS1;
+        actualSeqKvlen = dimS2;
+    }
+    else{
+        if (unlikely(bIdx == 0)) {
+            actualSeqQlen = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[0];
+            actualSeqKvlen = ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[0];
+        } else {
+            actualSeqQlen = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[bIdx] - ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[bIdx - 1];
+            actualSeqKvlen =
+                ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[bIdx] - ((__gm__ SEQLEN_TYPE *)actual_seq_kvlen_addr)[bIdx - 1];
+        }
     }
     return;
 }
@@ -382,8 +397,8 @@ __aicore__ inline void VecOpDet<FAGT>::SubGrapA(int64_t curIdx,
 
     if (blockInfo.calNextToken) {
         LocalTensor<uint8_t> tmpAttenMaskTensor = attenMaskTensor[subIdx * s1VecSize * 128];
-        int32_t firstAxisOfAttnMask = sparseMode == 1 ? s1Extend : 64;
-        int32_t lastAxisOfAttnMask = sparseMode == 1 ? s2Extend : 128;
+        int32_t firstAxisOfAttnMask = sparseMode == 1 ? s1Extend : 64; 
+        int32_t lastAxisOfAttnMask = sparseMode == 1 ? s2Extend : 128; 
         int32_t lastAxisOfAttnMaskAlign = (lastAxisOfAttnMask + 32 - 1) / 32 * 32;
         if(!enableCausalOpt){
             tmpAttenMaskTensor = attenMaskTensor;
@@ -551,22 +566,42 @@ __aicore__ inline void VecOpDet<FAGT>::DetVector1(const VecAddrInfoDet &addrs)
         }
         sfmgOffset = 0;
         if (batchIdx > 0) {
-            sfmgOffset = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[batchIdx- 1] * n2 * g * 8;
+            if (layout == BSNGD){
+                sfmgOffset = dimS1 * n2 * g * 8;  
+            }
+            else{
+                sfmgOffset = ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[batchIdx- 1] * n2 * g * 8;  
+            }
         }
         sfmgOffset +=
             ((blockInfo.n2Idx * g + blockInfo.gIdx) * actualS1Len + blockInfo.s1Idx + subIdx * s1VecSize) * 8;
 
         if (tndSoftmaxIn) {
-            int64_t innerRowOffsetLeft =
-                unlikely(batchIdx == 0) ?
-                    0 :
-                    ((__gm__ int64_t *)actual_seq_qlen_addr)[batchIdx - 1] * 32 / sizeof(float);
             int64_t originInnerBatchOffset = ((blockInfo.n2Idx * g + blockInfo.gIdx) * actualS1Len +
                                               blockInfo.s1Idx + subIdx * s1VecSize) *
                                              32 / sizeof(float);
-            softMaxOffset = ((((__gm__ int64_t *)actual_seq_qlen_addr)[batch - 1] * 32 / sizeof(float)) *
-                                 (blockInfo.n2Idx * g + blockInfo.gIdx) +
-                             innerRowOffsetLeft + originInnerBatchOffset % (actualS1Len * 32 / sizeof(float)));
+            int64_t innerRowOffsetLeft = 0;
+            if (layout == BSNGD){
+                innerRowOffsetLeft =
+                unlikely(batchIdx == 0) ?
+                    0 :
+                    dimS1 * 32 / sizeof(float);
+            
+                softMaxOffset = ((dimS1 * 32 / sizeof(float)) *
+                                    (blockInfo.n2Idx * g + blockInfo.gIdx) +
+                                innerRowOffsetLeft + originInnerBatchOffset % (actualS1Len * 32 / sizeof(float)));
+            }
+            else{
+                innerRowOffsetLeft =
+                unlikely(batchIdx == 0) ?
+                    0 :
+                    ((__gm__ int64_t *)actual_seq_qlen_addr)[batchIdx - 1] * 32 / sizeof(float);
+            
+                softMaxOffset = ((((__gm__ int64_t *)actual_seq_qlen_addr)[batch - 1] * 32 / sizeof(float)) *
+                                    (blockInfo.n2Idx * g + blockInfo.gIdx) +
+                                innerRowOffsetLeft + originInnerBatchOffset % (actualS1Len * 32 / sizeof(float)));
+            }
+            
         } else {
             softMaxOffset = sfmgOffset;
         }

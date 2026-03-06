@@ -70,6 +70,7 @@ private:
     int64_t dimD;
     uint32_t cubeCoreNum;  // Cube核数量
     uint32_t cubeCoreIdx;  // Cube核所对应的Index
+    uint32_t inputLayout;  
     GM_ADDR mm1WorkSpaceAddr;
     GM_ADDR mm2WorkSpaceAddr;
     GM_ADDR dqWorkSpaceAddr;
@@ -80,6 +81,7 @@ private:
     GM_ADDR dkDetWorkSpaceAddr;
     GM_ADDR dvDetWorkSpaceAddr;
 };
+
 
 template <typename FAGT>
 __aicore__ inline void FlashAttentionScoreGradBasicDet<FAGT>::Process(
@@ -95,6 +97,7 @@ __aicore__ inline void FlashAttentionScoreGradBasicDet<FAGT>::Process(
     dqWorkSpaceAddr = user + tilingData->basicDetTensorTilingData.dqWorkSpaceOffset;
     dkWorkSpaceAddr = user + tilingData->basicDetTensorTilingData.dkWorkSpaceOffset;
     dvWorkSpaceAddr = user + tilingData->basicDetTensorTilingData.dvWorkSpaceOffset;
+    inputLayout = tilingData->basicDetTensorTilingData.layout;
     if ASCEND_IS_AIC {
         cubeCoreIdx = GetBlockIdx();
         if constexpr (DETERMINISTIC_ENABLE) {
