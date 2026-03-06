@@ -88,6 +88,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     int64_t              pre_tokens,
     int64_t              next_tokens,
     bool                 deterministic,
+    int64_t              cmp_ratio,
     const aclTensor     *dQueryIndex,
     const aclTensor     *dKeyKndex,
     const aclTensor     *dWeights

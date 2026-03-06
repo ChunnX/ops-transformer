@@ -228,9 +228,9 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) {
-        OP_CHECK_IF(!(*opParamInfo_.sparseCount == 512),
-                OP_LOGE(opName_, "input attr sparse_count must be 512, but now sparse_count is %d",
-                       *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
+                OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
+                       SPARSE_LIMIT, *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
         OP_CHECK_IF((*opParamInfo_.cmpRatio != 1) && (*opParamInfo_.cmpRatio != 4) && (*opParamInfo_.cmpRatio != 128), 
                 OP_LOGE(opName_, "input attr cmpRatio must be 1、4 or 128, but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);

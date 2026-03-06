@@ -75,8 +75,7 @@ public:
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
                                              int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                          int64_t keyBNBOffset,int64_t s2IdLimit, const RunInfo &runInfo);
-
+                                          int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo);
     // ================================Vector1==========================================
     __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -88,7 +87,7 @@ public:
 
     __aicore__ inline void ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
                                           uint32_t columnCount);
-    __aicore__ inline void ProcessLSE(const RunInfo &info, const MSplitInfo &mSplitInfo);
+    __aicore__ inline void ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -208,8 +207,9 @@ __aicore__ inline void SASVectorBlock<SAST>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(inputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
     pipe->InitBuffer(inputBuff2, ConstInfo::BUFFER_SIZE_BYTE_16K * 2); // 2:pingpong
     pipe->InitBuffer(outputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(outputBuff2, ConstInfo::BUFFER_SIZE_BYTE_1K);
-
+    if (constInfo.returnSoftmaxLse) {
+        pipe->InitBuffer(outputBuff2, ConstInfo::BUFFER_SIZE_BYTE_1K);
+    }
 
     pipe->InitBuffer(tmpBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(v0ValidSizeBuff, ConstInfo::BUFFER_SIZE_BYTE_8K);
@@ -376,7 +376,7 @@ __aicore__ inline void SASVectorBlock<SAST>::ElewiseCompute(const RunInfo &info,
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessLSE(const RunInfo &info, const MSplitInfo &mSplitInfo)
+__aicore__ inline void SASVectorBlock<SAST>::ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -417,9 +417,10 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessLSE(const RunInfo &info, con
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::SoftmaxFlashV2Compute(
-    const RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void
+SASVectorBlock<SAST>::SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb,
+                                            LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow,
+                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> inSumTensor;
     LocalTensor<T> inMaxTensor;
@@ -617,7 +618,8 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyInKv(int64_t &mte2Size, int64_t
         if (keyOffset2 > -1 && keyOffset2 < keyOffset1) {
             startGmOffset = keyOffset2;
         }
-        DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
+        DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
+                              (mte2Size - mte3Size) * constInfo.headDim],
                     cmpKvGm_[startGmOffset * constInfo.headDim], intriParams, padParams);
         mte2Size += ((keyOffset1 > -1) + (keyOffset2 > -1)) * constInfo.sparseBlockSize;
     }
@@ -717,7 +719,7 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
 
         // move lse for flash decode or FA
         if (constInfo.returnSoftmaxLse && info.s2Idx == info.curSInnerLoopTimes - 1) {
-            ProcessLSE(info, mSplitInfo);
+            ProcessLse(info, mSplitInfo);
         }
     }
 }
