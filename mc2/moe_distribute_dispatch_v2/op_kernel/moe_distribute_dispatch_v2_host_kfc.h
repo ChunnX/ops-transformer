@@ -1826,14 +1826,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     GlobalTensor<uint32_t> statusWinGMTensor;
     statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
-    // while(true) { //确保等到
-    //     uint32_t arriveCount = 0;
-    //     CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, cntBlockCnt);
+    while(true) { //确保等到
+        uint32_t arriveCount = 0;
+        CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, cntBlockCnt);
 
-    //     if (arriveCount == 1) {
-    //         break;
-    //     }
-    // }  //todo :后续改
+        if (arriveCount == 1) {
+            break;
+        }
+    }  //todo :后续改
     
     uint32_t startPosId;
     uint32_t endPosId;
@@ -1846,7 +1846,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for (uint32_t posIndex = startPosId; posIndex < endPosId; posIndex ++) {
         uint32_t expertIndex = posIndex % expertNumInServer_;
         uint32_t srcServerIndex = posIndex / expertNumInServer_;
-        //uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120; todo:间隔取偏移量
+        uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120; //todo:间隔取偏移量
         uint32_t srcPos = posIndex;
         statusTensor_((posIndex - startPosId) * 8 + 1) = statusWinGMTensor(srcPos);
         LOG_INFO("srcPos",srcPos);
