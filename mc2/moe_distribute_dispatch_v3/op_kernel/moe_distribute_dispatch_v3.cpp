@@ -14,10 +14,10 @@
  */
 #include "basic_api/kernel_basic_intf.h"
 
-#if __has_include("../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h")
-#include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h"
-#include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h"
-#include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling_key.h"
+#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h")
+#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling_key.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling.h"
