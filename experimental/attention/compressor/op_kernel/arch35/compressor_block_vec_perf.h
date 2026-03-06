@@ -878,13 +878,13 @@ __aicore__ inline void
 CompressorBlockVectorPerf<COMP>::DuplicateFirstBlock(const LocalTensor<T> &dstLocal, uint32_t duplicateRowCount,
                                                      uint32_t duplicateColCount, uint32_t singleRowCount)
 {
-    for (uint32_t offset = 0; offset < duplicateColCount; offset += FP32_BLOCK_ELEMENT_NUM) {
-        uint32_t curDuplicateColCount = min(duplicateColCount - offset, FP32_BLOCK_ELEMENT_NUM);
+    for (uint32_t offset = 0; offset < duplicateColCount; offset += FP32_REPEAT_ELEMENT_NUM) {
+        uint32_t curDuplicateColCount = min(duplicateColCount - offset, FP32_REPEAT_ELEMENT_NUM);
         if constexpr (IS_SCORE) {
-            Duplicate(dstLocal[offset], SOFTMAX_MIN_NUM, FP32_BLOCK_ELEMENT_NUM, curDuplicateColCount, 1,
+            Duplicate(dstLocal[offset], SOFTMAX_MIN_NUM, curDuplicateColCount, duplicateRowCount, 1,
                       singleRowCount / REPEAT_STRIDE_NUM);
         } else {
-            Duplicate(dstLocal[offset], FLOAT_ZERO, FP32_BLOCK_ELEMENT_NUM, curDuplicateColCount, 1,
+            Duplicate(dstLocal[offset], FLOAT_ZERO, curDuplicateColCount, duplicateRowCount, 1,
                       singleRowCount / REPEAT_STRIDE_NUM);
         }
     }
