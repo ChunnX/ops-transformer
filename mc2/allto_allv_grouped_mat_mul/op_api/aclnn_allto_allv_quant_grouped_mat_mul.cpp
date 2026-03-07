@@ -127,57 +127,6 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
     return true;
 }
 
-static bool CheckDimValid(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmY,
-                          const aclTensor *gmmXScale, const aclTensor *gmmWeightScale, const aclTensor *mmXOptional,
-                          const aclTensor *mmWeightOptional, const aclTensor *mmYOptional,
-                          const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional)
-{
-    if ((gmmX->GetViewShape().GetDimNum() != 2) || (gmmWeight->GetViewShape().GetDimNum() != 3) ||
-        (gmmY->GetViewShape().GetDimNum() != 2)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "the dimension of gmmX, gmmWeight or gmmY do not match, gmmX dimension mismatch is %u, gmmWeight dimension mismatch is %u, "
-                "gmmY dimension mismatch is %u.",
-                gmmX->GetViewShape().GetDimNum() != 2, gmmWeight->GetViewShape().GetDimNum() != 2,
-                gmmY->GetViewShape().GetDimNum() != 2);
-        return false;
-    }
-
-    if ((gmmXScale->GetViewShape().GetDimNum() != 1) || (gmmWeightScale->GetViewShape().GetDimNum() != 1)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "the dimension of gmmXScale and gmmWeightScale are not both one, gmmXScale dimension mismatch is %u, "
-                "gmmWeightScale dimension mismatch is %u.",
-                gmmXScale->GetViewShape().GetDimNum() != 1, gmmWeightScale->GetViewShape().GetDimNum() != 1);
-        return false;
-    }
-
-    if ((mmXOptional != nullptr) && (mmXScaleOptional != nullptr)) {
-        if (((mmXOptional->GetViewShape().GetDimNum()) != 2) || ((mmXScaleOptional->GetViewShape().GetDimNum()) != 1)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "mmXOptional dim is not two or mmXScaleOptional dim is not one, mmXOptional dimension mismatch is %u, "
-                    "mmXScaleOptional dimension mismatch is %u.", mmXOptional->GetViewShape().GetDimNum() != 2,
-                    mmXScaleOptional->GetViewShape().GetDimNum() != 1);
-            return false;
-        }
-    }
-    if ((mmWeightOptional != nullptr) && (mmWeightScaleOptional != nullptr)) {
-        if ((mmWeightOptional->GetViewShape().GetDimNum() != 2) ||
-            (mmWeightScaleOptional->GetViewShape().GetDimNum() != 1)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "mmWeightOptional dim is not two or mmWeightScaleOptional dim is not one, "
-                    "mmWeightOptional dimension mismatch is %u, mmWeightScaleOptional dimension mismatch is %u.",
-                    mmWeightOptional->GetViewShape().GetDimNum() != 2, mmWeightScaleOptional->GetViewShape().GetDimNum() != 1);
-            return false;
-        }
-    }
-    if (mmYOptional != nullptr) {
-        if ((mmYOptional->GetViewShape().GetDimNum()) != 2) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mmYOptional dim is not two.");
-            return false;
-        }
-    }
-    return true;
-}
-
 // 根据API定义，列出输入的所能支持的所有dtype
 static const std::initializer_list<op::DataType> IN_DTYPE_SUPPORT_LIST = {op::DataType::DT_HIFLOAT8};
 // 根据API定义，列出输入Scale所能支持的所有dtype
@@ -265,99 +214,9 @@ static bool CheckEmptyTensor(const aclTensor *gmmX, const aclTensor *gmmWeight, 
     return true;
 }
 
-static bool CheckQuantValid(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, const aclTensor *gmmXScale,
-                            const aclTensor *gmmWeightScale) {
-    if (static_cast<QuantModeType>(gmmXQuantMode) == QuantModeType::NO_QUANT) {
-        if ((gmmXScale != nullptr)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXScale should be empty.");
-            return false;
-        }
-    }
-    if (static_cast<QuantModeType>(gmmXQuantMode) == QuantModeType::PERTENSOR_QUANT) {
-        if ((gmmXScale == nullptr)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXScale not be null.");
-            return false;
-        }
-    }
-    if (static_cast<QuantModeType>(gmmWeightQuantMode) == QuantModeType::NO_QUANT) {
-        if ((gmmWeightScale != nullptr)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeightScale should be empty.");
-            return false;
-        }
-    }
-    if (static_cast<QuantModeType>(gmmWeightQuantMode) == QuantModeType::PERTENSOR_QUANT) {
-        if ((gmmWeightScale == nullptr)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeightScale not be null.");
-            return false;
-        }
-    }
-    return true;
-}
-
 bool is_power_of_two(int64_t n)
 {
     return n > 0 && (n & (n - 1)) == 0 && n >= 2 && n <= 128;
-}
-
-// 检查shape大小
-static bool CheckGmmShape(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
-                          const aclTensor *gmmWeightScale, const aclTensor *gmmY, int64_t epWorldSize)
-{
-    if ((gmmX->GetViewShape().GetDim(0) < ZERO) || (gmmX->GetViewShape().GetDim(0) > MAX_BSK_LEN)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "the shape of the first dimension of gmmX does not match, left is %u, right is %u.",
-                gmmX->GetViewShape().GetDim(0) < ZERO, gmmX->GetViewShape().GetDim(0) > MAX_BSK_LEN);
-        return false;
-    }
-    if ((gmmX->GetViewShape().GetDim(1) < ZERO) || (gmmX->GetViewShape().GetDim(1) > MAX_H1_LEN)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "the shape of the second dimension of gmmX does not match, left is %u, right is %u.",
-                gmmX->GetViewShape().GetDim(1) < ZERO, gmmX->GetViewShape().GetDim(1) > MAX_H1_LEN);
-        return false;
-    }
-    if ((((gmmWeight->GetViewShape().GetDim(0)) * epWorldSize) > MAX_EXPERT_SIZE) ||
-        (gmmWeight->GetViewShape().GetDim(0) < ZERO) || (gmmWeight->GetViewShape().GetDim(0) > MAX_E_SIZE)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "the size of e does not match. size is %u, left is %u, right is %u.",
-                gmmWeight->GetViewShape().GetDim(0) * epWorldSize > MAX_EXPERT_SIZE,
-                gmmWeight->GetViewShape().GetDim(0) < ZERO, gmmWeight->GetViewShape().GetDim(0) > MAX_E_SIZE);
-        return false;
-    }
-    if ((gmmXScale->GetViewShape().GetDim(0) != 1) || (gmmWeightScale->GetViewShape().GetDim(0) != 1)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXScale or gmmWeightScale do not match, gmmXScale mismatch is %u, gmmWeightScale mismatch is %u.",
-                gmmXScale->GetViewShape().GetDim(0) != 1, gmmWeightScale->GetViewShape().GetDim(0) != 1);
-        return false;
-    }
-    if (!(is_power_of_two(epWorldSize))) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "the size of epWorldSize does not match.");
-        return false;
-    }
-    return true;
-}
-
-static bool CheckMmShape(const aclTensor *gmmX, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-                       const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-                       const aclTensor *mmYOptional)
-{
-    if (mmXOptional != nullptr) {
-        auto k1 = (gmmX->GetViewShape().GetDim(0)) % (mmXOptional->GetViewShape().GetDim(0));
-        auto k2 = (gmmX->GetViewShape().GetDim(0)) / (mmXOptional->GetViewShape().GetDim(0));
-
-        if ((mmXOptional->GetViewShape().GetDim(1) < ZERO) || (mmXOptional->GetViewShape().GetDim(1) > MAX_H2_LEN) ||
-            mmXScaleOptional->GetViewShape().GetDim(0) != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "the shape of mmX or mmXScaleOptional do not match, the second dimension of mmXOptional left is not %u, "
-                    "the second dimension of mmXOptional right is not %u, the dimension of mmXScaleOptional is not %u.",
-                    mmXOptional->GetViewShape().GetDim(1) < ZERO, mmXOptional->GetViewShape().GetDim(1) > MAX_H2_LEN,
-                    mmXScaleOptional->GetViewShape().GetDim(0) != 1);
-            return false;
-        }
-        if ((k1 != ZERO) || (!(k2 >= MIN_K_LEN && k2 <= MAX_K_LEN))) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "the size of k does not match, left is not %u, right is not %u.",
-                    k1 != ZERO, (!(k2 >= MIN_K_LEN && k2 <= MAX_K_LEN)));
-            return false;
-        }
-    }
-    return true;
 }
 
 // 检查所有要用到的输入format是否为ND，如果内部不为ND格式，会打印warning日志
@@ -541,42 +400,30 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
                                const char *group, int64_t epWorldSize, bool permuteOutFlag, const aclTensor *gmmY,
                                const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
 {
-    // 1.检查空状态
+    // 检查空状态
     CHECK_RET(CheckNullStatus(sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
                               mmXScaleOptional, mmWeightScaleOptional, permuteOutFlag, mmYOptional, permuteOutOptional),
               ACLNN_ERR_PARAM_INVALID);
-    // 2.检查group长度是否小于等于128
+    // 检查group长度是否小于等于128
     CHECK_RET(Mc2AlltoAllvGMMChecker::CheckGroup(group), ACLNN_ERR_PARAM_INVALID);
-    // 3.检查参数是否为空
+    // 检查参数是否为空
     CHECK_RET(CheckNotNull(gmmX, gmmWeight, gmmY, gmmXScale, gmmWeightScale, gmmXQuantMode, gmmWeightQuantMode),
               ACLNN_ERR_PARAM_INVALID);
-    // 4.检查暂不支持的参数是否为空，不影响场景
+    // 检查暂不支持的参数是否为空，不影响场景
     CHECK_RET(
         CheckNotSupportNull(gmmXOffsetOptional, gmmWeightOffsetOptional, mmXOffsetOptional, mmWeightOffsetOptional),
         ACLNN_ERR_PARAM_INVALID);
-    // 5.检查维度
-    CHECK_RET(CheckDimValid(gmmX, gmmWeight, gmmY, gmmXScale, gmmWeightScale, mmXOptional, mmWeightOptional,
-                            mmYOptional, mmXScaleOptional, mmWeightScaleOptional),
-              ACLNN_ERR_PARAM_INVALID);
-    // 6.检查空tensor
+    // 检查空tensor
     CHECK_RET(CheckEmptyTensor(gmmX, gmmWeight, gmmY), ACLNN_ERR_PARAM_INVALID);
-    // 7.检查所有输入/量化数据类型
+    // 检查所有输入/量化数据类型
     CHECK_RET(CheckDtypesValid(gmmX, gmmWeight, gmmXScale, gmmWeightScale, mmXOptional, mmWeightOptional,
                                mmXScaleOptional, mmWeightScaleOptional, gmmY, mmYOptional, permuteOutOptional),
               ACLNN_ERR_PARAM_INVALID);
-    // 8.检查Quant
-    CHECK_RET(CheckQuantValid(gmmXQuantMode, gmmWeightQuantMode, gmmXScale, gmmWeightScale), ACLNN_ERR_PARAM_INVALID);
-    // 9.检查shape
-    CHECK_RET(CheckGmmShape(gmmX, gmmWeight, gmmXScale, gmmWeightScale, gmmY, epWorldSize), ACLNN_ERR_PARAM_INVALID);
-
-    CHECK_RET(CheckMmShape(gmmX, mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, mmYOptional),
-              ACLNN_ERR_PARAM_INVALID);
-    // 10.检查输入的数据格式是否为ND
+    // 检查输入的数据格式是否为ND
     CHECK_RET(CheckFormat(gmmX, gmmWeight, gmmXScale, gmmWeightScale, mmXOptional, mmWeightOptional, mmXScaleOptional,
                           mmWeightScaleOptional, gmmY, mmYOptional),
               ACLNN_ERR_PARAM_INVALID);
-
-    OP_LOGD("aclnnQuantMatmulAlltoAll checkParams success");
+    OP_LOGD("AlltoAllvQuantGroupedMatmul checkParams success");
     return ACLNN_SUCCESS;
 }
 

@@ -734,6 +734,28 @@ static const vector<AlltoAllvGroupedMatMulTilingTestParam> alltoAllvGroupedMatMu
         8, 8, 0,
         ge::GRAPH_FAILED, 0
     },
+    {
+        "Test_mm_dtype_mismatch",
+        {4096, 7168}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        {4, 7168, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        {}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {512, 512}, ge::DT_BF16, ge::FORMAT_ND, // mmX dtype not match gmmX
+        {512, 1024}, ge::DT_BF16, ge::FORMAT_ND,
+        {}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {}, ge::DT_FLOAT, ge::FORMAT_ND,
+        {128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,
+        128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128},
+        {128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,
+        128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128},
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        {512, 1024}, ge::DT_BF16, ge::FORMAT_ND,
+        {4096, 7168}, ge::DT_FLOAT16, ge::FORMAT_ND,
+        false, false, false, false,
+        false, false, true, true,
+        8, 8, 0,
+        ge::GRAPH_FAILED, 0
+    },
     // hif8 全量化
     // 正常测试用例
     {
