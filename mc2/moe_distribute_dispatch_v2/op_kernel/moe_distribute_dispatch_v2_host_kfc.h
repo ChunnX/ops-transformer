@@ -121,7 +121,8 @@ private:
                                                               uint32_t aivNum);
     __aicore__ inline void WaitStatusFlag(uint32_t serverIdx, uint32_t &tokenCnt);
     __aicore__ inline void WaitToken(uint32_t tokenCnt, uint32_t serverIdx, uint32_t startTokenIdx, TBuf<> &tBuf);
-    __aicore__ inline void CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal, uint32_t &arriveCount, uint32_t flagNum);
+    __aicore__ inline void CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal, uint32_t &arriveCount, uint32_t flagNum,
+                                                   LocalTensor<uint32_t> &flagRecvTensor, LocalTensor<uint32_t> &flagGatherOutTensor);
     __aicore__ inline void CopyInAndOut(LocalTensor<float> xOutFp32Tensor, LocalTensor<int32_t> xOutInt32Tensor,
                                         GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
     __aicore__ inline void SetServerFlag();
