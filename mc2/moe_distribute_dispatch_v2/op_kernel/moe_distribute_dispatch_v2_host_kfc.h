@@ -2048,14 +2048,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // LOG_INFO("startStatusIndex_ * STATE_OFFSET / sizeof(float)", startStatusIndex_ * STATE_OFFSET / sizeof(float));
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
-        // LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
+        LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
-        // LOG_INFO("sumOfFlag:", sumOfFlag);
+        LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
-        if(count == 1000) {
+        if(count == 10) {
             LOG_INFO("waitDispatch error count");
             break;
         }
