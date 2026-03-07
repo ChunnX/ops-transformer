@@ -442,6 +442,8 @@ private:
     uint32_t bufferNum_{0};
     uint32_t blockCntPerToken_{0};
     uint32_t blockCntPerCnt_{0};
+    uint32_t blockCntPerTokenToExpert_{0};
+    uint32_t maxBlockCnt_{0};
     uint32_t sendTokenLengthAlign_{0};
     uint32_t sendTokenLength_{0};
     uint32_t serverNum_{0};
@@ -513,7 +515,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1,calCnt});
 
-    blockCntPerCnt_ = Ceil(sendExpertNum * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_));
     CopyTokenToWinOut(tokenNumToExpertTensor_, rankGM, blockCntPerCnt_);
@@ -724,6 +725,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     sendTokenLength_ = moeExpertScaleSizeAlign + Ceil(axisK_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     blockCntPerToken_ = Ceil(sendTokenLength_, SPLIT_BLOCK_DATA_SIZE);
+    blockCntPerCnt_ = Ceil(sendExpertNum * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
+    blockCntPerTokenToExpert_ = Ceil(hScaleIdxSize_ / sizeof(ExpandXOutType), SPLIT_BLOCK_DATA_SIZE); //框内块数
     sendTokenLengthAlign_ = blockCntPerToken_ * SERVER_STATE_ALIGN;
 
     hAlignWinSize_ = Ceil(hScaleIdxSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // win区token起始地址对齐512
@@ -841,7 +844,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
 
     // uint32_t axisHCommu = hScaleIdxSize_ / sizeof(ExpandXOutType); // 有效搬运长度
-    blockCntPerTokenToExpert_ = Ceil(hScaleIdxSize_ / sizeof(ExpandXOutType), SPLIT_BLOCK_DATA_SIZE); //框内块数
     hCommuSize_ = blockCntPerTokenToExpert_ * SERVER_STATE_ALIGN; //拼接flag后的字节数
     axisHCommu_ = hCommuSize_ / sizeof(ExpandXOutType);
 
@@ -864,11 +866,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(expertOffsetCntBuf_, expertIdsCnt_ * sizeof(uint32_t));
     expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<uint32_t>();
     tpipe_->InitBuffer(xSendBuf_,sendTokenLength_);
-    tpipe_->InitBuffer(flagBuf_, blockCntPerToken_ * UB_ALIGN);
-    
-    uint64_t mask[1] = {0x0101010101010101};
-    uint8_t repeatTime = static_cast<uint8_t>(Ceil(blockCntPerToken_ * UB_ALIGN, 256));
 
+    maxBlockCnt_ = max(max(blockCntPerToken_, blockCntPerCnt_), blockCntPerTokenToExpert_);
+    tpipe_->InitBuffer(flagBuf_, maxBlockCnt_ * UB_ALIGN);
+    uint64_t mask[1] = {0x0101010101010101};
+    uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt * UB_ALIGN, 256));
     flagTensor_ = flagBuf_.Get<uint32_t>();
     Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
 
@@ -1366,10 +1368,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         tpipe_->Reset();
         InitTemp();
 
-        uint32_t flagMaxRecvNum = (blockCntPerToken_ * UB_ALIGN) / sizeof(uint32_t);
+        uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
         uint32_t gatherOutSize =
-        Ceil(blockCntPerToken_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
-        uint32_t tBufRealSize_ = UB_ALIGN >(gatherOutSize + blockCntPerToken_ * UB_ALIGN) ?UB_ALIGN: (gatherOutSize + blockCntPerToken_ * UB_ALIGN);
+        Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
+        uint32_t tBufRealSize_ = UB_ALIGN >(gatherOutSize + maxBlockCnt_ * UB_ALIGN) ?UB_ALIGN: (gatherOutSize + maxBlockCnt_ * UB_ALIGN);
         TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
         tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
         tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);
@@ -1520,33 +1522,21 @@ __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal,
                                                                              uint32_t &arriveCount, uint32_t flagNum)
 {
-    ////LogInfo(__LINE__,"[BATCHWRITE][CheckDataArriveWithFlag] start");
     uint64_t rsvdCnt = 0;
     uint32_t arriveFlagNum = 0;
     uint32_t compareCount =
         Ceil(flagNum, COMPARE_COUNT_PER_BLOCK) * COMPARE_COUNT_PER_BLOCK; // flagNum 向上取整到256倍数
     uint32_t compResultU64Num = Ceil(flagNum, 64);                        // 64：按照64bit位进行划分
 
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] flagNum", flagNum);
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] compareCount", compareCount);
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] compResultU64Num", compResultU64Num);
-
     DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(flagNum), static_cast<uint32_t>(sizeof(uint32_t)),
                                         static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
     DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
-    
-    // TBuf<> tempbuf;
-    // tpipe_->InitBuffer(tempbuf, SERVER_STATE_ALIGN * 5);
-    // LocalTensor<uint32_t> outTensor = tempbuf.Get<uint32_t>();
-    // DataCopy(outTensor, dataFlagGlobal, SERVER_STATE_ALIGN * 5 / sizeof(uint32_t));
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] tempbuf");
-    // //LogInfo(__LINE__, outTensor, tpipe_, 128);
 
     // flag放到flagRecvTensor_
     DataCopyPad(flagRecvTensor_, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] flagRecvTensor_");
-    // //LogInfo(__LINE__, flagRecvTensor_, tpipe_, 9);
-    LOG_INFO("flagRecvTensor_", flagRecvTensor_);
+    LOG_INFO("flagNum", flagNum);
+    LOG_INFO("dataFlagGlobal", dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], {10, 8});
+    LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, 8});
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
@@ -1554,16 +1544,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
     PipeBarrier<PIPE_V>();
     CompareScalar(flagCompResultU8_, flagGatherOutTensor_, uint32_t(1), AscendC::CMPMODE::EQ, compareCount);
     SyncFunc<AscendC::HardEvent::V_S>();
-
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] flagGatherOutTensor_");
-    // //LogInfo(__LINE__, flagGatherOutTensor_, tpipe_, 9);
-
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] flagCompResultU8_");
-    // //LogInfo(__LINE__, flagCompResultU8_, tpipe_, 9);
-
     for (uint32_t i = 0; i < compResultU64Num; i++) {
         uint64_t flagCompMask = flagCompResultLtU64_(i);
-        // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] flagCompMask: ", flagCompMask);
         int64_t firstValidIdx = ScalarGetSFFValue<0>(flagCompMask); // 找到0则表示数据没到
         if (firstValidIdx == -1) {                                  // 本次数据全到
             arriveFlagNum += 64U;                                   // 64：ScalarGetSFFValue操作单位为64bit位
@@ -1572,13 +1554,10 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
             break;
         }
     }
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] arriveFlagNum: ", arriveFlagNum);
-    // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] flagNum: ", flagNum);
     if (arriveFlagNum > flagNum) {
         arriveFlagNum = flagNum;
     }
     arriveCount = uint32_t(arriveFlagNum / blockCntPerToken_); // 返回token总数
-    ////LogInfo(__LINE__,"[BATCHWRITE][CheckDataArriveWithFlag] end");
 }
 
 template <TemplateDispatchKFCTypeClass>
