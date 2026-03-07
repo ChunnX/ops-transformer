@@ -1133,9 +1133,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(sendTokenTensor, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
     FillQuadruple(sendTokenTensor, tokenIndex);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-    GM_ADDR rankGM = (GetSendAddrBetweenServer(COMM_EP_IDX, dstServerId) +
-                                                                 SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
-    CopyTokenToWinOut(sendTokenTensor, rankGM, blockCntPerToken_);
+    // GM_ADDR rankGM = (GetSendAddrBetweenServer(COMM_EP_IDX, dstServerId) +
+    //                                                              SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
+    // CopyTokenToWinOut(sendTokenTensor, rankGM, blockCntPerToken_);
 }
 
 template <TemplateDispatchKFCTypeClass>
