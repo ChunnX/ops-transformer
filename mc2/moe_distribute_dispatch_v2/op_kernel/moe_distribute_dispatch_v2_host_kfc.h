@@ -1667,7 +1667,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     return targetRankId / serverRankSize_ == serverId_;
 }
 
-template <TemplateDispatchKFCTypeClass, >
+template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToExpert(LocalTensor<ExpandXOutType> &xOutTensor,
                                                                        GM_ADDR rankGM) //框内插入32B flag
