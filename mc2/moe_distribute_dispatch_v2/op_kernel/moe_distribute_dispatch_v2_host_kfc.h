@@ -1817,11 +1817,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, blockCntPerCnt_, flagRecvTensor_, flagGatherOutTensor_);
 
         if (arriveCount == 1) {
+            LOG_INFO("arriveCount", arriveCount);
             break;
         }
     }  //todo :后续改
 
-    LOG_INFO("arriveCount", arriveCount);
+    
 
     uint32_t startPosId;
     uint32_t endPosId;
