@@ -114,7 +114,7 @@ private:
     __aicore__ inline void CalValidBSCnt(LocalTensor<bool> maskStrideTensor);
     __aicore__ inline void CalValidExpIdx();
     __aicore__ inline void FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t tokenIndex);
-    __aicore__ inline void CopyTokenToWinOut(LocalTensor<XType> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
+    __aicore__ inline void CopyTokenToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SingleTokenProcess(uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
     __aicore__ inline void DispatchAndCountTokens(uint32_t startIndex, uint32_t endIndex, bool process);
     __aicore__ inline void ConstructDataAndFlagBatchWriteInfo(uint32_t beginServerId, uint32_t serverNum,
@@ -518,7 +518,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     blockCntPerCnt_ = Ceil(sendExpertNum * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_));
-    CopyTokenToWinOut<int32_t>(tokenNumToExpertTensor_, rankGM, blockCntPerCnt_);
+    CopyTokenToWinOut(tokenNumToExpertTensor_, rankGM, blockCntPerCnt_);
 
     // GlobalTensor<int32_t> sendCntTensor;
     // sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_)));
@@ -1106,7 +1106,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
 template <TemplateDispatchKFCTypeClass>
 template <typename T>
 __aicore__ inline void
-MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToWinOut(LocalTensor<XType> &xOutTensor,
+MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToWinOut(LocalTensor<T> &xOutTensor,
                                                                        GM_ADDR rankGM, uint32_t blockCnt)
 {
     GlobalTensor<T> dataDstWinGMTensor;
@@ -1135,7 +1135,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     GM_ADDR rankGM = (GetSendAddrBetweenServer(COMM_EP_IDX, dstServerId) +
                                                                  SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
-    CopyTokenToWinOut<XType>(sendTokenTensor, rankGM, blockCntPerToken_);
+    CopyTokenToWinOut(sendTokenTensor, rankGM, blockCntPerToken_);
 }
 
 template <TemplateDispatchKFCTypeClass>
