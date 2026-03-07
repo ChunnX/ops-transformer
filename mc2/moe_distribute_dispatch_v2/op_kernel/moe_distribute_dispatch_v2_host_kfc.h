@@ -1384,6 +1384,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
         flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);            // buf复用
+        LOG_INFO("[flagGatherOutTensor_]", flagGatherOutTensor_);
+        LOG_INFO("[flagRecvTensor_]", flagRecvTensor_);
 
         flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
         flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
@@ -1537,8 +1539,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
     // flag放到flagRecvTensor_
     DataCopyPad(flagRecvTensor_, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
     LOG_INFO("flagNum", flagNum);
-    LOG_INFO("dataFlagGlobal", dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], {10, 8});
-    LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, 8});
+    LOG_INFO("dataFlagGlobal", dataFlagGlobal, {10, 8});
+    LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, flagMaxRecvNum});
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
