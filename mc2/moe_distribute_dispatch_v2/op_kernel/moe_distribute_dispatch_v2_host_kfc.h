@@ -147,8 +147,6 @@ private:
                                                     const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void WaitDispatch();
     __aicore__ inline bool IsInSameServer(uint32_t targetRankId);
-    __aicore__ inline void CopyTokenToExpert(LocalTensor<ExpandXOutType> &xOutTensor,
-                                              GM_ADDR rankGM);
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
     __aicore__ inline void DoWindowCopy(LocalTensor<int32_t> &outLocal);
     __aicore__ inline void UpdateTokenNumsOut();
@@ -1668,25 +1666,6 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void
-MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToExpert(LocalTensor<ExpandXOutType> &xOutTensor,
-                                                                       GM_ADDR rankGM) //框内插入32B flag
-{
-    GlobalTensor<ExpandXOutType> dataDstWinGMTensor;
-    GlobalTensor<uint32_t> flagDstWinGMTensor;
-    dataDstWinGMTensor.SetGlobalBuffer((__gm__ ExpandXOutType *)rankGM);
-    flagDstWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)rankGM);
-    //SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-    DataCopyExtParams dataCopyOutParams = {static_cast<uint16_t>(blockCntPerTokenToExpert_), SPLIT_BLOCK_DATA_SIZE, 0U,
-                                           UB_ALIGN, 0U};
-    DataCopyPad(dataDstWinGMTensor, xOutTensor, dataCopyOutParams);
-
-    DataCopyExtParams flagCopyOutParams = {static_cast<uint16_t>(blockCntPerTokenToExpert_), UB_ALIGN, 0U,
-                                           SPLIT_BLOCK_DATA_SIZE, 0U};
-    DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], flagTensor_, flagCopyOutParams);
-}
-
-template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ProcessToken(
             GM_ADDR rankGM, uint32_t tokenIndex, uint32_t topKIndex,
             DataCopyPadParams& padParams, DataCopyParams& scaleInParams, uint32_t expertIndex,
@@ -1701,7 +1680,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
         //DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
-        CopyTokenToExpert(xOutTensor_, rankGM);
+        CopyTokenToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_);
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     } else {
         xOutTensor_ = xOutQueue_.AllocTensor<ExpandXOutType>();
