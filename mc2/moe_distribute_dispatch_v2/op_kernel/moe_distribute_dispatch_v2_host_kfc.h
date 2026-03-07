@@ -105,7 +105,7 @@ private:
     __aicore__ inline void CalExpertTotalSendCnt();
     __aicore__ inline void DispatchBetweenServer();
     __aicore__ inline void CommunicateBetweenServer(uint32_t beginServerId, uint32_t serverNum, uint32_t aivNum);
-    __aicore__ inline void InitWaitWindowBuffer();
+    __aicore__ inline void InitWaitWindowBuffer(TBuf<> &flagMaskBuf, TBuf<> &statusCleanBuf, TBuf<> &finishNumBuf, TBuf<> &tBuf, TBuf<> &tmpBuf);
     __aicore__ inline void WaitWindow(uint32_t aivNumForWait);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void TokenActiveMaskCal();
@@ -1348,7 +1348,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitWaitWindowBuffer()
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitWaitWindowBuffer(TBuf<> &flagMaskBuf, TBuf<> &statusCleanBuf, TBuf<> &finishNumBuf, TBuf<> &tBuf, TBuf<> &tmpBuf)
 {
     uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
     uint32_t gatherOutSize =
@@ -1812,7 +1812,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
 
     TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
-    InitWaitWindowBuffer();
+    InitWaitWindowBuffer(flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf);
 
     int32_t count = 0;
     while(true) { //确保等到
