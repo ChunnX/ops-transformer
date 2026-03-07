@@ -1266,7 +1266,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </td>
         </tr>
         <tr>
-        <td colspan="3"><ul>
+        <td colspan="4"><ul>
             <li>当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1</li>
             <li>非<a href="#MLA">MLA场景</a> sparseMode Q_S>1时生效</li>
         </ul></td>

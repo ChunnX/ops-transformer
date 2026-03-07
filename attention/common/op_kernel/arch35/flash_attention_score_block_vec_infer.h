@@ -930,8 +930,10 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInf
                 }
             }
         } else {
-            uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + runInfo.sOuterOffset * constInfo.dSizeV;
-            uint64_t perChannelQuantOffset = constInfo.isGqa ? perChannelQuantGQAOffset :
+            uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV +
+                                                runInfo.sOuterOffset * constInfo.dSizeV;
+            uint64_t perChannelQuantOffset = constInfo.isGqa ?
+                                                 perChannelQuantGQAOffset :
                                                  runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
             uint32_t gSplitSize = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
                                                               (2048U / ((uint32_t)dSizeAligned64 * sizeof(float)));
