@@ -116,6 +116,14 @@ constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t UB_RESERVE_SPACE = 8 * 1024;
 
 constexpr int64_t LARGE_INVALID_NUM = 3072;
+constexpr int64_t HIFP8_ADMIT_SEQ1 = 54000;
+constexpr int64_t HIFP8_ADMIT_SEQ2 = 57600;
+constexpr int64_t HIFP8_ADMIT_SEQ3 = 9360;
+constexpr int64_t HIFP8_ADMIT_SEQ4 = 7200;
+constexpr int64_t HIFP8_ADMIT_N1 = 5;
+constexpr int64_t HIFP8_ADMIT_N2 = 10;
+constexpr int64_t HIFP8_ADMIT_N3 = 40;
+constexpr int64_t HIFP8_ADMIT_N4 = 80;
 
 template <class T>
 inline auto CeilDivideBy(T num1, T num2) -> T
@@ -270,18 +278,18 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::ProcessQuantInfo()
         OP_CHECK_IF(strcmp(inputLayout, "BSND") != 0,
             OP_LOGE(context_, "Scenario HIFP8, inputLayout must be BSND."),
             return ge::GRAPH_FAILED);
-        if (!((fBaseParams.b == 1 && fBaseParams.s1 == 54000 && fBaseParams.n1 == 5 && fBaseParams.d == 128 &&
-            fBaseParams.s2 == 54000 && fBaseParams.n2 == 5 && fBaseParams.d1 == 128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == 9360 && fBaseParams.n1 == 40 && fBaseParams.d == 128 &&
-            fBaseParams.s2 == 9360 && fBaseParams.n2 == 40 && fBaseParams.d1 == 128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == 54000 && fBaseParams.n1 == 10 && fBaseParams.d == 128 &&
-            fBaseParams.s2 == 54000 && fBaseParams.n2 == 10 && fBaseParams.d1 == 128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == 9360 && fBaseParams.n1 == 80 && fBaseParams.d == 128 &&
-            fBaseParams.s2 == 9360 && fBaseParams.n2 == 80 && fBaseParams.d1 == 128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == 57600 && fBaseParams.n1 == 5 && fBaseParams.d == 128 &&
-            fBaseParams.s2 == 57600 && fBaseParams.n2 == 5 && fBaseParams.d1 == 128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == 7200 && fBaseParams.n1 == 40 && fBaseParams.d == 128 &&
-            fBaseParams.s2 == 512 && fBaseParams.n2 == 40 && fBaseParams.d1 == 128))) {
+        if (!((fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ1 && fBaseParams.n1 == HIFP8_ADMIT_N1 && fBaseParams.d == ALIGN128 &&
+            fBaseParams.s2 == HIFP8_ADMIT_SEQ1 && fBaseParams.n2 == HIFP8_ADMIT_N1 && fBaseParams.d1 == ALIGN128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ3 && fBaseParams.n1 == HIFP8_ADMIT_N3 && fBaseParams.d == ALIGN128 &&
+            fBaseParams.s2 == HIFP8_ADMIT_SEQ3 && fBaseParams.n2 == HIFP8_ADMIT_N3 && fBaseParams.d1 == ALIGN128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ1 && fBaseParams.n1 == HIFP8_ADMIT_N2 && fBaseParams.d == ALIGN128 &&
+            fBaseParams.s2 == HIFP8_ADMIT_SEQ1 && fBaseParams.n2 == HIFP8_ADMIT_N2 && fBaseParams.d1 == ALIGN128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ3 && fBaseParams.n1 == HIFP8_ADMIT_N4 && fBaseParams.d == ALIGN128 &&
+            fBaseParams.s2 == HIFP8_ADMIT_SEQ3 && fBaseParams.n2 == HIFP8_ADMIT_N4 && fBaseParams.d1 == ALIGN128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ2 && fBaseParams.n1 == HIFP8_ADMIT_N1 && fBaseParams.d == ALIGN128 &&
+            fBaseParams.s2 == HIFP8_ADMIT_SEQ2 && fBaseParams.n2 == HIFP8_ADMIT_N1 && fBaseParams.d1 == ALIGN128) ||
+            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ4 && fBaseParams.n1 == HIFP8_ADMIT_N3 && fBaseParams.d == ALIGN128 &&
+            fBaseParams.s2 == GM_ALIGN && fBaseParams.n2 == HIFP8_ADMIT_N3 && fBaseParams.d1 == ALIGN128))) {
             OP_LOGE(context_, "Scenario HIFP8, query & key shape only support{[1, 54000, 5, 128], [1, 54000, 5, 128]}, {[1, 9360, 40, 128], [1, 9360, 40, 128]}, {[1, 54000, 10, 128], [1, 54000, 10, 128]}, {[1, 9360, 80, 128], [1, 9360, 80, 128]}, {[1, 57600, 5, 128], [1, 57600, 5, 128]}, {[1, 7200, 40, 128], [1, 512, 40, 128]}.");
             return ge::GRAPH_FAILED;
         }
