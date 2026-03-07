@@ -1542,8 +1542,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
     // flag放到flagRecvTensor
     DataCopyPad(flagRecvTensor, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
     LOG_INFO("1111111");
-    // LOG_INFO("dataFlagGlobal", dataFlagGlobal, {10, 8});
-    // LOG_INFO("flagRecvTensor", flagRecvTensor, {1, flagNum});
+    LOG_INFO("dataFlagGlobal", dataFlagGlobal, {12, 8});
+    LOG_INFO("flagRecvTensor", flagRecvTensor, {1, flagNum});
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     LOG_INFO("2222222");
