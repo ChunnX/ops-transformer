@@ -1887,7 +1887,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             offset += ((expertIndex - shareRankNumInServer_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
         }
         GM_ADDR rankGM =
-            (__gm__ uint8_t *)GetWindStateAddrByRankId(COMM_EP_IDX, epRankId_); // 计算地址偏移
+            (__gm__ uint8_t *)GetWindStateAddrByRankId(COMM_EP_IDX, epRankId_) + offset; // 计算地址偏移
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(posIndex - startPosId) * 8], 8UL);
         LOG_INFO("[srcRankId]",srcRankId);
@@ -2055,7 +2055,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         sumOfFlag = statusSumOutTensor.GetValue(0);
         LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
-        if(count == 10) {
+        if(count == 10000) {
             LOG_INFO("waitDispatch error count");
             break;
         }
