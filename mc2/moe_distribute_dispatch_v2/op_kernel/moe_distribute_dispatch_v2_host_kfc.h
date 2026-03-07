@@ -1548,6 +1548,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     GatherMask(flagGatherOutTensor, flagRecvTensor, flagRecvGatherMask_, true, uint32_t(1),
                {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt);
+    LOG_INFO("flagGatherOutTensor", flagGatherOutTensor, {1, 1});
     PipeBarrier<PIPE_V>();
     CompareScalar(flagCompResultU8_, flagGatherOutTensor, uint32_t(1), AscendC::CMPMODE::EQ, compareCount);
     SyncFunc<AscendC::HardEvent::V_S>();
@@ -1561,6 +1562,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
             break;
         }
     }
+    LOG_INFO("arriveFlagNum", arriveFlagNum);
     if (arriveFlagNum > flagNum) {
         arriveFlagNum = flagNum;
     }
