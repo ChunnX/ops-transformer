@@ -518,7 +518,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     blockCntPerCnt_ = Ceil(sendExpertNum * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_));
-    CopyTokenToWinOut(tokenNumToExpertTensor_, rankGM, blockCntPerCnt_);
+    CopyTokenToWinOut<int32_t>(tokenNumToExpertTensor_, rankGM, blockCntPerCnt_);
 
     // GlobalTensor<int32_t> sendCntTensor;
     // sendCntTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_)));
@@ -1103,14 +1103,14 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
 }
 
-template <TemplateDispatchKFCTypeClass>
+template <TemplateDispatchKFCTypeClass, typename T>
 __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToWinOut(LocalTensor<XType> &xOutTensor,
                                                                        GM_ADDR rankGM, uint32_t blockCnt)
 {
-    GlobalTensor<XType> dataDstWinGMTensor;
+    GlobalTensor<T> dataDstWinGMTensor;
     GlobalTensor<uint32_t> flagDstWinGMTensor;
-    dataDstWinGMTensor.SetGlobalBuffer((__gm__ XType *)rankGM);
+    dataDstWinGMTensor.SetGlobalBuffer((__gm__ T *)rankGM);
     flagDstWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)rankGM);
     DataCopyExtParams dataCopyOutParams = {static_cast<uint16_t>(blockCnt), SPLIT_BLOCK_DATA_SIZE, 0U,
                                            UB_ALIGN, 0U};
@@ -1134,7 +1134,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     GM_ADDR rankGM = (GetSendAddrBetweenServer(COMM_EP_IDX, dstServerId) +
                                                                  SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
-    CopyTokenToWinOut(sendTokenTensor, rankGM, blockCntPerToken_);
+    CopyTokenToWinOut<XType>(sendTokenTensor, rankGM, blockCntPerToken_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1666,7 +1666,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     return targetRankId / serverRankSize_ == serverId_;
 }
 
-template <TemplateDispatchKFCTypeClass>
+template <TemplateDispatchKFCTypeClass, >
 __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToExpert(LocalTensor<ExpandXOutType> &xOutTensor,
                                                                        GM_ADDR rankGM) //框内插入32B flag
