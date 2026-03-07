@@ -1542,7 +1542,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
     // flag放到flagRecvTensor
     DataCopyPad(flagRecvTensor, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
     LOG_INFO("1111111");
-    LOG_INFO("dataFlagGlobal", dataFlagGlobal, {12, 8});
+    LOG_INFO("dataFlagGlobal", dataFlagGlobal, {16, 8});
     LOG_INFO("flagRecvTensor", flagRecvTensor, {1, flagNum});
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -2018,15 +2018,15 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
     int count = 0;
-    LOG_INFO("startStatusIndex_ * STATE_OFFSET / sizeof(float)", startStatusIndex_ * STATE_OFFSET / sizeof(float));
+    // LOG_INFO("startStatusIndex_ * STATE_OFFSET / sizeof(float)", startStatusIndex_ * STATE_OFFSET / sizeof(float));
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
-        LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
+        // LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
-        LOG_INFO("sumOfFlag:", sumOfFlag);
+        // LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
         if(count == 1000) {
             LOG_INFO("waitDispatch error count");
