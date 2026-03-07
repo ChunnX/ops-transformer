@@ -1805,6 +1805,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(flagGatherOutBuf, gatherOutSize);
     flagRecvTensor_ = flagRecvBuf.Get<uint32_t>();
     flagGatherOutTensor_ = flagGatherOutBuf.Get<uint32_t>();
+    LOG_INFO("flagRecvTensor_", flagRecvTensor_);
+    LOG_INFO("flagGatherOutTensor_", flagGatherOutTensor_);
 
     int32_t count = 0;
     while(true) { //确保等到
