@@ -26,7 +26,7 @@
 #include "util/math_util.h"
 #include "log/log.h"
 #include <nlohmann/json.hpp>
-#include "../../inc/moe_log.h"
+#include "../../../inc/moe_log.h"
 #include "platform/platform_info.h"
 namespace optiling
 {

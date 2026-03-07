@@ -32,5 +32,5 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE moe_masked_scatter ACLNNTYPE aclnn_exclude)
+    add_modules_sources_with_soc(OPTYPE moe_masked_scatter ACLNNTYPE aclnn_exclude)
 endif()
