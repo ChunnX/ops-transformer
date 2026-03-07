@@ -867,12 +867,15 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(xSendBuf_,sendTokenLength_);
 
     maxBlockCnt_ = max(max(blockCntPerToken_, blockCntPerCnt_), blockCntPerTokenToExpert_);
+    LOG_INFO("[blockCntPerToken_]", blockCntPerToken_);
+    LOG_INFO("[blockCntPerCnt_]", blockCntPerCnt_);
+    LOG_INFO("[blockCntPerTokenToExpert_]", blockCntPerTokenToExpert_);
+    LOG_INFO("[maxBlockCnt_]", maxBlockCnt_);
     tpipe_->InitBuffer(flagBuf_, maxBlockCnt_ * UB_ALIGN);
     uint64_t mask[1] = {0x0101010101010101};
-    uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt * UB_ALIGN, 256));
+    uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
     flagTensor_ = flagBuf_.Get<uint32_t>();
     Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
-
 
     //LogInfo(__LINE__, "axisHCommu",axisHCommu);
     //LogInfo(__LINE__, "serverBuferLength",serverBuferLength);
