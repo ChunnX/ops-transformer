@@ -1567,7 +1567,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
     if (arriveFlagNum > flagNum) {
         arriveFlagNum = flagNum;
     }
-    arriveCount = uint32_t(arriveFlagNum / blockCntPerToken_); // 返回token总数
+    arriveCount = uint32_t(arriveFlagNum / flagNum); // 返回token总数
 }
 
 template <TemplateDispatchKFCTypeClass>
