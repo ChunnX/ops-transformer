@@ -114,7 +114,7 @@ private:
     __aicore__ inline void CalValidBSCnt(LocalTensor<bool> maskStrideTensor);
     __aicore__ inline void CalValidExpIdx();
     __aicore__ inline void FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t tokenIndex);
-    __aicore__ inline void CopyTokenToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
+    template <typename T> __aicore__ inline void CopyTokenToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SingleTokenProcess(uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
     __aicore__ inline void DispatchAndCountTokens(uint32_t startIndex, uint32_t endIndex, bool process);
     __aicore__ inline void ConstructDataAndFlagBatchWriteInfo(uint32_t beginServerId, uint32_t serverNum,
