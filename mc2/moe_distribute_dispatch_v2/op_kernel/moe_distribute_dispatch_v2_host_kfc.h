@@ -1486,7 +1486,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         GM_ADDR wAddr =
             GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
         dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
-        CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_);
+        CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_, flagRecvTensor_, flagGatherOutTensor_);
 
         if (arriveCount == 1) {
             uint32_t dstPosition = index;
@@ -1524,7 +1524,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWithFlag(GlobalTensor<uint32_t> &dataFlagGlobal,
-                                                                             uint32_t &arriveCount, uint32_t flagNum)
+                                                                            uint32_t &arriveCount, uint32_t flagNum,
+                                                                            LocalTensor<uint32_t> &flagRecvTensor,
+                                                                            LocalTensor<uint32_t> &flagGatherOutTensor)
 {
     uint64_t rsvdCnt = 0;
     uint32_t arriveFlagNum = 0;
@@ -1536,17 +1538,17 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
                                         static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
     DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
 
-    // flag放到flagRecvTensor_
-    // DataCopyPad(flagRecvTensor_, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
+    // flag放到flagRecvTensor
+    DataCopyPad(flagRecvTensor, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
     LOG_INFO("flagNum", flagNum);
     LOG_INFO("dataFlagGlobal", dataFlagGlobal, {10, 8});
-    LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, flagNum});
+    LOG_INFO("flagRecvTensor", flagRecvTensor, {1, flagNum});
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
-    GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
+    GatherMask(flagGatherOutTensor, flagRecvTensor, flagRecvGatherMask_, true, uint32_t(1),
                {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt);
     PipeBarrier<PIPE_V>();
-    CompareScalar(flagCompResultU8_, flagGatherOutTensor_, uint32_t(1), AscendC::CMPMODE::EQ, compareCount);
+    CompareScalar(flagCompResultU8_, flagGatherOutTensor, uint32_t(1), AscendC::CMPMODE::EQ, compareCount);
     SyncFunc<AscendC::HardEvent::V_S>();
     for (uint32_t i = 0; i < compResultU64Num; i++) {
         uint64_t flagCompMask = flagCompResultLtU64_(i);
@@ -1795,6 +1797,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GlobalTensor<uint32_t> statusWinGMTensor;
     statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
 
+    TBuf flagRecvBuf, flagGatherOutBuf;
+    tpipe_->InitBuffer(flagRecvBuf, gatherOutSize);
+    tpipe_->InitBuffer(flagGatherOutBuf, gatherOutSize);
+    flagRecvTensor_ = flagRecvBuf.Get<uint32_t>();
+    flagGatherOutTensor_ = flagGatherOutBuf.Get<uint32_t>();
+
     int32_t count = 0;
     while(true) { //确保等到
         count++;
@@ -1803,7 +1811,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             break;
         }
         uint32_t arriveCount = 0;
-        CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, blockCntPerCnt_);
+        CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, blockCntPerCnt_, flagRecvTensor_, flagGatherOutTensor_);
 
         if (arriveCount == 1) {
             break;
