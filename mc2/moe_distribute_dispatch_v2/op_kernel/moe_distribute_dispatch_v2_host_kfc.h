@@ -1887,9 +1887,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             offset += ((expertIndex - shareRankNumInServer_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
         }
         GM_ADDR rankGM =
-            (__gm__ uint8_t *)GetWindStateAddrByRankId(COMM_EP_IDX, epRankId_) + offset; // 计算地址偏移
+            (__gm__ uint8_t *)GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset; // 计算地址偏移
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(posIndex - startPosId) * 8], 8UL);
+        LOG_INFO("[rankGM]", rankGM);
         LOG_INFO("[srcRankId]",srcRankId);
         LOG_INFO("[dstRankId]",dstRankId);
         LOG_INFO("[statusTensor_]",statusTensor_,{8,8});
@@ -2045,7 +2046,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
     int count = 0;
-    // LOG_INFO("startStatusIndex_ * STATE_OFFSET / sizeof(float)", startStatusIndex_ * STATE_OFFSET / sizeof(float));
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
         LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
