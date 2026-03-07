@@ -1354,7 +1354,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t gatherOutSize =
     Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
     uint32_t tBufRealSize_ = UB_ALIGN >(gatherOutSize + maxBlockCnt_ * UB_ALIGN) ?UB_ALIGN: (gatherOutSize + maxBlockCnt_ * UB_ALIGN);
-    TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
     tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
     tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);
     tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
@@ -1410,6 +1409,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         tpipe_->Reset();
         InitTemp();
+        TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
         InitWaitWindowBuffer();
         
         #if defined(__DAV_C310__)
@@ -1811,6 +1811,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t gatherOutSize =
         Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
 
+    TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
     InitWaitWindowBuffer();
 
     int32_t count = 0;
