@@ -105,6 +105,7 @@ private:
     __aicore__ inline void CalExpertTotalSendCnt();
     __aicore__ inline void DispatchBetweenServer();
     __aicore__ inline void CommunicateBetweenServer(uint32_t beginServerId, uint32_t serverNum, uint32_t aivNum);
+    __aicore__ inline void InitWaitWindowBuffer();
     __aicore__ inline void WaitWindow(uint32_t aivNumForWait);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void TokenActiveMaskCal();
@@ -1345,6 +1346,45 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
 }
 
+
+template <TemplateDispatchKFCTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitWaitWindowBuffer()
+{
+    uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
+    uint32_t gatherOutSize =
+    Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
+    uint32_t tBufRealSize_ = UB_ALIGN >(gatherOutSize + maxBlockCnt_ * UB_ALIGN) ?UB_ALIGN: (gatherOutSize + maxBlockCnt_ * UB_ALIGN);
+    TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
+    tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
+    tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);
+    tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
+    tpipe_->InitBuffer(finishNumBuf, Ceil(512 * sizeof(uint32_t),UB_ALIGN)* UB_ALIGN);
+    tpipe_->InitBuffer(tmpBuf, sendTokenLengthAlign_);
+    tokenData_ = xInQueue_.AllocTensor<XType>();
+
+    flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
+    flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);            // buf复用
+    LOG_INFO("[flagGatherOutTensor_]", flagGatherOutTensor_);
+    LOG_INFO("[flagRecvTensor_]", flagRecvTensor_);
+
+    flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
+    flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
+    flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
+    finishNumTensor_ = finishNumBuf.Get<uint32_t>();
+
+    recvTmpTensor_ = tmpBuf.Get<XType>();
+
+    tpipe_->InitBuffer(localSetTbuf_, UB_ALIGN);
+    localSet_ = localSetTbuf_.Get<int32_t>();
+
+    LocalTensor<uint32_t> flagCompResultLtU32 = flagMaskBuf.Get<uint32_t>();
+    Duplicate<uint32_t>(flagCompResultLtU32, 0, BUFFER_NUM * UB_ALIGN / sizeof(uint32_t));
+    Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
+    SyncFunc<AscendC::HardEvent::V_S>();
+    flagRecvGatherMask_.SetValue(0, 1);
+    SyncFunc<AscendC::HardEvent::S_V>();
+}
+
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitWindow(uint32_t aivNum)
 {
@@ -1370,30 +1410,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         tpipe_->Reset();
         InitTemp();
-
-        uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
-        uint32_t gatherOutSize =
-        Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
-        uint32_t tBufRealSize_ = UB_ALIGN >(gatherOutSize + maxBlockCnt_ * UB_ALIGN) ?UB_ALIGN: (gatherOutSize + maxBlockCnt_ * UB_ALIGN);
-        TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
-        tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
-        tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);
-        tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
-        tpipe_->InitBuffer(finishNumBuf, Ceil(512 * sizeof(uint32_t),UB_ALIGN)* UB_ALIGN);
-        tpipe_->InitBuffer(tmpBuf, sendTokenLengthAlign_);
-        tokenData_ = xInQueue_.AllocTensor<XType>();
-
-        flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
-        flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);            // buf复用
-        LOG_INFO("[flagGatherOutTensor_]", flagGatherOutTensor_);
-        LOG_INFO("[flagRecvTensor_]", flagRecvTensor_);
-
-        flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
-        flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
-        flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-        finishNumTensor_ = finishNumBuf.Get<uint32_t>();
-
-        recvTmpTensor_ = tmpBuf.Get<XType>();
+        InitWaitWindowBuffer();
         
         #if defined(__DAV_C310__)
             LocalTensor<uint8_t> singleByteTok = tokenData_.template ReinterpretCast<uint8_t>();
@@ -1402,16 +1419,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 Duplicate(singleByteTok, QUANT_PADDING_VALUE, Align128(axisH_) * sizeof(XType)); 
             }
         #endif
-
-        tpipe_->InitBuffer(localSetTbuf_, UB_ALIGN);
-        localSet_ = localSetTbuf_.Get<int32_t>();
-
-        LocalTensor<uint32_t> flagCompResultLtU32 = flagMaskBuf.Get<uint32_t>();
-        Duplicate<uint32_t>(flagCompResultLtU32, 0, BUFFER_NUM * UB_ALIGN / sizeof(uint32_t));
-        Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
-        SyncFunc<AscendC::HardEvent::V_S>();
-        flagRecvGatherMask_.SetValue(0, 1);
-        SyncFunc<AscendC::HardEvent::S_V>();
 
         WaitToken(tokenCnt, dstServerInd, 0, tBuf);
         xInQueue_.FreeTensor<XType>(tokenData_);
@@ -1803,17 +1810,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
     uint32_t gatherOutSize =
         Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
-        
-    TBuf flagRecvBuf, flagGatherOutBuf, statusCleanBuf;
-    tpipe_->InitBuffer(flagRecvBuf, flagMaxRecvNum);
-    tpipe_->InitBuffer(flagGatherOutBuf, gatherOutSize);
-    tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
-    flagRecvTensor_ = flagRecvBuf.Get<uint32_t>();
-    flagGatherOutTensor_ = flagGatherOutBuf.Get<uint32_t>();
-    flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
-    SyncFunc<AscendC::HardEvent::V_S>();
-    flagRecvGatherMask_.SetValue(0, 1);
+
+    InitWaitWindowBuffer();
 
     int32_t count = 0;
     while(true) { //确保等到
