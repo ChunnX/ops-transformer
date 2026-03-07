@@ -2120,7 +2120,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tokenNumToExpertTensor_ = dstExpBuf_.GetWithOffset<int32_t>(moeExpertNum_, 0);
     Duplicate(tokenNumToExpertTensor_, 0, moeExpertNum_);
     PipeBarrier<PIPE_V>();
-    CalExpertTotalSendCnt();
+    if (aivId_ == 0) {
+        CalExpertTotalSendCnt();
+    }
     // ExpertOffsetCal();
 
     //cnt框间接收 + 框内发送
