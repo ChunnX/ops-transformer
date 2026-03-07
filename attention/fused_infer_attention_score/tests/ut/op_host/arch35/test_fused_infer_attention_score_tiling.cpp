@@ -954,6 +954,2357 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScore_950_tiling_13)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check1)
+{
+    // GQA非量化场景n1>256
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 257, 127}, {4, 13, 257, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 127}, {4, 10347, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 127}, {4, 10347, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 257, 127}, {4, 13, 257, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(257)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check2)
+{
+    // decode mla场景不支持BNSD_BSND
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 512}, {4, 13, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{4, 13, 16, 64}, {4, 13, 16, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{4, 10347, 1, 64}, {4, 10347, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 16, 13, 512}, {4, 16, 13, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD_BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check3)
+{
+    // prefill mla场景不支持BSND_NBSD
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 128}, {4, 13, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{4, 13, 16, 64}, {4, 13, 16, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{4, 10347, 1, 64}, {4, 10347, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 16, 128}, {4, 13, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND_NBSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check4)
+{
+    // GQA非量化场景不支持innerPrecise = 6
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 127}, {4, 13, 16, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 127}, {4, 10347, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 127}, {4, 10347, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 16, 127}, {4, 13, 16, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check5)
+{
+    // GQA非量化 PA(BBH)场景keyBlockNum != valueBlockNum
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    int64_t actual_seq_kvlist[] = {88, 88, 88, 88};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{30, 128, 256}, {30, 128, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{32, 128, 256}, {32, 128, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actual_seq_kvlist},                                 // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{4, 16}, {4, 16}}, ge::DT_INT32, ge::FORMAT_ND},                        // block_table-input12
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                          // 输出Tensor
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check6)
+{
+    // GQA非量化 PA(BND1BD0)场景keyBlockNum != valueBlockNum
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    int64_t actual_seq_kvlist[] = {88, 88, 88, 88};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{30, 2, 8, 128, 16}, {30, 2, 8, 128, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{32, 2, 8, 128, 16}, {32, 2, 8, 128, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actual_seq_kvlist},                                 // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{4, 16}, {4, 16}}, ge::DT_INT32, ge::FORMAT_ND},                        // block_table-input12
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                          // 输出Tensor
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check7)
+{
+    // GQA非量化 PA(BND1BD0)场景D0 != 16
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    int64_t actual_seq_kvlist[] = {88, 88, 88, 88};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{30, 2, 8, 128, 15}, {30, 2, 8, 128, 15}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{30, 2, 8, 128, 15}, {30, 2, 8, 128, 15}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actual_seq_kvlist},                                 // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{4, 16}, {4, 16}}, ge::DT_INT32, ge::FORMAT_ND},                        // block_table-input12
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                          // 输出Tensor
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check8)
+{
+    // GQA非量化 PA(BND1BD0)场景D1 * 16 != D
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    int64_t actual_seq_kvlist[] = {88, 88, 88, 88};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{30, 2, 8, 128, 16}, {30, 2, 8, 128, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{30, 2, 7, 128, 16}, {30, 2, 7, 128, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actual_seq_kvlist},                                 // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{4, 16}, {4, 16}}, ge::DT_INT32, ge::FORMAT_ND},                        // block_table-input12
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                          // 输出Tensor
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check9)
+{
+    // GQA非量化 PA(BNBD)场景keyBlockNum != valueBlockNum
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    int64_t actual_seq_kvlist[] = {88, 88, 88, 88};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{30, 2, 128, 128}, {30, 2, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{32, 2, 128, 128}, {32, 2, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actual_seq_kvlist},                                 // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{4, 16}, {4, 16}}, ge::DT_INT32, ge::FORMAT_ND},                        // block_table-input12
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                          // 输出Tensor
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check10)
+{
+    // GQA非量化 PA(BNBD)场景不支持BSND
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    int64_t actual_seq_kvlist[] = {88, 88, 88, 88};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{30, 2, 128, 128}, {30, 2, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{30, 2, 128, 128}, {30, 2, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actual_seq_kvlist},                                 // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{4, 16}, {4, 16}}, ge::DT_INT32, ge::FORMAT_ND},                        // block_table-input12
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                          // 输出Tensor
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check11)
+{
+    // GQA非量化场景不开后量化不支持 q 和 out类型不一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 127}, {4, 13, 16, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1024, 1, 127}, {4, 1024, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1024, 1, 127}, {4, 1024, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 16, 127}, {4, 13, 16, 127}}, ge::DT_INT8, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check12)
+{
+    // GQA非量化 d不等长场景开后量化 q和out类型只支持bf16或fp16
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 127}, {4, 13, 16, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1024, 1, 88}, {4, 1024, 1, 88}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1024, 1, 88}, {4, 1024, 1, 88}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{16, 88}, {16, 88}}, ge::DT_FLOAT, ge::FORMAT_ND},                     // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 16, 127}, {4, 13, 16, 127}}, ge::DT_INT8, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check13)
+{
+    // GQA非量化场景 B的取值范围(0, 65536]
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{65537, 13, 16, 127}, {65537, 13, 16, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{65537, 1024, 1, 127}, {65537, 1024, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{65537, 1024, 1, 127}, {65537, 1024, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{65537, 13, 16, 127}, {65537, 13, 16, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check14)
+{
+    // GQA非量化场景 QD的取值范围(0, 512]
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 513}, {4, 13, 16, 513}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1024, 1, 513}, {4, 1024, 1, 513}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1024, 1, 513}, {4, 1024, 1, 513}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 16, 513}, {4, 13, 16, 513}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check15)
+{
+    // GQA非量化 Q不等长场景 QKVD不能超过128
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 129}, {4, 13, 16, 129}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1024, 1, 127}, {4, 1024, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1024, 1, 127}, {4, 1024, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 16, 129}, {4, 13, 16, 129}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check17)
+{
+    // decode mla场景g轴仅支持{1, 2, 4, 8, 16, 32, 64, 128}
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 17, 512}, {4, 13, 17, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{4, 13, 17, 64}, {4, 13, 17, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{4, 10347, 1, 64}, {4, 10347, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 17, 512}, {4, 13, 17, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(17)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check18)
+{
+    // GQA非量化场景 D不等于64或128时，G的取值范围[1, 64]
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 127, 127}, {4, 13, 127, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 127}, {4, 10347, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 127}, {4, 10347, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 127, 127}, {4, 13, 127, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_19)
+{
+    // GQA非量化场景 q维度需要和out维度一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{5, 1, 512}, {5, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // query-input0
+            {{{5, 768, 512}, {5, 768, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{5, 768, 512}, {5, 768, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{5, 1, 64}, {5, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{5, 768, 64}, {5, 768, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+         {{{5, 1, 1, 512}, {5, 1, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                        // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSH")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132385025;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check20)
+{
+    // GQA非量化场景 inputlayout为BSND_BNSD，q与out的N不一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 127, 128}, {4, 13, 127, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 125, 13, 128}, {4, 125, 13, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND_BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check21)
+{
+    // decode mla场景 inputlayout为BNSD_NBSD，q与out的S不一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 512}, {4, 13, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{4, 13, 17, 64}, {4, 13, 17, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{4, 10347, 1, 64}, {4, 10347, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{13, 4, 15, 512}, {13, 4, 15, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD_NBSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check22)
+{
+    // decode mla场景 inputlayout为BSND_NBSD，q与out的S不一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 16, 512}, {4, 13, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 512}, {4, 10347, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{4, 13, 17, 64}, {4, 13, 17, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{4, 10347, 1, 64}, {4, 10347, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{15, 4, 13, 512}, {15, 4, 13, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND_NBSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check23)
+{
+    // decode mla场景 inputlayout为BSH_NBSD，q与out的h不一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 8192}, {4, 13, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 512}, {4, 10347, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 512}, {4, 10347, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{4, 13, 1024}, {4, 13, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{4, 10347, 64}, {4, 10347, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{15, 4, 13, 512}, {15, 4, 13, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSH_NBSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_24)
+{
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{12, 64, 512}, {12, 64, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // query-input0
+            {{{4096, 1, 512}, {4096, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4096, 1, 512}, {4096, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                // atten_mask-input4
+            {{{3, 6, 9, 12}, {3, 6, 9, 12}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{1024, 2048, 3072, 4096}, {1024, 2048, 3072, 4096}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{12, 64, 64}, {12, 64, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{4096, 1, 64}, {4096, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+         {{{63, 12, 512}, {63, 12, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                        // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.041666666666666664f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND_NTD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132385026;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check25)
+{
+    // GQA非量化场景 K V的dtype类型需要一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 127, 128}, {4, 13, 127, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 127, 128}, {4, 13, 127, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check26)
+{
+    // GQA非量化场景 KV的S不相等
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 127, 128}, {4, 13, 127, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10348, 1, 128}, {4, 10348, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 127, 128}, {4, 13, 127, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check27)
+{
+    // GQA非量化 D不等长场景 KV的N不相等
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 64, 128}, {4, 13, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 100}, {4, 10347, 1, 100}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 2, 100}, {4, 10347, 2, 100}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 64, 128}, {4, 13, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check28)
+{
+    // GQA非量化场景 N与QN需要保持一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 63, 128}, {4, 13, 63, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 128}, {4, 10347, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 64, 128}, {4, 13, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check29)
+{
+    // GQA非量化场景 N与QN需要保持一致
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{63, 52, 128}, {63, 52, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{1, 41388, 128}, {1, 41388, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{1, 41388, 128}, {1, 41388, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{3, 6, 9, 12}, {3, 6, 9, 12}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{1024, 2048, 3072, 4096}, {1024, 2048, 3072, 4096}}, ge::DT_FLOAT, ge::FORMAT_ND},             // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{64, 52, 128}, {64, 52, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("NTD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check30)
+{
+    // GQA非量化场景 BSH成功
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 8192}, {4, 13, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 128}, {4, 10347, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 128}, {4, 10347, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 8192}, {4, 13, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSH")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 107133670105728;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+}
+
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_qkvout_check31)
+{
+    // GQA非量化场景 D不等长 BSND成功
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 13, 64, 127}, {4, 13, 64, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 10347, 1, 126}, {4, 10347, 1, 126}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 10347, 1, 126}, {4, 10347, 1, 126}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                    // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},           // actual_shared_prefix_len-空
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope-input21
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // dequant_scale_query-input24
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                                 // kv_start_idx-input27
+        },
+        {                                                                 // 输出Tensor
+            {{{4, 13, 64, 127}, {4, 13, 64, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 132382980;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+// rope check
+// D512 rope success
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_D512)
+{
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},            // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // actual_shared_prefix_len-空
+            {{{4,32,16,64}, {4,32,16,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // query_rope-input21
+            {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
+        },
+        {                                                                       // 输出Tensor
+         {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5128)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 266602241;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+}
+
+// D128 rope success
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_D128)
+{
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 32, 16, 128}, {4, 32, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1, 2048, 128}, {4, 1, 2048, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1, 2048, 128}, {4, 1, 2048, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},            // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // actual_shared_prefix_len-空
+            {{{4,32,16,64}, {4,32,16,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // query_rope-input21
+            {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
+        },
+        {                                                                       // 输出Tensor
+         {{{4, 32, 16, 128}, {4, 32, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5128)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 266602241;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+}
+
+// check rope dtype需要和 query/key 保持一致
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_D512_ropeQKDtype)
+{
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},            // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // actual_shared_prefix_len-空
+            {{{4,32,16,64}, {4,32,16,64}}, ge::DT_BF16, ge::FORMAT_ND},                             // query_rope-input21
+            {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_BF16, ge::FORMAT_ND},                             // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
+        },
+        {                                                                       // 输出Tensor
+         {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5128)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 266602241;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+//check rope仅支持bf16/fp16
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_ropeDtype)
+{
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},            // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // actual_shared_prefix_len-空
+            {{{4,32,16,64}, {4,32,16,64}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // query_rope-input21
+            {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
+        },
+        {                                                                       // 输出Tensor
+         {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attentionOut
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5128)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 266602241;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+// check D=512 attenOut dtype需要和query一致
+TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_attenOutDtype)
+{
+    optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
+        64, 32, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query-input0
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
+            {{{4, 1, 2048, 512}, {4, 1, 2048, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // pse_shift-input3
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},            // atten_mask-input4
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                                  // actual_seq_lengths-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // actual_seq_lengths_kv-空
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale1-input5
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // quant_scale1-input6
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // dequant_scale2-input7
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_scale2-input8
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // quant_offset2-input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_scale-input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // antiquant_offset-input11
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // block_table-input12 (先不使能)
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // query_padding_size-input13
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_padding_size-input14
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // key_antiquant_scale-input15
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_antiquant_offset-input16
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                             // value_antiquant_scale-input17
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_antiquant_offset-input18
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_shared_prefix-input19
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value_shared_prefix-input20
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // actual_shared_prefix_len-空
+            {{{4,32,16,64}, {4,32,16,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // query_rope-input21
+            {{{4,1,2048,64}, {4,1,2048,64}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // key_rope-input22
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key_rope_antiquant_scale-input23
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_query-input24   
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // learnable_sink-input25
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // q_start_idx-input26
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                               // kv_start_idx-input27
+        },
+        {                                                                       // 输出Tensor
+         {{{4, 32, 16, 512}, {4, 32, 16, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // attentionOut
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},                              // softmax_lse
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5128)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+    int64_t expectTilingKey = 266602241;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
 // check D仅支持128/512
 TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_D)
 {
