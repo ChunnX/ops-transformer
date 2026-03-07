@@ -394,7 +394,6 @@ private:
     uint32_t hOutAlignUbSize_{0};
     uint32_t hAlignSize_{0};
     uint32_t hOutSizeAlign_{0};
-    uint32_t blockCntPerTokenToExpert_{0};
     uint32_t hCommuSize_{0};
     uint32_t axisHCommu_{0};
     uint32_t moeListAlign_{0};
@@ -482,16 +481,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t compareCount = 0;
     uint32_t maskSizePerExpert = 0;
     uint32_t calCnt = moeExpertNum_;
-    uint32_t startExpertId, endExpertId, sendExpertNum;
+    //uint32_t startExpertId, endExpertId, sendExpertNum;
     uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
     LocalTensor<uint8_t> expertMaskTensorU8 = subExpBuf_.Get<uint8_t>();
     LocalTensor<uint32_t> expertMaskTensorU32 = subExpBuf_.Get<uint32_t>();
     LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();;
-    SplitToCore(calCnt, aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum);
+    //SplitToCore(calCnt, aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum);
     LOG_INFO("expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
-    if(startExpertId >= endExpertId || sendExpertNum == 0){
-        return;
-    }
+    // if(startExpertId >= endExpertId || sendExpertNum == 0){
+    //     return;
+    // }
     compareCount = Ceil(mask * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
     maskSizePerExpert = Ceil(compareCount / BITS_PER_BYTE, UB_ALIGN) * UB_ALIGN; // 为了匹配CompareScalar接口1bit一共8位
     
@@ -504,8 +503,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //     GatherMask(expertIdsTensor_, tmpExpertIdsTensor, gatherMaskTensor_, true, mask, {1, 1, 1, 0}, rsvdCnt);
     // }
 
-    for (int32_t expertIndex = 0; expertIndex < sendExpertNum; expertIndex++) {
-        int32_t dstExpertId = expertIndex + startExpertId;
+    for (int32_t expertIndex = 0; expertIndex < moeExpertNum_; expertIndex++) {
+        int32_t dstExpertId = expertIndex;// + startExpertId;
         CompareScalar(expertMaskTensorU8[maskSizePerExpert * expertIndex], expertIdsTensor_, dstExpertId, CMPMODE::EQ, compareCount);
         PipeBarrier<PIPE_V>();
         GatherMask(gatherTempTensor, expertIdsTensor_, expertMaskTensorU32[maskSizePerExpert * expertIndex / sizeof(uint32_t)],
@@ -725,7 +724,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     sendTokenLength_ = moeExpertScaleSizeAlign + Ceil(axisK_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     blockCntPerToken_ = Ceil(sendTokenLength_, SPLIT_BLOCK_DATA_SIZE);
-    blockCntPerCnt_ = Ceil(sendExpertNum * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
+    blockCntPerCnt_ = Ceil(moeExpertNum_ * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
     blockCntPerTokenToExpert_ = Ceil(hScaleIdxSize_ / sizeof(ExpandXOutType), SPLIT_BLOCK_DATA_SIZE); //框内块数
     sendTokenLengthAlign_ = blockCntPerToken_ * SERVER_STATE_ALIGN;
 
