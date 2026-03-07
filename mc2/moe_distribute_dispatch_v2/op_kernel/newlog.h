@@ -399,3 +399,229 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
 //#endif
 
 }
+
+
+
+
+// //需要加kernel_operator头文件
+
+
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalServerSendCnt()
+// {
+//     TBuf<> tempBuf;
+//     TBuf<> sharedTmpBuf;
+//     tpipe_->InitBuffer(tempBuf, expertIdsCnt_ * sizeof(int16_t));
+//     tpipe_->InitBuffer(sharedTmpBuf, 128 * activeMaskBsCnt_);
+//     uint32_t calCnt = isTokenMaskFlag_? sendToMoeExpTokenCnt_ : expertIdsCnt_; 
+//     uint32_t activeBsCnt = static_cast<uint32_t>(activeMaskBsCnt_);
+
+//     LocalTensor<float32_t> dstServerIdFp32 = dstExpBuf_.Get<float32_t>();
+//     LocalTensor<float32_t> tempTensorFp32 = subExpBuf_.Get<float32_t>();
+//     LocalTensor<float32_t> tempServerIdFp32 = gatherMaskTBuf_.Get<float32_t>();
+//     LocalTensor<float32_t> sharedTensorFp32 = sharedTmpBuf.Get<float32_t>();
+//     LocalTensor<int32_t> dstServerIdInt32 = dstExpBuf_.Get<int32_t>();
+//     LocalTensor<int32_t> tempTensorInt32 = subExpBuf_.Get<int32_t>();
+//     LocalTensor<int32_t> tempServerIdInt32 = gatherMaskTBuf_.Get<int32_t>();
+//     LocalTensor<int16_t> tempServerIdInt16 = gatherMaskTBuf_.Get<int16_t>();
+//     LocalTensor<int16_t> tempTensorInt16 = subExpBuf_.Get<int16_t>(); 
+//     LocalTensor<int16_t> compareInt16 = tempBuf.Get<int16_t>();
+//     LocalTensor<uint8_t> sharedTensorInt8 = sharedTmpBuf.Get<uint8_t>();
+    
+//     Cast(dstServerIdFp32, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
+//     Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(moeExpertNumPerRank_), calCnt);
+//     PipeBarrier<PIPE_V>();
+//     Div(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt);
+//     PipeBarrier<PIPE_V>();
+//     Adds(dstServerIdFp32, dstServerIdFp32, static_cast<float32_t>(sharedExpertRankNum_), calCnt);
+//     PipeBarrier<PIPE_V>();
+//     Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(serverRankSize_), calCnt);
+//     PipeBarrier<PIPE_V>();
+//     Div(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt); //计算每个专家所在的serverID
+//     PipeBarrier<PIPE_V>();
+//     Cast(dstServerIdInt32, dstServerIdFp32, RoundMode::CAST_TRUNC, calCnt); 
+//     PipeBarrier<PIPE_V>();
+
+//     for(uint32_t serverIndex = 0; serverIndex < serverNum_; serverIndex++) {
+//         uint32_t dstServerId = serverIndex;
+//         Duplicate<int32_t>(tempTensorInt32, dstServerId, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Sub(tempServerIdInt32, dstServerIdInt32, tempTensorInt32, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Abs(tempServerIdFp32, tempServerIdFp32, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Mins(tempServerIdInt32, tempServerIdInt32, 1, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Cast(tempServerIdInt16, tempServerIdInt32, RoundMode::CAST_NONE, calCnt);
+//         Duplicate<int16_t>(tempTensorInt16, 1, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Xor(compareInt16, tempServerIdInt16, tempTensorInt16, sharedTensorInt8, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Cast(tempServerIdFp32, compareInt16, RoundMode::CAST_NONE, calCnt);//这里是 0 1 结果
+//         PipeBarrier<PIPE_V>();
+//         if(isExpertMaskFlag_) {
+//             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
+//             Cast(tempTensorFp32, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
+//             Mul(tempServerIdFp32, tempServerIdFp32, tempTensorFp32, calCnt); //需要与mask相乘。
+//             PipeBarrier<PIPE_V>(); 
+//         }
+//         uint32_t srcShape[2] = {activeBsCnt, axisK_};
+//         ReduceSum<float32_t, Pattern::Reduce::AR, true>(tempTensorFp32, tempServerIdFp32, sharedTensorInt8, srcShape, false);
+//         PipeBarrier<PIPE_V>();
+//         Mins(tempServerIdFp32, tempTensorFp32, float32_t(1.0), activeBsCnt); // 得到需要发送到这个server的TokenID
+//         PipeBarrier<PIPE_V>();
+//         uint32_t inner = Ceil(activeBsCnt * sizeof(float32_t), UB_ALIGN) * UB_ALIGN / sizeof(float32_t);
+//         const AscendC::CumSumInfo CumSumInfo{1, inner};
+//         CumSum(tempTensorFp32, sharedTensorFp32, tempServerIdFp32, sharedTensorInt8, CumSumInfo); // 这里不输出最后一行，因此复用buf
+//         PipeBarrier<PIPE_V>();
+//         Cast(tempServerIdInt32, tempServerIdFp32, RoundMode::CAST_TRUNC, activeBsCnt); // 转为int类型
+//         Cast(tempTensorInt32, tempTensorFp32, RoundMode::CAST_TRUNC, activeBsCnt);
+//         PipeBarrier<PIPE_V>();
+//         uint32_t serverTotalCnt = tempTensorInt32.GetValue(activeBsCnt - 1);
+//         serverCountTensor_.SetValue(dstServerId, serverTotalCnt);
+//         Mul(tokenSendMap_[serverIndex * activeBsCnt], tempTensorInt32, tempServerIdInt32, activeBsCnt); //TODO：需要32字节对齐
+//         PipeBarrier<PIPE_V>();
+//     } 
+// }
+
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenSendExpertCnt(
+//     uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt)
+// {
+//     LocalTensor<int32_t> dstExpIdTensor = dstExpBuf_.Get<int32_t>();
+//     LocalTensor<int32_t> subExpIdTensor = subExpBuf_.Get<int32_t>();
+//     Duplicate<int32_t>(dstExpIdTensor, dstExpertId, calCnt);
+//     PipeBarrier<PIPE_V>();
+//     Sub(subExpIdTensor, expertIdsTensor_, dstExpIdTensor, calCnt);
+//     PipeBarrier<PIPE_V>();
+//     LocalTensor<float> tmpFp32 = subExpIdTensor.ReinterpretCast<float>();
+//     LocalTensor<float> tmpoutFp32 = dstExpIdTensor.ReinterpretCast<float>();
+//     Abs(tmpoutFp32, tmpFp32, calCnt);
+//     PipeBarrier<PIPE_V>();
+//     Mins(subExpIdTensor, dstExpIdTensor, 1, calCnt);
+//     PipeBarrier<PIPE_V>();
+//     ReduceSum<float>(tmpoutFp32, tmpFp32, workLocalTensor_, calCnt);
+//     SyncFunc<AscendC::HardEvent::V_S>();
+//     int32_t curOtherExpertCnt = dstExpIdTensor(0);
+//     curExpertCnt = calCnt - curOtherExpertCnt;
+// }
+
+
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenSendExpertOffset()//pase
+// {
+//     TBuf<> tempBuf;
+//     TBuf<> sharedTmpBuf;
+//     uint32_t startTokenId, endTokenId, sendTokenNum;
+//     SplitToCore(activeMaskBsCnt_, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum);
+//     if(startTokenId >= endTokenId || sendTokenNum == 0) {
+//         return ;
+//     }
+
+//     uint32_t calCnt = endTokenId * axisK_;
+//     uint32_t inner = Ceil(endTokenId * sizeof(float32_t), UB_ALIGN) * UB_ALIGN / sizeof(float32_t);
+
+//     tpipe_->InitBuffer(tempBuf, expertIdsCnt_ * sizeof(int16_t));
+//     tpipe_->InitBuffer(sharedTmpBuf, 128 * 512);
+
+
+
+//     LocalTensor<float32_t> dstExpIdTensorFP32 = dstExpBuf_.Get<float32_t>();
+//     LocalTensor<float32_t> tempTensorFp32 = subExpBuf_.Get<float32_t>();
+//     LocalTensor<float32_t> sharedTensorFp32 = sharedTmpBuf.Get<float32_t>();
+//     LocalTensor<int32_t> tempTensorInt32 = subExpBuf_.Get<int32_t>();
+//     LocalTensor<int32_t> dstExpIdTensorInt32 = dstExpBuf_.Get<int32_t>();
+//     LocalTensor<int16_t> dstExpIdTensorInt16 = dstExpBuf_.Get<int16_t>();
+//     LocalTensor<int16_t> tempTensorInt16 = subExpBuf_.Get<int16_t>();
+//     LocalTensor<int16_t> compareInt16 = tempBuf.Get<int16_t>();
+//     LocalTensor<uint8_t> sharedTensorInt8 = sharedTmpBuf.Get<uint8_t>();
+//     Duplicate<int32_t>(expertOffsetCntTensor_, 0, expertIdsCnt_); //TOken * moeId
+
+
+//     for(uint32_t Index = 0; Index < sendTokenNum * axisK_; Index++) { //TODO:需要考虑二维mask影响
+//         uint32_t expertIndex = aivId_ * sendTokenNum + Index;
+//         uint32_t dstExpertId = expertIdsTensor_(expertIndex);
+//         Duplicate<int32_t>(tempTensorInt32, dstExpertId, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Sub(dstExpIdTensorInt32, expertIdsTensor_, tempTensorInt32, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Abs(dstExpIdTensorFP32, dstExpIdTensorFP32, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Mins(dstExpIdTensorInt32, dstExpIdTensorInt32, 1, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Cast(dstExpIdTensorInt16, dstExpIdTensorInt32, RoundMode::CAST_NONE, calCnt);
+//         Duplicate<int16_t>(tempTensorInt16, 1, calCnt); 
+//         PipeBarrier<PIPE_V>();
+//         Xor(compareInt16, dstExpIdTensorInt16, tempTensorInt16, sharedTensorInt8, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Cast(dstExpIdTensorFP32, compareInt16, RoundMode::CAST_NONE, calCnt);//这里是 0 1 结果
+//         PipeBarrier<PIPE_V>();
+//         if(isExpertMaskFlag_) {
+//             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
+//             Cast(tempTensorFp32, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
+//             Mul(dstExpIdTensorFP32, dstExpIdTensorFP32, tempTensorFp32, calCnt); //这里需要于mask相乘，且需要保留
+//             PipeBarrier<PIPE_V>(); //应该使用Reduce
+//         }
+//         uint32_t srcShape[2] = {endTokenId, axisK_};
+//         ReduceSum<float32_t, Pattern::Reduce::AR, true>(tempTensorFp32, dstExpIdTensorFP32, sharedTensorInt8, srcShape, false);
+//         PipeBarrier<PIPE_V>();
+//         const AscendC::CumSumInfo CumSumInfo{1, inner};
+//         CumSum(dstExpIdTensorFP32, sharedTensorFp32, tempTensorFp32, sharedTensorInt8, CumSumInfo); //这里不输出最后一行，因此复用buf
+//         PipeBarrier<PIPE_V>();
+//         Cast(dstExpIdTensorInt32, dstExpIdTensorFP32, RoundMode::CAST_TRUNC, calCnt);//这里是最终结果
+//         Cast(tempTensorInt32, tempTensorFp32, RoundMode::CAST_TRUNC, calCnt);//这里是累加和
+//         PipeBarrier<PIPE_V>();
+//         Mul(dstExpIdTensorInt32, tempTensorInt32, dstExpIdTensorInt32, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         // for(uint32_t i = 0; i < )
+//         //Add(expertOffsetCntTensor_, expertOffsetCntTensor_, dstExpIdTensorInt32, calCnt); // TODO： 需要32字节对齐。【1 2 3 4 5 6】
+//         PipeBarrier<PIPE_V>(); 
+//     }
+// }
+
+
+
+
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertTotalSendCnt() 
+// {
+//     LocalTensor<int32_t> tokenNumToExpertTensor_; //todo:放在全局
+//     uint32_t aivNumUse_ = 1; //todo:放在全局
+
+//     uint64_t maskCnt = 0;
+//     uint32_t compareCount = 0;
+//     uint32_t maskSizePerExpert = 0;
+//     uint32_t calCnt = moeExpertNum_;
+//     uint32_t startExpertId, endExpertId, sendExpertNum;
+//     uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
+//     LocalTensor<uint8_t> expertMaskTensorU8 = subExpBuf_.Get<uint8_t>();
+//     LocalTensor<uint32_t> expertMaskTensorU32 = subExpBuf_.Get<uint32_t>();
+//     LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();;
+//     //SplitToCore(calCnt, aivNumUse_, startExpertId, endExpertId, sendExpertNum, true);
+//     if(startExpertId >= endExpertId || sendExpertNum == 0){
+//         return;
+//     }
+//     compareCount = Ceil(mask * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
+//     maskSizePerExpert = Ceil(compareCount / BITS_PER_BYTE, UB_ALIGN) * UB_ALIGN; // 为了匹配CompareScalar接口1bit一共8位
+    
+//     // if(isExpertMaskFlag_) { //TODO:需要去放在某个地方
+//     //     uint64_t rsvdCnt = 0;
+//     //     uint32_t mask = expertIdsCnt_;
+//     //     LocalTensor<int32_t> tmpExpertIdsTensor = subExpBuf_.Get<int32_t>();
+//     //     DataCopyPad(tmpExpertIdsTensor, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams);
+//     //     SyncFunc<AscendC::HardEvent::MTE2_V>();
+//     //     GatherMask(expertIdsTensor_, tmpExpertIdsTensor, gatherMaskTensor_, true, mask, {1, 1, 1, 0}, rsvdCnt);
+//     // }
+
+//     for (int32_t expertIndex = 0; expertIndex < sendExpertNum; expertIndex++) {
+//         int32_t dstExpertId = expertIndex + startExpertId;
+//         CompareScalar(expertMaskTensorU8[maskSizePerExpert * expertIndex], expertIdsTensor_, dstExpertId, CMPMODE::EQ, compareCount);
+//         PipeBarrier<PIPE_V>();
+//         GatherMask(gatherTempTensor, expertIdsTensor_, expertMaskTensorU32[maskSizePerExpert * expertIndex / sizeof(uint32_t)],
+//             true, mask, {1, 1, 0, 0}, maskCnt); // 是否可以简化计算
+//         SyncFunc<AscendC::HardEvent::V_S>();
+//         tokenNumToExpertTensor_.SetValue(expertIndex, static_cast<uint32_t>(maskCnt));
+//     }
+// }
+
+// //计算出tensor之后直接相乘 这样可以得到想要的，然后累加。
