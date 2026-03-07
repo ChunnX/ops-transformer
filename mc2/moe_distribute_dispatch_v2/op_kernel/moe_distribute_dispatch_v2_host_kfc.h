@@ -518,8 +518,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     // blockCntPerCnt_ = Ceil(sendExpertNum * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
     // SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-    // GM_ADDR rankGM = (GetSendAddrBetweenServer(COMM_EP_IDX, dstServerId) +
-    //                                                              SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
+    // GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, dstServerId));
     // CopyTokenToWinOut(sendTokenTensor, rankGM, blockCntPerCnt_);
 
     // GlobalTensor<int32_t> sendCntTensor;
@@ -1882,7 +1881,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             offset += ((expertIndex - shareRankNumInServer_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
         }
         GM_ADDR rankGM =
-            (__gm__ uint8_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_); // 计算地址偏移
+            (__gm__ uint8_t *)GetWindAddrByRankId(COMM_EP_IDX, epRankId_); // 计算地址偏移
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(posIndex - startPosId) * 8], 8UL);
         LOG_INFO("[srcRankId]",srcRankId);
