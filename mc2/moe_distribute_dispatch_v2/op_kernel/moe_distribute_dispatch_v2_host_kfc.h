@@ -1807,9 +1807,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     GlobalTensor<uint32_t> statusWinGMTensor;
     statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
-    uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
+    uint32_t flagMaxRecvNum = (blockCntPerCnt_ * UB_ALIGN) / sizeof(uint32_t);
     uint32_t gatherOutSize =
-        Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
+        Ceil(blockCntPerCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
     
     TBuf flagRecvBuf, flagGatherOutBuf, statusCleanBuf;
     tpipe_->InitBuffer(flagRecvBuf, flagMaxRecvNum);
@@ -1829,20 +1829,20 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             LOG_INFO("SetStatus error count");
             break;
         }
-        DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(flagNum), static_cast<uint32_t>(sizeof(uint32_t)),
+        DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(blockCntPerCnt_), static_cast<uint32_t>(sizeof(uint32_t)),
                                         static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
         DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
 
         // flag放到flagRecvTensor_
-        DataCopyPad(flagRecvTensor_, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
+        DataCopyPad(flagRecvTensor_, statusWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
         LOG_INFO("1111111");
-        LOG_INFO("dataFlagGlobal", dataFlagGlobal, {16, 8});
-        LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, flagNum});
+        LOG_INFO("dataFlagGlobal", statusWinGMTensor, {16, 8});
+        LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, blockCntPerCnt_});
 
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         LOG_INFO("2222222");
         GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
-                {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt);
+                {1, (uint16_t)(blockCntPerCnt_), 1, 0}, rsvdCnt);
         LOG_INFO("flagGatherOutTensor_", flagGatherOutTensor_, {1, 1});
 
         if (flagGatherOutTensor_(0) == 1) {
