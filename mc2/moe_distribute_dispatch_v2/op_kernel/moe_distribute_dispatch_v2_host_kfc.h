@@ -1546,6 +1546,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
     DataCopyPad(flagRecvTensor_, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
     // //LogInfo(__LINE__, "[BATCHWRITE][CheckDataArriveWithFlag] flagRecvTensor_");
     // //LogInfo(__LINE__, flagRecvTensor_, tpipe_, 9);
+    LOG_INFO("flagRecvTensor_", flagRecvTensor_);
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
@@ -1820,7 +1821,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         uint32_t arriveCount = 0;
         CheckDataArriveWithFlag(statusWinGMTensor, arriveCount, blockCntPerCnt_);
-        LOG_INFO("arriveCount", arriveCount);
 
         if (arriveCount == 1) {
             break;
