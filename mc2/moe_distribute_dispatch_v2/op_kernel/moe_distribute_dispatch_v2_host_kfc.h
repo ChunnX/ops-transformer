@@ -1796,9 +1796,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     GlobalTensor<uint32_t> statusWinGMTensor;
     statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
-
+    uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
+    uint32_t gatherOutSize =
+        Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
     TBuf flagRecvBuf, flagGatherOutBuf;
-    tpipe_->InitBuffer(flagRecvBuf, gatherOutSize);
+    tpipe_->InitBuffer(flagRecvBuf, flagMaxRecvNum);
     tpipe_->InitBuffer(flagGatherOutBuf, gatherOutSize);
     flagRecvTensor_ = flagRecvBuf.Get<uint32_t>();
     flagGatherOutTensor_ = flagGatherOutBuf.Get<uint32_t>();
