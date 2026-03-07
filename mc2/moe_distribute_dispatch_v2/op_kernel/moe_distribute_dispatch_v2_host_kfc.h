@@ -2407,7 +2407,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
-            DispatchBetweenServer();
+            // DispatchBetweenServer();
             // CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
         } else { //框内接收 + 框内发送
             // WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
