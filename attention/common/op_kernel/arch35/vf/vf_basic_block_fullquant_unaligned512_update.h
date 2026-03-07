@@ -174,7 +174,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1, (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
 
-            // [TODO-ZD]:原512没传indexesUb
+            // 原512没传indexesUb
             LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
             Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
             StoreAlign(expUb1 + i * 16 * 32 + j * 64 * 32, vreg_exp_merge_f8_1, preg_all_b8);
@@ -232,7 +232,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512GqaFullquantVF(
             Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1, (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
 
-            // [TODO-ZD]:原512没传indexesUb
+            // 原512没传indexesUb
             LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
             Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
             StoreAlign(expUb2 + i * 16 * 32 + j * 64 * 32, vreg_exp_merge_f8_1, preg_all_b8);

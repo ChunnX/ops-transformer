@@ -30,27 +30,29 @@ $$
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnLightningIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexer”接口执行计算。
 ```Cpp
 aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
-    const aclTensor     *query,
-    const aclTensor     *key,
-    const aclTensor     *weights, 
-    const aclTensor     *actualSeqLengthsQuery,
-    const aclTensor     *actualSeqLengthsKey,
-    const aclTensor     *blockTable,
-    char                *layoutQuery,
-    char                *layoutKey,
-    int64_t             sparseCount,
-    int64_t             sparseMode,
-    bool                returnValue,
-    const aclTensor     *sparseIndices,
-    const aclTensor     *sparseValues,
-    uint64_t            *workspaceSize,
-    aclOpExecutor       **executor)
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *weights,
+    const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *actualSeqLengthsKeyOptional,
+    const aclTensor *blockTableOptional,
+    char *layoutQueryOptional,
+    char *layoutKeyOptional,
+    int64_t sparseCount,
+    int64_t sparseMode,
+    int64_t preTokens,
+    int64_t nextTokens,
+    bool returnValues,
+    const aclTensor *sparseIndicesOut,
+    const aclTensor *sparseValuesOut,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 ```
 ```Cpp
 aclnnStatus aclnnLightningIndexer(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void *workspace,
+    uint64_t workspaceSize,
+    aclOpExecutor *executor,
     const aclrtStream stream)
 ```
 
@@ -143,7 +145,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsQuery</td>
+      <td>actualSeqLengthsQueryOptional</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数。</td>
       <td>
@@ -160,7 +162,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsKey</td>
+      <td>actualSeqLengthsKeyOptional</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数。</td>
       <td>
@@ -177,7 +179,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>blockTable</td>
+      <td>blockTableOptional</td>
       <td>输入</td>
       <td>表示PageAttention中KV存储使用的block映射表。</td>
       <td>
@@ -192,7 +194,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>layoutQuery</td>
+      <td>layoutQueryOptional</td>
       <td>输入</td>
       <td>用于标识输入Query的数据排布格式。</td>
       <td>
@@ -207,7 +209,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKey</td>
+      <td>layoutKeyOptional</td>
       <td>输入</td>
       <td>用于标识输入Key的数据排布格式。</td>
       <td>
@@ -279,9 +281,9 @@ aclnnStatus aclnnLightningIndexer(
       <td>-</td>
     </tr>
     <tr>
-      <td>returnValue</td>
+      <td>returnValues</td>
       <td>输入</td>
-      <td>表示是否输出sparseValues。</td>
+      <td>表示是否输出sparseValuesOut。</td>
       <td>
           <ul>
                 <li>True表示输出，但图模式下不支持，False表示不输出；默认值为False</li>
@@ -294,7 +296,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseIndices</td>
+      <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
       <td>
@@ -313,7 +315,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>x</td>
     </tr>
     <tr>
-      <td>sparseValues</td>
+      <td>sparseValuesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出对应的value值。</td>
       <td>
@@ -323,7 +325,7 @@ aclnnStatus aclnnLightningIndexer(
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>shape与sparseIndices保持一致</td>
+      <td>shape与sparseIndicesOut保持一致</td>
       <td>x</td>
     </tr>
     <tr>
@@ -375,7 +377,7 @@ aclnnStatus aclnnLightningIndexer(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>query、key、weights、actualSeqLengthsQuery、actualSeqLengthsKey、layoutQuery、layoutKey、sparseCount、sparseMode、returnValue、sparseIndices、sparseValues的数据类型和数据格式不在支持的范围内。</td>
+                <td>query、key、weights、actualSeqLengthsQueryOptional、actualSeqLengthsKeyOptional、layoutQueryOptional、layoutKeyOptional、sparseCount、sparseMode、returnValues、sparseIndicesOut、sparseValuesOut的数据类型和数据格式不在支持的范围内。</td>
             </tr>
         </tbody>
     </table>

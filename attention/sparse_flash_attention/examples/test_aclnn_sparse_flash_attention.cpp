@@ -342,8 +342,8 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
 
 } // namespace
 
-int32_t main() {
-
+int32_t main() 
+{
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     TensorResources resources = {};
