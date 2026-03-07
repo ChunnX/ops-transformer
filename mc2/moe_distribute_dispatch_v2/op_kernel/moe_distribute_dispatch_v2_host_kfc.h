@@ -1841,8 +1841,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         LOG_INFO("2222222");
+        uint64_t recvCnt = 0;
         GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
-                {1, (uint16_t)(blockCntPerCnt_), 1, 0}, 0);
+                {1, (uint16_t)(blockCntPerCnt_), 1, 0}, recvCnt);
         LOG_INFO("flagGatherOutTensor_", flagGatherOutTensor_, {1, 1});
 
         if (flagGatherOutTensor_(0) == blockCntPerCnt_) {
