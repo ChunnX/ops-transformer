@@ -1845,7 +1845,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt);
         LOG_INFO("flagGatherOutTensor_", flagGatherOutTensor_, {1, 1});
 
-        if (flagGatherOutTensor_[0] == 1) {
+        if (flagGatherOutTensor_(0) == 1) {
             LOG_INFO("arriveCount", arriveCount);
             break;
         }
