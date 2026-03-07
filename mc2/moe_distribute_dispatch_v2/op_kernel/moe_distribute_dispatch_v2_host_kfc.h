@@ -1803,11 +1803,17 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
     uint32_t gatherOutSize =
         Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
-    TBuf flagRecvBuf, flagGatherOutBuf;
+        
+    TBuf flagRecvBuf, flagGatherOutBuf, statusCleanBuf;
     tpipe_->InitBuffer(flagRecvBuf, flagMaxRecvNum);
     tpipe_->InitBuffer(flagGatherOutBuf, gatherOutSize);
+    tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
     flagRecvTensor_ = flagRecvBuf.Get<uint32_t>();
     flagGatherOutTensor_ = flagGatherOutBuf.Get<uint32_t>();
+    flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
+    Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
+    SyncFunc<AscendC::HardEvent::V_S>();
+    flagRecvGatherMask_.SetValue(0, 1);
 
     int32_t count = 0;
     while(true) { //确保等到
