@@ -1103,7 +1103,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
 }
 
-template <TemplateDispatchKFCTypeClass, typename T>
+template <TemplateDispatchKFCTypeClass>
+template <typename T>
 __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CopyTokenToWinOut(LocalTensor<XType> &xOutTensor,
                                                                        GM_ADDR rankGM, uint32_t blockCnt)
