@@ -2208,7 +2208,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT};
     LocalTensor<float> statusSumOutTensor = scalarBuf_.Get<float>();
 
+    int count = 0;
     while (true) {
+        count++;
+        if(count == 100000) {
+            LOG_INFO("WaitCumSumFlag error count");
+            break;
+        }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusSumOutTensor, statusFp32Tensor_, sumFlagParams);
@@ -2405,34 +2411,34 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         LOG_INFO("sendNum_ == 0");
         return;
     }
-    // // 连续化
-    // TBuf<> expertMapBuf, expertFinishBuf, expertLeftBuf, flagMaskBuf, tBuf;
-    // uint32_t validNum = 0;
-    // uint32_t expInfoSize = Ceil(sendNum_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
-    // tpipe_->InitBuffer(expertMapBuf, expInfoSize);
-    // tpipe_->InitBuffer(expertFinishBuf, expInfoSize);
-    // tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
-    // tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);  // max CompareScalar
-    // tBufRealSize_ = MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
-    //     (expInfoSize * 3) - BUFFER_NUM * UB_ALIGN; // 3为expInfoSize大小buffer申请个数
-    // tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
-    // expertMapTensor_ = expertMapBuf.Get<uint32_t>();
-    // expertFinishNumTensor_ = expertFinishBuf.Get<uint32_t>();
-    // expertLeftNumTensor_ = expertLeftBuf.Get<uint32_t>();
-    // SetValidExpertInfo(expInfoSize, validNum);
-    // if (validNum == 0) { // 本核负责的Expert对应rank收到数据
-    //     return;
-    // }
-    // flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
-    // flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
-    // flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    // xTmpTensor_ = tBuf.Get<ExpandXOutType>();
-    // LocalTensor<uint32_t> flagCompResultLtU32 = flagMaskBuf.Get<uint32_t>();
-    // Duplicate<uint32_t>(flagCompResultLtU32, 0, BUFFER_NUM * UB_ALIGN / sizeof(uint32_t));
-    // Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
-    // SyncFunc<AscendC::HardEvent::V_S>();
-    // flagRecvGatherMask_.SetValue(0, 1);
-    // SyncFunc<AscendC::HardEvent::S_V>();
+    // 连续化
+    TBuf<> expertMapBuf, expertFinishBuf, expertLeftBuf, flagMaskBuf, tBuf;
+    uint32_t validNum = 0;
+    uint32_t expInfoSize = Ceil(sendNum_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(expertMapBuf, expInfoSize);
+    tpipe_->InitBuffer(expertFinishBuf, expInfoSize);
+    tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
+    tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);  // max CompareScalar
+    tBufRealSize_ = MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
+        (expInfoSize * 3) - BUFFER_NUM * UB_ALIGN; // 3为expInfoSize大小buffer申请个数
+    tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
+    expertMapTensor_ = expertMapBuf.Get<uint32_t>();
+    expertFinishNumTensor_ = expertFinishBuf.Get<uint32_t>();
+    expertLeftNumTensor_ = expertLeftBuf.Get<uint32_t>();
+    SetValidExpertInfo(expInfoSize, validNum);
+    if (validNum == 0) { // 本核负责的Expert对应rank收到数据
+        return;
+    }
+    flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
+    flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
+    flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
+    xTmpTensor_ = tBuf.Get<ExpandXOutType>();
+    LocalTensor<uint32_t> flagCompResultLtU32 = flagMaskBuf.Get<uint32_t>();
+    Duplicate<uint32_t>(flagCompResultLtU32, 0, BUFFER_NUM * UB_ALIGN / sizeof(uint32_t));
+    Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
+    SyncFunc<AscendC::HardEvent::V_S>();
+    flagRecvGatherMask_.SetValue(0, 1);
+    SyncFunc<AscendC::HardEvent::S_V>();
     // WaitAndFormatOutput(tBuf, validNum);
 }
 
