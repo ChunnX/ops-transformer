@@ -938,7 +938,8 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::PostQuant(ConstInf
                 }
             }
         } else {
-            uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + runInfo.sOuterOffset * constInfo.dSizeV;
+            uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV +
+ 	                                                 runInfo.sOuterOffset * constInfo.dSizeV;
             uint64_t perChannelQuantOffset = constInfo.isGqa ?
                                                  perChannelQuantGQAOffset :
                                                  runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
