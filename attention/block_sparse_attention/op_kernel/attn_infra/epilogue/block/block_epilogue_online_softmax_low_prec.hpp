@@ -593,7 +593,7 @@ public:
         repeatParams.blockCount = 1;
         repeatParams.srcStride = 0;
         repeatParams.blockLen = CeilDiv(rowNumCurLoop * columnNumRound, BLOCK_SIZE);
-        AscendC::DataCopy<half>(lpUbTensor, computeUbTensor, repeatParams);
+        AscendC::DataCopy<half>(lpUbTensor[sUbOffset], computeUbTensor, repeatParams);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -602,7 +602,7 @@ public:
         uint32_t columnNumRound, uint32_t columnNumPad)
     {
         AscendC::DataCopy(gOutput,
-            lpUbTensor,
+            lpUbTensor[sUbOffset],
             AscendC::DataCopyParams(
                 rowNumCurLoop, columnNumRound / BLOCK_SIZE, 0, (columnNumPad - columnNumRound) / BLOCK_SIZE));
     }
@@ -612,7 +612,7 @@ public:
         AscendC::GlobalTensor<ElementOutput> gOutput, const LayoutOutput &layoutOutput,
         uint32_t rowOffset, uint32_t isFirstStackTile, uint32_t isFirstRowLoop,
         uint32_t columnNumRound, uint32_t pingpongFlag,
-        uint32_t curStackTileMod)
+        uint32_t curStackTileMod, Arch::CrossCoreFlag softmaxFlag, uint32_t isLastLoop)
     {
         uint32_t rowNumCurLoop = layoutOutput.shape(0);
         uint32_t rowNumCurLoopRound = RoundUp(rowNumCurLoop, BLOCK_SIZE);
@@ -648,6 +648,9 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         CopyPUbToGm(gOutput, sUbOffset, rowNumCurLoop, columnNumRound, columnNumPad);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        if (isLastLoop) {
+            NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxFlag);
+        }
         UpdateGlobalRowSum(
             sUbOffset, rowNumCurLoop, rowNumCurLoopRound, dmUbOffsetCurCycle, rowOffset, isFirstStackTile);
     }
@@ -656,7 +659,7 @@ public:
     void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<half> gInput,
         const LayoutOutput &layoutOutput, const LayoutInput &layoutInput, GemmCoord actualBlockShape,
         uint32_t isFirstStackTile, uint32_t isLastNoMaskStackTile,
-        uint32_t qSBlockSize, uint32_t qNBlockSize, uint32_t curStackTileMod)
+        uint32_t qSBlockSize, uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag softmaxFlag)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();
@@ -676,6 +679,10 @@ public:
         uint32_t rowNumTile = RoundDown(maxRowNumPerLoop, BLOCK_SIZE);
         rowNumTile = AscendC::Std::min(rowNumTile, HALF_VECTOR_SIZE);
         uint32_t rowLoopNum = CeilDiv(rowActualThisSubBlock, rowNumTile);
+        if (rowActualThisSubBlock == 0) {
+            NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxFlag);
+            return;
+        }
 
         for (uint32_t rowLoopIdx = 0; rowLoopIdx < rowLoopNum; rowLoopIdx++) {
             uint32_t pingpongFlag = rowLoopIdx % 2U;
@@ -705,7 +712,9 @@ public:
                 (rowLoopIdx == 0U),
                 columnNumRound,
                 pingpongFlag,
-                curStackTileMod);
+                curStackTileMod,
+                softmaxFlag,
+                (rowLoopIdx == rowLoopNum - 1));
         }
     }
 
@@ -714,7 +723,7 @@ public:
         AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput &layoutOutput, const LayoutInput &layoutInput,
         const LayoutInput &layoutMask, GemmCoord actualBlockShape, uint32_t isFirstStackTile, uint32_t qSBlockSize,
         uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag qkReady, uint32_t triUp, uint32_t triDown,
-        uint32_t kvSStartIdx, uint32_t kvSEndIdx)
+        uint32_t kvSStartIdx, uint32_t kvSEndIdx, Arch::CrossCoreFlag softmaxFlag)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();
@@ -824,7 +833,9 @@ public:
                 (rowLoopIdx == 0),
                 columnNumRound,
                 pingpongFlag,
-                curStackTileMod);
+                curStackTileMod,
+                softmaxFlag,
+                0);
         }
     }
 

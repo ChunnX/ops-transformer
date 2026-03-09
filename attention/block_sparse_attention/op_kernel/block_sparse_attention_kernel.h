@@ -571,8 +571,8 @@ namespace BlockSparse {
                             0,
                             qSBlockSize,
                             qNBlockSize,
-                            curStackTileMod);
-                        NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady);
+                            curStackTileMod,
+                            softmaxReady);
 #endif
                     }
                     // Stage 3: PV matmul and output rescaling

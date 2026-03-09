@@ -75,8 +75,8 @@ public:
     BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
-        constexpr uint32_t LO_UB_TENSOR_OFFSET = 6 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t GO_UB_TENSOR_OFFSET = 8 * UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t LO_UB_TENSOR_OFFSET = 8 * UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t GO_UB_TENSOR_OFFSET = 9 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t TV_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE;
 
         constexpr uint32_t HM_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE + 9 * UB_UINT8_VECTOR_SIZE;
