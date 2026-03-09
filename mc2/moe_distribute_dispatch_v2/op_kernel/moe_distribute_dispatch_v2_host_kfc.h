@@ -2327,6 +2327,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitAndFormatOutput(TBuf<> tBuf, uint32_t validNum)
 {
+    LOG_INFO("in WaitAndFormatOutput")
     uint32_t index = 0;
     uint32_t finishNum = 0;
     uint32_t maxCopyTokenCnt = tBufRealSize_ / hCommuSize_;
@@ -2338,11 +2339,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
     flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
+    LOG_INFO("WaitAndFormatOutput finishNum:", finishNum);
     while (true) {
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
             continue;
         }
+        LOG_INFO("WaitAndFormatOutput index:", index);
         srcExpRankId = expertMapTensor_(index);
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
@@ -2379,6 +2382,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::LocalWindowCopy()
 {
+    LOG_INFO("in LocalWindowCopy");
     // 分核负责源专家数量
     tpipe_->Reset();
     TBuf<> cumSumBuf, statusWaitBuf, statusCleanBuf;
@@ -2391,9 +2395,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     statusCleanFp32Tensor_ = statusCleanBuf.Get<float>();
     sendCntTensor_ = cumSumBuf.Get<int32_t>();
     SplitToCore(rscvStatusNum_, aivNum_, startId_, endId_, sendNum_, true);
+    LOG_INFO("startId_", startId_);
+    LOG_INFO("endId_", endId_);
+    LOG_INFO("sendNum_", sendNum_);
     // 软同步
     WaitCumSumFlag();
+    LOG_INFO("after WaitCumSumFlag");
     if (sendNum_ == 0) {
+        LOG_INFO("sendNum_ == 0");
         return;
     }
     // 连续化
