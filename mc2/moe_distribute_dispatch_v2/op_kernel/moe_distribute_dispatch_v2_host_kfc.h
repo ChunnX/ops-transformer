@@ -2399,12 +2399,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("endId_", endId_);
     LOG_INFO("sendNum_", sendNum_);
     // 软同步
-    // WaitCumSumFlag();
-    // LOG_INFO("after WaitCumSumFlag");
-    // if (sendNum_ == 0) {
-    //     LOG_INFO("sendNum_ == 0");
-    //     return;
-    // }
+    WaitCumSumFlag();
+    LOG_INFO("after WaitCumSumFlag");
+    if (sendNum_ == 0) {
+        LOG_INFO("sendNum_ == 0");
+        return;
+    }
     // // 连续化
     // TBuf<> expertMapBuf, expertFinishBuf, expertLeftBuf, flagMaskBuf, tBuf;
     // uint32_t validNum = 0;
