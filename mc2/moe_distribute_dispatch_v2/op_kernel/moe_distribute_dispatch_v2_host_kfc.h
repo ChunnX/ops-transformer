@@ -2449,11 +2449,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             DispatchBetweenServer();
             CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
         } else { //框内接收 + 框内发送
-            // WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
+            WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
-        // PipeBarrier<PIPE_ALL>();
-        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        PipeBarrier<PIPE_ALL>();
+        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
