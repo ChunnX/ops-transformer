@@ -327,16 +327,14 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDtype()
     auto keyIndexDesc = context_->GetInputDesc(KEY_INDEX_INPUT_INDEX);
     auto weightsDesc = context_->GetInputDesc(WEIGHT_INPUT_INDEX);
     auto sparseIndicesDesc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
-    auto softmaxMaxDesc = context_->GetInputDesc(SOFTMAX_MAX_INPUT_INDEX);
-    auto softmaxSumDesc = context_->GetInputDesc(SOFTMAX_SUM_INPUT_INDEX); 
+    auto softmaxMaxDesc = context_->GetOptionalInputDesc(SOFTMAX_MAX_INPUT_INDEX);
+    auto softmaxSumDesc = context_->GetOptionalInputDesc(SOFTMAX_SUM_INPUT_INDEX); 
     OP_CHECK_NULL_WITH_CONTEXT(context_, queryDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, keyDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, queryIndexDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, keyIndexDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightsDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, sparseIndicesDesc);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, softmaxMaxDesc);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, softmaxSumDesc);
 
     // 以下5个为16类型保持一致
     auto queryDtype = queryDesc->GetDataType();
@@ -345,11 +343,9 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDtype()
     auto keyIndexDtype = keyIndexDesc->GetDataType();
     auto weightsDtype = weightsDesc->GetDataType();
 
-    // 以下3个为32类型
+    // 以下1个为32类型，softmaxMax和softmaxSum为可选输入
     auto sparseIndicesDtype = sparseIndicesDesc->GetDataType();
-    auto softmaxMaxDtype = softmaxMaxDesc->GetDataType();
-    auto softmaxSumDtype = softmaxSumDesc->GetDataType();
-
+    bool hasSoftmaxInput = (softmaxMaxDesc != nullptr && softmaxSumDesc != nullptr);
     bool same16 = false; // 判断输入为fp16或者部分16的是否一致
     bool same32 = false; // 判断输入为int32或者fp32的类型是否正确
     if (queryDtype == ge::DT_FLOAT16 && keyDtype == ge::DT_FLOAT16 && queryIndexDtype == ge::DT_FLOAT16 && 
@@ -365,12 +361,24 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDtype()
             ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str());
         same16 = false;
     } 
-    if (sparseIndicesDtype == ge::DT_INT32 && softmaxMaxDtype == ge::DT_FLOAT && softmaxSumDtype == ge::DT_FLOAT) {
-        same32 = true;
+    if (sparseIndicesDtype == ge::DT_INT32) {
+        if (hasSoftmaxInput) {
+            auto softmaxMaxDtype = softmaxMaxDesc->GetDataType();
+            auto softmaxSumDtype = softmaxSumDesc->GetDataType();
+            if (softmaxMaxDtype == ge::DT_FLOAT && softmaxSumDtype == ge::DT_FLOAT) {
+                same32 = true;
+            } else {
+                OP_LOGW(context_, "InputDtype is fault: sparseIndicesDtype must be int32, but[%s]; softmaxMaxDtype must be float32, but[%s]; softmaxSumDtype must be float32, but[%s].",
+                    ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
+                    ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
+                same32 = false;
+            }
+        } else {
+            same32 = true;
+        }
     } else {
-        OP_LOGW(context_, "InputDtype is fault: sparseIndicesDtype must be int32, but[%s]; softmaxMaxDtype must be float32, but[%s]; softmaxSumDtype must be float32, but[%s].",
-            ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
+        OP_LOGW(context_, "InputDtype is fault: sparseIndicesDtype must be int32, but[%s].",
+            ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str());
         same32 = false;
     }
     // 所有类型不满足返回false
@@ -381,9 +389,16 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDtype()
         ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str(),
         ge::TypeUtils::DataTypeToSerialString(queryIndexDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyIndexDtype).c_str(),
         ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str());
-    OP_LOGW(context_, "sparseIndicesDtype[%s], softmaxMaxDtype[%s], softmaxSumDtype[%s].",
-        ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
+    if (hasSoftmaxInput) {
+        auto softmaxMaxDtype = softmaxMaxDesc->GetDataType();
+        auto softmaxSumDtype = softmaxSumDesc->GetDataType();
+        OP_LOGW(context_, "sparseIndicesDtype[%s], softmaxMaxDtype[%s], softmaxSumDtype[%s].",
+            ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
+    } else {
+        OP_LOGW(context_, "sparseIndicesDtype[%s], softmaxMax/softmaxSum: not provided.",
+            ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str());
+    }
     return true;
 }
 
