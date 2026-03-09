@@ -131,7 +131,8 @@ static ge::graphStatus Tiling4QuantizeAddLayerNorm(gert::TilingContext* context)
     float tempAve = (numCol == 0) ? 0 : float(1.0 / numCol);
     tiling.set_eps(eps);
     tiling.set_aveFactor(tempAve);
-    tiling.set_isDivMode(axis != AXIS_VALUE_FOR_MUL_DIV_MODE ? 1u : 0u);
+    // PER_TENSOR(65535) 与 ref/answer0 Normal 一致用 mul(y=x*scale+zp)；仅 MUL_DIV(-65535) 用 div
+    tiling.set_isDivMode(axis == AXIS_VALUE_FOR_MUL_DIV_MODE ? 0u : (axis == AXIS_VALUE_FOR_PER_TENSOR ? 0u : 1u));
     OP_LOGD(
         "QuantizeAddLayerNorm",
         "numRow: %d, numCol: %d, numCore: %u, maxCoreNum: %u, firstDimPerCore: %u, firstDimPerCoreTail: %u, "

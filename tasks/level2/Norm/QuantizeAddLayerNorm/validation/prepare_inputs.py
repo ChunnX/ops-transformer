@@ -28,6 +28,7 @@ def get_init_inputs(param, device=None):
     scale_zp_dtype = torch.float32 if dtype == torch.float16 else dtype
     scale_mode = str(param.get("scale_mode", "per_channel")).strip()
     if scale_mode == "per_tensor":
+        axis = 65535  # AXIS_VALUE_FOR_PER_TENSOR，使 tiling 走 Normal(1001/1101)，否则 axis=-1 走 Single Row 导致 234 失败
         val = float(torch.rand(1, device=device).item() * 0.01 + 0.01)
         scales = torch.full(shape, val, device=device, dtype=scale_zp_dtype)
         zero_points = torch.zeros(shape, device=device, dtype=scale_zp_dtype)

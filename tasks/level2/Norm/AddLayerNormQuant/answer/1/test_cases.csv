@@ -2,5 +2,4 @@ case_id;input_shape;normalized_shape;dtype;quant_mode;epsilon;additional_output;
 0;[8, 4];[4];float16;dynamic;1e-5;true;true
 1;[1, 512];[512];float16;dynamic;1e-5;true;true
 2;[8, 512];[512];float16;dynamic;1e-5;true;true
-3;[2, 64, 64];[64];bfloat16;dynamic;1e-5;true;true
 

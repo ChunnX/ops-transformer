@@ -1,3 +1,4 @@
 case_id;input_shape;normalized_shape;dtype;quant_mode;epsilon;additional_output;div_mode
-4;[1, 256];[256];float16;static;1e-5;true;true
-5;[8, 256];[256];float16;static;1e-5;true;true
+3;[1, 256];[256];float16;static;1e-5;true;true
+4;[8, 256];[256];float16;static;1e-5;true;true
+
