@@ -219,6 +219,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::InitConstInfo
     constInfo.sparseMode = static_cast<SLISparseMode>(baseInfo.sparseMode);
     constInfo.scaleValue = baseInfo.scaleValue;
     constInfo.cmpRatio = baseInfo.cmpRatio;
+    constInfo.hasSoftmaxInput = baseInfo.hasSoftmaxInput;
     constInfo.gatherKeySize = topKSize * (constInfo.dSizeQuery + constInfo.dSizeRope);
     constInfo.gatherKeyIndexSize = topKSize * constInfo.dSizeQueryIndex;
 

@@ -169,12 +169,10 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeAttrs()
     cmpRatio = *cmpRatioPtr;
 
     deterministic = (context_->GetDeterministic() == 1);
-    OP_CHECK_IF(cmpRatio < 0,
-                OP_LOGE(opName, " The value of cmp_ratio should larger than 0 but got [%d]", cmpRatio),
+
+    OP_CHECK_IF((cmpRatio != 0) && (cmpRatio != CMP_RATIO_SUPPORT_4),
+                OP_LOGE(opName, " The value of cmp_ratio only support 0 or 4 but got [%d]", cmpRatio),
                 return false);
-    // OP_CHECK_IF((cmpRatio != 0) && (cmpRatio != CMP_RATIO_SUPPORT_4),
-    //             OP_LOGE(opName, " The value of cmp_ratio only support 0 or 4 but got [%d]", cmpRatio),
-    //             return false);
 
     OP_CHECK_IF(sparseMode != SPARSE_MODE_SIZE_3,
                 OP_LOGE(opName, " The value of sparse_mode is [%d], but currently only supports mode [3].", sparseMode),
@@ -400,8 +398,28 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
     auto keyIndexShape = context_->GetInputShape(KEY_INDEX_INPUT_INDEX)->GetStorageShape();
     auto weightsShape = context_->GetInputShape(WEIGHT_INPUT_INDEX)->GetStorageShape();
     auto sparseIndicesShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX)->GetStorageShape();
-    auto softmaxMaxShape = context_->GetInputShape(SOFTMAX_MAX_INPUT_INDEX)->GetStorageShape();
-    auto softmaxSumShape = context_->GetInputShape(SOFTMAX_SUM_INPUT_INDEX)->GetStorageShape();
+    
+    // 检查softmax_max和softmax_sum输入状态
+    auto softmaxMax = context_->GetOptionalInputShape(SOFTMAX_MAX_INPUT_INDEX);
+    bool hasSoftmaxMax = softmaxMax != nullptr && softmaxMax->GetStorageShape().GetDimNum() != 0;
+    auto softmaxSum = context_->GetOptionalInputShape(SOFTMAX_SUM_INPUT_INDEX);
+    bool hasSoftmaxSum = softmaxSum != nullptr && softmaxSum->GetStorageShape().GetDimNum() != 0;
+    if (hasSoftmaxMax ^ hasSoftmaxSum) {
+        OP_LOGE(opName, "softmax_max and softmax_sum should be present or absent at the same time, check this.");
+        return false;
+    }
+    hasSoftmaxInput = (hasSoftmaxMax && hasSoftmaxSum) ? 1 : 0;
+    
+    // 仅当cmpRatio ==4 时支持同时不传softmax_max softmax_sum
+    if (hasSoftmaxInput == 0 && cmpRatio != 4) {
+        OP_LOGE(opName, "Only when cmp_ratio is 4, softmax_max and softmax_sum can be absent at the same time. current cmp_ratio is %ld", cmpRatio);
+        return false;
+    }
+    
+    // 获取softmax_max和softmax_sum的形状（如果存在）
+    gert::Shape defaultShape;
+    auto softmaxMaxShape = (hasSoftmaxMax) ? softmaxMax->GetStorageShape() : defaultShape;
+    auto softmaxSumShape = (hasSoftmaxSum) ? softmaxSum->GetStorageShape() : defaultShape;
     // 下面数字对应shape输入位置
     if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') {
         int64_t t1Len = queryShape[0];
@@ -410,7 +428,7 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
         int64_t t2Len = keyShape[0];
         int64_t n2Len = keyShape[1];
         // 验证T1
-        OP_CHECK_IF(queryIndexShape[0] != t1Len || weightsShape[0] != t1Len || softmaxMaxShape[1] != t1Len || softmaxSumShape[1] != t1Len,
+        OP_CHECK_IF(queryIndexShape[0] != t1Len || weightsShape[0] != t1Len || (hasSoftmaxInput && (softmaxMaxShape[1] != t1Len || softmaxSumShape[1] != t1Len)),
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify T1 is failed, the value of query[0], query_index[0], weights[0], softmax_max[1] \
                  and softmax_sum[1] are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.", queryShape[0], queryIndexShape[0], weightsShape[0], softmaxMaxShape[1], softmaxSumShape[1]), return false);
         // 验证N Query数字是否正确
@@ -432,12 +450,12 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of key[1] is (%ld).", keyShape[1]), return false);
         OP_CHECK_IF(keyIndexShape[1] != N2_SIZE_1,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of key_index[1] is (%ld).", keyIndexShape[1]), return false);
-        OP_CHECK_IF(softmaxMaxShape[0] != N2_SIZE_1,
+        OP_CHECK_IF(hasSoftmaxInput && softmaxMaxShape[0] != N2_SIZE_1,
             OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of softmax_max[0] is (%ld).", softmaxMaxShape[0]), return false);
-        OP_CHECK_IF(softmaxSumShape[0] != N2_SIZE_1,
+        OP_CHECK_IF(hasSoftmaxInput && softmaxSumShape[0] != N2_SIZE_1,
             OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of softmax_sum[0] is (%ld).", softmaxSumShape[0]), return false);
         // 验证N2
-        OP_CHECK_IF(keyIndexShape[1] != keyShape[1] || softmaxMaxShape[0] != keyShape[1] || softmaxSumShape[0] != keyShape[1],
+        OP_CHECK_IF(keyIndexShape[1] != keyShape[1] || (hasSoftmaxInput && (softmaxMaxShape[0] != keyShape[1] || softmaxSumShape[0] != keyShape[1])),
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N2 is failed, the value of key[1], key_index[1], softmax_max[0] and softmax_sum[0] are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
                  keyShape[1], keyIndexShape[1], softmaxMaxShape[0], softmaxSumShape[0]), return false);
         // 验证D 数字是否正确
@@ -484,12 +502,12 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
         int64_t n2Len = keyShape[2];
         
         // 验证B
-        OP_CHECK_IF(queryIndexShape[0] != bLen || weightsShape[0] != bLen || softmaxMaxShape[0] != bLen || softmaxSumShape[0] != bLen ||
+        OP_CHECK_IF(queryIndexShape[0] != bLen || weightsShape[0] != bLen || (hasSoftmaxInput && (softmaxMaxShape[0] != bLen || softmaxSumShape[0] != bLen)) ||
                     keyShape[0] != bLen || keyIndexShape[0] != bLen || sparseIndicesShape[0] != bLen,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify shape B is failed, the value of query[0], key[0], query_index[0], key_index[0], weights[0], softmax_max[0], softmax_sum[0] and sparse_indices[0] are respectively (%ld), (%ld), (%ld), (%ld), (%ld), (%ld), (%ld), (%ld).\
                  Their values should be equal.", queryShape[0], keyShape[0], queryIndexShape[0], keyIndexShape[0], weightsShape[0], softmaxMaxShape[0], softmaxSumShape[0], sparseIndicesShape[0]), return false);
         // 验证s1
-        OP_CHECK_IF(queryIndexShape[1] != s1Len || weightsShape[1] != s1Len || softmaxMaxShape[2] != s1Len || softmaxSumShape[2] != s1Len,
+        OP_CHECK_IF(queryIndexShape[1] != s1Len || weightsShape[1] != s1Len || (hasSoftmaxInput && (softmaxMaxShape[2] != s1Len || softmaxSumShape[2] != s1Len)),
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify S1 is failed, the value of query[1], query_index[1], weights[1], softmax_max[2] \
                  and softmax_sum[2] are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.", queryShape[1], queryIndexShape[1], weightsShape[1], softmaxMaxShape[2], softmaxSumShape[2]), return false);
         // 验证s2
@@ -511,12 +529,12 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of key[2] is (%ld).", keyShape[2]), return false);        
         OP_CHECK_IF(keyIndexShape[2] != N2_SIZE_1,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of key_index[2] is (%ld).", keyIndexShape[2]), return false);
-        OP_CHECK_IF(softmaxMaxShape[1] != N2_SIZE_1,
+        OP_CHECK_IF(hasSoftmaxInput && softmaxMaxShape[1] != N2_SIZE_1,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of softmax_max[1] is (%ld).", softmaxMaxShape[1]), return false);        
-        OP_CHECK_IF(softmaxSumShape[1] != N2_SIZE_1,
+        OP_CHECK_IF(hasSoftmaxInput && softmaxSumShape[1] != N2_SIZE_1,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of softmax_sum[1] is (%ld).", softmaxSumShape[1]), return false);
         // 验证N2
-        OP_CHECK_IF(keyIndexShape[2] != n2Len || softmaxMaxShape[1] != n2Len || softmaxSumShape[1] != n2Len,
+        OP_CHECK_IF(keyIndexShape[2] != n2Len || (hasSoftmaxInput && (softmaxMaxShape[1] != n2Len || softmaxSumShape[1] != n2Len)),
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N2 is failed, the value of key[2], key_index[2], softmax_max[1] and softmax_sum[1] are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
                  keyShape[2], keyIndexShape[2], softmaxMaxShape[1], softmaxSumShape[1]), return false);
         // 验证D 数字是否正确
@@ -534,7 +552,7 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
         OP_CHECK_IF(queryIndexShape[3] != keyIndexShape[3],
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify query-key_index shape D is Failed, the value of query_index[3] and key_index[3] are respectively (%ld), (%ld). Their values should be equal.", queryIndexShape[3], keyIndexShape[3]), return false);
         // 验证ROPE是否使能
-        OP_CHECK_IF(hasRope == 0,
+        OP_CHECK_IF(hasRope == 0 && cmpRatio != 4,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify query or key rope is failed, rope can't be null"), return false);
         if (hasRope) {
             // 验证queryrope
@@ -576,6 +594,7 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeLayout()
     }
     // TND和BSND的dim位置不同来赋值
     hasRope = hasQueryRope && hasKeyRope;
+    
     auto &queryRopeShape = queryRope->GetStorageShape();
     auto &keyRopeShape = keyRope->GetStorageShape();
 
@@ -643,6 +662,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::GetShapeAttrsInfo()
     sliGradkllossBaseParams_->set_sparseMode(sparseMode);
     sliGradkllossBaseParams_->set_scaleValue(scaleValue);
     sliGradkllossBaseParams_->set_cmpRatio(cmpRatio);
+    sliGradkllossBaseParams_->set_hasSoftmaxInput(hasSoftmaxInput);
 
     OP_LOGW(context_, "INPUTPARAM bsize:[%d], n2Size:[%d], gSizeQuery:[%d], dSizeQueryIndex:[%d], s1Size:[%d], s2Size:[%d], dSizeQuery:[%d], dSizeQueryIndex:[%d], kSize:[%d], sparseMode:[%d], scaleValue:[%f] .", 
             bSize, n2Size, gSizeQuery, gSizeQueryIndex, s1Size, s2Size, dSizeQuery, dSizeQueryIndex, kSize, sparseMode, scaleValue);

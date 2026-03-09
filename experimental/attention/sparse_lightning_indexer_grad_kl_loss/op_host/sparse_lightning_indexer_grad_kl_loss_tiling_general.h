@@ -250,6 +250,7 @@ protected:
         dQueryRopeSize = 0;
         dKeyRopeSize = 0;
         cmpRatio = 0;
+        hasSoftmaxInput = 0;
         deterministic = false;
 
         opName = nullptr;
@@ -312,6 +313,7 @@ protected:
     int32_t sparseMode;
     int32_t rsvd;
     int64_t cmpRatio;
+    int64_t hasSoftmaxInput;
     float scaleValue;
 
     const char *templateName = "slikbase";
