@@ -27,9 +27,9 @@
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
-class GroupedMatmulSwigluQuantV2Tiling950 : public GroupedQbmmTiling {
+class GroupedMatmulSwigluQuantV2Tiling950 : public GroupedQmmTiling {
 public:
-    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context) : GroupedQbmmTiling(context)
+    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context) : GroupedQmmTiling(context)
     {
         Reset();
     }
@@ -37,7 +37,7 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQbmmTiling::Reset(context);
+        GroupedQmmTiling::Reset(context);
         Reset();
     }
 
@@ -77,7 +77,8 @@ private:
     bool CheckCoreNum() const override;
     GMMSwigluQuantTilingDataParams tilingData_;
 
-    const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
+    const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
+                                                             ge::DT_FLOAT4_E2M1};
 };
 } // namespace optiling
 

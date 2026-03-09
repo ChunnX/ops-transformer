@@ -117,6 +117,8 @@ struct GQmmBasicTiling {
 };
 
 struct GQmmInputInfo {
+public:
+    void Reset(); // 新增数据成员要修改Reset函数
     uint64_t mSize = 0UL;
     uint64_t kSize = 0UL;
     uint64_t nSize = 0UL;
@@ -148,15 +150,13 @@ struct GQmmInputInfo {
     bool isSingleX = false;
     bool isSingleW = false;
     bool isSingleY = false;
+    bool initFlag = false; // 避免重复解析flag
 };
 
-class GroupedQbmmTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class GroupedQmmTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit GroupedQbmmTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
-    {
-        Reset();
-    }
-    ~GroupedQbmmTiling() override = default;
+    explicit GroupedQmmTiling(gert::TilingContext *context);
+    ~GroupedQmmTiling() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -195,7 +195,7 @@ protected:
     bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
     bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
     GQmmBasicTiling basicTiling_;
-    GQmmInputInfo inputParams_;
+    GQmmInputInfo &inputParams_;
 
 private:
     uint64_t GetDepthA1B1(uint64_t leftSize, uint64_t perDepthSize, uint64_t depthInit);

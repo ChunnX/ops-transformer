@@ -64,9 +64,9 @@ constexpr uint32_t OUT_DTYPE_BF16_INDEX = 2;
 constexpr int32_t SPLIT_M = 0;
 } // namespace GroupedMatmulFinalizeRoutingArch35TilingConstant
 
-class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQbmmTiling {
+class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQmmTiling {
 public:
-    explicit GroupedMatmulFinalizeRoutingQuantTiling(gert::TilingContext *context) : GroupedQbmmTiling(context)
+    explicit GroupedMatmulFinalizeRoutingQuantTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
     {
         Reset();
     }
@@ -74,7 +74,7 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQbmmTiling::Reset(context);
+        GroupedQmmTiling::Reset(context);
         Reset();
     }
 
@@ -96,7 +96,7 @@ private:
     void PrintQuantParams() override;
     void PrintMatmulParams();
     bool SetQuantModeForGMMFinalizeRouting();
-   
+
     bool CheckOptionalAttr();
     bool CheckDtype() const;
     bool CheckOptional(uint32_t index, const char *paramName, ge::DataType targetDtype) const;
