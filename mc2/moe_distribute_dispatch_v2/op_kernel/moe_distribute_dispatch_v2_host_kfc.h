@@ -1626,13 +1626,13 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CommunicateBetweenS
     //LogInfo(__LINE__, "[BATCHWRITE][CommunicateBetweenServer] start");
     ConstructDataAndFlagBatchWriteInfo(beginServerId, serverNum, aivNum);
     PipeBarrier<PIPE_ALL>();
-    if ASCEND_IS_AIV {
-        if (aivId_ == 0) {
-            bufferChosenGlobal_(0) = bufferId_ ^ 1;
-            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-                bufferChosenGlobal_);
-        }
-    }
+    // if ASCEND_IS_AIV {
+    //     if (aivId_ == aivUsedCumSum_) {
+    //         bufferChosenGlobal_(0) = bufferId_ ^ 1;
+    //         DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+    //             bufferChosenGlobal_);
+    //     }
+    // }
     //LogInfo(__LINE__, "[BATCHWRITE][CommunicateBetweenServer] end");
 }
 
