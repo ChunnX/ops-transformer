@@ -1566,12 +1566,10 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
 
     // flag放到flagRecvTensor
     DataCopyPad(flagRecvTensor, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
-    LOG_INFO("1111111");
     LOG_INFO("dataFlagGlobal", dataFlagGlobal, {16, 8});
     LOG_INFO("flagRecvTensor", flagRecvTensor, {1, flagNum});
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
-    LOG_INFO("2222222");
     GatherMask(flagGatherOutTensor, flagRecvTensor, flagRecvGatherMask_, true, uint32_t(1),
                {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt);
     LOG_INFO("flagGatherOutTensor", flagGatherOutTensor, {1, 1});
@@ -2448,7 +2446,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             DispatchBetweenServer();
             CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
         } else { //框内接收 + 框内发送
-            WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
+            // WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
         // PipeBarrier<PIPE_ALL>();
