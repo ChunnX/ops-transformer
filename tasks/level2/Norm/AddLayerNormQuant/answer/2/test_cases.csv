@@ -1,2 +1,0 @@
-case_id;input_shape;normalized_shape;dtype;quant_mode;epsilon;additional_output;div_mode
-2;[8, 512];[512];float16;dynamic;1e-5;true;true

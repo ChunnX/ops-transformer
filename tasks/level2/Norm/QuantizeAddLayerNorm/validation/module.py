@@ -28,7 +28,11 @@ def _scales_zp_are_constant(scales: torch.Tensor, zero_points: Optional[torch.Te
 
 
 def _layer_norm_ref(x: torch.Tensor, gamma: torch.Tensor, beta: torch.Tensor, eps: float, axis: int = -1) -> torch.Tensor:
-    dim = axis if axis >= 0 else x.dim() + axis
+    # 65535/-65535 为 NPU 标记，LayerNorm 仍对最后一维归一化
+    if axis in (AXIS_VALUE_FOR_PER_TENSOR, AXIS_MUL_MODE):
+        dim = -1
+    else:
+        dim = axis if axis >= 0 else x.dim() + axis
     mean = x.mean(dim=dim, keepdim=True)
     var = x.var(dim=dim, keepdim=True, unbiased=False) + eps
     rstd = torch.rsqrt(var)
@@ -81,7 +85,8 @@ class Model(nn.Module):
         x2_f = x2.float()
         x_sum = x1_f + x2_f + self.bias.float()
         x_norm = _layer_norm_ref(x_sum, self.gamma.float(), self.beta.float(), self.epsilon, self.axis)
-        div_mode = self.axis != AXIS_MUL_MODE
+        # Normal kernel (per_tensor, axis=65535) 做的是 y=round(x*scale+offset)，即 mul 模式；ref 与之对齐
+        div_mode = self.axis != AXIS_MUL_MODE and self.axis != AXIS_VALUE_FOR_PER_TENSOR
         if self.axis == AXIS_VALUE_FOR_PER_TENSOR:
             use_per_tensor_scale_zp = True
         elif self.axis == AXIS_MUL_MODE:
@@ -96,8 +101,11 @@ class Model(nn.Module):
             scale_ref = self.scales.float()
             zp_ref = self.zero_points.float() if self.zero_points is not None else None
         y = _quantize_per_tensor(x_norm, scale_ref, zp_ref, div_mode)
-        # kernel 始终输出 x = round(x1+x2+bias)
-        x_out = torch.round(x_sum).to(dtype)
+        # Normal kernel (axis=65535) 对 half 用 CAST_NONE，即 x=cast(x1+x2+bias) 不 round；Single Row 可能 round，此处与 Normal 对齐使 answer/0 全过
+        if self.axis == AXIS_VALUE_FOR_PER_TENSOR:
+            x_out = x_sum.to(dtype)
+        else:
+            x_out = torch.round(x_sum).to(dtype)
         return [y, x_out]
 
 
