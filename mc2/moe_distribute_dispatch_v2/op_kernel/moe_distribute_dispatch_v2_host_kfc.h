@@ -105,7 +105,6 @@ private:
     __aicore__ inline void CalExpertTotalSendCnt();
     __aicore__ inline void DispatchBetweenServer();
     __aicore__ inline void CommunicateBetweenServer(uint32_t beginServerId, uint32_t serverNum, uint32_t aivNum);
-    __aicore__ inline void InitWaitWindowBuffer(TBuf<> &flagMaskBuf, TBuf<> &statusCleanBuf, TBuf<> &finishNumBuf, TBuf<> &tBuf, TBuf<> &tmpBuf);
     __aicore__ inline void WaitWindow(uint32_t aivNumForWait);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void TokenActiveMaskCal();
@@ -1364,48 +1363,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
 }
 
-
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitWaitWindowBuffer(TBuf<> &flagMaskBuf, TBuf<> &statusCleanBuf, TBuf<> &finishNumBuf, TBuf<> &tBuf, TBuf<> &tmpBuf)
-{
-    uint32_t flagMaxRecvNum = (maxBlockCnt_ * UB_ALIGN) / sizeof(uint32_t);
-    uint32_t gatherOutSize =
-    Ceil(maxBlockCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
-    uint32_t tBufRealSize_ = UB_ALIGN >(gatherOutSize + maxBlockCnt_ * UB_ALIGN) ?UB_ALIGN: (gatherOutSize + maxBlockCnt_ * UB_ALIGN);
-    tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
-    tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);
-    tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
-    tpipe_->InitBuffer(finishNumBuf, Ceil(512 * sizeof(uint32_t),UB_ALIGN)* UB_ALIGN);
-    tpipe_->InitBuffer(tmpBuf, sendTokenLengthAlign_);
-    tokenData_ = xInQueue_.AllocTensor<XType>();
-
-    flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
-    flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);            // buf复用
-    LOG_INFO("[flagGatherOutTensor_]", flagGatherOutTensor_);
-    LOG_INFO("[flagRecvTensor_]", flagRecvTensor_);
-
-    flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
-    flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
-    flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    finishNumTensor_ = finishNumBuf.Get<uint32_t>();
-
-    recvTmpTensor_ = tmpBuf.Get<XType>();
-
-    tpipe_->InitBuffer(localSetTbuf_, UB_ALIGN);
-    localSet_ = localSetTbuf_.Get<int32_t>();
-
-    LocalTensor<uint32_t> flagCompResultLtU32 = flagMaskBuf.Get<uint32_t>();
-    Duplicate<uint32_t>(flagCompResultLtU32, 0, BUFFER_NUM * UB_ALIGN / sizeof(uint32_t));
-    Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
-    SyncFunc<AscendC::HardEvent::V_S>();
-    flagRecvGatherMask_.SetValue(0, 1);
-    SyncFunc<AscendC::HardEvent::S_V>();
-}
-
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitWindow(uint32_t aivNum)
 {
     //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
+
+        //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
 
     uint32_t startServerId, endServerId, serverCnt;
     SplitToCore(serverNum_, aivNum, startServerId, endServerId, serverCnt, true);
@@ -1416,7 +1379,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] endServerId:", endServerId);
     //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] serverCnt:", serverCnt);
 
-     
+    
     for (uint32_t dstServerInd = startServerId; dstServerInd < endServerId; ++dstServerInd) {
         uint32_t tokenCnt;
         ////LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] curServerId:", dstServerInd);
@@ -1427,8 +1390,28 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         tpipe_->Reset();
         InitTemp();
+
+        uint32_t flagMaxRecvNum = (blockCntPerToken_ * UB_ALIGN) / sizeof(uint32_t);
+        uint32_t gatherOutSize =
+        Ceil(blockCntPerToken_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
+        uint32_t tBufRealSize_ = UB_ALIGN >(gatherOutSize + blockCntPerToken_ * UB_ALIGN) ?UB_ALIGN: (gatherOutSize + blockCntPerToken_ * UB_ALIGN);
         TBuf<> flagMaskBuf, statusCleanBuf, finishNumBuf, tBuf, tmpBuf;
-        InitWaitWindowBuffer();
+        tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
+        tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);
+        tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
+        tpipe_->InitBuffer(finishNumBuf, Ceil(512 * sizeof(uint32_t),UB_ALIGN)* UB_ALIGN);
+        tpipe_->InitBuffer(tmpBuf, sendTokenLengthAlign_);
+        tokenData_ = xInQueue_.AllocTensor<XType>();
+
+        flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
+        flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);            // buf复用
+
+        flagCompResultU8_ = flagMaskBuf.Get<uint8_t>();
+        flagCompResultLtU64_ = flagMaskBuf.Get<uint64_t>();
+        flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
+        finishNumTensor_ = finishNumBuf.Get<uint32_t>();
+
+        recvTmpTensor_ = tmpBuf.Get<XType>();
         
         #if defined(__DAV_C310__)
             LocalTensor<uint8_t> singleByteTok = tokenData_.template ReinterpretCast<uint8_t>();
@@ -1438,10 +1421,19 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             }
         #endif
 
+        tpipe_->InitBuffer(localSetTbuf_, UB_ALIGN);
+        localSet_ = localSetTbuf_.Get<int32_t>();
+
+        LocalTensor<uint32_t> flagCompResultLtU32 = flagMaskBuf.Get<uint32_t>();
+        Duplicate<uint32_t>(flagCompResultLtU32, 0, BUFFER_NUM * UB_ALIGN / sizeof(uint32_t));
+        Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
+        SyncFunc<AscendC::HardEvent::V_S>();
+        flagRecvGatherMask_.SetValue(0, 1);
+        SyncFunc<AscendC::HardEvent::S_V>();
+
         WaitToken(tokenCnt, dstServerInd, 0, tBuf);
         xInQueue_.FreeTensor<XType>(tokenData_);
     }
-    
 }
 
 template <TemplateDispatchKFCTypeClass>
