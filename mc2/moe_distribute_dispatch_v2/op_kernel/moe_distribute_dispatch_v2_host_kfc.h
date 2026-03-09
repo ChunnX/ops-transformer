@@ -1512,7 +1512,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             LOG_INFO("after CopyInAndOut");
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
-            // SendToExpert(index);
+            SendToExpert(index);
 
             // finish更新并clean
             finishNumTensor_(index) = 1;
@@ -1707,8 +1707,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendToExpert(uint32_t rcvCnt)
 {
-    //LogInfo(__LINE__, "[SendToExpert] start");
-    // //LogInfo(__LINE__, "[SendToExpert] index: ",index, epRankId_);
+    LogInfo(__LINE__, "[SendToExpert] start");
+    //LogInfo(__LINE__, "[SendToExpert] index: ",index, epRankId_);
     GlobalTensor<ExpandXOutType> dstWinGMTensor;
     DataCopyPadParams padParams = {true, 0, 0, 0};
     DataCopyParams scaleInParams = {1U, static_cast<uint16_t>(scaleInBytes_), 0U, 0U};
@@ -1721,21 +1721,21 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t srcRankIndex = xInTensor(sendXTypeElemAlign_);
     uint32_t tokenIndex = xInTensor(sendXTypeElemAlign_ + 1);
     float expertScale = float(1.0);
-    //LogInfo(__LINE__, "[SendToExpert] srcRankIndex",srcRankIndex);
-    //LogInfo(__LINE__, "[SendToExpert] tokenIndex",tokenIndex);
+    LogInfo(__LINE__, "[SendToExpert] srcRankIndex",srcRankIndex);
+    LogInfo(__LINE__, "[SendToExpert] tokenIndex",tokenIndex);
 
-    //LogInfo(__LINE__, "[SendToExpert] do moe");
+    LogInfo(__LINE__, "[SendToExpert] do moe");
 
     for (int32_t topKIndex = 0; topKIndex < axisK_; topKIndex++) {                      // 发moe专家
         uint32_t dstExpertId = xInTensor(moeListAlign_ + topKIndex);                    // 取出专家id
         uint32_t dstRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_; // 发往的卡号
         uint32_t curExpertCnt = xInTensor(moeCntAlign_ + topKIndex);                    // 取出cnt
         expertScale = xInToFloatTensor(moeExpertScalesAlign_ + topKIndex); 
-        //LogInfo(__LINE__, "[SendToExpert][moe] topKIndex",topKIndex);
-        //LogInfo(__LINE__, "[SendToExpert][moe] dstExpertId",dstExpertId);
-        //LogInfo(__LINE__, "[SendToExpert][moe] dstRankId",dstRankId);
-        //LogInfo(__LINE__, "[SendToExpert][moe] curExpertCnt",curExpertCnt);
-        LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
+        LogInfo(__LINE__, "[SendToExpert][moe] topKIndex",topKIndex);
+        LogInfo(__LINE__, "[SendToExpert][moe] dstExpertId",dstExpertId);
+        LogInfo(__LINE__, "[SendToExpert][moe] dstRankId",dstRankId);
+        LogInfo(__LINE__, "[SendToExpert][moe] curExpertCnt",curExpertCnt);
+        // LOG_INFO("[SendToExpert][moe] expertScale",expertScale);
         // if(dstRankId !=0 && dstRankId != 1){
         //     //LogInfo(__LINE__,"[SendToExpert][error]",dstRankId);
         // }
@@ -1746,8 +1746,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             continue; // 不同server
         
         ////LogInfo(__LINE__, "[SendToExpert][moe] is same server",dstRankId);
-        int32_t cntPosIndex = (shareRankNumInServer_ + dstExpertId - startMoeExpertId_) * serverNum_ + srcRankIndex % serverNum_;
-        resetMaxCnt(cntPosIndex, curExpertCnt + 1);
+        // int32_t cntPosIndex = (shareRankNumInServer_ + dstExpertId - startMoeExpertId_) * serverNum_ + srcRankIndex % serverNum_;
+        // resetMaxCnt(cntPosIndex, curExpertCnt + 1);
         //LogInfo(__LINE__,"[cntPosIndex]",cntPosIndex);
         //LogInfo(__LINE__,"[curExpertCnt]",curExpertCnt);
 
