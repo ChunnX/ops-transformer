@@ -1699,7 +1699,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
         //DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
-        CopyTokenToExpert(xOutTensor_, rankGM);
+        CopyTokenToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_);
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     }
 }
