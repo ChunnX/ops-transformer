@@ -22,8 +22,8 @@ static ge::graphStatus InferShapeForMoeTokenPermuteWithEpGrad(gert::InferShapeCo
 {
     const gert::Shape* permuted_inputs_shape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, permuted_inputs_shape);
-    const int* top_k = context->GetAttrs()->GetAttrPointer<int>(0);
-    int64_t topk = static_cast<int64_t>(*top_k);
+    const int64_t* top_k = context->GetAttrs()->GetAttrPointer<int64_t>(0);
+    int64_t topk = *top_k;
     int64_t tokens_num = permuted_inputs_shape->GetDim(0) / topk;
 
     gert::Shape* out_shape = context->GetOutputShape(0);
