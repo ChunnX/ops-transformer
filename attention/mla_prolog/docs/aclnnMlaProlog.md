@@ -1,6 +1,6 @@
 # aclnnMlaProlog
 
-**该接口后续版本会废弃，请使用最新接口[aclnnMlaPrologV3WeightNz](../../mla_prolog_v3/docs/aclnnMlaPrologV3WeightNz.md)。**
+**须知：该接口后续版本会废弃，请使用最新接口aclnnMlaPrologV3WeightNz。**
 
 ## 产品支持情况
 

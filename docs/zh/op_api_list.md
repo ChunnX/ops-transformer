@@ -182,3 +182,5 @@
 |[aclnnGroupedMatmulV2](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV2.md)|此接口后续版本会废弃，请使用最新接口[aclnnGroupedMatmulV5](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV5.md)。 |
 |[aclnnGroupedMatmulV3](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV3.md)|此接口后续版本会废弃，请使用最新接口[aclnnGroupedMatmulV5](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV5.md)。 |
 |[aclnnGroupedMatmulV4](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV4.md)|此接口后续版本会废弃，请使用最新接口[aclnnGroupedMatmulV5](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV5.md)。 |
+|[aclnnMlaProlog](../../attention/mla_prolog/docs/aclnnMlaProlog.md)|此接口后续版本会废弃，请使用最新接口[aclnnMlaPrologV3WeightNz](../../attention/mla_prolog_v3/docs/aclnnMlaPrologV3WeightNz.md)。|
+|[aclnnMlaPrologV2WeightNz](../../attention/mla_prolog_v2/docs/aclnnMlaPrologV2WeightNz.md)|此接口后续版本会废弃，请使用最新接口[aclnnMlaPrologV3WeightNz](../../attention/mla_prolog_v3/docs/aclnnMlaPrologV3WeightNz.md)。
