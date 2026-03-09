@@ -2273,6 +2273,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTyp
         beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE;
     dataFlagGlobal.SetGlobalBuffer((__gm__ uint32_t *)(wAddr));
     DataCopyPad(flagRecvTensor_, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
+    LOG_INFO("flagRecvTensor_:", flagRecvTensor_);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
          {1, (uint16_t)(flagNum), 1, 0}, rsvdCnt); 
@@ -2346,7 +2347,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
     LOG_INFO("WaitAndFormatOutput finishNum:", finishNum);
+    int count = 0;
     while (true) {
+        count ++;
+        if(count > 10000) {
+            LogInfo("WaitAndFormatOutput error count");
+            break;
+        }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
             continue;
@@ -2356,6 +2363,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
         arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
+        LOG_INFO("arriveCount:", arriveCount);
         if (arriveCount == copyCnt) {
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
@@ -2439,7 +2447,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SyncFunc<AscendC::HardEvent::V_S>();
     flagRecvGatherMask_.SetValue(0, 1);
     SyncFunc<AscendC::HardEvent::S_V>();
-    // WaitAndFormatOutput(tBuf, validNum);
+    WaitAndFormatOutput(tBuf, validNum);
 }
 
 template <TemplateDispatchKFCTypeClass>
