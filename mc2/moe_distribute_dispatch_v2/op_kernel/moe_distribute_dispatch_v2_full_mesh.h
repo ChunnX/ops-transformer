@@ -24,6 +24,7 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
+#include "../common/inc/kernel/mc2_moe_context.h"
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
 #if __has_include( "../common/inc/kernel/moe_distribute_base.h")
@@ -80,7 +81,7 @@ template <TemplateMC2TypeFullmeshClass>
 class MoeDistributeDispatchV2FullMesh {
 public:
     __aicore__ inline MoeDistributeDispatchV2FullMesh() {};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
                                 GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
                                 GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
                                 GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
@@ -135,11 +136,17 @@ private:
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
+        if (isMc2Context_) {
+            return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
+        }
         return GetBaseWindAddrByRankId(winContext_[COMM_EP_IDX], rankId, epRankIdOriginal_) + winDataSizeOffset_;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
+        if (isMc2Context_) {
+            return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
+        }
         return GetBaseWindStateAddrByRankId(winContext_[COMM_EP_IDX], rankId, epRankIdOriginal_)
             + dataState_ * WIN_STATE_OFFSET;
     }
@@ -268,6 +275,7 @@ private:
     bool isPerformanceFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool isScalingDownFlag_ = false;
+    bool isMc2Context_ = false;
     uint64_t totalWinSize_{0};
     uint32_t gatherCount_{0};
     uint32_t expertTokenNumsType_{1};
@@ -294,6 +302,7 @@ private:
     uint32_t expertIdsSize_{0};
     uint32_t globalBS_{0};
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
     DataCopyExtParams expandXCopyParams_;
     DataCopyExtParams hCopyParams_;
@@ -395,12 +404,20 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetDataStatus()
 {
-    statusDataSpaceGM_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
+    uint32_t epRankIdHccl{0};
+    uint32_t epWorldSizeHccl{0};
+    if (isMc2Context_) {
+        epRankIdHccl = mc2Context_->epRankId;
+        statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
+        epWorldSizeHccl = epWorldSizeOriginal_;
+    } else {
+        statusDataSpaceGM_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
+        epRankIdHccl = Mc2Kernel::GetRankId(winContext_[COMM_EP_IDX]);
+        epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_[COMM_EP_IDX]);
+    }
     selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGM_ + FLAG_FIELD_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    uint32_t epRankIdHccl = Mc2Kernel::GetRankId(winContext_[COMM_EP_IDX]);
-    uint32_t epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_[COMM_EP_IDX]);
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
     uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     winDataSizeOffset_ = dataState_ * (totalWinSize_ / BUFFER_NUM)
@@ -420,8 +437,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
-__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Init(GM_ADDR x, GM_ADDR expertIds,
-    GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, 
+    GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
     GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
@@ -430,11 +447,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 #endif
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
-    auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    winContext_[COMM_EP_IDX] = (__gm__ HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    auto realWinSize = GetWinSize(winContext_[COMM_EP_IDX]);
-    CheckWindowSize(totalWinSize_, realWinSize, tpipe_, expandXOut);
+    if (tilingData->moeDistributeDispatchV2Info.isMc2Context) {
+        isMc2Context_ = true;
+        // Using Mc2Context instead of hccl context
+        mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
+    } else {
+        winContext_[COMM_EP_IDX] = (__gm__ HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        auto realWinSize = GetWinSize(winContext_[COMM_EP_IDX]);
+        CheckWindowSize(totalWinSize_, realWinSize, tpipe_, expandXOut);
+    }
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool*)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertIds);
@@ -454,8 +476,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     recvCntWorkspaceGM_ = workspaceGM;
     statusSpaceGM_ = GetWindStateAddrByRankId(epRankIdOriginal_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
-    GM_ADDR selfRankWinInGM = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
-    selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(selfRankWinInGM));
+    selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(statusDataSpaceGM_));
     windowGM_ = GetWindAddrByRankId(epRankIdOriginal_);
     hCopyParams_ = {1U, static_cast<uint32_t>(axisH_ * sizeof(XType)), 0U, 0U, 0U};
     dataStateParams_ = {1U, sizeof(uint32_t), 0U, 0U};

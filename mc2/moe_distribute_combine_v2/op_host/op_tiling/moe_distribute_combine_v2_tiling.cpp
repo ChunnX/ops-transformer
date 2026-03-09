@@ -230,7 +230,7 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
     isLayered = strcmp(commAlgPtr, "hierarchy") == 0;
 
     if (config.isMc2Context) {
-        OP_TILING_CHECK((strcmp(commAlgPtr, "hierarchy") == 0) || (strcmp(commAlgPtr, "fullmesh_v2") == 0),
+        OP_TILING_CHECK((strcmp(commAlgPtr, "hierarchy") == 0),
             OP_LOGE(nodeName, "commAlgPtr %s doesn't support comm with context.", commAlgPtr),
             return ge::GRAPH_FAILED);
     }

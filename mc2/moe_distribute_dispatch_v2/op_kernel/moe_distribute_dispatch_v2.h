@@ -273,8 +273,6 @@ private:
 
     // Using Mc2Context instead of hccl context
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
-    uint32_t rankId_{0};
-    uint32_t rankIdOriginal_{0};
 
     DataCopyParams expandXCopyParams_;
     DataCopyParams xCopyParams_;
@@ -333,9 +331,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
     if (isMc2Context_) {
-        rankIdOriginal_ = mc2Context_->epRankId;
-        rankId_ = mc2Context_->epRankId;
-        epRankIdHccl = rankId_;
+        epRankIdHccl = mc2Context_->epRankId;
         statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
         epWorldSizeHccl = epWorldSizeOriginal_;
     } else {
