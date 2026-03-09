@@ -2351,7 +2351,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count ++;
         if(count > 10000) {
-            LogInfo("WaitAndFormatOutput error count");
+            Log_Info("WaitAndFormatOutput error count");
             break;
         }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
