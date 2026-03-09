@@ -197,3 +197,4 @@ actionlint
 shellcheck*/
 *.log
 /tasks_bak/
+runs/
