@@ -117,7 +117,7 @@ private:
     __aicore__ inline void FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t tokenIndex);
     template <typename T> __aicore__ inline void CopyTokenToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SingleTokenProcess(uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
-    __aicore__ inline void DispatchAndCountTokens(uint32_t startIndex, uint32_t endIndex, bool process);
+    __aicore__ inline void DispatchAndCountTokens(uint32_t startIndex, uint32_t endIndex, uint32_t serverId, bool process);
     __aicore__ inline void ConstructDataAndFlagBatchWriteInfo(uint32_t beginServerId, uint32_t serverNum,
                                                               uint32_t aivNum);
     __aicore__ inline void WaitStatusFlag(uint32_t serverIdx, uint32_t &tokenCnt);
@@ -1144,7 +1144,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::DispatchAndCountTokens(uint32_t startIndex,
-                                                                                                   uint32_t endIndex,
+                                                                                                   uint32_t endIndex, uint32_t serverId
                                                                                                    bool process)
 {
     uint32_t rankIDSharedGroup = epRankId_ % rankNumPerSharedExpert_; // 计算目的共享专家卡在其所在共享专家组的id
@@ -1163,6 +1163,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 }
             }
             uint32_t dstServerId = dstRankId / serverRankSize_;
+            if(dstServerId != serverId) {
+                continue;
+            }
             uint32_t pos = dstServerId * activeMaskBsCnt_ + tokenIndex; // 计算当前token是否发给这个server
             if (tokenSendMap_.GetValue(pos) == 1) {                     // 必须清0，
                 continue;
@@ -1184,17 +1187,31 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
     SplitToCore(totalSendCnt, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum, true);
-    if (startTokenId >= totalSendCnt || sendTokenNum == 0) {
-        return;
+    LOG_INFO("startTokenId",startTokenId);
+    LOG_INFO("endTokenId",endTokenId);
+    LOG_INFO("sendTokenNum",sendTokenNum);
+    if (startTokenId >= endTokenId || sendTokenNum == 0) {
+        return ;
     }
-    //LogInfo(__LINE__,"totalSendCnt ",totalSendCnt);
-    //LogInfo(__LINE__,"startTokenId ",startTokenId);
-    //LogInfo(__LINE__,"endTokenId ",endTokenId);
-    //LogInfo(__LINE__,"sendTokenNum ",sendTokenNum);
+    for (uint32_t serverIndex = 0; serverIndex < serverNum_; serverIndex++) {
+        DispatchAndCountTokens(0, startTokenId, serverIndex, false);
+        DispatchAndCountTokens(startTokenId, endTokenId, serverIndex, true);
+    }
+    // SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    // uint32_t totalSendCnt = activeMaskBsCnt_;
+    // uint32_t startTokenId, endTokenId, sendTokenNum;
+    // SplitToCore(totalSendCnt, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum, true);
+    // if (startTokenId >= totalSendCnt || sendTokenNum == 0) {
+    //     return;
+    // }
+    // //LogInfo(__LINE__,"totalSendCnt ",totalSendCnt);
+    // //LogInfo(__LINE__,"startTokenId ",startTokenId);
+    // //LogInfo(__LINE__,"endTokenId ",endTokenId);
+    // //LogInfo(__LINE__,"sendTokenNum ",sendTokenNum);
 
-    DispatchAndCountTokens(0, startTokenId, false);
-    DispatchAndCountTokens(startTokenId, endTokenId, true);
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    // DispatchAndCountTokens(0, startTokenId, false);
+    // DispatchAndCountTokens(startTokenId, endTokenId, true);
+    // SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
     if (endTokenId == totalSendCnt) {
         LOG_INFO("start endTokenId");
@@ -1216,6 +1233,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             LOG_INFO("server flag",dstStateGMTensor(flagOffset));
         }
     }
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2425,12 +2443,11 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Process()
 {   
     if ASCEND_IS_AIV {
-        LOG_INFO("GetSystemCycle()", GetSystemCycle());
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
-            // DispatchBetweenServer();
-            // CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
+            DispatchBetweenServer();
+            CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
         } else { //框内接收 + 框内发送
             // WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
         }
