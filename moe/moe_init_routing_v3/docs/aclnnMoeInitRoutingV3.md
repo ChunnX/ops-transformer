@@ -236,6 +236,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
         <li>动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
+        <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
+        <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>
         </ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -248,7 +250,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>表示用于计算quant结果的偏移值</td>
       <td><ul>
         <li>在非量化场景下不输入;<li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
-        <li>动态量化、MXFP8量化场景下不输入。</li>
+        <li>动态量化、MXFP8量化、HIF8量化场景下不输入。</li>
       </ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -332,6 +334,9 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <br>-1：表示不量化场景;
         <br>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2;
         <br>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN;
+        <br>6：表示HIF8直转量化场景，expandedXOut量化到HIFLOAT8;
+        <br>7：表示HIF8 PERTENSOR量化场景，expandedXOut按照pertensor模式量化到HIFLOAT8;
+        <br>8：表示HIF8 PERTOKEN量化场景，expandedXOut按照pertoken模式量化到HIFLOAT8;
       </td>
       <td>INT64</td>
       <td>-</td>
@@ -411,7 +416,10 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>非量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
         <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
         <li>静态量化场景下不输出。</li>
-        <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li></ul>
+        <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
+        <li>HIF直转8量化场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, ]，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
+          <li>HIF8 PERTENSOR量化场景下，expandedScaleOut不输出。</li>
+        <li>HIF8 PERTOKEN量化场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, 1]。</li></ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
@@ -482,7 +490,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3、6、7、8。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity仅校验其值，不使用该参数（即不限制每个专家能够处理的tokens数）。
