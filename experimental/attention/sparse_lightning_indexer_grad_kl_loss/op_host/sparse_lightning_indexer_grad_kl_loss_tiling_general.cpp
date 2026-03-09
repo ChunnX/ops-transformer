@@ -139,8 +139,6 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::CheckContext()
     OP_CHECK_NULL_WITH_CONTEXT(context_, keyIndexShape);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightsShape);
     OP_CHECK_NULL_WITH_CONTEXT(context_, sparseIndicesShape);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, softmaxMaxShape);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, softmaxSumShape);
     OP_CHECK_NULL_WITH_CONTEXT(context_, dQueryIndexShape);
     OP_CHECK_NULL_WITH_CONTEXT(context_, dkeyIndexShape);
     OP_CHECK_NULL_WITH_CONTEXT(context_, dWeightsShape);
