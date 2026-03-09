@@ -38,11 +38,14 @@ static constexpr uint32_t BSH_DIM_H = 2;
 static constexpr uint32_t TND_DIM_T = 0;
 static constexpr uint32_t TND_DIM_N = 1;
 static constexpr uint32_t TND_DIM_D = 2;
+static constexpr uint32_t TND_DIM_NUM = 3;
 
 static constexpr uint32_t BNSD_DIM_B = 0;
 static constexpr uint32_t BNSD_DIM_N = 1;
 static constexpr uint32_t BNSD_DIM_S = 2;
 static constexpr uint32_t BNSD_DIM_D = 3;
+static constexpr uint32_t BNSD_DIM_NUM = 4;
+static constexpr uint32_t LSE_DIM_D = 1;
 
 static constexpr int32_t UNKNOWN_DIMS = -2;
 
@@ -178,18 +181,20 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
     }
     
     // 设置SoftmaxLse shape (如果需要)
-    // SoftmaxLse shape通常是 [batch, num_heads, q_seqlen] 或类似维度
+    // SoftmaxLse shape通常是 [batch, num_heads, q_seqlen, 1] 或类似维度
     if (qLayout == "TND") {
         // TND格式
-        softmaxLseShape->SetDimNum(2);
+        softmaxLseShape->SetDimNum(TND_DIM_NUM);
         (*softmaxLseShape)[TND_DIM_T] = queryShape->GetDim(TND_DIM_T);
         (*softmaxLseShape)[TND_DIM_N] = queryShape->GetDim(TND_DIM_N);
+        (*softmaxLseShape)[TND_DIM_D] = LSE_DIM_D;
     } else if (qLayout == "BNSD") {
         // BNSD格式
-        softmaxLseShape->SetDimNum(3);
+        softmaxLseShape->SetDimNum(BNSD_DIM_NUM);
         (*softmaxLseShape)[BNSD_DIM_B] = queryShape->GetDim(BNSD_DIM_B);
         (*softmaxLseShape)[BNSD_DIM_N] = queryShape->GetDim(BNSD_DIM_N);
         (*softmaxLseShape)[BNSD_DIM_S] = queryShape->GetDim(BNSD_DIM_S);
+        (*softmaxLseShape)[BNSD_DIM_D] = LSE_DIM_D;
     } else {
         OP_LOGE(context->GetNodeName(), "Unexpected Q layout in softmaxLse shape calculation: %s", qInputLayoutPtr);
         return ge::GRAPH_FAILED;

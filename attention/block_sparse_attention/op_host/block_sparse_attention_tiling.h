@@ -141,6 +141,7 @@ private:
     ge::graphStatus ProcessQueryShape(gert::TilingContext *rfaContext);
     ge::graphStatus ProcessActualSeqLengths(gert::TilingContext *rfaContext);
     ge::graphStatus ProcessBlockShape(gert::TilingContext *rfaContext);
+    ge::graphStatus ProcessSoftmaxLse(gert::TilingContext *rfaContext);
     ge::graphStatus ValidateConfiguration(gert::TilingContext *rfaContext);
     ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *rfaContext);
     
@@ -177,6 +178,7 @@ private:
     float scaleValue_ = 0.0f;
     uint32_t maskType_ = 0;
     uint32_t innerPrecise_ = 1;  // 0=float32 softmax, 1=fp16 softmax
+    bool softmaxLseFlag_ = false;
     
     uint32_t totalQBlocks_ = 0;
     uint32_t maxKvBlockNum_ = 0;

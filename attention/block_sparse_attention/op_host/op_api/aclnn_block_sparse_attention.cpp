@@ -31,6 +31,7 @@ extern "C" {
 
 namespace {
 
+static constexpr uint64_t LSE_OUT = 1;
 
 static bool CheckDataType(const aclTensor *query,
                           const aclTensor *key,
@@ -277,6 +278,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
 
     auto viewCopyResult = l0op::ViewCopy(outputs[0], attentionOut, executorImpl);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (softmaxLseFlag == LSE_OUT) {
+        auto viewCopyLseResult = l0op::ViewCopy(outputs[1], softmaxLseOptional, executorImpl);
+        CHECK_RET(viewCopyLseResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     *workspaceSize = executorImpl->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

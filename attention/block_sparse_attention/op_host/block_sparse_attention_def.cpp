@@ -70,7 +70,7 @@ public:
         this->Attr("blockSize").AttrType(OPTIONAL).Int(128);
         this->Attr("preTokens").AttrType(OPTIONAL).Int(2147483647);
         this->Attr("nextTokens").AttrType(OPTIONAL).Int(2147483647);
-        this->Attr("softmaxLseFlag").AttrType(OPTIONAL).Int(1);
+        this->Attr("softmaxLseFlag").AttrType(OPTIONAL).Int(0);
 
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");

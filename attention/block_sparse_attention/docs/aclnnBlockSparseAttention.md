@@ -303,7 +303,7 @@ aclnnStatus aclnnBlockSparseAttention(
       <td>softmaxLseFlag</td>
       <td>输入</td>
       <td>是否开启LSE输出</td>
-      <td>用于LSE输出</td>
+      <td>用于LSE输出，1表示输出，0表示不输出，默认为0</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -323,7 +323,7 @@ aclnnStatus aclnnBlockSparseAttention(
       <td>softmaxLseOptional</td>
       <td>输出</td>
       <td>Softmax计算的log-sum-exp中间结果。</td>
-      <td>当前不支持，传入nullptr。</td>
+      <td>当softmaxLseFlag为1时，表示输出softmaxLse。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>3</td>

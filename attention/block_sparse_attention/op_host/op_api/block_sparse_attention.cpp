@@ -90,7 +90,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
                                    static_cast<int64_t>(numKeyValueHeads), static_cast<int64_t>(maskType),
                                    static_cast<float>(scaleValue), static_cast<int64_t>(innerPrecise),
                                    static_cast<int64_t>(blockSize), static_cast<uint32_t>(preTokens),
-                                   static_cast<int64_t>(nextTokens),static_cast<int64_t>(softmaxLseFlag)));
+                                   static_cast<int64_t>(nextTokens), static_cast<int64_t>(softmaxLseFlag)));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockSparseAttention infer shape failed, scaleValue: %f.", scaleValue);
         return {nullptr, nullptr};
@@ -103,7 +103,8 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
                                 OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads),
                                         static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
                                         static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
-                                        static_cast<int64_t>(preTokens),static_cast<int64_t>(nextTokens),static_cast<int64_t>(softmaxLseFlag)));
+                                        static_cast<int64_t>(preTokens), static_cast<int64_t>(nextTokens),
+                                        static_cast<int64_t>(softmaxLseFlag)));
 
     return {attentionOutTensor, softmaxLseTensor};
 }

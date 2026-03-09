@@ -464,7 +464,6 @@ public:
             (uint64_t)0,
             CeilDiv(rowNumCurLoop * columnNumRound, FLOAT_VECTOR_SIZE),
             AscendC::UnaryRepeatParams(1, 1, 8, 8));
-
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -777,6 +776,7 @@ public:
         uint32_t dmUbOffsetCurCycle = curStackTileMod * MAX_ROW_NUM_SUB_CORE + rowOffset;
 
         if constexpr (LSE_MODE_ == LseMode::OUT_ONLY) {
+            // wait for lse from ub to gm
             // In lse out-only mode, tv is used in the last stack tile to transport lse
             if (isFirstStackTile && isFirstRowLoop) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);

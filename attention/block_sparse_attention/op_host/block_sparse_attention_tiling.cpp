@@ -51,6 +51,7 @@ constexpr int ATTENTION_MASK_INDEX = 4;
 constexpr int ACTUAL_SEQ_LENGTHS_INDEX = 6;
 constexpr int ACTUAL_SEQ_LENGTHS_KV_INDEX = 7;
 constexpr int BLOCK_TABLE_INDEX = 8;
+constexpr int SOFTMAX_LSE_INDEX = 10;
 constexpr int MAX_BLOCK_NUM_INDEX = 2;
 
 
@@ -61,9 +62,13 @@ constexpr int MASK_TYPE_INDEX = 3;
 constexpr int SCALE_VALUE_INDEX = 4;
 constexpr int INNER_PRECISE_INDEX = 5;
 constexpr int BLOCK_SIZE_INDEX = 6;
+constexpr int SOFTMAX_LSE_FLAG_INDEX = 9;
 
 constexpr int VALID_EMBEDDING_SIZE_64 = 64;
 constexpr int VALID_EMBEDDING_SIZE_128 = 128;
+
+constexpr int LSE_NO_OUT = 0;
+constexpr int LSE_OUT = 1;
 
 namespace optiling {
 
@@ -591,6 +596,27 @@ ge::graphStatus BSATiling::ProcessBlockShape(gert::TilingContext *rfaContext)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus BSATiling::ProcessSoftmaxLse(gert::TilingContext *rfaContext)
+{
+    auto softmaxLsePtr = rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(SOFTMAX_LSE_FLAG_INDEX);
+    if (softmaxLsePtr == nullptr) {
+        OP_LOGE(rfaContext->GetNodeName(), "softmaxLsePtr is null");
+        return ge::GRAPH_FAILED;
+    }
+    switch (*softmaxLsePtr) {
+        case LSE_NO_OUT:
+            softmaxLseFlag_ = false;
+            break;
+        case LSE_OUT:
+            softmaxLseFlag_ = true;
+            break;
+        default:
+            OP_LOGE(rfaContext->GetNodeName(), "invalid softmaxLseFlag:%u", *softmaxLsePtr);
+            return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *rfaContext)
 {
     // 只在TND格式时进行校验
@@ -705,8 +731,14 @@ ge::graphStatus BSATiling::ProcessInput(gert::TilingContext *rfaContext)
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
+
+    // 6. 处理softmax lse flag
+    ret = ProcessSoftmaxLse(rfaContext);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
     
-    // 6. 验证配置
+    // 7. 验证配置
     ret = ValidateConfiguration(rfaContext);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
@@ -736,6 +768,12 @@ ge::graphStatus BSATiling::CheckAttr(gert::TilingContext *rfaContext)
     // 获取innerPrecise参数
     if (rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX) != nullptr) {
         innerPrecise_ = *rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
+    }
+    auto softmaxLsePtr = rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(SOFTMAX_LSE_FLAG_INDEX);
+    if (softmaxLsePtr == nullptr) {
+        softmaxLseFlag_ = false;
+    } else {
+        softmaxLseFlag_ = *softmaxLsePtr == 1 ? true : false;
     }
     
     return ge::GRAPH_SUCCESS;
@@ -932,6 +970,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *rfaContext)
         tilingKey += 2;  // 2 for TND
     } else if (qInputLayout_ == RFAQInputLayout::BNSD_Q) {
         tilingKey += 3;  // 3 for BNSD
+    }
+
+    // Softmax LSE（亿位）
+    if (softmaxLseFlag_) {
+        tilingKey += 100000000ULL; // 1 for lse out
     }
     
     return tilingKey;
