@@ -1636,7 +1636,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CommunicateBetweenS
     //LogInfo(__LINE__, "[BATCHWRITE][CommunicateBetweenServer] start");
     ConstructDataAndFlagBatchWriteInfo(beginServerId, serverNum, aivNum);
     PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
     if ASCEND_IS_AIV {
         if (aivId_ == 0) {
             bufferChosenGlobal_(0) = bufferId_ ^ 1;
@@ -2447,9 +2446,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             CalCumSum();
         } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
             DispatchBetweenServer();
-            //CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
+            CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
         } else { //框内接收 + 框内发送
-            // WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
+            WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
         // PipeBarrier<PIPE_ALL>();
