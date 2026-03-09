@@ -17,7 +17,7 @@
 
   **该算子不建议单独使用，建议与FFNToAttention和AttentionWorkerCombine算子配合使用，形成完整的工作流。**
 
-    1. 接收FFNToAttention算子发送的数据。该数据以ScheduleContext结构体存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea(用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num)，ControlArea(用于上层控制进程是否退出)，AttentionArea域(负责管理算子计算过程中所需的核心数据缓冲区与状态信息，其中token_info_buf存储了与输入相关的数据信息)。
+    1. 接收FFNToAttention算子发送的数据。该数据以ScheduleContext结构体存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea（用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num），ControlArea（用于上层控制进程是否退出），AttentionArea域（负责管理算子计算过程中所需的核心数据缓冲区与状态信息，其中token_info_buf存储了与输入相关的数据信息）。
 
     2. 读取ScheduleContext.AttentionArea域中token_info_buf存储的flag信息，查看通信数据是否准备就绪。
 
@@ -25,30 +25,30 @@
 
 - 计算公式：
 
-$$
-\text{Initialize:} \quad \text{ready\_count} = 0, \quad \text{flag\_num} = \text{micro\_batch\_size} \times \text{selected\_expert\_num}
-$$
+  $$
+  \text{Initialize:} \quad \text{ready\_count} = 0, \quad \text{flag\_num} = \text{micro\_batch\_size} \times \text{selected\_expert\_num}
+  $$
 
-$$
-\text{Check if run\_flag is 0:}
-   \quad \text{if run\_flag} = 0, \quad \text{exit and log}
-$$
+  $$
+  \text{Check if run\_flag is 0:}
+    \quad \text{if run\_flag} = 0, \quad \text{exit and log}
+  $$
 
-$$
-\text{Loop:} \quad \text{while run\_flag} \neq 0:
-   \quad \text{ready\_count} = \sum_{i=1}^{\text{flag\_num}} \mathbf{1}\_{\{ \text{flag}[i] = 1 \}}; \quad \text{if ready\_count} = \text{flag\_num}, \quad \text{break}
-$$
+  $$
+  \text{Loop:} \quad \text{while run\_flag} \neq 0:
+    \quad \text{ready\_count} = \sum_{i=1}^{\text{flag\_num}} \mathbf{1}\_{\{ \text{flag}[i] = 1 \}}; \quad \text{if ready\_count} = \text{flag\_num}, \quad \text{break}
+  $$
 
-$$
-\text{Reset flags:}
-   \quad \text{flag}[i] = 0 \quad \text{for} \quad i = 1, 2, \dots, \text{flag\_num}
-$$
+  $$
+  \text{Reset flags:}
+    \quad \text{flag}[i] = 0 \quad \text{for} \quad i = 1, 2, \dots, \text{flag\_num}
+  $$
 
-$$
-\text{Set micro\_batch\_id:} \quad \text{micro\_batch\_id} = (\text{micro\_batch\_id} + 1) \% \text{micro\_batch\_num}
-$$
+  $$
+  \text{Set micro\_batch\_id:} \quad \text{micro\_batch\_id} = (\text{micro\_batch\_id} + 1) \% \text{micro\_batch\_num}
+  $$
 
-备注：micro_batch_size、selected_expert_num、run_flag、micro_batch_id是入参ScheduleContext结构体的参数，该结构体信息在[调用示例](#调用示例)中进行展示说明。
+  备注：micro_batch_size、selected_expert_num、run_flag、micro_batch_id是入参ScheduleContext结构体的参数，该结构体信息在[调用示例](#调用示例)中进行展示说明。
 
 ## 函数原型
 
@@ -73,15 +73,15 @@ aclnnStatus aclnnInplaceAttentionWorkerScheduler(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 135px">
-  <col style="width: 326px">
-  <col style="width: 246px">
-  <col style="width: 275px">
-  <col style="width: 101px">
-  <col style="width: 190px">
-  <col style="width: 146px">
+  <table style="undefined;table-layout: fixed; width: 1458px"><colgroup>
+  <col style="width: 239px">
+  <col style="width: 132px">
+  <col style="width: 318px">
+  <col style="width: 178px">
+  <col style="width: 123px">
+  <col style="width: 119px">
+  <col style="width: 204px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>

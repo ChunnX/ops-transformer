@@ -15,25 +15,25 @@
 
 ## 功能说明
 
--   **接口功能**：BlockSparseAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
+- **接口功能**：BlockSparseAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
 
--   **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
+- **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
-$$
-attentionOut = Softmax(scale \cdot query \cdot key^T + atten\_mask) \cdot value
-$$
+  $$
+  attentionOut = Softmax(scale \cdot query \cdot key^T + atten\_mask) \cdot value
+  $$
 
-BlockSparseAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
-- B：表示输入样本批量大小（Batch）
-- T：B和S合轴紧密排列的长度（Total tokens）
-- S：表示输入样本序列长度（Seq-Length）
-- H：表示隐藏层的大小（Head-Size）
-- N：表示多头数（Head-Num）
-- D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
+  BlockSparseAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
+  - B：表示输入样本批量大小（Batch）
+  - T：B和S合轴紧密排列的长度（Total tokens）
+  - S：表示输入样本序列长度（Seq-Length）
+  - H：表示隐藏层的大小（Head-Size）
+  - N：表示多头数（Head-Num）
+  - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
 
-当前支持的布局：
-- qInputLayout: "TND" "BNSD"
-- kvInputLayout: "TND" "BNSD"
+  当前支持的布局：
+  - qInputLayout: "TND" "BNSD"
+  - kvInputLayout: "TND" "BNSD"
 
 
 ## 函数原型
@@ -79,16 +79,16 @@ aclnnStatus aclnnBlockSparseAttention(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1565px">
+  <table style="undefined;table-layout: fixed; width: 1550px">
   <colgroup>
-    <col style="width: 146px">
-    <col style="width: 135px">
-    <col style="width: 326px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
+  <col style="width: 269px">
+  <col style="width: 132px">
+  <col style="width: 318px">
+  <col style="width: 236px">
+  <col style="width: 185px">
+  <col style="width: 119px">
+  <col style="width: 146px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -106,7 +106,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的query。</td>
+      <td>公式中的query。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -116,7 +116,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>公式中的key。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -126,7 +126,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>value</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的value。</td>
+      <td>公式中的value。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -136,7 +136,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockSparseMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的atten_mask。</td>
+      <td>公式中的atten_mask。</td>
       <td>当前不支持，传入nullptr。</td>
       <td>BOOL</td>
       <td>ND</td>
@@ -146,7 +146,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的atten_mask。</td>
+      <td>公式中的atten_mask。</td>
       <td>当前不支持，传入nullptr。</td>
       <td>BOOL</td>
       <td>ND</td>
@@ -157,12 +157,12 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockShape</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，稀疏块形状数组。</td>
+      <td>稀疏块形状数组。</td>
       <td>
         <ul>
           <li>必须包含至少两个元素[blockShapeX, blockShapeY]。</li>
-          <li>blockShapeX: Q方向块大小。</li>
-          <li>blockShapeY: KV方向块大小。</li>
+          <li>blockShapeX：Q方向块大小。</li>
+          <li>blockShapeY：KV方向块大小。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnBlockSparseAttention(
     </tr>
       <td>actualSeqLengthsOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的query序列长度。</td>
+      <td>描述每个Batch对应的query序列长度。</td>
       <td>
         <ul>
           <li>如不使用可传nullptr。</li>
@@ -187,7 +187,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>actualSeqLengthsKvOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的key/value序列长度。</td>
+      <td>描述每个Batch对应的key/value序列长度。</td>
       <td>
         <ul>
           <li>如不使用可传nullptr。</li>
@@ -202,7 +202,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockTableOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，Block表用于PagedAttention。</td>
+      <td>Block表用于PagedAttention。</td>
       <td>当前不支持，传入nullptr。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>qInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query的数据排布格式。</td>
+      <td>代表输入query的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -222,7 +222,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>kvInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入key、value的数据排布格式。</td>
+      <td>代表输入key、value的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>numKeyValueHeads</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表key/value的head个数。</td>
+      <td>代表key/value的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -242,7 +242,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>maskType</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Mask类型。</td>
+      <td>Mask类型。</td>
       <td>0表示无mask，其他值表示不同的mask类型。</td>
       <td>INT64</td>
       <td>-</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>innerPrecise</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Softmax精度控制。</td>
+      <td>Softmax精度控制。</td>
       <td>0表示float32 softmax，1表示fp16 softmax。</td>
       <td>INT64</td>
       <td>-</td>
@@ -272,7 +272,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>blockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，PagedAttention的block大小。</td>
+      <td>PagedAttention的block大小。</td>
       <td>用于PagedAttention场景，如不使用可传0。</td>
       <td>INT64</td>
       <td>-</td>
@@ -282,7 +282,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>preTokens</td>
       <td>输入</td>
-      <td>Host侧的int64_t，预留接口</td>
+      <td>预留接口</td>
       <td>预留接口</td>
       <td>INT64</td>
       <td>-</td>
@@ -292,7 +292,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>nextTokens</td>
       <td>输入</td>
-      <td>Host侧的int64_t，预留接口</td>
+      <td>预留接口</td>
       <td>预留接口</td>
       <td>INT64</td>
       <td>-</td>
@@ -302,7 +302,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>softmaxLseFlag</td>
       <td>输入</td>
-      <td>Host侧的int64_t，是否开启LSE输出</td>
+      <td>是否开启LSE输出</td>
       <td>用于LSE输出</td>
       <td>INT64</td>
       <td>-</td>
@@ -312,7 +312,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>attentionOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，公式中的attentionOut。</td>
+      <td>公式中的attentionOut。</td>
       <td>数据类型和shape与query保持一致。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -322,7 +322,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>softmaxLseOptional</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，Softmax计算的log-sum-exp中间结果。</td>
+      <td>Softmax计算的log-sum-exp中间结果。</td>
       <td>当前不支持，传入nullptr。</td>
       <td>FLOAT</td>
       <td>ND</td>
@@ -354,6 +354,8 @@ aclnnStatus aclnnBlockSparseAttention(
 
 
 - **返回值**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 

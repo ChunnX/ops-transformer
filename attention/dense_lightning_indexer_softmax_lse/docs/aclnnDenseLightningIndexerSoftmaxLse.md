@@ -14,23 +14,23 @@
 
 ## 功能说明
 
-- 算子功能：DenseLightningIndexerSoftmaxLse算子是DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。
+- 接口功能：DenseLightningIndexerSoftmaxLse算子是DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。
 
 - 计算公式：
 
-$$
-\text{res}=\text{AttentionMask}\left(\text{ReduceSum}\left(W\odot\text{ReLU}\left(Q_{index}@K_{index}^T\right)\right)\right)
-$$
+  $$
+  \text{res}=\text{AttentionMask}\left(\text{ReduceSum}\left(W\odot\text{ReLU}\left(Q_{index}@K_{index}^T\right)\right)\right)
+  $$
 
-$$
-\text{maxIndex}=\text{max}\left(res\right)
-$$
+  $$
+  \text{maxIndex}=\text{max}\left(res\right)
+  $$
 
-$$
-\text{sumIndex}=\text{ReduceSum}\left(\text{exp}\left(res-maxIndex\right)\right)
-$$
+  $$
+  \text{sumIndex}=\text{ReduceSum}\left(\text{exp}\left(res-maxIndex\right)\right)
+  $$
 
-maxIndex，sumIndex作为输出传递给算子DenseLightningIndexerGradKlLoss作为输入计算Softmax使用。
+  maxIndex，sumIndex作为输出传递给算子DenseLightningIndexerGradKlLoss作为输入计算Softmax使用。
 
 ## 函数原型
 
@@ -92,7 +92,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>queryIndex（aclTensor*）</td>
       <td>输入</td>
       <td>lightningIndexer结构的输入queryIndex。</td>
-      <td><ul><li>B: 支持泛化且与query的B保持一致。</li><li>S1: 支持泛化，不能为Matmul的M轴。</li><li>Nidx1: 64、32、16、8。</li><li>D: 128。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
+      <td><ul><li>B：支持泛化且与query的B保持一致。</li><li>S1：支持泛化，不能为Matmul的M轴。</li><li>Nidx1：64、32、16、8。</li><li>D：128。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>(B,S1,Nidx1,D);(T1,Nidx1,D)</td>
@@ -102,7 +102,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>keyIndex（aclTensor*）</td>
       <td>输入</td>
       <td>lightningIndexer结构的输入keyIndex。</td>
-      <td><ul><li>B: 支持泛化且与queryIndex的B保持一致。</li> <li>S2: 支持泛化。</li><li>Nidx2: 1。</li><li>D: 128。</li><li>T2: 多个Batch的S2累加。</li></ul></td>
+      <td><ul><li>B：支持泛化且与queryIndex的B保持一致。</li> <li>S2：支持泛化。</li><li>Nidx2：1。</li><li>D：128。</li><li>T2：多个Batch的S2累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>(B,S2,Nidx2,D);(T2,Nidx2,D)</td>
@@ -112,7 +112,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>weight（aclTensor*）</td>
       <td>输入</td>
       <td>权重</td>
-      <td><ul><li>B: 支持泛化且与queryIndex的B保持一致。</li><li>S1: 支持泛化且与queryIndex的S1保持一致。</li><li>Nidx1: 64、32、16、8。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
+      <td><ul><li>B：支持泛化且与queryIndex的B保持一致。</li><li>S1：支持泛化且与queryIndex的S1保持一致。</li><li>Nidx1：64、32、16、8。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>(B,S1,Nidx1);(T1,Nidx1)</td>
@@ -180,7 +180,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>softmaxMaxOut（aclTensor*）</td>
       <td>输出</td>
       <td>softmax计算使用的max值</td>
-      <td><ul><li>B: 支持泛化与queryIndex的B保持一致。</li><li>Nidx2: 与keyIndex的Nidx2保持一致。</li><li>S1:支持泛化，且与queryIndex的S1保持一致。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
+      <td><ul><li>B：支持泛化与queryIndex的B保持一致。</li><li>Nidx2：与keyIndex的Nidx2保持一致。</li><li>S1：支持泛化，且与queryIndex的S1保持一致。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(B,Nidx2,S1);(Nidx2,T1)</td>
@@ -190,7 +190,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>softmaxSumOut（aclTensor*）</td>
       <td>输出</td>
       <td>softmax计算使用的sum值</td>
-      <td><ul><li>B: 支持泛化与query的B保持一致。</li><li>Nidx2: 与keyIndex的Nidx2保持一致。</li><li>S1:支持泛化，且与queryIndex的S1保持一致。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
+      <td><ul><li>B：支持泛化与query的B保持一致。</li><li>Nidx2：与keyIndex的Nidx2保持一致。</li><li>S1：支持泛化，且与queryIndex的S1保持一致。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(B,Nidx2,S1);(Nidx2,T1)</td>
@@ -258,10 +258,10 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-    <col style="width: 144px">
-    <col style="width: 125px">
-    <col style="width: 700px">
+    <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+    <col style="width: 184px">
+    <col style="width: 134px">
+    <col style="width: 833px">
     </colgroup>
     <thead>
      <tr>
@@ -307,10 +307,10 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
         - queryIndex为空Tensor：直接返回。
         - SFAG公共约束里入参为空的场景和FAG保持一致。
 
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
-    <col style="width: 100px">
-    <col style="width: 740px">
-    <col style="width: 360px">
+    <table style="undefined;table-layout: fixed; width: 901px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 565px">
+    <col style="width: 168px">
     </colgroup>
     <thead>
      <tr>
@@ -370,10 +370,10 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
   - 规格约束
 
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
-    <col style="width: 100px">
-    <col style="width: 300px">
-    <col style="width: 360px">
+    <table style="undefined;table-layout: fixed; width: 909px"><colgroup>
+    <col style="width: 125px">
+    <col style="width: 182px">
+    <col style="width: 602px">
     </colgroup>
     <thead>
     <tr>
@@ -418,9 +418,9 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
   - 典型值
   
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
-    <col style="width: 100px">
-    <col style="width: 660px">
+    <table style="undefined;table-layout: fixed; width: 903px"><colgroup>
+    <col style="width: 164px">
+    <col style="width: 739px">
     </colgroup>
     <thead>
     <tr>
@@ -440,7 +440,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     </tbody>
     </table>
 
-    ## 调用示例
+## 调用示例
 
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 

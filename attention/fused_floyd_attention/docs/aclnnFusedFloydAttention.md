@@ -87,7 +87,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>query</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的query。</td>
+          <td>公式中的query。</td>
           <td>数据类型与key1/value1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -97,7 +97,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>key1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的key1。</td>
+          <td>公式中的key1。</td>
           <td>数据类型与query/value1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -107,7 +107,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>value1</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的value1。</td>
+          <td>公式中的value1。</td>
           <td>数据类型与query/key1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -117,7 +117,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>key2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的key2。</td>
+          <td>公式中的key2。</td>
           <td>数据类型与query/key1/value1/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>value2</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的value2。</td>
+          <td>公式中的value2。</td>
           <td>数据类型与query/key1/value1/key2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>attenMaskOptional</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的attenMask。</td>
+          <td>公式中的attenMask。</td>
           <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
           <td>BOOL、UINT8</td>
           <td>ND</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>softmaxMax</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+          <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
           <td>FLOAT</td>
           <td>ND</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>softmaxSum</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+          <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
           <td>FLOAT</td>
           <td>ND</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnFusedFloydAttention(
         <tr>
           <td>attentionOutOut</td>
           <td>输出</td>
-          <td>Device侧的aclTensor，计算公式的最终输出。</td>
+          <td>计算公式的最终输出。</td>
           <td>数据类型与query的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>

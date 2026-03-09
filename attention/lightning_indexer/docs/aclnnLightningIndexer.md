@@ -28,6 +28,7 @@ $$
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnLightningIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexer”接口执行计算。
+
 ```Cpp
 aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
     const aclTensor *query,
@@ -36,42 +37,44 @@ aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKeyOptional,
     const aclTensor *blockTableOptional,
-    char *layoutQueryOptional,
-    char *layoutKeyOptional,
-    int64_t sparseCount,
-    int64_t sparseMode,
-    int64_t preTokens,
-    int64_t nextTokens,
-    bool returnValues,
+    char            *layoutQueryOptional,
+    char            *layoutKeyOptional,
+    int64_t          sparseCount,
+    int64_t          sparseMode,
+    int64_t          preTokens,
+    int64_t          nextTokens,
+    bool             returnValues,
     const aclTensor *sparseIndicesOut,
     const aclTensor *sparseValuesOut,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    uint64_t        *workspaceSize,
+    aclOpExecutor  **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnLightningIndexer(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
 ## aclnnLightningIndexerGetWorkspaceSize
 
 - **参数说明：**
+
 > [!NOTE]
 > - query、key、weights参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 > - S1表示query shape中的S，S2表示key shape中的S，T1表示query shape中的T，T2表示key shape中的T，N1表示query shape中的N，N2表示key shape中的N。
 
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 110px">
-  <col style="width: 301px">
-  <col style="width: 219px">
-  <col style="width: 328px">
-  <col style="width: 101px">
-  <col style="width: 143px">
-  <col style="width: 146px">
+  <table style="undefined;table-layout: fixed; width: 1601px"><colgroup>
+  <col style="width: 264px">
+  <col style="width: 132px">
+  <col style="width: 232px">
+  <col style="width: 330px">
+  <col style="width: 164px">
+  <col style="width: 119px">
+  <col style="width: 215px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -89,11 +92,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>query</td>
       <td>输入</td>
       <td>公式中的输入Q。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -129,11 +128,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>weights</td>
       <td>输入</td>
       <td>公式中的输入W。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16、FLOAT</td>
       <td>ND</td>
       <td>
@@ -227,11 +222,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseCount</td>
       <td>输入</td>
       <td>topK阶段需要保留的block数量。</td>
-      <td>
-          <ul>
-                <li>支持[1, 2048]，以及3072、4096、5120、6144、7168、8192</li>
-          </ul>
-      </td>
+      <td>支持[1, 2048]，以及3072、4096、5120、6144、7168、8192</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>
@@ -256,11 +247,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>preTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
-      <td>
-          <ul>
-                <li>仅支持默认值2^63-1。</li>
-          </ul>
-      </td>
+      <td>仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -270,11 +257,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>nextTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
-      <td>
-          <ul>
-                <li>仅支持默认值2^63-1。</li>
-          </ul>
-      </td>
+      <td>仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -299,10 +282,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
+      <td>不支持空tensor。</ul>
       </td>
       <td>INT32</td>
       <td>-</td>
@@ -318,11 +298,7 @@ aclnnStatus aclnnLightningIndexer(
       <td>sparseValuesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出对应的value值。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>shape与sparseIndicesOut保持一致</td>
@@ -384,10 +360,12 @@ aclnnStatus aclnnLightningIndexer(
 
 ## aclnnLightningIndexer
 
-  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-  <col style="width: 173px">
-  <col style="width: 112px">
-  <col style="width: 668px">
+- **参数说明：**
+
+  <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+  <col style="width: 184px">
+  <col style="width: 134px">
+  <col style="width: 833px">
   </colgroup>
   <thead>
     <tr>

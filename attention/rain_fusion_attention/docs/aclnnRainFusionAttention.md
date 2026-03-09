@@ -14,25 +14,25 @@
 
 ## 功能说明
 
--   **算子功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
+- **算子功能**：RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
 
--   **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
+- **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
-$$
-attentionOut = Softmax(scale \cdot query \cdot key^T + atten\_mask) \cdot value
-$$
+  $$
+  attentionOut = Softmax(scale \cdot query \cdot key^T + atten\_mask) \cdot value
+  $$
 
-RainFusionAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
-- B：表示输入样本批量大小（Batch）
-- T：B和S合轴紧密排列的长度（Total tokens）
-- S：表示输入样本序列长度（Seq-Length）
-- H：表示隐藏层的大小（Head-Size）
-- N：表示多头数（Head-Num）
-- D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
+  RainFusionAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
+  - B：表示输入样本批量大小（Batch）
+  - T：B和S合轴紧密排列的长度（Total tokens）
+  - S：表示输入样本序列长度（Seq-Length）
+  - H：表示隐藏层的大小（Head-Size）
+  - N：表示多头数（Head-Num）
+  - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
 
-当前支持的布局：
-- qInputLayout: "TND" "BNSD"
-- kvInputLayout: "TND" "BNSD"
+  当前支持的布局：
+  - qInputLayout: "TND" "BNSD"
+  - kvInputLayout: "TND" "BNSD"
 
 
 ## 函数原型
@@ -103,7 +103,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的query。</td>
+      <td>公式中的query。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -113,7 +113,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的key。</td>
+      <td>公式中的key。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -123,7 +123,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>value</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的value。</td>
+      <td>公式中的value。</td>
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -133,7 +133,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>selectIdx</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，稀疏块索引数组，指定每个Q块选择的KV块索引。</td>
+      <td>稀疏块索引数组，指定每个Q块选择的KV块索引。</td>
       <td>
         <ul>
           <li>shape为[QBlockNum, headNum, maxKvBlockNum]。</li>
@@ -149,7 +149,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>selectNumIdx</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，每个Q块实际选择的KV块数量。</td>
+      <td>每个Q块实际选择的KV块数量。</td>
       <td>
         <ul>
           <li>shape为[QBlockNum, headNum]。</li>
@@ -164,7 +164,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>blockShape</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，稀疏块形状数组。</td>
+      <td>稀疏块形状数组。</td>
       <td>
         <ul>
           <li>必须包含至少两个元素[blockShapeX, blockShapeY]。</li>
@@ -180,7 +180,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的atten_mask。</td>
+      <td>公式中的atten_mask。</td>
       <td>当前不支持，传入nullptr。</td>
       <td>BOOL</td>
       <td>ND</td>
@@ -190,7 +190,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>actualSeqLengthsOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的query序列长度。</td>
+      <td>描述每个Batch对应的query序列长度。</td>
       <td>
         <ul>
           <li>如不使用可传nullptr。</li>
@@ -205,7 +205,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>actualSeqLengthsKvOptional</td>
       <td>输入</td>
-      <td>Host侧的aclIntArray，描述每个Batch对应的key/value序列长度。</td>
+      <td>描述每个Batch对应的key/value序列长度。</td>
       <td>
         <ul>
           <li>如不使用可传nullptr。</li>
@@ -220,7 +220,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>blockTableOptional</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，Block表用于PagedAttention。</td>
+      <td>Block表用于PagedAttention。</td>
       <td>当前不支持，传入nullptr。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>qInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query的数据排布格式。</td>
+      <td>代表输入query的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -240,7 +240,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>kvInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入key、value的数据排布格式。</td>
+      <td>代表输入key、value的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"。</td>
       <td>String</td>
       <td>-</td>
@@ -250,7 +250,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>numKeyValueHeads</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表key/value的head个数。</td>
+      <td>代表key/value的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -260,7 +260,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>maskType</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Mask类型。</td>
+      <td>Mask类型。</td>
       <td>0表示无mask，其他值表示不同的mask类型。</td>
       <td>INT64</td>
       <td>-</td>
@@ -270,7 +270,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>innerPrecise</td>
       <td>输入</td>
-      <td>Host侧的int64_t，Softmax精度控制。</td>
+      <td>Softmax精度控制。</td>
       <td>0表示float32 softmax，1表示fp16 softmax。</td>
       <td>INT64</td>
       <td>-</td>
@@ -290,7 +290,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>blockSize</td>
       <td>输入</td>
-      <td>Host侧的int64_t，PagedAttention的block大小。</td>
+      <td>PagedAttention的block大小。</td>
       <td>用于PagedAttention场景，如不使用可传0。</td>
       <td>INT64</td>
       <td>-</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>attentionOut</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，公式中的attentionOut。</td>
+      <td>公式中的attentionOut。</td>
       <td>数据类型和shape与query保持一致。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -310,7 +310,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td>softmaxLseOptional</td>
       <td>输出</td>
-      <td>Device侧的aclTensor，Softmax计算的log-sum-exp中间结果。</td>
+      <td>Softmax计算的log-sum-exp中间结果。</td>
       <td>当前不支持，传入nullptr。</td>
       <td>FLOAT</td>
       <td>ND</td>

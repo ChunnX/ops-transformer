@@ -17,7 +17,9 @@
 
 ## 功能说明
 
--  接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。相比于FusedInferAttentionScoreV4，本接口新增qStartIdxOptional、kvStartIdxOptional、pseType参数。
+-  接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。
+
+    相比于FusedInferAttentionScoreV4，本接口新增qStartIdxOptional、kvStartIdxOptional、pseType参数。
 
     **说明：** 
 decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
@@ -115,16 +117,15 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
 
 - **参数说明：**
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1497px"><colgroup> 
-     <col style="width: 150px"> 
-     <col style="width: 120px"> 
-     <col style="width: 300px"> 
-     <col style="width: 330px"> 
-     <col style="width: 212px"> 
-     <col style="width: 100px">  
-     <col style="width: 140px">  
-     <col style="width: 145px">  
+    <table style="undefined;table-layout: fixed; width: 1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 132px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 185px">
+    <col style="width: 119px">
+    <col style="width: 272px">
+    <col style="width: 145px">
      </colgroup>
     <thead>
     <tr>
@@ -935,7 +936,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
       </tr>
     </tbody></table>
-    </div>
 
 - **返回值：**
 
@@ -948,38 +948,38 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <col style="width: 144px">
     <col style="width: 671px">
     </colgroup>
-        <thead>
-            <th>返回值</th>
-            <th>错误码</th>
-            <th>描述</th>
-        </thead>
-        <tbody>
-            <tr>
-                <td>ACLNN_ERR_PARAM_NULLPTR</td>
-                <td>161001</td>
-                <td>传入的query、key、value、attentionOut是空指针。</td>
-            </tr>
-            <tr>
-                <td>ACLNN_ERR_PARAM_INVALID</td>
-                <td>161002</td>
-                <td>query、key、value、pseShift、attenMaskOptional、attentionOut的数据类型和数据格式不在支持的范围内。</td>
-            </tr>
-            <tr>
-                <td>ACLNN_ERR_RUNTIME_ERROR</td>
-                <td>361001</td>
-                <td>API内存调用npu runtime的接口异常。</td>
-            </tr>
-        </tbody>
+    <thead>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+    </thead>
+    <tbody>
+        <tr>
+            <td>ACLNN_ERR_PARAM_NULLPTR</td>
+            <td>161001</td>
+            <td>传入的query、key、value、attentionOut是空指针。</td>
+        </tr>
+        <tr>
+            <td>ACLNN_ERR_PARAM_INVALID</td>
+            <td>161002</td>
+            <td>query、key、value、pseShift、attenMaskOptional、attentionOut的数据类型和数据格式不在支持的范围内。</td>
+        </tr>
+        <tr>
+            <td>ACLNN_ERR_RUNTIME_ERROR</td>
+            <td>361001</td>
+            <td>API内存调用npu runtime的接口异常。</td>
+        </tr>
+    </tbody>
     </table>
 
 ## aclnnFusedInferAttentionScoreV5
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 900px"><colgroup>
-    <col style="width: 150px">
-    <col style="width: 100px">
-    <col style="width: 650px">
+    <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+    <col style="width: 184px">
+    <col style="width: 134px">
+    <col style="width: 833px">
     </colgroup>
     <thead>
         <tr>
@@ -1275,12 +1275,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     </table>
 
 - <a id="actSeqLen"></a>ActualSeqLen
-    <table style="undefined;table-layout: fixed; width: 900px">
-        <colgroup>
-            <col style="width: 150px">
-            <col style="width: 100px">
-            <col style="width: 500px">
-            <col style="width: 150px">
+    <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
+    <col style="width: 195px">
+    <col style="width: 156px">
+    <col style="width: 608px">
+    <col style="width: 189px">
         </colgroup>
         <thead>
             <tr>
@@ -1726,10 +1725,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     </table>
 
 - <a id="prefix"></a>Prefix
-    <table style="undefined;table-layout: fixed; width: 700px">
-        <colgroup>
-            <col style="width: 200px">
-            <col style="width: 500px">
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 218px">
+    <col style="width: 932px">
         </colgroup>
         <thead>
             <tr>
@@ -1768,11 +1766,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </tr>
             <tr>
                 <td colspan="2">
-                    <table style="table-layout: fixed; width: 680px" border="1" cellpadding="6" cellspacing="0">
+                    <table style="table-layout: fixed; width: 1140px" border="1" cellpadding="6" cellspacing="0">
                         <colgroup>
-                            <col style="width: 140px">
-                            <col style="width: 360px">
-                            <col style="width: 180px">
+                            <col style="width: 218px">
+                            <col style="width: 700px">
+                            <col style="width: 222px">
                         </colgroup>
                         <thead style="font-size: 12px;">
                             <tr>
@@ -1978,78 +1976,79 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
 
 
 - qkv FP8 per-block全量化
-    <table style="undefined;table-layout: fixed; width: 800px">
-        <colgroup>
-            <col style="width: 300px">
-            <col style="width: 500px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>参数</th>
-                <th>备注</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>query/key/value</td>
-                <td>
-                    <ul>
-                        <li>数据类型支持FLOAT8_E4M3FN、HIFLOAT8</li>
-                        <li>D轴支持1-128</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>keyAntiquantScale/valueAntiquantScale</td>
-                <td>
-                    <ul>
-                        <li>数据类型固定为FLOAT32</li>
-                        <li>当inputLayout为NTD_TND时，shape为(K_N, floor(K_T,256)+B, ceil(D,256))，其他场景shape为(B, K_N, ceil(K_S,256),1)</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>dequantScaleQuery</td>
-                <td>
-                    <ul>
-                        <li>数据类型固定为FLOAT32</li>
-                        <li>当inputLayout为NTD_TND时，shape为(Q_N, floor(Q_T,128)+B, ceil(D,256))，其他场景shape为(B, Q_N, ceil(Q_S,128),1)</li>
-                    </ul>
-                </td>
-            </tr>
-            <tr>
-                <td>attentionOut</td>
-                <td>
-                    支持FLOAT16和BFLOAT16
-                </td>
-            </tr>
-            <tr>
-                <td>queryQuantMode、keyAntiquantMode和valueAntiquantMode</td>
-                <td>
-                    仅支持7
-                </td>
-            </tr>
-            <tr>
-                <td>inputLayout</td>
-                <td>
-                    支持BNSD、BSH、BSND、BNSD_BSND、NTD_TND
-                </td>
-            </tr>
-            <tr>
-                <td colspan="2">
-                    <ul>
-                        <li> 在使用FP8 per-block全量化策略时，输入的query、key和value在量化前以float16或bfloat16格式存储。量化过程对张量按指定块大小(128,
-                            256)进行分块，并分别将每个块内的数据量化成FLOAT8_E4M3FN或HIFLOAT8类型，同时得到反量化系数dequantScaleQuery、keyAntiquantScale和valueAntiquantScale
-                        </li>
-                        <li>与不支持叠加任何高阶特性</li>
-                    </ul>
-                </td>
-            <tr>
-        </tbody>
+    <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+    <col style="width: 330px">
+    <col style="width: 821px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>备注</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>query/key/value</td>
+            <td>
+                <ul>
+                    <li>数据类型支持FLOAT8_E4M3FN、HIFLOAT8</li>
+                    <li>D轴支持1-128</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>keyAntiquantScale/valueAntiquantScale</td>
+            <td>
+                <ul>
+                    <li>数据类型固定为FLOAT32</li>
+                    <li>当inputLayout为NTD_TND时，shape为(K_N, floor(K_T,256)+B, ceil(D,256))，其他场景shape为(B, K_N, ceil(K_S,256),1)</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>dequantScaleQuery</td>
+            <td>
+                <ul>
+                    <li>数据类型固定为FLOAT32</li>
+                    <li>当inputLayout为NTD_TND时，shape为(Q_N, floor(Q_T,128)+B, ceil(D,256))，其他场景shape为(B, Q_N, ceil(Q_S,128),1)</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>attentionOut</td>
+            <td>
+                支持FLOAT16和BFLOAT16
+            </td>
+        </tr>
+        <tr>
+            <td>queryQuantMode、keyAntiquantMode和valueAntiquantMode</td>
+            <td>
+                仅支持7
+            </td>
+        </tr>
+        <tr>
+            <td>inputLayout</td>
+            <td>
+                支持BNSD、BSH、BSND、BNSD_BSND、NTD_TND
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <ul>
+                    <li> 在使用FP8 per-block全量化策略时，输入的query、key和value在量化前以float16或bfloat16格式存储。量化过程对张量按指定块大小(128,
+                        256)进行分块，并分别将每个块内的数据量化成FLOAT8_E4M3FN或HIFLOAT8类型，同时得到反量化系数dequantScaleQuery、keyAntiquantScale和valueAntiquantScale
+                    </li>
+                    <li>与不支持叠加任何高阶特性</li>
+                </ul>
+            </td>
+        <tr>
+    </tbody>
     </table>
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
   ```c++
   #include <iostream>
   #include <vector>

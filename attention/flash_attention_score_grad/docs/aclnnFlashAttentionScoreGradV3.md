@@ -13,9 +13,9 @@
 
 ## 功能说明
 
-- 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV3](../../flash_attention_score/docs/aclnnFlashAttentionScoreV3.md)的反向计算。**该接口相较于[aclnnFlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md)接口，新增sinkInOptional参数和dsinkOut输出**：
+训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV3](../../flash_attention_score/docs/aclnnFlashAttentionScoreV3.md)的反向计算。**该接口相较于[aclnnFlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md)接口，新增sinkInOptional参数和dsinkOut输出**：
 
-  - Ascend 950PR/Ascend 950DT产品暂不支持sinkInOptional参数和dsinkOut输出。
+  - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持sinkInOptional参数和dsinkOut输出。
   - pseType=1时，与[aclnnFlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)实现相同。
   - pseType=其他取值时，需要先mul再add。
 

@@ -102,16 +102,15 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
 - **参数说明**
 
-    <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1497px"><colgroup> 
-     <col style="width: 150px"> 
-     <col style="width: 120px"> 
-     <col style="width: 300px"> 
-     <col style="width: 330px"> 
-     <col style="width: 212px"> 
-     <col style="width: 100px">  
-     <col style="width: 140px">  
-     <col style="width: 145px">  
+    <table style="undefined;table-layout: fixed; width: 1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 132px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 185px">
+    <col style="width: 119px">
+    <col style="width: 272px">
+    <col style="width: 145px">
      </colgroup>
     <thead>
       <tr>
@@ -650,7 +649,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>-</td>
       </tr>
     </tbody></table>
-    </div>
 
 - **返回值**
 

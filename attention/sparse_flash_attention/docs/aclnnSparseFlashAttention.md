@@ -24,6 +24,7 @@ $$
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttention”接口执行计算。
+
 ```Cpp
 aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     const aclTensor     *query,
@@ -50,6 +51,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnSparseFlashAttention(
     void             *workspace, 
@@ -92,11 +94,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>query</td>
       <td>输入</td>
       <td>attention结构的Query输入。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
      <td>
@@ -132,18 +130,10 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>value</td>
       <td>输入</td>
       <td>attention结构的Value输入。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>shape与key的shape一致。</li>
-          </ul>
-      </td>
+      <td>shape与key的shape一致。</td>
       <td>x</td>
     </tr>
     <tr>
@@ -178,11 +168,7 @@ aclnnStatus aclnnSparseFlashAttention(
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>shape支持(B,S2/block_size)。</li>
-          </ul>
-      </td>
+      <td>shape支持(B,S2/block_size)。</td>
       <td>x</td>
     </tr>
     <tr>
@@ -224,11 +210,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>queryRope</td>
       <td>输入</td>
       <td>表示MLA结构中的query的rope信息。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -243,11 +225,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>keyRope</td>
       <td>输入</td>
       <td>表示MLA结构中的key的rope信息。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -333,11 +311,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>preTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
-      <td>
-          <ul>
-                <li>仅支持默认值2^63-1。</li>
-          </ul>
-      </td>
+      <td>仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -347,11 +321,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>nextTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
-      <td>
-          <ul>
-                <li>仅支持默认值2^63-1。</li>
-          </ul>
-      </td>
+      <td>仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -361,11 +331,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>attentionMode</td>
       <td>输入</td>
       <td>-</td>
-      <td>
-          <ul>
-                <li>仅支持传入2，表示MLA-absorb模式。</li>
-          </ul>
-      </td>
+      <td>仅支持传入2，表示MLA-absorb模式。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -390,11 +356,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>attentionOut</td>
       <td>输出</td>
       <td>公式中的输出。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -409,11 +371,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>softmaxMaxOut</td>
       <td>输出</td>
       <td>Attention算法对query乘key的结果，取max得到softmax_max。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>
@@ -428,11 +386,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>softmaxSumOut</td>
       <td>输出</td>
       <td>Attention算法query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。</td>
-      <td>
-          <ul>
-                <li>不支持空tensor。</li>
-          </ul>
-      </td>
+      <td>不支持空tensor。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>
@@ -498,6 +452,8 @@ aclnnStatus aclnnSparseFlashAttention(
     </table>
 
 ## aclnnSparseFlashAttention
+
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
   <col style="width: 173px">
