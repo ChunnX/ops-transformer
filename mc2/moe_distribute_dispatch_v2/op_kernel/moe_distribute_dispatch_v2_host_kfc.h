@@ -513,7 +513,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::V_S>();
         tokenNumToExpertTensor_.SetValue(expertIndex, static_cast<uint32_t>(maskCnt)); //todo :性能优化，大量使用SetValue
     }
-    LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1,calCnt});
+    // LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1,calCnt});
 
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_));
@@ -1366,18 +1366,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitWindow(uint32_t aivNum)
 {
-    //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
-
-        //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
+    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
 
     uint32_t startServerId, endServerId, serverCnt;
     SplitToCore(serverNum_, aivNum, startServerId, endServerId, serverCnt, true);
     if (startServerId >= serverNum_ || serverCnt == 0) {
         return;
     }
-    //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] startServerId:", startServerId);
-    //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] endServerId:", endServerId);
-    //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] serverCnt:", serverCnt);
+    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] startServerId:", startServerId);
+    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] endServerId:", endServerId);
+    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] serverCnt:", serverCnt);
 
     
     for (uint32_t dstServerInd = startServerId; dstServerInd < endServerId; ++dstServerInd) {
@@ -1440,6 +1438,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitStatusFlag(uint32_t serverIdx,
                                                                                            uint32_t &tokenCnt)
 {
+    LOG_INFO("[BATCHWRITE][WaitStatusFlag] enter WaitStatusFlag.");
     tpipe_->Reset();
     TBuf<> tBuf;
     LocalTensor<uint32_t> statusFlagLocal, statusCntLocal;
@@ -1459,7 +1458,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         LocalTensor<uint32_t> flagVal = statusFlagLocal.ReinterpretCast<uint32_t>();
         if (flagVal.GetValue(0) == 1) {
-            //LogInfo(__LINE__, "[BATCHWRITE][WaitStatusFlag] flag Get.");
+            LogInfo(__LINE__, "[BATCHWRITE][WaitStatusFlag] flag Get.");
             break;
         }
     }
