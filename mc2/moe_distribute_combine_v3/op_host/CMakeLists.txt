@@ -13,7 +13,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         moe_distribute_combine_v3_def.cpp
     )
     add_modules_sources(
-        OP_API_INDEPENDENT OFF
+        OP_API_INDEPENDENT ON
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
         OPTYPE moe_distribute_combine_v2 ACLNNTYPE aclnn_inner)
