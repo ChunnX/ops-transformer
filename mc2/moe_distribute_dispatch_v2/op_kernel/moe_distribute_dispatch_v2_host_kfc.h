@@ -1624,8 +1624,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CommunicateBetweenS
                                                                               uint32_t serverNum, uint32_t aivNum)
 {
     //LogInfo(__LINE__, "[BATCHWRITE][CommunicateBetweenServer] start");
-    ConstructDataAndFlagBatchWriteInfo(beginServerId, serverNum, aivNum);
-    PipeBarrier<PIPE_ALL>();
+    // ConstructDataAndFlagBatchWriteInfo(beginServerId, serverNum, aivNum);
+    // PipeBarrier<PIPE_ALL>();
     // if ASCEND_IS_AIV {
     //     if (aivId_ == aivUsedCumSum_) {
     //         bufferChosenGlobal_(0) = bufferId_ ^ 1;
