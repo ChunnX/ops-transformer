@@ -1017,9 +1017,11 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::OverLapScoreKv(
     if constexpr (COMP::coff == COFF::OVERLAP) {
         if (originSliceInfo.sIdx != 0 && originSliceInfo.compressTcSize > 0 &&
             (!loopInfo.isCoreRowFirst || !loopInfo.isCoreLoopFirst)) {
+            PipeBarrier<PIPE_V>();
             AddSingleApeToScore(scoreLocal, apeUb, originSliceInfo, dDealSize);
         }
     }
+    
     PipeBarrier<PIPE_V>();
 }
 
