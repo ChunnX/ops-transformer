@@ -295,6 +295,8 @@ struct QuantRunInfo {
 
     int64_t qInnerOffset[4];
     int64_t kvInnerOffset[4];
+
+    bool kvNeedAtomic;
 };
 struct FagRunInfo {
     RunInfo<false> commonRunInfo{0};
