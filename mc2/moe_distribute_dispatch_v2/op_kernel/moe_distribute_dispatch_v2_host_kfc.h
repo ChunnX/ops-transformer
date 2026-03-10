@@ -955,7 +955,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t curSendCnt, uint32_t startAivId, uint32_t curUseAivNum, uint32_t &startTokenId,
     uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
-    uint32_t sendTokenNum = curSendCnt / curUseAivNum;
+    sendTokenNum = curSendCnt / curUseAivNum;
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum;  // 余数
     uint32_t relativeAivId = aivId_ - startAivId;
     if(relativeAivId < remainderTokenNum) {
