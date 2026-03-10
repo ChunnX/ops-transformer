@@ -32,7 +32,7 @@ protected:
 TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_0)
 {
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -97,7 +97,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_0)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2400418603268571936;
     std::string expectTilingData = "1 1 1 256 256 0 128 128 0 4446465452318654464 65536 65536 0 0 0 16908546 1099511627776 1 0 0 0 0 0 0 255 0 0 0 0 0 0 0 0 0 0 0 2 2 2 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -109,7 +109,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_0)
 TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_1)
 {
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -174,7 +174,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_1)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2526519393640251952;
     std::string expectTilingData = "1 1 1 128 128 0 256 256 0 4467570831413529805 2147483647 2147483647 128 128 1 281474993618947 549755813888 1 0 0 2147483647 2147483647 0 0 204 0 0 0 0 0 0 0 0 0 0 0 2 2 2 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 ";
     std::vector<size_t> expectWorkspaces = {17170432};
@@ -187,7 +187,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_2)
     int64_t actual_seq_qlist[] = {13,14,81};
     int64_t actual_seq_kvlist[] = {13,14,81};
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -252,7 +252,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_2)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2522015793744446016;
     std::string expectTilingData = "3 2 1 81 67 0 192 192 0 4437115660700903014 67 0 1024 67 1 74027927481745412 8796093026561 0 0 0 67 0 2 0 229 0 0 0 0 0 0 0 0 0 0 0 8 8 2 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 3 4 5 6 7 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 1179648 8 8 8 ";
     std::vector<size_t> expectWorkspaces = {17966592};
@@ -265,7 +265,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_3)
     int64_t actual_seq_qlist[] = {169,333};
     int64_t actual_seq_kvlist[] = {169,297};
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -330,7 +330,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_3)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2328361009230643776;
     std::string expectTilingData = "2 4 1 333 169 0 126 126 0 4482494421136310272 65536 65536 0 0 0 260 0 0 0 0 65536 65536 2 0 255 0 0 0 0 0 0 0 0 0 0 0 24 24 3 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -341,7 +341,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_3)
 TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_4)
 {
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -406,7 +406,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_4)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2526519393908687664;
     std::string expectTilingData = "1 1 1 128 128 0 384 384 0 4467570831408496640 2147483647 2147483647 128 128 1 281474993618947 549755813888 1 0 0 2147483647 2147483647 12 33 127 0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ";
     std::vector<size_t> expectWorkspaces = {18546688};
@@ -416,7 +416,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_4)
 TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_5)
 {
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -481,7 +481,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_5)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2531022991657009712;
     std::string expectTilingData = "1 1 1 128 255 0 64 64 0 4467570831410174362 65409 127 0 0 1 73183506846581507 8796093022209 2 0 0 128 128 6 24 153 0 0 0 0 0 0 0 0 0 0 0 2 2 2 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 0 2 2 2 ";
     std::vector<size_t> expectWorkspaces = {16809984};
@@ -493,7 +493,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_6)
     int64_t actual_seq_qlist[] = {64,192};
     int64_t actual_seq_kvlist[] = {64,192};
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -558,7 +558,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_6)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2328361010304385856;
     std::string expectTilingData = "2 4 1 192 128 0 384 384 0 4418319178713268224 65536 65536 0 0 0 260 0 0 0 0 65536 65536 2 0 255 0 0 0 0 0 0 0 0 0 0 0 8 8 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 3 4 5 6 7 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 ";
     std::vector<size_t> expectWorkspaces = {30932992};
@@ -571,7 +571,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_7)
     int64_t actual_seq_kvlist[3] = {13,14,81};
     int64_t prefix[3] = {10, 12, 60};
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
-        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950};
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND910_95};
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
@@ -637,7 +637,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_7)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
          },
-                &compileInfo,"Ascend950",64,262144,8192);
+                &compileInfo,"Ascend910_95",64,262144,8192);
     int64_t expectTilingKey = 2458965399229694784;
     std::string expectTilingData = "3 2 1 81 67 0 256 256 0 4431542034392888115 65536 65536 0 0 1 17179869956 0 2 0 0 65536 65536 2 0 178 0 0 0 0 0 0 0 0 0 0 0 6 6 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 2 3 4 5 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 ";
     std::vector<size_t> expectWorkspaces = {19136512};

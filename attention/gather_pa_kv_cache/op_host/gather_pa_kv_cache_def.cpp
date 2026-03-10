@@ -60,7 +60,7 @@ public:
     explicit GatherPaKvCache(const char *name) : OpDef(name)
     {
         GatherPaKvCacheDefFor910b();
-        GatherPaKvCacheDefFor950();
+        GatherPaKvCacheDefFor910_95();
     }
 
 private:
@@ -117,7 +117,7 @@ private:
         this->AICore().AddConfig("ascend910_93");
     }
 
-    void GatherPaKvCacheDefFor950()
+    void GatherPaKvCacheDefFor910_95()
     {
         OpAICoreConfig aicoreConfig;
         aicoreConfig.Input("key_cache")
@@ -157,7 +157,7 @@ private:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .ExtendCfgInfo("opFile.value", "gather_pa_kv_cache_apt");
-        this->AICore().AddConfig("ascend950", aicoreConfig);
+        this->AICore().AddConfig("ascend910_95", aicoreConfig);
     }
 };
 

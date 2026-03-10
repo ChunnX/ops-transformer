@@ -382,7 +382,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckParam()
         platformInfo == nullptr, OP_LOGE(context_, "platform info is nullptr."),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND950) {
+    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(

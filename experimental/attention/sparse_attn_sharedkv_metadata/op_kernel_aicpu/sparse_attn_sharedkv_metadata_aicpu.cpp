@@ -234,7 +234,7 @@ bool SparseAttnSharedkvMetadataCpuKernel::ParamsCheck() {
 }
 
 ValidSocVersion SparseAttnSharedkvMetadataCpuKernel::ProcessSocVersion() {
-    const std::string ascend950 = "Ascend950";
+    const std::string ascend950 = "Ascend910_95";
     if (socVersion_.find(ascend950) != std::string::npos) {
         return ValidSocVersion::ASCEND950;
     } else {

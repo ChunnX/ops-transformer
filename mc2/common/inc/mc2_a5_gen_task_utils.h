@@ -25,7 +25,7 @@
 #include "platform/platform_info.h"
 
 namespace ops {
-const std::set<std::string> PLATFORM_A5 = {"Ascend950"};
+const std::set<std::string> PLATFORM_A5 = {"Ascend910_95"};
 const std::string COMM_ALG_MTE = "mte";
 const std::string COMM_ALG_CCU = "ccu";
 class Mc2A5GenTaskUtils {

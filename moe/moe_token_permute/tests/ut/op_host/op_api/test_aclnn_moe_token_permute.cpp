@@ -50,7 +50,7 @@ TEST_F(l2_moe_token_permute_test, Ascend910B2_moe_token_permute_fp32)
 }
 
 
-TEST_F(l2_moe_token_permute_test, Ascend95089_moe_token_permute_fp32)
+TEST_F(l2_moe_token_permute_test, Ascend910_9589_moe_token_permute_fp32)
 {
     auto tokens = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto indices = TensorDesc({1, 8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 8);

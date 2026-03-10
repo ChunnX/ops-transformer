@@ -192,8 +192,8 @@ protected:
 
     bool IsCapable() override
     {
-        if (socVersion != platform_ascendc::SocVersion::ASCEND950) {
-            OP_LOGD(opName, "Current soc version is not platform_ascendc::SocVersion::ASCEND950.");
+        if (socVersion != platform_ascendc::SocVersion::ASCEND910_95) {
+            OP_LOGD(opName, "Current soc version is not platform_ascendc::SocVersion::ASCEND910_95.");
             return false;
         }
         if (tilingKeyLayout != LayoutType::LAYOUT_TND) {
@@ -708,6 +708,6 @@ protected:
     }
 };
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingVarLen, (int32_t)platform_ascendc::SocVersion::ASCEND950, 82);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingVarLen, (int32_t)platform_ascendc::SocVersion::ASCEND910_95, 82);
 } // namespace FA
 } // namespace optiling

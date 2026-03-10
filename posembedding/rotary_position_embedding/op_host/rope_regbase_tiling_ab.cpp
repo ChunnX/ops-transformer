@@ -145,7 +145,7 @@ uint64_t RopeRegBaseTilingClassAB::GetTilingKey() const
 
 bool RopeRegBaseTilingClassAB::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
         return false;
     }
 

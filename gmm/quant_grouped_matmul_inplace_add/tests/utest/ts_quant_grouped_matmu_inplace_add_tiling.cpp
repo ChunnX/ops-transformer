@@ -15,7 +15,7 @@
 
 #include "ts_quant_grouped_matmul_inplace_add.h"
 
-using qgmmiaTestParam::Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend95091;
+using qgmmiaTestParam::Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend910_9591;
 namespace {
 const auto Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case = ::testing::Values(QuantGroupedMatmulInplaceAddCase(
     "QuantGroupedQuantInplaceAddMM_mxfp8_Case0", true, "", /* CaseName, Enable, DebugInfo */
@@ -29,9 +29,9 @@ const auto Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case = ::testing::Values(Quant
           GenTensor("group_list", {4}, ge::DataType::DT_INT64), {1, 1, 1, 1}, 0, 0),
     0));
 
-INSTANTIATE_TEST_SUITE_P(QuantGroupedMatmulInplaceAdd_David, Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend95091,
+INSTANTIATE_TEST_SUITE_P(QuantGroupedMatmulInplaceAdd_David, Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend910_9591,
                          Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case);
-TEST_P(Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend95091, Tc_Tiling_QGmmInplaceAdd)
+TEST_P(Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend910_9591, Tc_Tiling_QGmmInplaceAdd)
 {
     ASSERT_TRUE(case_->Init());
     ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);

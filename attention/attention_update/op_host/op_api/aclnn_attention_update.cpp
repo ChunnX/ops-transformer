@@ -373,7 +373,7 @@ aclnnStatus aclnnAttentionUpdateGetWorkspaceSize(
     
     // 固定写法，参数检查
     aclnnStatus ret;
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950) {
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95) {
         ret = attention_update::CheckParams_95(lse, localOut, out, lseOut, updateType);
     } else {
         ret = attention_update::CheckParams(lse, localOut, out, lseOut, updateType);
