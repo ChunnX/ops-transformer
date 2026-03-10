@@ -1362,7 +1362,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
 
     uint32_t startServerId, endServerId, serverCnt;
-    SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedDispatch_ ,aivNum - aivUsedCumSum_ - aivUsedDispatch_, startServerId, endServerId, serverCnt, true);
+    SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedDispatch_ ,aivNum - aivUsedCumSum_ - aivUsedDispatch_, startServerId, endServerId, serverCnt);
     if (startServerId >= serverNum_ || serverCnt == 0) {
         return;
     }
