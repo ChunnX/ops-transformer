@@ -152,9 +152,8 @@ private:
     __aicore__ inline void DoWindowCopy(LocalTensor<int32_t> &outLocal);
     __aicore__ inline void UpdateTokenNumsOut();
 
-    __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SplitToCore(
-                                                uint32_t curSendCnt, uint32_t startAivId, uint32_t curUseAivNum, uint32_t &startTokenId,
-                                                uint32_t &endTokenId, uint32_t &sendTokenNum);
+    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t startAivId, uint32_t curUseAivNum, uint32_t &startTokenId,
+                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
     __aicore__ inline void FillTriple(LocalTensor<ExpandXOutType> &xOutTensor, uint32_t srcRankIndex,
                                       uint32_t tokenIndex, uint32_t k, float expertScale);
     __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
