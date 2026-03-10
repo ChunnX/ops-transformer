@@ -822,8 +822,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<uint32_t>(serverCountTensor_, uint32_t(0), serverBuferLength);
     Duplicate<uint32_t>(tokenSendMap_, uint32_t(0), serverMapLength);
 
-    tpipe_->InitBuffer(expertOffsetCntBuf_, expertIdsCnt_ * sizeof(uint32_t));
-    expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<uint32_t>();
+    tpipe_->InitBuffer(expertOffsetCntBuf_, expertIdsCnt_ * sizeof(int16_t));
+    expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>();
     tpipe_->InitBuffer(xSendBuf_,sendTokenLength_);
 
     maxBlockCnt_ = max(max(blockCntPerToken_, blockCntPerCnt_), blockCntPerTokenToExpert_);
@@ -1234,7 +1234,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         uint32_t expertId = expertIdsTensor_.GetValue(index);
         uint32_t exprtOffset = expertOffsetTemp(expertId);
-        expertOffsetCntTensor_(index) = exprtOffset;
+        //expertOffsetCntTensor_(index) = exprtOffset;
         expertOffsetTemp(expertId) = exprtOffset + 1;
         if (aivId_ < aivUsedCumSum_) {
             tokenNumToExpertTensor_(expertId) = exprtOffset + 1;
