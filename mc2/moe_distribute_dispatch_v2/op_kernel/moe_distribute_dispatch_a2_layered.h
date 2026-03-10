@@ -202,8 +202,8 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     tpipe_ = pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchA2TilingData, tilingData, tilingGM);
 
-    hccl_.InitV2(contextGM0, &tilingData);
-    hccl_.SetCcTilingV2(offsetof(MoeDistributeDispatchA2TilingData, mc2CcTiling));
+    // hccl_.InitV2(contextGM0, &tilingData);
+    // hccl_.SetCcTilingV2(offsetof(MoeDistributeDispatchA2TilingData, mc2CcTiling));
 
     rankId_ = tilingData.moeDistributeDispatchInfo.epRankId;
     serverId_ = rankId_ / SERVER_RANK_SIZE;
@@ -1349,7 +1349,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         CopyPerformanceInfo();
-        hccl_.Finalize();
+        // hccl_.Finalize();
     }
 }
 } // MoeDistributeDispatchA2Impl

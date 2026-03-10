@@ -108,7 +108,7 @@ static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg
 
     if (NnopbaseSetHcclServerType) { // 给ACLnn框架指定通讯方式。
         if (is910B) {
-            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
         } else if (is950 && commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
         } else {
