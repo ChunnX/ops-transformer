@@ -2203,7 +2203,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<int32_t>  moeCntFlgTensor = subExpBuf_.Get<int32_t>();
     moeCntFlgGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(moeCntFlg));
 
-    // 写flag 核0不写
+    // 写flag 核0不写 1
     if (aivId_ != 0 ) {
         moeCntFlgTensor.SetValue(0,1);
         PipeBarrier<PIPE_V>();
