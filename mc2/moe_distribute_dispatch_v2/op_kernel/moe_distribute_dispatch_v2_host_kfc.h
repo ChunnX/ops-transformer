@@ -2510,20 +2510,21 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
-        } else {
-            // CalTokenSendExpertOffset();
-            if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
-                ScatterTokenToRemote();
-                // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
-            } else {
-                GatherTokenFrRemote(aivUsedGather_);
-            }
-
         }
-        // localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
-    }
+    //     } else {
+    //         // CalTokenSendExpertOffset();
+    //         if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
+    //             ScatterTokenToRemote();
+    //             // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
+    //         } else {
+    //             GatherTokenFrRemote(aivUsedGather_);
+    //         }
+
+    //     }
+    //     // localWindowCopy中包含reset操作，需确保前面操作完成
+    //     PipeBarrier<PIPE_ALL>();
+    //     LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+    // }
 }
 
 } // namespace MoeDistributeDispatchV2HostKfcImpl
