@@ -30,7 +30,6 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
-#include "mc2_exception_dump.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
@@ -38,8 +37,12 @@
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
 
-using namespace Mc2Tiling;
+#ifdef MC2_EXCEPTION_HANDLER
+#include "mc2_exception_dump.h"
 using namespace Mc2Exception;
+#endif
+
+using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
 
@@ -91,6 +94,7 @@ IMPL_OP_OPTILING(MoeDistributeDispatchV3)
     .Tiling(MoeDistributeDispatchV3TilingFunc)
     .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV3);
 
+#ifdef MC2_EXCEPTION_HANDLER
 // Register exception func
 inline void MoeDistributeDispatchV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
@@ -99,4 +103,5 @@ inline void MoeDistributeDispatchV3ExceptionImplWrapper(aclrtExceptionInfo *args
 
 IMPL_OP(MoeDistributeDispatchV3)
     .ExceptionDumpParseFunc(MoeDistributeDispatchV3ExceptionImplWrapper);
+#endif
 } // namespace optiling
