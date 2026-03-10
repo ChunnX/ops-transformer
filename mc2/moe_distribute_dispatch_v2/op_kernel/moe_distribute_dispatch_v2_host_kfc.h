@@ -481,62 +481,6 @@ private:
 };
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertTotalSendCnt(uint32_t startExpertId, uint32_t endExpertId, uint32_t sendExpertNum) 
-{
-    if (startExpertId >= endExpertId || sendExpertNum == 0) {
-        return;
-    }
-    uint64_t maskCnt = 0;
-    uint32_t compareCount = 0;
-    uint32_t maskNumPerExpert = 0;
-    uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
-    LOG_INFO("CalExpertTotalSendCnt mask",mask);
-
-    compareCount = Ceil(mask * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t); // 一共多少元素
-    maskNumPerExpert = compareCount / BITS_PER_BYTE / sizeof(int32_t); // 为了匹配CompareScalar接口1bit一共8位
-    LocalTensor<uint8_t> expertMaskTensorU8 = subExpBuf_.Get<uint8_t>();
-    LocalTensor<uint32_t> expertMaskTensorU32 = subExpBuf_.Get<uint32_t>();
-    LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();
-    tokenNumToExpertTensor_ = dstExpBuf_.Get<int32_t>();
-    
-    Duplicate<int32_t>(tokenNumToExpertTensor_, 0, moeExpertNum_);
-    SyncFunc<AscendC::HardEvent::MTE2_V>(); // 在init搬运Expert Id 需要等待流水结束
-    LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
-    if (isExpertMaskFlag_) { // 二维mask去掉不用发送的专家Id
-        LocalTensor<bool> maskStrideTensor = subExpBuf_.Get<bool>();
-        DataCopyPadExtParams<bool> maskStrideCopyPadParams{false, 0U, 0U, 0U};
-        DataCopyExtParams maskStrideParams{
-            static_cast<uint16_t>(axisBS_), static_cast<uint32_t>(axisK_ * sizeof(bool)), 0U, 0U, 0U};
-        DataCopyPad(maskStrideTensor, xActiveMaskGMTensor_, maskStrideParams, maskStrideCopyPadParams);
-        Adds(expertIdsTensor_, expertIdsTensor_, 1, expertIdsCnt_);
-        PipeBarrier<PIPE_V>();
-        LOG_INFO("CalExpertTotalSendCnt maskStrideTensor",maskStrideTensor, {axisBS_,axisK_});
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        LocalTensor<int8_t> maskStrideInt8Tensor = maskStrideTensor.ReinterpretCast<int8_t>();
-        LocalTensor<int32_t> maskStrideInt32Tensor = gatherMaskTBuf_.Get<int32_t>();
-        Cast(maskStrideInt32Tensor, maskStrideInt8Tensor, RoundMode::CAST_NONE, expertIdsCnt_);
-        PipeBarrier<PIPE_V>();
-        LOG_INFO("CalExpertTotalSendCnt",maskStrideInt32Tensor,{axisBS_,axisK_});
-        Mul(expertIdsTensor_, expertIdsTensor_, maskStrideInt32Tensor, expertIdsCnt_);
-        PipeBarrier<PIPE_V>();
-        Adds(expertIdsTensor_, expertIdsTensor_, -1, expertIdsCnt_);
-        PipeBarrier<PIPE_V>();
-    }
-    LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_ end",expertIdsTensor_,{axisBS_,axisK_});
-    PipeBarrier<PIPE_V>();
-    for (int32_t expertIndex = startExpertId; expertIndex < endExpertId; expertIndex++) {
-        int32_t dstExpertId = expertIndex;
-        Duplicate<uint32_t>(expertMaskTensorU32, 0, maskNumPerExpert);
-        PipeBarrier<PIPE_V>();
-        CompareScalar(expertMaskTensorU8, expertIdsTensor_, dstExpertId, CMPMODE::EQ, compareCount);
-        PipeBarrier<PIPE_V>();
-        GatherMask(gatherTempTensor, expertIdsTensor_, expertMaskTensorU32, true, mask, {1, 1, 0, 0}, maskCnt);
-        PipeBarrier<PIPE_V>();
-        tokenNumToExpertTensor_.SetValue(expertIndex, static_cast<uint32_t>(maskCnt)); //todo :性能优化，大量使用SetValue
-    }
-}
-
-template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitRecieveTilingContext(
     GM_ADDR expandXOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
@@ -2227,6 +2171,62 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             }
         }
         // TODO:调用接口发送数据。
+    }
+}
+
+template <TemplateDispatchKFCTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertTotalSendCnt(uint32_t startExpertId, uint32_t endExpertId, uint32_t sendExpertNum) 
+{
+    if (startExpertId >= endExpertId || sendExpertNum == 0) {
+        return;
+    }
+    uint64_t maskCnt = 0;
+    uint32_t compareCount = 0;
+    uint32_t maskNumPerExpert = 0;
+    uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
+    LOG_INFO("CalExpertTotalSendCnt mask",mask);
+
+    compareCount = Ceil(mask * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t); // 一共多少元素
+    maskNumPerExpert = compareCount / BITS_PER_BYTE / sizeof(int32_t); // 为了匹配CompareScalar接口1bit一共8位
+    LocalTensor<uint8_t> expertMaskTensorU8 = subExpBuf_.Get<uint8_t>();
+    LocalTensor<uint32_t> expertMaskTensorU32 = subExpBuf_.Get<uint32_t>();
+    LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();
+    tokenNumToExpertTensor_ = dstExpBuf_.Get<int32_t>();
+    
+    Duplicate<int32_t>(tokenNumToExpertTensor_, 0, moeExpertNum_);
+    SyncFunc<AscendC::HardEvent::MTE2_V>(); // 在init搬运Expert Id 需要等待流水结束
+    LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
+    if (isExpertMaskFlag_) { // 二维mask去掉不用发送的专家Id
+        LocalTensor<bool> maskStrideTensor = subExpBuf_.Get<bool>();
+        DataCopyPadExtParams<bool> maskStrideCopyPadParams{false, 0U, 0U, 0U};
+        DataCopyExtParams maskStrideParams{
+            static_cast<uint16_t>(axisBS_), static_cast<uint32_t>(axisK_ * sizeof(bool)), 0U, 0U, 0U};
+        DataCopyPad(maskStrideTensor, xActiveMaskGMTensor_, maskStrideParams, maskStrideCopyPadParams);
+        Adds(expertIdsTensor_, expertIdsTensor_, 1, expertIdsCnt_);
+        PipeBarrier<PIPE_V>();
+        LOG_INFO("CalExpertTotalSendCnt maskStrideTensor",maskStrideTensor, {axisBS_,axisK_});
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        LocalTensor<int8_t> maskStrideInt8Tensor = maskStrideTensor.ReinterpretCast<int8_t>();
+        LocalTensor<int32_t> maskStrideInt32Tensor = gatherMaskTBuf_.Get<int32_t>();
+        Cast(maskStrideInt32Tensor, maskStrideInt8Tensor, RoundMode::CAST_NONE, expertIdsCnt_);
+        PipeBarrier<PIPE_V>();
+        LOG_INFO("CalExpertTotalSendCnt",maskStrideInt32Tensor,{axisBS_,axisK_});
+        Mul(expertIdsTensor_, expertIdsTensor_, maskStrideInt32Tensor, expertIdsCnt_);
+        PipeBarrier<PIPE_V>();
+        Adds(expertIdsTensor_, expertIdsTensor_, -1, expertIdsCnt_);
+        PipeBarrier<PIPE_V>();
+    }
+    LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_ end",expertIdsTensor_,{axisBS_,axisK_});
+    PipeBarrier<PIPE_V>();
+    for (int32_t expertIndex = startExpertId; expertIndex < endExpertId; expertIndex++) {
+        int32_t dstExpertId = expertIndex;
+        Duplicate<uint32_t>(expertMaskTensorU32, 0, maskNumPerExpert);
+        PipeBarrier<PIPE_V>();
+        CompareScalar(expertMaskTensorU8, expertIdsTensor_, dstExpertId, CMPMODE::EQ, compareCount);
+        PipeBarrier<PIPE_V>();
+        GatherMask(gatherTempTensor, expertIdsTensor_, expertMaskTensorU32, true, mask, {1, 1, 0, 0}, maskCnt);
+        PipeBarrier<PIPE_V>();
+        tokenNumToExpertTensor_.SetValue(expertIndex, static_cast<uint32_t>(maskCnt)); //todo :性能优化，大量使用SetValue
     }
 }
 
