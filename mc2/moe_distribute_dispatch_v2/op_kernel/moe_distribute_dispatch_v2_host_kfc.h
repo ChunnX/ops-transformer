@@ -2511,11 +2511,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     WaitAndFormatOutput(tBuf, validNum);
 }
 
-template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteExpertOffset()
-{
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteExpertOffset()
+// {
 
-}
+// }
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenSendExpertOffset()
