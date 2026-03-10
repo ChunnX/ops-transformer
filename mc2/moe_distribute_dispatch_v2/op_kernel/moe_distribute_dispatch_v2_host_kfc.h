@@ -103,9 +103,9 @@ private:
 
     __aicore__ inline void InitTemp();
     __aicore__ inline void CalExpertTotalSendCnt();
-    __aicore__ inline void DispatchBetweenServer();
+    __aicore__ inline void ScatterTokenToRemote();
     __aicore__ inline void CommunicateBetweenServer(uint32_t beginServerId, uint32_t serverNum, uint32_t aivNum);
-    __aicore__ inline void WaitWindow(uint32_t aivNumForWait);
+    __aicore__ inline void GatherTokenFrRemote(uint32_t aivNumForWait);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
@@ -1309,7 +1309,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::DispatchBetweenServer()
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ScatterTokenToRemote()
 {
     activeMaskBsCnt_ = axisBS_;
     sendToMoeExpTokenCnt_ = axisBS_ * axisK_;
@@ -1385,25 +1385,25 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitWindow(uint32_t aivNum)
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote(uint32_t aivNum)
 {
-    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
+    LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] enter GatherTokenFrRemote.");
 
     uint32_t startServerId, endServerId, serverCnt;
     SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ , aivUsedGather_, startServerId, endServerId, serverCnt);
     if (startServerId >= serverNum_ || serverCnt == 0) {
         return;
     }
-    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] startServerId:", startServerId);
-    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] endServerId:", endServerId);
-    LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] serverCnt:", serverCnt);
+    LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] startServerId:", startServerId);
+    LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] endServerId:", endServerId);
+    LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] serverCnt:", serverCnt);
 
     
     for (uint32_t dstServerInd = startServerId; dstServerInd < endServerId; ++dstServerInd) {
         uint32_t tokenCnt;
-        ////LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] curServerId:", dstServerInd);
+        ////LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] curServerId:", dstServerInd);
         WaitStatusFlag(dstServerInd, tokenCnt);
-        //LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] tokenCnt:", tokenCnt);
+        //LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] tokenCnt:", tokenCnt);
         // buf分配
         //tpipe_->Reset(); //TODO 
 
@@ -2170,7 +2170,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalCumSum()
 {
-    InitCumSumBuffer();
+    // InitCumSumBuffer();
 
 
 
@@ -2484,7 +2484,6 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Process()
 {   
     if ASCEND_IS_AIV {
-
         if (isTokenMaskFlag_) {
             TokenActiveMaskCal();
         }
@@ -2494,12 +2493,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         } else {
             // CalTokenSendExpertOffset();
             if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
-                //ScatterTokenToRemote();
-                DispatchBetweenServer();
+                ScatterTokenToRemote();
                 // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
             } else {
-                //GatherTokenFrRemote()
-                WaitWindow(aivUsedGather_);
+                GatherTokenFrRemote(aivUsedGather_);
             }
 
         }
