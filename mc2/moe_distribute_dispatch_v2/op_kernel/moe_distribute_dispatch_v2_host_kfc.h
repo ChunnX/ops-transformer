@@ -490,6 +490,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t compareCount = 0;
     uint32_t maskNumPerExpert = 0;
     uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
+    LOG_INFO("CalExpertTotalSendCnt mask",mask);
+
     compareCount = Ceil(mask * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t); // 一共多少元素
     maskNumPerExpert = compareCount / BITS_PER_BYTE / sizeof(int32_t); // 为了匹配CompareScalar接口1bit一共8位
     LocalTensor<uint8_t> expertMaskTensorU8 = subExpBuf_.Get<uint8_t>();
@@ -499,6 +501,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     
     Duplicate<int32_t>(tokenNumToExpertTensor_, 0, moeExpertNum_);
     SyncFunc<AscendC::HardEvent::MTE2_V>(); // 在init搬运Expert Id 需要等待流水结束
+    LOG_INFO("expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
     if (isExpertMaskFlag_) { //二维mask去掉不用发送的专家Id
         LocalTensor<bool> maskStrideTensor = subExpBuf_.Get<bool>();
         DataCopyPadExtParams<bool> maskStrideCopyPadParams{false, 0U, 0U, 0U};
@@ -2212,14 +2215,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     
     // 软同步，轮询flag
-    int count = 0;
     if(aivId_ == 0) {
         while(true) {
-            count ++;
-            if(count == 100000) {
-                LOG_INFO("SendExpertCnt error count");
-                break;
-            }
             DataCopy(moeCntFlgTensor, moeCntFlgGMTensor, UB_ALIGN /sizeof(int32_t));
             PipeBarrier<PIPE_MTE2>();
             if(moeCntFlgTensor.GetValue(0) == aivUsedCumSum_ - 1){
@@ -2514,7 +2511,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {   
     if ASCEND_IS_AIV {
         if (isTokenMaskFlag_) {
+            LOG_INFO("activeMaskBsCnt_ start",activeMaskBsCnt_);
             TokenActiveMaskCal();
+            LOG_INFO("activeMaskBsCnt_ end",activeMaskBsCnt_);
         }
 
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
