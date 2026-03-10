@@ -2204,6 +2204,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         DataCopyPad(maskStrideTensor, xActiveMaskGMTensor_, maskStrideParams, maskStrideCopyPadParams);
         Adds(expertIdsTensor_, expertIdsTensor_, 1, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("CalExpertTotalSendCnt xActiveMaskGMTensor_",xActiveMaskGMTensor_, {axisBS_,axisK_});
         LOG_INFO("CalExpertTotalSendCnt maskStrideTensor",maskStrideTensor, {axisBS_,axisK_});
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         LocalTensor<int8_t> maskStrideInt8Tensor = maskStrideTensor.ReinterpretCast<int8_t>();
