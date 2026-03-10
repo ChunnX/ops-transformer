@@ -454,7 +454,8 @@ private:
     uint32_t scaleOutBytes_{0};
     uint32_t scalesCount_{0};
     uint32_t aivUsedCumSum_{0}; //todo：初始化
-    uint32_t aivUsedDispatch_{0};
+    uint32_t aivUsedScatter_{0};
+    uint32_t aivUsedGather_{0};
     uint32_t startId_{0};
     uint32_t endId_{0};
     uint32_t sendNum_{0};
@@ -946,7 +947,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitDispatchBetweenServerInfo();
     //LogInfo(__LINE__, "Init end: ");
     aivUsedCumSum_ = 2; //TODO:
-    aivUsedDispatch_ = (aivNum_ -aivUsedCumSum_) / 2;
+    aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1178,7 +1179,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("start SendToServer");
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
-    SplitToCore(totalSendCnt, aivUsedCumSum_, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum);
+    SplitToCore(totalSendCnt, aivUsedCumSum_, aivUsedScatter_, startTokenId, endTokenId, sendTokenNum);
     LOG_INFO("startTokenId",startTokenId);
     LOG_INFO("endTokenId",endTokenId);
     LOG_INFO("sendTokenNum",sendTokenNum);
@@ -1192,7 +1193,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     // uint32_t totalSendCnt = activeMaskBsCnt_;
     // uint32_t startTokenId, endTokenId, sendTokenNum;
-    // SplitToCore(totalSendCnt, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum, true);
+    // SplitToCore(totalSendCnt, aivUsedScatter_, startTokenId, endTokenId, sendTokenNum, true);
     // if (startTokenId >= totalSendCnt || sendTokenNum == 0) {
     //     return;
     // }
@@ -1263,7 +1264,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     uint32_t totalSeverCnt = serverNum_;
     uint32_t startServerNum, endServerNum, sendServerNum;
-    SplitToCore(totalSeverCnt, aivUsedCumSum_, aivUsedDispatch_, startServerNum, endServerNum, sendServerNum);
+    SplitToCore(totalSeverCnt, aivUsedCumSum_, aivUsedScatter_, startServerNum, endServerNum, sendServerNum);
     if(startServerNum >= totalSeverCnt || sendServerNum == 0){
         return;
     }
@@ -1316,7 +1317,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // 计算当前core要处理的server
     uint32_t startServerId, endServerId, batchWriteItemNum;
 
-    SplitToCore(serverNum, aivUsedCumSum_, aivUsedDispatch_, startServerId, endServerId, batchWriteItemNum);
+    SplitToCore(serverNum, aivUsedCumSum_, aivUsedScatter_, startServerId, endServerId, batchWriteItemNum);
     ////LogInfo(__LINE__, "[BATCHWRITE][ConstructDataAndFlagBatchWriteInfo] batchWriteItemNum:", batchWriteItemNum);
 
     if (startServerId >= serverNum || batchWriteItemNum == 0) {
@@ -1362,7 +1363,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
 
     uint32_t startServerId, endServerId, serverCnt;
-    SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedDispatch_ ,aivNum - aivUsedCumSum_ - aivUsedDispatch_, startServerId, endServerId, serverCnt);
+    SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ ,aivNum - aivUsedCumSum_ - aivUsedScatter_, startServerId, endServerId, serverCnt);
     if (startServerId >= serverNum_ || serverCnt == 0) {
         return;
     }
@@ -2452,11 +2453,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if ASCEND_IS_AIV {
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
-        } else if(aivId_ < aivUsedCumSum_ + aivUsedDispatch_) { //框间dispatch + 发送
+        } else if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) { //框间dispatch + 发送
+
+            //ScatterTokenToRemote();
             DispatchBetweenServer();
-            // CommunicateBetweenServer(0, serverNum_, aivUsedDispatch_);
+            // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
         } else { //框内接收 + 框内发送
-            WaitWindow(aivNum_ - aivUsedDispatch_ - aivUsedCumSum_);
+            //GatherTokenFrRemote()
+            WaitWindow(aivNum_ - aivUsedScatter_ - aivUsedCumSum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
