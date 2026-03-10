@@ -397,6 +397,14 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <tr>
         <td>输入属性和输入tensor之间的shape信息不匹配。</td>
         </tr>
+        <tr>
+        <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
+        <td rowspan="2"> 361001 </td>
+        <td>query或者key非64B对齐。</td>
+        </tr>
+        <tr>
+        <td>rotaryDim>headSize。</td>
+        </tr>
     </tbody></table>
 
 ## aclnnRopeWithSinCosCache
