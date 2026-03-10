@@ -2505,6 +2505,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 // template <TemplateDispatchKFCTypeClass>
 // __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteExpertOffset()
 // {
+//     GlobalTensor<int16_t> expertOffsetCntGMTensor;
 
 // }
 
@@ -2615,8 +2616,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // localWindowCopy中包含reset操作，需确保前面操作完成
         // PipeBarrier<PIPE_ALL>();
         // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
-    }
-
 }
 
 } // namespace MoeDistributeDispatchV2HostKfcImpl
