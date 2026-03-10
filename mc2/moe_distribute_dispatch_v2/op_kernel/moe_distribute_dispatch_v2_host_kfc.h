@@ -2214,12 +2214,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // 软同步，轮询flag
     int count = 0;
     if(aivId_ == 0) {
-        count ++;
-        if(count == 100000) {
-            LOG_INFO("SendExpertCnt error count");
-            break;
-        }
         while(true) {
+            count ++;
+            if(count == 100000) {
+                LOG_INFO("SendExpertCnt error count");
+                break;
+            }
             DataCopy(moeCntFlgTensor, moeCntFlgGMTensor, UB_ALIGN /sizeof(int32_t));
             PipeBarrier<PIPE_MTE2>();
             if(moeCntFlgTensor.GetValue(0) == aivUsedCumSum_ - 1){
