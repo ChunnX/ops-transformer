@@ -130,8 +130,9 @@ private:
     static constexpr uint64_t SYNC_MODE2 = 2;
     static constexpr uint32_t SYNC_C1_FLAG = 3;
     static constexpr uint32_t SYNC_V1_FLAG = 4;
-    static constexpr uint32_t SYNC_C1_V1_FLAG = 5;
-    static constexpr uint32_t SYNC_V1_C1_FLAG = 7;
+    static constexpr uint32_t SYNC_V1_FLAG2 = 5;
+    static constexpr uint32_t SYNC_C1_V1_FLAG = 6;
+    static constexpr uint32_t SYNC_V1_C1_FLAG = 8;
 
     // ==============================TilingData&TPipe==============================
     TPipe* pipe_;
@@ -565,11 +566,13 @@ __aicore__ inline void CompressorKernelPerf<COMP>::ComputeMm1(const RunInfo &inf
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::ComputeVec1(const Vec1RunInfo &info) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
-    CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG + info.c1v1DbIdx);
+    CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
     // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
+    CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
+    CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
-    CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG + (info.c1v1DbIdx + 1) % constInfo.dbWorkspaceRatio);
+    CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG2 + (info.c1v1DbIdx + 1) % constInfo.dbWorkspaceRatio);
 }
 
 template <typename COMP>
@@ -587,8 +590,8 @@ __aicore__ inline void CompressorKernelPerf<COMP>::AllocEventID()
         blockVec_.AllocEventID();
     for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
         CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
-        CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG + i);
     }
+    CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG2);
     }
 }
 
@@ -601,9 +604,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::FreeEventID()
         }
         blockCube_.FreeEventID(pipe_);
     } else {
-        for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-            CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG + i);
-        }
+        CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + loopTimes % constInfo.dbWorkspaceRatio);
         blockVec_.FreeEventID();
     }
 }
