@@ -1905,6 +1905,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (startPosId >= expertNumInServer_ * serverNum_) {
         return;
     }
+    LOG_INFO("startPosId :",startPosId);
+    LOG_INFO("endPosId :",endPosId);
+    LOG_INFO("sendPosNum :",sendPosNum);
 
     for (uint32_t posIndex = startPosId; posIndex < endPosId; posIndex ++) {
         uint32_t expertIndex = posIndex % expertNumInServer_;
