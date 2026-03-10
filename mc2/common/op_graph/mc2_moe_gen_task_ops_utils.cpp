@@ -299,7 +299,8 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(const gert::ExeResGenera
     if (opTypeStr == MOE_DISTRIBUTE_COMBINE_TEARDOWN_OP_TYPE || opTypeStr == MOE_DISTRIBUTE_DISPATCH_TEARDOWN_OP_TYPE) {
         return ge::GRAPH_SUCCESS;
     }
-    return Mc2MoeInsertTask(context, tasks, groupCnt);
+    // return Mc2MoeInsertTask(context, tasks, groupCnt);
+    return ge::GRAPH_SUCCESS;
 }
 
 // 支持静态图在线编译.o
