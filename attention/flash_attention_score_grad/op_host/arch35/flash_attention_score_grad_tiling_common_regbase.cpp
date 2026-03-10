@@ -1484,11 +1484,11 @@ void DetermineMode(FuzzyBaseInfoParamsRegbase& fBaseParams)
     } else if (fBaseParams.queryType == ge::DT_BF16) {
         fBaseParams.inputDtype = DtypeEnum::BFLOAT16;
     } else if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2) {
-        fBaseParams.inputDtype = (optiling::DtypeEnum)4;    // DtypeEnum::FLOAT8_E5M2
+        fBaseParams.inputDtype = (optiling::DtypeEnum)(DTYPE_ENUM_INDEX_4);    // DtypeEnum::FLOAT8_E5M2
     } else if (fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN) {
-        fBaseParams.inputDtype = (optiling::DtypeEnum)5;    // DtypeEnum::FLOAT8_E4M3
+        fBaseParams.inputDtype = (optiling::DtypeEnum)(DTYPE_ENUM_INDEX_5);    // DtypeEnum::FLOAT8_E4M3
     } else if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
-        fBaseParams.inputDtype = (optiling::DtypeEnum)6;    // DtypeEnum::HIFLOAT8
+        fBaseParams.inputDtype = (optiling::DtypeEnum)(DTYPE_ENUM_INDEX_6);    // DtypeEnum::HIFLOAT8
     } else {
         fBaseParams.inputDtype = DtypeEnum::FLOAT16_PRECISION;
     }

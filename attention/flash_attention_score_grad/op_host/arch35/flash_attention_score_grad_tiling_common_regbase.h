@@ -42,6 +42,9 @@ constexpr uint32_t BOOL_BLOCK_NUMS = 32;
 constexpr size_t RESERVED_WORKSPACE_SIZE = static_cast<size_t>(64 * 1024);
 constexpr uint32_t EMPTY_TENSOR = 0;
 constexpr uint32_t NORMAL_TENSOR = 1;
+constexpr uint32_t DTYPE_ENUM_INDEX_4 = 4;
+constexpr uint32_t DTYPE_ENUM_INDEX_5 = 5;
+constexpr uint32_t DTYPE_ENUM_INDEX_6 = 6;
 constexpr uint32_t MAX_BASIC_BLOCK_SIZE = 1024;
 
 // pse
