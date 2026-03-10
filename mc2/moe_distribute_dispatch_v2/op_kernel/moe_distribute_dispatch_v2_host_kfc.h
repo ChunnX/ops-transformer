@@ -2202,7 +2202,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         LocalTensor<bool> maskStrideTensor = gatherMaskTBuf_.Get<bool>();
         DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
         DataCopyExtParams maskParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(bool)), 0U, 0U, 0U};
-        DataCopyPad(maskInputTensor, xActiveMaskGMTensor_, maskParams, maskCopyPadParams);
+        DataCopyPad(maskStrideTensor, xActiveMaskGMTensor_, maskParams, maskCopyPadParams);
         Adds(expertIdsTensor_, expertIdsTensor_, 1, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
         PipeBarrier<PIPE_ALL>();
