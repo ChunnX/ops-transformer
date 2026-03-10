@@ -750,6 +750,7 @@ ge::graphStatus FusedFloydAttentionGradTilingS1s2Bn2gs1s2::PostTiling()
                                            fBaseParams.coreNum),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
+    context_->SetScheduleMode(1);
 
     tilingData.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());

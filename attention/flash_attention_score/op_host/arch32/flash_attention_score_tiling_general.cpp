@@ -1997,6 +1997,7 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
     if (inputParams.get_needDropMaskOp() == 1) {
         blockDim = CalcTschBlockDim(aivNum, aicNum, aivNum);
         context_->SetBlockDim(blockDim);
+        context_->SetScheduleMode(1);
 
         int64_t shapeTotalSize = inputParams.get_bSize() * inputParams.get_n2Size() * inputParams.get_gSize() *
                                  inputParams.get_s1Size() * inputParams.get_s2Size();

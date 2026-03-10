@@ -360,6 +360,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::PostTiling()
     // setBlockDim
     uint32_t cubeCoreNum = compileInfoPtr->aicNum;
     context_->SetBlockDim(cubeCoreNum);
+    context_->SetScheduleMode(1);
 
     return ge::GRAPH_SUCCESS;
 }

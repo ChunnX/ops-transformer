@@ -1172,6 +1172,7 @@ public:
                              aicoreParams_.numBlocks),
                    return ge::GRAPH_PARAM_INVALID);
         context_->SetBlockDim(blockdim);
+        context_->SetScheduleMode(1);
 
         size_t *workspaces = context_->GetWorkspaceSizes(1);
         workspaces[0] = workspaceSize_;

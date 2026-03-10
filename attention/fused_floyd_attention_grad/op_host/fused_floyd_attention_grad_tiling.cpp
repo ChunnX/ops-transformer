@@ -99,6 +99,7 @@ public:
         auto sliceNum =
             (dqNum < aivNum && dkNum < aivNum) ? std::max(dqNum, dkNum) : aivNum;
         context->SetBlockDim(CalculateTschBlockDim(sliceNum, aicNum, aivNum));
+        context->SetScheduleMode(1);
         size_t *workspaces = context->GetWorkspaceSizes(1);
         // workspace上预留100M
         workspaces[0] = 100 * 1024 * 1024;
