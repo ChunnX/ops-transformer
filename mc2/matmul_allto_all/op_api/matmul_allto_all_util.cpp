@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "checker.h"
+#include "matmul_allto_all_util.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "op_mc2.h"
@@ -94,13 +94,41 @@ bool CheckGroupLength(const char *group)
     return true;
 }
 
-// 校验MatmulAlltoAll和QuantMatmulAlltoAll输入属性shape
-bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
-                bool transposeX2, const aclTensor* output)
+// 校验输入tensor的维度
+bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTensor* output,
+                          const aclTensor* alltoAllOutOptional = nullptr)
 {
     OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
     OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
     OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
+    if (alltoAllOutOptional != nullptr) {
+        OP_CHECK_WRONG_DIMENSION(alltoAllOutOptional, TWO_DIMS, return false);
+    }
+    return true;
+}
+
+// 校验bias的维度和shape
+bool CheckBiasShape(const aclTensor* biasOptional, int64_t nVal)
+{
+    if (biasOptional != nullptr) {
+        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
+        auto biasDim = biasOptional->GetViewShape().GetDim(0);
+        if (biasDim != nVal) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "The n-axis of x2 and bias should be same, but x2's n-axis is: %ld and bias's n-axis is: %ld.", nVal, biasDim);
+            return false;
+        }
+    }
+    return true;
+}
+
+// 校验MatmulAlltoAll和QuantMatmulAlltoAll输入属性shape
+bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
+                bool transposeX2, const aclTensor* output)
+{
+    if (!CheckInputDimensions(x1, x2, output)) {
+        return false;
+    }
     auto kdimX1 = x1->GetViewShape().GetDim(1);
     auto kdimX2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     if (kdimX1 != kdimX2) {
@@ -114,41 +142,18 @@ bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* b
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
-    if (biasOptional != nullptr){
-        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
-        auto biasDim = biasOptional->GetViewShape().GetDim(0);
-        if (biasDim != nVal) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "The n-axis of x2 and bias should be same, but x2's n-axis is: %ld and bias's n-axis is: %ld.", nVal, biasDim);
-            return false;
-        }
-    }
-    return true;
+    return CheckBiasShape(biasOptional, nVal);
 }
 
 // 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
 bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
                     bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional)
 {
-    // 校验维度
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
-    if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(alltoAllOutOptional, TWO_DIMS, return false);
+    if (!CheckInputDimensions(x1, x2, output, alltoAllOutOptional)) {
+        return false;
     }
-    // 校验bias的维度和shape
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
-    if (biasOptional != nullptr){
-        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
-        auto biasDim = biasOptional->GetViewShape().GetDim(0);
-        if (biasDim != nVal) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "The n-axis of x2 and bias should be same, but x2's n-axis is: %ld and bias's n-axis is: %ld.", nVal, biasDim);
-            return false;
-        }
-    }
-    return true;
+    return CheckBiasShape(biasOptional, nVal);
 }
 
 // 检查groupSize是否合法，仅在组量化（MX）场景下需要取值，其它场景默认为0

@@ -23,7 +23,7 @@
 #include "hccl_util.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
-#include "mc2/matmul_allto_all/op_api/checker.h"
+#include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
 
 
 namespace {

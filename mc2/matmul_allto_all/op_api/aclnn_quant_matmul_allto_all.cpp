@@ -10,7 +10,7 @@
 
 #include "aclnn_quant_matmul_allto_all.h"
 #include "securec.h"
-#include "checker.h"
+#include "matmul_allto_all_util.h"
 #include "op_mc2.h"
 #include "acl/acl.h"
 #include "op_mc2_def.h"
@@ -484,7 +484,7 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAll(void *workspace, uint64_t worksp
     }
     aclnnStatus ret = aclnnInnerMatmulAlltoAll(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, 
+        OP_LOGE(ACLNN_ERR_INNER,
                 "This is an error in launch aicore, aclnnQuantMatmulAlltoAll interface call failed.");
         return ACLNN_ERR_INNER;
     }

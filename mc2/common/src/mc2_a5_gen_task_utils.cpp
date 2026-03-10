@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_a5_gen_task_utils.cpp
@@ -17,7 +17,7 @@
 #include "mc2_a5_gen_task_utils.h"
 #include "mc2_gen_task_utils.h"
 #include "runtime/rt_model.h"
-#include "checker.h"
+#include "matmul_allto_all_util.h"
 #include "error/ops_error.h"
 #include "error_util.h"
 #include "proto/task.pb.h"
@@ -146,7 +146,7 @@ ge::Status Mc2A5GenTaskUtils::InsertContextForCcuFusion(const gert::ExeResGenera
   // is_all_kernel为true表示优先进行二进制复用，如果没有匹配到则进行在线编译
   aicore_fusion_task_info->set_is_all_kernel(isAllKernel);
   OPS_LOG_I(context->GetNodeName(), "set is all kernel to %u.", isAllKernel);
-  // 设置attribute中的numBlocks 
+  // 设置attribute中的numBlocks
   auto config = aicore_fusion_task_info->mutable_config();
   GE_ASSERT_NOTNULL(config);
   config->add_launch_attribute();

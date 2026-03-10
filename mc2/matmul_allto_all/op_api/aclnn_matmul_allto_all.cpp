@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_matmul_allto_all.h"
-#include "checker.h"
+#include "matmul_allto_all_util.h"
 #include "securec.h"
 #include "op_mc2.h"
 #include "acl/acl.h"
