@@ -620,7 +620,6 @@ CompressorBlockVectorPerf<COMP>::DataCopyWithOutputQue(const GlobalTensor<O> &ds
 
         outputQue1.FreeTensor(outputUb);
     }
-    PipeBarrier<PIPE_V>();
 }
 
 template <typename COMP>
@@ -650,7 +649,6 @@ CompressorBlockVectorPerf<COMP>::DataCopyWithInputQue(const LocalTensor<O> &dstL
 
         inputQue2.FreeTensor(inputUb);
     }
-    PipeBarrier<PIPE_V>();
 }
 
 template <typename COMP>
