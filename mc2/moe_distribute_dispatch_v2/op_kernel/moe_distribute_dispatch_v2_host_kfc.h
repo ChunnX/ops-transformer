@@ -299,7 +299,7 @@ private:
     LocalTensor<uint64_t> batchWriteU64Tensor_;
     LocalTensor<uint32_t> batchWriteU32Tensor_;
     LocalTensor<uint32_t> finishNumTensor_;
-    LocalTensor<uint32_t> expertOffsetCntTensor_;
+    LocalTensor<int16_t> expertOffsetCntTensor_;
     LocalTensor<bool> expertMaskInputTensor_;
     LocalTensor<uint32_t> flagTensor_;
     LocalTensor<float> statusCleanFp32Tensor_;
