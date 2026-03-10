@@ -151,8 +151,10 @@ private:
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
     __aicore__ inline void DoWindowCopy(LocalTensor<int32_t> &outLocal);
     __aicore__ inline void UpdateTokenNumsOut();
-    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
-                                       uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
+
+    __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SplitToCore(
+                                                uint32_t curSendCnt, uint32_t startAivId, uint32_t curUseAivNum, uint32_t &startTokenId,
+                                                uint32_t &endTokenId, uint32_t &sendTokenNum);
     __aicore__ inline void FillTriple(LocalTensor<ExpandXOutType> &xOutTensor, uint32_t srcRankIndex,
                                       uint32_t tokenIndex, uint32_t k, float expertScale);
     __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
@@ -950,25 +952,17 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SplitToCore(
-    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
-    uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront)
+    uint32_t curSendCnt, uint32_t startAivId, uint32_t curUseAivNum, uint32_t &startTokenId,
+    uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
-    sendTokenNum = curSendCnt / curUseAivNum;                // 每个aiv需要发送的token数
+    uint32_t sendTokenNum = curSendCnt / curUseAivNum;
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum;  // 余数
-    uint32_t newAivId;  
-    if (aivId_ < aivUsedCumSum_) {
-        newAivId = aivId_;
-    } else if (aivId_ < aivUsedCumSum_ + aivUsedDispatch_) {
-        newAivId = aivId_ - aivUsedCumSum_;
-    } else {
-        newAivId = aivId_ - (aivUsedCumSum_ + aivUsedDispatch_);
-    }
-    startTokenId = sendTokenNum * newAivId;  // 每个aiv发送时的起始rankid
-    if (newAivId < remainderTokenNum) {      // 前remainderRankNum个aiv需要多发1个卡的数据
+    uint32_t relativeAivId = aivId_ - startAivId;
+    if(relativeAivId < remainderTokenNum) {
         sendTokenNum += 1;
-        startTokenId += newAivId;
+        startTokenId = relativeAivId * sendTokenNum;
     } else {
-        startTokenId += remainderTokenNum;
+        startTokenId = sendTokenNum * relativeAivId + remainderTokenNum;
     }
     endTokenId = startTokenId + sendTokenNum;
 }
@@ -1185,7 +1179,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("start SendToServer");
     uint32_t totalSendCnt = activeMaskBsCnt_;
     uint32_t startTokenId, endTokenId, sendTokenNum;
-    SplitToCore(totalSendCnt, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum, true);
+    SplitToCore(totalSendCnt, aivUsedCumSum_, aivUsedDispatch_, startTokenId, endTokenId, sendTokenNum);
     LOG_INFO("startTokenId",startTokenId);
     LOG_INFO("endTokenId",endTokenId);
     LOG_INFO("sendTokenNum",sendTokenNum);
@@ -1270,7 +1264,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     uint32_t totalSeverCnt = serverNum_;
     uint32_t startServerNum, endServerNum, sendServerNum;
-    SplitToCore(totalSeverCnt, aivUsedDispatch_, startServerNum, endServerNum, sendServerNum, true);
+    SplitToCore(totalSeverCnt, aivUsedCumSum_, aivUsedDispatch_, startServerNum, endServerNum, sendServerNum);
     if(startServerNum >= totalSeverCnt || sendServerNum == 0){
         return;
     }
@@ -1323,7 +1317,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // 计算当前core要处理的server
     uint32_t startServerId, endServerId, batchWriteItemNum;
 
-    SplitToCore(serverNum, aivNum, startServerId, endServerId, batchWriteItemNum, true);
+    SplitToCore(serverNum, aivUsedCumSum_, aivUsedDispatch_, startServerId, endServerId, batchWriteItemNum);
     ////LogInfo(__LINE__, "[BATCHWRITE][ConstructDataAndFlagBatchWriteInfo] batchWriteItemNum:", batchWriteItemNum);
 
     if (startServerId >= serverNum || batchWriteItemNum == 0) {
@@ -1369,7 +1363,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
 
     uint32_t startServerId, endServerId, serverCnt;
-    SplitToCore(serverNum_, aivNum, startServerId, endServerId, serverCnt, true);
+    SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedDispatch_ ,aivNum - aivUsedCumSum_ - aivUsedDispatch_, startServerId, endServerId, serverCnt, true);
     if (startServerId >= serverNum_ || serverCnt == 0) {
         return;
     }
@@ -1865,7 +1859,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t startPosId;
     uint32_t endPosId;
     uint32_t sendPosNum;
-    SplitToCore(expertNumInServer_ * serverNum_, aivUsedCumSum_, startPosId, endPosId, sendPosNum);
+    SplitToCore(expertNumInServer_ * serverNum_, 0, aivUsedCumSum_, startPosId, endPosId, sendPosNum);
     if (startPosId >= expertNumInServer_ * serverNum_) {
         return;
     }
@@ -2185,7 +2179,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //cnt框间接收 + 框内发送
     SetStatus();
     
-    SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
+    SplitToCore(rscvStatusNum_, 0, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_);
     LOG_INFO("startStatusIndex_", startStatusIndex_);
     LOG_INFO("endStatusIndex_", endStatusIndex_);
     LOG_INFO("recStatusNumPerCore_", recStatusNumPerCore_);
@@ -2411,7 +2405,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     statusFp32Tensor_ = statusWaitBuf.Get<float>();
     statusCleanFp32Tensor_ = statusCleanBuf.Get<float>();
     sendCntTensor_ = cumSumBuf.Get<int32_t>();
-    SplitToCore(rscvStatusNum_, aivNum_, startId_, endId_, sendNum_, true);
+    SplitToCore(rscvStatusNum_, 0, aivNum_, startId_, endId_, sendNum_);
     LOG_INFO("startId_", startId_);
     LOG_INFO("endId_", endId_);
     LOG_INFO("sendNum_", sendNum_);
