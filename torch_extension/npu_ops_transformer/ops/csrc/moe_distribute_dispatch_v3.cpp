@@ -114,34 +114,33 @@ tensor_list npu_moe_distribute_dispatch_v3(const at::Tensor &context, const at::
     if (quant_mode == QuantMode::QUANT_MODE_NO_QUANT) {
         output_dtype = x.scalar_type();
     }
-
-    at::Tensor expand_x = at::empty({std::max(a, a * tp_world_size), h}, at::TensorOptions().dtype(output_dtype)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));  
+    at::Tensor expand_x{nullptr};
     at::Tensor dynamic_scales{nullptr};
-    if (tp_world_size == 0) {
-        dynamic_scales = at::empty({a}, at::TensorOptions().dtype(at::kFloat)
-            .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
-    } else {
-        dynamic_scales = at::empty({a * tp_world_size}, at::TensorOptions().dtype(at::kFloat)
-            .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
-    }
-
-    at::Tensor expert_token_nums = at::empty({local_moe_expert_num}, at::TensorOptions().dtype(at::kLong)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    at::Tensor assist_info_forcombine{nullptr};
+    at::Tensor expert_token_nums{nullptr};
     at::Tensor ep_recv_counts{nullptr};
-    if (expert_scales.has_value() && expert_scales.value().defined()) {
-        // 2: 2 buffer, 8 ranknum per server
-        ep_recv_cnt_num = ep_world_size * local_moe_expert_num + 2 * global_bs_real * k * (ep_world_size / 8);
-    }
-    ep_recv_counts = at::empty({ep_recv_cnt_num}, at::TensorOptions().dtype(at::kInt)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
-    at::Tensor tp_recv_counts = at::empty({tp_world_size}, at::TensorOptions().dtype(at::kInt)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
-    at::Tensor assist_info_forcombine = at::empty({std::max(bs * k, a * 128)}, at::TensorOptions().dtype(at::kInt)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
-    at::Tensor expand_scales = at::empty({a}, at::TensorOptions().dtype(at::kFloat)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    at::Tensor tp_recv_counts{nullptr};
+    at::Tensor expand_scales{nullptr};
+    {
+        auto localDevice = c10::Device(x.device());
+        const c10::OptionalDeviceGuard deviceGuard(localDevice);
+        expand_x = at::empty({std::max(a, a * tp_world_size), h}, x.options().dtype(output_dtype));  
+        if (tp_world_size == 0) {
+            dynamic_scales = at::empty({a}, x.options().dtype(at::kFloat));
+        } else {
+            dynamic_scales = at::empty({a * tp_world_size}, x.options().dtype(at::kFloat));
+        }
 
+        expert_token_nums = at::empty({local_moe_expert_num}, x.options().dtype(at::kLong));
+        if (expert_scales.has_value() && expert_scales.value().defined()) {
+            // 2: 2 buffer, 8 ranknum per server
+            ep_recv_cnt_num = ep_world_size * local_moe_expert_num + 2 * global_bs_real * k * (ep_world_size / 8);
+        }
+        ep_recv_counts = at::empty({ep_recv_cnt_num}, x.options().dtype(at::kInt));
+        tp_recv_counts = at::empty({tp_world_size}, x.options().dtype(at::kInt));
+        assist_info_forcombine = at::empty({std::max(bs * k, a * 128)}, x.options().dtype(at::kInt));
+        expand_scales = at::empty({a}, x.options().dtype(at::kFloat));
+    }
 
 
     std::string comm_alg_str = std::string(comm_alg);

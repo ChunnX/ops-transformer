@@ -30,7 +30,7 @@ struct CommContext {
     uint64_t epHcclBuffer_[1024];
 };
 
-static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, CommContext &mc2Context)
+static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t cclBufferSize, CommContext &mc2Context)
 {
     uint32_t ctxIndex = 0;
     uint32_t rankId;
@@ -45,7 +45,7 @@ static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, CommContext &m
         } else {
             ret = static_cast<HcclResult>(HcclGetRemoteIpcHcclBufFunc(comm, remoteRankId, &remoteAddr, &commSize)); // 获取远端地址
         }
-        TORCH_CHECK(((commSize != 0)&&(ret == HCCL_SUCCESS)), "HcclGetRemoteIpcHcclBuf failed, commSize=", commSize, " ret=", ret);
+        TORCH_CHECK(((commSize >= cclBufferSize) && (ret == HCCL_SUCCESS)), "HcclGetRemoteIpcHcclBuf failed, commSize=", commSize, " ret=", ret);
         mc2Context.epHcclBuffer_[remoteRankId] = (uint64_t)remoteAddr;
     }
 
@@ -77,7 +77,7 @@ static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t wor
     return 0;
 }
 
-static int32_t GetMc2Context(CommContext &mc2ContextHost, int64_t epWorldSize, const char* groupEpStr)
+static int32_t GetMc2Context(CommContext &mc2ContextHost, int64_t epWorldSize, int64_t cclBufferSize, const char* groupEpStr)
 {
     InitHcclFunctions();
     void* opArgs = nullptr;
@@ -91,7 +91,7 @@ static int32_t GetMc2Context(CommContext &mc2ContextHost, int64_t epWorldSize, c
     TORCH_CHECK(contextRet == 0, "CreateHcclContext failed, ret:", contextRet);
     ret = static_cast<HcclResult>(HcclKfcFreeOpArgsFunc(opArgs)); // 释放通信配置对象
     TORCH_CHECK(ret == 0, "getHcclKfcFreeOpArgs failed, ret:", ret);
-    contextRet = CreatMc2Context(epCommHandle, epWorldSize, mc2ContextHost);
+    contextRet = CreatMc2Context(epCommHandle, epWorldSize, cclBufferSize, mc2ContextHost);
     TORCH_CHECK(contextRet == 0, "CreatMc2Context failed, ret:", contextRet);
 
     return 0;
@@ -102,10 +102,10 @@ static int32_t GetMc2Context(CommContext &mc2ContextHost, int64_t epWorldSize, c
  * @param x Input Tensor (on NPU)
  * @return Result Tensor
 **/
-bool UpdateContext(std::string groupEp, int64_t epWorldSize, at::Tensor &contextTensor)
+bool UpdateContext(std::string groupEp, int64_t epWorldSize, int64_t cclBufferSize, at::Tensor &contextTensor)
 {
     CommContext mc2ContextHost;
-    int32_t ret = GetMc2Context(mc2ContextHost, epWorldSize, groupEp.c_str());
+    int32_t ret = GetMc2Context(mc2ContextHost, epWorldSize, cclBufferSize, groupEp.c_str());
     TORCH_CHECK(ret == 0, "GetMc2Context failed, ret:", ret);
 
     // copy to device tensor

@@ -58,14 +58,15 @@ at::Tensor npu_moe_distribute_combine_v3(const at::Tensor &context, const at::Te
     int64_t global_bs_real = (global_bs == 0) ? (bs * ep_world_size) : global_bs;
 
     at::Tensor output;
-    if (expand_x.scalar_type() != at::kInt) {
-        output = at::empty({bs, h}, at::TensorOptions().dtype(expand_x.scalar_type())
-            .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
-    } else {
-        output = at::empty({bs, h}, at::TensorOptions().dtype(at::kBFloat16)
-            .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    {
+        auto localDevice = c10::Device(expand_x.device());
+        const c10::OptionalDeviceGuard deviceGuard(localDevice);
+        if (expand_x.scalar_type() != at::kInt) {
+            output = at::empty({bs, h}, expand_x.options().dtype(expand_x.scalar_type()));
+        } else {
+            output = at::empty({bs, h}, expand_x.options().dtype(at::kBFloat16));
+        }
     }
-    
     c10::optional<at::Tensor> nulltensor = c10::nullopt;
     int64_t out_dtype = 0;
     int64_t group_list_type = 0;

@@ -24,7 +24,7 @@ class UpdateContextOpBuilder(OpBuilder):
     
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "update_context(str group_ep, int ep_world_size, Tensor conetxt_tensor) -> bool"
+        return "update_context(str group_ep, int ep_world_size, int ccl_buffer_size, Tensor context_tensor) -> bool"
 
     def register_meta(self):
         """
@@ -32,7 +32,7 @@ class UpdateContextOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def update_context_meta(group_ep, ep_world_size, conetxt_tensor):
+        def update_context_meta(group_ep, ep_world_size, ccl_buffer_size, context_tensor):
             return False
 
 # Instantiate the builder
@@ -41,9 +41,9 @@ op_module = update_context_op_builder.load() # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, update_context_op_builder.name, "PrivateUse1")
-def update_context(group_ep, ep_world_size, conetxt_tensor):
+def update_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.update_context(group_ep, ep_world_size, conetxt_tensor)
+    return op_module.update_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor)
