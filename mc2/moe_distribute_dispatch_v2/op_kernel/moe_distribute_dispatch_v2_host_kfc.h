@@ -2189,7 +2189,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     PipeBarrier<PIPE_V>(); // 防止setvalue流水没有完成；
     LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1,sendExpertNum});
-    uint32_t dstOffset = aivId_ * blockCntPerCnt_ *  SPLIT_BLOCK_DATA_SIZE;
+    uint32_t dstOffset = aivId_ * blockCntPerCnt_ *  SERVER_STATE_ALIGN;
     GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverId_) + dstOffset);
     WriteDataToWinOut(tokenNumToExpertTensor_, rankGM, blockCntPerCnt_);
     PipeBarrier<PIPE_MTE3>();
