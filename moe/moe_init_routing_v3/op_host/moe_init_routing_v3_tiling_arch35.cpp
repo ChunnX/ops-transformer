@@ -119,7 +119,7 @@ protected:
     // 3、判断此Tiling模板是否适配当前SOC
     bool IsCapable() override
     {
-        return socVersion_ == platform_ascendc::SocVersion::ASCEND950;
+        return socVersion_ == platform_ascendc::SocVersion::ASCEND910_95;
     }
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
@@ -843,5 +843,5 @@ void MoeInitRountingV3RegbaseTiling::Tiling4GatherOutCompute()
 }
 
 REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRountingV3RegbaseTiling,
-                         1000); // If 950, use this tiling class.
+                         1000); // If 910_95, use this tiling class.
 } // namespace optiling

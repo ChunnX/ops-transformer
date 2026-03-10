@@ -566,7 +566,7 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::DoOpTiling()
         (CalcTilingKey() != ge::GRAPH_SUCCESS), OP_LOGE(nodeName_, "CalcTilingKey failed."),
         return ge::GRAPH_FAILED);
 
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950 && dropPadMode_ == 1) {
+    if (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95 && dropPadMode_ == 1) {
         context_->SetScheduleMode(1); // 设置为batch mode模式，所有核同时启动
     }
     return ge::GRAPH_SUCCESS;

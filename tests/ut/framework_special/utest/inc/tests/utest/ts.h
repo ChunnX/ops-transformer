@@ -111,11 +111,11 @@ protected:
     }
 };
 
-template <class C> class Ts_Ascend95091 : public Ts<C> {
+template <class C> class Ts_Ascend910_9591 : public Ts<C> {
 protected:
     void SetUp() override
     {
-        Ts<C>::socVersion_ = Platform::SocVersion::Ascend95091;
+        Ts<C>::socVersion_ = Platform::SocVersion::Ascend910_9591;
         Ts<C>::SetUp();
     }
 };
@@ -172,11 +172,11 @@ protected:
     }
 };
 
-template <class C> class Ts_WithParam_Ascend95091 : public Ts_WithParam<C> {
+template <class C> class Ts_WithParam_Ascend910_9591 : public Ts_WithParam<C> {
     protected:
         void SetUp() override
         {
-            Ts_WithParam<C>::socVersion_ = Platform::SocVersion::Ascend95091;
+            Ts_WithParam<C>::socVersion_ = Platform::SocVersion::Ascend910_9591;
             Ts_WithParam<C>::SetUp();
         }
     };
