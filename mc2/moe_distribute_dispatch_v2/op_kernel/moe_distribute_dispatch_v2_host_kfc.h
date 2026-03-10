@@ -1837,7 +1837,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     PipeBarrier<PIPE_V>();
 }
 
-template <TemplateDispatchKFCTypeClass, typename T>
+template <TemplateDispatchKFCTypeClass>
+template <typename T>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ReadDataFromWinIn(LocalTensor<T> &xInTensor, GM_ADDR rankGM, uint32_t blockCnt)
 {
 
