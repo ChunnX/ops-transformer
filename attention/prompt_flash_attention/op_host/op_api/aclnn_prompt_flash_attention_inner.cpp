@@ -374,7 +374,7 @@ static aclnnStatus AnalysisInputShapeInfo(const aclTensor *query, const aclTenso
               shapeInfo.basicBlock = PAD_BASIC_BLOCK;
     }
 
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95) {
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950) {
         shapeInfo.needPad = false;
     } else if (shapeInfo.inputLayout != InputLayout::TND && (shapeInfo.axes.d % shapeInfo.basicBlock != 0 || shapeInfo.axes.d > shapeInfo.axes.dV)) {
             shapeInfo.needPad = true;

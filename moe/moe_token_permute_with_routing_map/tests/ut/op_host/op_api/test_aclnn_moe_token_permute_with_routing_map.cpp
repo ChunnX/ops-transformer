@@ -202,7 +202,7 @@ TEST_F(l2_moe_token_permute_with_routing_map_test, Ascend910B2_moe_token_permute
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
 }
 
-TEST_F(l2_moe_token_permute_with_routing_map_test, ascend910_95_moe_token_permute_with_routing_map_pad)
+TEST_F(l2_moe_token_permute_with_routing_map_test, ascend950_moe_token_permute_with_routing_map_pad)
 {
     auto tokens = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto indices = TensorDesc({1, 8}, ACL_BOOL, ACL_FORMAT_ND).ValueRange(0, 8);
@@ -216,7 +216,7 @@ TEST_F(l2_moe_token_permute_with_routing_map_test, ascend910_95_moe_token_permut
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
 }
 
-TEST_F(l2_moe_token_permute_with_routing_map_test, ascend910_95_moe_token_permute_with_routing_map_pad_prob)
+TEST_F(l2_moe_token_permute_with_routing_map_test, ascend950_moe_token_permute_with_routing_map_pad_prob)
 {
     auto tokens = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto indices = TensorDesc({1, 8}, ACL_BOOL, ACL_FORMAT_ND).ValueRange(0, 8);

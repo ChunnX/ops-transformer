@@ -349,14 +349,14 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
     OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
                return ge::GRAPH_FAILED);
     auto socVersion = compilePtr->socVersion;
-    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
-        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
+        OP_LOGW(context, "Current soc version is ASCEND950.");
         if (IsEmptyOutput(context)) {
             FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
             return flashAttentionScoreGradTiling.RunEmptyTilingRegbase(context);
         }
     } else {
-        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        OP_LOGW(context, "Current soc version is not ASCEND950.");
         if (IsEmptyOutput(context)) {
             FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
             return flashAttentionScoreGradTiling.RunEmptyTiling(context);

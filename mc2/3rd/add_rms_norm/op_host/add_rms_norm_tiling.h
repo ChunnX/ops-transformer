@@ -50,7 +50,7 @@ namespace optiling {
     {
         uint32_t totalCoreNum = 0;
         uint64_t totalUbSize = 0;
-        platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910_95;
+        platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND950;
     };
 
     }  // namespace optiling

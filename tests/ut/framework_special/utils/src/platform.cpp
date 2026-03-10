@@ -312,13 +312,13 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                 },
             };
             break;
-        case SocVersion::Ascend910_9591:
+        case SocVersion::Ascend95091:
             socSpec.spec = {
                 {
                     "version",
                     {
-                        {"SoC_version", std::string("Ascend910_9591")},
-                        {"Short_SoC_version", std::string("Ascend910_95")},
+                        {"SoC_version", std::string("Ascend95091")},
+                        {"Short_SoC_version", std::string("Ascend950")},
                     },
                 },
                 {

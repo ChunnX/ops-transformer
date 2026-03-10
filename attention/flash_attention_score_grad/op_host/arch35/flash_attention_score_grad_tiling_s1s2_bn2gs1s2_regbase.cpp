@@ -715,7 +715,7 @@ bool FlashAttentionScoreGradTilingUnpaddedAttensionRegbase::IsCapable()
 
     auto actualSeqQLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
     OP_LOGD(context_, "coreNum is %lu", fBaseParams.coreNum);
-    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95 && actualSeqQLenTensor != nullptr &&
+    if (socVersion == platform_ascendc::SocVersion::ASCEND950 && actualSeqQLenTensor != nullptr &&
         actualSeqQLenTensor->GetShapeSize() != 0) {
         OP_LOGD(context_, "FlashAttentionScoreGradTilingUnpaddedAttensionRegbase hit");
         return true;
@@ -729,7 +729,7 @@ bool FlashAttentionScoreGradTilingUs1s2Bs2Regbase::IsCapable()
     if (strcmp(tndSoftmaxIn, "") != 0) return false;
 
     // 基础模板 全部支持
-    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
         OP_LOGD(context_, "FlashAttentionScoreGradTilingUs1s2Bs2Regbase hit");
         return true;
     }
@@ -3963,7 +3963,7 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::SaveToTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScoreGrad, FlashAttentionScoreGradTilingUs1s2Bs2Regbase, (int32_t)platform_ascendc::SocVersion::ASCEND910_95, 950);
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScoreGrad, FlashAttentionScoreGradTilingUnpaddedAttensionRegbase, (int32_t)platform_ascendc::SocVersion::ASCEND910_95, 900);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScoreGrad, FlashAttentionScoreGradTilingUs1s2Bs2Regbase, (int32_t)platform_ascendc::SocVersion::ASCEND950, 950);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScoreGrad, FlashAttentionScoreGradTilingUnpaddedAttensionRegbase, (int32_t)platform_ascendc::SocVersion::ASCEND950, 900);
 }
 } // namespace optiling
