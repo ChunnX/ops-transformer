@@ -101,6 +101,8 @@ public:
 
 private:
 
+
+    __aicore__ inline void CalTokenSendExpertOffset();
     template <typename T> __aicore__ inline void ReadDataFromWinIn(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SendExpertCnt(uint32_t sendExpertNum);
     __aicore__ inline void InitTemp();
@@ -2198,10 +2200,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
     if (isExpertMaskFlag_) { // 二维mask去掉不用发送的专家Id
         LocalTensor<bool> maskStrideTensor = gatherMaskTBuf_.Get<bool>();
-        DataCopyPadExtParams<bool> maskStrideCopyPadParams{false, 0U, 0U, 0U};
-        DataCopyExtParams maskStrideParams{
-            static_cast<uint16_t>(axisBS_), static_cast<uint32_t>(axisK_ * sizeof(bool)), 0U, 0U, 0U};
-        DataCopyPad(maskStrideTensor, xActiveMaskGMTensor_, maskStrideParams, maskStrideCopyPadParams);
+        DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
+        DataCopyExtParams maskParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(bool)), 0U, 0U, 0U};
+        DataCopyPad(maskInputTensor, xActiveMaskGMTensor_, maskParams, maskCopyPadParams);
         Adds(expertIdsTensor_, expertIdsTensor_, 1, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
         PipeBarrier<PIPE_ALL>();
@@ -2510,6 +2511,87 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     WaitAndFormatOutput(tBuf, validNum);
 }
 
+template <TemplateDispatchKFCTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteExpertOffset()
+{
+
+}
+
+template <TemplateDispatchKFCTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenSendExpertOffset()
+{
+    uint64_t starttime = GetSystemCycle();
+    TBuf<> tempBuf;
+    TBuf<> indexBuf;
+    
+    uint32_t activeBsCnt = activeMaskBsCnt_;
+    uint32_t calCnt = isTokenMaskFlag_? activeBsCnt * axisK_ : expertIdsCnt_; // 二维mask时，为了对齐需要全部读取expertID
+    uint32_t expertNumAlign256 = Ceil(calCnt * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+    uint64_t sendNumperExpert = 0;
+
+    tpipe_->InitBuffer(tempBuf,  activeBsCnt * sizeof(uint32_t));
+    tpipe_->InitBuffer(indexBuf,  calCnt * sizeof(uint16_t));
+
+    LocalTensor<int16_t> dstExpIdTensorInt16 = dstExpBuf_.Get<int16_t>();
+    LocalTensor<int16_t> expertIdsInt16 = expertIdsTensor_.ReinterpretCast<int16_t>();
+    LocalTensor<half> dstExpIdTensorFP16 = dstExpBuf_.Get<half>();
+    LocalTensor<int16_t> XorTensorInt16 = subExpBuf_.Get<int16_t>();
+    LocalTensor<uint8_t> sharedTensorInt8 = gatherMaskTBuf_.Get<uint8_t>(); //最小需要256B，最大是element * typesize
+    LocalTensor<int16_t> maskInputInt16Tensor = gatherMaskTBuf_.Get<int16_t>();
+    LocalTensor<int16_t> expertsIndexTensor = indexBuf.Get<int16_t>();
+    LocalTensor<uint16_t> gatherMaskTensor = gatherMaskTBuf_.Get<uint16_t>();
+    LocalTensor<uint8_t> gatherMaskTensorInt8 = gatherMaskTBuf_.Get<uint8_t>();
+    LocalTensor<int32_t> tempOffset = gatherMaskTBuf_.Get<int32_t>();
+    LocalTensor<int16_t> validExpertIndexTensor = tempBuf.Get<int16_t>();
+    LocalTensor<uint32_t> dstoffset = gatherMaskTBuf_.Get<uint32_t>();
+    
+
+    CreateVecIndex(expertsIndexTensor, static_cast<int16_t>(0), calCnt);    // TODO：这个需要单独放
+    Duplicate<int16_t>(XorTensorInt16, 1, calCnt); 
+    Cast(expertIdsInt16, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
+    PipeBarrier<PIPE_V>();
+
+    for(uint32_t Index = 0; Index < sendExpertNum; Index++) { //TODO:需要考虑二维mask影响
+        int16_t dstExpertId = static_cast<uint16_t>(startExpertId + Index);
+        Adds(dstExpIdTensorInt16, expertIdsInt16, -dstExpertId, calCnt);
+        PipeBarrier<PIPE_V>();
+        Abs(dstExpIdTensorFP16, dstExpIdTensorFP16, calCnt);
+        PipeBarrier<PIPE_V>();
+        Mins(dstExpIdTensorInt16, dstExpIdTensorInt16, 1, calCnt);
+        PipeBarrier<PIPE_V>();
+        Xor(dstExpIdTensorInt16, dstExpIdTensorInt16, XorTensorInt16, sharedTensorInt8, calCnt);
+        PipeBarrier<PIPE_V>();
+        if(isExpertMaskFlag_) {
+            LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里有二维mask
+            Cast(maskInputInt16Tensor, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
+            Mul(dstExpIdTensorInt16, dstExpIdTensorInt16, maskInputInt16Tensor, calCnt); //这里需要于mask相乘，且需要保留 ，TODO：这里的转换是否允许？
+            PipeBarrier<PIPE_V>(); 
+        }
+        Duplicate<uint16_t>(gatherMaskTensor, 0,
+                        Ceil(calCnt, ALIGNED_LEN_256) * ALIGNED_LEN_256 / BITS_PER_BYTE / sizeof(uint16_t)); // 获取索引需要放在这里，因为需要256对齐
+        Cast(dstExpIdTensorFP16, dstExpIdTensorInt16, RoundMode::CAST_RINT, calCnt); // 得到对应的结果  TODO:这里需要确认全局变量gatherMaskTensor_
+        PipeBarrier<PIPE_V>();
+        CompareScalar(gatherMaskTensorInt8, dstExpIdTensorFP16, static_cast<half>(1), AscendC::CMPMODE::EQ, expertNumAlign256); //TODO:dstExpBuf_分配需要256对齐
+        PipeBarrier<PIPE_V>();
+        GatherMask(validExpertIndexTensor, expertsIndexTensor, gatherMaskTensor, true, calCnt, {1, 1, 0, 0},
+                sendNumperExpert); // 当前需要发送的专家的索引以及需要发送的有效专家总数
+        PipeBarrier<PIPE_V>();        
+        if(sendNumperExpert == 0){
+            continue;
+        }
+        Cast(tempOffset, validExpertIndexTensor, RoundMode::CAST_NONE, static_cast<uint32_t>(sendNumperExpert));
+        PipeBarrier<PIPE_V>();
+        Muls(tempOffset, tempOffset, static_cast<int32_t>(sizeof(half)), static_cast<uint32_t>(sendNumperExpert));
+        PipeBarrier<PIPE_V>();
+        Scatter(expertOffsetCntTensor_, expertsIndexTensor, dstoffset, 0, static_cast<uint32_t>(sendNumperExpert));
+        PipeBarrier<PIPE_V>();
+    }
+    uint64_t endtime = GetSystemCycle();
+    uint64_t usetime = endtime -starttime;
+    LOG_INFO("CalTokenSendExpertOffset use time",usetime);
+    LOG_INFO("expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
+}
+
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Process()
@@ -2525,7 +2607,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             CalCumSum();
         }
     //     } else {
-    //         // CalTokenSendExpertOffset();
+    //         CalTokenSendExpertOffset();
     //         if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
     //             ScatterTokenToRemote();
     //             // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
