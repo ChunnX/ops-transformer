@@ -502,7 +502,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<int32_t>(tokenNumToExpertTensor_, 0, moeExpertNum_);
     SyncFunc<AscendC::HardEvent::MTE2_V>(); // 在init搬运Expert Id 需要等待流水结束
     LOG_INFO("expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
-    if (isExpertMaskFlag_) { //二维mask去掉不用发送的专家Id
+    if (isExpertMaskFlag_) { // 二维mask去掉不用发送的专家Id
         LocalTensor<bool> maskStrideTensor = subExpBuf_.Get<bool>();
         DataCopyPadExtParams<bool> maskStrideCopyPadParams{false, 0U, 0U, 0U};
         DataCopyExtParams maskStrideParams{
@@ -515,6 +515,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         LocalTensor<int32_t> maskStrideInt32Tensor = gatherMaskTBuf_.Get<int32_t>();
         Cast(maskStrideInt32Tensor, maskStrideInt8Tensor, RoundMode::CAST_NONE, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("CalExpertTotalSendCnt",maskStrideInt32Tensor,{axisBS_,axisK_});
         Mul(expertIdsTensor_, expertIdsTensor_, maskStrideInt32Tensor, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
         Adds(expertIdsTensor_, expertIdsTensor_, -1, expertIdsCnt_);
