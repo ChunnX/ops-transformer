@@ -730,7 +730,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     sendTokenLength_ = moeExpertScaleSizeAlign + Ceil(axisK_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     blockCntPerToken_ = Ceil(sendTokenLength_, SPLIT_BLOCK_DATA_SIZE);
-    blockCntPerCnt_ = Ceil(moeExpertNum_ * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
+    blockCntPerCnt_ = Ceil((moeExpertNum_ + sharedExpertNum_) * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
     blockCntPerTokenToExpert_ = Ceil(hScaleIdxSize_, SPLIT_BLOCK_DATA_SIZE); //框内块数
     sendTokenLengthAlign_ = blockCntPerToken_ * SERVER_STATE_ALIGN;
 
