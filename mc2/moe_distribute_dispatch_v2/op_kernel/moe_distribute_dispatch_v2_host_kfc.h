@@ -1880,8 +1880,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // flag放到flagRecvTensor_
         DataCopyPad(flagRecvTensor_, statusWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
         LOG_INFO("1111111");
-        LOG_INFO("dataFlagGlobal", statusWinGMTensor, {16, 8});
-        LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, blockCntPerCnt_});
+        //LOG_INFO("dataFlagGlobal", statusWinGMTensor, {16, 8});
+        //LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, blockCntPerCnt_});
 
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         LOG_INFO("2222222");
