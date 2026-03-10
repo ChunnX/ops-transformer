@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_HOST_OP_API_ACLNN_GROUPED_MATMUL_SWIGLU_QUANT_UTILS_H
-#define OP_HOST_OP_API_ACLNN_GROUPED_MATMUL_SWIGLU_QUANT_UTILS_H
+#ifndef OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_UTILS_H
+#define OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_UTILS_H
 
 #include "aclnn_kernels/contiguous.h"
 #include "acl/acl.h"

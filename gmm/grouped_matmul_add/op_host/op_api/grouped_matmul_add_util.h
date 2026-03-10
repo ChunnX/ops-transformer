@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#ifndef OP_API_INC_QUANT_MATMUL_ADD_UTIL_H
-#define OP_API_INC_QUANT_MATMUL_ADD_UTIL_H
+#ifndef OP_API_INC_GROUPED_MATMUL_ADD_UTIL_H
+#define OP_API_INC_GROUPED_MATMUL_ADD_UTIL_H
 #include "opdev/common_types.h"
 
 namespace gmm_add_advanced {

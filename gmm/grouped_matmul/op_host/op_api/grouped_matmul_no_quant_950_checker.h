@@ -12,7 +12,7 @@
 #define OP_API_INC_GROUPED_MATMUL_NO_QUANT_910_95_CHECKER_H
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "aclnn_grouped_matmul_util.h"
+#include "grouped_matmul_util.h"
 
 namespace gmm {
 class AclnnGroupedMatmulNoQuantDAV3510Checker {

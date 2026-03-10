@@ -11,7 +11,7 @@
 #ifndef OP_HOST_OP_API_ACLNN_GMM_DSQ_BASE_H
 #define OP_HOST_OP_API_ACLNN_GMM_DSQ_BASE_H
 
-#include "aclnn_grouped_matmul_swiglu_quant_utils.h"
+#include "grouped_matmul_swiglu_quant_utils.h"
 
 namespace gmm_dsq_base {
 

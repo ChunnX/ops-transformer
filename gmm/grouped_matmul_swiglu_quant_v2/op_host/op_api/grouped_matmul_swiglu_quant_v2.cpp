@@ -12,7 +12,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/make_op_executor.h"
 #include "util/math_util.h"
-#include "aclnn_grouped_matmul_swiglu_quant_utils.h"
+#include "grouped_matmul_swiglu_quant_utils.h"
 #include "grouped_matmul_swiglu_quant_v2.h"
 
 using namespace op;
