@@ -2525,6 +2525,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //     PipeBarrier<PIPE_ALL>();
     //     LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     // }
+    }
 }
 
 } // namespace MoeDistributeDispatchV2HostKfcImpl
