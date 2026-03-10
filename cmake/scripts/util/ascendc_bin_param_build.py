@@ -351,9 +351,30 @@ class BinParamBuilder(opdesc_parser.OpDesc):
         with os.fdopen(os.open(param_file, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
             json.dump(param, fd, indent='  ')
 
-    def _generate_check_result(self: any, enable_tiling_keys: bool, bin_file: str):
+    def _generate_check_result(self: any, enable_tiling_keys: bool, bin_file: str, ci_mode_flag):
         check_result = ""
-        if enable_tiling_keys is False:
+        if not ci_mode_flag:
+            check_result += f"""
+if [ $? -ne 0 ]; then
+    on_failure 
+    exit 1
+else
+    remove_pid
+fi
+"""
+        if ci_mode_flag:
+            check_result += f"""
+if [ $? -ne 0 ]; then
+    echo "{self.op_intf} {bin_file}" >> failed_ops.log
+    exit 1
+else
+    echo "${{res}}"
+    echo "{self.op_intf} {bin_file}" >> success_ops.log
+fi
+"""
+            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.json')
+            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.o')
+        elif enable_tiling_keys is False:
             check_result += "echo \"${res}\"\n"
             check_result += const_var.CHK_CMD.format(res_file=bin_file + '.json')
             check_result += const_var.CHK_CMD.format(res_file=bin_file + '.o')
@@ -371,7 +392,53 @@ grep -q \"None of the given tiling keys are in the supported list\"; then\n"
             check_result += const_var.CHK_CMD.format(res_file=bin_file + '.json')
             check_result += const_var.CHK_CMD.format(res_file=bin_file + '.o')
             check_result += "fi\n"
+
         return check_result
+
+    def _get_no_ci_shell_str(self):
+        return f"""
+PID_FILE="{self.out_path}/compile_pids.txt"
+STOP_FILE="{self.out_path}/compile_stop.flag"
+""" + """
+add_pid() {
+    (
+        flock 9
+        echo $$ >> "$PID_FILE"
+    ) 9>"${PID_FILE}.lock"
+}
+
+remove_pid() {
+    (
+        flock 9
+        grep -v "^$$$" "$PID_FILE" > "${PID_FILE}.tmp" && mv "${PID_FILE}.tmp" "$PID_FILE"
+    ) 9>"${PID_FILE}.lock"
+}
+
+check_stop() {
+    if [ -f "$STOP_FILE" ]; then
+        echo "Stop flag detected, exiting..."
+        exit 1
+    fi
+}
+
+on_failure() {
+    touch "$STOP_FILE"
+    
+    # PIDPID
+    (
+        flock 9
+        while read pid; do
+            if [ "$pid" -ne $$ ]; then
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        done < "$PID_FILE"
+    ) 9>"${PID_FILE}.lock"
+}
+
+check_stop
+add_pid
+check_stop
+"""
 
 
     def _write_build_cmd(self: any, param_file: str, bin_file: str, index: int, auto_gen_path: str, bisheng_flags: str,
@@ -385,9 +452,11 @@ grep -q \"None of the given tiling keys are in the supported list\"; then\n"
 
         bin_cmd_str = 'res=$(asc_opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
                 --output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic '
-
+        ci_mode_flag = (os.environ.get('CI_MODE', 'FALSE') == 'TRUE')
         build_cmd_var = "#!/bin/bash\n"
         build_cmd_var += f'echo "[{self.soc}] Generating {bin_file} ..."\n'
+        if not ci_mode_flag:
+            build_cmd_var += self._get_no_ci_shell_str()
         build_cmd_var += f"start_time=$(date +%s.%N)\n"
         plog_level = os.environ.get("ASCEND_GLOBAL_LOG_LEVEL")
         plog_stdout = os.environ.get("ASCEND_SLOG_PRINT_TO_STDOUT")
@@ -429,7 +498,7 @@ grep -q \"None of the given tiling keys are in the supported list\"; then\n"
 
         build_cmd_var += ")\n\n"
     
-        check_result = self._generate_check_result(enable_tiling_keys, bin_file)
+        check_result = self._generate_check_result(enable_tiling_keys, bin_file, ci_mode_flag)
         build_cmd_var += check_result
         build_cmd_var += f'end_time=$(date +%s.%N)\n'
         build_cmd_var += f'duration=$(awk "BEGIN {{ print $end_time - $start_time }}")\n'
@@ -442,7 +511,6 @@ grep -q \"None of the given tiling keys are in the supported list\"; then\n"
             f'>> {self.op_file}-{str(index)}.txt\n'
         )
         build_cmd_var += f'echo "[{self.soc}] Generating {bin_file} Done"\n'
-
         with os.fdopen(os.open(compile_file, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
             fd.write(build_cmd_var)
 

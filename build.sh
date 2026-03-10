@@ -64,6 +64,7 @@ ENABLE_GENOP_AICPU=FALSE
 GENOP_TYPE=""
 GENOP_NAME=""
 PR_CHANGED_FILES=""  # PR场景, 修改文件清单, 可用于标识是否PR场景
+CI_MODE=FALSE
 
 if [ "${USER_ID}" != "0" ]; then
     DEFAULT_TOOLKIT_INSTALL_DIR="${HOME}/Ascend/ascend-toolkit/latest"
@@ -347,7 +348,7 @@ function set_env()
     export BISHENG_REAL_PATH=$(which bisheng || true)
 
     if [ -z "${BISHENG_REAL_PATH}" ];then
-        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then
+        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then 
             log "Warning: bisheng compilation tool not found, but --jit --noaicpu is enabled, so continue."
             return
         fi
@@ -396,6 +397,68 @@ function cmake_config()
     cmake ..  ${CUSTOM_OPTION} ${extra_option}
 }
 
+function ci_print_compile_failed_ops_info()
+{
+    local failed_files=$(find . -type f -name "failed_ops.log")
+    local success_files=$(find . -type f -name "success_ops.log")
+
+    declare -A failed_ops_map
+    declare -A success_ops_map
+
+    if [[ -n "$failed_files" ]]; then
+        while IFS= read -r file; do
+            [[ -s "$file" ]] || continue
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                local op_name=$(echo "$line" | awk '{print $1}')
+                local bin_name=$(echo "$line" | cut -d' ' -f2-)
+                if [[ -n "$op_name" && -n "$bin_name" ]]; then
+                    if [[ -z "${failed_ops_map[$op_name]}" ]]; then
+                        failed_ops_map["$op_name"]="$bin_name"
+                    else
+                        failed_ops_map["$op_name"]="${failed_ops_map[$op_name]}\\n$bin_name"
+                    fi
+                fi
+            done < "$file"
+        done <<< "$failed_files"
+    fi
+
+    if [[ -n "$success_files" ]]; then
+        while IFS= read -r file; do
+            [[ -s "$file" ]] || continue
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                local op_name=$(echo "$line" | awk '{print $1}')
+                local bin_name=$(echo "$line" | cut -d' ' -f2-)
+                if [[ -n "$op_name" && -n "$bin_name" ]]; then
+                    if [[ -z "${success_ops_map[$op_name]}" ]]; then
+                        success_ops_map["$op_name"]="$bin_name"
+                    else
+                        success_ops_map["$op_name"]="${success_ops_map[$op_name]}\\n$bin_name"
+                    fi
+                fi
+            done < "$file"
+        done <<< "$success_files"
+    fi
+
+    if [[ ${#success_ops_map[@]} -gt 0 ]]; then
+        echo "All CI compile success ops:"
+        for op_name in "${!success_ops_map[@]}"; do
+            local bin_list="${success_ops_map[$op_name]}"
+            echo "ops name: $op_name, success bin: $bin_list"
+        done
+    fi
+    if [[ ${#failed_ops_map[@]} -gt 0 ]]; then
+        echo "All CI compile failed ops:"
+        for op_name in "${!failed_ops_map[@]}"; do
+            local bin_list="${failed_ops_map[$op_name]}"
+            echo "ops name: $op_name, failed bin: $bin_list"
+        done
+        echo "[ERROR] build failed!"
+        exit 1
+    fi
+}
+
 function build()
 {
     local target="$1"
@@ -403,9 +466,15 @@ function build()
         local option="--verbose"
     fi
     export LD_LIBRARY_PATH=${BUILD_DIR}:$LD_LIBRARY_PATH
-    
-    cmake --build . --target ${target} ${JOB_NUM} ${option}
-    if [ $? -ne 0 ]; then echo "[ERROR] build failed!" && exit 1; fi
+    if [[ "$CI_MODE" == "TRUE" ]]; then
+        export CI_MODE=TRUE
+        set +e
+        cmake --build . --target ${target} ${JOB_NUM} ${option}
+        set -e
+    else
+        cmake --build . --target ${target} ${JOB_NUM} ${option}
+    fi
+    ci_print_compile_failed_ops_info
 }
 
 ARCH_INFO=$(uname -m)
@@ -1075,12 +1144,14 @@ while [[ $# -gt 0 ]]; do
         ENABLE_SMOKE=TRUE
         PKG_MODE="cust"
         vendor_name="custom"
+        CI_MODE=TRUE
         shift 2
         ;;
     --PR_UT)
         PR_CHANGED_FILES="$2"
         ENABLE_TEST=TRUE
         process_soc_input "ascend310p,ascend910b,ascend950"
+        CI_MODE=TRUE
         shift 2
         ;;
     --PR_PKG)
@@ -1102,6 +1173,7 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILD_PKG=TRUE
         ENABLE_BUILT_CUSTOM=TRUE
         ENABLE_BUILT_IN=FALSE
+        CI_MODE=TRUE
         shift 2
         ;;
     --parent_job)
@@ -1323,7 +1395,6 @@ fi
 if [ -n "${op_build_tool}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_BUILD_TOOL=${op_build_tool}"
 fi
-
 if [ -n "${ascend_cmake_dir}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_CMAKE_DIR=${ascend_cmake_dir}"
 fi
@@ -1468,7 +1539,7 @@ if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
 fi
 
 if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
- 	CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF"
 fi
 
 if [ -n "${ascend_package_path}" ];then
