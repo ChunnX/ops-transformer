@@ -948,6 +948,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LogInfo(__LINE__, "Init end: ");
     aivUsedCumSum_ = 2; //TODO:
     aivUsedScatter_ = (aivNum_ -aivUsedCumSum_) / 2;
+    aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedCumSum_;
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1066,6 +1067,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(maskStrideTensor, xActiveMaskGMTensor_, maskStrideParams, maskStrideCopyPadParams);
     CalValidBSCnt(maskStrideTensor);
 
+    //TODO:这部分应该全部去掉
     // 计算validExpIndexTensor, 连续搬入xActiveMask进行GatherMask计算, 用于moe专家的发送
     DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
     DataCopyExtParams maskParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(bool)), 0U, 0U, 0U};
@@ -1073,6 +1075,31 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     CalValidExpIdx();
     SyncFunc<AscendC::HardEvent::V_S>();
 }
+
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline void
+// MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenMask()
+// {
+//     activeMaskBsCnt_ = axisBS_;
+//     // SetServerFlag();
+    
+//     if (isTokenMaskFlag_) { // 1维
+//         //LogInfo(__LINE__, "isTokenMaskFlag_ is true");
+//         TokenActiveMaskCal();
+//     }
+
+
+//     // if (isExpertMaskFlag_) { // 2维
+//     //     //LogInfo(__LINE__, "isExpertMaskFlag_ is true");
+//     //     ExpertActiveMaskCal();
+//     // }
+
+//     // if (activeMaskBsCnt_ == 0) {
+//     //     //LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
+//     //     return;
+//     // }
+
+// }
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
@@ -1363,7 +1390,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LogInfo(__LINE__, "[BATCHWRITE][WaitWindow] enter WaitWindow.");
 
     uint32_t startServerId, endServerId, serverCnt;
-    SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ ,aivNum - aivUsedCumSum_ - aivUsedScatter_, startServerId, endServerId, serverCnt);
+    SplitToCore(serverNum_, aivUsedCumSum_ + aivUsedScatter_ , aivUsedGather_, startServerId, endServerId, serverCnt);
     if (startServerId >= serverNum_ || serverCnt == 0) {
         return;
     }
@@ -2138,35 +2165,41 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
 }
 
+
+
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalCumSum()
 {
+    InitCumSumBuffer();
+
+
+
     //todo：cnt计算
     //todo：cnt框间发送（调用hccl接口
 
-    activeMaskBsCnt_ = axisBS_;
-    sendToMoeExpTokenCnt_ = axisBS_ * axisK_;
+    // activeMaskBsCnt_ = axisBS_;
+    // sendToMoeExpTokenCnt_ = axisBS_ * axisK_;
 
-    DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
+    // DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
+    // DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
+    // DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
 
-    SetServerFlag();
+    // SetServerFlag();
     
-    if (isTokenMaskFlag_) { // 1维
-        //LogInfo(__LINE__, "isTokenMaskFlag_ is true");
-        TokenActiveMaskCal();
-    }
+    // if (isTokenMaskFlag_) { // 1维
+    //     //LogInfo(__LINE__, "isTokenMaskFlag_ is true");
+    //     TokenActiveMaskCal();
+    // }
 
-    if (isExpertMaskFlag_) { // 2维
-        //LogInfo(__LINE__, "isExpertMaskFlag_ is true");
-        ExpertActiveMaskCal();
-    }
+    // if (isExpertMaskFlag_) { // 2维
+    //     //LogInfo(__LINE__, "isExpertMaskFlag_ is true");
+    //     ExpertActiveMaskCal();
+    // }
 
-    if (activeMaskBsCnt_ == 0) {
-        //LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
-        return;
-    }
+    // if (activeMaskBsCnt_ == 0) {
+    //     //LogInfo(__LINE__,"activeMaskBsCnt_ == 0");
+    //     return;
+    // }
 
     tokenNumToExpertTensor_ = dstExpBuf_.GetWithOffset<int32_t>(moeExpertNum_, 0);
     Duplicate(tokenNumToExpertTensor_, 0, moeExpertNum_);
@@ -2451,16 +2484,24 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Process()
 {   
     if ASCEND_IS_AIV {
+
+        if (isTokenMaskFlag_) {
+            TokenActiveMaskCal();
+        }
+
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
-        } else if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) { //框间dispatch + 发送
+        } else {
+            // CalTokenSendExpertOffset();
+            if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
+                //ScatterTokenToRemote();
+                DispatchBetweenServer();
+                // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
+            } else {
+                //GatherTokenFrRemote()
+                WaitWindow(aivUsedGather_);
+            }
 
-            //ScatterTokenToRemote();
-            DispatchBetweenServer();
-            // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
-        } else { //框内接收 + 框内发送
-            //GatherTokenFrRemote()
-            WaitWindow(aivNum_ - aivUsedScatter_ - aivUsedCumSum_);
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
