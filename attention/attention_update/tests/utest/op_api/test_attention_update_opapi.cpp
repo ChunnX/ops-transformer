@@ -166,7 +166,7 @@ TEST_F(l2_attention_update_test, ascend910B2_test_attention_update_5) {
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(l2_attention_update_test, ascend95089_test_attention_update_1) {
+TEST_F(l2_attention_update_test, Ascend910_9589_test_attention_update_1) {
 
     vector<int64_t> lse_dims = {128};
     vector<int64_t> localOut_dims = {128, 256};
@@ -193,7 +193,7 @@ TEST_F(l2_attention_update_test, ascend95089_test_attention_update_1) {
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(l2_attention_update_test, ascend95089_test_attention_update_2) {
+TEST_F(l2_attention_update_test, Ascend910_9589_test_attention_update_2) {
 
     vector<int64_t> lse_dims = {128};
     vector<int64_t> localOut_dims = {128, 256};
@@ -221,7 +221,7 @@ TEST_F(l2_attention_update_test, ascend95089_test_attention_update_2) {
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_attention_update_test, ascend95089_test_attention_update_3) {
+TEST_F(l2_attention_update_test, Ascend910_9589_test_attention_update_3) {
 
     vector<int64_t> lse_dims = {128};
     vector<int64_t> localOut_dims = {128, 256};

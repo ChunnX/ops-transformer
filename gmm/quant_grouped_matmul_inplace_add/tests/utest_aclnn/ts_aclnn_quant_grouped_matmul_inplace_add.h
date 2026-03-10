@@ -25,7 +25,7 @@ using ops::adv::tests::quant_grouped_matmul_inplace_add::GenTensor;
 using AclnnQGMMInplaceAddParam = ops::adv::tests::quant_grouped_matmul_inplace_add::AclnnQGMMInplaceAddParam;
 
 namespace qgmmInplaceAddTestParam {
-class Ts_Aclnn_QGMMInplaceAdd_WithParam_ascend95091 : public Ts_WithParam_ascend95091<AclnnQGMMInplaceAddCase> {};
+class Ts_Aclnn_QGMMInplaceAdd_WithParam_Ascend910_9591 : public Ts_WithParam_Ascend910_9591<AclnnQGMMInplaceAddCase> {};
 }  // namespace gmmTestParam
 
 #endif  // UTEST_TS_QGMM_INPLACE_ADD_H

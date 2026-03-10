@@ -24,7 +24,7 @@ static const gert::Shape g_vec_1_shape = {1};
 static bool IsRegbaseSocVersion(platform_ascendc::SocVersion version)
 {
     const static std::set<platform_ascendc::SocVersion> regbaseSocVersions = {
-        platform_ascendc::SocVersion::ascend950};
+        platform_ascendc::SocVersion::ASCEND910_95};
 
     return regbaseSocVersions.find(version) != regbaseSocVersions.end();
 }

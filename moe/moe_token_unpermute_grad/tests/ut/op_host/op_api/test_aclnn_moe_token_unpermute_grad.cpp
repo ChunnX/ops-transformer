@@ -58,7 +58,7 @@ TEST_F(l2_moe_token_unpermute_grad_test, Ascend910B2_moe_token_unpermute_grad_fp
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-TEST_F(l2_moe_token_unpermute_grad_test, ascend95089_moe_token_unpermute_grad_fp32)
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend910_9589_moe_token_unpermute_grad_fp32)
 {
     auto permuteTokens = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto unpermutedTokensGrad = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);

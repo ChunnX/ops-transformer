@@ -18,10 +18,10 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
+if("${CONDITION_UNIT}" STREQUAL "ascend910_95")
     add_ops_compile_options(
         OP_NAME FusedInferAttentionScore
-        COMPUTE_UNIT ascend95099
+        COMPUTE_UNIT ascend910_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
                 --cce-auto-sync=off
                 -Wno-deprecated-declarations

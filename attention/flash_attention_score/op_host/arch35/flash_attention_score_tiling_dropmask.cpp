@@ -79,6 +79,6 @@ protected:
     void CalcDBasicBlock() override {}
 };
 
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingDropMaskRegbase, (int32_t)platform_ascendc::SocVersion::ascend950, 81);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingDropMaskRegbase, (int32_t)platform_ascendc::SocVersion::ASCEND910_95, 81);
 } // namespace FA
 } // namespace optiling

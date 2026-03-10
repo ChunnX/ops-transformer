@@ -119,7 +119,7 @@ protected:
     // 3、判断此Tiling模板是否适配当前SOC
     bool IsCapable() override
     {
-        return socVersion_ == platform_ascendc::SocVersion::ascend950;
+        return socVersion_ == platform_ascendc::SocVersion::ASCEND910_95;
     }
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;

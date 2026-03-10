@@ -13,10 +13,10 @@ if (BUILD_OPEN_PROJECT)
         gather_pa_kv_cache_def.cpp
     )
     
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend910_95")
         add_ops_compile_options(
             OP_NAME GatherPaKvCache
-            COMPUTE_UNIT ascend95099
+            COMPUTE_UNIT ascend910_9599
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     else()

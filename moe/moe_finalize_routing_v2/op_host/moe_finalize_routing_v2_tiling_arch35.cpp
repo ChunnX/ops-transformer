@@ -693,7 +693,7 @@ bool MoeFinalizeRoutingV2Regbase::IsHFullLoad()
 
 bool MoeFinalizeRoutingV2Regbase::IsCapable()
 {
-    if (socVersion_ != platform_ascendc::SocVersion::ascend950) {
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
         return false;
     }
 
