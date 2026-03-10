@@ -2198,11 +2198,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     PipeBarrier<PIPE_MTE3>();
     GlobalTensor<int32_t> moeCntFlgGMTensor;
     LocalTensor<int32_t>  moeCntFlgTensor = subExpBuf_.Get<int32_t>();
+    moeCntFlgGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(moeCntFlg));
 
     // 写flag 核0不写
     if (aivId_ != 0 ) {
         moeCntFlgTensor.SetValue(0,1);
-        moeCntFlgGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(moeCntFlg));
         PipeBarrier<PIPE_V>();
         SetAtomicAdd<int32_t>();
         DataCopyExtParams flagCopyOutParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U, 0U};
@@ -2212,7 +2212,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     
     // 软同步，轮询flag
+    int count = 0;
     if(aivId_ == 0) {
+        count ++;
+        if(count == 100000) {
+            LOG_INFO("SendExpertCnt error count");
+            break;
+        }
         while(true) {
             DataCopy(moeCntFlgTensor, moeCntFlgGMTensor, UB_ALIGN /sizeof(int32_t));
             PipeBarrier<PIPE_MTE2>();
