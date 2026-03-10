@@ -174,7 +174,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckAttrs() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckDims() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
             OP_LOGE(context_.opName, "TokenX shape dim num allows only %u, got %zu.",
                 MLA_PROLOG_DIM_NUM_3, context_.tokenX.shape->GetStorageShape().GetDimNum()),
@@ -189,12 +189,12 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         OP_LOGE(context_.opName, "B should not be greater than %u, got %u.",
             MAX_B_SIZE, baseShapeInfo_.bSize),
         return ge::GRAPH_FAILED);
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         OP_CHECK_IF(baseShapeInfo_.s1Size != 1 && baseShapeInfo_.s1Size != 0,
             OP_LOGE(context_.opName, "S allows only {0, 1}, got %u.", baseShapeInfo_.s1Size),
             return ge::GRAPH_FAILED);
     }
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         const std::set<uint32_t> supportedHeSize {7168U};
         OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
             OP_LOGE(context_.opName, "He allows only %s, got %u.",
@@ -238,7 +238,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                 MIN_BLOCK_SIZE, MAX_BLOCK_SIZE, ALIGN_BLOCK_SIZE, baseShapeInfo_.blockSize),
             return ge::GRAPH_FAILED);
     }
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         const std::set<uint32_t> supportedBlockSize {16, 128};
         OP_CHECK_IF((supportedBlockSize.find(baseShapeInfo_.blockSize) == supportedBlockSize.end()),
             OP_LOGE(context_.opName, "BlockSize allows only %s, but got %u.",
@@ -382,7 +382,7 @@ void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDims()
         }
         expectedParamInfo_[DEQUANT_SCALE_Q_NOPE_NAME].dtype = ge::DT_FLOAT;
 
-        if (GetSocVersionShortName() != platform_ascendc::SocVersion::ASCEND910_95 && *(context_.queryNormFlag)) {
+        if (GetSocVersionShortName() != platform_ascendc::SocVersion::ASCEND950 && *(context_.queryNormFlag)) {
             if (scenarioInfo_.batchSeqFusedFlag_) {
                 expectedParamInfo_.emplace(QUERY_NORM_NAME,
                     std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.hcqSize});
@@ -625,7 +625,7 @@ void MlaPrologTilingCheck::GenActualParamInfo()
         actualParamInfo_.erase(KR_CACHE_NAME);
         actualParamInfo_.erase(KR_CACHE_OUT_NAME);
     }
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         actualParamInfo_.erase(QUERY_NORM_NAME);
         actualParamInfo_.erase(DEQUANT_SCALE_Q_NORM_NAME);
     }
@@ -786,7 +786,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckSingleRequiredParam() const
 
 bool MlaPrologTilingCheck::CheckTokenX() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         return IsSingleParamValid(context_.tokenX, TOKEN_X_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
     } else {
         return IsSingleParamValid(context_.tokenX, TOKEN_X_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
@@ -795,7 +795,7 @@ bool MlaPrologTilingCheck::CheckTokenX() const
 
 bool MlaPrologTilingCheck::CheckWDq() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         return IsSingleParamValid(context_.weightDq, WEIGHT_DQ_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_FRACTAL_NZ},
                                 {2, 4});
     } else {
@@ -806,7 +806,7 @@ bool MlaPrologTilingCheck::CheckWDq() const
 
 bool MlaPrologTilingCheck::CheckWUqQr() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_FRACTAL_NZ},
                                 {2, 4});
     } else {
@@ -817,7 +817,7 @@ bool MlaPrologTilingCheck::CheckWUqQr() const
 
 bool MlaPrologTilingCheck::CheckWUk() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         return IsSingleParamValid(context_.weightUk, WEIGHT_UK_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3});
     } else {
         return IsSingleParamValid(context_.weightUk, WEIGHT_UK_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3});
@@ -826,7 +826,7 @@ bool MlaPrologTilingCheck::CheckWUk() const
 
 bool MlaPrologTilingCheck::CheckWDkvKr() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         return IsSingleParamValid(context_.weightDkvKr, WEIGHT_DKV_KR_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN},
                                 {ge::FORMAT_FRACTAL_NZ}, {2, 4});
     } else {
@@ -864,7 +864,7 @@ bool MlaPrologTilingCheck::CheckCacheIndex() const
 
 bool MlaPrologTilingCheck::CheckKvCache() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
     } else {
         return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
@@ -873,7 +873,7 @@ bool MlaPrologTilingCheck::CheckKvCache() const
 
 bool MlaPrologTilingCheck::CheckKrCache() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         return IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
     } else {
         return (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
@@ -933,7 +933,7 @@ bool MlaPrologTilingCheck::CheckCacheModeParamShape() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
 {
-    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND950) {
         if ((std::strcmp(context_.cacheMode, CACHE_MODE_PA_BSND) == 0)) {
             return ge::GRAPH_SUCCESS;
         }

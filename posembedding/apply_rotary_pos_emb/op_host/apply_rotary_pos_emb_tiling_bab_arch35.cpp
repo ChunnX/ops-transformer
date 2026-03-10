@@ -46,7 +46,7 @@ protected:
 
     bool IsCapable() override
     {
-        if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
+        if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
             return false;
         }
         // BSND format, 1s1d模版，后续可扩展支持所有bab类型的boardcast

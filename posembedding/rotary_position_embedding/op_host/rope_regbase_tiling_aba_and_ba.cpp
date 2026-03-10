@@ -64,7 +64,7 @@ private:
 bool RopeRegBaseTilingClassABAAndBA::IsCapable()
 {
     // BNSD对应11SD和B1SD两种brc模式
-    return (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) && (layout_ == RopeLayout::BNSD);
+    return (socVersion_ == platform_ascendc::SocVersion::ASCEND950) && (layout_ == RopeLayout::BNSD);
 }
 
 ge::graphStatus RopeRegBaseTilingClassABAAndBA::SplitCore()

@@ -4603,6 +4603,6 @@ ge::graphStatus PromptFlashAttentionTilingV2::DoOpTiling()
 	return ret;
 }
 
-REGISTER_TILING_TEMPLATE_FIA(PromptFlashAttention, PromptFlashAttentionTilingV2, std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ASCEND910_95}), 90);
+REGISTER_TILING_TEMPLATE_FIA(PromptFlashAttention, PromptFlashAttentionTilingV2, std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ASCEND950}), 90);
 } // namespace v2
 } // namespace optiling

@@ -201,8 +201,8 @@ public:
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
 
-        OpAICoreConfig config_910_95;
-        config_910_95.Input("kv")
+        OpAICoreConfig config_950;
+        config_950.Input("kv")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16,
@@ -214,7 +214,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("gamma")
+        config_950.Input("gamma")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16,
@@ -226,7 +226,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("cos")
+        config_950.Input("cos")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16,
@@ -238,7 +238,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("sin")
+        config_950.Input("sin")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16,
@@ -250,7 +250,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("index")
+        config_950.Input("index")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
@@ -262,7 +262,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("k_cache")
+        config_950.Input("k_cache")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16,
@@ -274,7 +274,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("ckv_cache")
+        config_950.Input("ckv_cache")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8,
@@ -286,7 +286,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("k_rope_scale")
+        config_950.Input("k_rope_scale")
             .ParamType(OPTIONAL)
             .DataType(
                 {ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
@@ -298,7 +298,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("c_kv_scale")
+        config_950.Input("c_kv_scale")
             .ParamType(OPTIONAL)
             .DataType(
                 {ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
@@ -310,7 +310,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("k_rope_offset")
+        config_950.Input("k_rope_offset")
             .ParamType(OPTIONAL)
             .DataType(
                 {ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
@@ -322,7 +322,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Input("c_kv_offset")
+        config_950.Input("c_kv_offset")
             .ParamType(OPTIONAL)
             .DataType(
                 {ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
@@ -334,7 +334,7 @@ public:
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config_910_95.Output("k_cache")
+        config_950.Output("k_cache")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16,
@@ -345,7 +345,7 @@ public:
             .UnknownShapeFormat(
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND});
-        config_910_95.Output("ckv_cache")
+        config_950.Output("ckv_cache")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8,
@@ -356,7 +356,7 @@ public:
             .UnknownShapeFormat(
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND});
-        config_910_95.Output("k_rope")
+        config_950.Output("k_rope")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16,
@@ -367,7 +367,7 @@ public:
             .UnknownShapeFormat(
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND});
-        config_910_95.Output("c_kv")
+        config_950.Output("c_kv")
             .ParamType(REQUIRED)
             .DataType(
                 {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16,
@@ -378,9 +378,9 @@ public:
             .UnknownShapeFormat(
                 {ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                  ge::FORMAT_ND, ge::FORMAT_ND});
-        config_910_95.DynamicCompileStaticFlag(true).DynamicShapeSupportFlag(true).ExtendCfgInfo(
+        config_950.DynamicCompileStaticFlag(true).DynamicShapeSupportFlag(true).ExtendCfgInfo(
             "opFile.value", "kv_rms_norm_rope_cache_apt");
-        this->AICore().AddConfig("ascend910_95", config_910_95);
+        this->AICore().AddConfig("ascend950", config_950);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
         this->AICore().AddConfig("kirinx90", config_kirin);

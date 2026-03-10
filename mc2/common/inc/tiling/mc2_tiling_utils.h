@@ -186,7 +186,7 @@ const std::map<platform_ascendc::SocVersion, std::set<uint32_t>>
     supportedRankSizeSet = {
         {platform_ascendc::SocVersion::ASCEND310P, {1, 2, 4}},
         {platform_ascendc::SocVersion::ASCEND910B, {1, 2, 4, 8}},
-        {platform_ascendc::SocVersion::ASCEND910_95, {1, 2, 4, 8, 16, 32, 64}},
+        {platform_ascendc::SocVersion::ASCEND950, {1, 2, 4, 8, 16, 32, 64}},
 };
 
 const std::set<ge::Format> SUPPORTED_FORMAT = {

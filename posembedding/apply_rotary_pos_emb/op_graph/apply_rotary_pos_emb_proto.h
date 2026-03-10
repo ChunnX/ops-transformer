@@ -49,7 +49,7 @@ namespace ge {
     - support types: float16, float32.
     - support layout: 1.
     - support rotary_mode: not support.
- * @li Ascend 910_95 AI Processor
+ * @li Ascend 950 AI Processor
     - support types: float16, float32, bfloat16.
     - support layout: 1, 2, 3.
     - support rotary_mode: "half","interleave","quarter".
