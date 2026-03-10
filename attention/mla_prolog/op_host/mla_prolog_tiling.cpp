@@ -144,7 +144,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Mxfp8() const
 QUANT_MODE MlaPrologTiling::GetQuantizationMode() const
 {
     if (std::strncmp(context_->opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        if (GetSocVersionShortName() == platform_ascendc::SocVersion::ASCEND910_95){
+        if (GetSocVersionShortName() == platform_ascendc::SocVersion::ascend950){
             return GetQuantizationModeV3Mxfp8();
         } else {
             return GetQuantizationModeV3();

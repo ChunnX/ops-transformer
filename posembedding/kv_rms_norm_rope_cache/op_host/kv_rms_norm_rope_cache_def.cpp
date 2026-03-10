@@ -380,7 +380,7 @@ public:
                  ge::FORMAT_ND, ge::FORMAT_ND});
         config_910_95.DynamicCompileStaticFlag(true).DynamicShapeSupportFlag(true).ExtendCfgInfo(
             "opFile.value", "kv_rms_norm_rope_cache_apt");
-        this->AICore().AddConfig("ascend910_95", config_910_95);
+        this->AICore().AddConfig("ascend950", config_910_95);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
         this->AICore().AddConfig("kirinx90", config_kirin);

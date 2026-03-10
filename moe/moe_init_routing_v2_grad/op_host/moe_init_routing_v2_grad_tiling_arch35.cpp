@@ -45,7 +45,7 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (socVersion != platform_ascendc::SocVersion::ASCEND910_95) {
+        if (socVersion != platform_ascendc::SocVersion::ascend950) {
             return false;
         }
         return true;

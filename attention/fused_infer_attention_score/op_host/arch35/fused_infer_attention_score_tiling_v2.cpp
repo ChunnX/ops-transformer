@@ -954,7 +954,7 @@ ge::graphStatus FusedInferAttentionScoreTilingV2::DoOpTiling() {
             }
 #endif
         }
-        if (tempCompileInfoPtr.socShortName != platform_ascendc::SocVersion::ASCEND910_95 && tempCompileInfoPtr.socShortName != platform_ascendc::SocVersion::ASCEND910_55) {
+        if (tempCompileInfoPtr.socShortName != platform_ascendc::SocVersion::ascend950 && tempCompileInfoPtr.socShortName != platform_ascendc::SocVersion::ASCEND910_55) {
             OP_CHECK_IF((((contextParamsForPFATiling.inputDataType == ge::DT_INT8) || (contextParamsForPFATiling.kDataType == ge::DT_INT8) ||
                 (contextParamsForPFATiling.outputDataType == ge::DT_INT8)) && (queryD % D_ALIGN_32 != 0)),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "D(%u) of query should be 32 elements aligned when int8 is involved!", queryD),

@@ -220,7 +220,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckParam()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ascend950) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check nullptr fail."), return ge::GRAPH_FAILED);
@@ -249,7 +249,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::GetShapeAttrsInfo()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95) {
+    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ascend950) {
         return ge::GRAPH_SUCCESS;
     }
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();

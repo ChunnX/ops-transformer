@@ -4005,6 +4005,6 @@ ge::graphStatus IFATilingV2::DoSubOpTiling(IncreFlashAttentionContext& ifaContex
 	return ge::GRAPH_FAILED;
 }
 
-REGISTER_TILING_TEMPLATE_FIA(IncreFlashAttention, IFATilingV2, std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ASCEND910_95}), 90);
+REGISTER_TILING_TEMPLATE_FIA(IncreFlashAttention, IFATilingV2, std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ascend950}), 90);
 
 } // namespace optiling

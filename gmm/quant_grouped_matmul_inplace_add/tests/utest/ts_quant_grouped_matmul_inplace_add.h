@@ -25,7 +25,7 @@ using ops::adv::tests::quant_grouped_matmul_inplace_add::Param;
 using ops::adv::tests::quant_grouped_matmul_inplace_add::QuantGroupedMatmulInplaceAddCase;
 
 namespace qgmmiaTestParam {
-class Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend910_9591
-    : public Ts_WithParam_Ascend910_9591<QuantGroupedMatmulInplaceAddCase> {};
+class Ts_QuantGroupedMatmulInplaceAdd_WithParam_ascend95091
+    : public Ts_WithParam_ascend95091<QuantGroupedMatmulInplaceAddCase> {};
 } // namespace qgmmiaTestParam
 #endif // UTEST_TS_QUANTGROUPEDMATMULINPLACEADD_H

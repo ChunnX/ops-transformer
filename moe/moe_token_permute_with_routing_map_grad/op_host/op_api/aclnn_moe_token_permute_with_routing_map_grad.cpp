@@ -67,7 +67,7 @@ static const std::initializer_list<op::DataType> ASCEND910B_AICORE_DTYPE_SUPPORT
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_INT32, op::DataType::DT_INT16,
     op::DataType::DT_BF16};
 
-static const std::initializer_list<op::DataType> ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST = {
+static const std::initializer_list<op::DataType> ascend950_AICORE_DTYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_INT32,
     op::DataType::DT_INT16, op::DataType::DT_BF16,    op::DataType::DT_INT8,
     op::DataType::DT_UINT8, op::DataType::DT_INT64,   op::DataType::DT_BOOL};
@@ -75,8 +75,8 @@ static const std::initializer_list<op::DataType> ASCEND910_95_AICORE_DTYPE_SUPPO
 static bool IsAICoreSupport(const aclTensor* self)
 {
     // 根据芯片类型和输入self类型判断是否走aicore
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95) {
-        return CheckType(self->GetDataType(), ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST);
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ascend950) {
+        return CheckType(self->GetDataType(), ascend950_AICORE_DTYPE_SUPPORT_LIST);
     } else if (
         GetCurrentPlatformInfo().GetSocVersion() >= SocVersion::ASCEND910B &&
         GetCurrentPlatformInfo().GetSocVersion() <= SocVersion::ASCEND910E) {

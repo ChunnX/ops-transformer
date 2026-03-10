@@ -373,13 +373,13 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionScore(gert::TilingContext *
         return ge::GRAPH_FAILED);
  
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_95) {
-        OP_LOGW(context, "Current soc version is ASCEND910_95.");
+    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ascend950) {
+        OP_LOGW(context, "Current soc version is ascend950.");
         if (IsEmptyInputRegbase(context)) {
             return ge::GRAPH_SUCCESS;
         }
     } else {
-        OP_LOGW(context, "Current soc version is not ASCEND910_95.");
+        OP_LOGW(context, "Current soc version is not ascend950.");
         if (IsEmptyInput(context)) {
             return ge::GRAPH_SUCCESS;
         }

@@ -173,7 +173,7 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("opFile.value", "scatter_pa_kv_cache_apt");
-        this->AICore().AddConfig("ascend910_95", config_910_95);
+        this->AICore().AddConfig("ascend950", config_910_95);
     }
 };
 OP_ADD(ScatterPaKvCache);

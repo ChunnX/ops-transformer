@@ -439,7 +439,7 @@ void RunNormalCaseRegbase(int64_t N, int64_t H, int64_t K, int64_t C, int64_t dr
                           std::vector<int64_t> aciveExpertRange, int64_t rowIdxType, ge::graphStatus result,
                           int64_t expectTilingKey, string expectTilingData, vector<size_t> expectWorkspaces)
 {
-    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 196608, platform_ascendc::SocVersion::ASCEND910_95};
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 196608, platform_ascendc::SocVersion::ascend950};
     int64_t activeNum = N * K;
     int64_t expert_num = EXPERT_NUM;
     int64_t E = aciveExpertRange[1] - aciveExpertRange[0];
@@ -474,7 +474,7 @@ void RunNormalCaseRegbase1(int64_t N, int64_t H, int64_t K, int64_t C, int64_t d
                           std::vector<int64_t> aciveExpertRange, int64_t rowIdxType, ge::graphStatus result,
                           int64_t expectTilingKey, string expectTilingData, vector<size_t> expectWorkspaces)
 {
-    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 196608, platform_ascendc::SocVersion::ASCEND910_95};
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 196608, platform_ascendc::SocVersion::ascend950};
     int64_t activeNum = N * K;
     int64_t expert_num = EXPERT_NUM;
     int64_t E = aciveExpertRange[1] - aciveExpertRange[0];

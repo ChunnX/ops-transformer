@@ -15,10 +15,10 @@
 
 #include "ts_aclnn_quant_grouped_matmul_inplace_add.h"
 
-using qgmmInplaceAddTestParam::Ts_Aclnn_QGMMInplaceAdd_WithParam_Ascend910_9591;
+using qgmmInplaceAddTestParam::Ts_Aclnn_QGMMInplaceAdd_WithParam_ascend95091;
 namespace {
 
-TEST_P(Ts_Aclnn_QGMMInplaceAdd_WithParam_Ascend910_9591, Tc_Tiling_QGmmInplaceAdd)
+TEST_P(Ts_Aclnn_QGMMInplaceAdd_WithParam_ascend95091, Tc_Tiling_QGmmInplaceAdd)
 {
     ASSERT_TRUE(case_->Init());
     ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
@@ -128,5 +128,5 @@ const auto Tc_QGmm_Aclnn_David_Case = ::testing::Values(AclnnQGMMInplaceAddCase(
             GenTensor("scale1", {4}, ge::DataType::DT_FLOAT),
             GenTensor("groupList", {4}, ge::DataType::DT_INT64)}, {128, 128, 128, 128}, 1, 0), 0
     ));
-INSTANTIATE_TEST_SUITE_P(QuantGroupedMatmulInplaceAdd, Ts_Aclnn_QGMMInplaceAdd_WithParam_Ascend910_9591, Tc_QGmm_Aclnn_David_Case);
+INSTANTIATE_TEST_SUITE_P(QuantGroupedMatmulInplaceAdd, Ts_Aclnn_QGMMInplaceAdd_WithParam_ascend95091, Tc_QGmm_Aclnn_David_Case);
 }  // namespace
