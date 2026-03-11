@@ -1895,102 +1895,95 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SetStatus() //框间状态区接收 + 框内状态区发送
 {
-    InitStatusTensor();
-
-    GlobalTensor<uint32_t> statusWinGMTensor;
-    statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_)); //todo: 接收区地址
-    uint32_t flagMaxRecvNum = (blockCntPerCnt_ * UB_ALIGN) / sizeof(uint32_t);
-    uint32_t gatherOutSize =
-        Ceil(blockCntPerCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
-    
-    TBuf flagRecvBuf, flagGatherOutBuf, statusCleanBuf;
-    tpipe_->InitBuffer(flagRecvBuf, flagMaxRecvNum);
-    tpipe_->InitBuffer(flagGatherOutBuf, gatherOutSize);
-    tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
-    flagRecvTensor_ = flagRecvBuf.Get<uint32_t>();
-    flagGatherOutTensor_ = flagGatherOutBuf.Get<uint32_t>();
-    flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
-    SyncFunc<AscendC::HardEvent::V_S>();
-    flagRecvGatherMask_.SetValue(0, 1);
-
-    int32_t count = 0;
-    while(true) { //确保等到 
-        count++;
-        if (count == 100000) {
-            LOG_INFO("SetStatus error count");
-            break;
-        }
-        DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(blockCntPerCnt_), static_cast<uint32_t>(sizeof(uint32_t)),
-                                        static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
-        DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
-
-        // flag放到flagRecvTensor_
-        DataCopyPad(flagRecvTensor_, statusWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
-        LOG_INFO("1111111");
-        //LOG_INFO("dataFlagGlobal", statusWinGMTensor, {16, 8});
-        //LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, blockCntPerCnt_});
-
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        LOG_INFO("2222222");
-        uint64_t recvCnt = 0;
-        GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
-                {1, (uint16_t)(blockCntPerCnt_), 1, 0}, recvCnt);
-        LOG_INFO("flagGatherOutTensor_", flagGatherOutTensor_, {1, 1});
-
-        if (flagGatherOutTensor_(0) == blockCntPerCnt_) {
-            LOG_INFO("flagGatherOutTensor_(0)", flagGatherOutTensor_(0));
-            break;
-        }
-    } 
-
-    
-
-    uint32_t startPosId;
-    uint32_t endPosId;
-    uint32_t sendPosNum;
-    SplitToCore(expertNumInServer_ * serverNum_, 0, aivUsedCumSum_, startPosId, endPosId, sendPosNum);
-    if (startPosId >= expertNumInServer_ * serverNum_) {
+    uint32_t startServerId;
+    uint32_t endServerId;
+    uint32_t resvServerNum;
+    SplitToCore(serverNum_, 0, aivUsedCumSum_, startServerId, endServerId, resvServerNum);
+    if (startServerId >= serverNum_) {
         return;
     }
-    LOG_INFO("startPosId :",startPosId);
-    LOG_INFO("endPosId :",endPosId);
-    LOG_INFO("sendPosNum :",sendPosNum);
 
-    for (uint32_t posIndex = startPosId; posIndex < endPosId; posIndex ++) {
-        uint32_t expertIndex = posIndex % expertNumInServer_;
-        uint32_t srcServerIndex = posIndex / expertNumInServer_;
-        uint32_t srcPos = posIndex / 120 * 128 + posIndex % 120;
-        // uint32_t srcPos = posIndex;
-        statusTensor_((posIndex - startPosId) * 8 + 1) = statusWinGMTensor(srcPos);
-        LOG_INFO("srcPos",srcPos);
-        LOG_INFO("statusWinGMTensor(srcPos)",statusWinGMTensor(srcPos));
-    }
-    LOG_INFO("[statusTensor_]",statusTensor_,{8,8});
+    for(int serverIdx = startServerId; serverIdx < endServerId; serverIdx++) {
+        InitStatusTensor();
 
-    SyncFunc<AscendC::HardEvent::S_MTE3>(); 
-    GlobalTensor<int32_t> rankGMTensor;
-    for (uint32_t posIndex = startPosId; posIndex < endPosId; posIndex ++) {
-        uint32_t expertIndex = posIndex % expertNumInServer_;
-        uint32_t srcServerIndex = posIndex / expertNumInServer_;
-        uint32_t srcRankId = srcServerIndex * serverRankSize_ + epRankId_ % serverRankSize_;
-        uint32_t dstRankId = expertIndex; // 共享专家
-        uint32_t offset = stateOffset_ * srcRankId;
-        if (expertIndex >= shareRankNumInServer_) { // moe专家
-            dstRankId =
-                (expertIndex - shareRankNumInServer_) / moeExpertNumPerRank_ + shareRankNumInServer_;
-            offset += ((expertIndex - shareRankNumInServer_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
+        GlobalTensor<uint32_t> statusWinGMTensor;
+        statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_) + cntBlockPerCnt_ * serverIdx); //todo: 接收区地址 偏移serverIdx个 
+        uint32_t flagMaxRecvNum = (blockCntPerCnt_ * UB_ALIGN) / sizeof(uint32_t);
+        uint32_t gatherOutSize =
+            Ceil(blockCntPerCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
+    
+        TBuf flagRecvBuf, flagGatherOutBuf, statusCleanBuf;
+        tpipe_->InitBuffer(flagRecvBuf, flagMaxRecvNum);
+        tpipe_->InitBuffer(flagGatherOutBuf, gatherOutSize);
+        tpipe_->InitBuffer(statusCleanBuf, BUFFER_NUM * UB_ALIGN);
+        flagRecvTensor_ = flagRecvBuf.Get<uint32_t>();
+        flagGatherOutTensor_ = flagGatherOutBuf.Get<uint32_t>();
+        flagRecvGatherMask_ = statusCleanBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
+        Duplicate<uint32_t>(flagRecvGatherMask_, 0, UB_ALIGN / sizeof(uint32_t));
+        SyncFunc<AscendC::HardEvent::V_S>();
+        flagRecvGatherMask_.SetValue(0, 1);
+
+        int32_t count = 0;
+        while(true) { //确保等到 
+            count++;
+            if (count == 100000) {
+                LOG_INFO("SetStatus error count");
+                break;
+            }
+            DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(blockCntPerCnt_), static_cast<uint32_t>(sizeof(uint32_t)),
+                                            static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
+            DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
+
+            // flag放到flagRecvTensor_
+            DataCopyPad(flagRecvTensor_, statusWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
+            LOG_INFO("1111111");
+            //LOG_INFO("dataFlagGlobal", statusWinGMTensor, {16, 8});
+            //LOG_INFO("flagRecvTensor_", flagRecvTensor_, {1, blockCntPerCnt_});
+
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            LOG_INFO("2222222");
+            uint64_t recvCnt = 0;
+            GatherMask(flagGatherOutTensor_, flagRecvTensor_, flagRecvGatherMask_, true, uint32_t(1),
+                    {1, (uint16_t)(blockCntPerCnt_), 1, 0}, recvCnt);
+            LOG_INFO("flagGatherOutTensor_", flagGatherOutTensor_, {1, 1});
+
+            if (flagGatherOutTensor_(0) == blockCntPerCnt_) {
+                LOG_INFO("flagGatherOutTensor_(0)", flagGatherOutTensor_(0));
+                break;
+            }
+        } 
+
+        for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
+            uint32_t srcPos = expertIndex / 120 * 128 + expertIndex % 120;
+            // uint32_t srcPos = posIndex;
+            statusTensor_(expertIndex * 8 + 1) = statusWinGMTensor(srcPos);
+            LOG_INFO("srcPos",srcPos);
+            LOG_INFO("statusWinGMTensor(srcPos)",statusWinGMTensor(srcPos));
         }
-        GM_ADDR rankGM =
-            (__gm__ uint8_t *)GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset; // 计算地址偏移
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
-        DataCopy<int32_t>(rankGMTensor, statusTensor_[(posIndex - startPosId) * 8], 8UL);
-        LOG_INFO("[rankGM]", rankGM);
-        LOG_INFO("[srcRankId]",srcRankId);
-        LOG_INFO("[dstRankId]",dstRankId);
         LOG_INFO("[statusTensor_]",statusTensor_,{8,8});
+
+        SyncFunc<AscendC::HardEvent::S_MTE3>(); 
+        GlobalTensor<int32_t> rankGMTensor;
+        for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
+            uint32_t srcRankId = serverIdx * serverRankSize_ + epRankId_ % serverRankSize_;
+            uint32_t dstRankId = expertIndex; // 共享专家
+            uint32_t offset = stateOffset_ * srcRankId;
+            if (expertIndex >= shareRankNumInServer_) { // moe专家
+                dstRankId =
+                    (expertIndex - shareRankNumInServer_) / moeExpertNumPerRank_ + shareRankNumInServer_;
+                offset += ((expertIndex - shareRankNumInServer_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
+            }
+            GM_ADDR rankGM =
+                (__gm__ uint8_t *)GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset; // 计算地址偏移
+            rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
+            DataCopy<int32_t>(rankGMTensor, statusTensor_[expertIndex * 8], 8UL);
+            LOG_INFO("[rankGM]", rankGM);
+            LOG_INFO("[srcRankId]",srcRankId);
+            LOG_INFO("[dstRankId]",dstRankId);
+            LOG_INFO("[statusTensor_]",statusTensor_,{8,8});
+        }
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <TemplateDispatchKFCTypeClass>
