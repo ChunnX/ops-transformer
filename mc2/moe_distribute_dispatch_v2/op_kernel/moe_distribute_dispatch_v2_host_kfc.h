@@ -1661,7 +1661,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             LOG_INFO("after CopyInAndOut");
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
-            //SendToExpert(index);
+            SendToExpert(index);
 
             // finish更新并clean
             finishNumTensor_(index) = 1;
@@ -1832,7 +1832,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
         //DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
-        LOG_INFO("xOutTensor_", xOutTensor_);
+        //LOG_INFO("xOutTensor_", xOutTensor_);
         WriteDataToWinOut(xOutTensor_, rankGM, blockCntPerTokenToExpert_);
         xOutQueue_.FreeTensor<ExpandXOutType>(xOutTensor_);
     } else {
