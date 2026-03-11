@@ -57,11 +57,11 @@ aclnnStatus aclnnAlltoAllMatmul(
     <col style="width: 154px">
     <col style="width: 123px">
     <col style="width: 270px">
-    <col style="width: 295px">
+    <col style="width: 325px">
     <col style="width: 245px">
     <col style="width: 120px">
     <col style="width: 203px">
-    <col style="width: 146px">
+    <col style="width: 116px">
     </colgroup>
     <thead>
     <tr>
@@ -97,7 +97,7 @@ aclnnStatus aclnnAlltoAllMatmul(
     </tr>
     <tr>
     <td>biasOptional</td>
-    <td>可选输入</td>
+    <td>输入</td>
     <td>矩阵乘运算后累加的偏置，对应公式中的bias。</td>
     <td>支持传入空指针场景，根据设备型号对数据类型有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnAlltoAllMatmul(
     </tr>
     <tr>
     <td>alltoAllOutOptional</td>
-    <td>可选输出</td>
+    <td>输出</td>
     <td>接收AlltoAll和Pemute后的内容。</td>
     <td>传入nullptr时表示不输出通信输出。</td>
     <td>FLOAT16、BFLOAT16</td>

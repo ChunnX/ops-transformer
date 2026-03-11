@@ -53,7 +53,7 @@
         - mx量化场景：
 
           $$
-          computeOut = (x1* x1Scale)@(x2* x2Scale) + bias \\
+          computeOut = \sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1 @ x2 * (x1Scale * x2Scale)) + bias \\
           permutedOut = computeOut.view(BS, rankSize, H2 / rankSize).permute(1, 0, 2) \\
           output = AlltoAll(permutedOut).view(rankSize * BS, H2 / rankSize)
           $$
@@ -203,7 +203,7 @@
     <tr>
     <td>group_size</td>
     <td>可选属性</td>
-    <td>用于Matmul计算三个方向上的量化分组大小，其值由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize中的高16位的数值无效），计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</td>
+    <td>用于Matmul计算三个方向上的量化分组大小，仅在scale输入都是2维及以上数据时取值有效，其他场景默认传入0即可。</td>
     <td>INT</td>
     <td>-</td>
     </tr>

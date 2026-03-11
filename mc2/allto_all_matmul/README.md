@@ -69,12 +69,11 @@
         $$
         commOut = AlltoAll(x1.view(rankSize, BS/rankSize, H)) \\
         permutedOut = commOut.permute(1, 0, 2).view(BS/rankSize, rankSize*H) \\
-        commX1Scale = AlltoAll(x1Scale.view(rankSize, BS/rankSize, ceil(H/64), 2)) \\
-        permuteX1Scale = commX1Scale.permute(1, 0, 2, 3) \\
-        permutedX1Scale = permuteX1Scale.view(BS/rankSize, ceil(H/64)*rankSize, 2) \\
-        output = (permutedOut* permutedX1Scale)@(x2* x2Scale) + bias
+        commScale = AlltoAll(x1Scale.view(rankSize, BS/rankSize, ceil(H/64), 2)) \\
+        permutedScale = commScale.permute(1, 0, 2, 3).view(BS/rankSize, ceil(H/64)*rankSize, 2) \\
+        output = \sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (permutedOut @ x2 * (permutedScale * x2Scale)) + bias
         $$
-
+        
 ## 参数说明​
 
  <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
@@ -234,7 +233,7 @@
     <tr>
     <td>group_size</td>
     <td>可选属性</td>
-    <td>用于Matmul计算三个方向上的量化分组大小，其值由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize中的高16位的数值无效），计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</td>
+    <td>用于Matmul计算三个方向上的量化分组大小，仅在scale输入都是2维及以上数据时取值有效，其他场景默认传入0即可。</td>
     <td>INT</td>
     <td>-</td>
     </tr>

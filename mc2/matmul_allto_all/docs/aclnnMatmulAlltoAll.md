@@ -52,15 +52,15 @@ aclnnStatus aclnnMatmulAlltoAll(
 
 - ​**参数说明**​：
 
-    <table style="undefined;table-layout: fixed; width: 1656px"> <colgroup>
+    <table style="undefined;table-layout: fixed; width: 1556px"> <colgroup>
     <col style="width: 154px">
-    <col style="width: 223px">
+    <col style="width: 123px">
     <col style="width: 270px">
-    <col style="width: 295px">
+    <col style="width: 325px">
     <col style="width: 245px">
     <col style="width: 120px">
     <col style="width: 203px">
-    <col style="width: 146px">
+    <col style="width: 116px">
     </colgroup>
     <thead>
     <tr>
@@ -96,7 +96,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     </tr>
     <tr>
     <td>biasOptional</td>
-    <td>可选输入</td>
+    <td>输入</td>
     <td>阵乘运算后累加的偏置，对应公式中的bias。</td>
     <td>支持传入空指针场景；根据设备型号对数据类型有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -202,8 +202,8 @@ aclnnStatus aclnnMatmulAlltoAll(
       <td>输入和输出的必选参数Tensor是空指针。</td>
     </tr>
     <tr>
-        <td rowspan="6">ACLNN_ERR_PARAM_INVALID</td>
-        <td rowspan="6">161002</td>
+        <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="7">161002</td>
         <td>输入和输出的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
