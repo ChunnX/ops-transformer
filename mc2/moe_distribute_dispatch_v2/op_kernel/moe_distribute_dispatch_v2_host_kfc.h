@@ -2278,8 +2278,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             SetAtomicNone();
         }
             // 软同步，轮询flag
+        uint32_t count = 0;
         if(aivId_ == 0) {
             while(true) {
+                count++;
+                if(count > 100000) {
+                    LOG_INFO("SendExpertCnt errorcnt", count);
+                }
                 DataCopy(gmMoeCntFlgTensor, gmMoeCntFlgGMTensor, UB_ALIGN /sizeof(int32_t));
                 PipeBarrier<PIPE_MTE2>();
                 if(gmMoeCntFlgTensor.GetValue(0) == aivUsedCumSum_ - 1){
