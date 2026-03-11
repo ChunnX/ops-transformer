@@ -778,13 +778,16 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitDispatchBetweenServerInfo()
 {
     //LogInfo(__LINE__, "InitDispatchBetweenServerInfo start");
-    tpipe_->InitBuffer(expertMaskInputBuf_, expertIdsCnt_ * sizeof(bool));
-    totalUsedUB_ += expertIdsCnt_ * sizeof(bool);
-    expertMaskInputTensor_ = expertMaskInputBuf_.Get<bool>();
+    if (isTokenMaskFlag_) {
+        tpipe_->InitBuffer(expertMaskInputBuf_, expertIdsCnt_ * sizeof(bool));
+        totalUsedUB_ += expertIdsCnt_ * sizeof(bool);
+        expertMaskInputTensor_ = expertMaskInputBuf_.Get<bool>();
 
-    DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyExtParams maskParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(bool)), 0U, 0U, 0U};
-    DataCopyPad(expertMaskInputTensor_, xActiveMaskGMTensor_, maskParams, maskCopyPadParams);
+        DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
+        DataCopyExtParams maskParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(bool)), 0U, 0U, 0U};
+        DataCopyPad(expertMaskInputTensor_, xActiveMaskGMTensor_, maskParams, maskCopyPadParams);
+    }
+    
 
     if constexpr (QuantMode > UNQUANT) {
         tpipe_->InitBuffer(receiveDataCastFloatBuf_, maxSize_); // max{28K, BS * K * 4B}
