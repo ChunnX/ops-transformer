@@ -2710,8 +2710,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             CalCumSum();
         } else {
             CalTokenSendExpertOffset();
-            // if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
-            //     ScatterTokenToRemote();
+            if(aivId_ < aivUsedCumSum_ + aivUsedScatter_) {
+                ScatterTokenToRemote();
+            }
             //     // CommunicateBetweenServer(0, serverNum_, aivUsedScatter_);
             // } else {
             //     GatherTokenFrRemote(aivUsedGather_);
