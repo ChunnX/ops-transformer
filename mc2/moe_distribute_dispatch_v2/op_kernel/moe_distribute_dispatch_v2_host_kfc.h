@@ -100,6 +100,9 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void CalExpertOffset(uint32_t startTokenId, uint32_t endTokenId, LocalTensor<uint32_t> flagRecvGatherMask);
+    __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<uint32_t> flagRecvGatherMask);
+    __aicore__ inline void WaitFlag(GM_ADDR flagAddr, LocalTensor<int32_t> flagInLTTensor, LocalTensor<uint32_t> flagRecvGatherMask, uint32_t waitNum);
     __aicore__ inline void CalServerSendCnt();
     __aicore__ inline void WriteExpertOffset();
     __aicore__ inline void CalTokenSendExpertOffset();
@@ -1095,7 +1098,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
     DataCopyPadExtParams<int32_t> CopyPadParams{false, 0U, 0U, 0U};
     CopyRepeatParams cntCopyParams{1, 1, 0, 0};
     DataCopyPad(xOutTint32[moeListAlign_], expertIdsGMTensor_[tokenIndex * axisK_], copyParams, CopyPadParams);
-    PipeBarrier<PIP_MTE2>();
+    PipeBarrier<PIPE_MTE2>();
     Copy(xOutTint16[moeCntAlign_], expertOffsetCntTensor_[realIndex * axisK_], mask, 1, cntCopyParams);
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
@@ -1152,8 +1155,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
         uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
-        bool isSend = (isSharedExpert) || (tokenSendOffset != -1);
         int32_t tokenSendOffset = isSharedExpert ? tokenSendMap_.GetValue(offset) : tokenIndex;
+        bool isSend = (isSharedExpert) || (tokenSendOffset != -1);
         if(!isSend) {
             continue;
         }
