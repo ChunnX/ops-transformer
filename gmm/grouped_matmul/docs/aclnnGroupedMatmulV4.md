@@ -821,8 +821,8 @@ aclnnStatus aclnnGroupedMatmulV4(
       <summary><term>动态量化（T-T && T-C && K-T && K-C量化）场景约束</term></summary>
         <a id="动态量化（T-T && T-C && K-T && K-C量化）场景约束"></a>
 
-    - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、 activationInputOptional
-    - 不为空的参数支持的数据类型组合要满足下表：
+      - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、 activationInputOptional
+      - 不为空的参数支持的数据类型组合要满足下表：
 
           |groupType| x       | weight  | biasOptional | scaleOptional |  perTokenScaleOptional |out     |
           |:-------:|:-------:|:-------:| :------      |:-------    | :------   |   :------ |
@@ -831,13 +831,13 @@ aclnnStatus aclnnGroupedMatmulV4(
           |0/2|HIFLOAT8  |HIFLOAT8| null     |FLOAT32    | FLOAT32   | BFLOAT16/  FLOAT16/FLOAT32 |
           |0/2|FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| null     |  FLOAT32    | FLOAT32   | BFLOAT16/  FLOAT16/FLOAT32 |
 
-    - scaleOptional要满足下表（其中g为matmul组数即分组数），推荐在pertensor场景scaleOptional的shape使用（g,），防止与G-B量化模式混淆：
+      - scaleOptional要满足下表（其中g为matmul组数即分组数），推荐在pertensor场景scaleOptional的shape使用（g,），防止与G-B量化模式混淆：
 
           | groupType | 使用场景 | shape限制 |
           |:---------:|:---------:| :------ |
           |0/2|weight单tensor|perchannel场景：每个tensor 2维，shape为（g, N）； pertensor场景：每个tensor 2维或1维，shape为（g, 1）或（g,）|
 
-    - perTokenScaleOptional要满足下表：
+      - perTokenScaleOptional要满足下表：
 
           | groupType | 使用场景 | shape限制 |
           |:---------:|:---------:| :------ |
