@@ -2262,40 +2262,40 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             sendTokenNumToexpert.SetValue(dst, tokenNumToExpertTensor_.GetValue(moeIndex));
         }
 
-        // uint32_t dstOffset = aivId_ * blockCntPerCnt_ *  SERVER_STATE_ALIGN;
-        // GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset);
-        // WriteDataToWinOut(sendTokenNumToexpert, rankGM, blockCntPerCnt_);
-        // PipeBarrier<PIPE_MTE3>();
-        // GlobalTensor<int32_t> gmMoeCntFlgGMTensor;
-        // LocalTensor<int32_t>  gmMoeCntFlgTensor = gatherMaskTBuf_.Get<int32_t>();
-        // gmMoeCntFlgGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmMoeCntFlg));
+        uint32_t dstOffset = aivId_ * blockCntPerCnt_ *  SERVER_STATE_ALIGN;
+        GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset);
+        WriteDataToWinOut(sendTokenNumToexpert, rankGM, blockCntPerCnt_);
+        PipeBarrier<PIPE_MTE3>();
+        GlobalTensor<int32_t> gmMoeCntFlgGMTensor;
+        LocalTensor<int32_t>  gmMoeCntFlgTensor = gatherMaskTBuf_.Get<int32_t>();
+        gmMoeCntFlgGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmMoeCntFlg));
 
-        // // 写flag 核0不写 1
-        // if (aivId_ != 0 ) {
-        //     gmMoeCntFlgTensor.SetValue(0,1);
-        //     PipeBarrier<PIPE_V>();
-        //     SetAtomicAdd<int32_t>();
-        //     DataCopyExtParams flagCopyOutParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U, 0U};
-        //     DataCopyPad(gmMoeCntFlgGMTensor, gmMoeCntFlgTensor, flagCopyOutParams);
-        //     PipeBarrier<PIPE_MTE3>();
-        //     SetAtomicNone();
-        // }
-        //     // 软同步，轮询flag
-        // uint32_t count = 0;
-        // if(aivId_ == 0) {
-        //     while(true) {
-        //         count++;
-        //         if(count > 100000) {
-        //             LOG_INFO("SendExpertCnt errorcnt", count);
-        //         }
-        //         DataCopy(gmMoeCntFlgTensor, gmMoeCntFlgGMTensor, UB_ALIGN /sizeof(int32_t));
-        //         PipeBarrier<PIPE_MTE2>();
-        //         if(gmMoeCntFlgTensor.GetValue(0) == aivUsedCumSum_ - 1){
-        //             break;
-        //         }
-        //     }
-        //     // TODO:调用接口发送数据。
-        // }
+        // 写flag 核0不写 1
+        if (aivId_ != 0 ) {
+            gmMoeCntFlgTensor.SetValue(0,1);
+            PipeBarrier<PIPE_V>();
+            SetAtomicAdd<int32_t>();
+            DataCopyExtParams flagCopyOutParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPad(gmMoeCntFlgGMTensor, gmMoeCntFlgTensor, flagCopyOutParams);
+            PipeBarrier<PIPE_MTE3>();
+            SetAtomicNone();
+        }
+            // 软同步，轮询flag
+        uint32_t count = 0;
+        if(aivId_ == 0) {
+            while(true) {
+                count++;
+                if(count > 100000) {
+                    LOG_INFO("SendExpertCnt errorcnt", count);
+                }
+                DataCopy(gmMoeCntFlgTensor, gmMoeCntFlgGMTensor, UB_ALIGN /sizeof(int32_t));
+                PipeBarrier<PIPE_MTE2>();
+                if(gmMoeCntFlgTensor.GetValue(0) == aivUsedCumSum_ - 1){
+                    break;
+                }
+            }
+            // TODO:调用接口发送数据。
+        }
     }
 }
 
@@ -2319,6 +2319,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     
     Duplicate<int32_t>(tokenNumToExpertTensor_, 0, moeExpertNum_);
     SyncFunc<AscendC::HardEvent::MTE2_V>(); // 在init搬运Expert Id 需要等待流水结束
+    LOG_INFO("CalExpertTotalSendCnt expertIdsTensor_",expertIdsTensor_,{axisBS_,axisK_});
     if (isExpertMaskFlag_) { // 二维mask去掉不用发送的专家Id
         Adds(expertIdsTensor_, expertIdsTensor_, 1, expertIdsCnt_);
         PipeBarrier<PIPE_V>();
