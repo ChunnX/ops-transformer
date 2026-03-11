@@ -779,7 +779,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitDispatchBetweenServerInfo()
 {
     //LogInfo(__LINE__, "InitDispatchBetweenServerInfo start");
-    if (isTokenMaskFlag_) {
+    if (isTokenMaskFlag_ || isExpertMaskFlag_) {
         tpipe_->InitBuffer(expertMaskInputBuf_, expertIdsCnt_ * sizeof(bool));
         totalUsedUB_ += expertIdsCnt_ * sizeof(bool);
         expertMaskInputTensor_ = expertMaskInputBuf_.Get<bool>();
