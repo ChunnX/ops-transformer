@@ -1375,7 +1375,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         Scatter(tokenSendMap_[serverIndex * perServerMapLength_], indexTensor, dstOffset, 0, static_cast<uint32_t>(sendTokenCnt)); // 32字节对齐
         PipeBarrier<PIPE_V>();
     }
-    LOG_INFO("tokenSendMap_", tokenSendMap_,{1, activeMaskBsCnt_});
+    LOG_INFO("tokenSendMap_", tokenSendMap_,{1, static_cast<uint32_t>(activeMaskBsCnt_)});
     LOG_INFO("serverCountTensor_", serverCountTensor_,{1,serverNum_});
 }
 
