@@ -223,7 +223,9 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetWorkspaceSize()
         workspaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "get workspace failed"),
         return ge::GRAPH_FAILED);
 
-    workspaceSize_ = libApiWorkSpaceSize_ + mmResultLen_;
+    // 如果是 A2A 路径，需要额外的 recvBuf (mmResultLen_)，否则只需要 senBuf
+    workspaceSize_ = libApiWorkSpaceSize_ + mmResultLen_ + (isA2APath_ ? mmResultLen_ : 0);
+
     workspaces[0] = workspaceSize_;
     OP_LOGD(opName_, "workspaces[0] size %ld.", workspaces[0]);
 
@@ -236,8 +238,9 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     if ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16)) {
         inputIsBf16Fp16 = INPUT_TYPE_IS_FP16_BF16;
     }
+    uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
-        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER);
+        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
             args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
     return tilingKey;
@@ -257,6 +260,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
+    isA2APath_ = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_); // 判断是否走标卡4p路径： (All2All + Vec Reduce)
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 };
