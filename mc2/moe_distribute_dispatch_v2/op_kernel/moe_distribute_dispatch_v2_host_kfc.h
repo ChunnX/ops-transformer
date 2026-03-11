@@ -1900,7 +1900,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         InitStatusTensor();
 
         GlobalTensor<uint32_t> statusWinGMTensor;
-        statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_) + blockCntPerCnt_ * serverIdx); //todo: 接收区地址 偏移serverIdx个 
+        statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, serverId_) + blockCntPerCnt_ * serverIdx); //todo: 接收区地址 偏移serverIdx个 
         uint32_t flagMaxRecvNum = (blockCntPerCnt_ * UB_ALIGN) / sizeof(uint32_t);
         uint32_t gatherOutSize =
             Ceil(blockCntPerCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
