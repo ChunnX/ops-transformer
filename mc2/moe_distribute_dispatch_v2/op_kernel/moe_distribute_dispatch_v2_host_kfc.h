@@ -1281,7 +1281,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     for(uint32_t index =0 ;index < usedCoreNum; index++) {
         // 计算每个核心的专家偏移量
         uint64_t expertOffset = dstOffset + index * offsetPerMask;
-        expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(expertOffset));
+        expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + expertOffset));
         DataCopyPad(expertCntTensor, expertOffsetCntGMTensor, expertCntCopyInParams, expertCntPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         LOG_INFO("CalExpertOffset expertCntTensor", expertCntTensor, {axisBS_, axisK_});
