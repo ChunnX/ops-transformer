@@ -1265,6 +1265,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     uint64_t usedCoreNum =  (aivNum_ - aivUsedCumSum_) > moeExpertNum_? moeExpertNum_ : (aivNum_ - aivUsedCumSum_);
     uint64_t dstOffset = startTokenId * axisK_ * sizeof(int16_t);
     uint32_t expertOffsetNum = (endTokenId - startTokenId) * axisK_;
+    LOG_INFO("expertOffsetNum",expertOffsetNum);
     GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(gmExpertOffsetCnt + dstFlag);
     LocalTensor<int32_t> flagInLTTensor = dstExpBuf_.Get<int32_t>();
     LocalTensor<int16_t> expertCntTensor = dstExpBuf_.Get<int16_t>();
@@ -1272,15 +1273,18 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     DataCopyParams expertCntCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int16_t) * expertOffsetNum), 0, 0};
     DataCopyPadParams expertCntPadParams{false, 0, 0, 0};
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
+    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, axisK_});
     LOG_INFO("CalExpertOffset start waitFlg");
     WaitFlag(flagAddr, flagInLTTensor, flagRecvGatherMask,  usedCoreNum);
     LOG_INFO("CalExpertOffset end waitFlg");
+    LOG_INFO("usedCoreNum",usedCoreNum);
     for(uint32_t index =0 ;index < usedCoreNum; index++) {
         // 计算每个核心的专家偏移量
         uint64_t expertOffset = dstOffset + index * offsetPerMask;
         expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(expertOffset));
         DataCopyPad(expertCntTensor, expertOffsetCntGMTensor, expertCntCopyInParams, expertCntPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
+        LOG_INFO("CalExpertOffset expertCntTensor", expertCntTensor, {axisBS_, axisK_});
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
         PipeBarrier<PIPE_V>();
     }
