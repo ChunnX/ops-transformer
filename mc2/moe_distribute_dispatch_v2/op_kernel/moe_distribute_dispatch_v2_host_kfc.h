@@ -1374,7 +1374,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         PipeBarrier<PIPE_V>();
         Scatter(tokenSendMap_[serverIndex * perServerMapLength_], indexTensor, dstOffset, 0, static_cast<uint32_t>(sendTokenCnt)); // 32字节对齐
         PipeBarrier<PIPE_V>();
-    } 
+    }
+    LOG_INIT("tokenSendMap_", tokenSendMap_,{1, activeMaskBsCnt_});
+    LOG_INFO("serverCountTensor_", serverCountTensor_,{1,serverNum_});
 }
 
 
@@ -1384,7 +1386,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //计算每个ServerCnt，也就是Token需要发送给那些Server
     CalServerSendCnt();
     SetServerFlag();
-    SendTokenToRemotServer();
+    // SendTokenToRemotServer();
 }
 
 // 构建发往其他server的所有data报文
