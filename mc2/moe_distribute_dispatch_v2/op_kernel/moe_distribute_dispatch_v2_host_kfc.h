@@ -205,6 +205,7 @@ private:
 
     __aicore__ inline GM_ADDR GetReceiveStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
     {
+        // retrun baseaddr + serverId * 1 * 1024 * 1024;
         return gmTemp;
     }
 
@@ -1900,7 +1901,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         InitStatusTensor();
 
         GlobalTensor<uint32_t> statusWinGMTensor;
-        statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, serverId_) + blockCntPerCnt_ * serverIdx); //todo: 接收区地址 偏移serverIdx个 
+        statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, serverId_) + blockCntPerCnt_ * SERVER_STATE_ALIGN * serverIdx); //todo: 接收区地址 偏移serverIdx个 
         uint32_t flagMaxRecvNum = (blockCntPerCnt_ * UB_ALIGN) / sizeof(uint32_t);
         uint32_t gatherOutSize =
             Ceil(blockCntPerCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
@@ -2262,40 +2263,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             sendTokenNumToexpert.SetValue(dst, tokenNumToExpertTensor_.GetValue(moeIndex));
         }
 
-        uint32_t dstOffset = aivId_ * blockCntPerCnt_ *  SERVER_STATE_ALIGN;
+        uint32_t dstOffset = serverIndex * blockCntPerCnt_ *  SERVER_STATE_ALIGN;
         GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset);
         WriteDataToWinOut(sendTokenNumToexpert, rankGM, blockCntPerCnt_);
         PipeBarrier<PIPE_MTE3>();
-        GlobalTensor<int32_t> gmMoeCntFlgGMTensor;
-        LocalTensor<int32_t>  gmMoeCntFlgTensor = gatherMaskTBuf_.Get<int32_t>();
-        gmMoeCntFlgGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmMoeCntFlg));
-
-        // 写flag 核0不写 1
-        if (aivId_ != 0 ) {
-            gmMoeCntFlgTensor.SetValue(0,1);
-            PipeBarrier<PIPE_V>();
-            SetAtomicAdd<int32_t>();
-            DataCopyExtParams flagCopyOutParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U, 0U};
-            DataCopyPad(gmMoeCntFlgGMTensor, gmMoeCntFlgTensor, flagCopyOutParams);
-            PipeBarrier<PIPE_MTE3>();
-            SetAtomicNone();
-        }
-            // 软同步，轮询flag
-        uint32_t count = 0;
-        if(aivId_ == 0) {
-            while(true) {
-                count++;
-                if(count > 100000) {
-                    LOG_INFO("SendExpertCnt errorcnt", count);
-                }
-                DataCopy(gmMoeCntFlgTensor, gmMoeCntFlgGMTensor, UB_ALIGN /sizeof(int32_t));
-                PipeBarrier<PIPE_MTE2>();
-                if(gmMoeCntFlgTensor.GetValue(0) == aivUsedCumSum_ - 1){
-                    break;
-                }
-            }
-            // TODO:调用接口发送数据。
-        }
+        // todo: HCCL接口
     }
 }
 
@@ -2353,21 +2325,21 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //SplitToCore(moeExpertNum_, 0, 1, startExpertId, endExpertId, sendExpertNum);
     CalExpertTotalSendCnt();
     SendExpertCnt();
-    // SetStatus();
+    SetStatus();
     
-    // SplitToCore(rscvStatusNum_, 0, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_);
+    SplitToCore(rscvStatusNum_, 0, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_);
 
-    // LOG_INFO("startStatusIndex_", startStatusIndex_);
-    // LOG_INFO("endStatusIndex_", endStatusIndex_);
-    // LOG_INFO("recStatusNumPerCore_", recStatusNumPerCore_);
+    LOG_INFO("startStatusIndex_", startStatusIndex_);
+    LOG_INFO("endStatusIndex_", endStatusIndex_);
+    LOG_INFO("recStatusNumPerCore_", recStatusNumPerCore_);
     
-    // BufferInit();
-    // WaitDispatch();
-    // CalRecvAndSetFlag();
-    // // 使用newAivId为0的核进行计算
-    // if (aivId_ == 0) {
-    //     SetExpertTokenNums();
-    // }
+    BufferInit();
+    WaitDispatch();
+    CalRecvAndSetFlag();
+    // 使用newAivId为0的核进行计算
+    if (aivId_ == 0) {
+        SetExpertTokenNums();
+    }
 }
 
 template <TemplateDispatchKFCTypeClass>
