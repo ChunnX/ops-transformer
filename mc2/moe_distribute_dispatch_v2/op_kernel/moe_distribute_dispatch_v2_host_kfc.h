@@ -1187,7 +1187,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flagAddr));
     DataCopyParams flagCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t) * waitNum), 0, 0};
     DataCopyPadParams flagPadParams{false, 0, 0, 0};
+    uint64_t count =0;
     while(true) { // 软同步
+        count++;
+        if(count > 100000){
+            LOG_INFO("WaitFlag,Error count");
+            break;
+        }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyInParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
@@ -1265,7 +1271,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
     DataCopyParams expertCntCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int16_t) * expertOffsetNum), 0, 0};
     DataCopyPadParams expertCntPadParams{false, 0, 0, 0};
     Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertOffsetNum);
+    LOG_INFO("CalExpertOffset start waitFlg");
     WaitFlag(flagAddr, flagInLTTensor, flagRecvGatherMask,  usedCoreNum);
+    LOG_INFO("CalExpertOffset end waitFlg");
     for(uint32_t index =0 ;index < usedCoreNum; index++) {
         // 计算每个核心的专家偏移量
         uint64_t expertOffset = dstOffset + index * offsetPerMask;
@@ -1275,6 +1283,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
         PipeBarrier<PIPE_V>();
     }
+    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_[startTokenId * axisK_], {endTokenId - startTokenId, axisK_});
 }
 
 
@@ -1442,7 +1451,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //计算每个ServerCnt，也就是Token需要发送给那些Server
     CalServerSendCnt();
     SetServerFlag();
-    // SendTokenToRemotServer();
+    SendTokenToRemotServer();
 }
 
 // 构建发往其他server的所有data报文
