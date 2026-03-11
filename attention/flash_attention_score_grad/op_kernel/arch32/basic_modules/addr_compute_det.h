@@ -85,7 +85,7 @@ public:
         this->nextToken = tilingData->basicDetTensorTilingData.nextTockens;
         this->dqPostAbsorb = tilingData->basicDetTensorTilingData.dqPostAbsorb;
         this->layout = tilingData->basicDetTensorTilingData.layout;
-        if (layout == BSNGD)
+        if (layout != TND)
         {
             dimS1 = tilingData->basicDetTensorTilingData.s1;
             dimS2 = tilingData->basicDetTensorTilingData.s2;
@@ -96,11 +96,11 @@ public:
         
         if (sparseMode == 1) {
             for (int32_t i = 0; i < dimB; i++) {
-                maxSeqK = max(maxSeqK, getSeqLen(i, seqLenK));
+                maxSeqK = max(maxSeqK, getSeqLen(i, seqLenK, false));
             }
         } else if (sparseMode == 3) {
             for (int32_t i = 0; i < dimB; i++) {
-                if (getSeqLen(i, seqLenQ) != getSeqLen(i, seqLenK)) {
+                if (getSeqLen(i, seqLenQ, true) != getSeqLen(i, seqLenK, false)) {
                     // sparsemode=3，qk不等长情况不使能优化
                     return;
                 }
@@ -147,34 +147,33 @@ private:
     int32_t s2GroupNum{0};  // 当前s2方向计算到需要累加的分组个数
 
     __aicore__ inline void UpdateSeqLen() {
-        if (layout == BSNGD) {  // BSH格式：使用固定长度
-            // BSH格式的lastBatchSum基于batch索引和固定长度计算
-            if (bIdx > 0) {
-                lastBatchQSum = bIdx * dimS1;
-                lastBatchKSum = bIdx * dimS2;
-            }
-        } else {  // TND格式：从seqLen数组获取
-            dimS1 = getSeqLen(bIdx, seqLenQ);
-            dimS2 = getSeqLen(bIdx, seqLenK);
+        if (layout == TND){
+            dimS1 = getSeqLen(bIdx, seqLenQ, true);
+            dimS2 = getSeqLen(bIdx, seqLenK, false);
             while ((dimS1 == 0 || dimS2 == 0) && bIdx < dimB - 1) {
                 bIdx++;
-                dimS1 = getSeqLen(bIdx, seqLenQ);
-                dimS2 = getSeqLen(bIdx, seqLenK);
+                dimS1 = getSeqLen(bIdx, seqLenQ, true);
+                dimS2 = getSeqLen(bIdx, seqLenK, false);
             }
             if (bIdx > 0) {
                 lastBatchQSum = getTotalLen(bIdx - 1, seqLenQ);
                 lastBatchKSum = getTotalLen(bIdx - 1, seqLenK);
             }
+        } else {
+           if (bIdx > 0) {
+                lastBatchQSum = bIdx * dimS1;
+                lastBatchKSum = bIdx * dimS2;
+            }
         }
-        
+
         sparseLeftBound = dimS1 - dimS2 + preToken + 1;
         sparseRightBound = dimS1 - dimS2 - nextToken;
     }
 
-    __aicore__ inline SEQLEN_TYPE getSeqLen(int32_t i, __gm__ uint8_t *seq_Len) {
-        if (layout == BSNGD) {  // BSH格式：返回固定长度
-            return dimS1;  // 对于Q，返回固定长度
-        }
+    __aicore__ inline SEQLEN_TYPE getSeqLen(int32_t i, __gm__ uint8_t *seq_Len, bool isQ = true) {
+        if (layout != TND) { 
+            return isQ ? dimS1 : dimS2;
+        } 
         
         SEQLEN_TYPE actualSeqlen;
         if (i == 0) {
@@ -186,30 +185,30 @@ private:
     }
 
     __aicore__ inline SEQLEN_TYPE getTotalLen(int32_t i, __gm__ uint8_t *seq_Len) {
-        if (layout == BSNGD) {  // BSH格式：返回基于固定长度的累积
-            return (i + 1) * dimS1;  // 对于Q
-        }
-        
         SEQLEN_TYPE actualTotalSeqlen = ((__gm__ SEQLEN_TYPE *)seq_Len)[i];
         return actualTotalSeqlen;
     }
 
     __aicore__ inline uint64_t getLeftAddr(int32_t lastBatchSum, int32_t s1Idx, int32_t n1Idx) {
-        if (layout == BSNGD) {  // BSH格式
-            // BSH: bIdx * dimS1 * dimN1 * dimD + s1Idx * dimN1 * dimD + n1Idx * dimD
+        if (layout == BSNGD) { 
             return bIdx * dimS1 * dimN1 * dimD + (s1Idx * dimN1 * dimD) + (n1Idx * dimD);
-        } else {  // TND格式
-            // TND: lastBatchSum * dimN1 * dimD + (s1Idx * dimN1 * dimD) + (n1Idx * dimD)
+        } else if (layout == SBNGD) {
+            return s1Idx * dimB * dimN1 * dimD + (bIdx * dimN1 * dimD) + (n1Idx * dimD);
+        } else if (layout == BNGSD) {
+            return bIdx * dimN1 * dimS1 * dimD + (n1Idx * dimS1 * dimD) + (s1Idx * dimD);
+        } else {
             return lastBatchSum * dimN1 * dimD + (s1Idx * dimN1 * dimD) + (n1Idx * dimD);
         }
     }
 
     __aicore__ inline uint64_t getRightAddr(int32_t lastBatchSum, int32_t s2Idx, int32_t n1Idx) {
         if (layout == BSNGD) {  // BSH格式
-            // BSH: bIdx * dimS2 * dimN2 * dimD + s2Idx * dimN2 * dimD + (n1Idx / dimG) * dimD
             return bIdx * dimS2 * dimN2 * dimD + (s2Idx * dimN2 * dimD) + ((n1Idx / dimG) * dimD);
-        } else {  // TND格式
-            // TND: lastBatchSum * dimN2 * dimD + (s2Idx * dimN2 * dimD) + ((n1Idx / dimG) * dimD)
+        } else if (layout == SBNGD) {
+            return s2Idx * dimB * dimN2 * dimD + (bIdx * dimN2 * dimD) + (n1Idx * dimD);
+        } else if (layout == BNGSD) {
+            return bIdx * dimN2 * dimS2 * dimD + ((n1Idx / dimG) * dimS2 * dimD) + (s2Idx * dimD);
+        } else { 
             return lastBatchSum * dimN2 * dimD + (s2Idx * dimN2 * dimD) + ((n1Idx / dimG) * dimD);
         }
     }

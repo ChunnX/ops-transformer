@@ -59,12 +59,16 @@ private:
     uint32_t bEventIDPing = 6;
     uint32_t bEventIDPong = 7;
 
+    uint64_t batch;
     uint64_t dimN1;
     uint64_t dimN2;
     uint64_t dimD;
     int32_t cubeBlockIdxArry[4][4];
     int32_t enableCausalOpt{0};
 
+    uint32_t layout;
+    uint32_t qSrcDvalue;
+    uint32_t kvSrcDvalue;
     uint32_t sparseMode;
     int64_t sparseLeftBound{0};              // preToken直线计算公式: s1Idx = s2Idx + sparseLeftBound
     int64_t sparseRightBound{0};             // nextToken直线计算公式: s1Idx = s2Idx + sparseRightBound
@@ -96,6 +100,21 @@ public:
         dimN1 = dimN2 * tilingData->basicDetTensorTilingData.g;
         dimD = tilingData->basicDetTensorTilingData.d;
         sparseMode = tilingData->basicDetTensorTilingData.sparseMode;
+        batch = tilingData->basicDetTensorTilingData.b;
+        this->layout = tilingData->basicDetTensorTilingData.layout;
+        if (layout == BNGSD){
+            qSrcDvalue = dimD;
+            kvSrcDvalue = dimD;
+        } else if (layout == BSNGD){
+            qSrcDvalue = dimN1 * dimD;
+            kvSrcDvalue = dimN2 * dimD;
+        } else if (layout == SBNGD){
+            qSrcDvalue = batch * dimN1 * dimD;
+            kvSrcDvalue = batch * dimN2 * dimD;
+        } else if (layout == TND){
+            qSrcDvalue = dimN1 * dimD;
+            kvSrcDvalue = dimN2 * dimD;
+        }
         this->queryAddr = queryAddr;
         this->keyAddr = keyAddr;
         this->dyAddr = dyAddr;
@@ -114,6 +133,7 @@ public:
         TBuf<AscendC::TPosition::A1> L1Buffer;
         TBuf<AscendC::TPosition::CO1> L0CBuffer;
         AsdopsBuffer<ArchType::ASCEND_V220> asdopsBuf;
+
 
         pipe->InitBuffer(L1Buffer, HardwareInfo<ArchType::ASCEND_V220>::l1Size);
         pipe->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);
@@ -224,7 +244,7 @@ private:
                     |       0/4/8/12        |         |        0/1/2/3        |
                     |-----------------------|         |-----------------------|
                     |       1/5/9/13        |         |        4/5/6/7        |
-            S1(M)|-----------------------|    S2(N)|-----------------------|
+               S1(M)|-----------------------|    S2(N)|-----------------------|
                     |       2/6/10/14       |         |        8/9/10/11      |
                     |---------- ------------|         |-----------------------|
                     |       3/7/11/15       |         |       12/13/14/15     |
@@ -267,6 +287,17 @@ private:
                 LocalTensor<float> l0_c_tensor = ping_pong_flag_a ? l0_c_ping_tensor : l0_c_pong_tensor;
                 uint32_t aEventID = ping_pong_flag_a ? aEventIDPing : aEventIDPong;
                 int32_t mProcessAlign = RoundUp(mProcess, SIZE_16);
+                uint64_t inner_query_offset, inner_key_offset;
+                if (layout == BSNGD || layout == TND){
+                    inner_query_offset = mIdx * SIZE_128 * dimN1 * dimD;
+                    inner_key_offset = nIdx * SIZE_128 * dimN2 * dimD;
+                } else if (layout == SBNGD){
+                    inner_query_offset = mIdx * SIZE_128 * batch * dimN1 * dimD;
+                    inner_key_offset = nIdx * SIZE_128 * batch * dimN2 * dimD;
+                } else if (layout == BNGSD){
+                    inner_query_offset = mIdx * SIZE_128 * dimD;
+                    inner_key_offset = nIdx * SIZE_128 * dimD;
+                }
 
                 if constexpr (CUBE_TYPE == QK) {
                     // reuse query
@@ -279,9 +310,9 @@ private:
                 if (needCopyInAMatrix) {
                     commonNd2NzParams.nValue = mProcess;
                     commonNd2NzParams.dValue = dimD;
-                    commonNd2NzParams.srcDValue = dimD * dimN1;
+                    commonNd2NzParams.srcDValue = qSrcDvalue;
                     commonNd2NzParams.dstNzC0Stride = mProcessAlign;
-                    AscendC::DataCopy(l1_a_tensor, tmp_type_gm_tensor[left_offset + mIdx * SIZE_128 * dimN1 * dimD],
+                    AscendC::DataCopy(l1_a_tensor, tmp_type_gm_tensor[left_offset + inner_query_offset],
                                         commonNd2NzParams);
 
                     SET_FLAG(MTE2, MTE1, EVENT_ID0);
@@ -299,9 +330,9 @@ private:
                 if (needCopyInBMatrix) {
                     commonNd2NzParams.nValue = nProcess;
                     commonNd2NzParams.dValue = dimD;
-                    commonNd2NzParams.srcDValue = dimD * dimN2;
+                    commonNd2NzParams.srcDValue = kvSrcDvalue;
                     commonNd2NzParams.dstNzC0Stride = nProcessAlign;
-                    AscendC::DataCopy(l1_b_tensor, tmp_type_gm_tensor[right_offset + nIdx * SIZE_128 * dimN2 * dimD],
+                    AscendC::DataCopy(l1_b_tensor, tmp_type_gm_tensor[right_offset + inner_key_offset],
                                         commonNd2NzParams);
                     SET_FLAG(MTE2, MTE1, EVENT_ID0);
                     WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
@@ -387,6 +418,17 @@ private:
                 int32_t nProcessAlign = RoundUp(nProcess, SIZE_16);
                 bool needCopyInBMatrix = false;
                 bool needCopyOut = (nIdx == nLoop - 1) ? true : false;
+                uint64_t inner_query_offset, inner_key_offset;
+                if (layout == BSNGD || layout == TND){
+                    inner_query_offset = mIdx * SIZE_128 * (dimN1 * dimD);
+                    inner_key_offset = nIdx * SIZE_128 * (dimN2 * dimD);
+                } else if (layout == SBNGD){
+                    inner_query_offset = mIdx * SIZE_128 * batch * dimN1 * dimD;
+                    inner_key_offset = nIdx * SIZE_128 * batch * dimN2 * dimD;
+                } else {
+                    inner_query_offset = mIdx * SIZE_128 * dimD;
+                    inner_key_offset = nIdx * SIZE_128 * dimD;
+                }
 
                 if (enableCausalOpt &&
                     IsFullMaskBlock(s1Idx, s2Idx, mProcess, nProcess, sparseLeftBound, sparseRightBound, sparseMode)) {
@@ -401,7 +443,7 @@ private:
                     needCopyOut = true;
                 }
                 uint64_t real_left_offset = left_offset + cubeBlockIdx * BASE_BLOCK_SIZE * 2;
-                uint64_t real_right_offset = right_offset + nIdx * SIZE_128 * (dimN2 * dimD);
+                uint64_t real_right_offset = right_offset + inner_key_offset;
                 uint32_t aEventID = ping_pong_flag_a ? aEventIDPing : aEventIDPong;
                 LocalTensor<INPUT_TYPE> l1_a_buf_tensor = ping_pong_flag_a ? l1_a_ping_tensor : l1_a_pong_tensor;
                 LocalTensor<INPUT_TYPE> l0_a_buf_tensor = ping_pong_flag_a ? l0_a_ping_tensor : l0_a_pong_tensor;
@@ -432,11 +474,11 @@ private:
 
                 if (needCopyOut) {
                     if constexpr (DETERMINISTIC_ENABLE) {
-                        MM345CopyOut<false>(l0_c_buf_tensor, out_offset + mIdx * SIZE_128 * dimD, mProcess, dimD, mProcessAlign);
-                } else {
-                    MM345CopyOut<true>(l0_c_buf_tensor, out_offset + mIdx * SIZE_128 * dimN1 * dimD, mProcess, dimN1 * dimD,
-                                    mProcessAlign);
-                }
+                            MM345CopyOut<false>(l0_c_buf_tensor, out_offset + mIdx * SIZE_128 * dimD, mProcess, dimD, mProcessAlign);
+                    } else {
+                        MM345CopyOut<true>(l0_c_buf_tensor, out_offset + inner_query_offset, mProcess, dimN1 * dimD,
+                                        mProcessAlign);
+                    }
                 }
                 SET_FLAG(FIX, M, bEventID);
 
@@ -476,7 +518,6 @@ private:
         uint64_t left_offset = (__gm__ INPUT_TYPE*)(left + globalBlockOffset * 2) - (__gm__ INPUT_TYPE*)0;
         uint64_t right_offset = (__gm__ INPUT_TYPE*)(right + shapeInfo.s1GmAddr) - (__gm__ INPUT_TYPE*)0;
         uint64_t out_offset = (__gm__ float*)(out) - (__gm__ float*)0;
-
         for (int32_t nIdx = 0; nIdx < nLoop; nIdx++) {
             int32_t nProcess = (nIdx == nLoop - 1) ? nTail : SIZE_128;
             int32_t nProcessAlign = RoundUp(nProcess, SIZE_16);
@@ -491,10 +532,24 @@ private:
                     IsFullMaskBlock(s1Idx, s2Idx, mProcess, nProcess, sparseLeftBound, sparseRightBound, sparseMode)) {
                     continue;
                 }
-
+                uint64_t inner_query_offset, inner_key_offset;
+                int32_t dstStride;
+                if (layout == BSNGD || layout == TND){
+                    inner_query_offset = mIdx * SIZE_128 * (dimN1 * dimD);
+                    inner_key_offset = nIdx * SIZE_128 * (dimN2 * dimD);
+                    dstStride = dimN2 * dimD;
+                } else if (layout == SBNGD){
+                    inner_query_offset = mIdx * SIZE_128 * (batch * dimN1 * dimD);
+                    inner_key_offset = nIdx * SIZE_128 * (batch * dimN2 * dimD);
+                    dstStride = batch * dimN2 * dimD;
+                } else {
+                    inner_query_offset = mIdx * SIZE_128 * dimD;
+                    inner_key_offset = nIdx * SIZE_128 * dimD;
+                    dstStride = dimD;
+                }
                 int32_t mProcessAlign = RoundUp(mProcess, SIZE_16);
                 uint64_t real_left_offset = left_offset + cubeBlockIdx * BASE_BLOCK_SIZE * 2;
-                uint64_t real_right_offset = right_offset + mIdx * SIZE_128 * (dimN1 * dimD);
+                uint64_t real_right_offset = right_offset + inner_query_offset;
                 uint32_t aEventID = ping_pong_flag_a ? aEventIDPing : aEventIDPong;
                 bool needCopyInBMatrix;
                 LocalTensor<INPUT_TYPE> l1_a_buf_tensor = ping_pong_flag_a ? l1_a_ping_tensor : l1_a_pong_tensor;
@@ -538,13 +593,12 @@ private:
                 if (mIdx == mLoop - 1) {
                     if constexpr (DETERMINISTIC_ENABLE) {
                         if (shapeInfo.atmoicAdd) {
-                            MM345CopyOut<true>(l0_c_buf_tensor, out_offset + nIdx * SIZE_128 * dimN2 * dimD, nProcess, dimN2 * dimD,
-                                                nProcessAlign);
+                            MM345CopyOut<true>(l0_c_buf_tensor, out_offset + inner_key_offset, nProcess, dstStride, nProcessAlign);
                         } else {
                             MM345CopyOut<false>(l0_c_buf_tensor, out_offset + nIdx * SIZE_128 * dimD, nProcess, dimD, nProcessAlign);
                         }
                     } else {
-                        MM345CopyOut<true>(l0_c_buf_tensor, out_offset + nIdx * SIZE_128 * dimN2 * dimD, nProcess, dimN2 * dimD,
+                        MM345CopyOut<true>(l0_c_buf_tensor, out_offset + inner_key_offset, nProcess, dimN2 * dimD,
                                         nProcessAlign);
                     }
                 }
@@ -602,9 +656,17 @@ private:
         LocalTensor<INPUT_TYPE> dstL1Tensor, LocalTensor<INPUT_TYPE> dstL0Tensor, GlobalTensor<INPUT_TYPE> srcTensor,
         const int32_t processLen, const int32_t processLenAlign, const int32_t headNum, const bool needCopyIn) {
         if (needCopyIn) {
+            int32_t _srcDValue{0};
+            if (layout == BNGSD){
+                _srcDValue = dimD;
+            } else if (layout == SBNGD){
+                _srcDValue = batch * headNum * dimD;
+            } else {
+                _srcDValue = headNum * dimD;
+            }
             commonNd2NzParams.nValue = processLen;
             commonNd2NzParams.dValue = dimD;
-            commonNd2NzParams.srcDValue = headNum * dimD;
+            commonNd2NzParams.srcDValue = _srcDValue;
             commonNd2NzParams.dstNzC0Stride = processLenAlign;
             AscendC::DataCopy(dstL1Tensor, srcTensor, commonNd2NzParams);
 

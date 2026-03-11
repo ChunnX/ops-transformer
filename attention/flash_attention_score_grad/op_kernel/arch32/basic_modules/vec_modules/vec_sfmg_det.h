@@ -98,8 +98,15 @@ VectorSoftmaxGradDet<TYPE, TILING_TYPE>::Init(TPipe *pipe_in, __gm__ uint8_t *dy
     dAlign = (d + 15) / 16 * 16;
     actual_seq_qlen_addr = actual_seq_qlen;
 
-    n_stride = (n1 - 1) * d * sizeof(TYPE);
-
+    if (layout == TND) {
+        n_stride = (n1 * d - d) * sizeof(TYPE);
+    } else if (layout == BNGSD){
+        n_stride = 0;
+    } else if (layout == BSNGD){
+        n_stride = (n1 * d - d) * sizeof(TYPE);
+    } else if (layout == SBNGD){
+        n_stride = (b * n1 * d - d) * sizeof(TYPE);
+    }
     uint32_t coreNum = tilingData->basicDetTensorTilingData.coreNum;
 
     // 计算 buffer 大小
@@ -169,15 +176,15 @@ __aicore__ inline void VectorSoftmaxGradDet<TYPE, TILING_TYPE>::DoCopyIn(int64_t
                                                                       int64_t dstOffset, GM_ADDR seqS)
 {
     int64_t srcOffset = 0;
-    
-    if (layout == BSNGD)
-    {
-        srcOffset = bIdx * (s1 * n1 * d) + sIdx * (n1 * d) + nIdx * d;
-    }
-    else{
-        int64_t bOffset = 0;
-        bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ int64_t *)seqS)[bIdx - 1] * d;
+    if (layout == TND) {
+        int64_t bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ int64_t *)seqS)[bIdx - 1] * d;
         srcOffset = bOffset + (sIdx * n1 + nIdx) * d;
+    } else if (layout == BNGSD) {
+        srcOffset = bIdx * ( n1 * s1 * d) + nIdx * (s1 * d) + sIdx * d;
+    } else if  (layout == BSNGD) {
+        srcOffset = bIdx * (s1 * n1 * d) + sIdx * (n1 * d) + nIdx * d;
+    } else if (layout == SBNGD) {
+        srcOffset = sIdx * (b * n1 * d) + bIdx * (n1 * d) + nIdx * d;
     }
     
 
@@ -246,10 +253,7 @@ template <typename TYPE, class TILING_TYPE> __aicore__ inline void VectorSoftmax
 
         int64_t startIdx = cBlockIdx * normalCoreSize;
         int64_t nBurst = singleLoopNBurstNum;
-        int64_t curS = 0;
-        if (layout == BSNGD){
-            curS = s1;
-        }
+        int64_t curS = layout == TND ? 0 : s1;
 
         for (int64_t i = 0; i < singleCoreLoopTimes; i++) {
             if (i == singleCoreLoopTimes - 1) {
