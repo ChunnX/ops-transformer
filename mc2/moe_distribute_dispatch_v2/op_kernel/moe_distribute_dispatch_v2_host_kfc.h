@@ -100,6 +100,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void CalServerSendCnt();
     __aicore__ inline void WriteExpertOffset();
     __aicore__ inline void CalTokenSendExpertOffset();
     template <typename T> __aicore__ inline void ReadDataFromWinIn(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
@@ -1162,10 +1163,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GlobalTensor<int32_t> flagInGMTensor;
     LocalTensor<int32_t> writeFlag = flagRecvGatherMask.ReinterpretCast<int32_t>();
     flagOutGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmSendTokenFlg + offset));
-    flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(gmSendTokenFlg) );
+    flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmSendTokenFlg) );
     DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
     DataCopyParams flagCopyInParams{static_cast<uint16_t>(waitNum), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
-    DataCopyPadParams flagPadParams{false, 0, 0};
+    DataCopyPadParams<int32_t> flagPadParams{false, 0, 0};
     DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_V>();
     if(aivId_ == aivUsedCumSum_) {
