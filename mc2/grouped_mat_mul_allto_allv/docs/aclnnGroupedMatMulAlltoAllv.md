@@ -88,7 +88,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <tr>
     <td>gmmX</td>
     <td>输入</td>
-    <td>该输入进行AlltoAllv通信，通信后结果作为GroupedMatMul计算的左矩阵，支持2维，shape为(A, H1)。</td>
+    <td>该输入作为GroupedMatMul计算的左矩阵，计算结果进行AlltoAllv通信，支持2维，shape为(A, H1)。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     </tr>
@@ -137,7 +137,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <tr>
     <td>epWorldSize</td>
     <td>输入</td>
-    <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</td>
+    <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64、128、256。</td>
     <td>INT64</td>
     <td>ND</td>
     </tr>
@@ -384,8 +384,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         std::vector<int64_t> gmmXShape = {A, H};
         std::vector<int64_t> gmmWShape = {e, H, N1};
-        std::vector<int64_t> gmmYShape = {BS * K, N1};
-        std::vector<int64_t> permuteShape = {A, H};
+        std::vector<int64_t> yShape = {BS * K, N1};
         std::vector<int64_t> mmXShape = {BS, H};
         std::vector<int64_t> mmWShape = {H, N2};
         std::vector<int64_t> mmYShape = {BS, N2};
@@ -398,15 +397,14 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         void *gmmXDeviceAddr = nullptr;
         void *gmmWDeviceAddr = nullptr;
-        void *gmmYDeviceAddr = nullptr;
-        void *permuteDeviceAddr = nullptr;
+        void *yDeviceAddr = nullptr;
         void *mmXDeviceAddr = nullptr;
         void *mmWDeviceAddr = nullptr;
         void *mmYDeviceAddr = nullptr;
 
         aclTensor *gmmX = nullptr;
         aclTensor *gmmW = nullptr;
-        aclTensor *gmmY = nullptr;
+        aclTensor *y = nullptr;
 
         aclTensor *mmX = nullptr;
         aclTensor *mmW = nullptr;
@@ -421,7 +419,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         long long gmmXShapeSize = GetShapeSize(gmmXShape);
         long long gmmWShapeSize = GetShapeSize(gmmWShape);
-        long long gmmYShapeSize = GetShapeSize(gmmYShape);
+        long long yShapeSize = GetShapeSize(yShape);
 
         long long mmXShapeSize = GetShapeSize(mmXShape);
         long long mmWShapeSize = GetShapeSize(mmWShape);
@@ -429,7 +427,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
         std::vector<uint16_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 1024);  // BF16, FP16
         std::vector<uint16_t> gmmWHostData(gmmWShapeSize, (args.rankId + 1) * 512);
-        std::vector<uint16_t> gmmYHostData(gmmYShapeSize, 65535);
+        std::vector<uint16_t> yHostData(yShapeSize, 65535);
 
         std::vector<uint16_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 1024);  // BF16, FP16
         std::vector<uint16_t> mmWHostData(mmWShapeSize, (args.rankId + 1) * 512);
@@ -439,7 +437,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(gmmWHostData, gmmWShape, &gmmWDeviceAddr, aclDataType::ACL_FLOAT16, &gmmW);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(gmmYHostData, gmmYShape, &gmmYDeviceAddr, aclDataType::ACL_FLOAT16, &gmmY);
+        ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_FLOAT16, &y);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(mmXHostData, mmXShape, &mmXDeviceAddr, aclDataType::ACL_FLOAT16, &mmX);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -452,7 +450,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
 
         // 调用第一阶段接口
-        ret = aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(gmmX,
+        ret = aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
+            gmmX,
             gmmW,
             sendCountsTensor,
             recvCountsTensor,
@@ -464,7 +463,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
             recvCounts,
             false,
             false,
-            gmmY,
+            y,
             mmY,
             &workspaceSize,
             &executor);
@@ -487,7 +486,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         // 释放device资源，需要根据具体API的接口定义修改
         if (args.rankId == 0) {
             size_t size = A * N1 * sizeof(int16_t);
-            aclrtMemcpy(pGmmyData.data(), size, gmmYDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
+            aclrtMemcpy(pGmmyData.data(), size, yDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
         }
         if (gmmX != nullptr) {
             aclDestroyTensor(gmmX);
@@ -495,8 +494,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         if (gmmW != nullptr) {
             aclDestroyTensor(gmmW);
         }
-        if (gmmY != nullptr) {
-            aclDestroyTensor(gmmY);
+        if (y != nullptr) {
+            aclDestroyTensor(y);
         }
         if (mmX != nullptr) {
             aclDestroyTensor(mmX);
@@ -513,8 +512,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         if (gmmWDeviceAddr != nullptr) {
             aclrtFree(gmmWDeviceAddr);
         }
-        if (gmmYDeviceAddr != nullptr) {
-            aclrtFree(gmmYDeviceAddr);
+        if (yDeviceAddr != nullptr) {
+            aclrtFree(yDeviceAddr);
         }
         if (mmXDeviceAddr != nullptr) {
             aclrtFree(mmXDeviceAddr);
