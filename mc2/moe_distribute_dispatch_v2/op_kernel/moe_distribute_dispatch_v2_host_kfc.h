@@ -1166,7 +1166,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmSendTokenFlg) );
     DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
     DataCopyParams flagCopyInParams{static_cast<uint16_t>(waitNum), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
-    DataCopyPadParams flagPadParams{false, 0, 0};
+    DataCopyPadParams flagPadParams{false, 0, 0, 0};
     DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_V>();
     if(aivId_ == aivUsedCumSum_) {
