@@ -100,8 +100,7 @@ public:
     __aicore__ inline void Process();
 
 private:
-
-
+    __aicore__ inline void WriteExpertOffset();
     __aicore__ inline void CalTokenSendExpertOffset();
     template <typename T> __aicore__ inline void ReadDataFromWinIn(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SendExpertCnt();
@@ -120,7 +119,9 @@ private:
     __aicore__ inline void FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t tokenIndex);
     template <typename T> __aicore__ inline void WriteDataToWinOut(LocalTensor<T> &xOutTensor, GM_ADDR rankGM, uint32_t blockCnt);
     __aicore__ inline void SingleTokenProcess(uint32_t tokenIndex, uint32_t dstServerId, uint32_t cnt);
-    __aicore__ inline void ScatterToken(uint32_t startIndex, uint32_t endIndex);
+    __aicore__ inline void ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId, bool isSharedExpert);
+    __aicore__ inline void HcclCommSend(uint32_t serverId, LocalTensor<int32_t> flagTensor, LocalTensor<uint32_t> flagRecvGatherMask);
+    __aicore__ inline bool HasSharedExpertInServer(uint32_t serverId);
     __aicore__ inline void ConstructDataAndFlagBatchWriteInfo(uint32_t beginServerId, uint32_t serverNum,
                                                               uint32_t aivNum);
     __aicore__ inline void WaitStatusFlag(uint32_t serverIdx, uint32_t &tokenCnt);
@@ -363,6 +364,7 @@ private:
     GM_ADDR gmTemp;
     GM_ADDR gmMoeCntFlg;
     GM_ADDR gmExpertOffsetCnt;
+    GM_ADDR gmSendTokenFlg;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
     uint32_t axisBS_{0};
@@ -486,7 +488,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     gmMoeCntFlg = workspaceGM + 1UL * 1024 * 1024 * 1024;
     gmExpertOffsetCnt = gmMoeCntFlg + 32;
-    gmTemp = gmExpertOffsetCnt + 10 * 1024 * 1024;
+    gmSendTokenFlg = gmExpertOffsetCnt + 20 * 1024 * 1024;
+    gmTemp = gmSendTokenFlg + 10 * 1024 * 1024;
     GM_ADDR bufferChoseAddr = workspaceGM + 3UL  * 1024 * 1024 * 1024 + 1000UL * 1024 * 1024;
 
     tpipe_ = pipe;
@@ -1156,10 +1159,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     GlobalTensor<int32_t> flagOutGMTensor;
     GlobalTensor<int32_t> flagInGMTensor;
     LocalTensor<int32_t> writeFlag = flagRecvGatherMask.ReinterpretCast<int32_t>();
-    flagOutGMTensor.SetGlobalBuffer( + offset);
-    flagInGMTensor.SetGlobalBuffer( );
-    DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sieof(int32_t)), 0, 0};
-    DataCopyParams flagCopyInParams{static_cast<uint16_t>(waitNum), static_cast<uint16_t>(sieof(int32_t)), 0, 0};
+    flagOutGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmSendTokenFlg + offset));
+    flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(gmSendTokenFlg) );
+    DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
+    DataCopyParams flagCopyInParams{static_cast<uint16_t>(waitNum), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
     DataCopyPadParams flagPadParams{false, 0, 0};
     DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_V>();
@@ -1194,7 +1197,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     TBuf<> flagBuf;
     tpipe_->InitBuffer(flagBuf, UB_ALIGN + aivUsedScatter_ * sizeof(int32_t));
     LocalTensor<uint32_t> flagRecvGatherMask = flagBuf.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    LocalTensor<int32_t> flagTensor = flagBuf.GetWithOffset(UB_ALIGN, aivUsedScatter_);
+    LocalTensor<int32_t> flagTensor = flagBuf.GetWithOffset<int32_t>(UB_ALIGN, aivUsedScatter_);
     Duplicate<uint32_t>(flagRecvGatherMask, 0, UB_ALIGN / sizeof(uint32_t));
     PipeBarrier<PIPE_V>();
     flagRecvGatherMask.SetValue(0,1);
@@ -1287,7 +1290,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     uint32_t calCnt = isTokenMaskFlag_? sendToMoeExpTokenCnt_ : expertIdsCnt_; 
     uint32_t activeMaskBsCnt = static_cast<uint32_t>(activeMaskBsCnt_);
-    uint32_t sharedBufferXor = max(SIZE_ALIGN_256, sizeof(int16_t) * calCnt); //TODO:需要重新计算这个
+    uint32_t sharedBufferXor = SIZE_ALIGN_256; //TODO:需要重新计算这个
     uint32_t compareCount = Ceil(activeMaskBsCnt * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
     uint32_t maskSize = Ceil(compareCount / BITS_PER_BYTE, UB_ALIGN) * UB_ALIGN; // 为了匹配CompareScalar接口1bit一共8位
     uint32_t perServerMapLength = Ceil(axisMaxBS_ * sizeof(int32_t),UB_ALIGN) / UB_ALIGN;
@@ -1892,7 +1895,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         InitStatusTensor();
 
         GlobalTensor<uint32_t> statusWinGMTensor;
-        statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_) + cntBlockPerCnt_ * serverIdx); //todo: 接收区地址 偏移serverIdx个 
+        statusWinGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, epRankId_) + blockCntPerCnt_ * serverIdx); //todo: 接收区地址 偏移serverIdx个 
         uint32_t flagMaxRecvNum = (blockCntPerCnt_ * UB_ALIGN) / sizeof(uint32_t);
         uint32_t gatherOutSize =
             Ceil(blockCntPerCnt_ * sizeof(uint32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256; // 256对齐
@@ -2214,7 +2217,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendExpertCnt()
 {
     PipeBarrier<PIPE_V>(); // 防止setvalue流水没有完成；
-    LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1,sendExpertNum});
+    LOG_INFO("tokenNumToExpertTensor_ ",tokenNumToExpertTensor_, {1, moeExpertNum_});
 
     uint32_t startServerId, endServerId, sendServerNum;
     SplitToCore(serverNum_, 0, aivUsedCumSum_, startServerId, endServerId, sendServerNum);
@@ -2617,10 +2620,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t dstOffset = aivId_ * offsetPerMask; //gmExpertOffsetCnt
     uint64_t dstFlag = aivNum_ * offsetPerMask + sizeof(uint32_t) * (aivId_ - aivUsedCumSum_);
     GlobalTensor<int16_t> expertOffsetCntGMTensor;
-    GlobalTensor<int16_t> expertOffsetFlagGMTensor;
+    GlobalTensor<int32_t> expertOffsetFlagGMTensor;
     LocalTensor<int32_t> writeCntTensor = dstExpBuf_.Get<int32_t>();
     expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + dstOffset)); // todo:把其全部改为reinterpret_cast
-    expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + dstFlag));
+    expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmExpertOffsetCnt + dstFlag));
     writeCntTensor.SetValue(0,1);
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
