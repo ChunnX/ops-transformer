@@ -717,8 +717,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LogInfo(__LINE__, "start InitMaskInfo: ");
     activeMaskBsCnt_ = axisBS_; //TODO: 
     expertIdsCnt_ = axisBS_ * axisK_;
-    perServerMapLength_ = Ceil(axisMaxBS_ * sizeof(int32_t),UB_ALIGN) / UB_ALIGN;
+    perServerMapLength_ = Ceil(axisMaxBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     perServerMapCnt_ = perServerMapLength_ / sizeof(int32_t);
+    
     uint32_t hFp32Size = axisH_ * sizeof(float);
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
