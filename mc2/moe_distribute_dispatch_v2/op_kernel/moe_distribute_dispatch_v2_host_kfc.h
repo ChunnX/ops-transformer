@@ -1340,7 +1340,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for (uint32_t index = startServerNum; index < endServerNum; index++) {
         dstStateGMTensor.SetGlobalBuffer((__gm__ uint32_t *)GetSendAddrBetweenServer(COMM_EP_IDX, index));
         outTensor(0) = serverCountTensor_(index);
-        DataCopy(dstStateGMTensor,outTensor,SERVER_STATE_ALIGN/sizeof(uint32_t));
+        DataCopy(dstStateGMTensor, outTensor, SERVER_STATE_ALIGN/sizeof(uint32_t));
     }
     LOG_INFO("SetServerFlag end");
 }
@@ -2673,6 +2673,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteExpertOffset()
 {
+    LOG_INFO("start WriteExpertOffset");
     uint32_t newAivId = aivId_ - aivUsedCumSum_;
     uint32_t offsetPerMask = Ceil(expertIdsCnt_ * sizeof(uint16_t), UB_ALIGN) * UB_ALIGN;
     uint64_t dstOffset = newAivId * offsetPerMask; //gmExpertOffsetCnt
@@ -2689,6 +2690,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
     PipeBarrier<PIPE_MTE3>(); // 写flag用于同步
+    LOG_INFO("end WriteExpertOffset");
 }
 
 template <TemplateDispatchKFCTypeClass>
