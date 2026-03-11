@@ -1283,7 +1283,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalExpertOffset(uin
         Add(expertOffsetCntTensor_, expertOffsetCntTensor_, expertCntTensor, expertOffsetNum);
         PipeBarrier<PIPE_V>();
     }
-    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_[startTokenId * axisK_], {axisBS_, axisK_});
+    LOG_INFO("CalExpertOffset expertOffsetCntTensor_", expertOffsetCntTensor_, {axisBS_, axisK_});
 }
 
 
