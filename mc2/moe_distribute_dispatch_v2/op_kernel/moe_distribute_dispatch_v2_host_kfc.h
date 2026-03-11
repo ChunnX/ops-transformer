@@ -1075,7 +1075,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 //     // }
 
 // }
-
+/
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
@@ -1337,21 +1337,21 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         int32_t dstServerId = serverIndex;
         Adds(dstServerIdInt32, dstServerIdInt32, dstServerId, calCnt);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Adds dstServerIdInt32",dstServerIdInt32,{activeMaskBsCnt_, axisK_});
+        LOG_INFO("Adds dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         Abs(dstServerIdFp32, dstServerIdFp32, calCnt);
         PipeBarrier<PIPE_V>();
         Mins(dstServerIdInt32, dstServerIdInt32, 1, calCnt);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Mins dstServerIdInt32",dstServerIdInt32,{activeMaskBsCnt_, axisK_});
+        LOG_INFO("Mins dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         Cast(dstServerIdInt16, dstServerIdInt32, RoundMode::CAST_NONE, calCnt);
         Duplicate<int16_t>(tempTensorInt16, 1, calCnt);
         PipeBarrier<PIPE_V>();
         Xor(compareInt16, dstServerIdInt16, tempTensorInt16, sharedTensorInt8, calCnt);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Xor compareInt16",compareInt16,{activeMaskBsCnt_, axisK_});
+        LOG_INFO("Xor compareInt16",compareInt16,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         Cast(dstServerIdFp32, compareInt16, RoundMode::CAST_NONE, calCnt);//这里是 0 1 结果
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Cast dstServerIdFp32",dstServerIdFp32,{activeMaskBsCnt_, axisK_});
+        LOG_INFO("Cast dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
         if(isExpertMaskFlag_) {
             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里需注意，需要提前把数据搬进来。
             Cast(tempTensorFp32, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
@@ -1361,10 +1361,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t srcShape[2] = {activeMaskBsCnt, axisK_};
         ReduceSum<float32_t, Pattern::Reduce::AR, true>(tempTensorFp32, dstServerIdFp32, sharedTensorInt8, srcShape, false);
         PipeBarrier<PIPE_V>();
-        LOG_INFO("ReduceSum tempTensorFp32",tempTensorFp32,{1,activeMaskBsCnt_});
+        LOG_INFO("ReduceSum tempTensorFp32",tempTensorFp32,{1,static_cast<uint32_t>(activeMaskBsCnt_)});
         Mins(dstServerIdFp32, tempTensorFp32, float32_t(1.0), activeMaskBsCnt); // 得到需要发送到这个server的TokenID
         PipeBarrier<PIPE_V>();
-        LOG_INFO("Mins dstServerIdFp32",tempTensorFp32,{1,activeMaskBsCnt_});
+        LOG_INFO("Mins dstServerIdFp32",tempTensorFp32,{1,static_cast<uint32_t>(activeMaskBsCnt_)});
         Cast(dstServerIdInt32, dstServerIdFp32, RoundMode::CAST_RINT, activeMaskBsCnt);
         CreateVecIndex(indexTensor, 0, activeMaskBsCnt);
         Duplicate<uint32_t>(expertMaskTensorU32, 0, maskSize);
