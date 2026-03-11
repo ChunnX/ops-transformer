@@ -1328,6 +1328,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if(startServerNum >= totalSeverCnt || sendServerNum == 0){
         return;
     }
+    LOG_INFO("startServerNum", startServerNum);
+    LOG_INFO("endServerNum", endServerNum);
+    LOG_INFO("sendServerNum", sendServerNum);
     GlobalTensor<uint32_t> dstStateGMTensor;
     TBuf<> tempbuf;
     tpipe_->InitBuffer(tempbuf, SERVER_STATE_ALIGN);
