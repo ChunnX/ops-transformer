@@ -1075,7 +1075,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 //     // }
 
 // }
-/
+
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
