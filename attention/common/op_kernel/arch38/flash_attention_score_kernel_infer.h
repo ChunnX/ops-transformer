@@ -94,7 +94,7 @@ __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockTyp
         actualCoreNums = this->sharedParams.bSize * this->constInfo.n2Size *
                          this->constInfo.splitKVNum; // b * n2 * splitkv
     }
-    // int32_t aicIdx = this->blockIdx >> 1;
+
     if (this->aicIdx >= actualCoreNums) {
         return;
     }
