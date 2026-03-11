@@ -469,6 +469,7 @@ private:
     uint32_t statusCntAlign_{0};
     uint32_t tBufRealSize_{0};
     uint32_t perServerMapLength_{0};
+    uint32_t perServerMapCnt_{0};
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
@@ -717,6 +718,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     activeMaskBsCnt_ = axisBS_; //TODO: 
     expertIdsCnt_ = axisBS_ * axisK_;
     perServerMapLength_ = Ceil(axisMaxBS_ * sizeof(int32_t),UB_ALIGN) / UB_ALIGN;
+    perServerMapCnt_ = perServerMapLength_ / sizeof(int32_t);
     uint32_t hFp32Size = axisH_ * sizeof(float);
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
@@ -831,7 +833,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     scaleOutParams_ = {1U, static_cast<uint16_t>(scaleOutBytes_), 0U, 0U, 0U};
 
     uint32_t serverBuferLength = serverNum_;
-    uint32_t serverMapLength = serverNum_ * Ceil(axisMaxBS_ * sizeof(int32_t),UB_ALIGN) / UB_ALIGN;
+    uint32_t serverMapLength = serverNum_ * perServerMapLength_;
     tpipe_->InitBuffer(serverCountBuf_, serverBuferLength * sizeof(uint32_t));
     tpipe_->InitBuffer(serverMapBuf_, serverMapLength * sizeof(uint32_t));
     serverCountTensor_ = serverCountBuf_.Get<uint32_t>();
@@ -1141,7 +1143,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId, bool isSharedExpert)
 {
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
-        uint32_t offset = serverId * perServerMapLength_ + tokenIndex;
+        uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
         int32_t tokenSendOffset = tokenSendMap_.GetValue(offset);
         bool isSend = isSharedExpert? true : tokenSendOffset;
         if(!isSend) {
@@ -1384,7 +1386,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         Muls(gatherIndex, gatherIndex, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendTokenCnt));
         PipeBarrier<PIPE_V>();
-        Scatter(tokenSendMap_[serverIndex * perServerMapLength_], indexTensor, dstOffset, 0, static_cast<uint32_t>(sendTokenCnt)); // 32字节对齐
+        Scatter(tokenSendMap_[serverIndex * perServerMapCnt_], indexTensor, dstOffset, 0, static_cast<uint32_t>(sendTokenCnt)); // 32字节对齐
         PipeBarrier<PIPE_V>();
     }
     LOG_INFO("tokenSendMap_", tokenSendMap_,{1, static_cast<uint32_t>(activeMaskBsCnt_)});
