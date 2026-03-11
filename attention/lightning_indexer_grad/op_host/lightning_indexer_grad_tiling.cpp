@@ -107,7 +107,7 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
         OP_LOGE(context_, "only support layout is BSND and TND.\n", opParamInfo.layout);
         return ge::GRAPH_FAILED; 
     }
-    uint32_t dkCoreSize = batch * seqlenK * headDim;
+    uint32_t dkCoreSize =  seqlenK * headDim;
 
     // check headDim, groupNum, headNumK
     OP_CHECK_IF((headDim != MAX_HEADIM) || (groupNum != MAX_GROUPNUM) || (headNumK != LIMIT_HEADNUMK),
@@ -127,6 +127,7 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
     tilingData_->set_topK(topK);
     tilingData_->set_usedCoreNum(blockDim * 2);
     tilingData_->set_dkSize(dkSize);
+    tilingData_->set_dkCoreSize(dkCoreSize);
     tilingData_->set_sparseMode(static_cast<uint64_t>(opParamInfo.sparseMode));
     tilingData_->set_deterministic(static_cast<uint64_t>(opParamInfo.deterministic));
 
@@ -135,7 +136,7 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
     workspaceOffset = (workspaceOffset + dkSize * sizeof(float) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
 
     tilingData_->set_dkCoreWorkspaceOffset(workspaceOffset);
-    workspaceOffset = (workspaceOffset + aivNum * dkCoreSize * sizeof(float) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+    workspaceOffset = (workspaceOffset + aicNum * dkCoreSize * sizeof(float) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
 
     uint64_t keyGatherWorkspaceSize = MAX_HEADIM * MAX_TOPK * sizeof(uint16_t) * DOUBLE_BUFFER;
     tilingData_->set_keyGatherWorkspaceOffset(workspaceOffset);

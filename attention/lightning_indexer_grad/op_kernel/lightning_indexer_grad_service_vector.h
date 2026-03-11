@@ -102,6 +102,8 @@ protected:
     constexpr static int64_t reduceUbOffset = reduceFloatUbOffset + reduceFloatUbSize;
     constexpr static int64_t reduceUbSize = LIMIT_GROUPNUM * 2;
 
+    constexpr static int64_t MAX_DETERMINISTIC_SIZE = TOTAL_SIZE / sizeof(float) / 2;
+
     TPipe *pipe;
     TBuf<> unifiedBuffer;
 
@@ -305,53 +307,58 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
 }
 
 template <typename LIGT>
-__aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM, GlobalTensor<float> dkWorkSpaceGm,
-    const LIGCommon::ConstInfo &constInfo, const LIGCommon::RunInfo &runInfo)
+__aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM,GlobalTensor<float> dkWorkSpaceGm,
+	const LIGCommon::ConstInfo &constInfo, const LIGCommon::RunInfo &runInfo)
 {
     uint64_t determinLen = constInfo.determinLen;
     uint64_t determinBeginPos = constInfo.determinBeginPos;
     if (determinLen <= 0) {
         return;
     }
-    int64_t dkCoreWorkspaceUbSize = determinLen * constInfo.headDim;
-    LocalTensor<float> dkCoreWorkspaceUb = unifiedBuffer.GetWithOffset<float>(dkCoreWorkspaceUbSize, gatherPingUbOffset);
+
+    uint64_t maxTileRows = MAX_DETERMINISTIC_SIZE / constInfo.headDim;
+    uint64_t stridePerRow = constInfo.headNumK * constInfo.headDim;
+    LocalTensor<float> dkCoreWorkspaceUb = unifiedBuffer.GetWithOffset<float>(MAX_DETERMINISTIC_SIZE, gatherPingUbOffset);
+
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
-    for (int i = 0; i < constInfo.splitCores; i++) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
-        uint64_t dkCoreWorkspaceOffset;
-        if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-            // layout: [B, S2, N2, D] flattened
-            dkCoreWorkspaceOffset = i * constInfo.seqlenK * constInfo.headDim + determinBeginPos * constInfo.headDim;
-        } else { // TND
-            dkCoreWorkspaceOffset = i * runInfo.actualSeqK * constInfo.headDim + determinBeginPos * constInfo.headDim;
+    for (int core = 0; core < constInfo.splitCores; core++) {
+        uint64_t processed = 0;
+        while (processed < determinLen) {
+            uint64_t tileRows = maxTileRows < (determinLen - processed) ? maxTileRows : (determinLen - processed);
+            uint64_t dkCoreWorkspaceOffset;
+            if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+                dkCoreWorkspaceOffset = core * constInfo.seqlenK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
+            } else {
+                dkCoreWorkspaceOffset = core * runInfo.actualSeqK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
+            }
+
+            AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
+            DataCopy(dkCoreWorkspaceUb, dkCoreWorkspaceGM[dkCoreWorkspaceOffset], tileRows * constInfo.headDim);
+            AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
+            AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
+
+            uint64_t baseDkOffset;
+            if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+                baseDkOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim;
+            } else {
+                // prefixSumS2 is number of previous tokens; target starts from prefixSumS2
+                baseDkOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim;
+            }
+
+            baseDkOffset += runInfo.n2Idx * constInfo.headDim;
+            uint64_t dkeyOffset = baseDkOffset + (determinBeginPos + processed) * stridePerRow;
+            DataCopyParams dataCopyParams;
+            dataCopyParams.blockCount = tileRows;
+            dataCopyParams.blockLen = constInfo.headDim * sizeof(float) / 32;
+            dataCopyParams.dstStride = (stridePerRow - constInfo.headDim) * sizeof(float) / 32;
+            dataCopyParams.srcStride = 0;
+
+            AscendC::SetAtomicAdd<float>();
+            DataCopy(dkWorkSpaceGm[dkeyOffset], dkCoreWorkspaceUb, dataCopyParams);
+            AscendC::SetAtomicNone();
+            AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
+            processed += tileRows;
         }
-        DataCopy(dkCoreWorkspaceUb, dkCoreWorkspaceGM[dkCoreWorkspaceOffset], dkCoreWorkspaceUbSize);
-
-        AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
-        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
-
-        uint64_t baseDkOffset = 0;
-        if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-            // layout: [B, S2, N2, D] flattened
-            baseDkOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim;
-        } else { // TND
-            // prefixSumS2 is number of previous tokens; target starts from prefixSumS2
-            baseDkOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim;
-        }
-        baseDkOffset += runInfo.n2Idx * constInfo.headDim;
-        uint64_t dkeyOffset;
-        const uint64_t stridePerRow = constInfo.headNumK * constInfo.headDim;
-        DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = determinLen;
-        dataCopyParams.blockLen = constInfo.headDim * sizeof(float) / 32;
-        dataCopyParams.dstStride = (stridePerRow - constInfo.headDim) * sizeof(float) / 32;
-        dataCopyParams.srcStride = 0;
-
-        dkeyOffset = baseDkOffset + determinBeginPos * stridePerRow;
-        AscendC::SetAtomicAdd<float>();
-        DataCopy(dkWorkSpaceGm[dkeyOffset], dkCoreWorkspaceUb, dataCopyParams);
-        AscendC::SetAtomicNone();
-        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
     }
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
 }
