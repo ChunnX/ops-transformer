@@ -1531,7 +1531,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint32_t tokenCnt;
         ////LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] curServerId:", dstServerInd);
         WaitStatusFlag(dstServerInd, tokenCnt);
-        //LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] tokenCnt:", tokenCnt);
+        LogInfo(__LINE__, "[BATCHWRITE][GatherTokenFrRemote] tokenCnt:", tokenCnt);
         // buf分配
         //tpipe_->Reset(); //TODO 
 
@@ -1680,8 +1680,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             index = (index + 1) % tokenCnt;
         }
         if (tokenCnt == finishNum) {
-            //LogInfo(__LINE__, "[BATCHWRITE][WaitToken] [finishNum]index:", index);
-            //LogInfo(__LINE__, "[BATCHWRITE][WaitToken] finishNum:", finishNum);
+            LogInfo(__LINE__, "[BATCHWRITE][WaitToken] [finishNum]index:", index);
+            LogInfo(__LINE__, "[BATCHWRITE][WaitToken] finishNum:", finishNum);
             break;
         }
     }
