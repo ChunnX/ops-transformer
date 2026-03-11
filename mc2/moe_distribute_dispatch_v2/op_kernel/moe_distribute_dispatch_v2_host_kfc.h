@@ -853,6 +853,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint8_t repeatTime = static_cast<uint8_t>(Ceil(maxBlockCnt_ * UB_ALIGN, 256));
     flagTensor_ = flagBuf_.Get<uint32_t>();
     Duplicate<uint32_t>(flagTensor_, uint32_t(1), mask, repeatTime,uint16_t(1), uint8_t(8));
+    Duplicate<int16_t>(expertOffsetCntTensor_, static_cast<int16_t>(0), expertIdsCnt_);
 
     //LogInfo(__LINE__, "axisHCommu",axisHCommu);
     //LogInfo(__LINE__, "serverBuferLength",serverBuferLength);
