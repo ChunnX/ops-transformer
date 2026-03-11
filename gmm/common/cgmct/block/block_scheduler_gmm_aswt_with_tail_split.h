@@ -180,8 +180,8 @@ public:
         if (mSplitAddrOffset >= singleCoreM || nSplitAddrOffset >= singleCoreN) {
             return {0, 0, 0, 0};
         }
-        singleCoreM = AscendC::Std::min(singleCoreM - mSplitAddrOffset, singleCoreMSplit);
-        singleCoreN = AscendC::Std::min(singleCoreN - nSplitAddrOffset, singleCoreNSplit);
+        singleCoreM = Min(singleCoreM - mSplitAddrOffset, singleCoreMSplit);
+        singleCoreN = Min(singleCoreN - nSplitAddrOffset, singleCoreNSplit);
         return {singleCoreM, singleCoreN, mSplitAddrOffset, nSplitAddrOffset};
     }
 

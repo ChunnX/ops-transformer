@@ -45,8 +45,12 @@ constexpr int MNK_N0 = 5;
 constexpr static uint64_t A_FULL_LOAD_MODE = 1UL;
 constexpr static uint64_t B_FULL_LOAD_MODE = 2UL;
 constexpr static int64_t PER_BLOCK_SIZE = 128LL;
+constexpr static uint64_t MXFP_GROUP_SIZE = 32UL;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
+// Set unitflag state: 3 = final accumulation, 2 = non-final accumulation
+constexpr static uint32_t FINAL_ACCUMULATION = 3U;
+constexpr static uint32_t NON_FINAL_ACCUMULATION = 2U;
 
 struct MatmulShape {
     int64_t m;
