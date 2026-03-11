@@ -1868,8 +1868,8 @@ static aclnnStatus CheckZeroShape(gmm::GroupedMatmulParams &params, uint64_t *wo
 
 static aclnnStatus CheckZeroShapeSplitK(gmm::GroupedMatmulParams &params, uint64_t *workspaceSize) {
     // all M or N be zero, get true
-    bool zeroM = false;
-    bool zeroN = false;
+    bool zeroM = true;
+    bool zeroN = true;
     // current view_shape transpose is always false false
     for (size_t i = 0; i < params.x->Size(); ++i) {
       // return ACLNN_SUCCESS,后续校验报错即可
@@ -1879,7 +1879,7 @@ static aclnnStatus CheckZeroShapeSplitK(gmm::GroupedMatmulParams &params, uint64
       // return ACLNN_SUCCESS,后续校验报错即可
       CHECK_COND(xDimNum == gmm::MIN_FM_DIM, ACLNN_SUCCESS,
                 "When groupType = 2 GroupedMatmul x dim num should be 2, but actual is %zu.", xDimNum);
-      zeroM = zeroM || (xShape.GetDim(1) == 0);
+      zeroM = zeroM && (xShape.GetDim(1) == 0);
     }
     for (size_t i = 0; i < params.weight->Size(); ++i) {
       // return ACLNN_SUCCESS,后续校验报错即可
@@ -1889,7 +1889,7 @@ static aclnnStatus CheckZeroShapeSplitK(gmm::GroupedMatmulParams &params, uint64
       // return ACLNN_SUCCESS,后续校验报错即可
       CHECK_COND(wShape.GetDimNum() == gmm::MIN_FM_DIM, ACLNN_SUCCESS,
                 "When groupType = 2 GroupedMatmul weight dim num should be 2, but actual %zu.", wShape.GetDimNum());
-      zeroN = zeroN || (wShape.GetDim(wShape.GetDimNum() - 1) == 0);
+      zeroN = zeroN && (wShape.GetDim(wShape.GetDimNum() - 1) == 0);
     }
     if (zeroM || zeroN) {
         *workspaceSize = 0UL;
