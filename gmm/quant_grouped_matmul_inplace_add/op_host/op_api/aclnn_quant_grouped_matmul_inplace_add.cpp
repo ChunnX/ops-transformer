@@ -29,10 +29,10 @@
 #include "opdev/make_op_executor.h"
 
 #include "../../../grouped_matmul/op_host/op_api/grouped_matmul_util.h"
-#include "../../../grouped_matmul/op_host/op_api/aclnn_grouped_matmul_950_checker.h"
-#include "aclnn_quant_grouped_matmul_inplace_add_util.h"
+#include "../../../grouped_matmul/op_host/op_api/grouped_matmul_950_checker.h"
+#include "quant_grouped_matmul_inplace_add_util.h"
 #include "quant_grouped_matmul_inplace_add.h"
-#include "aclnn_quant_grouped_matmul_inplace_add_950_checker.h"
+#include "quant_grouped_matmul_inplace_add_950_checker.h"
 
 using namespace op;
 

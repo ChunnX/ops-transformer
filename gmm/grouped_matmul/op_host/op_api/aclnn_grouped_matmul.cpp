@@ -36,8 +36,8 @@
 #include "opdev/make_op_executor.h"
 
 #include "grouped_matmul_util.h"
-#include "aclnn_grouped_matmul_950_checker.h"
-#include "aclnn_grouped_matmul_weight_quant_950_checker.h"
+#include "grouped_matmul_950_checker.h"
+#include "grouped_matmul_weight_quant_950_checker.h"
 #include "grouped_matmul_no_quant_950_checker.h"
 
 using namespace op;

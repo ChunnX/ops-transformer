@@ -12,7 +12,7 @@
 #define OP_API_INC_QUANT_GROUPED_MATMUL_INPLACE_ADD_950_CHECKER_H
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "aclnn_quant_grouped_matmul_inplace_add_util.h"
+#include "quant_grouped_matmul_inplace_add_util.h"
 #include "../../../grouped_matmul/op_host/op_api/grouped_matmul_util.h"
 
 namespace QGmmInPlaceAdd {
