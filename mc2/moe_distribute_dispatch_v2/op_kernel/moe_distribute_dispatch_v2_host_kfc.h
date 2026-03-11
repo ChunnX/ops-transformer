@@ -382,7 +382,7 @@ private:
     uint32_t tpWorldSize_{0};
     int32_t epRankId_{0};
     int32_t serverId_{0};         // 当前卡所在server编号
-    int32_t serverRankSize_{0};   // 一个server内的rank数 epWorldSize_ -> serverRankSize_
+    int32_t rankSizePerServer_{0};   // 一个server内的rank数 epWorldSize_ -> rankSizePerServer_
     int32_t epRankIdInServer_{0}; // server内局部编号 epRankId_ -> epRankIdInServer_
     int32_t epRankIdOriginal_{0};
     uint32_t tpGatherRankId_{0}; // gather 对端ID
@@ -512,7 +512,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LogInfo(__LINE__, "START CheckWindowSize");
 
     serverNum_ = 1; //ToDo
-    serverRankSize_ = 2;
+    rankSizePerServer_ = 2;
     epRankId_ = tilingData->moeDistributeDispatchV2Info.epRankId;
     epRankIdOriginal_ = tilingData->moeDistributeDispatchV2Info.epRankId;
     axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
@@ -555,11 +555,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     moeExpertRankNum_ = epWorldSize_ - sharedExpertRankNum_;
     moeExpertNumPerRank_ = moeExpertNum_ / moeExpertRankNum_;
 
-    serverId_ = epRankId_ / serverRankSize_;
-    epRankIdInServer_ = epRankId_ % serverRankSize_;
-    startRankId_ = serverId_ * serverRankSize_;
-    if (startRankId_ + serverRankSize_ <= sharedExpertRankNum_) { // 只有共享专家
-        shareRankNumInServer_ = serverRankSize_;
+    serverId_ = epRankId_ / rankSizePerServer_;
+    epRankIdInServer_ = epRankId_ % rankSizePerServer_;
+    startRankId_ = serverId_ * rankSizePerServer_;
+    if (startRankId_ + rankSizePerServer_ <= sharedExpertRankNum_) { // 只有共享专家
+        shareRankNumInServer_ = rankSizePerServer_;
         startMoeExpertId_ = 0;
     } else if (startRankId_ < sharedExpertRankNum_) { // 有共享专家也有moe专家
         shareRankNumInServer_ = sharedExpertRankNum_ - startRankId_;
@@ -568,9 +568,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         shareRankNumInServer_ = 0;
         startMoeExpertId_ = (startRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_;
     }
-    expertNumInServer_ = shareRankNumInServer_ + (serverRankSize_ - shareRankNumInServer_) * moeExpertNumPerRank_;
+    expertNumInServer_ = shareRankNumInServer_ + (rankSizePerServer_ - shareRankNumInServer_) * moeExpertNumPerRank_;
     //LogInfo(__LINE__, "shareRankNumInServer_: ",shareRankNumInServer_);
-    //LogInfo(__LINE__, "serverRankSize_: ",serverRankSize_);
+    //LogInfo(__LINE__, "rankSizePerServer_: ",rankSizePerServer_);
     //LogInfo(__LINE__, "moeExpertNumPerRank_: ",moeExpertNumPerRank_);
     //LogInfo(__LINE__, "expertNumInServer_: ",expertNumInServer_);
     
@@ -685,7 +685,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     moeExpertScalesAlign_ = moeExpertScaleSizeAlign / sizeof(uint32_t);
 
 
-    uint32_t moeNumPerServer = moeExpertNumPerRank_ * serverRankSize_;
+    uint32_t moeNumPerServer = moeExpertNumPerRank_ * rankSizePerServer_;
     sendTokenLength_ = moeExpertScaleSizeAlign + Ceil(axisK_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     blockCntPerToken_ = Ceil(sendTokenLength_, SPLIT_BLOCK_DATA_SIZE);
     blockCntPerCnt_ = Ceil(moeNumPerServer * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE);
@@ -840,7 +840,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<int32_t>(tokenSendMap_, int32_t(0), serverMapLength);
 
     tpipe_->InitBuffer(expertOffsetCntBuf_, expertIdsCnt_ * sizeof(int16_t));
-    expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>();
+    expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>(); // TODO :
     tpipe_->InitBuffer(xSendBuf_,sendTokenLength_);
 
     maxBlockCnt_ = max(max(blockCntPerToken_, blockCntPerCnt_), blockCntPerTokenToExpert_);
@@ -1154,7 +1154,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::HasSharedExpertInServer(uint32_t serverId)
 {
-        uint32_t serverstartRankId = serverId * serverRankSize_;
+        uint32_t serverstartRankId = serverId * rankSizePerServer_;
         return sharedExpertRankNum_ > serverstartRankId;
 }
 
@@ -1321,16 +1321,21 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Cast(dstServerIdFp32, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
     Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(moeExpertNumPerRank_), calCnt);
     PipeBarrier<PIPE_V>();
+    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     Div(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt);
     PipeBarrier<PIPE_V>();
+    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     Adds(dstServerIdFp32, dstServerIdFp32, static_cast<float32_t>(sharedExpertRankNum_), calCnt);
     PipeBarrier<PIPE_V>();
-    Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(serverRankSize_), calCnt);
+    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
+    Duplicate<float32_t>(tempTensorFp32, static_cast<float32_t>(rankSizePerServer_), calCnt);
     PipeBarrier<PIPE_V>();
     Div(dstServerIdFp32, dstServerIdFp32, tempTensorFp32, calCnt); //计算每个专家所在的serverID
     PipeBarrier<PIPE_V>();
+    LOG_INFO("dstServerIdFp32",dstServerIdFp32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
     Cast(dstServerIdInt32, dstServerIdFp32, RoundMode::CAST_TRUNC, calCnt); 
     PipeBarrier<PIPE_V>();
+    LOG_INFO("dstServerIdInt32",dstServerIdInt32,{static_cast<uint32_t>(activeMaskBsCnt_), axisK_});
 
     for(int32_t serverIndex = 0; serverIndex < serverNum_; serverIndex++) {
         int32_t dstServerId = serverIndex;
@@ -1416,7 +1421,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     // //LogInfo(__LINE__, "[BATCHWRITE][ConstructDataAndFlagBatchWriteInfo] endServerID:", endServerId);
     // 当前aiv负责 [startServerId,endServerId) 个 server
     for (uint32_t dstServerInd = startServerId; dstServerInd < endServerId; ++dstServerInd) {
-        uint32_t dstServerId = epRankId_ % serverRankSize_ + dstServerInd * serverRankSize_; // 目标Server
+        uint32_t dstServerId = epRankId_ % rankSizePerServer_ + dstServerInd * rankSizePerServer_; // 目标Server
 
         uint64_t dstDataAddr = (uint64_t)(GetReceiveAddrBetweenServer(COMM_EP_IDX, dstServerId));
         // src卡GetWindowsInAddr地址, 要发给serverIndex
@@ -1746,7 +1751,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillTriple(LocalTen
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::IsInSameServer(uint32_t targetRankId)
 {
-    return targetRankId / serverRankSize_ == serverId_;
+    return targetRankId / rankSizePerServer_ == serverId_;
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1969,7 +1974,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::S_MTE3>(); 
         GlobalTensor<int32_t> rankGMTensor;
         for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
-            uint32_t srcRankId = serverIdx * serverRankSize_ + epRankId_ % serverRankSize_;
+            uint32_t srcRankId = serverIdx * rankSizePerServer_ + epRankId_ % rankSizePerServer_;
             uint32_t dstRankId = expertIndex; // 共享专家
             uint32_t offset = stateOffset_ * srcRankId;
             if (expertIndex >= shareRankNumInServer_) { // moe专家
@@ -2241,17 +2246,17 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         return;
     }
     LocalTensor<int32_t> sendTokenNumToexpert = subExpBuf_.Get<int32_t>();
-    Duplicate<int32_t>(sendTokenNumToexpert, 0, moeExpertNumPerRank_ * serverRankSize_);
+    Duplicate<int32_t>(sendTokenNumToexpert, 0, moeExpertNumPerRank_ * rankSizePerServer_);
     for(uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
-        uint32_t serverstartRankId = serverIndex * serverRankSize_;
+        uint32_t serverstartRankId = serverIndex * rankSizePerServer_;
         uint32_t moeOffset = 0;
         uint32_t moeIdstart = (serverstartRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
-        uint32_t moeNumInServer =  moeExpertNumPerRank_ * serverRankSize_;
+        uint32_t moeNumInServer =  moeExpertNumPerRank_ * rankSizePerServer_;
         uint32_t moeIdend = moeIdstart + moeNumInServer;
         if (serverstartRankId < sharedExpertRankNum_) { //目标server有共享专家
             moeIdstart = 0;
             moeNumInServer = (sharedExpertRankNum_ - serverstartRankId) * moeExpertNumPerRank_;
-            if (sharedExpertRankNum_ - serverstartRankId >= serverRankSize_) { //全部都是共享专家
+            if (sharedExpertRankNum_ - serverstartRankId >= rankSizePerServer_) { //全部都是共享专家
                 moeNumInServer = 0;
             }
             moeIdend = moeIdstart + moeNumInServer;
@@ -2259,7 +2264,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             moeOffset += sharedExpertRankNum_ - serverstartRankId;
             for(uint32_t shareIndex = 0; shareIndex < sharedExpertNum_; shareIndex++) {
                 uint32_t dstRankId = shareIndex * rankNumPerSharedExpert_ + groupId;
-                uint32_t dstServerId = dstRankId / serverRankSize_;
+                uint32_t dstServerId = dstRankId / rankSizePerServer_;
                 if (dstServerId != serverIndex) {
                     continue;
                 }
