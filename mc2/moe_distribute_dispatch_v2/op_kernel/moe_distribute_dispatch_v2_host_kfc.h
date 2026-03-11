@@ -1370,7 +1370,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if(sendTokenCnt == 0) {
             continue;
         }
-        Muls(dstOffset, dstOffset, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendTokenCnt));
+        Muls(gatherIndex, gatherIndex, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendTokenCnt));
         PipeBarrier<PIPE_V>();
         Scatter(tokenSendMap_[serverIndex * perServerMapLength_], indexTensor, dstOffset, 0, static_cast<uint32_t>(sendTokenCnt)); // 32字节对齐
         PipeBarrier<PIPE_V>();
