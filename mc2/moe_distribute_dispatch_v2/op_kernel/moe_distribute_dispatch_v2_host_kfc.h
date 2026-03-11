@@ -1622,7 +1622,7 @@ __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t tokenCnt, uint32_t serverIdx,
                                                                uint32_t startTokenIdx, TBuf<> &tBuf)
 {
-    //LogInfo(__LINE__, "[BATCHWRITE][WaitToken] enter.");
+    LogInfo(__LINE__, "[BATCHWRITE][WaitToken] enter.");
     LocalTensor<float> xOutFp32Tensor = recvTmpTensor_.template ReinterpretCast<float>();
     LocalTensor<int32_t> xOutInt32Tensor = recvTmpTensor_.template ReinterpretCast<int32_t>();
     GlobalTensor<int32_t> cleanGlobal;
@@ -1661,7 +1661,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             LOG_INFO("after CopyInAndOut");
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
-            SendToExpert(index);
+            //SendToExpert(index);
 
             // finish更新并clean
             finishNumTensor_(index) = 1;
