@@ -1887,6 +1887,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendToExpert(uint32_t rcvCnt)
 {
+    LOG_INFO("[SendToExpert][moe] rcvCnt",rcvCnt);
     // LogInfo(__LINE__, "[SendToExpert] start");
     //// LogInfo(__LINE__, "[SendToExpert] index: ",index, epRankId_);
     GlobalTensor<ExpandXOutType> dstWinGMTensor;
