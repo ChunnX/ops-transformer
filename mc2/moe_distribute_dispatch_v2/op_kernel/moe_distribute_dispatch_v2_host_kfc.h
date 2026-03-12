@@ -2583,7 +2583,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitAndFormatOutput(TBuf<> tBuf, uint32_t validNum)
 {
-    // LOG_INFO("in WaitAndFormatOutput");
+    LOG_INFO("in WaitAndFormatOutput");
     uint32_t index = 0;
     uint32_t finishNum = 0;
     uint32_t maxCopyTokenCnt = tBufRealSize_ / hCommuSize_;
@@ -2595,25 +2595,25 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagGatherOutTensor_ = tBuf.GetWithOffset<uint32_t>(gatherOutSize / sizeof(uint32_t), 0); // buf复用
     flagRecvTensor_ = tBuf.GetWithOffset<uint32_t>(flagMaxRecvNum, gatherOutSize);  // buf复用
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
-    // LOG_INFO("WaitAndFormatOutput validNum:", validNum);
-    // LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
+    LOG_INFO("WaitAndFormatOutput validNum:", validNum);
+    LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
     int count = 0;
     while (true) {
         count ++;
         if(count > 10000) {
-            // LOG_INFO("WaitAndFormatOutput error count");
+            LOG_INFO("WaitAndFormatOutput error count");
             break;
         }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
             continue;
         }
-        // LOG_INFO("WaitAndFormatOutput index:", index);
+        LOG_INFO("WaitAndFormatOutput index:", index);
         srcExpRankId = expertMapTensor_(index);
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
         arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
-        // LOG_INFO("arriveCount:", arriveCount);
+        LOG_INFO("arriveCount:", arriveCount);
         if (arriveCount == copyCnt) {
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
