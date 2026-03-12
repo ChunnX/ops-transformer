@@ -1160,6 +1160,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         LOG_INFO("ScatterToken isSharedExpert ",isSharedExpert);
         bool isSend = (isSharedExpert) || (tokenSendOffset != -1);
         if(!isSend) {
+            LOG_INFO("ScatterToken not send");
             continue;
         }
         SingleTokenProcess(startIndex, tokenIndex, serverId, tokenSendOffset); // 将数据写入对应的发送区
