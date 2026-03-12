@@ -45,7 +45,7 @@ const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MAX_D_LENTH = 8192;
 const constexpr uint32_t D_ALIGN = 64;
 
-REGISTER_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardBaseTiling, 1000);
+REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardBaseTiling, 1000);
 
 ge::graphStatus MhcPreBackwardBaseTiling::GetInputShape()
 {
