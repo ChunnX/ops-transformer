@@ -2807,11 +2807,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         Cast(tempOffset, validExpertIndexTensor, RoundMode::CAST_NONE, static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
-        LOG_INFO("tempOffset",tempOffset);
+        LOG_INFO("tempOffset",tempOffset, {1, static_cast<uint32_t>(sendNumperExpert)});
         Muls(tempOffset, tempOffset, static_cast<int32_t>(sizeof(half)), static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
-        LOG_INFO("tempOffset",tempOffset);
-        LOG_INFO("dstoffset",dstoffset);
+        LOG_INFO("tempOffset",tempOffset, {1, static_cast<uint32_t>(sendNumperExpert)});
+        LOG_INFO("dstoffset",dstoffset, {1, static_cast<uint32_t>(sendNumperExpert)});
         Scatter(expertOffsetCntTensor_, expertsIndexTensor, dstoffset, 0, static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
     }
