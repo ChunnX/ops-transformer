@@ -1673,7 +1673,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
 
         if (arriveCount == 1) {
             uint32_t dstPosition = index;
-            GM_ADDR wAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN;
+            GM_ADDR wAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
             CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, wAddr, index, dstPosition, arriveCount);
             LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
