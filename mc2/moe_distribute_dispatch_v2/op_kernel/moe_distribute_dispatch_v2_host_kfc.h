@@ -2774,6 +2774,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         int16_t dstExpertId = static_cast<uint16_t>(Index);
         Adds(dstExpIdTensorInt16, expertIdsInt16, -dstExpertId, calCnt);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
         Abs(dstExpIdTensorFP16, dstExpIdTensorFP16, calCnt);
         PipeBarrier<PIPE_V>();
         LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
