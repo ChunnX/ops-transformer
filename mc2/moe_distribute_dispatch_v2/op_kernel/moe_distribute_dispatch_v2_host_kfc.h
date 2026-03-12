@@ -1925,8 +1925,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                             (expertPerSizeOnWin_ * (srcRankIndex * moeExpertNumPerRank_ +
                                             dstExpertId % moeExpertNumPerRank_)) + hCommuSize_ * curExpertCnt); // 计算地址偏移
         
-        // ProcessToken(rankGM, tokenIndex, topKIndex,
-        //             padParams, scaleInParams, dstExpertId + sharedExpertNum_, tokenData_, srcRankIndex, expertScale);
+        ProcessToken(rankGM, tokenIndex, topKIndex,
+                    padParams, scaleInParams, dstExpertId + sharedExpertNum_, tokenData_, srcRankIndex, expertScale);
         // PipeBarrier<PIPE_ALL>();
     }
 
