@@ -54,6 +54,7 @@ enum class SLILayout
 
 enum class SLITopKRange
 {
+    TOPK_512 = 512,
     TOPK_1k = 1024,
     TOPK_2k = 2048,
     TOPK_3k = 3072,

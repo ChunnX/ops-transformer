@@ -222,7 +222,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::InitConstInfo
     constInfo.hasSoftmaxInput = baseInfo.hasSoftmaxInput;
     constInfo.gatherKeySize = topKSize * (constInfo.dSizeQuery + constInfo.dSizeRope);
     constInfo.gatherKeyIndexSize = topKSize * constInfo.dSizeQueryIndex;
-
+    if constexpr (!SLIT::hasRope) {
+        constInfo.dSizeQueryRope = 0;
+    }
     constInfo.tilingInfo = tilingData->vectorParams.softmaxYTilingData;
     constInfo.simpleSoftMaxTilingInfo = tilingData->vectorParams.simpleSoftmaxPTilingData;
 }

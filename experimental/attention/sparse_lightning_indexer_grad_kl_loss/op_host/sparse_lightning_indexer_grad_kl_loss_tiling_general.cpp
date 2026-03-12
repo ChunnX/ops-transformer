@@ -125,8 +125,9 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::CheckContext()
     auto keyIndexShape = context_->GetInputShape(KEY_INDEX_INPUT_INDEX);
     auto weightsShape = context_->GetInputShape(WEIGHT_INPUT_INDEX);
     auto sparseIndicesShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
-    auto softmaxMaxShape = context_->GetInputShape(SOFTMAX_MAX_INPUT_INDEX);
-    auto softmaxSumShape = context_->GetInputShape(SOFTMAX_SUM_INPUT_INDEX);
+    // softmaxMax和softmaxSum为可选输入
+    auto softmaxMaxShape = context_->GetOptionalInputShape(SOFTMAX_MAX_INPUT_INDEX);
+    auto softmaxSumShape = context_->GetOptionalInputShape(SOFTMAX_SUM_INPUT_INDEX);
     // 输出shape验证
     auto dQueryIndexShape = context_->GetOutputShape(D_QUERY_INDEX_OUTPUT_INDEX);
     auto dkeyIndexShape = context_->GetOutputShape(D_KEY_INDEX_OUTPUT_INDEX);
@@ -285,22 +286,31 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
             s1Size = queryShape.GetDim(1);
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2);
-            OP_CHECK_IF(
-                s1Size > s2Size,
-                OP_LOGE(
-                    opName,
-                    "Query s1Size(%ld) must be small than Key s2Size(%ld).",
-                    s1Size, s2Size),
-                return false);
+            if (cmpRatio != 4) {
+                OP_CHECK_IF(
+                    s1Size > s2Size,
+                    OP_LOGE(
+                        opName,
+                        "Query s1Size(%ld) must be small than Key s2Size(%ld).",
+                        s1Size, s2Size),
+                    return false);
+            }
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(2) / n2Size;
             gSizeQueryIndex = queryIndexShape.GetDim(2) / n2Size;
             dSizeQuery = queryShape.GetDim(3);
             dSizeQueryIndex = queryIndexShape.GetDim(3);
             kSize = topKShape.GetDim(3);
-            OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || kSize % BUFFER_SIZE_BYTE_1K > 0,
-                OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.", kSize),
-                return false);
+            if (cmpRatio != 4) {
+                OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || kSize % BUFFER_SIZE_BYTE_1K > 0,
+                    OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.", kSize),
+                    return false);
+            } else {
+                OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || (kSize % BUFFER_SIZE_BYTE_1K > 0 && kSize != 512),
+                    OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024 or 512.", kSize),
+                    return false);
+            }
+
             topkSize = (TopKRange) kSize;
             if (hasRope) {
                 dQueryRopeSize = queryRopeShape.GetDim(3);

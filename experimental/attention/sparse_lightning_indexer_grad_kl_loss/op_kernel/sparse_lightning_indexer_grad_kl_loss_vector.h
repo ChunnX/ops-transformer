@@ -1520,12 +1520,10 @@ template <typename SLIT>
 template <uint32_t range>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDk(SLIGradKLLossRunInfo &runInfo, int32_t kLoopIdx)
 {
-    if ((runInfo.s1Idx + 1) >= constInfo.cmpRatio) {
-        if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K){
-            VectorDwDqDkLess2k(runInfo);
-        } else {
-            VectorDwDqDkMoreThan2k(runInfo, kLoopIdx);
-        }
+    if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K){
+        VectorDwDqDkLess2k(runInfo);
+    } else {
+        VectorDwDqDkMoreThan2k(runInfo, kLoopIdx);
     }
 }
 
