@@ -1236,7 +1236,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagOutGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmSendTokenFlg + offset));
     DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
     DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
-    SyncFunc<AscendC::HardEvent::MTE3_V>();
+    SyncFunc<AscendC::HardEvent::MTE3_V>(); //包括需要等待数据拷贝到发送区完成
     if(aivId_ == aivUsedCumSum_) {
         WaitFlag(gmSendTokenFlg, flagTensor, flagRecvGatherMask, waitNum);
         //TODO:调用Hccl接口.还未提供
