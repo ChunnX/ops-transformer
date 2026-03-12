@@ -1663,9 +1663,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         GM_ADDR wAddr =
             GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
         dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
-        if(index == 0 && count == 1) {
-            LOG_INFO("dataFlagGlobal,",dataFlagGlobal, {blockCntPerToken_, 128});
-        }
+        // if(index == 0 && count == 1) {
+        //     LOG_INFO("dataFlagGlobal,",dataFlagGlobal, {blockCntPerToken_, 128});
+        // }
         
         CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_, flagRecvTensor_, flagGatherOutTensor_);
         LOG_INFO("[BATCHWRITE][WaitToken][true] index:", index);
