@@ -867,7 +867,7 @@ SendDataToServer(uint32_t destServerId)
     LocalTensor<uint64_t> sendTokenInfoLocalTensor =
         tBuf.GetWithOffset<uint64_t>((axisBS_ * FLAG_SIZE)/sizeof(uint64_t), 0);
     DataCopy(sendTokenInfoLocalTensor, tokenAddrFlagStructGlobalU64Tensor_, (axisBS_ * FLAG_SIZE)/sizeof(uint64_t));
-    PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     for (uint32_t tokenIdx = 0; tokenIdx < axisBS_; ++tokenIdx) {
         uint64_t destServerInfo = sendTokenInfoLocalTensor(tokenIdx * FLAG_SIZE / sizeof(uint64_t));
@@ -875,7 +875,6 @@ SendDataToServer(uint32_t destServerId)
             uint64_t srcRdmaAddr = (uint64_t)(srcRdmaAddrBase + (tokenStructLen_ * tokenIdx * 1UL));
             AIVRDMAPostSend((GM_ADDR)srcRdmaAddr, (GM_ADDR)dstRdmaAddr, dstRankId, tokenStructLen_, qp_info_);
             dstRdmaAddr += tokenStructLen_;
-            PipeBarrier<PIPE_ALL>();
         }
     }
 
@@ -1096,6 +1095,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             DataCopy(targetTokenIpcGt[tokenStructLen_ * targetTokenIdx], localUB_U8, tokenStructLen_);
         }
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // localUB搬下次Token时，确保当前Token已搬移至Ipc Buffer
+        SyncFunc<AscendC::HardEvent::S_MTE2>(); // localUB搬下次ExpInfo时，确保当前ExpInfo已遍历完
         // 统计机间通信时间
         // 多个核处理同一个server只有第一个核记录时间，其他核不记录保持0，不影响最后的atomicAdd
         if (unlikely(needPerformanceInfo_ && (logicAivId % coresPerServer == 0))) { 
@@ -1108,7 +1108,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     }
     //数据发送结束，填写tokenNum到对端Ipc，每轮填写coresPerServer个，总共要填写 SERVER_RANK_SIZE * localMoeExpertNum_个
     uint32_t batchNum = (SERVER_RANK_SIZE * localMoeExpertNum_ + coresPerServer - 1) / coresPerServer;
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    SyncFunc<AscendC::HardEvent::S_MTE3>(); // 拷贝到Ipc TokenCnt前保证tokenNumPerExp修改完成
     for (uint32_t batch = 0; batch < batchNum; batch++) {
         uint32_t targetExpId = expStartId + batch * coresPerServer + logicAivId % coresPerServer;
         uint32_t targetRankId = GetExpRank(targetExpId);
