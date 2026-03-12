@@ -703,14 +703,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_;
     hOutAlignUbSize_ = Ceil(hScaleIdxSize_, UB_ALIGN) * UB_ALIGN;
 
-    //LogInfo(__LINE__, "hOutSize_; ",hOutSize_);
-    //LogInfo(__LINE__, "hAlignSize_; ",hAlignSize_);
-    //LogInfo(__LINE__, "scaleInBytes_; ",scaleInBytes_);
-    //LogInfo(__LINE__, "tokenQuantAlign_; ",tokenQuantAlign_);
-    //LogInfo(__LINE__, "hScaleIdxSize_; ",hScaleIdxSize_);
-    //LogInfo(__LINE__, "axisH_; ",axisH_);
-    //LogInfo(__LINE__, "hAlignWinSize_; ",hAlignWinSize_);
-    //LogInfo(__LINE__, "expertPerSizeOnWin_; ",expertPerSizeOnWin_);
+    LogInfo(__LINE__, "hOutSize_; ",hOutSize_);
+    LogInfo(__LINE__, "hAlignSize_; ",hAlignSize_);
+    LogInfo(__LINE__, "scaleInBytes_; ",scaleInBytes_);
+    LogInfo(__LINE__, "tokenQuantAlign_; ",tokenQuantAlign_);
+    LogInfo(__LINE__, "hScaleIdxSize_; ",hScaleIdxSize_);
+    LogInfo(__LINE__, "axisH_; ",axisH_);
+    LogInfo(__LINE__, "hAlignWinSize_; ",hAlignWinSize_);
+    LogInfo(__LINE__, "expertPerSizeOnWin_; ",expertPerSizeOnWin_);
     LOG_INFO("hOutAlignUbSize_",hOutAlignUbSize_);
 }
 
