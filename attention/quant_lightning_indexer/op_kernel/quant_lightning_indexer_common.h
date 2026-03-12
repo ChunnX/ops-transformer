@@ -12,9 +12,9 @@
  * \file quant_lightning_indexer_common.h
  * \brief
  */
-#ifndef quant_lightning_indexer_COMMON_H
-#define quant_lightning_indexer_COMMON_H
-
+#ifndef QUANT_LIGHTNING_INDEXER_COMMON_H
+#define QUANT_LIGHTNING_INDEXER_COMMON_H
+using namespace AscendC;
 namespace QLICommon {
 
 // 与tiling的layout保持一致
@@ -45,6 +45,7 @@ struct RunInfo {
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
+    uint32_t actS2SizeOrig = 1; 
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
@@ -64,6 +65,10 @@ struct RunInfo {
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t FIA_SYNC_MODE2 = 2;
+    static constexpr uint32_t QLI_SYNC_MODE4 = 4;
+    static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
+    static constexpr uint32_t CROSS_VC_EVENT = 0;
+    static constexpr uint32_t CROSS_CV_EVENT = 2;
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
@@ -106,6 +111,7 @@ struct ConstInfo {
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
     bool isAccumSeqS2 = false;     // 是否累加模式
+    bool isLDOpen = false;
 };
 
 struct SplitCoreInfo {
@@ -116,6 +122,7 @@ struct SplitCoreInfo {
     uint32_t gS1Start = 0U;
     uint32_t gS1End = 0U;
     bool isLD = false;  // 当前核是否需要进行Decode归约任务
+    bool isCoreEnable = false;
 };
 
 template <typename T>
@@ -143,4 +150,17 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }
 }  // namespace QLICommon
 
-#endif  // quant_lightning_indexer_COMMON_H
+// bank冲突优化
+// david 256KB bank layout
+// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
+// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
+#define UB_BLOCK              32   // 32B
+#define UB_BANK_GROUPS        8
+#define UB_BANKS              2
+#define UB_BANK_DEPTH         512
+
+#define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
+#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
+#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
+
+#endif  // QUANT_LIGHTNING_INDEXER_COMMON_H
