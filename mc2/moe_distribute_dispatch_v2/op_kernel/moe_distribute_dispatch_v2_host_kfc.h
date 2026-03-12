@@ -1145,6 +1145,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                                                                                uint32_t dstServerId,
                                                                                                uint32_t cnt)
 {
+    if(cnt == 0) {
+        LOG_INFO("SingleTokenProcess cnt == 0");
+    }
     LocalTensor<XType> sendTokenTensor = xSendBuf_.Get<XType>();
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopyPadParams copyPadExtParams{true, 0U, 0U, 0U};
