@@ -2604,13 +2604,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
     LOG_INFO("WaitAndFormatOutput validNum:", validNum);
     LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
-    // int count = 0;
+    int count = 0;
     while (true) {
-        // count ++;
-        // if(count > 1000000) {
-        //     LOG_INFO("WaitAndFormatOutput error count");
-        //     break;
-        // }
+        count ++;
+        if(count > 1000000) {
+            LOG_INFO("WaitAndFormatOutput error count");
+            break;
+        }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
             continue;
