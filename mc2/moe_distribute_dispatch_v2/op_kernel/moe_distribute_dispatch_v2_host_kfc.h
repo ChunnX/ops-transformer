@@ -1212,13 +1212,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagInGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flagAddr));
     DataCopyParams flagCopyInParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t) * waitNum), 0, 0};
     DataCopyPadParams flagPadParams{false, 0, 0, 0};
-    uint64_t count =0;
+    // uint64_t count =0;
     while(true) { // 软同步
-        count++;
-        if(count > 1000000){
-            LOG_INFO("error WaitFlag,Error count");
-            break;
-        }
+        // count++;
+        // if(count > 1000000){
+        //     LOG_INFO("error WaitFlag,Error count");
+        //     break;
+        // }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyInParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         GatherMask(flagInLTTensor, flagInLTTensor, flagRecvGatherMask, true, uint32_t(1),
@@ -1661,13 +1661,13 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         finishNumTensor_(idx) = 0;
     }
 
-    uint32_t count = 0;
+    // uint32_t count = 0;
     while (true) {
-        count++;
-        if (count == 1000000) {
-            LogInfo(__LINE__, "[BATCHWRITE][WaitToken] error count.");
-            break;
-        }
+        // count++;
+        // if (count == 1000000) {
+        //     LogInfo(__LINE__, "[BATCHWRITE][WaitToken] error count.");
+        //     break;
+        // }
         if (finishNumTensor_(index) == 1) {
             index = (index + 1) % tokenCnt; // 轮询查询每个有效的index
             continue;
@@ -2029,13 +2029,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::V_S>();
         flagRecvGatherMask_.SetValue(0, 1);
 
-        int32_t count = 0;
+        // int32_t count = 0;
         while(true) { //确保等到 
-            count++;
-            if (count == 1000000) {
-                LOG_INFO("SetStatus error count");
-                break;
-            }
+            // count++;
+            // if (count == 1000000) {
+            //     LOG_INFO("SetStatus error count");
+            //     break;
+            // }
             DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(blockCntPerCnt_), static_cast<uint32_t>(sizeof(uint32_t)),
                                             static_cast<uint32_t>(SERVER_STATE_ALIGN - sizeof(uint32_t)), 0, 0};
             DataCopyPadExtParams<uint32_t> expFlagPadParams{false, 0U, 0U, 0U}; // 不特殊填充
@@ -2240,7 +2240,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
-    int count = 0;
+    // int count = 0;
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
         // LOG_INFO("get statusFp32Tensor_", statusFp32Tensor_, {8, 8});
@@ -2249,11 +2249,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
         // LOG_INFO("sumOfFlag:", sumOfFlag);
-        count ++;
-        if(count == 10000000) {
-            LOG_INFO("waitDispatch error count");
-            break;
-        }
+        // count ++;
+        // if(count == 10000000) {
+        //     LOG_INFO("waitDispatch error count");
+        //     break;
+        // }
     }
     // 清状态
     WaitDispatchClearStatus();
@@ -2464,13 +2464,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT};
     LocalTensor<float> statusSumOutTensor = scalarBuf_.Get<float>();
 
-    int count = 0;
+    // int count = 0;
     while (true) {
-        count++;
-        if(count == 1000000) {
-            LOG_INFO("WaitCumSumFlag error count");
-            break;
-        }
+        // count++;
+        // if(count == 1000000) {
+        //     LOG_INFO("WaitCumSumFlag error count");
+        //     break;
+        // }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusSumOutTensor, statusFp32Tensor_, sumFlagParams);
@@ -2604,13 +2604,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<int32_t> xOutInt32Tensor = xTmpTensor_.template ReinterpretCast<int32_t>();
     LOG_INFO("WaitAndFormatOutput validNum:", validNum);
     LOG_INFO("expertMapTensor_", expertMapTensor_,{1, 8});
-    int count = 0;
+    // int count = 0;
     while (true) {
-        count ++;
-        if(count > 1000000) {
-            LOG_INFO("WaitAndFormatOutput error count");
-            break;
-        }
+        // count ++;
+        // if(count > 1000000) {
+        //     LOG_INFO("WaitAndFormatOutput error count");
+        //     break;
+        // }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集
             index = (index + 1) % validNum; // 轮询查询每个有效的index
             continue;
