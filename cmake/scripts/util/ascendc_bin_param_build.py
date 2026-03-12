@@ -351,49 +351,87 @@ class BinParamBuilder(opdesc_parser.OpDesc):
         with os.fdopen(os.open(param_file, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
             json.dump(param, fd, indent='  ')
 
-    def _generate_check_result(self: any, enable_tiling_keys: bool, bin_file: str, ci_mode_flag):
-        check_result = ""
-        if not ci_mode_flag:
-            check_result += f"""
-if [ $? -ne 0 ]; then
-    on_failure 
-    exit 1
-else
-    remove_pid
-fi
-"""
+    def _generate_check_result(
+        self, enable_tiling_keys: bool, bin_file: str, ci_mode_flag: bool
+    ) -> str:
+        """根据模式和 tiling keys 启用状态生成检查脚本"""
         if ci_mode_flag:
-            check_result += f"""
-if [ $? -ne 0 ]; then
-    echo "{self.op_intf} {bin_file}" >> failed_ops.log
-    exit 1
-else
-    echo "${{res}}"
-    echo "{self.op_intf} {bin_file}" >> success_ops.log
-fi
-"""
-            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.json')
-            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.o')
-        elif enable_tiling_keys is False:
-            check_result += "echo \"${res}\"\n"
-            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.json')
-            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.o')
+            if not enable_tiling_keys:
+                return self._gen_ci_no_tiling(bin_file)
+            else:
+                return self._gen_ci_tiling(bin_file)
         else:
-            check_result += "if [ $? -eq 1 ]; then\n"
-            check_result += "    if echo \"${res}\" | \
-grep -q \"None of the given tiling keys are in the supported list\"; then\n"
-            check_result += "        echo \"${res}\"\n"
-            check_result += "    else\n"
-            check_result += "        echo \"${res}\"\n"
-            check_result += "        exit 1\n"
-            check_result += "    fi\n"
-            check_result += "else\n"
-            check_result += "echo \"${res}\"\n"
-            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.json')
-            check_result += const_var.CHK_CMD.format(res_file=bin_file + '.o')
-            check_result += "fi\n"
+            if not enable_tiling_keys:
+                return self._gen_local_no_tiling(bin_file)
+            else:
+                return self._gen_local_tiling(bin_file)
 
-        return check_result
+    def _gen_ci_no_tiling(self, bin_file: str) -> str:
+        """CI模式，未启用tiling keys：任何错误仅记录，成功执行检查"""
+        return f"""
+    __ret=$?
+    if [ $__ret -eq 0 ]; then
+        echo "${{res}}"
+        echo "{self.op_intf} {bin_file}" >> success_ops.log
+        {const_var.CHK_CMD.format(res_file=bin_file + '.json')}
+        {const_var.CHK_CMD.format(res_file=bin_file + '.o')}
+    else
+        echo "${{res}}"
+        echo "{self.op_intf} {bin_file}" >> failed_ops.log
+    fi
+    """
+
+    def _gen_ci_tiling(self, bin_file: str) -> str:
+        """CI模式，启用tiling keys：处理特定返回码1错误，其余错误仅记录，成功执行检查"""
+        return f"""
+    __ret=$?
+    if [ $__ret -eq 0 ]; then
+        echo "${{res}}"
+        echo "{self.op_intf} {bin_file}" >> success_ops.log
+        {const_var.CHK_CMD.format(res_file=bin_file + '.json')}
+        {const_var.CHK_CMD.format(res_file=bin_file + '.o')}
+    elif [ $__ret -eq 1 ] && echo "${{res}}" | grep -q "None of the given tiling keys are in the supported list"; then
+        echo "${{res}}"
+        echo "{self.op_intf} {bin_file}" >> failed_ops.log
+    else
+        echo "${{res}}"
+        echo "{self.op_intf} {bin_file}" >> failed_ops.log
+    fi
+    """
+
+    def _gen_local_no_tiling(self, bin_file: str) -> str:
+        """线下模式，未启用tiling keys：任何错误立即退出，成功执行检查"""
+        return f"""
+    __ret=$?
+    if [ $__ret -eq 0 ]; then
+        echo "${{res}}"
+        remove_pid
+        {const_var.CHK_CMD.format(res_file=bin_file + '.json')}
+        {const_var.CHK_CMD.format(res_file=bin_file + '.o')}
+    else
+        echo "${{res}}"
+        on_failure
+        exit 1
+    fi
+    """
+
+    def _gen_local_tiling(self, bin_file: str) -> str:
+        """线下模式，启用tiling keys：特定返回码1错误仅打印，其他错误退出，成功执行检查"""
+        return f"""
+    __ret=$?
+    if [ $__ret -eq 0 ]; then
+        echo "${{res}}"
+        remove_pid
+        {const_var.CHK_CMD.format(res_file=bin_file + '.json')}
+        {const_var.CHK_CMD.format(res_file=bin_file + '.o')}
+    elif [ $__ret -eq 1 ] && echo "${{res}}" | grep -q "None of the given tiling keys are in the supported list"; then
+        echo "${{res}}"
+    else
+        echo "${{res}}"
+        on_failure
+        exit 1
+    fi
+    """
 
     def _get_no_ci_shell_str(self):
         return f"""
