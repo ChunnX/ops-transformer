@@ -677,6 +677,7 @@ bool GroupedQmmTiling::CheckCoreNum() const
                     aicNum, aivNum),
             return false);
     }
+    // kernelType, 1：dequant vec模板；2：perGroup-perBlock(GB)独立pertile模板
     if (inputParams_.kernelType == 1 || inputParams_.kernelType == 2) {
         OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
                     OP_LOGE(inputParams_.opName,
