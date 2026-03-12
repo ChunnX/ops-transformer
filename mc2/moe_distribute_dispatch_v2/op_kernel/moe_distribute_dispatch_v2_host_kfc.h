@@ -731,8 +731,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
     uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
     uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
-    uint32_t expertBufferSize = axisBS_ * Ceil(axisK_ * Sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
-    moeCntRowAlign_ = Ceil(axisK_ * Sizeof(int16_t), UB_ALIGN) * UB_ALIGN / Sizeof(int16_t);
+    uint32_t expertBufferSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
+    moeCntRowAlign_ = Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN / sizeof(int16_t);
     expertIdsSize = Ceil(expertIdsSize, UB_ALIGN) * UB_ALIGN;
     maxSize_ = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
     maxSize_ = maxSize_ > xActivateMaskSize ? maxSize_ : xActivateMaskSize;
@@ -855,7 +855,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<uint32_t>(serverCountTensor_, uint32_t(0), serverBuferLength);
     Duplicate<int32_t>(tokenSendMap_, int32_t(-1), serverMapLength);
 
-    uint32_t expertBufferSize = axisBS_ * Ceil(axisK_ * Sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t expertBufferSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
 
     tpipe_->InitBuffer(expertOffsetCntBuf_, expertBufferSize);
     expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>(); // TODO :
@@ -1112,7 +1112,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
     DataCopyPad(xOutTint32[moeListAlign_], expertIdsGMTensor_[tokenIndex * axisK_], copyParams, CopyPadParams);
     PipeBarrier<PIPE_MTE2>();
     //Copy(xOutTint16[moeCntAlign_], expertOffsetCntTensor_[realIndex * axisK_], mask, 1, cntCopyParams); //TODO:
-    DataCopyPad(xOutTint16[moeCntAlign_], expertOffsetCntTensor_[realIndex * moeCntRowAlign_], moeCntRowAlign_);
+    DataCopy(xOutTint16[moeCntAlign_], expertOffsetCntTensor_[realIndex * moeCntRowAlign_], moeCntRowAlign_);
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams, expertScalePadParams);
 
