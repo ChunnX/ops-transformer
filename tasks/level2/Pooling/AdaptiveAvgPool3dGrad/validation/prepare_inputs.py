@@ -8,13 +8,10 @@ def get_inputs(param, device=None):
     """
     dtype_str = param.get('dtype', 'float16')
     dtype = getattr(torch, dtype_str)
-    shape = eval(param.get('shape', '[1,1,1,1,1]'))
+    x_shape = eval(param.get('x_shape', '[1,1,1,1,1]'))
+    y_grad_shape = eval(param.get('y_grad_shape', '[1,1,1,1,1]'))
 
-    x = torch.randn(shape, device=device, dtype=dtype)
-    y_grad_shape = [i for i in x.shape]
-    y_grad_shape[2] = random.randint(1, shape[2])
-    y_grad_shape[3] = random.randint(1, shape[3])
-    y_grad_shape[4] = random.randint(1, shape[4])
+    x = torch.randn(x_shape, device=device, dtype=dtype)
     y_grad = torch.randn(y_grad_shape, device=device, dtype=dtype)
 
     return (y_grad, x)

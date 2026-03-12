@@ -12,8 +12,8 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
     def forward(self, y_grad: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-        res = torch.ops.aten._adaptive_avg_pool3d_backward(y_grad.npu(), x.npu())
-        return res.cpu()
+        res = torch.ops.aten._adaptive_avg_pool3d_backward(y_grad.to(torch.float32), x.to(torch.float32))
+        return res.to(y_grad.dtype)
 
 class ModelNew(nn.Module):
     def __init__(self):
