@@ -732,7 +732,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
     uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
     uint32_t expertBufferSize = axisBS_ * Ceil(axisK_ * Sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
-    moeCntRowAlign_ = Ceil(axisK_ * Sizeof(int16_t), UB_ALIGN) * UB_ALIGN / Sizeof(int)
+    moeCntRowAlign_ = Ceil(axisK_ * Sizeof(int16_t), UB_ALIGN) * UB_ALIGN / Sizeof(int16_t);
     expertIdsSize = Ceil(expertIdsSize, UB_ALIGN) * UB_ALIGN;
     maxSize_ = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
     maxSize_ = maxSize_ > xActivateMaskSize ? maxSize_ : xActivateMaskSize;
