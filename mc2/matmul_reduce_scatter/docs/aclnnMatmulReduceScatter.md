@@ -151,7 +151,7 @@ aclnnStatus aclnnMatmulReduceScatter(
         <td>output</td>
         <td>输出</td>
         <td>AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
-        <td><ul><li>不支持空Tensor。</li><li>与x1的数据类型保持一致。</li></ul></td>
+        <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>

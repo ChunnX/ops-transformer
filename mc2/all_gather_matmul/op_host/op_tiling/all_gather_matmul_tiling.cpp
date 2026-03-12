@@ -143,7 +143,8 @@ static bool CheckOutputParamDim0(gert::TilingContext* context)
 
     OP_TILING_CHECK(outputDim0 != mValue,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "m-axis should be %lu, but output's m-axis is %lu"), return false);
+        "m-axis should be %lu, but output's m-axis is %lu", mValue, outputDim0),
+        return false);
 
     return true;
 }

@@ -263,7 +263,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>output</td>
         <td>输出</td>
         <td>AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16、FLOAT</td>
         <td>ND</td>
         <td>2</td>

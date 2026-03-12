@@ -103,19 +103,21 @@ void MatmulReduceScatterTilingBase::DoFormulaticTiling(Mc2Tiling::RCSTiling &rcs
  */
 ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 {
-    uint64_t sizeOfSingleM = args_.nValue * sizeof(args_.geCType);
+    uint64_t sizeOfSingleM = args_.nValue * ge::GetSizeByDataType(args_.geCType);
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), the size still exceeds 256MB."), return ge::GRAPH_FAILED);
+        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), the size %lu still exceeds 256MB.", sizeOfSingleM),
+                return ge::GRAPH_FAILED);
     
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
-    OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size still exceeds 256MB."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
+        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu still exceeds 256MB.", sizeOfSplitM),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
 {
-    if (tileMValue_ * args_.mValue * sizeof(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
+    if (tileMValue_ * args_.mValue * ge::GetSizeByDataType(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
         return ge::GRAPH_SUCCESS;
     }
     OPS_LOG_I(opName_, "The result of formulaic tiling result does not meet the hccl restriction,"
@@ -126,7 +128,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTil
         OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."), 
         return ge::GRAPH_FAILED);
     
-    uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * sizeof(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
+    uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
     tileMValue_ = Ops::Base::CeilDiv(args_.mValue, minSplitPart);
     rcfCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
     rcfCfg.tailM = args_.mValue - rcfCfg.tileCnt * tileMValue_;
