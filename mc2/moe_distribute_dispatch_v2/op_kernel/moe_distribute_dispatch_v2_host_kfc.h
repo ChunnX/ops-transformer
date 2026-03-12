@@ -1673,8 +1673,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
 
         if (arriveCount == 1) {
             uint32_t dstPosition = index;
-            GM_ADDR wAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
-            CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, wAddr, index, dstPosition, arriveCount);
+            GM_ADDR readAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
+            CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, readAddr, index, dstPosition, arriveCount);
             LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -1688,7 +1688,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
                                                +SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
             LocalTensor<int32_t> cleanBuf =
                 tBuf.GetWithOffset<int32_t>(UB_ALIGN / sizeof(int32_t), 0); // 在0偏移位置存放比较结果
-            cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(wAddr));
+            cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(readAddr));
             SyncFunc<AscendC::HardEvent::MTE3_V>();
             Duplicate<int32_t>(cleanBuf, 0, cleanUpNum * 8); // 8 = UB_ALIGN / 4
             SyncFunc<AscendC::HardEvent::V_MTE3>();
