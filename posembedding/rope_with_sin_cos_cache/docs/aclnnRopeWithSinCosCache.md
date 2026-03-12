@@ -20,6 +20,7 @@
 * 计算公式：
 
     1、**mrope模式**：positions的shape输入是[m, numTokens], m为mropeSection的元素数，支持3或4：
+
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -29,6 +30,7 @@
     $$
 
     - mropeSection的元素数为3：
+
       $$
       cos0 = cos[0, :, :mropeSection[0]]
       $$
@@ -70,6 +72,7 @@
       $$
 
     - mropeSection的元素数为4：
+
       $$
       cos = torch.cat([m[i]\ for\ i, m\ in\ enumerate(cos.split(mropeSection, dim=-1))], dim=-1)
       $$
@@ -87,6 +90,7 @@
       $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
+
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -108,6 +112,7 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
+
     $$
     x1 = queryRot[..., ::2]
     $$
@@ -133,6 +138,7 @@
     $$
 
     2、**rope模式**：positions的shape输入是[numTokens]：
+    
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -150,6 +156,7 @@
     $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
+
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -171,6 +178,7 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
+    
     $$
     x1 = queryRot[..., ::2]
     $$
