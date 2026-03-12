@@ -1717,7 +1717,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CheckDataArriveWith
 
     // flag放到flagRecvTensor
     DataCopyPad(flagRecvTensor, dataFlagGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], expFlagCopyParams, expFlagPadParams);
-    LOG_INFO("[BATCHWRITE]dataFlagGlobal", dataFlagGlobal, {35, 128});
+    // LOG_INFO("[BATCHWRITE]dataFlagGlobal", dataFlagGlobal, {35, 128});
     LOG_INFO("[BATCHWRITE]flagRecvTensor", flagRecvTensor, {1, flagNum}); // blockCntPerToken_ * SERVER_STATE_ALIGN;
 
     SyncFunc<AscendC::HardEvent::MTE2_V>();
