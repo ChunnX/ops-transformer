@@ -805,28 +805,3 @@ GMMSwigluQuant@ops-transformer:
             test_code: null 
             non_delivery: null  
             open_source: null
-
-gmm@ops-transformer:
-    src:
-        release:
-            huawei_style:
-                - ops/ops-transformer/gmm/grouped_matmul
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2
-                - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
-            opensource_style: null
-            kernel_style: null
-        unrelease:
-            test_code:
-                - ops/ops-transformer/gmm/grouped_matmul/tests
-                - ops/ops-transformer/gmm/grouped_matmul/examples
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/tests
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/examples
-                - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add/tests
-                - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add/examples
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/tests
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/examples
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/examples_david
-                - ops/ops-transformer/gmm/grouped_matmul_add/tests
-                - ops/ops-transformer/gmm/grouped_matmul_add/examples
-            non_delivery: null
-            open_source: null
