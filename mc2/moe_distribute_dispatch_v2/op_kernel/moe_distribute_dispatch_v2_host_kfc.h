@@ -1156,6 +1156,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
         uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
         int32_t tokenSendOffset = isSharedExpert ? tokenSendMap_.GetValue(offset) : tokenIndex;
+        LOG_INFO("ScatterToken tokenSendOffset ",tokenSendOffset);
         bool isSend = (isSharedExpert) || (tokenSendOffset != -1);
         if(!isSend) {
             continue;
