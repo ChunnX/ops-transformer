@@ -2762,7 +2762,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Cast(expertIdsInt16, expertIdsTensor_, RoundMode::CAST_NONE, calCnt);
     PipeBarrier<PIPE_V>();
 
-    for(uint32_t Index = startExpertId; Index < endExpertId; Index++) { //TODO:需要考虑二维mask影响
+    for(uint32_t Index = startExpertId; Index < endExpertId; Index++) { //TODO:需要考虑二维mask影响 
         int16_t dstExpertId = static_cast<uint16_t>(Index);
         Adds(dstExpIdTensorInt16, expertIdsInt16, -dstExpertId, calCnt);
         PipeBarrier<PIPE_V>();
