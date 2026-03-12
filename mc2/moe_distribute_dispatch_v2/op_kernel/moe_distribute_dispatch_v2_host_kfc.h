@@ -731,14 +731,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
     uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
     uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
-    uint32_t expertBufferSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t expertOffsetCntSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
     moeCntRowAlign_ = Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN / sizeof(int16_t);
     expertIdsSize = Ceil(expertIdsSize, UB_ALIGN) * UB_ALIGN;
     maxSize_ = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
     maxSize_ = maxSize_ > xActivateMaskSize ? maxSize_ : xActivateMaskSize;
     maxSize_ = maxSize_ > bsKAlign256 ? maxSize_ : bsKAlign256;
     maxSize_ = maxSize_ > expertCntAlign ? maxSize_ : expertCntAlign;
-    maxSize_ = maxSize_ > expertBufferSize ? maxSize_ : expertBufferSize;
+    maxSize_ = maxSize_ > expertOffsetCntSize ? maxSize_ : expertOffsetCntSize;
     tpipe_->InitBuffer(expertIdsBuf_, expertIdsSize); // BS * K * 4 = 32K
     totalUsedUB_ += expertIdsSize;
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
@@ -855,9 +855,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     Duplicate<uint32_t>(serverCountTensor_, uint32_t(0), serverBuferLength);
     Duplicate<int32_t>(tokenSendMap_, int32_t(-1), serverMapLength);
 
-    uint32_t expertBufferSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t expertOffsetCntSize = axisBS_ * Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN;
 
-    tpipe_->InitBuffer(expertOffsetCntBuf_, expertBufferSize);
+    tpipe_->InitBuffer(expertOffsetCntBuf_, expertOffsetCntSize);
     expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>(); // TODO :
     tpipe_->InitBuffer(xSendBuf_,sendTokenLength_);
 
@@ -1145,6 +1145,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyExtParams flagCopyOutParams = {static_cast<uint16_t>(blockCnt), UB_ALIGN, 0U,
                                            SPLIT_BLOCK_DATA_SIZE, 0U};
     DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], flagTensor_, flagCopyOutParams);
+    PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口
 }
 
 template <TemplateDispatchKFCTypeClass>
