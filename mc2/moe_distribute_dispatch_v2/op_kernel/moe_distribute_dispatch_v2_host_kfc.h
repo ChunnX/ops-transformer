@@ -1215,8 +1215,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint64_t count =0;
     while(true) { // 软同步
         count++;
-        if(count > 100000){
-            // LOG_INFO("WaitFlag,Error count");
+        if(count > 1000000){
+            LOG_INFO("error WaitFlag,Error count");
             break;
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyInParams, flagPadParams);
@@ -1664,8 +1664,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
     uint32_t count = 0;
     while (true) {
         count++;
-        if (count == 100000) {
-            // LogInfo(__LINE__, "[BATCHWRITE][WaitToken] error count.");
+        if (count == 1000000) {
+            LogInfo(__LINE__, "[BATCHWRITE][WaitToken] error count.");
             break;
         }
         if (finishNumTensor_(index) == 1) {
@@ -2032,8 +2032,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         int32_t count = 0;
         while(true) { //确保等到 
             count++;
-            if (count == 100000) {
-                // LOG_INFO("SetStatus error count");
+            if (count == 1000000) {
+                LOG_INFO("SetStatus error count");
                 break;
             }
             DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(blockCntPerCnt_), static_cast<uint32_t>(sizeof(uint32_t)),
@@ -2250,8 +2250,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         sumOfFlag = statusSumOutTensor.GetValue(0);
         // LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
-        if(count == 10000) {
-            // LOG_INFO("waitDispatch error count");
+        if(count == 10000000) {
+            LOG_INFO("waitDispatch error count");
             break;
         }
     }
@@ -2467,8 +2467,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     int count = 0;
     while (true) {
         count++;
-        if(count == 100000) {
-            // LOG_INFO("WaitCumSumFlag error count");
+        if(count == 1000000) {
+            LOG_INFO("WaitCumSumFlag error count");
             break;
         }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
