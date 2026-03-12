@@ -14,10 +14,10 @@
  */
 
 #include "mhc_pre_backward_tiling.h"
-#include "../../../common/include/tiling_base/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
-#include "../../../common/include/err/ops_err.h"
+#include "err/ops_err.h"
 
 namespace optiling {
 
@@ -45,7 +45,7 @@ const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MAX_D_LENTH = 8192;
 const constexpr uint32_t D_ALIGN = 64;
 
-REGISTER_TILING_TEMPLATE("MhcPreBackward", MhcPreBackwardBaseTiling, 1000);
+REGISTER_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardBaseTiling, 1000);
 
 ge::graphStatus MhcPreBackwardBaseTiling::GetInputShape()
 {

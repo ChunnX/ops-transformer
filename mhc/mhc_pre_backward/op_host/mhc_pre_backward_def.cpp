@@ -106,8 +106,7 @@ public:
                 .DynamicRankSupportFlag(true)
                 .DynamicShapeSupportFlag(true)
                 .NeedCheckSupportFlag(false);
-        this->AICore().AddConfig("ascend910b", aicConfig);
-        this->AICore().AddConfig("ascend910_93", aicConfig);
+        this->AICore().AddConfig("ascend950", aicConfig);
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(0.0);
     }
 };

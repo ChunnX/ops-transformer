@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "mhc_pre_backward.h"
+#include "arch35/mhc_pre_backward.h"
 
 using namespace AscendC;
 using namespace matmul;

@@ -31,7 +31,7 @@ using namespace op;
 extern "C" {
 #endif
 
-namespace mhc_pre_grad {
+namespace {
 
 struct MhcPreBackwardParamsBase {
     const aclTensor *x = nullptr;
@@ -887,8 +887,8 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
         DFX_OUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
     auto uniqueExecutor = CREATE_EXECUTOR();
 
-    mhc_pre_grad::MhcPreBackwardParamsBase params =
-        mhc_pre_grad::MhcPreBackwardBuilder::Create()
+    MhcPreBackwardParamsBase params =
+        MhcPreBackwardBuilder::Create()
         .SetInput(x, phi, alpha, gamma)
         .SetGradInput(h_in_grad, h_post_grad, h_res_grad)
         .SetForwardInput(inv_rms, mm_res, h_pre, h_post)
@@ -896,7 +896,7 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
         .SetOutput(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad)
         .Build();
 
-    auto ret = mhc_pre_grad::mhcPreBackwardCommonProcess(params, uniqueExecutor.get());
+    auto ret = mhcPreBackwardCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

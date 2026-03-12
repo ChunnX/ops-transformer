@@ -17,8 +17,8 @@
 
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "../../../common/include/tiling_base/tiling_base.h"
-#include "../../../common/include/err/ops_err.h"
+#include "tiling_base/tiling_base.h"
+#include "err/ops_err.h"
 
 namespace optiling {
 
