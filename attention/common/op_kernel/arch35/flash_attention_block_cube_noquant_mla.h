@@ -89,7 +89,6 @@ private:
     // L0C
     BuffersPolicyDB<BufferType::L0C> mmL0CBuffers;
 
-    // PA 相关变量
     static constexpr uint64_t kvHeadNum = 1ULL;
     static constexpr uint64_t headDim = 512ULL;
     static constexpr uint64_t headDimRope = 64ULL;
@@ -286,7 +285,7 @@ __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<
                     };
     
     // 这里base M N K不要写死
-    MatmulK<INPUT_T, INPUT_T, T, 64, 128, 128, ABLayout::MK, ABLayout::KN>(
+    MatmulK<INPUT_T, INPUT_T, T, s1BaseSize, s2BaseSize, s2BaseSize, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
         mmL0ABuffers, mmL0BBuffers,
         mm1ResL0C.GetTensor<T>(),
@@ -333,13 +332,13 @@ __aicore__ inline int64_t FABlockCubeNoquantMla<TEMPLATE_ARGS>::GetQueryRopeOffs
         n2OffsetRope = runInfo.n2oIdx * constInfo.gDR;
         gOffsetRope = runInfo.goIdx * constInfo.dSizeRope;
     }  else {
-        if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BSH) {
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             // BSH/BSNGD
             bOffsetRope = runInfo.boIdx * constInfo.n2GS1DR;
             s1OffsetRope = runInfo.s1oIdx * constInfo.s1BaseDR;
             n2OffsetRope = runInfo.n2oIdx * constInfo.gDR;
             gOffsetRope = runInfo.goIdx * constInfo.dSizeRope;
-        } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BNSD) {
+        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
             // bnsd
             bOffsetRope = runInfo.boIdx * constInfo.n2GS1DR;
             n2OffsetRope = runInfo.n2oIdx * constInfo.gS1DR;
@@ -368,12 +367,12 @@ __aicore__ inline int64_t FABlockCubeNoquantMla<TEMPLATE_ARGS>::GetKeyRopeOffset
         s2OffsetRope = runInfo.s2StartIdx * constInfo.n2DR + runInfo.s2LoopCount * constInfo.s2BaseN2DR;
         n2OffsetRope = runInfo.n2oIdx * constInfo.dSizeRope;
     } else {
-        if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BSH) {
+        if (layout == LayOutTypeEnum::LAYOUT_BSH) {
             // BSH/BSND
             bOffsetRope = runInfo.boIdx * constInfo.n2S2DR;
             s2OffsetRope = runInfo.s2StartIdx * constInfo.n2DR + runInfo.s2LoopCount * constInfo.s2BaseN2DR;
             n2OffsetRope = runInfo.n2oIdx * constInfo.dSizeRope;
-        } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_BNSD) {
+        } else if (layout == LayOutTypeEnum::LAYOUT_BNSD) {
             // BNSD
             bOffsetRope = runInfo.boIdx * constInfo.n2S2DR;
             n2OffsetRope = runInfo.n2oIdx * constInfo.s2DR;

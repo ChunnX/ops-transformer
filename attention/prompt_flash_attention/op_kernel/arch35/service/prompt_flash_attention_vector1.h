@@ -66,7 +66,7 @@ private:
     GlobalTensor<pseShiftType> pseShiftGm;
     LocalTensor<U> attenMaskUb;
     LocalTensor<pseShiftType> pseShiftUb;
-    uint32_t negativeScalar = PFA_NEGATIVE_MIN_VAULE_FP32;
+    uint32_t negativeScalar = PFA_NEGATIVE_MIN_VALUE_FP32;
 };
 
 template <typename PFAT>
@@ -77,7 +77,7 @@ __aicore__ inline void PromptFlashAttentionNormalVector1<PFAT>::Init(__gm__ uint
     pseShiftGm.SetGlobalBuffer((__gm__ pseShiftType*)pseShift);
     if constexpr ((PFAT::calcMode != RunMode::HighPrecision) &&
         (IsSameType<T, half>::value || IsSameType<T, int8_t>::value)) {
-        this->negativeScalar = PFA_NEGATIVE_MIN_VAULE_FP16;
+        this->negativeScalar = PFA_NEGATIVE_MIN_VALUE_FP16;
     }
 }
 

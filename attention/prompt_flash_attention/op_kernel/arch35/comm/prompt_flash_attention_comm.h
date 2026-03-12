@@ -42,9 +42,9 @@ constexpr uint32_t DSIZE_CONST_256 = 256;
 constexpr uint32_t DSIZE_CONST_512 = 512;
 constexpr uint32_t DSIZE_CONST_576 = 576;
 
-constexpr static uint32_t PFA_NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
-constexpr static uint32_t PFA_NEGATIVE_MIN_VAULE_FP16 = 0xC77FE000;
-constexpr static uint32_t NEGATIVE_MAX_VAULE_FP32 = 0x7F7FFFFF;
+constexpr static uint32_t PFA_NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
+constexpr static uint32_t PFA_NEGATIVE_MIN_VALUE_FP16 = 0xC77FE000;
+constexpr static uint32_t NEGATIVE_MAX_VALUE_FP32 = 0x7F7FFFFF;
 
 constexpr static int64_t SPARSE_MODE_INT_MAX = 2147483647;
 
