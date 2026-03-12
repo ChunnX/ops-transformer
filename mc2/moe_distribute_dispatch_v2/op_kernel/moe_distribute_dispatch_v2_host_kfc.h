@@ -1671,7 +1671,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
-            SendToExpert(index);
+            //SendToExpert(index);
 
             LOG_INFO("[BATCHWRITE][WaitToken][true]after sendtoexpert tokenid:", index);
             // finish更新并clean
