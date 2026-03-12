@@ -1058,6 +1058,9 @@ ge::graphStatus SASTilingCheck::CheckSingleParaOriBlockTable() const
 
 ge::graphStatus SASTilingCheck::CheckSingleParaCmpBlockTable() const
 {
+    if (kvLayout_ == SASLayout::BSND) {
+        return ge::GRAPH_SUCCESS; // BSND 场景不需要使用cmpBlockTable
+    }
     if (sasInfo_.perfMode == optiling::SASTemplateMode::SCFA_TEMPLATE_MODE ||
         sasInfo_.perfMode == optiling::SASTemplateMode::CFA_TEMPLATE_MODE){
             const std::vector<size_t> cmpBlockTableDimNumList = {DIM_NUM_TWO};
