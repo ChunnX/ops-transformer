@@ -1644,7 +1644,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             index = (index + 1) % tokenCnt; // 轮询查询每个有效的index
             continue;
         }
-        LOG_INFO("[BATCHWRITE][WaitToken][true] index:", index);
         uint32_t arriveCount = 0;
 
         GlobalTensor<uint32_t> dataFlagGlobal;
@@ -1653,16 +1652,19 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + (index + startTokenIdx) * sendTokenLengthAlign_;
         dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
         CheckDataArriveWithFlag(dataFlagGlobal, arriveCount, blockCntPerToken_, flagRecvTensor_, flagGatherOutTensor_);
+        LOG_INFO("[BATCHWRITE][WaitToken][true] index:", index);
+        LOG_INFO("[BATCHWRITE][WaitToken][true] arriveCount:", arriveCount);
 
         if (arriveCount == 1) {
             uint32_t dstPosition = index;
             GM_ADDR wAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN;
             CopyInAndOut(xOutFp32Tensor, xOutInt32Tensor, wAddr, index, dstPosition, arriveCount);
-            LOG_INFO("after CopyInAndOut");
+            LOG_INFO("[BATCHWRITE][WaitToken][true]after CopyInAndOut tokenid:", index);
 
             SyncFunc<AscendC::HardEvent::MTE2_V>();
             SendToExpert(index);
 
+            LOG_INFO("[BATCHWRITE][WaitToken][true]after sendtoexpert tokenid:", index);
             // finish更新并clean
             finishNumTensor_(index) = 1;
             uint32_t cleanUpNum = blockCntPerToken_;
