@@ -38,6 +38,9 @@ constexpr uint64_t MX_SCALE_ALIGN = 64;
 constexpr uint64_t MX_SCALE_BLOCK_M = 1;
 constexpr uint64_t MX_SCALE_BLOCK_K = 32;
 constexpr uint64_t MX_SCALE_BLOCK_N = 1;
+constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
+constexpr uint64_t GROUP_M_OFFSET = 32;
+constexpr uint64_t GROUP_N_OFFSET = 16;
 class AllToAllMxQuantMatmulTilingBase : public AllToAllMatmulTilingBase {
     friend class AlltoAllMxQuantMatmulHelper;
 public:
@@ -56,6 +59,7 @@ protected:
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMxQuantMMTiling();
     ge::graphStatus SetHcclTiling();
+    ge::graphStatus CheckGroupSize(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
     void SetUserWorkSpace();
     ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName,
                                                         TilingContextInfo &contextInfo);

@@ -209,9 +209,12 @@ static bool CheckKCBiasDtypesValid(const aclTensor* x1, const aclTensor* x2, con
 }
 
 // 950数据类型校验
-// 量化模式下X支持的FP8数据类型（PerToken量化、PerChannel量化、MXQuant量化）(A5)
+// 量化模式下X支持的FP8数据类型（PerToken量化、PerChannel量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2};
+// 量化模式下X支持的FP4和FP8数据类型（MXQuant量化）(A5)
+static const std::initializer_list<op::DataType> X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5 = {
+    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
 // 量化模式下Bias支持的数据类型（KC量化、MXQuant量化）(A5)
 static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT};
@@ -244,8 +247,11 @@ static bool CheckKCQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2,
 static bool CheckMXQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2,
                                		  const aclTensor* x1Scale, const aclTensor* x2Scale,
                                		  const aclTensor* biasOptional, const aclTensor* output) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP8_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
+    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    }
     OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
     if (biasOptional != nullptr) {
@@ -368,31 +374,29 @@ static aclnnStatus CheckAndHandleParams(const aclTensor* x1, const aclTensor* x2
                                         const aclTensor* x1Scale, const aclTensor* x2Scale, const aclTensor* commScaleOptional,
                                         const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional, const char* group,
                                         const aclIntArray* alltoAllAxesOptional, int64_t x1QuantMode, int64_t x2QuantMode,
-                                        int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize,
+                                        int64_t commQuantMode, int64_t commQuantDtype,
                                         bool transposeX1, bool transposeX2, const aclTensor* output)
 {
-    // 1. 检查参数是否为空指针
+    // 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, biasOptional, x1Scale, x2Scale, output), ACLNN_ERR_PARAM_NULLPTR);
-    // 2. 检查空tensor
+    // 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
-    // 3. 检查shape
+    // 检查shape
     CHECK_RET(CheckShapeMMAA(x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckScaleShape(x1, x2, x1Scale, x2Scale, x1QuantMode, x2QuantMode, transposeX2), ACLNN_ERR_PARAM_INVALID);
-    // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
+    // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(CheckDtypesValid(x1, x2, x1QuantMode, x2QuantMode, x1Scale, x2Scale, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
-    // 5. 检查输入的数据格式是否为ND
+    // 检查输入的数据格式是否为ND
     CHECK_RET(CheckFormat(x1, x2, biasOptional, x1Scale, x2Scale, output), ACLNN_ERR_PARAM_INVALID);
-    // 6.兼容性处理非ND格式
+    // 兼容性处理非ND格式
     CHECK_RET(ReFormatNotND(x1, x2, biasOptional, x1Scale, x2Scale, output), ACLNN_ERR_PARAM_INVALID);
-    // 7. 检查groupSize是否和当前场景匹配
-    CHECK_RET(CheckGroupSizeValid(groupSize, x1QuantMode, x2QuantMode), ACLNN_ERR_PARAM_INVALID);
-    // 8. 检查alltoAllAxes是否为空或者[-1,-2]
+    // 检查alltoAllAxes是否为空或者[-1,-2]
     CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, true), ACLNN_ERR_PARAM_INVALID);
-    // 9. 检查transposeX1是否合法, 目前不能为true
+    // 检查transposeX1是否合法, 目前不能为true
     CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
-    // 10. 检查group长度是否小于等于128
+    // 检查group长度是否小于等于128
     CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
-    // 11. 检查预留参数，不影响场景
+    // 检查预留参数，不影响场景
     CheckReservedParams(commScaleOptional, x1OffsetOptional, x2OffsetOptional, commQuantMode, commQuantDtype);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
     OP_LOGD("aclnnQuantMatmulAlltoAll checkParams success");
@@ -443,7 +447,7 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
     }
     aclnnStatus retParam = CheckAndHandleParams(
         x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, group, alltoAllAxesOptional,
-        x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, groupSize, transposeX1, transposeX2, output);
+        x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // Inner接口部分入参类型和aclnn接口不一致，需要重新包装，同时Inner接口额外需要部分参数，按算子原型模板和实际业务逻辑生成
     const aclTensor* out = output;

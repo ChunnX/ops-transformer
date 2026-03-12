@@ -156,24 +156,6 @@ bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* b
     return CheckBiasShape(biasOptional, nVal);
 }
 
-// 检查groupSize是否合法，仅在组量化（MX）场景下需要取值，其它场景默认为0
-bool CheckGroupSizeValid(int64_t groupSize, int64_t x1QuantMode, int64_t x2QuantMode) {
-    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
-        if (groupSize != MX_QUANT_GROUP_SIZE) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                "In the MX quantization scenario, groupSize should be 4295032864, but now it is %ld.", groupSize);
-            return false;
-        }
-    } else {
-        if (groupSize != ZERO) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                    "This is not MX quantization scenario, the groupSize is a reserved parameter that should be 0, but it is %ld.", groupSize);
-            return false;
-        }
-    }
-    return true;
-}
-
 // 检查tensor是否连续
 bool IsTransposeLastTwoDims(const aclTensor *tensor) {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误

@@ -28,7 +28,6 @@ constexpr size_t TWO_DIMS = 2U;
 constexpr size_t MAX_GROUP_LEN = 128U;
 constexpr int64_t KVALUE_MIN = 1;
 constexpr int64_t KVALUE_MAX = 65535;
-constexpr int64_t MX_QUANT_GROUP_SIZE = 4295032864;
 
 // 通信域相关枚举值
 enum class NnopbaseHcclServerType : uint32_t {
@@ -62,9 +61,6 @@ bool CheckGroupLength(const char *group);
 bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output);
 // 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
 bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional);
-
-// 校验groupSize是否合法，仅在组量化（MX）场景下需要取值，其它场景默认为0
-bool CheckGroupSizeValid(int64_t groupSize, int64_t x1QuantMode, int64_t x2QuantMode);
 
 // 检查tensor是否连续
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
