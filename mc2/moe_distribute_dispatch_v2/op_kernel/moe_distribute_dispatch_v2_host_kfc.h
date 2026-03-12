@@ -1685,7 +1685,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             finishNumTensor_(index) = 1;
             uint32_t cleanUpNum = blockCntPerToken_;
             DataCopyExtParams cleanUpParams = {uint16_t(cleanUpNum), sizeof(int32_t), 0U,
-                                               +SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
+                                               SERVER_STATE_ALIGN - sizeof(int32_t), 0U}; // 清理512B的最后4字节
             LocalTensor<int32_t> cleanBuf =
                 tBuf.GetWithOffset<int32_t>(UB_ALIGN / sizeof(int32_t), 0); // 在0偏移位置存放比较结果
             cleanGlobal.SetGlobalBuffer((__gm__ int32_t *)(readAddr));
