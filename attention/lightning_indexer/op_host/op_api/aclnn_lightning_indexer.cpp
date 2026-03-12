@@ -107,6 +107,12 @@ aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
     }
     DataType queryDataType = query->GetDataType();
     aclDataType queryAclDataType = ToAclDataType(queryDataType);
+    if (returnValues) {
+        if (sparseValuesOut == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "sparseValuesOut cannot be nullptr.");
+            return ge::GRAPH_FAILED;
+        }
+    }
     auto sparseValuesOutHolder = TensorHolder(sparseValuesOut, queryAclDataType, std::string("sparseValuesOut"));
     if (sparseValuesOut == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor sparseValuesOut!");

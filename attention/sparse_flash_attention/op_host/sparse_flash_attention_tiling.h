@@ -66,7 +66,9 @@ const uint32_t SFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
 enum class SFALayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BSND = 2,
+    BNSG = 3,
+    NTG = 4
 };
 
 struct SFATilingShapeCompareParam {
@@ -75,6 +77,7 @@ struct SFATilingShapeCompareParam {
     int64_t N = 1;
     int64_t D = 1;
     int64_t T = 1;
+    int64_t G = 1;
     // PA
     int64_t Bs = 1;
     int64_t Bn = 1;
@@ -99,6 +102,7 @@ enum class SFAAxis : uint32_t {
     T = 5,
     Bn = 6, // block number
     Bs = 7, // block size
+    G = 8,
 };
 
 struct SFARequiredParaInfo {
@@ -280,6 +284,8 @@ struct SFATilingInfo {
     SFALayout topkLayout = SFALayout::BSND;
     SFALayout outLayout = SFALayout::BSND;
     SFALayout kvLayout = SFALayout::BSND;
+    SFALayout softmaxMaxLayout = SFALayout::BNSG;
+    SFALayout softmaxSumLayout = SFALayout::BNSG;
 
     ge::DataType inputQRopeType = ge::DT_FLOAT16;
     ge::DataType inputKRopeType = ge::DT_FLOAT16;
@@ -438,6 +444,10 @@ private:
 
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
+    ge::graphStatus CheckSoftmaxMax();
+    ge::graphStatus CheckSoftmaxMaxShape();
+    ge::graphStatus CheckSoftmaxSum();
+    ge::graphStatus CheckSoftmaxSumShape();
     ge::graphStatus CheckActualSeqLensQ();
     ge::graphStatus CheckActualSeqLensQShape();
     ge::graphStatus CheckActualSeqLensQDType();
@@ -482,6 +492,8 @@ private:
     SFALayout topkLayout_ = SFALayout::BSND;
     SFALayout outLayout_ = SFALayout::BSND;
     SFALayout kvLayout_ = SFALayout::BSND;
+    SFALayout softmaxMaxLayout_ = SFALayout::BNSG;
+    SFALayout softmaxSumLayout_ = SFALayout::BNSG;
 
     uint32_t maxBlockNumPerBatch_ = 0;
     int64_t blockSize_ = 0;
@@ -547,6 +559,7 @@ public:
     ge::graphStatus GetRopeHeadDim();
     ge::graphStatus GetQueryAndOutLayout();
     ge::graphStatus GetTopkLayout();
+    ge::graphStatus GetSoftmaxMaxAndSumLayout();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();
@@ -585,7 +598,8 @@ public:
     SFALayout topkLayout_ = SFALayout::BSND;
     SFALayout outLayout_ = SFALayout::BSND;
     SFALayout kvLayout_ = SFALayout::BSND;
-
+    SFALayout softmaxMaxLayout_ = SFALayout::BNSG;
+    SFALayout softmaxSumLayout_ = SFALayout::BNSG;
     uint32_t maxBlockNumPerBatch_ = 0;
     uint32_t blockSize_ = 0;
 

@@ -106,19 +106,25 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    // 需要修改，添加softmaxMax和softmaxSum
-    auto softmaxMaxHolder = TensorHolder(softmaxMax, aclDataType::ACL_FLOAT, std::string("softmaxMax"));
-    if (softmaxMax == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxMax!");
-        return ge::GRAPH_FAILED;
+    if (returnSoftmaxLse) {
+        if (softmaxMax == nullptr && softmaxSum == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "softmaxMax and softmaxSum cannot be nullptr.");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        if (softmaxMax == nullptr && softmaxSum == nullptr) {
+            auto softmaxMaxHolder = TensorHolder(softmaxMax, aclDataType::ACL_FLOAT, std::string("softmaxMax"));
+            auto softmaxSumHolder = TensorHolder(softmaxSum, aclDataType::ACL_FLOAT, std::string("softmaxSum"));
+            if (softmaxMax == nullptr) {
+                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxMax!");
+                return ge::GRAPH_FAILED;
+            }
+            if (softmaxSum == nullptr) {
+                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxSum!");
+                return ge::GRAPH_FAILED;
+            }
+        }
     }
-
-    auto softmaxSumHolder = TensorHolder(softmaxSum, aclDataType::ACL_FLOAT, std::string("softmaxSum"));
-    if (softmaxSum == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxSum!");
-        return ge::GRAPH_FAILED;
-    }
-
     return aclnnInnerSparseFlashAttentionGetWorkspaceSize(
         query, key, value, sparseIndices, blockTableOptional, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
         scaleValue, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, sparseMode, preTokens,
