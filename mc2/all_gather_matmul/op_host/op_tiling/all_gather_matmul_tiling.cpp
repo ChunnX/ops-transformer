@@ -130,6 +130,24 @@ static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64
     return args.mValue;
 }
 
+static bool CheckOutputParamDim0(gert::TilingContext* context)
+{
+    AllGatherMatmulTilingData* tilingData = context->GetTilingData<AllGatherMatmulTilingData>();
+    auto outputShape = context->GetOutputShape(0);
+    uint64_t outputDim0 = outputShape->GetStorageShape().GetDim(0);
+    const gert::StorageShape* x1Shape = context->GetInputShape(0);
+    uint64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(0);
+    auto group = context->GetAttrs()->GetAttrPointer<char>(0);
+    auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
+    uint64_t mValue = x1Dim0 * static_cast<uint64_t>(rankSize);
+
+    OP_TILING_CHECK(outputDim0 != mValue,
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+        "m-axis should be %lu, but output's m-axis is %lu"), return false);
+
+    return true;
+}
+
 static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(mc2tiling::Mc2TilingUtils::CommonParamCheck(context) != ge::GRAPH_SUCCESS,
@@ -142,6 +160,9 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the value is invalid"), return ge::GRAPH_FAILED);
     
+    OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the output's dim0 is invalid"), return ge::GRAPH_FAILED);
+
     if (context->GetAttrs() == nullptr) {
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get attrs failed");
     } else {
