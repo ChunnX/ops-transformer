@@ -1148,11 +1148,11 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyExtParams dataCopyOutParams = {static_cast<uint16_t>(blockCnt), SPLIT_BLOCK_DATA_SIZE, 0U,
                                            UB_ALIGN, 0U};
     DataCopyPad(dataDstWinGMTensor, xOutTensor, dataCopyOutParams);
-    PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口
 
     DataCopyExtParams flagCopyOutParams = {static_cast<uint16_t>(blockCnt), UB_ALIGN, 0U,
                                            SPLIT_BLOCK_DATA_SIZE, 0U};
     DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], flagTensor_, flagCopyOutParams);
+    PipeBarrier<PIPE_MTE3>(); // TODO : 等待HCCL接口
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -2606,7 +2606,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     int count = 0;
     while (true) {
         count ++;
-        if(count > 10000) {
+        if(count > 1000000) {
             LOG_INFO("WaitAndFormatOutput error count");
             break;
         }
@@ -2614,13 +2614,14 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             index = (index + 1) % validNum; // 轮询查询每个有效的index
             continue;
         }
-        LOG_INFO("WaitAndFormatOutput index:", index);
         srcExpRankId = expertMapTensor_(index);
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
         arriveCount = CheckDataArriveWithFlagInServer(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
-        LOG_INFO("arriveCount:", arriveCount);
         if (arriveCount == copyCnt) {
+            LOG_INFO("WaitAndFormatOutput index:", index);
+            LOG_INFO("arriveCount:", arriveCount);
+            LOG_INFO("copyCnt:", copyCnt);
             dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
