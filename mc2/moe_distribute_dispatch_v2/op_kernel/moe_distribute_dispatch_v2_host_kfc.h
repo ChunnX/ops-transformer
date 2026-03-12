@@ -1099,6 +1099,9 @@ __aicore__ inline void
 MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(LocalTensor<XType> &xOutTensor, uint32_t startTokenIndex, uint32_t tokenIndex)
 {
     uint32_t realIndex = tokenIndex - startTokenIndex;
+    LOG_INFO("FillQuadruple realIndex:", realIndex);
+    LOG_INFO("FillQuadruple startTokenIndex:", startTokenIndex);
+    LOG_INFO("FillQuadruple tokenIndex:", tokenIndex);
     uint64_t mask = axisK_;
     LocalTensor<int32_t> xOutTint32 = xOutTensor.template ReinterpretCast<int32_t>();
     LocalTensor<int16_t> xOutTint16 = xOutTensor.template ReinterpretCast<int16_t>();
@@ -1153,9 +1156,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                                                                                uint32_t dstServerId,
                                                                                                uint32_t cnt)
 {
-    if(cnt == 0) {
-        // LOG_INFO("SingleTokenProcess cnt == 0");
-    }
     LocalTensor<XType> sendTokenTensor = xSendBuf_.Get<XType>();
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopyPadParams copyPadExtParams{true, 0U, 0U, 0U};
