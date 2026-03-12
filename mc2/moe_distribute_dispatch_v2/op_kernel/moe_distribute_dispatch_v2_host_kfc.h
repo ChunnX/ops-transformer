@@ -2776,10 +2776,13 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         PipeBarrier<PIPE_V>();
         Abs(dstExpIdTensorFP16, dstExpIdTensorFP16, calCnt);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
         Mins(dstExpIdTensorInt16, dstExpIdTensorInt16, 1, calCnt);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
         Xor(dstExpIdTensorInt16, dstExpIdTensorInt16, XorTensorInt16, sharedTensorInt8, calCnt);
         PipeBarrier<PIPE_V>();
+        LOG_INFO("dstExpIdTensorInt16",dstExpIdTensorInt16,{activeBsCnt, axisK_});
         if(isExpertMaskFlag_) {
             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>(); //TODO:这里有二维mask
             Cast(maskInputInt16Tensor, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
@@ -2790,18 +2793,24 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                         Ceil(calCnt, ALIGNED_LEN_256) * ALIGNED_LEN_256 / BITS_PER_BYTE / sizeof(uint16_t)); // 获取索引需要放在这里，因为需要256对齐
         Cast(dstExpIdTensorFP16, dstExpIdTensorInt16, RoundMode::CAST_RINT, calCnt); // 得到对应的结果  TODO:这里需要确认全局变量gatherMaskTensor_
         PipeBarrier<PIPE_V>();
+        LOG_INFO("dstExpIdTensorFP16",dstExpIdTensorFP16,{activeBsCnt, axisK_});
         CompareScalar(gatherMaskTensorInt8, dstExpIdTensorFP16, static_cast<half>(1), AscendC::CMPMODE::EQ, expertNumAlign256); //TODO:dstExpBuf_分配需要256对齐
         PipeBarrier<PIPE_V>();
         GatherMask(validExpertIndexTensor, expertsIndexTensor, gatherMaskTensor, true, calCnt, {1, 1, 0, 0},
                 sendNumperExpert); // 当前需要发送的专家的索引以及需要发送的有效专家总数
-        PipeBarrier<PIPE_V>();        
+        PipeBarrier<PIPE_V>();
+        LOG_INFO("validExpertIndexTensor",validExpertIndexTensor,{1, static_cast<uint32_t>(sendNumperExpert)});
+        LOG_INFO("sendNumperExpert",sendNumperExpert);
         if(sendNumperExpert == 0){
             continue;
         }
         Cast(tempOffset, validExpertIndexTensor, RoundMode::CAST_NONE, static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
+        LOG_INFO("tempOffset",tempOffset);
         Muls(tempOffset, tempOffset, static_cast<int32_t>(sizeof(half)), static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
+        LOG_INFO("tempOffset",tempOffset);
+        LOG_INFO("dstoffset",dstoffset);
         Scatter(expertOffsetCntTensor_, expertsIndexTensor, dstoffset, 0, static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
     }
