@@ -281,7 +281,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     moeExpertNumInServer_ = SERVER_RANK_SIZE * localMoeExpertNum_;
 
     //UB init
-    tpipe_->InitBuffer(statusBuf_, FLAG_SIZE);
+    tpipe_->InitBuffer(statusBuf_, FLAG_SIZE * 3U); // GetArrivedTokenInfo 会搬入3个Flag：ArrivedFlag, CurrentTokenFlag, NextTokenFlag
 
     tpipe_->InitBuffer(rdmaInBuf_, UB_32B_ALIGN);
     ubLocal = rdmaInBuf_.Get<uint64_t>();
@@ -951,22 +951,16 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
 
     LocalTensor<uint64_t> statusTensor = statusBuf_.Get<uint64_t>();
     readStatusTensor.SetGlobalBuffer((__gm__ uint64_t*)(addrInfo_.GetLocalRecvBuffFlagAddr(srcRankId)));
-    DataCopy(statusTensor, readStatusTensor,
-        FLAG_SIZE / sizeof(uint64_t));
-    PipeBarrier<PIPE_ALL>();
-    uint64_t endFlagValue = statusTensor.GetValue(0);
-
     uint64_t TokenOffset = tokenIdx * tokenStructLen_;
-    DataCopy(statusTensor, TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
-        FLAG_SIZE / sizeof(uint64_t));
-    PipeBarrier<PIPE_ALL>();
-    uint64_t tokenFlagValue = statusTensor.GetValue(0);
-
     uint64_t nextTokenOffset = (tokenIdx + 1) * tokenStructLen_;
-    DataCopy(statusTensor, TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
-        FLAG_SIZE / sizeof(uint64_t));
-    PipeBarrier<PIPE_ALL>();
-    uint64_t nextTokenFlagValue = statusTensor.GetValue(0);
+    uint32_t copyNum = FLAG_SIZE / sizeof(uint64_t);
+    DataCopy(statusTensor, readStatusTensor, copyNum);
+    DataCopy(statusTensor[copyNum], TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
+    DataCopy(statusTensor[copyNum * 2U], TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    uint64_t endFlagValue = statusTensor.GetValue(0);
+    uint64_t tokenFlagValue = statusTensor.GetValue(copyNum);
+    uint64_t nextTokenFlagValue = statusTensor.GetValue(copyNum * 2U);
 
     //等到发送结束信号，没等到token结束信号，则返回结束等待状态
     if (nextTokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
@@ -975,13 +969,11 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
         } else {
             DataCopy(localUB_U8, TokensGtU8[TokenOffset], tokenStructLen_);
         }
-        PipeBarrier<PIPE_ALL>();
         return ARRIVAL_STATUS;
     }
 
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
         // 等待 token 或者 endOfWrite
-        PipeBarrier<PIPE_ALL>();
         return WAIT_STATUS;
     } else { //得到上个token->可以处理
         if (tokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
@@ -990,10 +982,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
             } else {
                 DataCopy(localUB_U8, TokensGtU8[TokenOffset], tokenStructLen_);
             }
-            PipeBarrier<PIPE_ALL>();
             return ARRIVAL_STATUS;
         } else {
-            PipeBarrier<PIPE_ALL>();
             return FINISH_STATUS;
         }
     }
@@ -1010,8 +1000,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
     LocalTensor<uint64_t> sendTokenInfoLocalTensor = statusBuf_.Get<uint64_t>();
     DataCopy(sendTokenInfoLocalTensor, tokenAddrFlagStructGlobalU64Tensor_[tokenIdx * FLAG_SIZE/sizeof(uint64_t)],
         FLAG_SIZE / sizeof(uint64_t));
-    PipeBarrier<PIPE_ALL>();
-
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t sendFlag = sendTokenInfoLocalTensor(0);
 
     uint64_t destServerMask = (1UL << serverId_);
@@ -1025,7 +1014,6 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
         } else {
             DataCopy(localUB_U8, TokensGtU8[tokenIdx * tokenStructLen_], tokenStructLen_);
         }
-        PipeBarrier<PIPE_ALL>();
         return ARRIVAL_STATUS;
     }
 }
@@ -1064,9 +1052,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
 
     Duplicate<int32_t>(tokenNumPerExp, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
-    PipeBarrier<PIPE_ALL>();
     int64_t startTime = GetCurrentTimestampUs();
     uint32_t fromRankId = fromServerId * SERVER_RANK_SIZE + rankId_ % SERVER_RANK_SIZE;
+    SyncFunc<AscendC::HardEvent::V_S>();
     while (tokenStatus != FINISH_STATUS) {
         if (fromServerId == serverId_) {
             tokenStatus = GetSelfServerTokenInfo(selfTokenIdx, justExpInfo, localUB_U8);
@@ -1085,7 +1073,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             expInfoTensor = localUB_32;
         } else {
             expInfoTensor = localUB_32[expOffsetInStruct_/ sizeof(int32_t)];
+            SyncFunc<AscendC::HardEvent::MTE2_MTE3>(); // 等待localUB的Token部分搬入，后搬移至Ipc Buffer
         }
+        SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等待localUB的expInfo部分搬入
 
         for (int32_t expIndex = 0; expIndex < axisK_; ++expIndex) {
             uint32_t targetExpId = (uint32_t)(expInfoTensor(expIndex));
@@ -1103,10 +1093,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             //本卡需要发送
             uint32_t targetRankId = GetExpRank(targetExpId);
             targetTokenIpcGt.SetGlobalBuffer((__gm__ uint8_t*)(addrInfo_.GetIpcDataAddr(targetRankId, targetExpId % localMoeExpertNum_, fromRankId)));
-            PipeBarrier<PIPE_ALL>();
             DataCopy(targetTokenIpcGt[tokenStructLen_ * targetTokenIdx], localUB_U8, tokenStructLen_);
-            PipeBarrier<PIPE_ALL>();
         }
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // localUB搬下次Token时，确保当前Token已搬移至Ipc Buffer
         // 统计机间通信时间
         // 多个核处理同一个server只有第一个核记录时间，其他核不记录保持0，不影响最后的atomicAdd
         if (unlikely(needPerformanceInfo_ && (logicAivId % coresPerServer == 0))) { 
@@ -1119,6 +1108,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     }
     //数据发送结束，填写tokenNum到对端Ipc，每轮填写coresPerServer个，总共要填写 SERVER_RANK_SIZE * localMoeExpertNum_个
     uint32_t batchNum = (SERVER_RANK_SIZE * localMoeExpertNum_ + coresPerServer - 1) / coresPerServer;
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
     for (uint32_t batch = 0; batch < batchNum; batch++) {
         uint32_t targetExpId = expStartId + batch * coresPerServer + logicAivId % coresPerServer;
         uint32_t targetRankId = GetExpRank(targetExpId);
@@ -1127,9 +1117,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         }
         uint32_t localExpOffset = targetExpId % (localMoeExpertNum_ * SERVER_RANK_SIZE) * EXP_TOKEN_COUNT_FLAG_CNT;
         targetCntIpcGt.SetGlobalBuffer((__gm__ int32_t*)(addrInfo_.GetRemoteIpcTokenCntAddr(targetRankId, targetExpId, fromRankId)));
-        PipeBarrier<PIPE_ALL>();
         DataCopy(targetCntIpcGt, tokenNumPerExp[localExpOffset], EXP_TOKEN_COUNT_FLAG_CNT);
-        PipeBarrier<PIPE_ALL>();
     }
     PipeBarrier<PIPE_ALL>();
 }
