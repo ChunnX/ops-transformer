@@ -322,11 +322,11 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantToken(__gm__ ATyp
     
     //用于存储allToAll后的A矩阵
     uint32_t copyTensorOffset = isSmoothQuant ? Block32B<float>::AlignUp(tokenSize) : 0;
-    uint32_t smoothScaleCastOffset = Block32B<AType>::AlignDown(copyTensorOffset);
+    uint32_t smoothScaleCastOffset = Block32B<AType>::AlignUp(copyTensorOffset);
     uint32_t midElementCnt = (USED_UB_SIZE / sizeof(float) - smoothScaleOffset - copyTensorOffset) / BUFFER_NUM;
     uint32_t ub_offset = Block32B<float>::AlignUp(midElementCnt);
     LocalTensor<float> copyTensor0 = smoothScaleTensor[copyTensorOffset];
-    LocalTensor<float> copyTensor1 = smoothScaleTensor[ub_offset];
+    LocalTensor<float> copyTensor1 = copyTensor0[ub_offset];
 
     int32_t copyTensorRemainUbSize = midElementCnt - Block32B<float>::AlignUp(tokenSize) - BLOCK_ALIGN_BYTES / sizeof(float);
     int32_t ubTokenAlignedPingPongSize = copyTensorRemainUbSize / tokenSize * tokenSize;
@@ -516,7 +516,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm
     uint32_t midElementCnt = (USED_UB_SIZE / sizeof(float) - reduceMaxOffset - copyTensorOffset) / BUFFER_NUM;
     uint32_t ub_offset = Block32B<float>::AlignUp(midElementCnt);
     LocalTensor<float> copyTensor0 = reduceMaxTensor[copyTensorOffset];
-    LocalTensor<float> copyTensor1 = reduceMaxTensor[ub_offset];
+    LocalTensor<float> copyTensor1 = copyTensor0[ub_offset];
 
     int32_t absOffset = Block32B<float>::AlignUp(copyTensorSize); /* 从GM拷贝的数据用abs_offset_a大小空间，case为float后用abs_offset大小的空间 */
     int32_t castOffset = Block32B<AType>::AlignUp(absOffset);   // 换成AType可能不一定32B对齐
