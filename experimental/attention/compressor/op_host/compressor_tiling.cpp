@@ -793,9 +793,8 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                 OP_LOGE(context_->opName, "hiddenSize should be whthin [1k, 10k] and be 512-aligned, but got %u",
                         baseParams_->hiddenSize),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE ||
-                    pageAttentionParams_->blockSize % ALIGN_FACTOR_BLOCK_SIZE != 0,
-                OP_LOGE(context_->opName, "blockSize should be whthin [16, 1024] and be 16-aligned, but got %u",
+    OP_CHECK_IF(pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
+                OP_LOGE(context_->opName, "blockSize should not be less than 1, but got %u",
                         pageAttentionParams_->blockSize),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
