@@ -1401,6 +1401,16 @@ mc2:
         - attention_to_ffn
 
 mhc:
+  mhc_sinkhorn:
+    module: True
+    src:
+      - mhc/mhc_sinkhorn
+    exclude:
+      - mhc/mhc_sinkhorn/docs
+      - mhc/mhc_sinkhorn/README.md
+    ut_cov_exclude:
+      - mhc/mhc_sinkhorn/examples
+      - mhc/mhc_sinkhorn/tests
   mhc_post:
     module: True
     src:

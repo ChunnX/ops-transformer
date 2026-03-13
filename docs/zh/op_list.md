@@ -885,6 +885,16 @@
     <td>AI Core</td>
     <td>aclnnMoeTokenUnpermuteWithRoutingMap的反向传播。</td>
   </tr>
+    <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_sinkhorn/README.md">mhc_sinkhorn</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>基于用Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
+  </tr>
   <tr>
     <td>mhc</td>
     <td><a href="../../mhc/mhc_post/README.md">mhc_post</a></td>
