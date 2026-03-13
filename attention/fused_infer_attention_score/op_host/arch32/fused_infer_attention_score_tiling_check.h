@@ -212,6 +212,7 @@ private:
     ge::graphStatus CheckFeatureGqaAntiquant() const;
     ge::graphStatus CheckFeatureGqaFullquant() const;
     ge::graphStatus CheckFeatureGqaPrefix() const;
+    ge::graphStatus CheckFeaturePostQuant() const;
     ge::graphStatus CheckFeatureLeftPadding() const;
     ge::graphStatus CheckFeaturePSE() const;
     ge::graphStatus CheckFeatureHeadDim() const;
