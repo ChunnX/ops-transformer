@@ -16,7 +16,6 @@
 #define _QKV_RMS_NORM_ROPE_CACHE_COMM_H_
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "kernel_utils.h" 
 
 namespace QkvRmsNormRopeCache {
 using namespace AscendC;
