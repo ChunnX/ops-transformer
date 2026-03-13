@@ -59,9 +59,6 @@ using namespace AscendC;
 
 namespace Catlass::Gemm::Kernel {
 
-constexpr uint16_t SYNCFLAGC2V = 9;
-constexpr uint16_t SYNCFLAGV2C = 10;
-
 template <
     class BlockMmad_,
     class BlockScheduler_,

@@ -41,6 +41,7 @@ using namespace AscendC;
 #include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
 #include "dispatch_ffn_combine_kernel.hpp"
+#include "dispatch_ffn_combine_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
 using namespace Catlass;
@@ -248,8 +249,9 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
-    using MatmulKernel = Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad,
-        BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2, IS_A2_>;
+    using MatmulKernel = typename std::conditional_t<IS_A2_,
+        Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2, IS_A2_>,
+        Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2, IS_A2_>>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
     LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};

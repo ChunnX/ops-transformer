@@ -8,4 +8,7 @@ constexpr static int32_t RESET_VAL = 0xffff;
 constexpr static int32_t FLAGSTRIDE = 16;
 constexpr static int32_t UB_ALIGN = 32;
 constexpr uint16_t CROSS_CORE_FLAG_MAX_SET_COUNT = 15;
+constexpr static uint16_t SYNCFLAGC2V = 9;
+constexpr static uint16_t SYNCFLAGV2C = 10;
+constexpr static uint32_t SERVER_RANK_SIZE_A2 = 8;
 #endif

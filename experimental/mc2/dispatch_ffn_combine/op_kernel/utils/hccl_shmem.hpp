@@ -64,6 +64,7 @@ FORCE_INLINE_AICORE int32_t gm_signal_wait_until_eq_for_barrier(__gm__ int32_t *
 }
 
 FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32_t cmp_val) {
+    uint32_t count = 0;
     do {
         AscendC::LocalTensor<int32_t> ub;
         ub.address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECIN);
@@ -74,6 +75,10 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         if (ub(0) != cmp_val) {
+            return;
+        }
+        if (++count > 10000000) {
+            AscendC::printf("gm_signal_wait_until_ne check failed for address:%x\n", sig_addr);
             return;
         }
     } while (true);
@@ -119,7 +124,11 @@ public:
     GM_ADDR operator() () const {   // No parameters: return pointer to local peermem
         #ifdef HCCL_COMM
             if constexpr(IS_A2) {
-                return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
+                } else {
+                    return (GM_ADDR)(WinContext_->data[WinContext_->rankId].localInput.addr);
+                }
             } else {
                 return (GM_ADDR)(WinContext_->localWindowsIn);
             }
@@ -132,7 +141,15 @@ public:
     GM_ADDR operator() (int32_t index) const {  // With index parameter: return pointer to the base address of remote peermem
         #ifdef HCCL_COMM
             if constexpr(IS_A2) {
-                return (GM_ADDR)WinContext_->windowsIn[index];
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsIn[index]);
+                } else {
+                    if (index == WinContext_->rankId) {
+                        return (GM_ADDR)(WinContext_->data[index].localInput.addr);
+                    } else {
+                        return (GM_ADDR)(WinContext_->data[index].remoteInput.addr);
+                    }
+                }
             } else {
                 return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
                     ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
@@ -152,7 +169,15 @@ public:
                 return nullptr;
             }
             if constexpr(IS_A2) {
-                return (GM_ADDR)(WinContext_->windowsIn[rankId] + offset);
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsIn[rankId] + offset);
+                } else {
+                    if (rankId == WinContext_->rankId) {
+                        return (GM_ADDR)(WinContext_->data[rankId].localInput.addr + offset);
+                    } else {
+                        return (GM_ADDR)(WinContext_->data[rankId].remoteInput.addr + offset);
+                    }
+                }
             } else {
                 return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn :
                     ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
@@ -162,7 +187,64 @@ public:
         #endif
     }
 
+    FORCE_INLINE_AICORE
+    GM_ADDR windowsOutAddr() const {
+        #ifdef HCCL_COMM
+            if constexpr(IS_A2) {
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsOut[WinContext_->rankId]);
+                } else {
+                    return (GM_ADDR)(WinContext_->data[WinContext_->rankId].localOutput.addr);
+                }
+            } else {
+                return nullptr;
+            }
+        #else
+            return nullptr;
+        #endif
+    }
 
+    FORCE_INLINE_AICORE
+    GM_ADDR windowsOutAddr(int32_t rankId) const {
+        #ifdef HCCL_COMM
+            if constexpr(IS_A2) {
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsOut[rankId]);
+                } else {
+                    if (rankId == WinContext_->rankId) {
+                        return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr);
+                    } else {
+                        return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr);
+                    }
+                }
+            } else {
+                return nullptr;
+            }
+        #else
+            return nullptr;
+        #endif
+    }
+
+    FORCE_INLINE_AICORE
+    GM_ADDR windowsOutAddr(int64_t offset, int32_t rankId) const {
+        #ifdef HCCL_COMM
+            if constexpr(IS_A2) {
+                if (WinContext_->multiFlag == 0U) {
+                    return (GM_ADDR)(WinContext_->windowsOut[rankId] + offset);
+                } else {
+                    if (rankId == WinContext_->rankId) {
+                        return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr + offset);
+                    } else {
+                        return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr + offset);
+                    }
+                }
+            } else {
+                return nullptr;
+            }
+        #else
+            return nullptr;
+        #endif
+    }
 
     FORCE_INLINE_AICORE
     size_t SegmentSize() const {

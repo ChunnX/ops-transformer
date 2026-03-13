@@ -47,6 +47,8 @@ namespace {
     constexpr uint32_t BLOCK_NUM = 20;
     constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
     constexpr uint64_t MB_SIZE = 1024 * 1024UL;
+
+    constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
 }
 
 namespace optiling {
@@ -196,6 +198,14 @@ void SetTilingData(CoCTiling &cocTilingData, DispatchFFNCombineInfo &info)
     cocTilingData.lenPerLoop = cocTilingData.m0 * cocTilingData.n0 / 2;
 }
 
+static std::string DispatchFFNCombineA2GetAlgConfig(int32_t epWorldSize, bool isLayered)
+{
+    if (epWorldSize <= RANK_NUM_PER_NODE_A2) {
+        return "BatchWrite=level0:fullmesh";
+    }
+    return isLayered ? "BatchWrite=level1:hierarchy" : "BatchWrite=level1:fullmesh";
+}
+
 // Main scheduling function:
 // Get tilingData ➝ check Attr ➝ check Shape ➝ get platform info 
 // ➝ call SetTilingData (based on rank count) ➝ set blockDim ➝ set tilingKey ➝ set workspace ➝ configure communication parameters
@@ -266,6 +276,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     tilingData->cocTiling.moeInitRoutingQuantV2TilingData.srcToDstCapacityComputeParamsOp = moeInitRoutingQuantV2TilingBase.quantTilingData.srcToDstCapacityComputeParamsOp;
     tilingData->cocTiling.moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp = moeInitRoutingQuantV2TilingBase.quantTilingData.gatherOutComputeParamsOp;
     tilingData->cocTiling.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
+    printf("11111111111111111111111111111111111111111111 initRoutingQuantTilingKey:%ld\n", initRoutingQuantTilingKey);
 
     uint64_t maxWindowSize = GetMaxWindowSize();
     uint64_t actualSize = static_cast<uint64_t>(info.M) * info.topK * info.K * sizeof(int8_t) * 3 + 10 * MB_SIZE ;
@@ -303,7 +314,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     std::string algConfig;
     if (info.isA2) {
         opType = 18u;
-        algConfig = "MultiPut=level0:fullmesh";
+        algConfig = DispatchFFNCombineA2GetAlgConfig(info.worldSize, true);
     } else {
         opType = 8U;
         algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";

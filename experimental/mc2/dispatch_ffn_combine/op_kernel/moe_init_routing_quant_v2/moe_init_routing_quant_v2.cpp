@@ -12,6 +12,9 @@
  * \file moe_init_routing_quant_v2.cpp
  * \brief
  */
+#ifndef MOE_INIT_ROUTING_QUANT_V2_HPP
+#define MOE_INIT_ROUTING_QUANT_V2_HPP
+
 #include "moe_v2_sort_one_core.h"
 #include "moe_v2_sort_multi_core.h"
 #include "moe_v2_mrgsort_out.h"
@@ -131,3 +134,5 @@ __aicore__ inline  void moe_init_routing_quant_v2(
     gatherPipe.Destroy();
   }
 }
+
+#endif // MOE_INIT_ROUTING_QUANT_V2_HPP
