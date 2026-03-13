@@ -61,6 +61,8 @@ constexpr int32_t B8_DATA_SIZE = 1;
 
 constexpr uint32_t MX_GROUP_SIZE = 32;
 
+constexpr uint32_t AIC_AIV_CORE_RATIO = 2;
+
 struct TailBlockResplitParam {
     uint32_t mainBlockSize = 0;
     uint64_t mainBlockCount = 0;
@@ -219,6 +221,7 @@ public:
     bool SetTiling(gert::TilingContext *context);
 
 protected:
+    bool CheckCoreNum(const gert::TilingContext *context) const;
     bool SetShapeList(const gert::TilingContext *context);
     bool CheckEmptyTensor(const gert::TilingContext *context);
     bool CheckTensorListSize(const gert::TilingContext *context);
@@ -291,6 +294,7 @@ private:
     uint32_t groupNum_ = 0;
     uint32_t groupListType_ = 0;
     uint32_t coreNum_ = 0;
+    uint32_t aivNum_ = 0;
     uint32_t groupSize_ = 0;
     uint8_t cubeNumBlocksN_ = 0;
 
